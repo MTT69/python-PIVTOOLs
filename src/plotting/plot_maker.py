@@ -4,7 +4,10 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize, TwoSlopeNorm
 from config import Config
 from pathlib import Path
-
+import matplotlib as mpl
+from matplotlib.cm import ScalarMappable
+from matplotlib.ticker import FixedLocator, FixedFormatter
+mpl.use('Agg') 
 
 # Settings object to drive plot_scalar_field conveniently from Config
 @dataclass
@@ -117,6 +120,8 @@ def plot_scalar_field(variable, mask, settings):
 
     # Enforce symmetric scale around zero if data spans negative and positive
     use_two_slope = False
+    actual_min = vmin
+    actual_max = vmax
     if settings.symmetric_around_zero and vmin < 0 and vmax > 0:
         vabs = max(abs(vmin), abs(vmax))
         vmin, vmax = -vabs, vabs
@@ -140,10 +145,42 @@ def plot_scalar_field(variable, mask, settings):
     # Contourf
     im = plt.contourf(X, Y, masked_var, levels=settings.levels, cmap=cmap, norm=norm)
 
-    fig.colorbar(im, ax=ax, label=cm_label)  # Add colorbar
-    ax.set_title(f"{settings.title}")  # Set plot title
-    ax.set_xlabel(settings._xlabel)     # Set x-axis label
-    ax.set_ylabel(settings._ylabel)     # Set y-axis label
+    sm = ScalarMappable(norm=norm, cmap=cmap)
+    sm.set_array([])  # required for some Matplotlib versions
+    cbar = fig.colorbar(sm, ax=ax, label=cm_label)
+
+    if isinstance(settings.levels, np.ndarray):
+    # pick a stable set, e.g. 7 ticks or [vmin, 0, vmax] for diverging
+        if isinstance(norm, TwoSlopeNorm):
+            ticks = [norm.vmin, 0.0, norm.vmax]
+        else:
+            ticks = np.linspace(norm.vmin, norm.vmax, 7)
+    else:
+        ticks = np.linspace(norm.vmin, norm.vmax, 7)
+
+
+    # Optional: nice fixed tick count
+    ticks = np.linspace(actual_min, actual_max, 7)
+    labels = [f"{t:.2f}" for t in ticks]
+    cbar.set_ticks(ticks)
+    cbar.set_ticklabels(labels)
+    cbar.ax.set_ylim(actual_min, actual_max)
+    cbar.ax.yaxis.set_major_locator(FixedLocator(ticks))
+    cbar.ax.yaxis.set_major_formatter(FixedFormatter(labels))
+
+    ax.set_title(f"{settings.title}")
+    ax.set_xlabel(settings._xlabel)
+    ax.set_ylabel(settings._ylabel)
+
+    # labels = [f"{t:.2f}" for t in ticks]
+    # cbar.set_ticks(ticks)
+    # cbar.set_ticklabels(labels)
+    # cbar.ax.yaxis.set_major_locator(FixedLocator(ticks))
+    # cbar.ax.yaxis.set_major_formatter(FixedFormatter(labels))
+
+    # ax.set_title(f"{settings.title}")  # Set plot title
+    # ax.set_xlabel(settings._xlabel)     # Set x-axis label
+    # ax.set_ylabel(settings._ylabel)     # Set y-axis label
 
     # Do not save or close here; return figure to caller for handling
     return fig, ax, im

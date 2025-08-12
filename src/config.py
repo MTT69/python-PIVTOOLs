@@ -15,8 +15,9 @@ class Config:
                 file_path = source_path / camera_folder / (self.image_format % 1)
             else:
                 file_path = source_path / camera_folder / (self.image_format[0] % 1)
-            img = tifffile.imread(file_path)
-            self.image_dtype = img.dtype
+            print(file_path)
+            # img = tifffile.imread(file_path) # bye bye
+            # self.image_dtype = img.dtype
 
     @property
     def time_resolved(self):

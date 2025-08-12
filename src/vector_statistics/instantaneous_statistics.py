@@ -149,9 +149,12 @@ def instantaneous_statistics(cam_num: int, config: Config, base):
             plt.close(fig_uy)
         # Check whether video-making is true
         # if config.video_making:
+        import time
+        start_time = time.time()
         if True:
             import imageio
             print("[instantaneous] Video-making is enabled")
+            print("[instantaneous] Generating scalar videos for ux and uy")
             for lbl in pass_labels:
                 idx = lbl - 1  # aligns with array indexing when all passes selected
                 # If a subset was selected, map label to local index
@@ -166,8 +169,9 @@ def instantaneous_statistics(cam_num: int, config: Config, base):
                 cx = coords_x_list[local_idx] if local_idx < len(coords_x_list) else None
                 cy = coords_y_list[local_idx] if local_idx < len(coords_y_list) else None
 
-                # ux
+                # ux -------------------------------------------------------------------------
                 save_base_ux_video = mean_stats_dir / f"ux_video_{lbl}"
+                save_base_ux_video_mp4 = mean_stats_dir / f"ux_video_{lbl}.mp4"
 
                 # Select 50 random frame indices from ux (shape: N,R,H,W)
                 num_frames = ux.shape[0]
@@ -177,11 +181,14 @@ def instantaneous_statistics(cam_num: int, config: Config, base):
                     random_indices = np.arange(num_frames)
 
                 ux_frames = ux[random_indices, local_idx]  # shape: (50,H,W) or (<num_frames>,H,W)
-                max_vals = [np.max(frame) for frame in ux_frames]
-                min_vals = [np.min(frame) for frame in ux_frames]
+                # Ensure ux_frames is a NumPy array (compute if it's a Dask array)
+                if hasattr(ux_frames, "compute"):
+                    ux_frames = ux_frames.compute()
+                max_val = np.max(ux_frames)
+                min_val = np.min(ux_frames)
 
-                print(f"[instantaneous] ux max values in 50 random frames: {max_vals}")
-                print(f"[instantaneous] ux min values in 50 random frames: {min_vals}")
+                # print(f"[instantaneous] ux max values in 50 random frames: {max_val}")
+                # print(f"[instantaneous] ux min values in 50 random frames: {min_val}")
 
                 frames_list = []
 
@@ -194,19 +201,77 @@ def instantaneous_statistics(cam_num: int, config: Config, base):
                         variable_units="m/s",
                         coords_x=cx,
                         coords_y=cy,
+                        upper_limit=max_val,
+                        lower_limit=min_val
                     )
+
 
                     fig_ux_frame, _, _ = plot_scalar_field(frame, mask_bool, settings_ux_frame)
 
                     fig_ux_frame.canvas.draw()
-                    frame = np.frombuffer(fig_ux_frame.canvas.tostring_rgb(), dtype=np.uint8)
-                    frame = frame.reshape(fig_ux_frame.canvas.get_width_height()[::-1] + (3,))
-                    frames_list.append(frame)
-                    fig_ux_frame.close()
+                    width, height = fig_ux_frame.canvas.get_width_height()
+                    argb = np.frombuffer(fig_ux_frame.canvas.tostring_argb(), dtype=np.uint8)
+                    argb = argb.reshape((height, width, 4))
+                    # Convert ARGB to RGB
+                    rgb = argb[:, :, 1:]  # Discard alpha channel, keep R,G,B
+
+                    frames_list.append(rgb)
+                    plt.close(fig_ux_frame)
 
                 # Write frames to video
-                imageio.mimsave(save_base_ux_video, frames_list, fps=10)
-                print(f"[instantaneous] Saved video: {save_base_ux_video}")
+                imageio.mimsave(save_base_ux_video_mp4, frames_list, format='FFMPEG', codec='libx264')
+
+                print(f"[instantaneous] Saved video: {save_base_ux_video_mp4}")
+
+                # uy -------------------------------------------------------------------------
+                save_base_uy_video = mean_stats_dir / f"uy_video_{lbl}"
+                save_base_uy_video_mp4 = mean_stats_dir / f"uy_video_{lbl}.mp4"
+
+                # Select 50 random frame indices from uy (shape: N,R,H,W)
+                num_frames_uy = uy.shape[0]
+                if num_frames_uy >= 50:
+                    random_indices_uy = np.random.choice(num_frames_uy, size=50, replace=False)
+                else:
+                    random_indices_uy = np.arange(num_frames_uy)
+
+                uy_frames = uy[random_indices_uy, local_idx]  # shape: (50,H,W) or (<num_frames>,H,W)
+                if hasattr(uy_frames, "compute"):
+                    uy_frames = uy_frames.compute()
+                max_val_uy = np.max(uy_frames)
+                min_val_uy = np.min(uy_frames)
+
+                frames_list_uy = []
+
+                for frame_idx, frame in enumerate(uy[:, local_idx]):
+                    settings_uy_frame = make_scalar_settings(
+                        config,
+                        variable=f"uy_frame_{frame_idx + 1}",
+                        run_label=lbl,
+                        save_basepath=save_base_uy_video,
+                        variable_units="m/s",
+                        coords_x=cx,
+                        coords_y=cy,
+                        upper_limit=max_val_uy,
+                        lower_limit=min_val_uy
+                    )
+
+                    fig_uy_frame, _, _ = plot_scalar_field(frame, mask_bool, settings_uy_frame)
+
+                    fig_uy_frame.canvas.draw()
+                    width, height = fig_uy_frame.canvas.get_width_height()
+                    argb = np.frombuffer(fig_uy_frame.canvas.tostring_argb(), dtype=np.uint8)
+                    argb = argb.reshape((height, width, 4))
+                    rgb = argb[:, :, 1:]  # Discard alpha channel, keep R,G,B
+
+                    frames_list_uy.append(rgb)
+                    plt.close(fig_uy_frame)
+
+                imageio.mimsave(save_base_uy_video_mp4, frames_list_uy, format='FFMPEG', codec='libx264')
+
+                print(f"[instantaneous] Saved video: {save_base_uy_video_mp4}")
+
+        end_time = time.time()
+        print(f"[instantaneous] Video generation completed in {end_time - start_time:.2f} seconds")
 
         # Build piv_result as n-pass-deep MATLAB struct array; populate only selected passes
         n_passes_cfg = len(config.instantaneous_window_sizes) or mean_ux_all.shape[0]
