@@ -94,3 +94,16 @@ class Config:
     @property
     def instantaneous_overlaps(self):
         return self.data.get('instantaneous_piv', {}).get('overlap', [])
+
+    @property
+    def videos(self):
+        """
+        Returns the 'videos' list from config.yaml. Ensures a list is returned.
+        Each entry may contain: type, endpoint, use_merged, video_length, variable.
+        """
+        vids = self.data.get('videos', [])
+        if vids is None:
+            return []
+        if isinstance(vids, dict):
+            return [vids]
+        return list(vids)
