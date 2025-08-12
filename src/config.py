@@ -96,6 +96,10 @@ class Config:
         return self.data.get('instantaneous_piv', {}).get('overlap', [])
 
     @property
+    def plots(self):
+        return self.data.get('plots', [])
+
+    @property
     def videos(self):
         """
         Returns the 'videos' list from config.yaml. Ensures a list is returned.
