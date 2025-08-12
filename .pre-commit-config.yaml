@@ -1,0 +1,31 @@
+repos:
+  - repo: https://github.com/psf/black
+    rev: 25.1.0
+    hooks:
+    - id: black
+      exclude: ^(pAiback/|__pycache__/|.*\.egg-info/|build/|dist/|\.venv/|venv/|env/|node_modules/|\.git/)
+
+  - repo: https://github.com/PyCQA/isort
+    rev: 6.0.1
+    hooks:
+    - id: isort
+      args: ["--profile", "black", "--line-length=88"]
+      exclude: ^(pAiback/|__pycache__/|.*\.egg-info/|build/|dist/|\.venv/|venv/|env/|node_modules/|\.git/)
+
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.2.0
+    hooks:
+    - id: flake8
+      args: [--config, .flake8]
+      exclude: ^(pAiback/|__pycache__/|.*\.egg-info/|build/|dist/|\.venv/|venv/|env/|node_modules/|\.git/)
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+    - id: trailing-whitespace
+      exclude: ^(pAiback/|__pycache__/|.*\.egg-info/|build/|dist/|\.venv/|venv/|env/|node_modules/|\.git/)
+    - id: end-of-file-fixer
+      exclude: ^(pAiback/|__pycache__/|.*\.egg-info/|build/|dist/|\.venv/|venv/|env/|node_modules/|\.git/)
+    - id: check-yaml
+    - id: check-added-large-files
+      args: ['--maxkb=2048']  # allow up to 2 MB
