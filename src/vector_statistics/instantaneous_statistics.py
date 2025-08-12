@@ -147,11 +147,70 @@ def instantaneous_statistics(cam_num: int, config: Config, base):
                 with open(f"{save_base_uy}.pkl", 'wb') as f:
                     pickle.dump(mean_uy_all[local_idx], f)
             plt.close(fig_uy)
+        # Check whether video-making is true
+        # if config.video_making:
+        if True:
+            import imageio
+            print("[instantaneous] Video-making is enabled")
+            for lbl in pass_labels:
+                idx = lbl - 1  # aligns with array indexing when all passes selected
+                # If a subset was selected, map label to local index
+                if selected_runs_1based:
+                    local_idx = selected_runs_1based.index(lbl)
+                else:
+                    local_idx = idx
+                # Build boolean mask
+                mask_bool = np.asarray(b_mask_all[local_idx]).astype(bool)
+
+                # Per-pass coordinates if available
+                cx = coords_x_list[local_idx] if local_idx < len(coords_x_list) else None
+                cy = coords_y_list[local_idx] if local_idx < len(coords_y_list) else None
+
+                # ux
+                save_base_ux_video = mean_stats_dir / f"ux_video_{lbl}"
+
+                # Select 50 random frame indices from ux (shape: N,R,H,W)
+                num_frames = ux.shape[0]
+                if num_frames >= 50:
+                    random_indices = np.random.choice(num_frames, size=50, replace=False)
+                else:
+                    random_indices = np.arange(num_frames)
+
+                ux_frames = ux[random_indices, local_idx]  # shape: (50,H,W) or (<num_frames>,H,W)
+                max_vals = [np.max(frame) for frame in ux_frames]
+                min_vals = [np.min(frame) for frame in ux_frames]
+
+                print(f"[instantaneous] ux max values in 50 random frames: {max_vals}")
+                print(f"[instantaneous] ux min values in 50 random frames: {min_vals}")
+
+                frames_list = []
+
+                for frame_idx, frame in enumerate(ux[:, local_idx]):
+                    settings_ux_frame = make_scalar_settings(
+                        config,
+                        variable=f"ux_frame_{frame_idx + 1}",
+                        run_label=lbl,
+                        save_basepath=save_base_ux_video,  # used only for naming below
+                        variable_units="m/s",
+                        coords_x=cx,
+                        coords_y=cy,
+                    )
+
+                    fig_ux_frame, _, _ = plot_scalar_field(frame, mask_bool, settings_ux_frame)
+
+                    fig_ux_frame.canvas.draw()
+                    frame = np.frombuffer(fig_ux_frame.canvas.tostring_rgb(), dtype=np.uint8)
+                    frame = frame.reshape(fig_ux_frame.canvas.get_width_height()[::-1] + (3,))
+                    frames_list.append(frame)
+                    fig_ux_frame.close()
+
+                # Write frames to video
+                imageio.mimsave(save_base_ux_video, frames_list, fps=10)
+                print(f"[instantaneous] Saved video: {save_base_ux_video}")
 
         # Build piv_result as n-pass-deep MATLAB struct array; populate only selected passes
         n_passes_cfg = len(config.instantaneous_window_sizes) or mean_ux_all.shape[0]
         print(f"[instantaneous] Building piv_result with n_passes={n_passes_cfg}")
-
         # Create a structured array with object-typed fields so each element can hold arrays
         dt = np.dtype([("ux", object), ("uy", object), ("b_mask", object),
                        ("uu", object), ("uv", object), ("vv", object)])

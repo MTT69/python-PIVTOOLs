@@ -40,7 +40,7 @@ if __name__ == "__main__":
             # processed_images.compute()
             # perform PIV
             instantaneous_statistics(cam_num, config, base=base_path)
-            ensemble_statistics(cam_num, config, base=base_path)
+            # ensemble_statistics(cam_num, config, base=base_path)
 
     current, peak = tracemalloc.get_traced_memory()
     print(f"Current memory usage: {current / 10**6:.2f} MB")

@@ -1,9 +1,9 @@
 paths:
   base_paths:
-    - '/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test'
+    - 'C:\Users\ees1u24\Desktop\PIVTools\PlottingPlayground'
     # - "/another/base/path"
   source_paths:
-    - '/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall'
+    - 'C:\Users\ees1u24\Desktop\PIVTools\PlottingPlayground'
     # - "/another/source/path"
   camera_numbers: [1]  # e.g. [1,2,3]
 
