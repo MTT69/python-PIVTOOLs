@@ -4,6 +4,7 @@ from config import Config
 from post_processing.vector_loading import load_vectors_from_directory
 from vector_statistics.paths import get_data_paths
 from scipy.io import savemat
+import dask  # added
 
 
 def instantaneous_statistics(cam_num: int, config: Config, base):
@@ -51,19 +52,27 @@ def instantaneous_statistics(cam_num: int, config: Config, base):
         bmask = arr[:, :, 2]  # (N,R,H,W)
 
         print("[instantaneous] Computing mean ux and uy per selected pass")
-        mean_ux_all = ux.mean(axis=0).compute()  # (R,H,W)
-        mean_uy_all = uy.mean(axis=0).compute()  # (R,H,W)
+        # Build lazy reductions
+        mean_ux_da = ux.mean(axis=0)              # (R,H,W)
+        mean_uy_da = uy.mean(axis=0)              # (R,H,W)
 
-        # b_masks are identical across time -> take first time instance
+        # b_masks are identical across time -> take first time instance lazily
         print("[instantaneous] Using b_mask from first time instance per selected pass")
-        b_mask_all = bmask[0].compute()  # (R,H,W)
+        b_mask_da = bmask[0]                      # (R,H,W)
 
-        # Compute Reynolds stresses using moment identities
+        # Compute Reynolds stress ingredients lazily
         print("[instantaneous] Computing Reynolds stresses per selected pass")
-        E_ux2 = (ux ** 2).mean(axis=0).compute()     # (R,H,W)
-        E_uy2 = (uy ** 2).mean(axis=0).compute()     # (R,H,W)
-        E_uxuy = (ux * uy).mean(axis=0).compute()    # (R,H,W)
-        uu_all = E_ux2 - mean_ux_all ** 2            # (R,H,W)
+        E_ux2_da = (ux ** 2).mean(axis=0)         # (R,H,W)
+        E_uy2_da = (uy ** 2).mean(axis=0)         # (R,H,W)
+        E_uxuy_da = (ux * uy).mean(axis=0)        # (R,H,W)
+
+        # Execute all reductions in one graph run
+        mean_ux_all, mean_uy_all, b_mask_all, E_ux2, E_uy2, E_uxuy = dask.compute(
+            mean_ux_da, mean_uy_da, b_mask_da, E_ux2_da, E_uy2_da, E_uxuy_da
+        )
+
+        # Finish Reynolds stresses on NumPy arrays
+        uu_all = E_ux2 - mean_ux_all ** 2         # (R,H,W)
         uv_all = E_uxuy - (mean_ux_all * mean_uy_all)
         vv_all = E_uy2 - mean_uy_all ** 2
 
@@ -106,7 +115,7 @@ def instantaneous_statistics(cam_num: int, config: Config, base):
                 piv_result["uu"][pass_zero_based] = uu_all[local_idx]
                 piv_result["uv"][pass_zero_based] = uv_all[local_idx]
                 piv_result["vv"][pass_zero_based] = vv_all[local_idx]
-        ## efe plots
+
         # Save a single file per camera/merged with piv_result and meta
         out_file = paths["stats_dir"] / (f"{'merged' if use_merged else f'Cam{cam_num}'}_mean.mat")
         print(f"[instantaneous] Saving piv_result (means and Reynolds stresses) -> {out_file}")
