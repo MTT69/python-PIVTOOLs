@@ -85,3 +85,53 @@ def load_vectors_from_directory(data_dir: Path, config: Config, runs: Optional[S
     arrays = [da.from_delayed(di, shape=shape, dtype=dtype) for di in delayed_items]
     stacked = da.stack(arrays, axis=0)  # (N, R, 3, H, W)
     return stacked.rechunk({0: config.piv_chunk_size})
+
+
+def load_coords_from_directory(data_dir: Path, runs: Optional[Sequence[int]] = None) -> Tuple[Sequence[np.ndarray], Sequence[np.ndarray], int]:
+    """
+    Locate and read the coordinates.mat file in data_dir and return (x_list, y_list, total_runs).
+    - runs: list of 1-based run numbers to include; if None or empty, include all runs present in the coords file.
+    - Returns:
+        x_list: list of x arrays in the same order as 'runs' (or all runs if None)
+        y_list: list of y arrays in the same order as 'runs' (or all runs if None)
+        total_runs: total number of runs present in the coords file
+    """
+    data_dir = Path(data_dir)
+    coords_path = data_dir / "coordinates.mat"
+    if not coords_path.exists():
+        raise FileNotFoundError(f"No coordinates.mat file found in {data_dir}")
+
+    mat = scipy.io.loadmat(coords_path, struct_as_record=False, squeeze_me=True)
+    if "coordinates" not in mat:
+        raise KeyError(f"'coordinates' variable not found in {coords_path.name}")
+    coords = mat["coordinates"]
+
+    def _xy_from_struct(obj):
+        return np.asarray(obj.x), np.asarray(obj.y)
+
+    x_list, y_list = [], []
+
+    if isinstance(coords, np.ndarray) and coords.dtype == object:
+        total_runs = coords.size
+        if runs:
+            zero_based = [r - 1 for r in runs if 1 <= r <= total_runs]
+            if len(zero_based) != len(runs):
+                missing = sorted(set(runs) - set([z + 1 for z in zero_based]))
+                warnings.warn(f"Skipping out-of-range run indices {missing} for coordinates (total_runs={total_runs})")
+        else:
+            zero_based = list(range(total_runs))
+
+        for idx in zero_based:
+            x, y = _xy_from_struct(coords[idx])
+            x_list.append(x)
+            y_list.append(y)
+    else:
+        total_runs = 1
+        if runs and 1 not in runs:
+            warnings.warn("Requested runs do not include run 1 present in coordinates; returning empty coords")
+            return [], [], total_runs
+        x, y = _xy_from_struct(coords)
+        x_list.append(x)
+        y_list.append(y)
+
+    return x_list, y_list, total_runs

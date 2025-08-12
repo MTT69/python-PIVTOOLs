@@ -1,10 +1,12 @@
 from pathlib import Path
 import numpy as np
 from config import Config
-from post_processing.vector_loading import load_vectors_from_directory
+from post_processing.vector_loading import load_vectors_from_directory, load_coords_from_directory
 from vector_statistics.paths import get_data_paths
 from scipy.io import savemat
 import dask  # added
+from plotting.plot_maker import plot_scalar_field, make_scalar_settings
+import matplotlib.pyplot as plt
 
 
 def instantaneous_statistics(cam_num: int, config: Config, base):
@@ -40,12 +42,20 @@ def instantaneous_statistics(cam_num: int, config: Config, base):
             print(f"[instantaneous] Data dir missing: {paths['data_dir']}")
             continue
         paths["stats_dir"].mkdir(parents=True, exist_ok=True)
+        # Create nested mean_stats directory
+        mean_stats_dir = paths["stats_dir"] / "mean_stats"
+        mean_stats_dir.mkdir(parents=True, exist_ok=True)
         print(f"[instantaneous] Loading vectors from {paths['data_dir']}")
         # Load all requested passes at once; config.instantaneous_runs is 1-based
         selected_runs_1based = list(config.instantaneous_runs) if config.instantaneous_runs else []
         print(f"[instantaneous] Selected runs/passes (1-based): {selected_runs_1based}")
         arr = load_vectors_from_directory(paths["data_dir"], config, runs=selected_runs_1based)  # (N,R,3,H,W)
+        # co-rodinates need to be loaded 
         print(f"[instantaneous] Loaded array shape: {arr.shape}")
+
+        # Load coordinates for the same selected runs
+        coords_x_list, coords_y_list, _ = load_coords_from_directory(paths["data_dir"], runs=selected_runs_1based)
+
         # Components: 0=ux, 1=uy, 2=b_mask
         ux = arr[:, :, 0]  # (N,R,H,W)
         uy = arr[:, :, 1]  # (N,R,H,W)
@@ -84,6 +94,60 @@ def instantaneous_statistics(cam_num: int, config: Config, base):
             R = mean_ux_all.shape[0]
             pass_labels = list(range(1, R + 1))
 
+        # Plot mean scalar fields for each selected pass (ux and uy)
+        print("[instantaneous] Generating mean scalar plots for ux and uy")
+        for lbl in pass_labels:
+            idx = lbl - 1  # aligns with array indexing when all passes selected
+            # If a subset was selected, map label to local index
+            if selected_runs_1based:
+                local_idx = selected_runs_1based.index(lbl)
+            else:
+                local_idx = idx
+            # Build boolean mask
+            mask_bool = np.asarray(b_mask_all[local_idx]).astype(bool)
+
+            # Per-pass coordinates if available
+            cx = coords_x_list[local_idx] if local_idx < len(coords_x_list) else None
+            cy = coords_y_list[local_idx] if local_idx < len(coords_y_list) else None
+
+            # ux
+            save_base_ux = mean_stats_dir / f"ux_{lbl}"
+            settings_ux = make_scalar_settings(
+                config,
+                variable="ux",
+                run_label=lbl,
+                save_basepath=save_base_ux,  # used only for naming below
+                variable_units="m/s",
+                coords_x=cx,
+                coords_y=cy,
+            )
+            fig_ux, _, _ = plot_scalar_field(mean_ux_all[local_idx], mask_bool, settings_ux)
+            fig_ux.savefig(f"{save_base_ux}{config.plot_save_extension}", dpi=1200, bbox_inches='tight')
+            if config.plot_save_pickle:
+                import pickle
+                with open(f"{save_base_ux}.pkl", 'wb') as f:
+                    pickle.dump(mean_ux_all[local_idx], f)
+            plt.close(fig_ux)
+
+            # uy
+            save_base_uy = mean_stats_dir / f"uy_{lbl}"
+            settings_uy = make_scalar_settings(
+                config,
+                variable="uy",
+                run_label=lbl,
+                save_basepath=save_base_uy,  # used only for naming below
+                variable_units="m/s",
+                coords_x=cx,
+                coords_y=cy,
+            )
+            fig_uy, _, _ = plot_scalar_field(mean_uy_all[local_idx], mask_bool, settings_uy)
+            fig_uy.savefig(f"{save_base_uy}{config.plot_save_extension}", dpi=1200, bbox_inches='tight')
+            if config.plot_save_pickle:
+                import pickle
+                with open(f"{save_base_uy}.pkl", 'wb') as f:
+                    pickle.dump(mean_uy_all[local_idx], f)
+            plt.close(fig_uy)
+
         # Build piv_result as n-pass-deep MATLAB struct array; populate only selected passes
         n_passes_cfg = len(config.instantaneous_window_sizes) or mean_ux_all.shape[0]
         print(f"[instantaneous] Building piv_result with n_passes={n_passes_cfg}")
@@ -104,7 +168,7 @@ def instantaneous_statistics(cam_num: int, config: Config, base):
             piv_result["vv"][p] = empty
 
         # Fill only the selected passes
-        label_to_idx = {lbl: i for i, lbl in enumerate(pass_labels)}  # 1-based label -> local index
+        label_to_idx = {lbl: i for i, lbl in enumerate(pass_labels)}  # 1-based label -> local index (selected order)
         for lbl in pass_labels:
             local_idx = label_to_idx[lbl]
             pass_zero_based = lbl - 1
@@ -116,10 +180,27 @@ def instantaneous_statistics(cam_num: int, config: Config, base):
                 piv_result["uv"][pass_zero_based] = uv_all[local_idx]
                 piv_result["vv"][pass_zero_based] = vv_all[local_idx]
 
-        # Save a single file per camera/merged with piv_result and meta
-        out_file = paths["stats_dir"] / (f"{'merged' if use_merged else f'Cam{cam_num}'}_mean.mat")
+        # Build coordinates struct array (fields: x, y), aligned to n_passes_cfg; fill only selected passes
+        dt_coords = np.dtype([("x", object), ("y", object)])
+        coordinates = np.empty((n_passes_cfg,), dtype=dt_coords)
+        # Initialize empties
+        empty_xy = np.empty((0, 0), dtype=empty.dtype)
+        for p in range(n_passes_cfg):
+            coordinates["x"][p] = empty_xy
+            coordinates["y"][p] = empty_xy
+        # Fill selected using the same label order
+        for lbl in pass_labels:
+            local_idx = label_to_idx[lbl]
+            pass_zero_based = lbl - 1
+            if 0 <= pass_zero_based < n_passes_cfg and local_idx < len(coords_x_list):
+                coordinates["x"][pass_zero_based] = coords_x_list[local_idx]
+                coordinates["y"][pass_zero_based] = coords_y_list[local_idx]
+
+        # Save a single file per camera/merged with piv_result, coordinates and meta
+        out_file = mean_stats_dir / (f"{'merged' if use_merged else f'Cam{cam_num}'}_mean.mat")
         print(f"[instantaneous] Saving piv_result (means and Reynolds stresses) -> {out_file}")
         out_file.parent.mkdir(parents=True, exist_ok=True)
+        # Save piv_result and meta to main file
         savemat(out_file, {
             "piv_result": piv_result,
             "meta": {
@@ -130,5 +211,10 @@ def instantaneous_statistics(cam_num: int, config: Config, base):
                 "n_passes": int(n_passes_cfg),
                 "definitions": "ux=<u>, uy=<v>, uu=<u'^2>, uv=<u'v'>, vv=<v'^2>"
             }
+        })
+        # Save coordinates as a separate file into mean_stats folder
+        coords_file = mean_stats_dir / (f"{'merged' if use_merged else f'Cam{cam_num}'}_coordinates.mat")
+        savemat(coords_file, {
+            "coordinates": coordinates
         })
         print(f"[instantaneous] Saved -> {out_file}")

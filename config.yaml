@@ -25,22 +25,10 @@ processing:
   ensemble: false
   stereo: false
 
-##### EFE ADDED
 
 plots:
-  corners: [null, null, null, null]  # (x0, y0, x1, y1)
-  variable_name: "Variable Name"     # colorbar label
-  variable_units: "unit"             # units for the variable
-  save_name: ""                      # save name
   save_extension: ".png"
-  save_pickle: false                 # save as pickle
-  cmap: null                         # colormap
-  levels: 30                         # number of contour levels
-  lower_limit: null                  # lower limit for color scale
-  upper_limit: null                  # upper limit for color scale
-  coordinate_units: "m"
-  xlabel: "$x$ (m)"
-  ylabel: "$y$ (m)"
+  save_pickle: true                
   fontsize: 14
   title_fontsize: 16
 

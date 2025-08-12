@@ -97,7 +97,24 @@ class Config:
 
     @property
     def plots(self):
-        return self.data.get('plots', [])
+        # Return the 'plots' dict from config.yaml
+        return self.data.get('plots', {})
+
+    @property
+    def plot_save_extension(self):
+        return self.plots.get('save_extension', '.png')
+
+    @property
+    def plot_save_pickle(self):
+        return self.plots.get('save_pickle', True)
+
+    @property
+    def plot_fontsize(self):
+        return self.plots.get('fontsize', 14)
+
+    @property
+    def plot_title_fontsize(self):
+        return self.plots.get('title_fontsize', 16)
 
     @property
     def videos(self):
