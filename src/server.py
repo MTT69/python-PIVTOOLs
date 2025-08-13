@@ -284,6 +284,44 @@ def plot_vector():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# Endpoint to serve raw image for masking (with colormap)
+@app.route('/get_raw_image', methods=['GET'])
+def get_raw_image():
+    basepath_idx = request.args.get('basepath_idx', default=0, type=int)
+    camera = request.args.get('camera', default='Cam1', type=str)
+    index = request.args.get('index', default=0, type=int)
+    # Simplified: frame is always 'A' or 'B' (uppercase)
+    frame = request.args.get('frame', default='A')
+    if frame not in ('A', 'B'):
+        return jsonify({'error': "frame must be 'A' or 'B'"}), 400
+    frame_idx = 0 if frame == 'A' else 1
+
+    # Get base path from config
+    try:
+        base_paths = config.source_paths
+        if basepath_idx < 0 or basepath_idx >= len(base_paths):
+            return jsonify({'error': 'basepath_idx out of range'}), 400
+        camera_path = base_paths[basepath_idx] / camera
+        # Read image pair (A/B)
+        pair = read_pair(index, camera_path, config)
+        if frame_idx >= pair.shape[0]:
+            return jsonify({'error': 'requested frame index out of bounds'}), 400
+        img = pair[frame_idx]
+    except Exception as e:
+        print("Exception in get_raw_image:", e)
+        return jsonify({'error': str(e)}), 500
+
+    vmin = float(np.min(img))
+    vmax = float(np.max(img))
+
+    im_pil = Image.fromarray(img)
+    buf = BytesIO()
+    im_pil.save(buf, format='PNG')
+    buf.seek(0)
+    b64_img = base64.b64encode(buf.read()).decode('utf-8')
+
+    return jsonify({'image': b64_img, 'vmin': vmin, 'vmax': vmax})
+
 
 if __name__ == '__main__':
     app.run(debug=True)

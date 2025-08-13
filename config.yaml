@@ -1,10 +1,10 @@
 paths:
   base_paths:
-    - '/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test'
-    # - "/another/base/path"
+    - 'C:\Users\ees1u24\Desktop\PIVTools\PlottingPlayground\calibrated_piv'
+    # - "C:\another\base\path"
   source_paths:
-    - '/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall'
-    # - "/another/source/path"
+    - 'C:\Users\ees1u24\Desktop\PIVTools\PlottingPlayground\calibrated_piv\1000'
+    # - "C:\another\source\path"
   camera_numbers: [1]  # e.g. [1,2,3]
 
 images:
