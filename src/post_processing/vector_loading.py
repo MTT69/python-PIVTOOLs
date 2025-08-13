@@ -33,14 +33,16 @@ def read_mat_contents(file_path: str, run_indices: Optional[Sequence[int]] = Non
             uy = np.asarray(pr.uy)
             b_mask = np.asarray(pr.b_mask).astype(ux.dtype, copy=False)
             run_arrays.append(np.stack([ux, uy, b_mask], axis=0))
-        return np.stack(run_arrays, axis=0)  # (R, 3, H, W)
+        stacked = np.stack(run_arrays, axis=0)  # (R, 3, H, W)
+        return stacked
 
     # Single run struct
     pr = piv_result
     ux = np.asarray(pr.ux)
     uy = np.asarray(pr.uy)
     b_mask = np.asarray(pr.b_mask).astype(ux.dtype, copy=False)
-    return np.stack([ux, uy, b_mask], axis=0)[None, ...]  # (1, 3, H, W)
+    stacked = np.stack([ux, uy, b_mask], axis=0)[None, ...]  # (1, 3, H, W)
+    return stacked
 
 
 def load_vectors_from_directory(data_dir: Path, config: Config, runs: Optional[Sequence[int]] = None) -> da.Array:
@@ -70,9 +72,13 @@ def load_vectors_from_directory(data_dir: Path, config: Config, runs: Optional[S
     for p in existing_paths:
         try:
             first_arr = read_mat_contents(str(p), run_indices=zero_based_runs)
+            # Debugging: print shape, dtype, and file info
+            if first_arr.ndim != 4:
+                warnings.warn(f"[DEBUG] Unexpected array ndim={first_arr.ndim} in {p.name}")
             break
         except Exception as e:
             warnings.warn(f"Failed to read {p.name} during probing: {e}")
+            raise
     if first_arr is None:
         raise FileNotFoundError(f"Could not read any valid vector files in {data_dir}")
 
@@ -87,14 +93,13 @@ def load_vectors_from_directory(data_dir: Path, config: Config, runs: Optional[S
     return stacked.rechunk({0: config.piv_chunk_size})
 
 
-def load_coords_from_directory(data_dir: Path, runs: Optional[Sequence[int]] = None) -> Tuple[Sequence[np.ndarray], Sequence[np.ndarray], int]:
+def load_coords_from_directory(data_dir: Path, runs: Optional[Sequence[int]] = None) -> Tuple[Sequence[np.ndarray], Sequence[np.ndarray]]:
     """
-    Locate and read the coordinates.mat file in data_dir and return (x_list, y_list, total_runs).
+    Locate and read the coordinates.mat file in data_dir and return (x_list, y_list).
     - runs: list of 1-based run numbers to include; if None or empty, include all runs present in the coords file.
     - Returns:
         x_list: list of x arrays in the same order as 'runs' (or all runs if None)
         y_list: list of y arrays in the same order as 'runs' (or all runs if None)
-        total_runs: total number of runs present in the coords file
     """
     data_dir = Path(data_dir)
     coords_path = data_dir / "coordinates.mat"
@@ -112,26 +117,24 @@ def load_coords_from_directory(data_dir: Path, runs: Optional[Sequence[int]] = N
     x_list, y_list = [], []
 
     if isinstance(coords, np.ndarray) and coords.dtype == object:
-        total_runs = coords.size
         if runs:
-            zero_based = [r - 1 for r in runs if 1 <= r <= total_runs]
+            zero_based = [r - 1 for r in runs if 1 <= r <= coords.size]
             if len(zero_based) != len(runs):
                 missing = sorted(set(runs) - set([z + 1 for z in zero_based]))
-                warnings.warn(f"Skipping out-of-range run indices {missing} for coordinates (total_runs={total_runs})")
+                warnings.warn(f"Skipping out-of-range run indices {missing} for coordinates")
         else:
-            zero_based = list(range(total_runs))
+            zero_based = list(range(coords.size))
 
         for idx in zero_based:
             x, y = _xy_from_struct(coords[idx])
             x_list.append(x)
             y_list.append(y)
     else:
-        total_runs = 1
         if runs and 1 not in runs:
             warnings.warn("Requested runs do not include run 1 present in coordinates; returning empty coords")
-            return [], [], total_runs
+            return [], []
         x, y = _xy_from_struct(coords)
         x_list.append(x)
         y_list.append(y)
 
-    return x_list, y_list, total_runs
+    return x_list, y_list

@@ -128,3 +128,8 @@ class Config:
         if isinstance(vids, dict):
             return [vids]
         return list(vids)
+
+    @property
+    def post_processing(self):
+        # Returns the post_processing block as a list, or empty list if not present
+        return self.data.get('post_processing', [])

@@ -18,12 +18,25 @@ images:
   time_resolved: false  # Set to true for time-resolved PIV
 
 batches:
-  size: 50
+  size: 1000
 
 processing:
   instantaneous: true
   ensemble: false
   stereo: false
+
+post_processing:
+  - type: POD
+    settings:
+      randomised: true
+      normalise: false
+      stack_u_y: false
+      k_modes: 10
+  - type: POD_rebuild
+    settings:
+      energy: 0.8
+      stack_u_y: false
+      normalise: false
 
 
 plots:
@@ -38,16 +51,16 @@ videos:
     use_merged: false
     video_length: 100
     variable: 'ux'
-  - type: instantaneous
+  - type: gamma1
     endpoint: ''
     use_merged: false
     video_length: 100
-    variable: 'uy'
+    variable: 'gamma1'
 
 statistics_extraction:
-  - type: instantaneous
-    endpoint: ''
-    use_merged: false
+  # - type: instantaneous
+  #   endpoint: ''
+  #   use_merged: false
   # - type: another_type
   #   endpoint: '/some/endpoint'
   #   use_merged: true

@@ -8,6 +8,8 @@ import dask
 import dask.config
 import matplotlib.pyplot as plt
 from dask.distributed import Client, LocalCluster
+from post_processing.pod_decompose import pod_decompose
+from post_processing.pod_decompose import pod_rebuild
 
 tracemalloc.start()
 
@@ -41,6 +43,9 @@ if __name__ == "__main__":
             # perform PIV
             instantaneous_statistics(cam_num, config, base=base_path)
             ensemble_statistics(cam_num, config, base=base_path)
+            pod_decompose(cam_num, config, base=base_path, k_modes=10)
+            # Rebuild calibrated fields at prescribed energy (if configured)
+            pod_rebuild(cam_num, config, base=base_path)
 
     current, peak = tracemalloc.get_traced_memory()
     print(f"Current memory usage: {current / 10**6:.2f} MB")

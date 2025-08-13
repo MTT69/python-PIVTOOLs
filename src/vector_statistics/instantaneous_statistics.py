@@ -16,6 +16,8 @@ def instantaneous_statistics(cam_num: int, config: Config, base):
     Skips duplicated merged runs (only first camera processed for merged).
     """
     print(f"[instantaneous] Starting statistics for cam_num={cam_num}")
+    if config.statistics_extraction is None:
+        return
     for entry in config.statistics_extraction:
         print(f"[instantaneous] Processing entry: {entry}")
         if entry.get("type") != "instantaneous":
@@ -54,7 +56,7 @@ def instantaneous_statistics(cam_num: int, config: Config, base):
         print(f"[instantaneous] Loaded array shape: {arr.shape}")
 
         # Load coordinates for the same selected runs
-        coords_x_list, coords_y_list, _ = load_coords_from_directory(paths["data_dir"], runs=selected_runs_1based)
+        coords_x_list, coords_y_list = load_coords_from_directory(paths["data_dir"], runs=selected_runs_1based)
 
         # Components: 0=ux, 1=uy, 2=b_mask
         ux = arr[:, :, 0]  # (N,R,H,W)

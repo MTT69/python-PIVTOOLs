@@ -10,6 +10,8 @@ def ensemble_statistics(cam_num: int, config: Config, base):
     Placeholder ensemble stats: compute global mean (ux, uy) across all frames (same as instantaneous for now).
     Extend later with RMS, turbulence quantities, etc.
     """
+    if config.statistics_extraction is None:
+        return
     for entry in config.statistics_extraction:
         if entry.get("type") != "ensemble":
             continue
