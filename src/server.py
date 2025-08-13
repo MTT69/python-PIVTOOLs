@@ -3,6 +3,7 @@ from io import BytesIO
 from config import Config
 from image_handling.load_images import read_pair
 from pre_processing.filters import filter_images  # use full filter pipeline
+from paths import get_data_paths
 import numpy as np
 from PIL import Image
 import base64
@@ -14,6 +15,7 @@ from pathlib import Path
 from scipy.io import loadmat
 from plotting.plot_maker import plot_scalar_field, make_scalar_settings
 import matplotlib.pyplot as plt
+import yaml  # Add this import
 
 app = Flask(__name__)
 CORS(app)  # enable CORS for frontend dev (Next.js on a different port)
@@ -23,9 +25,19 @@ dask_config.set(scheduler='threads')
 config = Config()
 
 # In-memory storage for processed results and processing status
-processed_store = {'original': None, 'processed': None}
+# Reworked: cache by (source_path_idx, cam_folder) -> { frame_index:int -> np.ndarray (2,H,W) }
+processed_store = {
+    'original': {},   # dict[tuple[int,str], dict[int, np.ndarray]]
+    'processed': {},  # dict[tuple[int,str], dict[int, np.ndarray]]
+}
 processing = False
 
+# Helpers to normalize camera folder and build cache key
+def cam_folder_key(camera: str) -> str:
+    return camera if str(camera).lower().startswith('cam') else f"Cam{camera}"
+
+def cache_key(source_path_idx: int, camera: str):
+    return (int(source_path_idx), cam_folder_key(camera))
 
 # Utility to convert numpy array to PNG bytes
 def numpy_to_png_bytes(arr: np.ndarray) -> bytes:
@@ -40,12 +52,19 @@ def numpy_to_png_bytes(arr: np.ndarray) -> bytes:
 def get_frame_pair():
     camera = request.args.get('camera')
     idx = request.args.get('idx', type=int)
-    print(f"Received request for camera: {camera}, idx: {idx}")
+    # NEW: optional source path index (defaults to 0)
+    source_path_idx = request.args.get('source_path_idx', default=0, type=int)
+    print(f"Received request for camera: {camera}, idx: {idx}, source_path_idx: {source_path_idx}")
     if camera is None or idx is None:
         print("Missing camera or idx in request")
         return jsonify({'error': 'camera and idx required'}), 400
-    camera_path = config.source_paths[0] / camera
     try:
+        # Normalise camera folder (accepts '1' or 'Cam1')
+        cam_folder = camera if str(camera).lower().startswith('cam') else f"Cam{camera}"
+        # Bounds check for source_path_idx
+        if source_path_idx < 0 or source_path_idx >= len(config.source_paths):
+            return jsonify({'error': f'source_path_idx out of range (0..{len(config.source_paths)-1})'}), 400
+        camera_path = config.source_paths[source_path_idx] / cam_folder
         print(f"Reading images from: {camera_path}")
         pair = read_pair(idx, camera_path, config)
         img_a, img_b = pair[0], pair[1]
@@ -85,12 +104,17 @@ def get_frame_pair():
 def filter_images_endpoint():
     """
     Expects JSON body:
-      - camera: camera folder name
-      - start_idx: first image index (int)
-      - count: number of pairs to process (int)
-      - filters: list of filter dicts (as in config.yaml), e.g.
-          [{"type":"time"}, {"type":"POD"}]
-    Returns: { status: 'processing' } or 409 if already processing
+      - camera: camera folder name (e.g. 'Cam1' or '1')
+      - start_idx: target frame pair index (1-based)
+      - count: number of target pairs to return (currently only 1 is supported; ignored otherwise)
+      - filters: list of filter dicts. Temporal filters ('time', 'POD') may include:
+          { "type": "time", "batch_size": 50 }
+          { "type": "POD",  "batch_size": 100 }
+      - source_path_idx or base_path_idx: integer index into config.source_paths
+    Behavior:
+      - Computes the timeline batch (non-overlapping window) that contains start_idx using max temporal batch_size.
+      - Loads that batch, applies filters (rechunking per-filter to its batch_size), then caches each frame of the window.
+      - Subsequent GET /get_processed_pair?type=processed&frame=<idx>&camera=<CamX>&source_path_idx=<i> returns from cache.
     """
     global processing
     if processing:
@@ -98,42 +122,101 @@ def filter_images_endpoint():
 
     data = request.get_json() or {}
     camera = data.get('camera')
-    start_idx = data.get('start_idx', 1)
-    count = data.get('count', 1)
+    start_idx = int(data.get('start_idx', 1))
+    count = int(data.get('count', 1))
     filters = data.get('filters', None)
+    # NEW: choose source path index (frontend may send base_path_idx)
+    source_path_idx = data.get('source_path_idx', data.get('base_path_idx', 0))
+    # NEW: shared temporal batch length for all temporal filters (time & pod)
+    shared_temporal_bs = data.get('temporal_batch_filter', None)
 
-    if camera is None or count <= 0:
-        return jsonify({'error': 'camera and positive count required'}), 400
+    if camera is None:
+        return jsonify({'error': 'camera required'}), 400
+    if start_idx < 1 or start_idx > config.num_images:
+        return jsonify({'error': f'start_idx out of range (1..{config.num_images})'}), 400
+    if not isinstance(source_path_idx, int) or source_path_idx < 0 or source_path_idx >= len(config.source_paths):
+        return jsonify({'error': f'Invalid source_path_idx/base_path_idx (0..{len(config.source_paths)-1})'}), 400
 
-    # For testing: update the backend config filters with what the frontend sends
+    # Update backend config filters with what the frontend sends (in-memory for this server process only)
     if isinstance(filters, list):
-        # If Config.filters is a property without a setter, you can't assign to it directly.
-        # Instead, update the underlying data dict.
-        config.data['filters'] = filters  # WARNING: in-memory update for this server process only
+        # If a shared temporal batch size is provided, apply it to all temporal filters
+        if isinstance(shared_temporal_bs, int) and shared_temporal_bs > 0:
+            _new_filters = []
+            for f in filters:
+                try:
+                    ftype = str(f.get('type')).lower()
+                except Exception:
+                    ftype = ''
+                if ftype in ('time', 'pod'):
+                    nf = dict(f)
+                    nf['batch_size'] = int(shared_temporal_bs)
+                    _new_filters.append(nf)
+                else:
+                    _new_filters.append(f)
+            filters = _new_filters
+        config.data['filters'] = filters
         print(f"/filter: updated config.filters = {config.filters}")
     else:
         print("/filter: no filters provided; using existing config.filters")
+        filters = config.filters
 
-    camera_path = config.source_paths[0] / camera
-    indices = list(range(start_idx, start_idx + count))
+    # Determine max temporal batch size across temporal filters
+    def is_temporal(ftype: str) -> bool:
+        return ftype in ('time', 'pod')
+
+    temporal_sizes = []
+    for f in (filters or []):
+        ftype = str(f.get('type') or '').lower()
+        if is_temporal(ftype):
+            bs = f.get('batch_size', None)
+            if isinstance(bs, int) and bs > 0:
+                temporal_sizes.append(bs)
+    max_batch_size = max(temporal_sizes) if temporal_sizes else max(1, count)
+    print(f"/filter: computed max temporal batch_size = {max_batch_size}")
+
+    # Compute batch window that contains start_idx using non-overlapping blocks of size max_batch_size
+    def compute_batch_window(target_idx: int, batch_size: int, total: int):
+        block = (target_idx - 1) // batch_size
+        s = block * batch_size + 1
+        e = min(s + batch_size - 1, total)
+        return s, e
+
+    batch_start, batch_end = compute_batch_window(start_idx, max_batch_size, config.num_images)
+    indices = list(range(batch_start, batch_end + 1))
+    print(f"/filter: temporal window [{batch_start}..{batch_end}] for target {start_idx}")
+
+    # Resolve camera path
+    cam_folder = cam_folder_key(camera)
+    camera_path = config.source_paths[source_path_idx] / cam_folder
 
     def load_pairs():
-        pairs = [read_pair(idx, camera_path, config) for idx in indices]
-        arr = np.stack(pairs, axis=0)  # shape (N, 2, H, W)
-        darr = da.from_array(arr, chunks=(config.piv_chunk_size, 2, *config.image_shape))
+        pairs = [read_pair(idx, camera_path, config) for idx in indices]  # list of (2,H,W) np arrays
+        import numpy as _np
+        arr = _np.stack(pairs, axis=0)  # (N, 2, H, W)
+        # chunk first axis by max_batch_size (or the actual length if shorter)
+        chunks_n = min(max_batch_size, arr.shape[0])
+        darr = da.from_array(arr, chunks=(chunks_n, 2, *config.image_shape))
         return darr
 
     def process_and_store():
         global processing
         try:
             darr = load_pairs()
-            processed = filter_images(darr, config).compute()
-            processed_store['original'] = darr.compute()
-            processed_store['processed'] = processed
+            # Apply filter stack with per-filter temporal batching
+            processed_all = filter_images(darr, config, filters_override=filters).compute()  # (N,2,H,W)
+            original_all = darr.compute()                                                   # (N,2,H,W)
+
+            k = cache_key(source_path_idx, camera)
+            processed_store['original'].setdefault(k, {})
+            processed_store['processed'].setdefault(k, {})
+
+            # Store each absolute frame in the cache
+            for rel, abs_idx in enumerate(indices):
+                # Each entry is shape (2,H,W)
+                processed_store['original'][k][abs_idx] = original_all[rel]
+                processed_store['processed'][k][abs_idx] = processed_all[rel]
         except Exception as e:
             print(f"Error during /filter processing: {e}")
-            processed_store['original'] = None
-            processed_store['processed'] = None
         finally:
             processing = False
 
@@ -147,19 +230,34 @@ def filter_images_endpoint():
 def get_processed_pair():
     """
     Query params:
-      - idx: index within processed batch (0-based)
-      - type: 'original' or 'processed'
-    Returns: PNGs as base64 in JSON
+      - frame: absolute 1-based frame index (required)
+      - type: 'original' or 'processed' (default 'processed')
+      - camera: camera folder name or number (required)
+      - source_path_idx: integer index into config.source_paths (default 0)
+    Returns: PNGs as base64 in JSON if cached; 404 if not cached.
     """
-    idx = request.args.get('idx', type=int)
+    frame = request.args.get('frame', type=int)
     typ = request.args.get('type', 'processed')
-    if typ not in ['original', 'processed'] or idx is None:
-        return jsonify({'error': 'idx and valid type required'}), 400
-    arr = processed_store.get(typ)
-    if arr is None or idx < 0 or idx >= arr.shape[0]:
-        return jsonify({'error': 'invalid idx or type, or processing not finished'}), 400
-    img_a = arr[idx, 0]
-    img_b = arr[idx, 1]
+    camera = request.args.get('camera')
+    source_path_idx = request.args.get('source_path_idx', default=0, type=int)
+
+    if typ not in ['original', 'processed']:
+        return jsonify({'error': "type must be 'original' or 'processed'"}), 400
+    if frame is None or camera is None:
+        return jsonify({'error': 'frame and camera are required'}), 400
+    if source_path_idx < 0 or source_path_idx >= len(config.source_paths):
+        return jsonify({'error': f'source_path_idx out of range (0..{len(config.source_paths)-1})'}), 400
+
+    k = cache_key(source_path_idx, camera)
+    bucket = processed_store.get(typ, {}).get(k, {})
+    pair = bucket.get(frame)
+
+    if pair is None:
+        return jsonify({'error': 'processed frame not cached; run /filter for this index'}), 404
+
+    # pair shape: (2, H, W)
+    img_a = pair[0]
+    img_b = pair[1]
     png_a = numpy_to_png_bytes(img_a)
     png_b = numpy_to_png_bytes(img_b)
     b64_a = base64.b64encode(png_a).decode('utf-8')
@@ -184,28 +282,43 @@ def get_status():
 # Response: { image: <base64-png>, meta: { run, var, width, height } }
 @app.route('/plot_vector', methods=['GET'])
 def plot_vector():
-    data_path_str = request.args.get('data')
-    coords_path_str = request.args.get('coords')
+    # --- Parse frontend parameters ---
+    base_path = request.args.get('base_path')
+    frame = request.args.get('frame', default=1, type=int)
+    camera = request.args.get('camera', default="1", type=str)
+    merged = request.args.get('merged', default="0", type=str)
+    endpoint = request.args.get('endpoint', default="", type=str)
     var = request.args.get('var', 'ux')
     run = request.args.get('run', default=1, type=int)
     lower_limit = request.args.get('lower_limit', type=float)
     upper_limit = request.args.get('upper_limit', type=float)
     cmap = request.args.get('cmap', default=None, type=str)
-    print(cmap)
     if cmap is not None and (cmap.lower() == 'default' or cmap.strip() == ''):
         cmap = None
 
-    if var not in ('ux', 'uy'):
-        return jsonify({'error': "var must be 'ux' or 'uy'"}), 400
-    if not data_path_str or not coords_path_str:
-        return jsonify({'error': 'data and coords query params are required'}), 400
+    try:
+        base = base_path
+        print(f"[plot_vector] base resolved to: {base}")
+    except Exception as e:
+        print(f"[plot_vector] Error resolving base_path: {e}")
+        return jsonify({'error': 'Invalid base_path'}), 400
 
-    data_path = Path(data_path_str)
-    coords_path = Path(coords_path_str)
-    if not data_path.exists():
-        return jsonify({'error': f'data file not found: {data_path}'}), 400
-    if not coords_path.exists():
-        return jsonify({'error': f'coords file not found: {coords_path}'}), 400
+    cam_folder_eff = f"Cam{camera}"
+    use_merged = merged in ("1", "true", "True")
+    try:
+        paths = get_data_paths(
+            base_dir=base,
+            num_images=config.num_images,
+            cam_folder=cam_folder_eff,
+            type_name="instantaneous",
+            endpoint=endpoint,
+            use_merged=use_merged,
+        )
+        vector_fmt = config.vector_format  # e.g. "%05d.mat"
+        data_path = Path(paths['data_dir'] / (vector_fmt % frame))
+        coords_path = Path(paths['data_dir'] / "coordinates.mat")
+    except Exception as e:
+        return jsonify({'error': f'Failed to resolve data paths: {e}'}), 400
 
     try:
         # Load data .mat (expects variable 'piv_result')
@@ -214,17 +327,36 @@ def plot_vector():
             return jsonify({'error': "Variable 'piv_result' not found in data mat"}), 400
         piv_result = data_mat['piv_result']
 
-        # Select pass element (1-based to 0-based)
+        # Find first non-empty run if requested run is empty
         pr = None
+        max_runs = 1
         if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
-            if run < 1 or run > piv_result.size:
-                return jsonify({'error': f'run out of range (1..{piv_result.size})'}), 400
-            pr = piv_result[run - 1]
+            max_runs = piv_result.size
+            current_run = run
+            while current_run <= max_runs:
+                pr_candidate = piv_result[current_run - 1]
+                try:
+                    var_arr_candidate = np.asarray(getattr(pr_candidate, var))
+                    if var_arr_candidate.size > 0 and not np.all(np.isnan(var_arr_candidate)):
+                        pr = pr_candidate
+                        run = current_run
+                        break
+                except Exception:
+                    pass
+                current_run += 1
+            if pr is None:
+                return jsonify({'error': f'No non-empty run found for variable {var}'}), 400
         else:
             # Single run; only valid run is 1
-            if run != 1:
-                return jsonify({'error': 'data contains a single run; use run=1'}), 400
-            pr = piv_result
+            try:
+                var_arr_candidate = np.asarray(getattr(piv_result, var))
+                if var_arr_candidate.size > 0 and not np.all(np.isnan(var_arr_candidate)):
+                    pr = piv_result
+                    run = 1
+                else:
+                    return jsonify({'error': f'No non-empty run found for variable {var}'}), 400
+            except Exception:
+                return jsonify({'error': f"'{var}' not found in piv_result element"}), 400
 
         # Extract variable and mask
         try:
@@ -244,8 +376,9 @@ def plot_vector():
 
         cx = cy = None
         if isinstance(coords, np.ndarray) and coords.dtype == object:
-            if run < 1 or run > coords.size:
-                return jsonify({'error': f'run out of range for coordinates (1..{coords.size})'}), 400
+            max_coords_runs = coords.size
+            if run < 1 or run > max_coords_runs:
+                return jsonify({'error': f'run out of range for coordinates (1..{max_coords_runs})'}), 400
             c_el = coords[run - 1]
             cx, cy = np.asarray(c_el.x), np.asarray(c_el.y)
         else:
@@ -283,6 +416,35 @@ def plot_vector():
         return jsonify({'image': b64_img, 'meta': {'run': run, 'var': var, 'width': W, 'height': H}})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/update_paths', methods=['POST'])
+def update_paths():
+    """
+    Expects JSON body:
+      - base_paths: list of base path strings
+      - source_paths: list of source path strings
+    Updates config in-memory and writes to config.yaml.
+    """
+    data = request.get_json() or {}
+    base_paths = data.get('base_paths')
+    source_paths = data.get('source_paths')
+    if not isinstance(base_paths, list) or not isinstance(source_paths, list):
+        return jsonify({'error': 'base_paths and source_paths must be lists'}), 400
+
+    # Update in-memory config
+    config.data['paths']['base_paths'] = base_paths
+    config.data['paths']['source_paths'] = source_paths
+
+    # Write to config.yaml
+    config_path = 'config.yaml'
+    try:
+        with open(config_path, 'w') as f:
+            yaml.dump(config.data, f, default_flow_style=False, sort_keys=False)
+    except Exception as e:
+        return jsonify({'error': f'Failed to write config.yaml: {e}'}), 500
+
+    return jsonify({'status': 'success', 'base_paths': base_paths, 'source_paths': source_paths})
 
 
 if __name__ == '__main__':
