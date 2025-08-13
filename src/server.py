@@ -3,6 +3,7 @@ from io import BytesIO
 from config import Config
 from image_handling.load_images import read_pair
 from pre_processing.filters import filter_images  # use full filter pipeline
+from post_processing.vector_loading import save_mask_to_mat, read_mask_from_mat
 import numpy as np
 from PIL import Image
 import base64
@@ -322,6 +323,149 @@ def get_raw_image():
 
     return jsonify({'image': b64_img, 'vmin': vmin, 'vmax': vmax})
 
+
+@app.route('/save_mask_array', methods=['POST'])
+def upload_mask():
+    """
+    Expects JSON:
+      {
+        meta: {
+          basePathIdx: int,
+          camera: str,
+          index: int,
+          frame: "A"|"B"
+        }
+        width: int
+        height: int
+        data: [0|1, ...] length = width*height
+      }
+    Converts to boolean numpy array of shape (height, width) and saves to .mat file.
+    Returns summary.
+    """
+    payload = request.get_json(silent=True) or {}
+    width = payload.get('width')
+    height = payload.get('height')
+    flat = payload.get('data')
+    meta = payload.get('meta', {})
+    polygons = payload.get('polygons', None) 
+
+    # Validate dimensions
+    if not isinstance(width, int) or not isinstance(height, int) or width <= 0 or height <= 0:
+        return jsonify({'error': 'width and height must be positive integers'}), 400
+    if not isinstance(flat, list):
+        return jsonify({'error': 'data must be a list'}), 400
+    expected = width * height
+    if len(flat) != expected:
+        return jsonify({'error': f'data length {len(flat)} does not match width*height={expected}'}), 400
+
+    # Convert to numpy boolean mask
+    try:
+        arr = np.asarray(flat, dtype=np.uint8)
+    except Exception as e:
+        return jsonify({'error': f'failed to convert data list to array: {e}'}), 400
+
+    if not np.isin(arr, (0, 1)).all():
+        return jsonify({'error': 'data must contain only 0 or 1 values'}), 400
+
+    try:
+        mask = arr.reshape((height, width)).astype(bool)
+    except Exception as e:
+        return jsonify({'error': f'failed to reshape to (height,width): {e}'}), 400
+
+    # Extract directory details from meta
+    try:
+        basePathIdx = meta['basePathIdx']
+        camera = meta['camera']
+        index = meta['index']
+        frame = meta['frame']
+    except Exception as e:
+        return jsonify({'error': f'missing or invalid meta fields: {e}'}), 400
+
+    # Validate frame
+    if frame not in ('A', 'B'):
+        return jsonify({'error': 'frame must be "A" or "B"'}), 400
+
+    # Get base path from config
+    try:
+        base_paths = config.source_paths
+        if basePathIdx < 0 or basePathIdx >= len(base_paths):
+            return jsonify({'error': 'basePathIdx out of range'}), 400
+        camera_path = base_paths[basePathIdx] / camera
+    except Exception as e:
+        return jsonify({'error': f'failed to resolve base path: {e}'}), 400
+
+    # Save mask to mat file
+    try:
+        mask_filename = f"mask_{frame}_{index}.mat"
+        mask_path = camera_path / mask_filename
+        save_mask_to_mat(mask_path, mask, np.asarray(polygons))  # Pass polygons to save_mask_to_mat
+    except Exception as e:
+        print("Exception in save_mask_array:", e)
+        return jsonify({'error': f'failed to save mask to mat: {e}'}), 500
+
+    true_count = int(mask.sum())
+    return jsonify({
+        'status': 'ok',
+        'shape': [height, width],
+        'true_count': true_count,
+        'fraction_true': true_count / expected if expected else 0.0,
+        'meta': meta
+    })
+
+@app.route('/load_mask', methods=['GET'])
+def load_mask():
+    """
+    Loads a mask and polygon data from a .mat file.
+    Query params:
+      - path: full path to mask .mat file (preferred)
+      - basepath_idx, camera, index, frame: optional, used to construct path if 'path' not given
+    Returns: { mask: [0|1,...], width, height, polygons: [...] }
+    """
+    path = request.args.get('path', default=None, type=str)
+    # Optionally reconstruct path if not provided
+    if not path or not Path(path).exists():
+        # Try to build path from meta info
+        try:
+            basepath_idx = int(request.args.get('basepath_idx', 0))
+            camera = request.args.get('camera')
+            index = int(request.args.get('index', 0))
+            frame = request.args.get('frame')
+            if frame not in ('A', 'B'):
+                return jsonify({'error': 'frame must be "A" or "B"'}), 400
+            base_paths = config.source_paths
+            if basepath_idx < 0 or basepath_idx >= len(base_paths):
+                return jsonify({'error': 'basepath_idx out of range'}), 400
+            camera_path = base_paths[basepath_idx] / camera
+            mask_filename = f"mask_{frame}_{index}.mat"
+            path = str(camera_path / mask_filename)
+        except Exception as e:
+            return jsonify({'error': f'Could not resolve mask path: {e}'}), 400
+
+    if not Path(path).exists():
+        return jsonify({'error': f'Mask file not found: {path}'}), 404
+
+    try:
+        mask, polygons = read_mask_from_mat(path)
+        # Convert all numpy arrays in polygons to lists for JSON serialization
+        def serialize_polygon(poly):
+            return {
+                'index': int(poly['index']),
+                'name': str(poly['name']),
+                'points': [list(map(float, pt)) for pt in poly['points']]
+            }
+        polygons_serializable = [serialize_polygon(p) for p in polygons]
+        mask_arr = np.asarray(mask)
+        mask_flat = mask_arr.astype(np.uint8).flatten().tolist()
+        height, width = mask_arr.shape
+        return jsonify({
+            'mask': mask_flat,
+            'width': width,
+            'height': height,
+            'polygons': polygons_serializable
+        })
+    except Exception as e:
+        print("Exception in load_mask:", e)
+        return jsonify({'error': f'Failed to load mask: {e}'}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)

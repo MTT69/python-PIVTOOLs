@@ -138,3 +138,35 @@ def load_coords_from_directory(data_dir: Path, runs: Optional[Sequence[int]] = N
         y_list.append(y)
 
     return x_list, y_list
+
+def save_mask_to_mat(file_path: str, mask: np.ndarray, polygons):
+    """
+    Save the given mask array to a .mat file.
+    """
+    scipy.io.savemat(file_path, {'mask': mask, 'polygons': polygons})
+
+
+
+def read_mask_from_mat(file_path: str):
+    """
+    Read the mask and polygons from a .mat file.
+    Returns:
+        mask: np.ndarray
+        polygons: list of dicts with fields 'index', 'name', 'points'
+    """
+    mat = scipy.io.loadmat(file_path, squeeze_me=True)
+    mask = mat.get('mask', None)
+    polygons_raw = mat.get('polygons', None)
+    if mask is None or polygons_raw is None:
+        raise ValueError(f"Missing 'mask' or 'polygons' in {file_path}")
+
+    # Assume polygons_raw is always a 1D array of structured elements
+    polygons = []
+    for poly in polygons_raw:
+        idx = int(poly['index'])
+        name = str(poly['name'])
+        pts = poly['points']
+        points = pts.tolist() if isinstance(pts, np.ndarray) else list(pts)
+        polygons.append({'index': idx, 'name': name, 'points': points})
+
+    return mask, polygons
