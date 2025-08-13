@@ -207,7 +207,6 @@ def instantaneous_statistics(cam_num: int, config: Config, base):
                         lower_limit=min_val
                     )
 
-
                     fig_ux_frame, _, _ = plot_scalar_field(frame, mask_bool, settings_ux_frame)
 
                     fig_ux_frame.canvas.draw()

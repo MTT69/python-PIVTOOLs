@@ -37,9 +37,9 @@ if __name__ == "__main__":
         source = sources[idx]
         for cam_num in camera_numbers:
             print(f"Processing source: {source}, camera: {cam_num}")
-            # images = load_images(cam_num, config, source=source)
-            # processed_images = preprocess_images(images, config)
-            # processed_images.compute()
+            images = load_images(cam_num, config, source=source)
+            processed_images = preprocess_images(images, config)
+            processed_images.compute()
             # perform PIV
             instantaneous_statistics(cam_num, config, base=base_path)
             ensemble_statistics(cam_num, config, base=base_path)
