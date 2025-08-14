@@ -1,15 +1,15 @@
-from image_handling.load_images import load_images
-from pre_processing.preprocess import preprocess_images
-from vector_statistics.instantaneous_statistics import instantaneous_statistics
-from vector_statistics.ensemble_statistics import ensemble_statistics
-from config import Config
 import tracemalloc
+
 import dask
 import dask.config
-import matplotlib.pyplot as plt
 from dask.distributed import Client, LocalCluster
-from post_processing.pod_decompose import pod_decompose
-from post_processing.pod_decompose import pod_rebuild
+
+from config import Config
+from image_handling.load_images import load_images
+from post_processing.pod_decompose import pod_decompose, pod_rebuild
+from pre_processing.preprocess import preprocess_images
+from vector_statistics.ensemble_statistics import ensemble_statistics
+from vector_statistics.instantaneous_statistics import instantaneous_statistics
 
 tracemalloc.start()
 
@@ -23,10 +23,10 @@ if __name__ == "__main__":
     # Print cluster resources
     print(f"Number of workers: {len(client.scheduler_info()['workers'])}")
     print("Threads per worker:")
-    for addr, worker in client.scheduler_info()['workers'].items():
+    for addr, worker in client.scheduler_info()["workers"].items():
         print(f"  {addr}: {worker['nthreads']} threads")
 
-    dask.config.set(scheduler='threads')
+    dask.config.set(scheduler="threads")
 
     config = Config()
     base_paths = config.base_paths

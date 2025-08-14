@@ -1,14 +1,18 @@
+import warnings
 from pathlib import Path
-from typing import Tuple, Optional, Sequence
-import numpy as np
+from typing import Optional, Sequence, Tuple
+
 import dask
 import dask.array as da
+import numpy as np
 import scipy.io
-import warnings
+
 from config import Config
 
 
-def read_mat_contents(file_path: str, run_indices: Optional[Sequence[int]] = None) -> np.ndarray:
+def read_mat_contents(
+    file_path: str, run_indices: Optional[Sequence[int]] = None
+) -> np.ndarray:
     """
     Reads piv_result from a .mat file.
     If multiple runs are present (object array of structs), returns stacked runs with shape (R, 3, H, W).
@@ -21,10 +25,16 @@ def read_mat_contents(file_path: str, run_indices: Optional[Sequence[int]] = Non
     # Multiple runs case: numpy array of structs
     if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
         total_runs = piv_result.size
-        indices = list(range(total_runs)) if run_indices is None else [i for i in run_indices if 0 <= i < total_runs]
+        indices = (
+            list(range(total_runs))
+            if run_indices is None
+            else [i for i in run_indices if 0 <= i < total_runs]
+        )
         if run_indices is not None and len(indices) != len(run_indices):
             missing = sorted(set(run_indices) - set(indices))
-            warnings.warn(f"Skipping out-of-range run indices {missing} for {file_path} (total_runs={total_runs})")
+            warnings.warn(
+                f"Skipping out-of-range run indices {missing} for {file_path} (total_runs={total_runs})"
+            )
 
         run_arrays = []
         for idx in indices:
@@ -45,7 +55,9 @@ def read_mat_contents(file_path: str, run_indices: Optional[Sequence[int]] = Non
     return stacked
 
 
-def load_vectors_from_directory(data_dir: Path, config: Config, runs: Optional[Sequence[int]] = None) -> da.Array:
+def load_vectors_from_directory(
+    data_dir: Path, config: Config, runs: Optional[Sequence[int]] = None
+) -> da.Array:
     """
     Load .mat vector files for requested runs.
     - runs: list of 1-based run numbers to include; if None or empty, include all runs in the files.
@@ -58,9 +70,13 @@ def load_vectors_from_directory(data_dir: Path, config: Config, runs: Optional[S
 
     missing_count = len(expected_paths) - len(existing_paths)
     if missing_count == len(expected_paths):
-        raise FileNotFoundError(f"No vector files found using pattern {fmt} in {data_dir}")
+        raise FileNotFoundError(
+            f"No vector files found using pattern {fmt} in {data_dir}"
+        )
     if missing_count:
-        warnings.warn(f"{missing_count} vector files missing in {data_dir} (loaded {len(existing_paths)})")
+        warnings.warn(
+            f"{missing_count} vector files missing in {data_dir} (loaded {len(existing_paths)})"
+        )
 
     # Convert runs (1-based) to zero-based indices for reading
     zero_based_runs: Optional[Sequence[int]] = None
@@ -74,7 +90,9 @@ def load_vectors_from_directory(data_dir: Path, config: Config, runs: Optional[S
             first_arr = read_mat_contents(str(p), run_indices=zero_based_runs)
             # Debugging: print shape, dtype, and file info
             if first_arr.ndim != 4:
-                warnings.warn(f"[DEBUG] Unexpected array ndim={first_arr.ndim} in {p.name}")
+                warnings.warn(
+                    f"[DEBUG] Unexpected array ndim={first_arr.ndim} in {p.name}"
+                )
             break
         except Exception as e:
             warnings.warn(f"Failed to read {p.name} during probing: {e}")
@@ -93,7 +111,9 @@ def load_vectors_from_directory(data_dir: Path, config: Config, runs: Optional[S
     return stacked.rechunk({0: config.piv_chunk_size})
 
 
-def load_coords_from_directory(data_dir: Path, runs: Optional[Sequence[int]] = None) -> Tuple[Sequence[np.ndarray], Sequence[np.ndarray]]:
+def load_coords_from_directory(
+    data_dir: Path, runs: Optional[Sequence[int]] = None
+) -> Tuple[Sequence[np.ndarray], Sequence[np.ndarray]]:
     """
     Locate and read the coordinates.mat file in data_dir and return (x_list, y_list).
     - runs: list of 1-based run numbers to include; if None or empty, include all runs present in the coords file.
@@ -121,7 +141,9 @@ def load_coords_from_directory(data_dir: Path, runs: Optional[Sequence[int]] = N
             zero_based = [r - 1 for r in runs if 1 <= r <= coords.size]
             if len(zero_based) != len(runs):
                 missing = sorted(set(runs) - set([z + 1 for z in zero_based]))
-                warnings.warn(f"Skipping out-of-range run indices {missing} for coordinates")
+                warnings.warn(
+                    f"Skipping out-of-range run indices {missing} for coordinates"
+                )
         else:
             zero_based = list(range(coords.size))
 
@@ -131,7 +153,9 @@ def load_coords_from_directory(data_dir: Path, runs: Optional[Sequence[int]] = N
             y_list.append(y)
     else:
         if runs and 1 not in runs:
-            warnings.warn("Requested runs do not include run 1 present in coordinates; returning empty coords")
+            warnings.warn(
+                "Requested runs do not include run 1 present in coordinates; returning empty coords"
+            )
             return [], []
         x, y = _xy_from_struct(coords)
         x_list.append(x)

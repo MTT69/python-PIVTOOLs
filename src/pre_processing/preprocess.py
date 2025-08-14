@@ -1,7 +1,6 @@
+import dask.array as da
 
 from config import Config
-from image_handling.load_images import load_images
-import dask.array as da
 from pre_processing.filters import filter_images
 
 

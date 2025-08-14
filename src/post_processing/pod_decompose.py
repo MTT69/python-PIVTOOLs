@@ -1,14 +1,19 @@
 from pathlib import Path
-import numpy as np
-import dask.array as da
-from scipy.io import savemat, loadmat  # add
 from typing import Optional
+
+import dask.array as da
+import matplotlib.pyplot as plt
+import numpy as np
 from dask.diagnostics import ProgressBar
+from scipy.io import loadmat, savemat  # add
+
 from config import Config
 from paths import get_data_paths
-from post_processing.vector_loading import load_vectors_from_directory, load_coords_from_directory
-from plotting.plot_maker import plot_scalar_field, make_scalar_settings
-import matplotlib.pyplot as plt
+from plotting.plot_maker import make_scalar_settings, plot_scalar_field
+from post_processing.vector_loading import (
+    load_coords_from_directory,
+    load_vectors_from_directory,
+)
 
 
 def _compute_pod(X: da.Array, k: int, normalise: bool):
@@ -56,7 +61,11 @@ def _compute_pod(X: da.Array, k: int, normalise: bool):
         vk = V_k[:, i]
         phi_i = da.dot(Xc, vk) / (s_k[i] + 1e-12)  # (L,)
         phi_cols.append(phi_i.compute())
-    Phi = np.stack(phi_cols, axis=1) if phi_cols else np.zeros((X.shape[0], 0), dtype=float)
+    Phi = (
+        np.stack(phi_cols, axis=1)
+        if phi_cols
+        else np.zeros((X.shape[0], 0), dtype=float)
+    )
 
     mu_np = mu.compute().ravel()
     std_np = std.compute().ravel() if normalise else None
@@ -101,8 +110,8 @@ def _compute_pod_randomized(
 
     # Power iterations
     for _ in range(max(0, power_iter)):
-        Z = da.dot(Xc.T, Y)   # (N x r)
-        Y = da.dot(Xc, Z)     # (L x r)
+        Z = da.dot(Xc.T, Y)  # (N x r)
+        Y = da.dot(Xc, Z)  # (L x r)
 
     # Orthonormal basis Q via QR
     Q, _ = da.linalg.qr(Y)  # (L x r)
@@ -127,7 +136,7 @@ def _compute_pod_randomized(
             phi_cols.append(qi.compute())
     Phi = np.stack(phi_cols, axis=1) if phi_cols else np.zeros((L, 0), dtype=float)
 
-    evals = (S_k ** 2).copy()
+    evals = (S_k**2).copy()
     svals = S_k.copy()
 
     mu_np = mu.compute().ravel()
@@ -212,12 +221,14 @@ def pod_decompose(cam_num: int, config: Config, base: Path, k_modes: int = 10):
             continue
         stats_dir.mkdir(parents=True, exist_ok=True)
         # Determine which runs to process (1-based labels)
-        selected_runs_1based = list(config.instantaneous_runs) if config.instantaneous_runs else []
+        selected_runs_1based = (
+            list(config.instantaneous_runs) if config.instantaneous_runs else []
+        )
         # Load vector dataset lazily restricted to selected runs (if provided)
         arr = load_vectors_from_directory(
             data_dir,
             config,
-            runs=selected_runs_1based if selected_runs_1based else None
+            runs=selected_runs_1based if selected_runs_1based else None,
         )  # (N,R_sel,3,H,W)
 
         # Rechunk for optimal performance before heavy computation
@@ -225,14 +236,15 @@ def pod_decompose(cam_num: int, config: Config, base: Path, k_modes: int = 10):
 
         # Coordinates for plotting in the same order
         x_list, y_list = load_coords_from_directory(
-            data_dir,
-            runs=selected_runs_1based if selected_runs_1based else None
+            data_dir, runs=selected_runs_1based if selected_runs_1based else None
         )
         if not selected_runs_1based:
             R = int(arr.shape[1])
             selected_runs_1based = list(range(1, R + 1))
 
-        print(f"[POD {'RAND' if use_randomised else 'EXACT'}] source={source_type}, cam={cam_folder_eff}, endpoint='{endpoint}', runs={selected_runs_1based}, stack_U_y={stack_u_y}, normalise={normalise}")
+        print(
+            f"[POD {'RAND' if use_randomised else 'EXACT'}] source={source_type}, cam={cam_folder_eff}, endpoint='{endpoint}', runs={selected_runs_1based}, stack_U_y={stack_u_y}, normalise={normalise}"
+        )
 
         N = arr.shape[0]  # number of time samples loaded
         H = arr.shape[3]
@@ -260,13 +272,20 @@ def pod_decompose(cam_num: int, config: Config, base: Path, k_modes: int = 10):
                 X = da.concatenate([Usel, Vsel], axis=1).T.astype(np.float64)
                 if use_randomised:
                     evals, svals, Phi, V_k, mu, std = _compute_pod_randomized(
-                        X, k=k_modes, normalise=normalise,
-                        oversampling=oversampling, power_iter=power_iter,
-                        random_state=random_state
+                        X,
+                        k=k_modes,
+                        normalise=normalise,
+                        oversampling=oversampling,
+                        power_iter=power_iter,
+                        random_state=random_state,
                     )
                 else:
-                    evals, svals, Phi, V_k, mu, std = _compute_pod(X, k=k_modes, normalise=normalise)
-                modes_ux, modes_uy = _map_modes_to_grid(Phi, valid_flat, (int(H), int(W)))
+                    evals, svals, Phi, V_k, mu, std = _compute_pod(
+                        X, k=k_modes, normalise=normalise
+                    )
+                modes_ux, modes_uy = _map_modes_to_grid(
+                    Phi, valid_flat, (int(H), int(W))
+                )
                 # Save MAT
                 out_dir = stats_dir / f"run_{lbl:02d}"
                 out_dir.mkdir(parents=True, exist_ok=True)
@@ -283,63 +302,98 @@ def pod_decompose(cam_num: int, config: Config, base: Path, k_modes: int = 10):
                     "algorithm": "randomized" if use_randomised else "exact",
                 }
                 if use_randomised:
-                    meta.update({
-                        "oversampling": int(oversampling),
-                        "power_iter": int(power_iter),
-                    })
+                    meta.update(
+                        {
+                            "oversampling": int(oversampling),
+                            "power_iter": int(power_iter),
+                        }
+                    )
 
-                savemat(out_file, {
-                    "eigenvalues": evals,
-                    "singular_values": svals,
-                    "modes_ux": modes_ux,  # [k,H,W]
-                    "modes_uy": modes_uy,  # [k,H,W]
-                    "mask": b_mask.astype(np.uint8),
-                    "meta": meta,
-                })
+                savemat(
+                    out_file,
+                    {
+                        "eigenvalues": evals,
+                        "singular_values": svals,
+                        "modes_ux": modes_ux,  # [k,H,W]
+                        "modes_uy": modes_uy,  # [k,H,W]
+                        "mask": b_mask.astype(np.uint8),
+                        "meta": meta,
+                    },
+                )
                 # Plot first k modes
                 cx = x_list[local_idx] if local_idx < len(x_list) else None
                 cy = y_list[local_idx] if local_idx < len(y_list) else None
                 for k in range(min(k_modes, modes_ux.shape[0])):
                     # ux
                     save_base_ux = out_dir / f"ux_mode_{k + 1:02d}"
-                    s_ux = make_scalar_settings(config, variable="POD ux", run_label=lbl,
-                                                save_basepath=save_base_ux, variable_units="",
-                                                coords_x=cx, coords_y=cy)
+                    s_ux = make_scalar_settings(
+                        config,
+                        variable="POD ux",
+                        run_label=lbl,
+                        save_basepath=save_base_ux,
+                        variable_units="",
+                        coords_x=cx,
+                        coords_y=cy,
+                    )
                     fig, _, _ = plot_scalar_field(modes_ux[k], b_mask, s_ux)
-                    fig.savefig(f"{save_base_ux}{config.plot_save_extension}", dpi=600, bbox_inches='tight')
+                    fig.savefig(
+                        f"{save_base_ux}{config.plot_save_extension}",
+                        dpi=600,
+                        bbox_inches="tight",
+                    )
                     plt.close(fig)
                     # uy
                     save_base_uy = out_dir / f"uy_mode_{k + 1:02d}"
-                    s_uy = make_scalar_settings(config, variable="POD uy", run_label=lbl,
-                                                save_basepath=save_base_uy, variable_units="",
-                                                coords_x=cx, coords_y=cy)
+                    s_uy = make_scalar_settings(
+                        config,
+                        variable="POD uy",
+                        run_label=lbl,
+                        save_basepath=save_base_uy,
+                        variable_units="",
+                        coords_x=cx,
+                        coords_y=cy,
+                    )
                     fig, _, _ = plot_scalar_field(modes_uy[k], b_mask, s_uy)
-                    fig.savefig(f"{save_base_uy}{config.plot_save_extension}", dpi=600, bbox_inches='tight')
+                    fig.savefig(
+                        f"{save_base_uy}{config.plot_save_extension}",
+                        dpi=600,
+                        bbox_inches="tight",
+                    )
                     plt.close(fig)
             else:
                 # Separate UX
                 Usel = U[:, valid_flat].T.astype(np.float64)  # (L, N)
                 if use_randomised:
                     evals_u, svals_u, Phi_u, Vku, mu_u, std_u = _compute_pod_randomized(
-                        Usel, k=k_modes, normalise=normalise,
-                        oversampling=oversampling, power_iter=power_iter,
-                        random_state=random_state
+                        Usel,
+                        k=k_modes,
+                        normalise=normalise,
+                        oversampling=oversampling,
+                        power_iter=power_iter,
+                        random_state=random_state,
                     )
                 else:
-                    evals_u, svals_u, Phi_u, Vku, mu_u, std_u = _compute_pod(Usel, k=k_modes, normalise=normalise)
-                modes_u, = _map_modes_to_grid(Phi_u, valid_flat, (int(H), int(W)))
+                    evals_u, svals_u, Phi_u, Vku, mu_u, std_u = _compute_pod(
+                        Usel, k=k_modes, normalise=normalise
+                    )
+                (modes_u,) = _map_modes_to_grid(Phi_u, valid_flat, (int(H), int(W)))
 
                 # Separate UY
                 Vsel = V[:, valid_flat].T.astype(np.float64)  # (L, N)
                 if use_randomised:
                     evals_v, svals_v, Phi_v, Vkv, mu_v, std_v = _compute_pod_randomized(
-                        Vsel, k=k_modes, normalise=normalise,
-                        oversampling=oversampling, power_iter=power_iter,
-                        random_state=random_state
+                        Vsel,
+                        k=k_modes,
+                        normalise=normalise,
+                        oversampling=oversampling,
+                        power_iter=power_iter,
+                        random_state=random_state,
                     )
                 else:
-                    evals_v, svals_v, Phi_v, Vkv, mu_v, std_v = _compute_pod(Vsel, k=k_modes, normalise=normalise)
-                modes_v, = _map_modes_to_grid(Phi_v, valid_flat, (int(H), int(W)))
+                    evals_v, svals_v, Phi_v, Vkv, mu_v, std_v = _compute_pod(
+                        Vsel, k=k_modes, normalise=normalise
+                    )
+                (modes_v,) = _map_modes_to_grid(Phi_v, valid_flat, (int(H), int(W)))
 
                 out_dir = stats_dir / f"run_{lbl:02d}"
                 out_dir.mkdir(parents=True, exist_ok=True)
@@ -356,42 +410,69 @@ def pod_decompose(cam_num: int, config: Config, base: Path, k_modes: int = 10):
                     "algorithm": "randomized" if use_randomised else "exact",
                 }
                 if use_randomised:
-                    meta.update({
-                        "oversampling": int(oversampling),
-                        "power_iter": int(power_iter),
-                    })
+                    meta.update(
+                        {
+                            "oversampling": int(oversampling),
+                            "power_iter": int(power_iter),
+                        }
+                    )
 
-                savemat(out_file, {
-                    "eigenvalues_ux": evals_u,
-                    "singular_values_ux": svals_u,
-                    "eigenvalues_uy": evals_v,
-                    "singular_values_uy": svals_v,
-                    "modes_ux": modes_u,  # [k,H,W]
-                    "modes_uy": modes_v,  # [k,H,W]
-                    "mask": b_mask.astype(np.uint8),
-                    "meta": meta,
-                })
+                savemat(
+                    out_file,
+                    {
+                        "eigenvalues_ux": evals_u,
+                        "singular_values_ux": svals_u,
+                        "eigenvalues_uy": evals_v,
+                        "singular_values_uy": svals_v,
+                        "modes_ux": modes_u,  # [k,H,W]
+                        "modes_uy": modes_v,  # [k,H,W]
+                        "mask": b_mask.astype(np.uint8),
+                        "meta": meta,
+                    },
+                )
                 # Plot first k modes
                 cx = x_list[local_idx] if local_idx < len(x_list) else None
                 cy = y_list[local_idx] if local_idx < len(y_list) else None
                 for k in range(min(k_modes, modes_u.shape[0])):
                     save_base_ux = out_dir / f"ux_mode_{k + 1:02d}"
-                    s_ux = make_scalar_settings(config, variable="POD ux", run_label=lbl,
-                                                save_basepath=save_base_ux, variable_units="",
-                                                coords_x=cx, coords_y=cy)
+                    s_ux = make_scalar_settings(
+                        config,
+                        variable="POD ux",
+                        run_label=lbl,
+                        save_basepath=save_base_ux,
+                        variable_units="",
+                        coords_x=cx,
+                        coords_y=cy,
+                    )
                     fig, _, _ = plot_scalar_field(modes_u[k], b_mask, s_ux)
-                    fig.savefig(f"{save_base_ux}{config.plot_save_extension}", dpi=600, bbox_inches='tight')
+                    fig.savefig(
+                        f"{save_base_ux}{config.plot_save_extension}",
+                        dpi=600,
+                        bbox_inches="tight",
+                    )
                     plt.close(fig)
 
                     save_base_uy = out_dir / f"uy_mode_{k + 1:02d}"
-                    s_uy = make_scalar_settings(config, variable="POD uy", run_label=lbl,
-                                                save_basepath=save_base_uy, variable_units="",
-                                                coords_x=cx, coords_y=cy)
+                    s_uy = make_scalar_settings(
+                        config,
+                        variable="POD uy",
+                        run_label=lbl,
+                        save_basepath=save_base_uy,
+                        variable_units="",
+                        coords_x=cx,
+                        coords_y=cy,
+                    )
                     fig, _, _ = plot_scalar_field(modes_v[k], b_mask, s_uy)
-                    fig.savefig(f"{save_base_uy}{config.plot_save_extension}", dpi=600, bbox_inches='tight')
+                    fig.savefig(
+                        f"{save_base_uy}{config.plot_save_extension}",
+                        dpi=600,
+                        bbox_inches="tight",
+                    )
                     plt.close(fig)
 
-        print(f"[POD {'RAND' if use_randomised else 'EXACT'}] Completed POD for cam={cam_folder_eff}, endpoint='{endpoint}', saved -> {stats_dir}")
+        print(
+            f"[POD {'RAND' if use_randomised else 'EXACT'}] Completed POD for cam={cam_folder_eff}, endpoint='{endpoint}', saved -> {stats_dir}"
+        )
 
 
 def pod_rebuild(cam_num: int, config: Config, base: Path):
@@ -405,7 +486,9 @@ def pod_rebuild(cam_num: int, config: Config, base: Path):
         return
 
     # Find rebuild spec(s)
-    rebuild_entries = [e for e in config.post_processing if e.get("type") == "POD_rebuild"]
+    rebuild_entries = [
+        e for e in config.post_processing if e.get("type") == "POD_rebuild"
+    ]
     if not rebuild_entries:
         return
 
@@ -456,18 +539,21 @@ def pod_rebuild(cam_num: int, config: Config, base: Path):
         if coords_src.exists() and not coords_dst.exists():
             try:
                 import shutil
+
                 shutil.copy2(coords_src, coords_dst)
             except Exception as e:
                 print(f"[POD REBUILD] Warning: failed to copy coordinates.mat -> {e}")
 
         # Determine which runs to process (1-based labels)
-        selected_runs_1based = list(config.instantaneous_runs) if config.instantaneous_runs else []
+        selected_runs_1based = (
+            list(config.instantaneous_runs) if config.instantaneous_runs else []
+        )
 
         # Load vectors lazily (for the runs of interest)
         arr = load_vectors_from_directory(
             data_in_dir,
             config,
-            runs=selected_runs_1based if selected_runs_1based else None
+            runs=selected_runs_1based if selected_runs_1based else None,
         )  # (N,R_sel,3,H,W)
         arr = arr.rechunk({0: config.piv_chunk_size})
 
@@ -475,7 +561,9 @@ def pod_rebuild(cam_num: int, config: Config, base: Path):
             R = int(arr.shape[1])
             selected_runs_1based = list(range(1, R + 1))
 
-        print(f"[POD REBUILD] source={source_type}, cam={cam_folder_eff}, runs={selected_runs_1based}, energy={energy:.3f}")
+        print(
+            f"[POD REBUILD] source={source_type}, cam={cam_folder_eff}, runs={selected_runs_1based}, energy={energy:.3f}"
+        )
 
         N = int(arr.shape[0])
         H = int(arr.shape[3])
@@ -502,7 +590,9 @@ def pod_rebuild(cam_num: int, config: Config, base: Path):
                     joint = False
                     break
             if stats_path is None:
-                print(f"[POD REBUILD] No POD stats found for run {lbl} under {stats_base}")
+                print(
+                    f"[POD REBUILD] No POD stats found for run {lbl} under {stats_base}"
+                )
                 continue
 
             pod_mat = loadmat(str(stats_path), struct_as_record=False, squeeze_me=True)
@@ -517,14 +607,22 @@ def pod_rebuild(cam_num: int, config: Config, base: Path):
                     return default
 
             meta = pod_mat.get("meta", {})
-            stack_u_y = bool(_get_meta_val(meta, "stack_U_y", settings.get("stack_u_y", False)))
-            normalise = bool(_get_meta_val(meta, "normalise", settings.get("normalise", False)))
+            stack_u_y = bool(
+                _get_meta_val(meta, "stack_U_y", settings.get("stack_u_y", False))
+            )
+            normalise = bool(
+                _get_meta_val(meta, "normalise", settings.get("normalise", False))
+            )
 
             # Validate consistency between file loaded (joint/separate) and meta.stack_U_y
             if joint and not stack_u_y:
-                print(f"[POD REBUILD] Warning: loaded joint POD file but meta.stack_U_y=False for run {lbl}")
+                print(
+                    f"[POD REBUILD] Warning: loaded joint POD file but meta.stack_U_y=False for run {lbl}"
+                )
             if (not joint) and stack_u_y:
-                print(f"[POD REBUILD] Warning: loaded separate POD file but meta.stack_U_y=True for run {lbl}")
+                print(
+                    f"[POD REBUILD] Warning: loaded separate POD file but meta.stack_U_y=True for run {lbl}"
+                )
 
             # Modes and singular values
             if joint:
@@ -587,8 +685,12 @@ def pod_rebuild(cam_num: int, config: Config, base: Path):
             if joint:
                 # k modes shared
                 k_use = int(k_use)
-                Phi_u = modes_ux[:k_use].reshape((k_use, H * W))[:, valid_flat].T  # (P, k)
-                Phi_v = modes_uy[:k_use].reshape((k_use, H * W))[:, valid_flat].T  # (P, k)
+                Phi_u = (
+                    modes_ux[:k_use].reshape((k_use, H * W))[:, valid_flat].T
+                )  # (P, k)
+                Phi_v = (
+                    modes_uy[:k_use].reshape((k_use, H * W))[:, valid_flat].T
+                )  # (P, k)
                 # Stack features: [u_valid; v_valid]
                 Phi = np.vstack([Phi_u, Phi_v])  # (2P, k)
                 # Build Xc normalized for all times
@@ -606,13 +708,17 @@ def pod_rebuild(cam_num: int, config: Config, base: Path):
                 Vrec_valid = Xc_hat_v * std_v + mu_v  # (N,P)
             else:
                 # Separate UX
-                Phi_u = modes_ux[:k_use_u].reshape((k_use_u, H * W))[:, valid_flat].T  # (P, ku)
+                Phi_u = (
+                    modes_ux[:k_use_u].reshape((k_use_u, H * W))[:, valid_flat].T
+                )  # (P, ku)
                 Xu_c = (Usel - mu_u) / std_u  # (N,P)
                 Au = da.dot(Xu_c, Phi_u)  # (N, ku)
                 Xu_c_hat = da.dot(Au, Phi_u.T)  # (N,P)
                 Urec_valid = Xu_c_hat * std_u + mu_u
                 # Separate UY
-                Phi_v = modes_uy[:k_use_v].reshape((k_use_v, H * W))[:, valid_flat].T  # (P, kv)
+                Phi_v = (
+                    modes_uy[:k_use_v].reshape((k_use_v, H * W))[:, valid_flat].T
+                )  # (P, kv)
                 Xv_c = (Vsel - mu_v) / std_v  # (N,P)
                 Av = da.dot(Xv_c, Phi_v)  # (N, kv)
                 Xv_c_hat = da.dot(Av, Phi_v.T)  # (N,P)
@@ -641,31 +747,45 @@ def pod_rebuild(cam_num: int, config: Config, base: Path):
                 in_file = data_in_dir / (fmt % (t + 1))
                 if not in_file.exists():
                     continue
-                mat_in = sio.loadmat(str(in_file), struct_as_record=False, squeeze_me=True)
+                mat_in = sio.loadmat(
+                    str(in_file), struct_as_record=False, squeeze_me=True
+                )
                 piv_result_in = mat_in["piv_result"]
 
                 # Build MATLAB struct array for piv_result
                 def _to_struct_array(piv, run_zero_based, u_new, v_new, bmask):
-                    dtype = np.dtype([('ux', 'O'), ('uy', 'O'), ('b_mask', 'O')])
+                    dtype = np.dtype([("ux", "O"), ("uy", "O"), ("b_mask", "O")])
                     if isinstance(piv, np.ndarray) and piv.dtype == object:
                         R = piv.size
                         out = np.empty((R,), dtype=dtype)
                         for rr in range(R):
                             pr = piv[rr]
-                            out[rr]['ux'] = u_new if rr == run_zero_based else np.asarray(pr.ux)
-                            out[rr]['uy'] = v_new if rr == run_zero_based else np.asarray(pr.uy)
-                            out[rr]['b_mask'] = np.asarray(pr.b_mask)
+                            out[rr]["ux"] = (
+                                u_new if rr == run_zero_based else np.asarray(pr.ux)
+                            )
+                            out[rr]["uy"] = (
+                                v_new if rr == run_zero_based else np.asarray(pr.uy)
+                            )
+                            out[rr]["b_mask"] = np.asarray(pr.b_mask)
                         return out
                     else:
                         out = np.empty((1,), dtype=dtype)
-                        out[0]['ux'] = u_new
-                        out[0]['uy'] = v_new
-                        out[0]['b_mask'] = np.asarray(piv.b_mask)
+                        out[0]["ux"] = u_new
+                        out[0]["uy"] = v_new
+                        out[0]["b_mask"] = np.asarray(piv.b_mask)
                         return out
 
-                piv_struct = _to_struct_array(piv_result_in, selected_runs_1based.index(lbl), u_grid, v_grid, b_mask)
+                piv_struct = _to_struct_array(
+                    piv_result_in,
+                    selected_runs_1based.index(lbl),
+                    u_grid,
+                    v_grid,
+                    b_mask,
+                )
 
                 out_file = data_out_dir / (fmt % (t + 1))
-                sio.savemat(str(out_file), {'piv_result': piv_struct}, do_compression=True)
+                sio.savemat(
+                    str(out_file), {"piv_result": piv_struct}, do_compression=True
+                )
 
             print(f"[POD REBUILD] Run {lbl} -> saved to {data_out_dir}")

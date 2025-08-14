@@ -1,6 +1,6 @@
 from pathlib import Path
+
 import yaml
-import tifffile
 
 
 class Config:
@@ -21,28 +21,30 @@ class Config:
 
     @property
     def time_resolved(self):
-        return self.data['images'].get('time_resolved', False)
+        return self.data["images"].get("time_resolved", False)
 
     @property
     def image_format(self):
         if self.time_resolved:
-            return self.data['images'].get('image_format', "B%05d.tiff")
+            return self.data["images"].get("image_format", "B%05d.tiff")
         else:
             # Expect a list of two formats in the config for A and B images
-            fmts = self.data['images'].get('image_format', ["B%05d_A.tiff", "B%05d_B.tiff"])
+            fmts = self.data["images"].get(
+                "image_format", ["B%05d_A.tiff", "B%05d_B.tiff"]
+            )
             return tuple(fmts)
 
     @property
     def base_paths(self):
-        return [Path(p) for p in self.data['paths']['base_paths']]
+        return [Path(p) for p in self.data["paths"]["base_paths"]]
 
     @property
     def source_paths(self):
-        return [Path(s) for s in self.data['paths']['source_paths']]
+        return [Path(s) for s in self.data["paths"]["source_paths"]]
 
     @property
     def camera_numbers(self):
-        return self.data['paths']['camera_numbers']
+        return self.data["paths"]["camera_numbers"]
 
     @property
     def camera_folders(self):
@@ -50,31 +52,31 @@ class Config:
 
     @property
     def num_images(self):
-        return self.data['images']['num_images']
+        return self.data["images"]["num_images"]
 
     @property
     def image_shape(self):
-        return tuple(self.data['images']['shape'])
+        return tuple(self.data["images"]["shape"])
 
     @property
     def piv_chunk_size(self):
         # Updated to use batches.size from config.yaml
-        return self.data['batches']['size']
+        return self.data["batches"]["size"]
 
     @property
     def filter_type(self):
         # This is now optional, as filters block is used
-        return self.data.get('pre_procesing', {}).get('filter_type', None)
+        return self.data.get("pre_procesing", {}).get("filter_type", None)
 
     @property
     def filters(self):
         # Returns the list of filter dicts from config.yaml
-        return self.data.get('filters', [])
+        return self.data.get("filters", [])
 
     @property
     def vector_format(self):
         # Returns a single format string like "B%05d.mat"
-        vf = self.data['images'].get('vector_format', ["B%05d.mat"])
+        vf = self.data["images"].get("vector_format", ["B%05d.mat"])
         if isinstance(vf, (list, tuple)):
             return vf[0]
         return vf
@@ -82,40 +84,40 @@ class Config:
     @property
     def statistics_extraction(self):
         # Returns the statistics_extraction block as a list, or empty list if not present
-        return self.data.get('statistics_extraction', [])
+        return self.data.get("statistics_extraction", [])
 
     @property
     def instantaneous_runs(self):
-        return self.data.get('instantaneous_piv', {}).get('runs', [])
+        return self.data.get("instantaneous_piv", {}).get("runs", [])
 
     @property
     def instantaneous_window_sizes(self):
-        return self.data.get('instantaneous_piv', {}).get('window_size', [])
+        return self.data.get("instantaneous_piv", {}).get("window_size", [])
 
     @property
     def instantaneous_overlaps(self):
-        return self.data.get('instantaneous_piv', {}).get('overlap', [])
+        return self.data.get("instantaneous_piv", {}).get("overlap", [])
 
     @property
     def plots(self):
         # Return the 'plots' dict from config.yaml
-        return self.data.get('plots', {})
+        return self.data.get("plots", {})
 
     @property
     def plot_save_extension(self):
-        return self.plots.get('save_extension', '.png')
+        return self.plots.get("save_extension", ".png")
 
     @property
     def plot_save_pickle(self):
-        return self.plots.get('save_pickle', True)
+        return self.plots.get("save_pickle", True)
 
     @property
     def plot_fontsize(self):
-        return self.plots.get('fontsize', 14)
+        return self.plots.get("fontsize", 14)
 
     @property
     def plot_title_fontsize(self):
-        return self.plots.get('title_fontsize', 16)
+        return self.plots.get("title_fontsize", 16)
 
     @property
     def videos(self):
@@ -123,7 +125,7 @@ class Config:
         Returns the 'videos' list from config.yaml. Ensures a list is returned.
         Each entry may contain: type, endpoint, use_merged, video_length, variable.
         """
-        vids = self.data.get('videos', [])
+        vids = self.data.get("videos", [])
         if vids is None:
             return []
         if isinstance(vids, dict):
@@ -133,4 +135,4 @@ class Config:
     @property
     def post_processing(self):
         # Returns the post_processing block as a list, or empty list if not present
-        return self.data.get('post_processing', [])
+        return self.data.get("post_processing", [])

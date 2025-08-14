@@ -1,13 +1,17 @@
-import numpy as np
 from dataclasses import dataclass
-import matplotlib.pyplot as plt
-from matplotlib.colors import Normalize, TwoSlopeNorm
-from config import Config
 from pathlib import Path
+
 import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.cm import ScalarMappable
-from matplotlib.ticker import FixedLocator, FixedFormatter
-mpl.use('Agg') 
+from matplotlib.colors import Normalize, TwoSlopeNorm
+from matplotlib.ticker import FixedFormatter, FixedLocator
+
+from config import Config
+
+mpl.use("Agg")
+
 
 # Settings object to drive plot_scalar_field conveniently from Config
 @dataclass
@@ -75,8 +79,8 @@ def make_scalar_settings(
 # Function to plot a scalar field with masking and customizable settings
 def plot_scalar_field(variable, mask, settings):
     # Extract plot settings
-    plt.rcParams.update({'font.size': settings._fontsize})
-    plt.rcParams['axes.titlesize'] = settings._title_fontsize
+    plt.rcParams.update({"font.size": settings._fontsize})
+    plt.rcParams["axes.titlesize"] = settings._title_fontsize
 
     cm_label = settings.variableName + " (" + settings.variableUnits + ")"
 
@@ -88,7 +92,12 @@ def plot_scalar_field(variable, mask, settings):
     if settings.coords_x is not None and settings.coords_y is not None:
         cx, cy = np.asarray(settings.coords_x), np.asarray(settings.coords_y)
         # 2D grid case matching variable shape
-        if cx.ndim == 2 and cy.ndim == 2 and cx.shape == variable.shape and cy.shape == variable.shape:
+        if (
+            cx.ndim == 2
+            and cy.ndim == 2
+            and cx.shape == variable.shape
+            and cy.shape == variable.shape
+        ):
             X, Y = cx, cy
         # 1D axes case
         elif cx.ndim == 1 and cy.ndim == 1:
@@ -96,7 +105,9 @@ def plot_scalar_field(variable, mask, settings):
             if cx.size == nx and cy.size == ny:
                 X, Y = np.meshgrid(cx, cy)
     if X is None or Y is None:
-        if settings.corners is not None and all(c is not None for c in settings.corners):
+        if settings.corners is not None and all(
+            c is not None for c in settings.corners
+        ):
             x0, y0, x1, y1 = settings.corners
             ny, nx = variable.shape
             x = np.linspace(x0, x1, nx)
@@ -108,8 +119,10 @@ def plot_scalar_field(variable, mask, settings):
         X, Y = np.meshgrid(x, y)
 
     # Create the plot
-    fig, ax = plt.subplots(figsize=(12, 7))  # The size to be adjusted to meet the UI requirements!
-    ax.set_facecolor('gray')  # <-- gray shows through masked holes
+    fig, ax = plt.subplots(
+        figsize=(12, 7)
+    )  # The size to be adjusted to meet the UI requirements!
+    ax.set_facecolor("gray")  # <-- gray shows through masked holes
 
     # Determine limits
     if settings.lower_limit is not None and settings.upper_limit is not None:
@@ -130,7 +143,11 @@ def plot_scalar_field(variable, mask, settings):
     # Select colormap & norm
     if settings.cmap is not None:
         cmap = plt.get_cmap(settings.cmap)
-        norm = TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax) if use_two_slope else Normalize(vmin=vmin, vmax=vmax)
+        norm = (
+            TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
+            if use_two_slope
+            else Normalize(vmin=vmin, vmax=vmax)
+        )
     else:
         if use_two_slope:
             cmap = "bwr"
@@ -150,14 +167,13 @@ def plot_scalar_field(variable, mask, settings):
     cbar = fig.colorbar(sm, ax=ax, label=cm_label)
 
     if isinstance(settings.levels, np.ndarray):
-    # pick a stable set, e.g. 7 ticks or [vmin, 0, vmax] for diverging
+        # pick a stable set, e.g. 7 ticks or [vmin, 0, vmax] for diverging
         if isinstance(norm, TwoSlopeNorm):
             ticks = [norm.vmin, 0.0, norm.vmax]
         else:
             ticks = np.linspace(norm.vmin, norm.vmax, 7)
     else:
         ticks = np.linspace(norm.vmin, norm.vmax, 7)
-
 
     # Optional: nice fixed tick count
     ticks = np.linspace(actual_min, actual_max, 7)

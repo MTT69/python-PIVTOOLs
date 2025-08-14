@@ -1,6 +1,7 @@
 import dask.array as da
-from config import Config
 import numpy as np
+
+from config import Config
 
 
 def filter_images(images: da.Array, config: Config, filters_override=None) -> da.Array:
@@ -19,7 +20,9 @@ def filter_images(images: da.Array, config: Config, filters_override=None) -> da
         da.Array: Filtered images
     """
     filtered = images
-    filters_list = filters_override if isinstance(filters_override, list) else config.filters
+    filters_list = (
+        filters_override if isinstance(filters_override, list) else config.filters
+    )
     print("Config/override filters:", filters_list)
 
     def ensure_temporal_chunk(arr: da.Array, batch_size: int) -> da.Array:
@@ -29,7 +32,7 @@ def filter_images(images: da.Array, config: Config, filters_override=None) -> da
         return arr.rechunk((bs_eff, arr.shape[1], arr.shape[2], arr.shape[3]))
 
     for filt in filters_list:
-        ftype_raw = filt.get('type', None)
+        ftype_raw = filt.get("type", None)
         if ftype_raw is None:
             print("No filter type specified, skipping.")
             continue
@@ -37,14 +40,18 @@ def filter_images(images: da.Array, config: Config, filters_override=None) -> da
 
         # Determine per-filter batch size (for temporal filters)
         if ftype in ("time", "pod"):
-            bs = filt.get('batch_size', config.piv_chunk_size)
+            bs = filt.get("batch_size", config.piv_chunk_size)
             filtered = ensure_temporal_chunk(filtered, bs)
 
         if ftype == "time":
-            print(f"Applying time filter; numblocks={filtered.numblocks[0]}, chunklen={filtered.chunks[0]}")
+            print(
+                f"Applying time filter; numblocks={filtered.numblocks[0]}, chunklen={filtered.chunks[0]}"
+            )
             filtered = time_filter(filtered)
         elif ftype == "pod":
-            print(f"Applying POD filter; numblocks={filtered.numblocks[0]}, chunklen={filtered.chunks[0]}")
+            print(
+                f"Applying POD filter; numblocks={filtered.numblocks[0]}, chunklen={filtered.chunks[0]}"
+            )
             filtered = pod_filter(filtered)
         elif ftype == "null":
             print("Skipping null filter")
@@ -127,10 +134,7 @@ def pod_filter_block(block):
     for j in range(N2):
         F2 -= np.outer(TC2[j], PHI2[j])
 
-    filtered = np.stack([
-        F1.reshape(N, H, W),
-        F2.reshape(N, H, W)
-    ], axis=1)
+    filtered = np.stack([F1.reshape(N, H, W), F2.reshape(N, H, W)], axis=1)
 
     return filtered.astype(block.dtype)
 

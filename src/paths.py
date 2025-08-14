@@ -1,7 +1,9 @@
 from pathlib import Path
 
 
-def get_data_paths(base_dir, num_images, cam_folder, type_name, endpoint="", use_merged=False):
+def get_data_paths(
+    base_dir, num_images, cam_folder, type_name, endpoint="", use_merged=False
+):
     """
     Construct directories for data, statistics, and videos.
     endpoint: optional subfolder ('' ignored).
@@ -13,7 +15,9 @@ def get_data_paths(base_dir, num_images, cam_folder, type_name, endpoint="", use
         stats_dir = base_dir / "statistics" / "merged" / type_name
         video_dir = base_dir / "videos" / "merged" / type_name
     else:
-        data_dir = base_dir / "calibrated_piv" / str(num_images) / cam_folder / type_name
+        data_dir = (
+            base_dir / "calibrated_piv" / str(num_images) / cam_folder / type_name
+        )
         stats_dir = base_dir / "statistics" / str(num_images) / cam_folder / type_name
         video_dir = base_dir / "videos" / str(num_images) / cam_folder
     if endpoint:

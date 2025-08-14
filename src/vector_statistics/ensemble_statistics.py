@@ -1,8 +1,8 @@
-from pathlib import Path
+import numpy as np
+
 from config import Config
 from paths import get_data_paths
 from post_processing.vector_loading import load_vectors_from_directory
-import numpy as np
 
 
 def ensemble_statistics(cam_num: int, config: Config, base):
@@ -37,7 +37,13 @@ def ensemble_statistics(cam_num: int, config: Config, base):
         uy = arr[:, 1]
         mean_ux = ux.mean(axis=0).compute()
         mean_uy = uy.mean(axis=0).compute()
-        out_file = paths["stats_dir"] / (f"{'merged' if use_merged else f'Cam{cam_num}'}_ensemble_mean.npz")
-        np.savez_compressed(out_file, mean_ux=mean_ux, mean_uy=mean_uy,
-                            meta=dict(endpoint=endpoint, use_merged=use_merged, camera=cam_folder_eff))
+        out_file = paths["stats_dir"] / (
+            f"{'merged' if use_merged else f'Cam{cam_num}'}_ensemble_mean.npz"
+        )
+        np.savez_compressed(
+            out_file,
+            mean_ux=mean_ux,
+            mean_uy=mean_uy,
+            meta=dict(endpoint=endpoint, use_merged=use_merged, camera=cam_folder_eff),
+        )
         print(f"[ensemble] Saved ensemble mean -> {out_file}")
