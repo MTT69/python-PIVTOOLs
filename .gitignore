@@ -2,3 +2,5 @@ src/calibration_planar/*
 env/
 check_mat.ipynb
 .gitignore
+__pycache__/
+morgan.jpeg
