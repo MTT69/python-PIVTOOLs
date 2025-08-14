@@ -743,6 +743,16 @@ def load_mask():
         print("Exception in load_mask:", e)
         return jsonify({"error": f"Failed to load mask: {e}"}), 500
 
+@app.route("/run_piv", methods=["POST"])
+def run_piv():
+    """
+    Placeholder for run_piv functionality.
+    Accepts POST requests and replies with 200 OK.
+    Prints the incoming request JSON.
+    """
+    req_json = request.get_json(silent=True)
+    print("Received /run_piv request:", req_json)
+    return jsonify({"status": "ok", "message": "run_piv placeholder"}), 200
 
 if __name__ == "__main__":
     app.run(debug=True)
