@@ -754,5 +754,55 @@ def run_piv():
     print("Received /run_piv request:", req_json)
     return jsonify({"status": "ok", "message": "run_piv placeholder"}), 200
 
+
+@app.route("/cancel_run", methods=["POST"])
+def cancel_run():
+    """
+    Placeholder for cancel_run functionality.
+    Accepts POST requests and replies with 200 OK.
+    """
+    return jsonify({"status": "ok", "message": "cancel_run placeholder"}), 200
+
+@app.route("/check_status", methods=["GET"])
+def check_status():
+    """
+    Returns a random integer between 0 and 100.
+    """
+    if not hasattr(check_status, "counter"):
+        check_status.counter = 0
+    value = check_status.counter
+    check_status.counter = (check_status.counter + 10) % 110
+    return jsonify({"status": value})
+
+
+@app.route("/check_status_image", methods=["GET"])
+def check_status_image():
+    """
+    Receives the same parameters as /get_raw_image.
+    For now, always returns morgan.jpeg as base64 PNG.
+    """
+    # Accept parameters for future compatibility
+    basepath_idx = request.args.get("basepath_idx", default=0, type=int)
+    camera = request.args.get("camera", default="Cam1", type=str)
+    index = request.args.get("index", default=0, type=int)
+    frame = request.args.get("frame", default="A")
+    # Placeholder: always send morgan.jpeg
+    try:
+        img_path = Path("morgan.jpeg") # PLACEHOLDER
+        if not img_path.exists(): # PLACEHOLDER
+            return jsonify({"error": "morgan.jpeg not found"}), 404 # PLACEHOLDER
+        
+        im_pil = Image.open(img_path)
+        buf = BytesIO()
+        im_pil.save(buf, format="PNG")
+        buf.seek(0)
+        b64_img = base64.b64encode(buf.read()).decode("utf-8")
+        # Optionally, send dummy vmin/vmax
+        return jsonify({"image": b64_img, "vmin": 0, "vmax": 255})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+
 if __name__ == "__main__":
     app.run(debug=True)
