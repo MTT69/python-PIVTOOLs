@@ -136,3 +136,32 @@ class Config:
     def post_processing(self):
         # Returns the post_processing block as a list, or empty list if not present
         return self.data.get("post_processing", [])
+
+    # --- Calibration specific settings ---
+    @property
+    def calibration_image_format(self):
+        """Return calibration image filename pattern.
+        Default 'Calib%05d.tif'. If user supplies a plain filename (no %), it
+        is used directly. If a dict block calibration: { image_format: ... }
+        exists use that, else look for images.calibration_image_format for
+        backward compatibility.
+        """
+        # Preferred location
+        calib_block = self.data.get("calibration", {}) or {}
+        fmt = calib_block.get("image_format", None)
+        if not fmt:
+            # fallback legacy key
+            fmt = self.data.get("images", {}).get("calibration_image_format", None)
+        if not fmt:
+            fmt = "calib%05d.tif"
+        return fmt
+
+    def calibration_filename(self, index: int = 1):
+        fmt = self.calibration_image_format
+        try:
+            if "%" in fmt:
+                return fmt % index
+            return fmt
+        except Exception:
+            # On formatting error, just return fmt
+            return fmt
