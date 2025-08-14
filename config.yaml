@@ -1,8 +1,8 @@
 paths:
   base_paths:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images\ProcessedPIV
   source_paths:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images
   camera_numbers:
   - 1
 images:
