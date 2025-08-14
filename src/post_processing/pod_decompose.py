@@ -5,7 +5,7 @@ from scipy.io import savemat, loadmat  # add
 from typing import Optional
 from dask.diagnostics import ProgressBar
 from config import Config
-from vector_statistics.paths import get_data_paths
+from paths import get_data_paths
 from post_processing.vector_loading import load_vectors_from_directory, load_coords_from_directory
 from plotting.plot_maker import plot_scalar_field, make_scalar_settings
 import matplotlib.pyplot as plt

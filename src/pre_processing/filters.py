@@ -3,28 +3,48 @@ from config import Config
 import numpy as np
 
 
-def filter_images(images: da.Array, config: Config) -> da.Array:
+def filter_images(images: da.Array, config: Config, filters_override=None) -> da.Array:
     """Filter Images
 
+    Applies filters in sequence. For temporal filters ('time', 'POD'), a per-filter
+    batch_size can be provided in the filter dict and is enforced by rechunking
+    the first axis accordingly before applying the filter on each block.
+
     Args:
-        images (da.Array): _description_
-        config (Config): _description_
+        images (da.Array): Input images of shape (N, 2, H, W)
+        config (Config): Configuration object
+        filters_override (list|None): Optional list of filter dicts to override config.filters
 
     Returns:
-        da.Array: _description_
+        da.Array: Filtered images
     """
     filtered = images
-    print("Config filters:", config.filters)
-    for filt in config.filters:
-        if filt.get('type', '') is None:
+    filters_list = filters_override if isinstance(filters_override, list) else config.filters
+    print("Config/override filters:", filters_list)
+
+    def ensure_temporal_chunk(arr: da.Array, batch_size: int) -> da.Array:
+        # Clamp to actual length (e.g., last batch may be shorter)
+        bs_eff = max(1, min(int(batch_size), int(arr.shape[0])))
+        # Always rechunk first axis to bs_eff so map_blocks sees the intended window
+        return arr.rechunk((bs_eff, arr.shape[1], arr.shape[2], arr.shape[3]))
+
+    for filt in filters_list:
+        ftype_raw = filt.get('type', None)
+        if ftype_raw is None:
             print("No filter type specified, skipping.")
             continue
-        ftype = filt.get('type', '').lower()
+        ftype = str(ftype_raw).lower()
+
+        # Determine per-filter batch size (for temporal filters)
+        if ftype in ("time", "pod"):
+            bs = filt.get('batch_size', config.piv_chunk_size)
+            filtered = ensure_temporal_chunk(filtered, bs)
+
         if ftype == "time":
-            print(f"Applying time filter to batch {images.numblocks[0]}")
+            print(f"Applying time filter; numblocks={filtered.numblocks[0]}, chunklen={filtered.chunks[0]}")
             filtered = time_filter(filtered)
         elif ftype == "pod":
-            print(f"Applying POD filter to batch {images.numblocks[0]}")
+            print(f"Applying POD filter; numblocks={filtered.numblocks[0]}, chunklen={filtered.chunks[0]}")
             filtered = pod_filter(filtered)
         elif ftype == "null":
             print("Skipping null filter")

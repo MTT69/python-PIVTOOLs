@@ -1,6 +1,6 @@
 from pathlib import Path
 from config import Config
-from vector_statistics.paths import get_data_paths
+from paths import get_data_paths
 from post_processing.vector_loading import load_vectors_from_directory
 import numpy as np
 

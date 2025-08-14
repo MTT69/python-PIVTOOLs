@@ -2,7 +2,7 @@ from pathlib import Path
 import numpy as np
 from config import Config
 from post_processing.vector_loading import load_vectors_from_directory, load_coords_from_directory
-from vector_statistics.paths import get_data_paths
+from paths import get_data_paths
 from scipy.io import savemat
 import dask  # added
 from plotting.plot_maker import plot_scalar_field, make_scalar_settings
