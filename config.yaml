@@ -1,8 +1,8 @@
 paths:
   base_paths:
-  - C:\Users\ees1u24\Desktop\Planar_Images_with_wall\test
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test
   source_paths:
-  - C:\Users\ees1u24\Desktop\Planar_Images_with_wall
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall
   camera_numbers:
   - 1
 images:
