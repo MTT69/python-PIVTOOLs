@@ -8,7 +8,7 @@ paths:
 images:
   num_images: 1000
   image_format:
-  - B%05d_A.tif
+  - B%04d_A.tif
   - B%05d_B.tif
   vector_format:
   - '%05d.mat'
@@ -80,3 +80,5 @@ ensemble_piv:
 filters:
 - type: time
   batch_size: 50
+calibration:
+  image_format: calib%05d.tif

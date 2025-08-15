@@ -354,9 +354,13 @@ def get_status():
 @app.route("/update_paths", methods=["POST"])
 def update_paths():
     """
-    Expects JSON body:
-      - base_paths: list of base path strings
-      - source_paths: list of source path strings
+        Expects JSON body:
+            - base_paths: list of base path strings
+            - source_paths: list of source path strings
+            Optional (will also update formats in config.yaml):
+            - image_format: string OR list of two strings (raw image patterns)
+            - vector_format: string (processed file pattern) or list with one string
+            - calibration_image_format: string calibration image pattern
     Updates config in-memory and writes to config.yaml.
     """
     data = request.get_json() or {}
@@ -369,17 +373,154 @@ def update_paths():
     config.data["paths"]["base_paths"] = base_paths
     config.data["paths"]["source_paths"] = source_paths
 
+    # --- Optional format updates ---
+    # Raw image formats
+    if "image_format" in data:
+        img_fmt = data.get("image_format")
+        if isinstance(img_fmt, (list, tuple)):
+            # store as list of strings
+            config.data.setdefault("images", {})["image_format"] = list(img_fmt)
+            # two formats implies not time-resolved
+            config.data.setdefault("images", {})["time_resolved"] = False
+        elif isinstance(img_fmt, str) and img_fmt.strip():
+            # single pattern (time-resolved)
+            config.data.setdefault("images", {})["image_format"] = img_fmt.strip()
+            config.data.setdefault("images", {})["time_resolved"] = True
+    # Vector / processed format
+    if "vector_format" in data:
+        vec_fmt = data.get("vector_format")
+        if isinstance(vec_fmt, (list, tuple)):
+            if vec_fmt:
+                config.data.setdefault("images", {})["vector_format"] = [
+                    str(vec_fmt[0])
+                ]
+        elif isinstance(vec_fmt, str) and vec_fmt.strip():
+            config.data.setdefault("images", {})["vector_format"] = [vec_fmt.strip()]
+    # Calibration image format
+    if "calibration_image_format" in data:
+        calib_fmt = data.get("calibration_image_format")
+        if isinstance(calib_fmt, str) and calib_fmt.strip():
+            config.data.setdefault("calibration", {})[
+                "image_format"
+            ] = calib_fmt.strip()
+
     # Write to config.yaml
     config_path = "config.yaml"
     try:
         with open(config_path, "w") as f:
-            yaml.dump(config.data, f, default_flow_style=False, sort_keys=False)
+            yaml.dump(
+                config.data,
+                f,
+                default_flow_style=False,
+                sort_keys=False,
+            )
     except Exception as e:
         return jsonify({"error": f"Failed to write config.yaml: {e}"}), 500
 
     return jsonify(
-        {"status": "success", "base_paths": base_paths, "source_paths": source_paths}
+        {
+            "status": "success",
+            "base_paths": base_paths,
+            "source_paths": source_paths,
+            "image_format": config.data.get("images", {}).get("image_format"),
+            "vector_format": config.data.get("images", {}).get("vector_format"),
+            "calibration_image_format": config.data.get("calibration", {}).get(
+                "image_format"
+            ),
+            "time_resolved": config.data.get("images", {}).get("time_resolved"),
+        }
     )
+
+
+@app.route("/config", methods=["GET"])
+def get_config():
+    """Return the full current YAML configuration (read-only)."""
+    try:
+        return jsonify(config.data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/update_images", methods=["POST"])
+def update_images():
+    """Update image-related entries (num_images, shape, image_type) in YAML."""
+    data = request.get_json() or {}
+    images_block = config.data.setdefault("images", {})
+    changed = {}
+    if "num_images" in data:
+        try:
+            n = int(data["num_images"])
+            if n > 0:
+                images_block["num_images"] = n
+                changed["num_images"] = n
+        except Exception:
+            return jsonify({"error": "num_images must be positive int"}), 400
+    if "shape" in data:
+        shp = data["shape"]
+        if (
+            isinstance(shp, (list, tuple))
+            and len(shp) == 2
+            and all(isinstance(v, int) and v > 0 for v in shp)
+        ):
+            images_block["shape"] = list(shp)
+            changed["shape"] = list(shp)
+        else:
+            return jsonify({"error": "shape must be [H,W] positive ints"}), 400
+    if "image_type" in data:
+        it = data["image_type"]
+        if isinstance(it, str) and it.strip():
+            images_block["image_type"] = it.strip()
+            changed["image_type"] = it.strip()
+
+    # Persist
+    try:
+        with open("config.yaml", "w") as f:
+            yaml.dump(
+                config.data,
+                f,
+                default_flow_style=False,
+                sort_keys=False,
+            )
+    except Exception as e:
+        return jsonify({"error": f"Failed to write config.yaml: {e}"}), 500
+    return jsonify({"status": "success", "images": images_block, "changed": changed})
+
+
+@app.route("/update_instantaneous", methods=["POST"])
+def update_instantaneous():
+    """Update instantaneous_piv (window_size, overlap, runs) in YAML."""
+    data = request.get_json() or {}
+    inst = config.data.setdefault("instantaneous_piv", {})
+    changed = {}
+    if "window_size" in data:
+        ws = data["window_size"]
+        if isinstance(ws, list) and all(
+            isinstance(p, (list, tuple)) and len(p) == 2 for p in ws
+        ):
+            inst["window_size"] = [list(map(int, p)) for p in ws]
+            changed["window_size"] = inst["window_size"]
+        else:
+            return jsonify({"error": "window_size must be list of [x,y]"}), 400
+    if "overlap" in data:
+        ov = data["overlap"]
+        if isinstance(ov, list) and all(isinstance(v, (int, float)) for v in ov):
+            inst["overlap"] = [int(v) for v in ov]
+            changed["overlap"] = inst["overlap"]
+        else:
+            return jsonify({"error": "overlap must be list of numbers"}), 400
+    if "runs" in data:
+        rn = data["runs"]
+        if isinstance(rn, list) and all(isinstance(v, int) for v in rn):
+            inst["runs"] = rn
+            changed["runs"] = rn
+        else:
+            return jsonify({"error": "runs must be list of ints"}), 400
+    try:
+        with open("config.yaml", "w") as f:
+            yaml.dump(config.data, f, default_flow_style=False, sort_keys=False)
+    except Exception as e:
+        return jsonify({"error": f"Failed to write config.yaml: {e}"}), 500
+    return jsonify({"status": "success", "instantaneous_piv": inst, "changed": changed})
 
 
 # Endpoint to serve raw image for masking (with colormap)
