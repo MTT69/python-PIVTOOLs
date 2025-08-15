@@ -523,6 +523,8 @@ def update_instantaneous():
     return jsonify({"status": "success", "instantaneous_piv": inst, "changed": changed})
 
 
+# ------------- Masking Endpoints -------------
+
 # Endpoint to serve raw image for masking (with colormap)
 @app.route("/get_raw_image", methods=["GET"])
 def get_raw_image():
@@ -726,6 +728,7 @@ def load_mask():
         print("Exception in load_mask:", e)
         return jsonify({"error": f"Failed to load mask: {e}"}), 500
 
+# ------------- Run PIV Endpoints -------------
 
 @app.route("/run_piv", methods=["POST"])
 def run_piv():
@@ -941,7 +944,6 @@ def calibration_compute():
         )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 if __name__ == "__main__":
     app.run(debug=True)
