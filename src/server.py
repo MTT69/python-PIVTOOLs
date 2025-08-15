@@ -4,16 +4,12 @@ from io import BytesIO
 from pathlib import Path
 
 import dask.array as da
-import matplotlib.pyplot as plt
 import numpy as np
 import yaml  # Add this import
 from dask import config as dask_config
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from PIL import Image
-
-# --- NEW imports for .mat handling and plotting ---
-from scipy.io import loadmat
 
 from calibration_planar.planar_calibration import (
     calculate_homography,
@@ -30,9 +26,11 @@ from calibration_planar.planar_calibration import (
 from config import Config
 from image_handling.load_images import read_pair
 from plotting.app.views import vector_plot_bp
-from plotting.plot_maker import make_scalar_settings, plot_scalar_field
 from post_processing.vector_loading import read_mask_from_mat, save_mask_to_mat
 from pre_processing.filters import filter_images  # use full filter pipeline
+
+# --- NEW imports for .mat handling and plotting ---
+
 
 app = Flask(__name__)
 CORS(app)  # enable CORS for frontend dev (Next.js on a different port)
@@ -802,163 +800,6 @@ def check_status():
     value = check_status.counter
     check_status.counter = (check_status.counter + 10) % 110
     return jsonify({"status": value})
-
-
-@app.route("/get_uncalibrated_image", methods=["GET"])
-def get_uncalibrated_image():
-    """Return a single uncalibrated PNG by index if present.
-    Query params:
-      - base_path: absolute path to source base (optional)
-      - source_path_idx: integer index into config.source_paths (optional)
-      - camera: camera folder (e.g. '1' or 'Cam1')
-      - index: 1-based image index (required)
-      - var: 'ux'|'uy' (optional, default 'ux')
-      - run: preferred run (1-based, optional)
-      - lower_limit, upper_limit, cmap (optional plotting params)
-    Returns JSON { image: <base64-png>, meta: {...} } or 404 if missing.
-    """
-    basepath_idx = request.args.get("basepath_idx", default=0, type=int)
-    camera = request.args.get("camera", default="1")
-    idx = request.args.get("index", type=int)
-    var = request.args.get("var", default="ux")
-    run = request.args.get("run", default=1, type=int)
-    lower_limit = request.args.get("lower_limit", type=float)
-    upper_limit = request.args.get("upper_limit", type=float)
-    cmap = request.args.get("cmap", default=None, type=str)
-    if cmap is not None and (cmap.lower() == "default" or cmap.strip() == ""):
-        cmap = None
-
-    if idx is None:
-        return jsonify({"error": "index required"}), 400
-
-    base = config.base_paths[basepath_idx]
-    print(f"Resolved base path: {base}")
-    cam_folder = cam_folder_key(camera)
-    # Candidate folders to look for .mat files
-    folder_uncal = (
-        base
-        / "uncalibrated_piv"
-        / str(config.num_images)
-        / cam_folder
-        / "instantaneous"
-    )
-    # Build candidate filename from config.vector_format (e.g. "%05d.mat")
-    vector_fmt = config.vector_format  # e.g. "%05d.mat"
-    if isinstance(vector_fmt, (list, tuple)):
-        vector_fmt = vector_fmt[0]
-    try:
-        name = vector_fmt % idx
-    except Exception:
-        name = f"{idx:05d}.mat"
-    data_path = folder_uncal / name
-
-    print(f"Searching for uncalibrated .mat at: {data_path}")
-    mat_path = None
-    tried = []
-    tried.append(
-        {
-            "folder": str(folder_uncal),
-            "exists": folder_uncal.exists(),
-            "files_tested": [],
-        }
-    )
-    if folder_uncal.exists():
-        exists = data_path.exists() and data_path.is_file()
-        tried[-1]["files_tested"].append({"path": str(data_path), "exists": exists})
-        if exists:
-            mat_path = data_path
-
-    if mat_path is None:
-        # Return 404 with the list of tried locations to aid debugging
-        return (
-            jsonify(
-                {
-                    "error": f"uncalibrated .mat not found for index {idx}",
-                    "tried": tried,
-                }
-            ),
-            404,
-        )
-
-    try:
-        data_mat = loadmat(str(mat_path), struct_as_record=False, squeeze_me=True)
-        if "piv_result" not in data_mat:
-            return jsonify({"error": "Variable 'piv_result' not found in mat"}), 400
-        piv_result = data_mat["piv_result"]
-
-        # Determine run & pick non-empty entry similar to plot_vector implementation
-        pr = None
-        if isinstance(piv_result, np.ndarray):
-            max_runs = piv_result.size
-            current_run = max(1, int(run))
-            while current_run <= max_runs:
-                try:
-                    cand = piv_result[current_run - 1]
-                    var_arr_candidate = np.asarray(getattr(cand, var))
-                    if var_arr_candidate.size > 0 and not np.all(
-                        np.isnan(var_arr_candidate)
-                    ):
-                        pr = cand
-                        run = current_run
-                        break
-                except Exception:
-                    pass
-                current_run += 1
-            if pr is None:
-                return jsonify({"error": f"No non-empty run for var {var}"}), 400
-        else:
-            try:
-                var_arr_candidate = np.asarray(getattr(piv_result, var))
-                if var_arr_candidate.size > 0 and not np.all(
-                    np.isnan(var_arr_candidate)
-                ):
-                    pr = piv_result
-                    run = 1
-                else:
-                    return jsonify({"error": f"No non-empty run for var {var}"}), 400
-            except Exception:
-                return jsonify({"error": f"'{var}' not found in piv_result"}), 400
-
-        # Extract var array and mask if present
-        var_arr = np.asarray(getattr(pr, var))
-        try:
-            mask_arr = np.asarray(getattr(pr, "b_mask")).astype(bool)
-        except Exception:
-            mask_arr = np.zeros_like(var_arr, dtype=bool)
-
-        # Build settings and plot (no coordinates for uncalibrated mats)
-        save_basepath = Path("plot_vector_tmp")
-        settings = make_scalar_settings(
-            config,
-            variable=var,
-            run_label=run,
-            save_basepath=save_basepath,
-            variable_units="m/s",
-            coords_x=None,
-            coords_y=None,
-            lower_limit=lower_limit,
-            upper_limit=upper_limit,
-            cmap=cmap,
-        )
-
-        fig, ax, im = plot_scalar_field(var_arr, mask_arr, settings)
-
-        # Render to PNG bytes
-        buf = BytesIO()
-        fig.savefig(buf, format="png", bbox_inches="tight", dpi=150)
-        plt.close(fig)
-        buf.seek(0)
-        b64_img = base64.b64encode(buf.read()).decode("utf-8")
-
-        H, W = int(var_arr.shape[0]), int(var_arr.shape[1])
-        return jsonify(
-            {
-                "image": b64_img,
-                "meta": {"run": run, "var": var, "width": W, "height": H},
-            }
-        )
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/get_uncalibrated_count", methods=["GET"])
