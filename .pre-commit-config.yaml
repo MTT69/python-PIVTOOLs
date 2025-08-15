@@ -1,32 +1,32 @@
 repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.4
+    hooks:
+      - id: ruff
+        args: ["--fix", "--exit-non-zero-on-fix"]
+        exclude: ^(pAiback/|__pycache__/|.*\.egg-info/|build/|dist/|\.venv/|venv/|env/|node_modules/|\.git/)
+
   - repo: https://github.com/psf/black
     rev: 25.1.0
     hooks:
-    - id: black
-      exclude: ^(pAiback/|__pycache__/|.*\.egg-info/|build/|dist/|\.venv/|venv/|env/|node_modules/|\.git/)
+      - id: black
+        exclude: ^(pAiback/|__pycache__/|.*\.egg-info/|build/|dist/|\.venv/|venv/|env/|node_modules/|\.git/)
 
   - repo: https://github.com/PyCQA/isort
     rev: 6.0.1
     hooks:
-    - id: isort
-      args: ["--profile", "black", "--line-length=88"]
-      exclude: ^(pAiback/|__pycache__/|.*\.egg-info/|build/|dist/|\.venv/|venv/|env/|node_modules/|\.git/)
-
-  - repo: https://github.com/PyCQA/flake8
-    rev: 7.2.0
-    hooks:
-    - id: flake8
-      args: [--config, .flake8]
-      exclude: ^(pAiback/|__pycache__/|.*\.egg-info/|build/|dist/|\.venv/|venv/|env/|node_modules/|\.git/)
+      - id: isort
+        args: ["--profile", "black", "--line-length=88"]
+        exclude: ^(pAiback/|__pycache__/|.*\.egg-info/|build/|dist/|\.venv/|venv/|env/|node_modules/|\.git/)
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
-    - id: trailing-whitespace
-      exclude: ^(pAiback/|__pycache__/|.*\.egg-info/|build/|dist/|\.venv/|venv/|env/|node_modules/|\.git/)
-    - id: end-of-file-fixer
-      exclude: ^(pAiback/|__pycache__/|.*\.egg-info/|build/|dist/|\.venv/|venv/|env/|node_modules/|\.git/)
-    - id: check-yaml
+      - id: trailing-whitespace
+        exclude: ^(pAiback/|__pycache__/|.*\.egg-info/|build/|dist/|\.venv/|venv/|env/|node_modules/|\.git/)
+      - id: end-of-file-fixer
+        exclude: ^(pAiback/|__pycache__/|.*\.egg-info/|build/|dist/|\.venv/|venv/|env/|node_modules/|\.git/)
+      - id: check-yaml
 
   - repo: https://github.com/PyCQA/autoflake
     rev: v2.3.1
