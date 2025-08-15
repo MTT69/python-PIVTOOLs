@@ -1002,5 +1002,154 @@ def calibration_compute():
         return jsonify({"error": str(e)}), 500
 
 
+# ------------ POD Endpoints ----------------
+
+
+@app.route("/update_pod", methods=["POST"])
+def update_pod():
+    """Update POD settings under the first post_processing entry with type 'POD'.
+
+    Accepts JSON body with any of:
+      - randomised: bool
+      - normalise: bool
+      - stack_u_y: bool
+      - k_modes: int
+
+    Persists changes to config.yaml and returns the updated settings.
+    """
+    data = request.get_json(silent=True) or {}
+
+    # Locate the first post_processing entry with type 'POD'
+    pp = config.data.setdefault("post_processing", [])
+    pod_entry = None
+    for entry in pp:
+        try:
+            if str(entry.get("type", "")).lower() == "pod":
+                pod_entry = entry
+                break
+        except Exception:
+            continue
+
+    if pod_entry is None:
+        # Create a new POD entry if none exists
+        pod_entry = {"type": "POD", "settings": {}}
+        pp.insert(0, pod_entry)
+
+    settings = pod_entry.setdefault("settings", {})
+    changed = {}
+
+    def parse_bool(val):
+        if isinstance(val, bool):
+            return val
+        if isinstance(val, str):
+            v = val.strip().lower()
+            if v in ("1", "true", "yes", "y"):
+                return True
+            if v in ("0", "false", "no", "n"):
+                return False
+        if isinstance(val, (int, float)):
+            return bool(val)
+        return None
+
+    if "randomised" in data:
+        rv = parse_bool(data.get("randomised"))
+        if rv is None:
+            return jsonify({"error": "randomised must be a boolean"}), 400
+        settings["randomised"] = rv
+        changed["randomised"] = rv
+
+    if "normalise" in data:
+        rv = parse_bool(data.get("normalise"))
+        if rv is None:
+            return jsonify({"error": "normalise must be a boolean"}), 400
+        settings["normalise"] = rv
+        changed["normalise"] = rv
+
+    if "stack_u_y" in data:
+        rv = parse_bool(data.get("stack_u_y"))
+        if rv is None:
+            return jsonify({"error": "stack_u_y must be a boolean"}), 400
+        settings["stack_u_y"] = rv
+        changed["stack_u_y"] = rv
+
+    if "k_modes" in data:
+        try:
+            km = int(data.get("k_modes"))
+            if km < 0:
+                raise ValueError()
+            settings["k_modes"] = km
+            changed["k_modes"] = km
+        except Exception:
+            return jsonify({"error": "k_modes must be a non-negative integer"}), 400
+
+    # Persist config
+    try:
+        with open("config.yaml", "w") as f:
+            yaml.dump(config.data, f, default_flow_style=False, sort_keys=False)
+    except Exception as e:
+        return jsonify({"error": f"Failed to write config.yaml: {e}"}), 500
+
+    return jsonify({"status": "success", "post_processing": pp, "changed": changed})
+
+
+# Simple POD process tracking (placeholder)
+pod_processing = False
+
+
+@app.route("/start_pod", methods=["POST"])
+def start_pod():
+    """Start POD decomposition process (placeholder).
+
+    In future this should call pod_decompose(...) from post_processing.pod_decompose
+    For now, just set a flag and return 200. The real call would be something like:
+        # from post_processing.pod_decompose import pod_decompose
+        # thread = threading.Thread(target=pod_decompose, args=(...,), daemon=True)
+        # thread.start()
+    """
+    global pod_processing
+    pod_processing = True
+    # Parse incoming params (mirror other endpoints)
+    data = request.get_json(silent=True) or {}
+    base_path = data.get("base_path") or data.get("path") or data.get("full_path")
+    camera = data.get("camera", "1")
+    cam_folder = cam_folder_key(camera)
+
+    # Placeholder: in future call the real POD function here.
+    # Example (commented):
+    # pod_decompose(config=config, base_path=base_path, camera=cam_folder, output_dir="./pod_output", settings=settings)
+    print(f"POD process started for base_path={base_path}, camera={cam_folder}")
+    return (
+        jsonify(
+            {
+                "status": "started",
+                "message": "POD process started",
+                "base_path": base_path,
+                "camera": cam_folder,
+            }
+        ),
+        200,
+    )
+
+
+@app.route("/cancel_pod", methods=["POST"])
+def cancel_pod():
+    """Placeholder to cancel a running POD process."""
+    global pod_processing
+    pod_processing = False
+    return jsonify({"status": "cancelled"})
+
+
+@app.route("/pod_status", methods=["GET"])
+def pod_status():
+    """Return a simple incremental status value for POD.
+
+    Each call to this endpoint increases an internal counter by 5 (mod 105).
+    """
+    if not hasattr(pod_status, "counter"):
+        pod_status.counter = 95
+    pod_status.counter = (pod_status.counter + 5) % 105
+    return jsonify({"status": pod_status.counter, "processing": bool(pod_processing)})
+
+
 if __name__ == "__main__":
     app.run(debug=True)
