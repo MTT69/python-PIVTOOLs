@@ -1,14 +1,14 @@
 paths:
   base_paths:
-  - C:\Users\ees1u24\Desktop\Planar_Images_with_wall\test
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test
   source_paths:
-  - C:\Users\ees1u24\Desktop\Planar_Images_with_wall
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall
   camera_numbers:
   - 1
 images:
   num_images: 1000
   image_format:
-  - B%04d_A.tif
+  - B%05d_A.tif
   - B%05d_B.tif
   vector_format:
   - '%05d.mat'
@@ -73,7 +73,8 @@ instantaneous_piv:
   - 50
   - 50
   runs:
-  - 6
+  - 4
+  time_resolved: false
 ensemble_piv:
   runs:
   - 5

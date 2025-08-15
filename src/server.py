@@ -4,12 +4,16 @@ from io import BytesIO
 from pathlib import Path
 
 import dask.array as da
+import matplotlib.pyplot as plt
 import numpy as np
 import yaml  # Add this import
 from dask import config as dask_config
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from PIL import Image
+
+# --- NEW imports for .mat handling and plotting ---
+from scipy.io import loadmat
 
 from calibration_planar.planar_calibration import (
     calculate_homography,
@@ -26,6 +30,7 @@ from calibration_planar.planar_calibration import (
 from config import Config
 from image_handling.load_images import read_pair
 from plotting.app.views import vector_plot_bp
+from plotting.plot_maker import make_scalar_settings, plot_scalar_field
 from post_processing.vector_loading import read_mask_from_mat, save_mask_to_mat
 from post_processing.pod_decompose import pod_decompose
 from pre_processing.filters import filter_images  # use full filter pipeline
@@ -445,7 +450,9 @@ def get_config():
 
 @app.route("/update_images", methods=["POST"])
 def update_images():
-    """Update image-related entries (num_images, shape, image_type) in YAML."""
+    """Update core image entries (num_images, shape, optional time_resolved)
+    in YAML.
+    """
     data = request.get_json() or {}
     images_block = config.data.setdefault("images", {})
     changed = {}
@@ -455,6 +462,8 @@ def update_images():
             if n > 0:
                 images_block["num_images"] = n
                 changed["num_images"] = n
+            else:
+                return jsonify({"error": "num_images must be > 0"}), 400
         except Exception:
             return jsonify({"error": "num_images must be positive int"}), 400
     if "shape" in data:
@@ -464,15 +473,14 @@ def update_images():
             and len(shp) == 2
             and all(isinstance(v, int) and v > 0 for v in shp)
         ):
-            images_block["shape"] = list(shp)
-            changed["shape"] = list(shp)
+            images_block["shape"] = [int(shp[0]), int(shp[1])]
+            changed["shape"] = images_block["shape"]
         else:
             return jsonify({"error": "shape must be [H,W] positive ints"}), 400
-    if "image_type" in data:
-        it = data["image_type"]
-        if isinstance(it, str) and it.strip():
-            images_block["image_type"] = it.strip()
-            changed["image_type"] = it.strip()
+    if "time_resolved" in data:
+        tr = bool(data["time_resolved"])
+        images_block["time_resolved"] = tr
+        changed["time_resolved"] = tr
 
     # Persist
     try:
@@ -485,7 +493,13 @@ def update_images():
             )
     except Exception as e:
         return jsonify({"error": f"Failed to write config.yaml: {e}"}), 500
-    return jsonify({"status": "success", "images": images_block, "changed": changed})
+    return jsonify(
+        {
+            "status": "success",
+            "images": images_block,
+            "changed": changed,
+        }
+    )
 
 
 @app.route("/update_instantaneous", methods=["POST"])
@@ -522,10 +536,17 @@ def update_instantaneous():
             yaml.dump(config.data, f, default_flow_style=False, sort_keys=False)
     except Exception as e:
         return jsonify({"error": f"Failed to write config.yaml: {e}"}), 500
-    return jsonify({"status": "success", "instantaneous_piv": inst, "changed": changed})
+    return jsonify(
+        {
+            "status": "success",
+            "instantaneous_piv": inst,
+            "changed": changed,
+        }
+    )
 
 
 # ------------- Masking Endpoints -------------
+
 
 # Endpoint to serve raw image for masking (with colormap)
 @app.route("/get_raw_image", methods=["GET"])
@@ -581,7 +602,8 @@ def upload_mask():
         height: int
         data: [0|1, ...] length = width*height
       }
-    Converts to boolean numpy array of shape (height, width) and saves to .mat file.
+    Converts to boolean numpy array of shape (height, width) and saves to
+    .mat file.
     Returns summary.
     """
     payload = request.get_json(silent=True) or {}
@@ -606,7 +628,10 @@ def upload_mask():
         return (
             jsonify(
                 {
-                    "error": f"data length {len(flat)} does not match width*height={expected}"
+                    "error": (
+                        f"data length {len(flat)} does not match "
+                        f"width*height={expected}"
+                    )
                 }
             ),
             400,
@@ -677,7 +702,8 @@ def load_mask():
     Loads a mask and polygon data from a .mat file.
     Query params:
       - path: full path to mask .mat file (preferred)
-      - basepath_idx, camera, index, frame: optional, used to construct path if 'path' not given
+                        - basepath_idx, camera, index, frame: optional, used to
+                            construct path if 'path' not given
     Returns: { mask: [0|1,...], width, height, polygons: [...] }
     """
     path = request.args.get("path", default=None, type=str)
@@ -730,7 +756,9 @@ def load_mask():
         print("Exception in load_mask:", e)
         return jsonify({"error": f"Failed to load mask: {e}"}), 500
 
+
 # ------------- Run PIV Endpoints -------------
+
 
 @app.route("/run_piv", methods=["POST"])
 def run_piv():
@@ -739,9 +767,22 @@ def run_piv():
     Accepts POST requests and replies with 200 OK.
     Prints the incoming request JSON.
     """
-    req_json = request.get_json(silent=True)
+    req_json = request.get_json(silent=True) or {}
     print("Received /run_piv request:", req_json)
-    return jsonify({"status": "ok", "message": "run_piv placeholder"}), 200
+    # For now, do nothing: acknowledge request and return expected count
+    # Frontend will poll for uncalibrated/.mat files itself.
+    req_json.get("sourcePath") or req_json.get("source_path")
+    req_json.get("source_path_idx")
+    try:
+        expected = int(config.data.get("images", {}).get("num_images", 10))
+    except Exception:
+        expected = 10
+    return (
+        jsonify(
+            {"status": "ok", "message": "run_piv acknowledged", "expected": expected}
+        ),
+        200,
+    )
 
 
 @app.route("/cancel_run", methods=["POST"])
@@ -765,32 +806,203 @@ def check_status():
     return jsonify({"status": value})
 
 
-@app.route("/check_status_image", methods=["GET"])
-def check_status_image():
+@app.route("/get_uncalibrated_image", methods=["GET"])
+def get_uncalibrated_image():
+    """Return a single uncalibrated PNG by index if present.
+    Query params:
+      - base_path: absolute path to source base (optional)
+      - source_path_idx: integer index into config.source_paths (optional)
+      - camera: camera folder (e.g. '1' or 'Cam1')
+      - index: 1-based image index (required)
+      - var: 'ux'|'uy' (optional, default 'ux')
+      - run: preferred run (1-based, optional)
+      - lower_limit, upper_limit, cmap (optional plotting params)
+    Returns JSON { image: <base64-png>, meta: {...} } or 404 if missing.
     """
-    Receives the same parameters as /get_raw_image.
-    For now, always returns morgan.jpeg as base64 PNG.
-    """
-    # Accept parameters for future compatibility
-    # basepath_idx = request.args.get("basepath_idx", default=0, type=int)
-    # camera = request.args.get("camera", default="Cam1", type=str)
-    # index = request.args.get("index", default=0, type=int)
-    # frame = request.args.get("frame", default="A")
-    # Placeholder: always send morgan.jpeg
-    try:
-        img_path = Path("morgan.jpeg")  # PLACEHOLDER
-        if not img_path.exists():  # PLACEHOLDER
-            return jsonify({"error": "morgan.jpeg not found"}), 404  # PLACEHOLDER
+    basepath_idx = request.args.get("basepath_idx", default=0, type=int)
+    camera = request.args.get("camera", default="1")
+    idx = request.args.get("index", type=int)
+    var = request.args.get("var", default="ux")
+    run = request.args.get("run", default=1, type=int)
+    lower_limit = request.args.get("lower_limit", type=float)
+    upper_limit = request.args.get("upper_limit", type=float)
+    cmap = request.args.get("cmap", default=None, type=str)
+    if cmap is not None and (cmap.lower() == "default" or cmap.strip() == ""):
+        cmap = None
 
-        im_pil = Image.open(img_path)
+    if idx is None:
+        return jsonify({"error": "index required"}), 400
+
+    base = config.base_paths[basepath_idx]
+    print(f"Resolved base path: {base}")
+    cam_folder = cam_folder_key(camera)
+    # Candidate folders to look for .mat files
+    folder_uncal = (
+        base
+        / "uncalibrated_piv"
+        / str(config.num_images)
+        / cam_folder
+        / "instantaneous"
+    )
+    # Build candidate filename from config.vector_format (e.g. "%05d.mat")
+    vector_fmt = config.vector_format  # e.g. "%05d.mat"
+    if isinstance(vector_fmt, (list, tuple)):
+        vector_fmt = vector_fmt[0]
+    try:
+        name = vector_fmt % idx
+    except Exception:
+        name = f"{idx:05d}.mat"
+    data_path = folder_uncal / name
+
+    print(f"Searching for uncalibrated .mat at: {data_path}")
+    mat_path = None
+    tried = []
+    tried.append(
+        {
+            "folder": str(folder_uncal),
+            "exists": folder_uncal.exists(),
+            "files_tested": [],
+        }
+    )
+    if folder_uncal.exists():
+        exists = data_path.exists() and data_path.is_file()
+        tried[-1]["files_tested"].append({"path": str(data_path), "exists": exists})
+        if exists:
+            mat_path = data_path
+
+    if mat_path is None:
+        # Return 404 with the list of tried locations to aid debugging
+        return (
+            jsonify(
+                {
+                    "error": f"uncalibrated .mat not found for index {idx}",
+                    "tried": tried,
+                }
+            ),
+            404,
+        )
+
+    try:
+        data_mat = loadmat(str(mat_path), struct_as_record=False, squeeze_me=True)
+        if "piv_result" not in data_mat:
+            return jsonify({"error": "Variable 'piv_result' not found in mat"}), 400
+        piv_result = data_mat["piv_result"]
+
+        # Determine run & pick non-empty entry similar to plot_vector implementation
+        pr = None
+        if isinstance(piv_result, np.ndarray):
+            max_runs = piv_result.size
+            current_run = max(1, int(run))
+            while current_run <= max_runs:
+                try:
+                    cand = piv_result[current_run - 1]
+                    var_arr_candidate = np.asarray(getattr(cand, var))
+                    if var_arr_candidate.size > 0 and not np.all(
+                        np.isnan(var_arr_candidate)
+                    ):
+                        pr = cand
+                        run = current_run
+                        break
+                except Exception:
+                    pass
+                current_run += 1
+            if pr is None:
+                return jsonify({"error": f"No non-empty run for var {var}"}), 400
+        else:
+            try:
+                var_arr_candidate = np.asarray(getattr(piv_result, var))
+                if var_arr_candidate.size > 0 and not np.all(
+                    np.isnan(var_arr_candidate)
+                ):
+                    pr = piv_result
+                    run = 1
+                else:
+                    return jsonify({"error": f"No non-empty run for var {var}"}), 400
+            except Exception:
+                return jsonify({"error": f"'{var}' not found in piv_result"}), 400
+
+        # Extract var array and mask if present
+        var_arr = np.asarray(getattr(pr, var))
+        try:
+            mask_arr = np.asarray(getattr(pr, "b_mask")).astype(bool)
+        except Exception:
+            mask_arr = np.zeros_like(var_arr, dtype=bool)
+
+        # Build settings and plot (no coordinates for uncalibrated mats)
+        save_basepath = Path("plot_vector_tmp")
+        settings = make_scalar_settings(
+            config,
+            variable=var,
+            run_label=run,
+            save_basepath=save_basepath,
+            variable_units="m/s",
+            coords_x=None,
+            coords_y=None,
+            lower_limit=lower_limit,
+            upper_limit=upper_limit,
+            cmap=cmap,
+        )
+
+        fig, ax, im = plot_scalar_field(var_arr, mask_arr, settings)
+
+        # Render to PNG bytes
         buf = BytesIO()
-        im_pil.save(buf, format="PNG")
+        fig.savefig(buf, format="png", bbox_inches="tight", dpi=150)
+        plt.close(fig)
         buf.seek(0)
         b64_img = base64.b64encode(buf.read()).decode("utf-8")
-        # Optionally, send dummy vmin/vmax
-        return jsonify({"image": b64_img, "vmin": 0, "vmax": 255})
+
+        H, W = int(var_arr.shape[0]), int(var_arr.shape[1])
+        return jsonify(
+            {
+                "image": b64_img,
+                "meta": {"run": run, "var": var, "width": W, "height": H},
+            }
+        )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/get_uncalibrated_count", methods=["GET"])
+def get_uncalibrated_count():
+    """Return the number of candidate uncalibrated .mat files present.
+    Query params:
+      - base_path: absolute path to source base (optional)
+      - source_path_idx: integer index into config.source_paths (optional)
+      - camera: camera folder (e.g. '1' or 'Cam1')
+    Response: { count: int, files: [filenames...] }
+    """
+    basepath_idx = request.args.get("basepath_idx", default=0, type=int)
+    camera = request.args.get("camera", default="1")
+
+    base = config.base_paths[basepath_idx]
+    print(f"Resolved base path: {base}")
+    cam_folder = cam_folder_key(camera)
+    # Candidate folders to look for .mat files
+    folder_uncal = (
+        base
+        / "uncalibrated_piv"
+        / str(config.num_images)
+        / cam_folder
+        / "instantaneous"
+    )
+
+    # helper to collect .mat filenames
+    vector_fmt = config.vector_format
+    if isinstance(vector_fmt, (list, tuple)):
+        vector_fmt = vector_fmt[0]
+    expected_names = set([vector_fmt % i for i in range(1, config.num_images + 1)])
+
+    found = []
+    if folder_uncal.exists() and folder_uncal.is_dir():
+        for p in sorted(folder_uncal.iterdir()):
+            if p.is_file() and p.name in expected_names:
+                found.append(p.name)
+    print(f"Found {len(found)} uncalibrated .mat files in {folder_uncal}")
+
+    percent = int((len(found) / config.num_images) * 100) if config.num_images else 0
+
+    return jsonify({"count": len(found), "files": found, "percent": percent})
 
 
 # ------------- Calibration Endpoints -------------
@@ -802,12 +1014,14 @@ def _resolve_calibration_image(source_path_idx: int, camera: str, index: int = 1
         raise ValueError("source_path_idx out of range")
     source_root = config.source_paths[source_path_idx]
     calib_dir = source_root / "calibration" / cam_folder
-    # Accept both nested structure (Calibration/Cam1/Calib00001.tif) or flat (Calibration/Cam1.tif)
+    # Accept nested structure (Calibration/Cam1/Calib00001.tif) or flat
+    # (Calibration/Cam1.tif)
     config.calibration_image_format
     filename = config.calibration_filename(index)
     img_path = calib_dir / filename
     if not img_path.exists():
-        # Fallback: try directly under Calibration folder without extra cam subfolder
+        # Fallback: try directly under Calibration folder without extra
+        # cam subfolder
         alt_dir = source_root / "calibration" / cam_folder
         alt_path = alt_dir / filename
         if alt_path.exists():
@@ -873,7 +1087,8 @@ def calibration_compute():
     dot_distance_mm = float(data.get("dot_distance_mm", 28.9))
     grid_tolerance = float(data.get("grid_tolerance", 0.5))
     ransac_threshold = float(data.get("ransac_threshold", 3.0))
-    # Points provided by frontend after user clicks (already snapped) in pixel coordinates
+    # Points provided by frontend after user clicks (already snapped)
+    # in pixel coordinates
     datum = data.get("datum")
     right = data.get("right")
     above = data.get("above")
@@ -1088,6 +1303,7 @@ def pod_status():
         pod_status.counter = 95
     pod_status.counter = (pod_status.counter + 5) % 105
     return jsonify({"status": pod_status.counter, "processing": bool(pod_processing)})
+
 
 if __name__ == "__main__":
     app.run(debug=True)
