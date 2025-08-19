@@ -2,20 +2,21 @@ from pathlib import Path
 
 import yaml
 
+_CONFIG = None  # singleton cache
+
 
 class Config:
     def __init__(self, path="config.yaml"):
         with open(path, "r") as f:
             self.data = yaml.safe_load(f)
             # Use the first base_path, first camera, and image_format for dtype detection
-            source_path = Path(self.source_paths[0])
-            camera_folder = f"Cam{self.camera_numbers[0]}"
-            # Use correct image format for dtype detection
-            if self.time_resolved:
-                file_path = source_path / camera_folder / (self.image_format % 1)
-            else:
-                file_path = source_path / camera_folder / (self.image_format[0] % 1)
-            print(file_path)
+            # source_path = Path(self.source_paths[0])
+            # camera_folder = f"Cam{self.camera_numbers[0]}"
+            # # Use correct image format for dtype detection
+            # if self.time_resolved:
+            #     file_path = source_path / camera_folder / (self.image_format % 1)
+            # else:
+            #     file_path = source_path / camera_folder / (self.image_format[0] % 1)
             # img = tifffile.imread(file_path) # bye bye
             # self.image_dtype = img.dtype
 
@@ -165,3 +166,16 @@ class Config:
         except Exception:
             # On formatting error, just return fmt
             return fmt
+
+
+def get_config(refresh: bool = False) -> Config:
+    """Return shared Config instance. Pass refresh=True to reload from disk."""
+    global _CONFIG
+    if refresh or _CONFIG is None:
+        _CONFIG = Config()
+    return _CONFIG
+
+
+def reload_config() -> Config:
+    """Explicit convenience to force reload."""
+    return get_config(refresh=True)

@@ -14,7 +14,7 @@ images:
   - '%05d.mat'
   shape:
   - 1024
-  - 1024
+  - 1100
   time_resolved: false
 batches:
   size: 1000
@@ -25,15 +25,7 @@ processing:
 post_processing:
 - type: POD
   settings:
-    randomised: true
-    normalise: false
-    stack_u_y: false
     k_modes: 10
-- type: POD_rebuild
-  settings:
-    energy: 0.8
-    stack_u_y: false
-    normalise: false
 plots:
   save_extension: .png
   save_pickle: true
@@ -59,27 +51,21 @@ instantaneous_piv:
     - 64
   - - 32
     - 32
-  - - 16
-    - 16
-  - - 16
-    - 16
-  - - 16
-    - 16
   overlap:
   - 50
   - 50
   - 50
-  - 50
-  - 50
-  - 50
   runs:
-  - 4
+  - 6
   time_resolved: false
 ensemble_piv:
   runs:
   - 5
-filters:
-- type: time
+  filters:
+  - type: time
   batch_size: 50
 calibration:
   image_format: calib%05d.tif
+filters:
+- type: time
+  batch_size: 50

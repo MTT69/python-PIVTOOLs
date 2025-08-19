@@ -149,15 +149,26 @@ def plot_scalar_field(variable, mask, settings):
             else Normalize(vmin=vmin, vmax=vmax)
         )
     else:
+        # Default colormap selection when no explicit cmap provided in settings.
+        # For diverging data that spans negative and positive, use the full 'bwr'
+        # with a TwoSlopeNorm. For one-sided data, use half of 'bwr':
+        # - vmax <= 0 : use lower-half (blue->white) so values near zero are white
+        # - vmin >= 0 : use upper-half (white->red) so values near zero are white
         if use_two_slope:
-            cmap = "bwr"
+            cmap = plt.get_cmap("bwr")
             norm = TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
-        elif vmax <= 0:
-            cmap = "Blues_r"
-            norm = Normalize(vmin=vmin, vmax=vmax)
-        else:  # vmin >= 0
-            cmap = "Reds"
-            norm = Normalize(vmin=vmin, vmax=vmax)
+        else:
+            bwr = plt.get_cmap("bwr")
+            if vmax <= 0:
+                # lower half: blue -> white (0.0 -> 0.5 of bwr)
+                colors = bwr(np.linspace(0.0, 0.5, 256))
+                cmap = mpl.colors.LinearSegmentedColormap.from_list("bwr_lower", colors)
+                norm = Normalize(vmin=vmin, vmax=vmax)
+            else:  # vmin >= 0
+                # upper half: white -> red (0.5 -> 1.0 of bwr)
+                colors = bwr(np.linspace(0.5, 1.0, 256))
+                cmap = mpl.colors.LinearSegmentedColormap.from_list("bwr_upper", colors)
+                norm = Normalize(vmin=vmin, vmax=vmax)
 
     # Contourf
     im = plt.contourf(X, Y, masked_var, levels=settings.levels, cmap=cmap, norm=norm)

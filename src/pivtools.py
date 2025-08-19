@@ -6,7 +6,7 @@ from dask.distributed import Client, LocalCluster
 
 from config import Config
 from image_handling.load_images import load_images
-from post_processing.pod_decompose import pod_decompose, pod_rebuild
+from post_processing.POD.pod_decompose import pod_decompose, pod_rebuild
 from pre_processing.preprocess import preprocess_images
 from vector_statistics.ensemble_statistics import ensemble_statistics
 from vector_statistics.instantaneous_statistics import instantaneous_statistics
