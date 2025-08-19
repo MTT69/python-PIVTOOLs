@@ -118,17 +118,14 @@ def plot_scalar_field(variable, mask, settings):
             y = np.arange(ny)
         X, Y = np.meshgrid(x, y)
 
-    # Create the plot
-    fig, ax = plt.subplots(
-        figsize=(12, 7)
-    )  # The size to be adjusted to meet the UI requirements!
+    # Create the plot (object-oriented API)
+    fig, ax = plt.subplots(figsize=(12, 7))
     ax.set_facecolor("gray")  # <-- gray shows through masked holes
 
     # Determine limits
     if settings.lower_limit is not None and settings.upper_limit is not None:
         vmin, vmax = settings.lower_limit, settings.upper_limit
     else:
-        # Compute from data
         vmin, vmax = float(masked_var.min()), float(masked_var.max())
 
     # Enforce symmetric scale around zero if data spans negative and positive
@@ -149,36 +146,30 @@ def plot_scalar_field(variable, mask, settings):
             else Normalize(vmin=vmin, vmax=vmax)
         )
     else:
-        # Default colormap selection when no explicit cmap provided in settings.
-        # For diverging data that spans negative and positive, use the full 'bwr'
-        # with a TwoSlopeNorm. For one-sided data, use half of 'bwr':
-        # - vmax <= 0 : use lower-half (blue->white) so values near zero are white
-        # - vmin >= 0 : use upper-half (white->red) so values near zero are white
         if use_two_slope:
             cmap = plt.get_cmap("bwr")
             norm = TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
         else:
             bwr = plt.get_cmap("bwr")
             if vmax <= 0:
-                # lower half: blue -> white (0.0 -> 0.5 of bwr)
                 colors = bwr(np.linspace(0.0, 0.5, 256))
                 cmap = mpl.colors.LinearSegmentedColormap.from_list("bwr_lower", colors)
                 norm = Normalize(vmin=vmin, vmax=vmax)
-            else:  # vmin >= 0
-                # upper half: white -> red (0.5 -> 1.0 of bwr)
+            else:
                 colors = bwr(np.linspace(0.5, 1.0, 256))
                 cmap = mpl.colors.LinearSegmentedColormap.from_list("bwr_upper", colors)
                 norm = Normalize(vmin=vmin, vmax=vmax)
 
-    # Contourf
-    im = plt.contourf(X, Y, masked_var, levels=settings.levels, cmap=cmap, norm=norm)
+    # Use ax.contourf (object-oriented)
+    im = ax.contourf(X, Y, masked_var, levels=settings.levels, cmap=cmap, norm=norm)
 
     sm = ScalarMappable(norm=norm, cmap=cmap)
     sm.set_array([])  # required for some Matplotlib versions
+
+    # Use object-oriented colorbar
     cbar = fig.colorbar(sm, ax=ax, label=cm_label)
 
     if isinstance(settings.levels, np.ndarray):
-        # pick a stable set, e.g. 7 ticks or [vmin, 0, vmax] for diverging
         if isinstance(norm, TwoSlopeNorm):
             ticks = [norm.vmin, 0.0, norm.vmax]
         else:
@@ -215,6 +206,13 @@ def plot_scalar_field(variable, mask, settings):
     # # Save figure if save_name is provided
     # if settings.save_name:
     #     fig.savefig(f"{settings.save_name}{settings.save_extension}", dpi=1200, bbox_inches='tight')
+    # plt.close(fig)
+
+    # # Optionally save variable as pickle file
+    # if settings.save_pickle:
+    #     import pickle
+    #     with open(f"{settings.save_name}.pkl", 'wb') as f:
+    #         pickle.dump(variable, f)
     # plt.close(fig)
 
     # # Optionally save variable as pickle file
