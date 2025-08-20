@@ -11,6 +11,16 @@ from matplotlib.ticker import FixedFormatter, FixedLocator
 from config import Config
 
 mpl.use("Agg")
+mpl.rcParams["xtick.direction"] = "in"
+mpl.rcParams["ytick.direction"] = "in"
+mpl.rcParams["xtick.major.size"] = 5
+mpl.rcParams["ytick.major.size"] = 5
+mpl.rcParams["xtick.minor.size"] = 3
+mpl.rcParams["ytick.minor.size"] = 3
+mpl.rcParams["xtick.minor.visible"] = True
+mpl.rcParams["ytick.minor.visible"] = True
+mpl.rcParams["xtick.major.pad"] = 6
+mpl.rcParams["ytick.major.pad"] = 6
 
 
 # Settings object to drive plot_scalar_field conveniently from Config
