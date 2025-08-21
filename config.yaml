@@ -51,7 +51,13 @@ instantaneous_piv:
     - 64
   - - 32
     - 32
+  - - 16
+    - 16
+  - - 8
+    - 8
   overlap:
+  - 50
+  - 50
   - 50
   - 50
   - 50
@@ -64,8 +70,23 @@ ensemble_piv:
   filters:
   - type: time
   batch_size: 50
-calibration:
+calibration_format:
   image_format: calib%05d.tif
+calibration:
+  scale_factor:
+    dt: 5
+    px_per_mm: 15
+    x_offset:
+    - 5
+    y_offset:
+    - 5
+  image_format: calib%05d.tif
+  pinhole:
+    dot_distance_mm: 28.9
+    grid_tolerance: 0.5
+    ransac_threshold: 3
+    dt: 5
+  active: scale_factor
 filters:
 - type: time
   batch_size: 50

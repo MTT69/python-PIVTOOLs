@@ -1,7 +1,9 @@
 from pathlib import Path
 
 import numpy as np
+import scipy.io
 from flask import Blueprint, jsonify, request
+from loguru import logger
 
 from calibration.calibration_planar.planar_calibration import (
     calculate_homography,
@@ -22,6 +24,7 @@ from calibration.calibration_planar.planar_calibration import (
 from common.utils import camera_number, numpy_to_png_base64
 from config import get_config
 from paths import get_data_paths
+from plotting.app.views import extract_coordinates
 
 
 def cache_key(source_path_idx, camera):
@@ -175,4 +178,85 @@ def calibration_compute():
             }
         )
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@calibration_bp.route("/calibration/set_datum", methods=["POST"])
+def calibration_set_datum():
+    """
+    Set a new datum (origin) for the coordinates of a given run, and/or apply offsets.
+    Expects JSON: source_path_idx, camera, run, x, y, x_offset, y_offset
+    """
+    data = request.get_json() or {}
+    base_path_idx = int(data.get("base_path_idx", data.get("source_path_idx", 0)))
+    camera = camera_number(data.get("camera", 1))
+    run = int(data.get("run", 1))
+    type_name = data.get("type_name", "instantaneous")
+    x0 = data.get("x")
+    y0 = data.get("y")
+    x_offset = data.get("x_offset", 0)
+    y_offset = data.get("y_offset", 0)
+    logger.debug("updating datum for run %d", run)
+    try:
+        cfg = get_config()
+        # Accept both base_paths and source_paths for compatibility
+        source_root = Path(
+            getattr(cfg, "base_paths", getattr(cfg, "source_paths", []))[base_path_idx]
+        )
+        paths = get_data_paths(
+            base_dir=source_root,
+            num_images=getattr(cfg, "num_images", 1),
+            cam=camera,
+            type_name=type_name,
+            calibration=False,
+        )
+        data_dir = paths["data_dir"]
+        coords_path = data_dir / "coordinates.mat"
+        if not coords_path.exists():
+            return jsonify({"error": f"Coordinates file not found: {coords_path}"}), 404
+
+        mat = scipy.io.loadmat(coords_path, struct_as_record=False, squeeze_me=True)
+        if "coordinates" not in mat:
+            return (
+                jsonify({"error": "Variable 'coordinates' not found in coords mat"}),
+                400,
+            )
+        coordinates = mat["coordinates"]
+
+        run_idx = run - 1
+
+        # Use extract_coordinates from plotting.app.views
+        cx, cy = extract_coordinates(coordinates, run)
+
+        # Print for debugging
+        print(f"[set_datum] Run {run} - original first x,y: {cx.flat[0]}, {cy.flat[0]}")
+        print(
+            f"[set_datum] Datum to set: x0={x0}, y0={y0}, x_offset={x_offset}, y_offset={y_offset}"
+        )
+
+        # Only apply datum shift if x/y are provided (not None)
+        if x0 is not None and y0 is not None:
+            x0 = float(x0)
+            y0 = float(y0)
+            cx = cx - x0
+            cy = cy - y0
+            print(
+                f"[set_datum] After datum shift, first x,y: {cx.flat[0]}, {cy.flat[0]}"
+            )
+
+        # Always apply offsets if present
+        if x_offset is not None and y_offset is not None:
+            x_offset = float(x_offset)
+            y_offset = float(y_offset)
+            cx = cx + x_offset
+            cy = cy + y_offset
+            print(f"[set_datum] After offset, first x,y: {cx.flat[0]}, {cy.flat[0]}")
+
+        coordinates[run_idx].x = cx
+        coordinates[run_idx].y = cy
+
+        scipy.io.savemat(coords_path, {"coordinates": coordinates})
+        return jsonify({"status": "ok", "run": run, "shape": [cx.shape, cy.shape]})
+    except Exception as e:
+        print(f"[set_datum] ERROR: {e}")
         return jsonify({"error": str(e)}), 500

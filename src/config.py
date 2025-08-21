@@ -148,7 +148,7 @@ class Config:
         backward compatibility.
         """
         # Preferred location
-        calib_block = self.data.get("calibration", {}) or {}
+        calib_block = self.data.get("calibration_format", {}) or {}
         fmt = calib_block.get("image_format", None)
         if not fmt:
             # fallback legacy key
@@ -166,6 +166,24 @@ class Config:
         except Exception:
             # On formatting error, just return fmt
             return fmt
+
+    @property
+    def calibration(self):
+        """Return the full calibration block (dict) from config."""
+        return self.data.get("calibration", {})
+
+    @property
+    def active_calibration_method(self):
+        """Return the active calibration method name (e.g., 'pinhole', 'scale_factor')."""
+        cal = self.calibration
+        return cal.get("active", "pinhole")
+
+    @property
+    def active_calibration_params(self):
+        """Return the parameters dict for the active calibration method."""
+        cal = self.calibration
+        active = cal.get("active", "pinhole")
+        return cal.get(active, {})
 
 
 def get_config(refresh: bool = False) -> Config:

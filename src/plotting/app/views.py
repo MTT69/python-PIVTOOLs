@@ -149,6 +149,9 @@ def safe_get_data_paths(*, base, cam_num, params):
         endpoint=params["endpoint"],
         use_merged=params["use_merged"],
     )
+    # Forward new flag if present
+    if "use_uncalibrated" in params:
+        kw["use_uncalibrated"] = params["use_uncalibrated"]
     if "cam" in sig.parameters:
         kw["cam"] = cam_num
     else:
@@ -305,6 +308,9 @@ def parse_request_params(req, allow_baseidx=True):
     # merged flag
     merged_raw = req.args.get("merged", default="0", type=str)  # what is this?
     use_merged = merged_raw in ("1", "true", "True", "TRUE")
+    # new frontend flag for uncalibrated data
+    is_uncal_raw = req.args.get("is_uncalibrated", default="0", type=str)
+    use_uncalibrated = is_uncal_raw in ("1", "true", "True", "TRUE")
     # other params
     type_name = req.args.get("type_name", default="instantaneous", type=str)
     frame = req.args.get("frame", default=1, type=int)
@@ -330,6 +336,7 @@ def parse_request_params(req, allow_baseidx=True):
         endpoint=endpoint,
         var=var,
         use_merged=use_merged,
+        use_uncalibrated=use_uncalibrated,
         lower_limit=lower_limit,
         upper_limit=upper_limit,
         cmap=cmap,
@@ -444,7 +451,7 @@ def plot_stats():
         paths = safe_get_data_paths(base=base, cam_num=cam_num, params=params)
         mean_stats_dir = Path(paths["stats_dir"]) / "mean_stats"
         out_file = mean_stats_dir / "mean_stats.mat"
-        coords_file = mean_stats_dir / "coordinates.mat"
+        coords_file = Path(paths["data_dir"]) / "coordinates.mat"
     except Exception as e:
         return jsonify({"error": f"failed to resolve mean/coords paths: {e}"}), 400
 
@@ -482,15 +489,16 @@ def check_vars():
     frame = request.args.get("frame", default=None, type=int)
     params = parse_request_params(request)
     logger.debug("check_vars: request params: %s", params)
-    cfg = get_config()
-    paths = get_data_paths(
-        base_dir=params["base_path"],
-        num_images=cfg.num_images,
-        cam=params["camera"],
-        type_name=params["type_name"],
-        endpoint=params["endpoint"],
-        use_merged=params["use_merged"],
-    )
+    # cfg = get_config()
+    # Resolve paths using safe_get_data_paths so is_uncalibrated/use_merged are honored
+    try:
+        paths = safe_get_data_paths(
+            base=params["base_path"], cam_num=params["camera"], params=params
+        )
+    except Exception as e:
+        logger.exception("check_vars: get_data_paths failed")
+        return jsonify({"error": f"paths resolution failed: {e}"}), 400
+
     logger.debug("check_vars: resolved paths: %s", paths)
     data_dir = Path(paths["data_dir"])
     mean_stats_dir = Path(paths["stats_dir"]) / "mean_stats"
@@ -768,7 +776,7 @@ def get_uncalibrated_image():
             upper_limit=params["upper_limit"],
             cmap=params["cmap"],
         )
-        meta = {"run": params["run"], "var": params["var"], "width": W, "height": H}
+        meta = {"run": effective_run, "var": params["var"], "width": W, "height": H}
         if isinstance(extra, dict):
             meta.update(extra)
         return jsonify({"image": b64_img, "meta": meta})
@@ -1173,7 +1181,12 @@ def get_stats_value_at_position():
             except Exception:
                 return None
 
-        var_arr = safe(params["var"]) or safe("ux") or safe("uy")
+        var_arr = safe(params.get("var"))
+        if var_arr is None:
+            var_arr = safe("ux")
+        if var_arr is None:
+            var_arr = safe("uy")
+
         if var_arr is None or var_arr.ndim < 2:
             return jsonify({"error": "no 2D data array available"}), 500
         H, W = var_arr.shape[0], var_arr.shape[1]

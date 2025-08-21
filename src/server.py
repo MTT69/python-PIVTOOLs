@@ -67,6 +67,16 @@ def recursive_update(d, u):
             d[k] = v
 
 
+def get_active_calibration_params(cfg):
+    """
+    Returns (active_method, params_dict) from config['calibration'].
+    """
+    cal = cfg.data.get("calibration", {})
+    active = cal.get("active", "pinhole")
+    params = cal.get(active, {})
+    return active, params
+
+
 # --- Endpoints ---
 
 
@@ -184,6 +194,7 @@ def get_status():
 @app.route("/config", methods=["GET"])
 def config_endpoint():
     cfg = get_config()
+    # Already returns full nested config as JSON
     return jsonify(cfg.data)
 
 
@@ -232,6 +243,19 @@ def get_uncalibrated_count():
     )
     percent = int((len(found) / num_images) * 100) if num_images else 0
     return jsonify({"count": len(found), "files": found, "percent": percent})
+
+
+@app.route("/calibration/compute", methods=["POST"])
+def calibration_compute():
+    """
+    Example endpoint: uses the new calibration config structure.
+    """
+    cfg = get_config()
+    # ...parse request as needed...
+    active, params = get_active_calibration_params(cfg)
+    # Use 'active' and 'params' for calibration logic
+    # ...your calibration logic here...
+    return jsonify({"status": "ok", "active": active, "params": params})
 
 
 if __name__ == "__main__":
