@@ -11,13 +11,13 @@ from config import Config
 
 
 def read_mat_contents(
-    file_path: str, run_indices: Optional[Sequence[int]] = None
+    file_path: str, run_index: Optional[int] = None
 ) -> np.ndarray:
     """
     Reads piv_result from a .mat file.
-    If multiple runs are present (object array of structs), returns stacked runs with shape (R, 3, H, W).
-    Otherwise returns a single-run with shape (1, 3, H, W).
-    run_indices are zero-based indices of runs to extract; if None, extract all runs.
+    If multiple runs are present, selects the specified run_index (0-based).
+    If run_index is None, selects the first run with valid (non-empty) data.
+    Returns shape (1, 3, H, W) for the selected run.
     """
     mat = scipy.io.loadmat(file_path, struct_as_record=False, squeeze_me=True)
     piv_result = mat["piv_result"]
@@ -25,28 +25,29 @@ def read_mat_contents(
     # Multiple runs case: numpy array of structs
     if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
         total_runs = piv_result.size
-        indices = (
-            list(range(total_runs))
-            if run_indices is None
-            else [i for i in run_indices if 0 <= i < total_runs]
-        )
-        if run_indices is not None and len(indices) != len(run_indices):
-            missing = sorted(set(run_indices) - set(indices))
-            warnings.warn(
-                f"Skipping out-of-range run indices {missing} for {file_path} (total_runs={total_runs})"
-            )
-
-        run_arrays = []
-        for idx in indices:
-            pr = piv_result[idx]
-            ux = np.asarray(pr.ux)
-            uy = np.asarray(pr.uy)
-            b_mask = np.asarray(pr.b_mask).astype(ux.dtype, copy=False)
-            run_arrays.append(np.stack([ux, uy, b_mask], axis=0))
-        stacked = np.stack(run_arrays, axis=0)  # (R, 3, H, W)
+        if run_index is None:
+            # Find first valid run (non-empty ux, uy)
+            for idx in range(total_runs):
+                pr = piv_result[idx]
+                ux = np.asarray(pr.ux)
+                uy = np.asarray(pr.uy)
+                if ux.size > 0 and uy.size > 0:
+                    run_index = idx
+                    break
+            else:
+                raise ValueError(f"No valid runs found in {file_path}")
+        if run_index < 0 or run_index >= total_runs:
+            raise ValueError(f"Invalid run_index {run_index} for {file_path} (total_runs={total_runs})")
+        pr = piv_result[run_index]
+        ux = np.asarray(pr.ux)
+        uy = np.asarray(pr.uy)
+        b_mask = np.asarray(pr.b_mask).astype(ux.dtype, copy=False)
+        stacked = np.stack([ux, uy, b_mask], axis=0)[None, ...]  # (1, 3, H, W)
         return stacked
 
     # Single run struct
+    if run_index is not None and run_index != 0:
+        raise ValueError(f"Invalid run_index {run_index} for single-run file {file_path}")
     pr = piv_result
     ux = np.asarray(pr.ux)
     uy = np.asarray(pr.uy)

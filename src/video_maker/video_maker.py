@@ -8,36 +8,45 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from matplotlib import cm
+import matplotlib.pyplot as plt
+import matplotlib.colors as mpl_colors
 from scipy.io import loadmat
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from post_processing.vector_loading import read_mat_contents
+from loguru import logger
 
 # ------------------------- Settings -------------------------
 
 
 @dataclass
 class PlotSettings:
-    corners: tuple = (None, None, None, None)  # (x0, y0, x1, y1)
+    corners: tuple | None = None  # (x0, y0, x1, y1)
 
-    variableName: str = r"Variable Name"
-    variableUnits: str = r"unit"
+    variableName: str = ""
+    variableUnits: str = ""
+    length_units: str = "mm"
+    title: str = ""
 
-    save_name: str = ""
+    save_name: str | None = None
     save_extension: str = ".png"
     save_pickle: bool = False
 
     cmap: str | None = None
-    levels: int = 30
+    levels: int | list = 500
     lower_limit: float | None = None
     upper_limit: float | None = None
     symmetric_around_zero: bool = True
 
-    coordinate_units = r"m"
-    _xlabel: str = r"$x$" + f" ({coordinate_units})"
-    _ylabel: str = r"$y$" + f" ({coordinate_units})"
-    _fontsize: int = 14
-    _title_fontsize: int = 16
+    _xlabel: str = "x"
+    _ylabel: str = "y"
+    _fontsize: int = 12
+    _title_fontsize: int = 14
+
+    # New: optional coordinates
+    coords_x: np.ndarray | None = None
+    coords_y: np.ndarray | None = None
 
     # Video options
     fps: int = 30
@@ -60,8 +69,16 @@ class PlotSettings:
     ffmpeg_loglevel: str = "warning"
 
     @property
-    def title(self):
-        return f"{self.variableName} ({self.variableUnits}) Plot"
+    def xlabel(self):
+        if self.length_units:
+            return f"{self._xlabel} ({self.length_units})"
+        return self._xlabel
+
+    @property
+    def ylabel(self):
+        if self.length_units:
+            return f"{self._ylabel} ({self.length_units})"
+        return self._ylabel
 
 
 # ------------------------- Helpers -------------------------
@@ -72,7 +89,8 @@ _num_re = re.compile(r"(\d+)")
 def _resolve_upscale(h, w, upscale):
     """Return (H_out, W_out). `upscale` can be None, a float factor, or (H, W)."""
     if upscale is None:
-        return h, w
+        H = h
+        W = w
     if isinstance(upscale, (int, float)):
         H = int(round(h * float(upscale)))
         W = int(round(w * float(upscale)))
@@ -209,15 +227,21 @@ def _compute_global_limits_from_files(files, pick, settings: PlotSettings):
 
 def _make_lut(cmap_name: str | None, use_two_slope: bool, vmin, vmax):
     # 1024-step LUT to reduce banding before codec quantization
+    if cmap_name == "default":
+        cmap_name = None
     if cmap_name is not None:
-        cmap = cm.get_cmap(cmap_name, 1024)
+        cmap = plt.get_cmap(cmap_name)
     else:
         if use_two_slope:
-            cmap = cm.get_cmap("bwr", 1024)
-        elif vmax <= 0:
-            cmap = cm.get_cmap("Blues_r", 1024)
+            cmap = plt.get_cmap("bwr")
         else:
-            cmap = cm.get_cmap("Reds", 1024)
+            bwr = plt.get_cmap("bwr")
+            if vmax <= 0:
+                colors = bwr(np.linspace(0.0, 0.5, 256))
+                cmap = mpl_colors.LinearSegmentedColormap.from_list("bwr_lower", colors)
+            else:
+                colors = bwr(np.linspace(0.5, 1.0, 256))
+                cmap = mpl_colors.LinearSegmentedColormap.from_list("bwr_upper", colors)
     lut = (cmap(np.linspace(0, 1, 1024))[:, :3] * 255).astype(np.uint8)  # (1024,3) RGB
     return lut
 
@@ -253,6 +277,7 @@ class FFmpegVideoWriter:
     ):
         if shutil.which("ffmpeg") is None:
             raise RuntimeError("ffmpeg not found on PATH")
+        path = Path(path).resolve()
         cmd = [
             "ffmpeg",
             "-y",
@@ -303,7 +328,14 @@ class FFmpegVideoWriter:
         stdin = self.proc.stdin
         if stdin is None:
             raise RuntimeError("ffmpeg stdin is not available")
-        stdin.write(rgb_frame_uint8.tobytes())
+        try:
+            stdin.write(rgb_frame_uint8.tobytes())
+        except BrokenPipeError:
+            _, stderr = self.proc.communicate()
+            if stderr:
+                msg = stderr.decode(errors="replace").strip()
+                print(f"ffmpeg stderr: {msg}")
+            raise RuntimeError("ffmpeg process has exited (broken pipe)")
 
     def release(self):
         stdin = self.proc.stdin
@@ -339,6 +371,7 @@ def make_video_from_scalar(
     files = sorted(
         [Path(p) for p in glob.glob(str(folder / pattern))], key=_natural_key
     )
+    files = [f for f in files if 'coordinate' not in f.name.lower()]
     if len(files) == 0:
         raise FileNotFoundError(f"No MAT files found in {folder} matching '{pattern}'")
 
@@ -354,10 +387,13 @@ def make_video_from_scalar(
     lut = _make_lut(settings.cmap, use_two, vmin, vmax)
 
     # Size
+
     arrs0 = read_mat_contents(str(files[0]))
     arr0, b0 = _select_variable_from_arrs(arrs0, str(files[0]), pick)
 
     H, W = arr0.shape
+    if H == 0 or W == 0:
+        raise ValueError(f"Invalid image dimensions {H}x{W} in {files[0]}. Check your MAT file data.")
     Hout, Wout = _resolve_upscale(H, W, settings.upscale)
 
     # Writer: require ffmpeg (no fallback)
@@ -390,6 +426,8 @@ def make_video_from_scalar(
             # skip frames where variable is not available
             continue
 
+        H_f, W_f = field.shape
+
         if settings.dither:
             field = field.astype(np.float32) + noise
 
@@ -420,11 +458,7 @@ def make_video_from_scalar(
         "shape": (H, W),
         "shape_out": (Hout, Wout),
         "variable": pick,
-        "cmap": (
-            settings.cmap
-            if settings.cmap
-            else ("bwr" if use_two else ("Blues_r" if vmax <= 0 else "Reds"))
-        ),
+        "cmap": settings.cmap,
         "elapsed_sec": round(t1 - t0, 3),
         "writer": "ffmpeg",
         "pix_fmt": getattr(settings, "pix_fmt", None),
@@ -435,8 +469,7 @@ def make_video_from_scalar(
 
 # ------------------------- Example usage -------------------------
 if __name__ == "__main__":
-    frames_dir = Path("calibrated_piv/1000/Cam1/instantaneous")
-
+    frames_dir = Path("C:\\Users\\ees1u24\\Desktop\\Planar_Images_with_wall\\test\\calibrated_piv\\1000\\Cam1\\instantaneous")
     # Optional: coordinates (not used by video)
     try:
         from post_processing.vector_loading import load_coords_from_directory

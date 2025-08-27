@@ -68,7 +68,7 @@ def _run_video_job(
             meta=None,
         )
         logger.info(
-            f"[VIDEO] Starting video job | base='{base}', cam={cam}, num_images={num_images}, pick={pick}"
+            f"[VIDEO] Starting video job | base='{base}', cam={cam}, num_images={num_images}, run={pick}"
         )
 
         # Resolve data/video dirs
@@ -82,9 +82,8 @@ def _run_video_job(
         video_dir.mkdir(parents=True, exist_ok=True)
 
         # Ensure output path set
-        if not getattr(ps, "out_path", None):
-            out_name = f"run{num_images}_Cam{cam}_{pick}.mp4"
-            ps.out_path = str(video_dir / out_name)
+        if not Path(ps.out_path).is_absolute():
+            ps.out_path = str(video_dir / ps.out_path)
 
         # Note: make_video_from_scalar is not cancellable; this is best-effort
         meta = make_video_from_scalar(data_dir, pick=pick, pattern=pattern, settings=ps)
@@ -107,129 +106,9 @@ def _run_video_job(
         )
 
 
-@video_maker_bp.route("/make_video", methods=["GET"])
-def make_video():
-    """Queue a video job (backwards-compatible GET). Returns 202 if queued.
-
-    Use `/video/video_status` to poll job state and `/video/cancel_video` to request cancellation.
-    """
-    cfg = get_config(refresh=True)
-
-    # Resolve base directory
-    base_path_str = request.args.get("base_path")
-    if base_path_str and base_path_str.strip():
-        base = Path(base_path_str).expanduser()
-    else:
-        try:
-            idx = int(request.args.get("basepath_idx", 0))
-        except Exception:
-            idx = 0
-        try:
-            base = cfg.base_paths[idx]
-        except Exception:
-            base = cfg.base_paths[0]
-
-    # Resolve camera
-    try:
-        cam = int(request.args.get("camera", cfg.camera_numbers[0]))
-    except Exception:
-        cam = int(cfg.camera_numbers[0])
-
-    # Run label
-    try:
-        run_label = int(request.args.get("run", 1))
-    except Exception:
-        run_label = 1
-
-    # Merged flag
-    merged_flag = request.args.get("merged", "0") in ("1", "true", "True")
-
-    # Find endpoint/source_type
-    endpoint = request.args.get("endpoint", "") or ""
-    source_type = request.args.get("type", "instantaneous") or "instantaneous"
-
-    # Request args for video creation
-    # prefer 'var' (new client param); fall back to 'pick' for backward-compatibility
-    pick = request.args.get("var", None)
-    if pick not in ("ux", "uy"):
-        pick = "uy"
-    pattern = request.args.get("pattern", "[0-9]*.mat")
-
-    # Build PlotSettings from optional request params
-    ps = PlotSettings()
-    try:
-        fps = request.args.get("fps")
-        if fps is not None:
-            ps.fps = int(fps)
-    except Exception:
-        pass
-
-    out_name = request.args.get("out_name") or f"run{run_label}_Cam{cam}_{pick}.mp4"
-    ps.out_path = out_name
-
-    try:
-        lower = request.args.get("lower_limit")
-        upper = request.args.get("upper_limit")
-        if lower is not None:
-            ps.lower_limit = float(lower)
-        if upper is not None:
-            ps.upper_limit = float(upper)
-    except Exception:
-        pass
-    cmap = request.args.get("cmap")
-    if cmap:
-        ps.cmap = cmap
-    dither = request.args.get("dither")
-    if dither is not None:
-        ps.dither = dither.lower() in ("1", "true", "t", "yes")
-
-    upscale = request.args.get("upscale")
-    if upscale is not None:
-        try:
-            if "," in upscale:
-                h, w = upscale.split(",", 1)
-                ps.upscale = (int(h.strip()), int(w.strip()))
-            else:
-                ps.upscale = float(upscale)
-        except Exception:
-            pass
-
-    # Start background job if none running
-    global _video_thread
-    with _video_state_lock:
-        running = _video_thread is not None and _video_thread.is_alive()
-    if running:
-        with _video_state_lock:
-            st = {k: _video_state.get(k) for k in ("processing", "progress", "message")}
-        return jsonify({"status": "busy", **st}), 409
-
-    _video_cancel_event.clear()
-    _video_reset_state()
-    _video_set_state(message="Video queued")
-
-    _video_thread = threading.Thread(
-        target=_run_video_job,
-        args=(
-            base,
-            cam,
-            run_label,
-            source_type,
-            endpoint,
-            merged_flag,
-            pick,
-            pattern,
-            ps,
-        ),
-        daemon=True,
-    )
-    _video_thread.start()
-
-    return jsonify({"status": "started", "processing": True, "progress": 0}), 202
-
-
 @video_maker_bp.route("/start_video", methods=["POST"])
 def start_video():
-    """Start a video job with JSON payload (same params as GET for /make_video).
+    """Start a video job with JSON payload 
 
     Returns 202 when queued, 409 if a job is already running.
     """
@@ -257,7 +136,7 @@ def start_video():
         cam = int(cfg.camera_numbers[0])
 
     # other params
-    run_label = int(data.get("run", 1))
+    num_images = int(data.get("num_images", data.get("run", 1)))
     merged_flag = str(data.get("merged", "0")) in ("1", "true", "True")
     endpoint = data.get("endpoint", "") or ""
     source_type = data.get("type", "instantaneous") or "instantaneous"
@@ -276,8 +155,27 @@ def start_video():
             ps.fps = int(fps)
     except Exception:
         pass
-    out_name = data.get("out_name") or f"run{run_label}_Cam{cam}_{pick}.mp4"
+    out_name = data.get("out_name") or f"run{num_images}_Cam{cam}_{pick}.mp4"
     ps.out_path = out_name
+
+    try:
+        lower = data.get("lower_limit")
+        upper = data.get("upper_limit")
+        if lower is not None:
+            ps.lower_limit = float(lower)
+        if upper is not None:
+            ps.upper_limit = float(upper)
+    except Exception:
+        pass
+    cmap = data.get("cmap")
+    if cmap:
+        ps.cmap = cmap
+    dither = data.get("dither")
+    if dither is not None:
+        ps.dither = dither.lower() in ("1", "true", "t", "yes")
+
+    upscale = data.get("upscale")
+    ps.upscale = 4.0
 
     # Start background job if none running
     with _video_state_lock:
@@ -296,7 +194,7 @@ def start_video():
         args=(
             base,
             cam,
-            run_label,
+            num_images,
             source_type,
             endpoint,
             merged_flag,
@@ -338,4 +236,7 @@ def video_status():
     except Exception:
         st["progress"] = 0
     st["status"] = st["progress"]
+    # Include out_path directly if available
+    if st.get("meta") and isinstance(st["meta"], dict) and "out_path" in st["meta"]:
+        st["out_path"] = st["meta"]["out_path"]
     return jsonify(st), 200
