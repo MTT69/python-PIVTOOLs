@@ -355,6 +355,8 @@ def plot_from_mat(
     upper_limit=None,
     cmap=None,
     raw=False,
+    variable_units="m/s",
+    length_units="mm",
 ):
     """
     Load mat_path (expects piv_result), find non-empty run, extract var and mask,
@@ -386,7 +388,8 @@ def plot_from_mat(
         variable=var,
         run_label=effective_run,
         save_basepath=save_basepath,
-        variable_units="m/s",
+        variable_units=variable_units,
+        length_units=length_units,
         coords_x=cx,
         coords_y=cy,
         lower_limit=lower_limit,
@@ -775,6 +778,8 @@ def get_uncalibrated_image():
             lower_limit=params["lower_limit"],
             upper_limit=params["upper_limit"],
             cmap=params["cmap"],
+            variable_units="px/frame",
+            length_units="px",
         )
         meta = {"run": effective_run, "var": params["var"], "width": W, "height": H}
         if isinstance(extra, dict):

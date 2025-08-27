@@ -1,11 +1,16 @@
+import base64
+import io
 import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 from flask import Blueprint, jsonify, request, send_file
 from loguru import logger
+from matplotlib.colors import Normalize
 from scipy.io import loadmat
 
 from config import get_config
@@ -645,3 +650,447 @@ def pod_energy_png():
                 break
 
     return jsonify({"error": "POD cumulative PNG not found"}), 404
+
+
+def _resolve_base_cam_run_merged_from_request(req_args, cfg):
+    """Helper used by new endpoints to resolve base, cam, run_label, merged_flag and POD settings."""
+    # Resolve base directory
+    base_path_str = req_args.get("base_path")
+    if base_path_str and base_path_str.strip():
+        base = Path(base_path_str).expanduser()
+    else:
+        try:
+            idx = int(req_args.get("basepath_idx", 0))
+        except Exception:
+            idx = 0
+        try:
+            base = cfg.base_paths[idx]
+        except Exception:
+            base = cfg.base_paths[0]
+
+    # Resolve camera
+    try:
+        cam = int(req_args.get("camera", cfg.camera_numbers[0]))
+    except Exception:
+        cam = int(cfg.camera_numbers[0])
+
+    # Run label
+    try:
+        run_label = int(req_args.get("run", 1))
+    except Exception:
+        run_label = 1
+
+    # Merged flag
+    merged_flag = req_args.get("merged", "0") in ("1", "true", "True")
+
+    # Find POD settings for endpoint/source_type (same heuristic used elsewhere)
+    endpoint = ""
+    source_type = "instantaneous"
+    try:
+        for entry in cfg.post_processing or []:
+            if entry.get("type") == "POD":
+                s = entry.get("settings", {}) or {}
+                endpoint = entry.get("endpoint", s.get("endpoint", "")) or ""
+                source_type = (
+                    entry.get("source_type", s.get("source_type", "instantaneous"))
+                    or "instantaneous"
+                )
+                break
+    except Exception:
+        pass
+
+    return base, cam, run_label, merged_flag, endpoint, source_type
+
+
+@POD_bp.route("/plot/check_pod_available", methods=["GET"])
+def check_pod_available():
+    """Check which POD algorithms (exact/randomised) have stats for the given run."""
+    cfg = get_config(refresh=True)
+    base, cam, run_label, merged_flag, endpoint, source_type = (
+        _resolve_base_cam_run_merged_from_request(request.args, cfg)
+    )
+
+    paths = get_data_paths(
+        base_dir=base,
+        num_images=cfg.num_images,
+        cam=cam,
+        type_name=source_type,
+        endpoint=endpoint,
+        use_merged=merged_flag,
+    )
+    stats_base = paths["stats_dir"]
+
+    run_dir_rand = stats_base / "pod_randomised" / f"run_{run_label:02d}"
+    run_dir_exact = stats_base / "POD" / f"run_{run_label:02d}"
+
+    joint_file = "POD_joint.mat"
+    sep_file = "POD_separate.mat"
+
+    available = {
+        "exact": False,
+        "randomised": False,
+        "exact_joint": False,
+        "randomised_joint": False,
+    }
+    if (run_dir_exact / joint_file).exists():
+        available["exact"] = True
+        available["exact_joint"] = True
+    elif (run_dir_exact / sep_file).exists():
+        available["exact"] = True
+
+    if (run_dir_rand / joint_file).exists():
+        available["randomised"] = True
+        available["randomised_joint"] = True
+    elif (run_dir_rand / sep_file).exists():
+        available["randomised"] = True
+
+    return jsonify({"available": available, "run": run_label, "cam": int(cam)}), 200
+
+
+@POD_bp.route("/plot/get_pod_energy", methods=["GET"])
+def get_pod_energy():
+    """Return POD energy summary for a run/algorithm. Query args: algorithm=exact|randomised (optional)."""
+    cfg = get_config(refresh=True)
+    base, cam, run_label, merged_flag, endpoint, source_type = (
+        _resolve_base_cam_run_merged_from_request(request.args, cfg)
+    )
+
+    algorithm = (
+        request.args.get("algorithm") or ""
+    ).lower()  # "exact" or "randomised" preferred
+    alg_folder = None
+
+    paths = get_data_paths(
+        base_dir=base,
+        num_images=cfg.num_images,
+        cam=cam,
+        type_name=source_type,
+        endpoint=endpoint,
+        use_merged=merged_flag,
+    )
+    stats_base = paths["stats_dir"]
+    run_dir_rand = stats_base / "pod_randomised" / f"run_{run_label:02d}"
+    run_dir_exact = stats_base / "POD" / f"run_{run_label:02d}"
+
+    # Choose folder based on algorithm requested, else prefer randomised if present
+    if algorithm == "randomised":
+        alg_folder = run_dir_rand
+    elif algorithm == "exact":
+        alg_folder = run_dir_exact
+    else:
+        # auto-select: prefer randomised summary, else exact
+        if (
+            (run_dir_rand / "POD_energy_summary.mat").exists()
+            or (run_dir_rand / "POD_joint.mat").exists()
+            or (run_dir_rand / "POD_separate.mat").exists()
+        ):
+            alg_folder = run_dir_rand
+            algorithm = "randomised"
+        else:
+            alg_folder = run_dir_exact
+            algorithm = "exact"
+
+    # Look for POD_energy_summary.mat first, then fallback to joint/separate files
+    summary_candidates = [
+        alg_folder / "POD_energy_summary.mat",
+        alg_folder / "POD_joint.mat",
+        alg_folder / "POD_separate.mat",
+    ]
+    summary_path = next((f for f in summary_candidates if f.exists()), None)
+    if summary_path is None:
+        return (
+            jsonify(
+                {
+                    "error": f"No POD energy summary found for run {run_label} under algorithm '{algorithm}'"
+                }
+            ),
+            404,
+        )
+
+    try:
+        mat = loadmat(str(summary_path), struct_as_record=False, squeeze_me=True)
+        # Prepare JSON-able dict: arrays -> lists, meta -> dict
+        meta_obj = mat.get("meta", {}) or {}
+
+        def _to_py(v):
+            if v is None:
+                return None
+            try:
+                return np.asarray(v).tolist()
+            except Exception:
+                return v
+
+        # Determine stacked vs separate heuristically
+        stacked = "energy_fraction" in mat or "POD_joint" in summary_path.name
+        out = {"meta": {}}
+        # convert meta to native types
+        try:
+            if isinstance(meta_obj, dict):
+                for k, vv in meta_obj.items():
+                    try:
+                        out["meta"][k] = (
+                            vv.item()
+                            if hasattr(vv, "item") and np.ndim(vv) == 0
+                            else vv
+                        )
+                    except Exception:
+                        out["meta"][k] = vv
+            else:
+                # struct-like object
+                for k in [
+                    "run_label",
+                    "cam",
+                    "endpoint",
+                    "source_type",
+                    "stack_U_y",
+                    "normalise",
+                    "algorithm",
+                ]:
+                    val = getattr(meta_obj, k, None)
+                    if val is not None:
+                        out["meta"][k] = val
+        except Exception:
+            out["meta"] = meta_obj if isinstance(meta_obj, dict) else {}
+
+        out["algorithm"] = algorithm
+        out["stacked"] = bool(stacked)
+
+        if stacked:
+            out["energy_fraction"] = _to_py(mat.get("energy_fraction", []))
+            out["energy_cumulative"] = _to_py(mat.get("energy_cumulative", []))
+            out["singular_values"] = _to_py(mat.get("singular_values", []))
+            out["eigenvalues"] = _to_py(mat.get("eigenvalues", []))
+        else:
+            out["energy_fraction_ux"] = _to_py(mat.get("energy_fraction_ux", []))
+            out["energy_cumulative_ux"] = _to_py(mat.get("energy_cumulative_ux", []))
+            out["energy_fraction_uy"] = _to_py(mat.get("energy_fraction_uy", []))
+            out["energy_cumulative_uy"] = _to_py(mat.get("energy_cumulative_uy", []))
+            out["singular_values_ux"] = _to_py(mat.get("singular_values_ux", []))
+            out["singular_values_uy"] = _to_py(mat.get("singular_values_uy", []))
+            out["eigenvalues_ux"] = _to_py(mat.get("eigenvalues_ux", []))
+            out["eigenvalues_uy"] = _to_py(mat.get("eigenvalues_uy", []))
+
+        return jsonify(out), 200
+    except Exception as e:
+        logger.exception(f"[POD] Failed to load energy summary {summary_path}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@POD_bp.route("/plot_pod_mode", methods=["GET"])
+def plot_pod_mode():
+    """
+    Return a base64 PNG for requested POD mode.
+    Query params:
+      base_path/basepath_idx, camera, run, mode (1-based), component (ux/uy), algorithm (exact/randomised), merged,
+      cmap (matplotlib name), lower_limit, upper_limit
+    """
+    cfg = get_config(refresh=True)
+    base, cam, run_label, merged_flag, endpoint, source_type = (
+        _resolve_base_cam_run_merged_from_request(request.args, cfg)
+    )
+
+    # params
+    try:
+        mode_idx = int(request.args.get("mode", 1))
+    except Exception:
+        mode_idx = 1
+    component = (request.args.get("component") or "ux").lower()
+    algorithm = (request.args.get("algorithm") or "").lower()
+    cmap = request.args.get("cmap") or "viridis"
+    lower = request.args.get("lower_limit")
+    upper = request.args.get("upper_limit")
+    vmin = float(lower) if lower is not None and str(lower) != "" else None
+    vmax = float(upper) if upper is not None and str(upper) != "" else None
+
+    paths = get_data_paths(
+        base_dir=base,
+        num_images=cfg.num_images,
+        cam=cam,
+        type_name=source_type,
+        endpoint=endpoint,
+        use_merged=merged_flag,
+    )
+    stats_base = paths["stats_dir"]
+
+    # select algorithm folder
+    if algorithm == "randomised":
+        alg_folder = stats_base / "pod_randomised" / f"run_{run_label:02d}"
+    elif algorithm == "exact":
+        alg_folder = stats_base / "POD" / f"run_{run_label:02d}"
+    else:
+        # prefer randomised if present
+        candidate_rand = stats_base / "pod_randomised" / f"run_{run_label:02d}"
+        candidate_exact = stats_base / "POD" / f"run_{run_label:02d}"
+        if (candidate_rand / f"{component}_mode_{mode_idx:02d}.mat").exists() or (
+            candidate_rand / "POD_joint.mat"
+        ).exists():
+            alg_folder = candidate_rand
+            algorithm = "randomised"
+        else:
+            alg_folder = candidate_exact
+            algorithm = "exact"
+
+    mode_file = alg_folder / f"{component}_mode_{mode_idx:02d}.mat"
+    logger.debug(f"[POD] Plotting mode from file: {mode_file}")
+    if not mode_file.exists():
+        return jsonify({"error": f"Mode file not found: {mode_file}"}), 404
+
+    try:
+        mat = loadmat(str(mode_file), struct_as_record=False, squeeze_me=True)
+        mode_arr = np.asarray(mat.get("mode"))
+        mask = mat.get("mask", None)
+        if mask is not None:
+            mask = np.asarray(mask).astype(bool)
+        else:
+            # try meta mask
+            mask = np.zeros_like(mode_arr, dtype=bool)
+
+        # Create masked array where mask True indicates masked/invalid
+        masked = np.ma.array(mode_arr, mask=mask)
+
+        # Plot
+        fig = plt.figure(figsize=(6, 4), dpi=150)
+        ax = fig.add_subplot(111)
+        cmap_obj = mpl.cm.get_cmap(cmap)
+        if vmin is None or vmax is None:
+            im = ax.imshow(masked, cmap=cmap_obj)
+        else:
+            norm = Normalize(vmin=vmin, vmax=vmax)
+            im = ax.imshow(masked, cmap=cmap_obj, norm=norm)
+        ax.set_axis_off()
+        cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        cbar.ax.tick_params(labelsize=8)
+
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", bbox_inches="tight")
+        plt.close(fig)
+        buf.seek(0)
+        b64 = base64.b64encode(buf.read()).decode("ascii")
+
+        meta = {
+            "run": int(run_label),
+            "cam": int(cam),
+            "component": component,
+            "mode": int(mode_idx),
+            "algorithm": algorithm,
+            "file": str(mode_file),
+        }
+        return jsonify({"image_base64": b64, "meta": meta}), 200
+    except Exception as e:
+        logger.exception(f"[POD] Failed to render mode {mode_file}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@POD_bp.route("/plot/list_pod_modes", methods=["GET"])
+def list_pod_modes():
+    """Return how many ux/uy mode files exist for the given run/algorithm."""
+    cfg = get_config(refresh=True)
+    base, cam, run_label, merged_flag, endpoint, source_type = (
+        _resolve_base_cam_run_merged_from_request(request.args, cfg)
+    )
+    algorithm = (request.args.get("algorithm") or "").lower()
+
+    paths = get_data_paths(
+        base_dir=base,
+        num_images=cfg.num_images,
+        cam=cam,
+        type_name=source_type,
+        endpoint=endpoint,
+        use_merged=merged_flag,
+    )
+    stats_base = paths["stats_dir"]
+
+    if algorithm == "randomised":
+        alg_folder = stats_base / "pod_randomised" / f"run_{run_label:02d}"
+    elif algorithm == "exact":
+        alg_folder = stats_base / "POD" / f"run_{run_label:02d}"
+    else:
+        # aggregate both if algorithm unspecified; prefer randomised folder if exists
+        candidate_rand = stats_base / "pod_randomised" / f"run_{run_label:02d}"
+        candidate_exact = stats_base / "POD" / f"run_{run_label:02d}"
+        alg_folder = candidate_rand if candidate_rand.exists() else candidate_exact
+
+    ux_files = list(alg_folder.glob("ux_mode_*.mat")) if alg_folder.exists() else []
+    uy_files = list(alg_folder.glob("uy_mode_*.mat")) if alg_folder.exists() else []
+
+    return (
+        jsonify(
+            {
+                "run": run_label,
+                "cam": int(cam),
+                "algorithm": algorithm or None,
+                "ux_count": len(ux_files),
+                "uy_count": len(uy_files),
+                "files_exist": alg_folder.exists(),
+                "folder": str(alg_folder),
+            }
+        ),
+        200,
+    )
+
+
+@POD_bp.route("/plot/get_pod_mode_data", methods=["GET"])
+def get_pod_mode_data():
+    """Return raw mode array and mask as lists for the requested mode."""
+    cfg = get_config(refresh=True)
+    base, cam, run_label, merged_flag, endpoint, source_type = (
+        _resolve_base_cam_run_merged_from_request(request.args, cfg)
+    )
+
+    try:
+        mode_idx = int(request.args.get("mode", 1))
+    except Exception:
+        mode_idx = 1
+    component = (request.args.get("component") or "ux").lower()
+    algorithm = (request.args.get("algorithm") or "").lower()
+
+    paths = get_data_paths(
+        base_dir=base,
+        num_images=cfg.num_images,
+        cam=cam,
+        type_name=source_type,
+        endpoint=endpoint,
+        use_merged=merged_flag,
+    )
+    stats_base = paths["stats_dir"]
+
+    if algorithm == "randomised":
+        alg_folder = stats_base / "pod_randomised" / f"run_{run_label:02d}"
+    elif algorithm == "exact":
+        alg_folder = stats_base / "POD" / f"run_{run_label:02d}"
+    else:
+        candidate_rand = stats_base / "pod_randomised" / f"run_{run_label:02d}"
+        candidate_exact = stats_base / "POD" / f"run_{run_label:02d}"
+        alg_folder = candidate_rand if candidate_rand.exists() else candidate_exact
+
+    mode_file = alg_folder / f"{component}_mode_{mode_idx:02d}.mat"
+    if not mode_file.exists():
+        return jsonify({"error": f"Mode file not found: {mode_file}"}), 404
+
+    try:
+        mat = loadmat(str(mode_file), struct_as_record=False, squeeze_me=True)
+        mode_arr = np.asarray(mat.get("mode"))
+        mask = mat.get("mask", None)
+        if mask is not None:
+            mask = np.asarray(mask).astype(bool)
+        else:
+            mask = np.zeros_like(mode_arr, dtype=bool)
+
+        return (
+            jsonify(
+                {
+                    "run": run_label,
+                    "cam": int(cam),
+                    "algorithm": algorithm or None,
+                    "component": component,
+                    "mode": mode_idx,
+                    "mode_array": mode_arr.tolist(),
+                    "mask": mask.tolist(),
+                    "file": str(mode_file),
+                }
+            ),
+            200,
+        )
+    except Exception as e:
+        logger.exception(f"[POD] Failed to load mode data {mode_file}: {e}")
+        return jsonify({"error": str(e)}), 500

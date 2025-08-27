@@ -28,6 +28,7 @@ mpl.rcParams["ytick.major.pad"] = 6
 class Settings:
     variableName: str
     variableUnits: str = ""
+    length_units: str = "mm"
     title: str = ""
     levels: int | list = 500
     cmap: str | None = None
@@ -55,6 +56,7 @@ def make_scalar_settings(
     save_basepath: Path,
     title: str | None = None,
     variable_units: str = "",
+    length_units: str = "mm",
     cmap: str | None = None,
     levels: int | list = 100,
     lower_limit: float | None = None,
@@ -67,6 +69,7 @@ def make_scalar_settings(
     return Settings(
         variableName=variable,
         variableUnits=variable_units,
+        length_units=length_units,
         title=title or f"{variable} pass {run_label}",
         levels=levels,
         cmap=cmap,
@@ -197,8 +200,12 @@ def plot_scalar_field(variable, mask, settings):
     cbar.ax.yaxis.set_major_formatter(FixedFormatter(labels))
 
     ax.set_title(f"{settings.title}")
-    ax.set_xlabel(settings._xlabel)
-    ax.set_ylabel(settings._ylabel)
+    if settings.length_units:
+        ax.set_xlabel(settings._xlabel + f" ({settings.length_units})")
+        ax.set_ylabel(settings._ylabel + f" ({settings.length_units})")
+    else:
+        ax.set_xlabel(settings._xlabel)
+        ax.set_ylabel(settings._ylabel)
 
     # labels = [f"{t:.2f}" for t in ticks]
     # cbar.set_ticks(ticks)

@@ -17,6 +17,7 @@ from paths import get_data_paths
 from plotting.app.views import vector_plot_bp
 from post_processing.POD.app.views import POD_bp
 from pre_processing.filters import filter_images
+from video_maker.app.views import video_maker_bp
 
 app = Flask(__name__)
 CORS(app)
@@ -26,6 +27,7 @@ app.register_blueprint(vector_plot_bp)
 app.register_blueprint(masking_bp)
 app.register_blueprint(POD_bp)
 app.register_blueprint(calibration_bp)
+app.register_blueprint(video_maker_bp)
 
 # --- In-memory stores ---
 processed_store = {"original": {}, "processed": {}}
@@ -202,6 +204,49 @@ def config_endpoint():
 def update_config():  # noqa: D401 simple update
     data = request.get_json() or {}
     cfg = get_config()
+
+    # Special handling: merge post_processing entries by type and deep-merge their settings
+    incoming_pp = data.get("post_processing", None)
+    if isinstance(incoming_pp, list):
+        current_pp = list(cfg.data.get("post_processing", []) or [])
+        # Build index by type for current entries
+        idx_by_type = {}
+        for i, entry in enumerate(current_pp):
+            t = (entry or {}).get("type")
+            if t is not None and t not in idx_by_type:
+                idx_by_type[t] = i
+
+        def deep_merge_dict(a, b):
+            for k, v in (b or {}).items():
+                if isinstance(v, dict) and isinstance(a.get(k), dict):
+                    deep_merge_dict(a[k], v)
+                else:
+                    a[k] = v
+            return a
+
+        for new_entry in incoming_pp:
+            if not isinstance(new_entry, dict):
+                continue
+            t = new_entry.get("type")
+            if t in idx_by_type:
+                i = idx_by_type[t]
+                cur = current_pp[i] or {}
+                # Merge non-settings keys shallowly
+                for k, v in new_entry.items():
+                    if k == "settings" and isinstance(v, dict):
+                        cur.setdefault("settings", {})
+                        deep_merge_dict(cur["settings"], v)
+                    elif k != "type":
+                        cur[k] = v
+                current_pp[i] = cur
+            else:
+                # New type -> append
+                current_pp.append(new_entry)
+
+        # Replace the post_processing in data with merged result to allow generic recursion below
+        data = dict(data)
+        data["post_processing"] = current_pp
+
     recursive_update(cfg.data, data)
     with open("config.yaml", "w", encoding="utf-8") as f:
         yaml.dump(cfg.data, f, default_flow_style=False, sort_keys=False)

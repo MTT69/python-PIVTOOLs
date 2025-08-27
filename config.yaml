@@ -4,7 +4,7 @@ paths:
   source_paths:
   - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall
   camera_numbers:
-  - 1
+  - 6
 images:
   num_images: 1000
   image_format:
@@ -25,7 +25,11 @@ processing:
 post_processing:
 - type: POD
   settings:
-    k_modes: 10
+    k_modes: 15
+    randomised: false
+    stack_u_y: true
+    normalise: false
+    camera: 1
 plots:
   save_extension: .png
   save_pickle: true
@@ -75,11 +79,21 @@ calibration_format:
 calibration:
   scale_factor:
     dt: 5
-    px_per_mm: 15
+    px_per_mm: 5
     x_offset:
     - 5
+    - 5
+    - 5
+    - 80
+    - 0
+    - 0
     y_offset:
     - 5
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
   image_format: calib%05d.tif
   pinhole:
     dot_distance_mm: 28.9

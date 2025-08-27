@@ -2,9 +2,10 @@ from pathlib import Path
 from typing import Optional
 
 import dask.array as da
+import dask.array.linalg as da_linalg
 import matplotlib.pyplot as plt
 import numpy as np
-from dask.diagnostics import ProgressBar
+from dask.diagnostics.progress import ProgressBar
 from scipy.io import loadmat, savemat  # add
 
 from config import Config
@@ -35,6 +36,7 @@ def _compute_pod(X: da.Array, k: int, normalise: bool):
     # Exact method of snapshots: C = Xc^T Xc  (N x N)
     # Rechunk for optimal performance (tune chunk size as needed)
     Xc = Xc.rechunk({0: -1, 1: "auto"})
+    L_dim = int(Xc.shape[0])
 
     # Optionally, use Dask's ProgressBar for feedback
 
@@ -61,14 +63,16 @@ def _compute_pod(X: da.Array, k: int, normalise: bool):
         vk = V_k[:, i]
         phi_i = da.dot(Xc, vk) / (s_k[i] + 1e-12)  # (L,)
         phi_cols.append(phi_i.compute())
-    Phi = (
-        np.stack(phi_cols, axis=1)
-        if phi_cols
-        else np.zeros((X.shape[0], 0), dtype=float)
-    )
+    if phi_cols:
+        Phi = np.stack(phi_cols, axis=1)
+    else:
+        Phi = np.zeros((L_dim, 0), dtype=float)
 
-    mu_np = mu.compute().ravel()
-    std_np = std.compute().ravel() if normalise else None
+    mu_np = da.compute(mu)[0].ravel()
+    if normalise:
+        std_np = da.compute(std)[0].ravel()
+    else:
+        std_np = None
     return evals, svals, Phi, V_k, mu_np, std_np
 
 
@@ -113,8 +117,12 @@ def _compute_pod_randomized(
         Z = da.dot(Xc.T, Y)  # (N x r)
         Y = da.dot(Xc, Z)  # (L x r)
 
-    # Orthonormal basis Q via QR
-    Q, _ = da.linalg.qr(Y)  # (L x r)
+    # Orthonormal basis Q via QR (some stubs return 2 or 3 items)
+    qr_out = da_linalg.qr(Y)
+    if isinstance(qr_out, tuple):
+        Q = qr_out[0]
+    else:
+        Q = qr_out
 
     # Small matrix B = Q^T Xc  -> (r x N)
     with ProgressBar():
@@ -139,8 +147,11 @@ def _compute_pod_randomized(
     evals = (S_k**2).copy()
     svals = S_k.copy()
 
-    mu_np = mu.compute().ravel()
-    std_np = std.compute().ravel() if normalise else None
+    mu_np = da.compute(mu)[0].ravel()
+    if normalise:
+        std_np = da.compute(std)[0].ravel()
+    else:
+        std_np = None
     return evals, svals, Phi, V_k, mu_np, std_np
 
 
@@ -189,27 +200,36 @@ def pod_decompose(cam_num: int, config: Config, base: Path, k_modes: int = 10):
             continue
 
         settings = entry.get("settings", {}) or {}
-        stack_u_y: bool = bool(settings.get("stack_U_y", False))
+        # Accept both snake-case and camelCase keys from YAML/UI
+        stack_u_y: bool = bool(
+            settings.get(
+                "stack_U_y", settings.get("stack_u_y", settings.get("stackUy", False))
+            )
+        )
         normalise: bool = bool(settings.get("normalise", False))
         use_randomised: bool = bool(settings.get("randomised", False))
-        # Optional knobs for randomized algo (fallback defaults)
         oversampling: int = int(settings.get("oversampling", 10))
         power_iter: int = int(settings.get("power_iter", 1))
         random_state: Optional[int] = settings.get("random_state", 0)
 
-        endpoint: str = entry.get("endpoint", "")
-        use_merged: bool = entry.get("use_merged", False)
-        source_type: str = entry.get("source_type", "instantaneous")
+        # Allow endpoint/source selection as either top-level entry fields or inside settings
+        endpoint: str = entry.get("endpoint", settings.get("endpoint", ""))
+        use_merged: bool = bool(
+            entry.get("use_merged", settings.get("use_merged", False))
+        )
+        source_type: str = entry.get(
+            "source_type", settings.get("source_type", "instantaneous")
+        )
 
         # Only first camera performs merged aggregation
         if use_merged and cam_num != config.camera_numbers[0]:
             continue
 
-        cam_folder_eff = "Merged" if use_merged else f"Cam{cam_num}"
+        # Use new get_data_paths signature
         paths = get_data_paths(
             base_dir=base,
             num_images=config.num_images,
-            cam_folder=cam_folder_eff,
+            cam=cam_num,
             type_name=source_type,
             endpoint=endpoint,
             use_merged=use_merged,
@@ -231,9 +251,6 @@ def pod_decompose(cam_num: int, config: Config, base: Path, k_modes: int = 10):
             runs=selected_runs_1based if selected_runs_1based else None,
         )  # (N,R_sel,3,H,W)
 
-        # Rechunk for optimal performance before heavy computation
-        arr = arr.rechunk({0: config.piv_chunk_size})
-
         # Coordinates for plotting in the same order
         x_list, y_list = load_coords_from_directory(
             data_dir, runs=selected_runs_1based if selected_runs_1based else None
@@ -243,7 +260,7 @@ def pod_decompose(cam_num: int, config: Config, base: Path, k_modes: int = 10):
             selected_runs_1based = list(range(1, R + 1))
 
         print(
-            f"[POD {'RAND' if use_randomised else 'EXACT'}] source={source_type}, cam={cam_folder_eff}, endpoint='{endpoint}', runs={selected_runs_1based}, stack_U_y={stack_u_y}, normalise={normalise}"
+            f"[POD {'RAND' if use_randomised else 'EXACT'}] source={source_type}, cam={cam_num}, endpoint='{endpoint}', runs={selected_runs_1based}, stack_U_y={stack_u_y}, normalise={normalise}"
         )
 
         N = arr.shape[0]  # number of time samples loaded
@@ -262,8 +279,8 @@ def pod_decompose(cam_num: int, config: Config, base: Path, k_modes: int = 10):
                 continue
 
             # Flattened time-stacks for ux/uy
-            U = arr[:, local_idx, 0].reshape((N, -1))  # (N, H*W)
-            V = arr[:, local_idx, 1].reshape((N, -1))  # (N, H*W)
+            U = da.reshape(arr[:, local_idx, 0], (N, -1))  # (N, H*W)
+            V = da.reshape(arr[:, local_idx, 1], (N, -1))  # (N, H*W)
 
             if stack_u_y:
                 # Build X = [U_valid ; V_valid]^T -> (L, N)
@@ -283,9 +300,13 @@ def pod_decompose(cam_num: int, config: Config, base: Path, k_modes: int = 10):
                     evals, svals, Phi, V_k, mu, std = _compute_pod(
                         X, k=k_modes, normalise=normalise
                     )
-                modes_ux, modes_uy = _map_modes_to_grid(
-                    Phi, valid_flat, (int(H), int(W))
-                )
+                modes_tuple = _map_modes_to_grid(Phi, valid_flat, (int(H), int(W)))
+                if isinstance(modes_tuple, tuple) and len(modes_tuple) == 2:
+                    modes_ux, modes_uy = modes_tuple  # type: ignore[misc]
+                else:
+                    # Fallback for static analysis; runtime should always return 2 when stacked
+                    modes_ux = modes_tuple[0]
+                    modes_uy = np.zeros_like(modes_ux)
                 # Save MAT
                 out_dir = stats_dir / f"run_{lbl:02d}"
                 out_dir.mkdir(parents=True, exist_ok=True)
@@ -294,7 +315,7 @@ def pod_decompose(cam_num: int, config: Config, base: Path, k_modes: int = 10):
                 # Build meta without None values
                 meta = {
                     "run_label": int(lbl),
-                    "cam_folder": cam_folder_eff,
+                    "cam": int(cam_num),
                     "endpoint": endpoint,
                     "source_type": source_type,
                     "stack_U_y": True,
@@ -309,22 +330,78 @@ def pod_decompose(cam_num: int, config: Config, base: Path, k_modes: int = 10):
                         }
                     )
 
+                # Energy breakdown (exact and randomized both have svals)
+                s2 = np.asarray(svals) ** 2
+                total = float(np.sum(s2)) if s2.size else 0.0
+                energy_fraction = (s2 / total) if total > 0 else np.zeros_like(s2)
+                energy_cumulative = (
+                    np.cumsum(energy_fraction)
+                    if energy_fraction.size
+                    else energy_fraction
+                )
+
+                # Save summary .mat for all modes (for frontend energy plot)
+                summary_file = out_dir / "POD_energy_summary.mat"
+                savemat(
+                    summary_file,
+                    {
+                        "eigenvalues": evals,
+                        "singular_values": svals,
+                        "energy_fraction": energy_fraction,
+                        "energy_cumulative": energy_cumulative,
+                        "meta": meta,
+                    },
+                )
+
+                # Save a cumulative energy plot (PNG) so users can inspect energy after POD
+                try:
+                    fig, ax = plt.subplots(figsize=(6.0, 3.0))
+                    modes = np.arange(1, energy_cumulative.size + 1)
+                    ax.plot(modes, energy_cumulative, marker="o", lw=1.5)
+                    ax.set_xlabel("Mode")
+                    ax.set_ylabel("Cumulative Energy")
+                    ax.set_title(f"POD cumulative energy - run {lbl}")
+                    ax.set_ylim(0.0, 1.0)
+                    ax.grid(True, linestyle="--", alpha=0.4)
+                    out_png = (
+                        out_dir / f"POD_energy_cumulative{config.plot_save_extension}"
+                    )
+                    fig.savefig(str(out_png), dpi=300, bbox_inches="tight")
+                    plt.close(fig)
+                except Exception as e:
+                    print(
+                        f"[POD] Warning: failed to save cumulative energy PNG for run {lbl}: {e}"
+                    )
+
                 savemat(
                     out_file,
                     {
                         "eigenvalues": evals,
                         "singular_values": svals,
+                        "energy_fraction": energy_fraction,
+                        "energy_cumulative": energy_cumulative,
                         "modes_ux": modes_ux,  # [k,H,W]
                         "modes_uy": modes_uy,  # [k,H,W]
                         "mask": b_mask.astype(np.uint8),
                         "meta": meta,
                     },
                 )
-                # Plot first k modes
+                # Plot and save each mode as PNG and .mat
                 cx = x_list[local_idx] if local_idx < len(x_list) else None
                 cy = y_list[local_idx] if local_idx < len(y_list) else None
                 for k in range(min(k_modes, modes_ux.shape[0])):
-                    # ux
+                    # Save per-mode .mat for interactive viewers (already present)
+                    savemat(
+                        out_dir / f"ux_mode_{k + 1:02d}.mat",
+                        {
+                            "mode": modes_ux[k],
+                            "k": int(k + 1),
+                            "component": "ux",
+                            "mask": b_mask.astype(np.uint8),
+                            "meta": meta,
+                        },
+                    )
+                    # Save PNG
                     save_base_ux = out_dir / f"ux_mode_{k + 1:02d}"
                     s_ux = make_scalar_settings(
                         config,
@@ -342,7 +419,17 @@ def pod_decompose(cam_num: int, config: Config, base: Path, k_modes: int = 10):
                         bbox_inches="tight",
                     )
                     plt.close(fig)
-                    # uy
+                    # Save uy as .mat and PNG
+                    savemat(
+                        out_dir / f"uy_mode_{k + 1:02d}.mat",
+                        {
+                            "mode": modes_uy[k],
+                            "k": int(k + 1),
+                            "component": "uy",
+                            "mask": b_mask.astype(np.uint8),
+                            "meta": meta,
+                        },
+                    )
                     save_base_uy = out_dir / f"uy_mode_{k + 1:02d}"
                     s_uy = make_scalar_settings(
                         config,
@@ -376,7 +463,8 @@ def pod_decompose(cam_num: int, config: Config, base: Path, k_modes: int = 10):
                     evals_u, svals_u, Phi_u, Vku, mu_u, std_u = _compute_pod(
                         Usel, k=k_modes, normalise=normalise
                     )
-                (modes_u,) = _map_modes_to_grid(Phi_u, valid_flat, (int(H), int(W)))
+                mapped_u = _map_modes_to_grid(Phi_u, valid_flat, (int(H), int(W)))
+                modes_u = mapped_u[0]
 
                 # Separate UY
                 Vsel = V[:, valid_flat].T.astype(np.float64)  # (L, N)
@@ -393,7 +481,8 @@ def pod_decompose(cam_num: int, config: Config, base: Path, k_modes: int = 10):
                     evals_v, svals_v, Phi_v, Vkv, mu_v, std_v = _compute_pod(
                         Vsel, k=k_modes, normalise=normalise
                     )
-                (modes_v,) = _map_modes_to_grid(Phi_v, valid_flat, (int(H), int(W)))
+                mapped_v = _map_modes_to_grid(Phi_v, valid_flat, (int(H), int(W)))
+                modes_v = mapped_v[0]
 
                 out_dir = stats_dir / f"run_{lbl:02d}"
                 out_dir.mkdir(parents=True, exist_ok=True)
@@ -402,7 +491,7 @@ def pod_decompose(cam_num: int, config: Config, base: Path, k_modes: int = 10):
                 # Build meta without None values
                 meta = {
                     "run_label": int(lbl),
-                    "cam_folder": cam_folder_eff,
+                    "cam": int(cam_num),
                     "endpoint": endpoint,
                     "source_type": source_type,
                     "stack_U_y": False,
@@ -417,23 +506,110 @@ def pod_decompose(cam_num: int, config: Config, base: Path, k_modes: int = 10):
                         }
                     )
 
+                # Energy breakdown per component
+                s2u = np.asarray(svals_u) ** 2
+                s2v = np.asarray(svals_v) ** 2
+                totu = float(np.sum(s2u)) if s2u.size else 0.0
+                totv = float(np.sum(s2v)) if s2v.size else 0.0
+                energy_fraction_ux = (s2u / totu) if totu > 0 else np.zeros_like(s2u)
+                energy_fraction_uy = (s2v / totv) if totv > 0 else np.zeros_like(s2v)
+                energy_cumulative_ux = (
+                    np.cumsum(energy_fraction_ux)
+                    if energy_fraction_ux.size
+                    else energy_fraction_ux
+                )
+                energy_cumulative_uy = (
+                    np.cumsum(energy_fraction_uy)
+                    if energy_fraction_uy.size
+                    else energy_fraction_uy
+                )
+
+                # Save summary .mat for all modes (for frontend energy plot)
+                summary_file = out_dir / "POD_energy_summary.mat"
+                savemat(
+                    summary_file,
+                    {
+                        "eigenvalues_ux": evals_u,
+                        "singular_values_ux": svals_u,
+                        "energy_fraction_ux": energy_fraction_ux,
+                        "energy_cumulative_ux": energy_cumulative_ux,
+                        "eigenvalues_uy": evals_v,
+                        "singular_values_uy": svals_v,
+                        "energy_fraction_uy": energy_fraction_uy,
+                        "energy_cumulative_uy": energy_cumulative_uy,
+                        "meta": meta,
+                    },
+                )
+
+                # Save a cumulative energy plot (PNG) showing both ux and uy cumulative energy
+                try:
+                    fig, ax = plt.subplots(figsize=(6.0, 3.0))
+                    modes_u = np.arange(1, energy_cumulative_ux.size + 1)
+                    modes_v = np.arange(1, energy_cumulative_uy.size + 1)
+                    if energy_cumulative_ux.size > 0:
+                        ax.plot(
+                            modes_u,
+                            energy_cumulative_ux,
+                            marker="o",
+                            lw=1.2,
+                            label="ux",
+                        )
+                    if energy_cumulative_uy.size > 0:
+                        ax.plot(
+                            modes_v,
+                            energy_cumulative_uy,
+                            marker="s",
+                            lw=1.2,
+                            label="uy",
+                        )
+                    ax.set_xlabel("Mode")
+                    ax.set_ylabel("Cumulative Energy")
+                    ax.set_title(f"POD cumulative energy - run {lbl}")
+                    ax.set_ylim(0.0, 1.0)
+                    ax.grid(True, linestyle="--", alpha=0.4)
+                    ax.legend()
+                    out_png = (
+                        out_dir / f"POD_energy_cumulative{config.plot_save_extension}"
+                    )
+                    fig.savefig(str(out_png), dpi=300, bbox_inches="tight")
+                    plt.close(fig)
+                except Exception as e:
+                    print(
+                        f"[POD] Warning: failed to save cumulative energy PNG for run {lbl}: {e}"
+                    )
+
                 savemat(
                     out_file,
                     {
                         "eigenvalues_ux": evals_u,
                         "singular_values_ux": svals_u,
+                        "energy_fraction_ux": energy_fraction_ux,
+                        "energy_cumulative_ux": energy_cumulative_ux,
                         "eigenvalues_uy": evals_v,
                         "singular_values_uy": svals_v,
+                        "energy_fraction_uy": energy_fraction_uy,
+                        "energy_cumulative_uy": energy_cumulative_uy,
                         "modes_ux": modes_u,  # [k,H,W]
                         "modes_uy": modes_v,  # [k,H,W]
                         "mask": b_mask.astype(np.uint8),
                         "meta": meta,
                     },
                 )
-                # Plot first k modes
+                # Plot and save each mode as PNG and .mat
                 cx = x_list[local_idx] if local_idx < len(x_list) else None
                 cy = y_list[local_idx] if local_idx < len(y_list) else None
                 for k in range(min(k_modes, modes_u.shape[0])):
+                    # Save per-mode .mat for interactive viewers (already present)
+                    savemat(
+                        out_dir / f"ux_mode_{k + 1:02d}.mat",
+                        {
+                            "mode": modes_u[k],
+                            "k": int(k + 1),
+                            "component": "ux",
+                            "mask": b_mask.astype(np.uint8),
+                            "meta": meta,
+                        },
+                    )
                     save_base_ux = out_dir / f"ux_mode_{k + 1:02d}"
                     s_ux = make_scalar_settings(
                         config,
@@ -451,7 +627,16 @@ def pod_decompose(cam_num: int, config: Config, base: Path, k_modes: int = 10):
                         bbox_inches="tight",
                     )
                     plt.close(fig)
-
+                    savemat(
+                        out_dir / f"uy_mode_{k + 1:02d}.mat",
+                        {
+                            "mode": modes_v[k],
+                            "k": int(k + 1),
+                            "component": "uy",
+                            "mask": b_mask.astype(np.uint8),
+                            "meta": meta,
+                        },
+                    )
                     save_base_uy = out_dir / f"uy_mode_{k + 1:02d}"
                     s_uy = make_scalar_settings(
                         config,
@@ -471,7 +656,7 @@ def pod_decompose(cam_num: int, config: Config, base: Path, k_modes: int = 10):
                     plt.close(fig)
 
         print(
-            f"[POD {'RAND' if use_randomised else 'EXACT'}] Completed POD for cam={cam_folder_eff}, endpoint='{endpoint}', saved -> {stats_dir}"
+            f"[POD {'RAND' if use_randomised else 'EXACT'}] Completed POD for cam={cam_num}, endpoint='{endpoint}', saved -> {stats_dir}"
         )
 
 
@@ -508,12 +693,11 @@ def pod_rebuild(cam_num: int, config: Config, base: Path):
         if use_merged and cam_num != config.camera_numbers[0]:
             continue
 
-        cam_folder_eff = "Merged" if use_merged else f"Cam{cam_num}"
         # Input data (original calibrated) and stats base
         in_paths = get_data_paths(
             base_dir=base,
             num_images=config.num_images,
-            cam_folder=cam_folder_eff,
+            cam=cam_num,
             type_name=source_type,
             endpoint="",
             use_merged=use_merged,
@@ -525,7 +709,7 @@ def pod_rebuild(cam_num: int, config: Config, base: Path):
         out_paths = get_data_paths(
             base_dir=base,
             num_images=config.num_images,
-            cam_folder=cam_folder_eff,
+            cam=cam_num,
             type_name=source_type,
             endpoint=endpoint,
             use_merged=use_merged,
@@ -555,14 +739,14 @@ def pod_rebuild(cam_num: int, config: Config, base: Path):
             config,
             runs=selected_runs_1based if selected_runs_1based else None,
         )  # (N,R_sel,3,H,W)
-        arr = arr.rechunk({0: config.piv_chunk_size})
+        # keep existing chunking from loader
 
         if not selected_runs_1based:
             R = int(arr.shape[1])
             selected_runs_1based = list(range(1, R + 1))
 
         print(
-            f"[POD REBUILD] source={source_type}, cam={cam_folder_eff}, runs={selected_runs_1based}, energy={energy:.3f}"
+            f"[POD REBUILD] source={source_type}, cam={cam_num}, runs={selected_runs_1based}, energy={energy:.3f}"
         )
 
         N = int(arr.shape[0])
@@ -634,7 +818,11 @@ def pod_rebuild(cam_num: int, config: Config, base: Path):
                     print(f"[POD REBUILD] No singular values in {stats_path.name}")
                     continue
                 en_cum = np.cumsum(svals**2) / np.sum(svals**2)
-                k_use = int(np.searchsorted(en_cum, energy) + 1)
+                k_use = (
+                    int(np.searchsorted(en_cum, energy) + 1)
+                    if "k_use" in locals()
+                    else int(min(modes_ux.shape[0], modes_uy.shape[0]))
+                )
                 k_use = min(k_use, modes_ux.shape[0], modes_uy.shape[0])
             else:
                 svals_u = np.asarray(pod_mat.get("singular_values_ux", []))
