@@ -11,13 +11,14 @@ from config import Config
 
 
 def read_mat_contents(
-    file_path: str, run_index: Optional[int] = None
+    file_path: str, run_index: Optional[int] = None, return_all_runs: bool = False
 ) -> np.ndarray:
     """
     Reads piv_result from a .mat file.
     If multiple runs are present, selects the specified run_index (0-based).
     If run_index is None, selects the first run with valid (non-empty) data.
-    Returns shape (1, 3, H, W) for the selected run.
+    If return_all_runs is True, returns all runs in shape (R, 3, H, W).
+    Otherwise returns shape (1, 3, H, W) for the selected run.
     """
     mat = scipy.io.loadmat(file_path, struct_as_record=False, squeeze_me=True)
     piv_result = mat["piv_result"]
@@ -25,6 +26,28 @@ def read_mat_contents(
     # Multiple runs case: numpy array of structs
     if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
         total_runs = piv_result.size
+
+        if return_all_runs:
+            # Return all runs
+            all_runs = []
+            for idx in range(total_runs):
+                pr = piv_result[idx]
+                ux = np.asarray(pr.ux)
+                uy = np.asarray(pr.uy)
+                b_mask = (
+                    np.asarray(pr.b_mask).astype(ux.dtype, copy=False)
+                    if ux.size > 0
+                    else np.array([])
+                )
+                if ux.size > 0 and uy.size > 0:
+                    stacked = np.stack([ux, uy, b_mask], axis=0)  # (3, H, W)
+                else:
+                    # Empty run - create placeholder with consistent shape if possible
+                    stacked = np.array([[], [], []])  # Will be reshaped later
+                all_runs.append(stacked)
+            return np.array(all_runs)  # (R, 3, H, W)
+
+        # Single run selection (existing logic)
         if run_index is None:
             # Find first valid run (non-empty ux, uy)
             for idx in range(total_runs):
@@ -37,7 +60,9 @@ def read_mat_contents(
             else:
                 raise ValueError(f"No valid runs found in {file_path}")
         if run_index < 0 or run_index >= total_runs:
-            raise ValueError(f"Invalid run_index {run_index} for {file_path} (total_runs={total_runs})")
+            raise ValueError(
+                f"Invalid run_index {run_index} for {file_path} (total_runs={total_runs})"
+            )
         pr = piv_result[run_index]
         ux = np.asarray(pr.ux)
         uy = np.asarray(pr.uy)
@@ -47,13 +72,20 @@ def read_mat_contents(
 
     # Single run struct
     if run_index is not None and run_index != 0:
-        raise ValueError(f"Invalid run_index {run_index} for single-run file {file_path}")
+        raise ValueError(
+            f"Invalid run_index {run_index} for single-run file {file_path}"
+        )
     pr = piv_result
     ux = np.asarray(pr.ux)
     uy = np.asarray(pr.uy)
     b_mask = np.asarray(pr.b_mask).astype(ux.dtype, copy=False)
-    stacked = np.stack([ux, uy, b_mask], axis=0)[None, ...]  # (1, 3, H, W)
-    return stacked
+
+    if return_all_runs:
+        stacked = np.stack([ux, uy, b_mask], axis=0)[None, ...]  # (1, 3, H, W)
+        return stacked
+    else:
+        stacked = np.stack([ux, uy, b_mask], axis=0)[None, ...]  # (1, 3, H, W)
+        return stacked
 
 
 def load_vectors_from_directory(
@@ -88,7 +120,9 @@ def load_vectors_from_directory(
     first_arr = None
     for p in existing_paths:
         try:
-            first_arr = read_mat_contents(str(p), run_indices=zero_based_runs)
+            first_arr = read_mat_contents(
+                str(p), run_index=zero_based_runs[0] if zero_based_runs else None
+            )
             # Debugging: print shape, dtype, and file info
             if first_arr.ndim != 4:
                 warnings.warn(
@@ -104,7 +138,9 @@ def load_vectors_from_directory(
     shape, dtype = first_arr.shape, first_arr.dtype  # (R, 3, H, W), dtype
 
     delayed_items = [
-        dask.delayed(read_mat_contents)(str(p), run_indices=zero_based_runs)
+        dask.delayed(read_mat_contents)(
+            str(p), run_index=zero_based_runs[0] if zero_based_runs else None
+        )
         for p in existing_paths
     ]
     arrays = [da.from_delayed(di, shape=shape, dtype=dtype) for di in delayed_items]

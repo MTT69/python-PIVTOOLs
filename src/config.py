@@ -185,6 +185,32 @@ class Config:
         active = cal.get("active", "pinhole")
         return cal.get(active, {})
 
+    @property
+    def scale_factor_calibration(self):
+        """Return scale factor calibration parameters."""
+        return self.calibration.get("scale_factor", {})
+
+    @property
+    def pinhole_calibration(self):
+        """Return pinhole calibration parameters."""
+        return self.calibration.get("pinhole", {})
+
+    @property
+    def stereo_calibration(self):
+        """Return stereo calibration parameters."""
+        return self.calibration.get("stereo", {})
+
+    def get_calibration_method_params(self, method: str):
+        """Get parameters for a specific calibration method."""
+        return self.calibration.get(method, {})
+
+    def set_active_calibration_method(self, method: str):
+        """Set the active calibration method."""
+        if method in ["scale_factor", "pinhole", "stereo"]:
+            self.data["calibration"]["active"] = method
+        else:
+            raise ValueError(f"Unknown calibration method: {method}")
+
 
 def get_config(refresh: bool = False) -> Config:
     """Return shared Config instance. Pass refresh=True to reload from disk."""

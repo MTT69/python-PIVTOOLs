@@ -63,7 +63,12 @@ def compute_batch_window(target_idx: int, batch_size: int, total: int):
 
 def recursive_update(d, u):
     for k, v in u.items():
-        if isinstance(v, dict) and isinstance(d.get(k), dict):
+        # Remove debug print statements
+        # print(f"Updating key: {k}, value type: {type(v)}, current value: {d.get(k, 'MISSING')}")
+        if isinstance(v, dict):
+            if not isinstance(d.get(k), dict):
+                # print(f"Key '{k}' is missing or not a dict, initializing as dict.")
+                d[k] = {}
             recursive_update(d[k], v)
         else:
             d[k] = v
@@ -72,11 +77,20 @@ def recursive_update(d, u):
 def get_active_calibration_params(cfg):
     """
     Returns (active_method, params_dict) from config['calibration'].
+    Updated to work with new calibration structure.
     """
     cal = cfg.data.get("calibration", {})
     active = cal.get("active", "pinhole")
     params = cal.get(active, {})
     return active, params
+
+
+def get_calibration_method_params(cfg, method: str):
+    """
+    Get parameters for a specific calibration method.
+    """
+    cal = cfg.data.get("calibration", {})
+    return cal.get(method, {})
 
 
 # --- Endpoints ---
@@ -301,6 +315,38 @@ def calibration_compute():
     # Use 'active' and 'params' for calibration logic
     # ...your calibration logic here...
     return jsonify({"status": "ok", "active": active, "params": params})
+
+
+@app.route("/calibration/set_active", methods=["POST"])
+def calibration_set_active():
+    """
+    Set the active calibration method.
+    """
+    data = request.get_json() or {}
+    method = data.get("method")
+
+    if method not in ["scale_factor", "pinhole", "stereo"]:
+        return jsonify({"error": f"Invalid calibration method: {method}"}), 400
+
+    cfg = get_config()
+    cfg.data.setdefault("calibration", {})["active"] = method
+
+    with open("config.yaml", "w", encoding="utf-8") as f:
+        yaml.dump(cfg.data, f, default_flow_style=False, sort_keys=False)
+
+    reload_config()
+    return jsonify({"status": "success", "active_method": method})
+
+
+@app.route("/calibration/get_method_params", methods=["GET"])
+def calibration_get_method_params():
+    """
+    Get parameters for a specific calibration method.
+    """
+    method = request.args.get("method", "pinhole")
+    cfg = get_config()
+    params = get_calibration_method_params(cfg, method)
+    return jsonify({"method": method, "params": params})
 
 
 if __name__ == "__main__":

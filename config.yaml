@@ -4,7 +4,7 @@ paths:
   source_paths:
   - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall
   camera_numbers:
-  - 6
+  - 1
 images:
   num_images: 1000
   image_format:
@@ -77,30 +77,40 @@ ensemble_piv:
 calibration_format:
   image_format: calib%05d.tif
 calibration:
+  active: scale_factor
   scale_factor:
-    dt: 5
-    px_per_mm: 5
+    dt: 1
+    px_per_mm: 3.41
     x_offset:
-    - 5
-    - 5
-    - 5
-    - 80
-    - 0
     - 0
     y_offset:
-    - 5
     - 0
-    - 0
-    - 0
-    - 0
-    - 0
-  image_format: calib%05d.tif
   pinhole:
+    source_path_idx: 0
+    camera: 1
+    image_index: 0
+    file_pattern: calib%05d.tif
+    pattern_cols: 10
+    pattern_rows: 10
+    dot_spacing_mm: 28.89
+    enhance_dots: true
+    asymmetric: false
     dot_distance_mm: 28.9
     grid_tolerance: 0.5
     ransac_threshold: 3
-    dt: 5
-  active: scale_factor
+    dt: 1
+  stereo:
+    source_path_idx: 0
+    camera_pair:
+    - 1
+    - 1
+    file_pattern: calib%05d.tif
+    pattern_cols: 10
+    pattern_rows: 10
+    dot_spacing_mm: 28.89
+    enhance_dots: true
+    asymmetric: false
+  image_format: calib%05d.tif
 filters:
 - type: time
   batch_size: 50
