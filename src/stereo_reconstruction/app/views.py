@@ -689,7 +689,7 @@ def stereo_run_vector_calibration():
     type_name = data.get("type_name", "instantaneous")
     max_distance = float(data.get("max_correspondence_distance", 5.0))
     min_angle = float(data.get("min_triangulation_angle", 5.0))
-    runs_to_process = data.get("runs_to_process", [6])
+    dt = float(data.get("dt", 1.0))  # NEW: time between frames in seconds
 
     try:
         cfg = get_config()
@@ -741,10 +741,11 @@ def stereo_run_vector_calibration():
                     max_distance=max_distance,
                     min_angle=min_angle,
                     progress_cb=progress_callback,
+                    dt=dt,  # Pass dt to reconstructor
                 )
 
-                # Run reconstruction
-                reconstructor.run(runs_to_process)
+                # Run reconstruction - always processes all runs now
+                reconstructor.run()
 
                 # Load results for each pair
                 for cam1, cam2 in camera_pairs:

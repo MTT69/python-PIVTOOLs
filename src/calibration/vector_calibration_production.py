@@ -28,7 +28,6 @@ MODEL_INDEX = 0  # Index of calibration model to use (0-based)
 DOT_SPACING_MM = 28.89  # Physical spacing between calibration dots in mm
 VECTOR_PATTERN = "%05d.mat"  # Pattern for vector files (e.g. "B%05d.mat", "%05d.mat")
 TYPE_NAME = "instantaneous"  # Type name for uncalibrated data directory (e.g. "Instantaneous", "piv")
-RUNS_TO_PROCESS = [6]  # List of run numbers to process (1-based), or None for all runs
 # Example: RUNS_TO_PROCESS = [1, 2, 3]  # Process only runs 1, 2, and 3
 # ===================================================================
 
@@ -278,16 +277,15 @@ class VectorCalibrator:
 
         return ux_ms, uy_ms
 
-    def process_run(self, image_count, runs_to_process=None):
+    def process_run(self, image_count, progress_cb=None):
         """
-        Process and calibrate vectors for a specific run
+        Process and calibrate vectors for all available runs
 
         Args:
             image_count: Number of images in the run
-            runs_to_process: List of run indices to process (1-based), or None for all
+            progress_cb: Optional callback for progress updates
         """
         logger.info(f"Processing run with {image_count} images")
-        logger.info(f"Runs to process: {runs_to_process}")
 
         # Get data paths for uncalibrated data - use configured type
         paths = get_data_paths(
@@ -318,104 +316,69 @@ class VectorCalibrator:
                 f"Uncalibrated data directory not found: {uncalib_data_dir}"
             )
 
-        # Check what files exist in the uncalibrated directory
-        logger.info(f"Contents of {uncalib_data_dir}:")
-        try:
-            for item in sorted(uncalib_data_dir.iterdir()):
-                logger.info(f"  {item.name}")
-        except Exception as e:
-            logger.warning(f"Could not list directory contents: {e}")
-
-        # Load coordinates
+        # Load coordinates for all runs
         logger.info("Loading coordinates...")
         x_coords_list, y_coords_list = load_coords_from_directory(
-            uncalib_data_dir, runs_to_process
+            uncalib_data_dir, runs=None  # Load all available runs
         )
 
         if not x_coords_list:
             logger.error("No coordinate data found!")
-            logger.info("Looking for coordinates.mat file...")
-            coords_file = uncalib_data_dir / "coordinates.mat"
-            if coords_file.exists():
-                logger.info(f"Found coordinates file: {coords_file}")
-                # Try to load it manually
-                try:
-
-                    coords_data = loadmat(
-                        str(coords_file), squeeze_me=True, struct_as_record=False
-                    )
-                    logger.info(f"Coordinates file keys: {list(coords_data.keys())}")
-                    if "coordinates" in coords_data:
-                        coords = coords_data["coordinates"]
-                        logger.info(f"Coordinates type: {type(coords)}")
-                        logger.info(
-                            f"Coordinates shape/length: {getattr(coords, 'shape', len(coords)) if hasattr(coords, '__len__') else 'unknown'}"
-                        )
-                except Exception as e:
-                    logger.error(f"Failed to manually load coordinates: {e}")
-            else:
-                logger.error(f"Coordinates file not found: {coords_file}")
             raise ValueError("No coordinate data found")
 
         logger.info(f"Loaded coordinates for {len(x_coords_list)} runs")
+
+        # Find runs with valid data
+        valid_runs = []
         for i, (x_coords, y_coords) in enumerate(zip(x_coords_list, y_coords_list)):
-            logger.info(
-                f"  Run {i + 1}: x_coords shape={x_coords.shape}, y_coords shape={y_coords.shape}"
-            )
-            if x_coords.size == 0 or y_coords.size == 0:
-                logger.warning(f"  Run {i + 1}: EMPTY COORDINATES!")
-            else:
-                logger.info(
-                    f"  Run {i + 1}: x range=[{x_coords.min():.2f}, {x_coords.max():.2f}], y range=[{y_coords.min():.2f}, {y_coords.max():.2f}]"
-                )
+            run_num = i + 1
+            # Ensure None is replaced with empty arrays
+            if x_coords is None:
+                x_coords = np.array([])
+            if y_coords is None:
+                y_coords = np.array([])
+            valid_coords = np.sum(~np.isnan(x_coords)) + np.sum(~np.isnan(y_coords))
+            logger.info(f"Run {run_num}: {valid_coords} valid coordinates")
+            if valid_coords > 0:
+                valid_runs.append((i, run_num, valid_coords))
 
-        # Determine max run number for proper indexing
-        max_run = max(runs_to_process) if runs_to_process else len(x_coords_list)
-        logger.info(f"Max run number: {max_run}")
+        if not valid_runs:
+            raise ValueError("No runs with valid coordinate data found")
 
-        # Check that we have data for the runs we want to process
-        if runs_to_process:
-            for run_num in runs_to_process:
-                run_idx = run_num - 1  # Convert to 0-based
-                if run_idx >= len(x_coords_list):
-                    logger.error(
-                        f"Run {run_num} not found in coordinate data (only have {len(x_coords_list)} runs)"
-                    )
-                    continue
-                if x_coords_list[run_idx].size == 0:
-                    logger.error(f"Run {run_num} has empty coordinates!")
+        logger.info(
+            f"Found {len(valid_runs)} runs with valid data: {[r[1] for r in valid_runs]}"
+        )
 
-        # Create coordinate structure using proper numpy structured array format
-        # This creates the MATLAB struct array format: coordinates(idx).x, coordinates(idx).y
+        # Create coordinate structure
+        max_run = max([r[1] for r in valid_runs])
         coord_dtype = np.dtype([("x", "O"), ("y", "O")])
         coordinates = np.empty(max_run, dtype=coord_dtype)
 
+        # Process each valid run
+        for run_idx, run_num, valid_coord_count in valid_runs:
+            logger.info(
+                f"Processing run {run_num} with {valid_coord_count} valid coordinates"
+            )
+            x_coords_px = x_coords_list[run_idx]
+            y_coords_px = y_coords_list[run_idx]
+
+            # Calibrate coordinates to mm
+            x_coords_mm, y_coords_mm = self.calibrate_coordinates(
+                x_coords_px, y_coords_px
+            )
+            coordinates[run_num - 1] = (x_coords_mm, y_coords_mm)
+
+        # Fill all runs: valid runs get data, others get empty arrays
+        valid_run_indices = set(r[1] for r in valid_runs)
         for run_num in range(1, max_run + 1):
-            run_idx = run_num - 1  # Convert to 0-based
-
-            if runs_to_process and run_num in runs_to_process:
-                # Find the index in our loaded data
-                data_idx = runs_to_process.index(run_num)
-                x_coords_px = x_coords_list[data_idx]
-                y_coords_px = y_coords_list[data_idx]
-
-                logger.info(
-                    f"Processing run {run_num} (index {data_idx}): x shape={x_coords_px.shape}, y shape={y_coords_px.shape}"
-                )
-
-                # Calibrate coordinates to mm
-                x_coords_mm, y_coords_mm = self.calibrate_coordinates(
-                    x_coords_px, y_coords_px
-                )
-
-                # Set struct fields directly - this creates coordinates(run_idx).x format
-                coordinates[run_idx] = (x_coords_mm, y_coords_mm)
-            else:
-                # Empty struct for runs not being processed
-                coordinates[run_idx] = (np.array([]), np.array([]))
+            if run_num in valid_run_indices:
+                # Already set above for valid runs
+                continue
+            coordinates[run_num - 1] = (np.array([]), np.array([]))
 
         coords_output = {"coordinates": coordinates}
-        # Save calibrated coordinates to calibrated_piv output tree
+
+        # Save calibrated coordinates
         calibrated_dir = (
             self.base_dir
             / "calibrated_piv"
@@ -426,24 +389,13 @@ class VectorCalibrator:
         calibrated_dir.mkdir(parents=True, exist_ok=True)
         coords_path = calibrated_dir / "coordinates.mat"
         savemat(str(coords_path), coords_output)
-        logger.info(
-            f"Saved calibrated coordinates in MATLAB struct format: {coords_path}"
-        )
+        logger.info(f"Saved calibrated coordinates: {coords_path}")
 
-        # Process vector files using first available coordinate set
-        first_coords_idx = (
-            0 if not runs_to_process else runs_to_process.index(min(runs_to_process))
-        )
-        logger.info(
-            f"Using coordinates from run index {first_coords_idx} for vector processing"
-        )
-
-        if first_coords_idx < len(x_coords_list):
-            x_coords_for_vectors = x_coords_list[first_coords_idx]
-            y_coords_for_vectors = y_coords_list[first_coords_idx]
-            logger.info(
-                f"Vector coordinates shapes: x={x_coords_for_vectors.shape}, y={y_coords_for_vectors.shape}"
-            )
+        # Process vector files using the first valid run's coordinates
+        if valid_runs:
+            first_run_idx = valid_runs[0][0]
+            x_coords_for_vectors = x_coords_list[first_run_idx]
+            y_coords_for_vectors = y_coords_list[first_run_idx]
 
             self._process_vector_files(
                 uncalib_data_dir,
@@ -451,12 +403,12 @@ class VectorCalibrator:
                 image_count,
                 x_coords_for_vectors,
                 y_coords_for_vectors,
-                runs_to_process,
+                max_run,
+                valid_runs,
+                progress_cb,
             )
         else:
-            logger.error(
-                f"Cannot find coordinates for vector processing (index {first_coords_idx} >= {len(x_coords_list)})"
-            )
+            logger.error("No valid runs found for vector processing")
 
     def _process_vector_files(
         self,
@@ -465,7 +417,9 @@ class VectorCalibrator:
         num_images,
         coords_x_px,
         coords_y_px,
-        runs_to_process,
+        max_run,
+        valid_runs,
+        progress_cb,
     ):
         """Process all vector files in the directory"""
         logger.info("Processing vector files...")
@@ -474,28 +428,35 @@ class VectorCalibrator:
         vector_pattern = self.vector_pattern
 
         processed_vectors = []
-        max_run = max(runs_to_process) if runs_to_process else 1
 
         for i in range(1, num_images + 1):
             vector_file = uncalib_dir / (vector_pattern % i)
 
             if not vector_file.exists():
-                logger.warning(f"Vector file not found: {vector_file}")
+                if i <= 5:  # Only log first few missing files
+                    logger.warning(f"Vector file not found: {vector_file}")
                 continue
 
             try:
                 # Load uncalibrated vectors
-                vector_data = read_mat_contents(str(vector_file))  # Shape: (1, 3, H, W)
+                vector_data = read_mat_contents(str(vector_file))  # Shape varies
 
-                if vector_data.shape[0] > 1:
+                # Handle different vector data formats
+                if vector_data.ndim == 4 and vector_data.shape[0] == 1:
+                    # Single run format: (1, 3, H, W)
+                    ux_px = vector_data[0, 0, :, :]
+                    uy_px = vector_data[0, 1, :, :]
+                    b_mask = vector_data[0, 2, :, :]
+                elif vector_data.ndim == 3 and vector_data.shape[0] == 3:
+                    # Single run format: (3, H, W)
+                    ux_px = vector_data[0, :, :]
+                    uy_px = vector_data[1, :, :]
+                    b_mask = vector_data[2, :, :]
+                else:
                     logger.warning(
-                        f"Multiple runs in {vector_file.name}, using first run"
+                        f"Unexpected vector data shape in {vector_file.name}: {vector_data.shape}"
                     )
-
-                # Extract components (remove singleton dimension)
-                ux_px = vector_data[0, 0, :, :]  # (H, W)
-                uy_px = vector_data[0, 1, :, :]  # (H, W)
-                b_mask = vector_data[0, 2, :, :]  # (H, W)
+                    continue
 
                 # Calibrate vectors
                 ux_ms, uy_ms = self.calibrate_vectors(
@@ -503,14 +464,16 @@ class VectorCalibrator:
                 )
 
                 # Create piv_result structure array with proper MATLAB struct format
-                # This creates: piv_result(idx).ux, piv_result(idx).uy, piv_result(idx).b_mask
                 piv_dtype = np.dtype([("ux", "O"), ("uy", "O"), ("b_mask", "O")])
                 piv_result = np.empty(max_run, dtype=piv_dtype)
 
                 for run_num in range(1, max_run + 1):
                     run_idx = run_num - 1  # Convert to 0-based
 
-                    if runs_to_process and run_num in runs_to_process:
+                    # Check if this run has valid data
+                    run_has_data = any(r[1] == run_num for r in valid_runs)
+
+                    if run_has_data:
                         # This creates piv_result(run_idx).ux, piv_result(run_idx).uy, piv_result(run_idx).b_mask
                         piv_result[run_idx] = (ux_ms, uy_ms, b_mask)
                     else:
@@ -524,6 +487,18 @@ class VectorCalibrator:
                 processed_vectors.append(
                     {"ux_ms": ux_ms, "uy_ms": uy_ms, "b_mask": b_mask, "frame": i}
                 )
+
+                # Progress callback
+                if progress_cb:
+                    progress = (i / num_images) * 100
+                    progress_cb(
+                        {
+                            "processed_frames": i,
+                            "total_frames": num_images,
+                            "progress": progress,
+                            "successful_frames": len(processed_vectors),
+                        }
+                    )
 
             except Exception as e:
                 logger.error(f"Failed to process {vector_file.name}: {str(e)}")
@@ -544,7 +519,6 @@ def main():
     logger.info(f"Dot spacing: {DOT_SPACING_MM} mm")
     logger.info(f"Vector pattern: {VECTOR_PATTERN}")
     logger.info(f"Type name: {TYPE_NAME}")
-    logger.info(f"Runs to process: {RUNS_TO_PROCESS}")
 
     try:
         calibrator = VectorCalibrator(
@@ -557,7 +531,7 @@ def main():
             type_name=TYPE_NAME,
         )
 
-        calibrator.process_run(image_count, RUNS_TO_PROCESS)
+        calibrator.process_run(image_count)
 
         logger.info("Vector calibration completed successfully")
 

@@ -27,20 +27,22 @@ const basename = (p: string) => {
 };
 
 function useSourcePaths() {
-  const [sourcePaths, setSourcePaths] = useState<string[]>([]);
-
-  useEffect(() => {
-    const stored = localStorage.getItem('config');
-    if (stored) {
-      try {
-        const config = JSON.parse(stored);
-        setSourcePaths(config.directories?.source_paths || []);
-      } catch (e) {
-        console.error('Error loading source paths:', e);
-      }
+  const [sourcePaths, setSourcePaths] = useState<string[]>(() => {
+    try {
+      return JSON.parse(typeof window !== "undefined" ? localStorage.getItem("piv_source_paths") || "[]" : "[]");
+    } catch {
+      return [];
     }
+  });
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "piv_source_paths") {
+        try { setSourcePaths(JSON.parse(e.newValue || "[]")); } catch {}
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
   }, []);
-
   return [sourcePaths];
 }
 
@@ -133,6 +135,7 @@ const StereoCalibration: React.FC<{
   const [dotSpacingMm, setDotSpacingMm] = useState<string>(String(calib.dot_spacing_mm ?? 28.89));
   const [enhanceDots, setEnhanceDots] = useState(calib.enhance_dots ?? true);
   const [asymmetric, setAsymmetric] = useState(calib.asymmetric ?? false);
+  const [dt, setDt] = useState<string>("1.0"); // Time between frames in seconds
 
   // Job management state
   const [jobId, setJobId] = useState<string | null>(null);
@@ -163,6 +166,7 @@ const StereoCalibration: React.FC<{
       dot_spacing_mm: Number(dotSpacingMm),
       enhance_dots: enhanceDots,
       asymmetric: asymmetric,
+      dt: Number(dt) // Add dt to stereo config update
     };
 
     // Only update if config actually changed using deep equality
@@ -182,7 +186,7 @@ const StereoCalibration: React.FC<{
     return () => {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
     };
-  }, [sourcePathIdx, cameraPair, filePattern, patternCols, patternRows, dotSpacingMm, enhanceDots, asymmetric, updateConfig]);
+  }, [sourcePathIdx, cameraPair, filePattern, patternCols, patternRows, dotSpacingMm, enhanceDots, asymmetric, dt, updateConfig]);
 
   // Auto-adjust camera pair when options change
   useEffect(() => {
@@ -349,7 +353,7 @@ const StereoCalibration: React.FC<{
           image_count: (config as any)?.images?.num_images ?? 1000,
           vector_pattern: '%05d.mat',
           type_name: 'instantaneous',
-          runs_to_process: [6]
+          dt: Number(dt)
         })
       });
 
@@ -481,7 +485,9 @@ const StereoCalibration: React.FC<{
               <Select value={String(sourcePathIdx)} onValueChange={v => setSourcePathIdx(Number(v))}>
                 <SelectTrigger>
                   <SelectValue>
-                    {sourcePaths[sourcePathIdx] ? basename(sourcePaths[sourcePathIdx]) : "Pick source path"}
+                    {sourcePaths.length > 0 && sourcePathIdx >= 0 && sourcePathIdx < sourcePaths.length
+                      ? basename(sourcePaths[sourcePathIdx])
+                      : "Pick source path"}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -579,6 +585,19 @@ const StereoCalibration: React.FC<{
                 onChange={e => setAsymmetric(e.target.checked)}
               />
               <label className="text-sm font-medium">Asymmetric Grid</label>
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <label className="text-sm font-medium">dt (seconds)</label>
+              <Input
+                type="number"
+                step="0.0001"
+                value={dt}
+                onChange={e => setDt(e.target.value)}
+                placeholder="1.0"
+              />
             </div>
           </div>
 

@@ -1,10 +1,12 @@
 paths:
   base_paths:
   - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Stereo_Images/ProcessedPIV
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test
   source_paths:
   - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Stereo_Images
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall
   camera_numbers:
-  - 2
+  - 1
 images:
   num_images: 1000
   image_format:
@@ -86,7 +88,7 @@ calibration:
     y_offset:
     - 0
   pinhole:
-    source_path_idx: 0
+    source_path_idx: 1
     camera: 1
     image_index: 0
     file_pattern: calib%05d.tif
@@ -110,6 +112,7 @@ calibration:
     dot_spacing_mm: 28.89
     enhance_dots: true
     asymmetric: false
+    dt: 2
   image_format: calib%05d.tif
 filters:
 - type: time

@@ -1,4 +1,7 @@
 import glob
+import threading
+import time
+import uuid
 from pathlib import Path
 
 import cv2
@@ -11,6 +14,7 @@ from loguru import logger
 from calibration.calibration_planar.planar_calibration_production import (
     PlanarCalibrator,
 )
+from calibration.vector_calibration_production import VectorCalibrator
 from common.utils import camera_number, numpy_to_png_base64
 from config import get_config
 from paths import get_data_paths
@@ -48,6 +52,109 @@ def _resolve_calibration_image(source_path_idx: int, camera: int, index: int = 1
 
 # Global job tracking
 calibration_jobs = {}
+vector_jobs = {}
+scale_factor_jobs = {}
+
+# ============================================================================
+# VECTOR CALIBRATION ROUTES WITH JOB MANAGEMENT
+# ============================================================================
+
+
+@calibration_bp.route("/calibration/vectors/calibrate_all", methods=["POST"])
+def vectors_calibrate_all():
+    """Start vector calibration job using production methods"""
+    data = request.get_json() or {}
+    source_path_idx = int(data.get("source_path_idx", 0))
+    camera = camera_number(data.get("camera", 1))
+    model_index = int(data.get("model_index", 0))
+    dt = float(data.get("dt", 1.0))
+    image_count = int(data.get("image_count", 1000))
+    vector_pattern = data.get("vector_pattern", "%05d.mat")
+    type_name = data.get("type_name", "instantaneous")
+
+    job_id = str(uuid.uuid4())
+
+    def run_vector_calibration():
+        try:
+            vector_jobs[job_id] = {
+                "status": "starting",
+                "progress": 0,
+                "processed_frames": 0,
+                "total_frames": image_count,
+                "start_time": time.time(),
+                "error": None,
+            }
+
+            cfg = get_config()
+            Path(cfg.source_paths[source_path_idx])
+            base_root = Path(cfg.base_paths[source_path_idx])
+
+            def progress_callback(data):
+                vector_jobs[job_id].update(
+                    {
+                        "status": "running",
+                        "progress": data.get("progress", 0),
+                        "processed_frames": data.get("processed_frames", 0),
+                        "successful_frames": data.get("successful_frames", 0),
+                    }
+                )
+
+            # Create calibrator
+            calibrator = VectorCalibrator(
+                base_dir=base_root,
+                camera_num=camera,
+                model_index=model_index,
+                dt=dt,
+                vector_pattern=vector_pattern,
+                type_name=type_name,
+            )
+
+            # Run calibration with progress callback
+            calibrator.process_run(image_count, progress_callback)
+
+            vector_jobs[job_id]["status"] = "completed"
+            vector_jobs[job_id]["progress"] = 100
+
+        except Exception as e:
+            logger.error(f"Vector calibration job {job_id} failed: {e}")
+            vector_jobs[job_id]["status"] = "failed"
+            vector_jobs[job_id]["error"] = str(e)
+
+    # Start job in background thread
+    thread = threading.Thread(target=run_vector_calibration)
+    thread.daemon = True
+    thread.start()
+
+    return jsonify(
+        {
+            "job_id": job_id,
+            "status": "starting",
+            "message": f"Vector calibration job started for camera {camera}",
+            "model_used": f"index_{model_index}",
+            "image_count": image_count,
+        }
+    )
+
+
+@calibration_bp.route("/calibration/vectors/status/<job_id>", methods=["GET"])
+def vectors_status(job_id):
+    """Get vector calibration job status"""
+    if job_id not in vector_jobs:
+        return jsonify({"error": "Job not found"}), 404
+
+    job_data = vector_jobs[job_id].copy()
+
+    # Add timing info
+    if "start_time" in job_data:
+        elapsed = time.time() - job_data["start_time"]
+        job_data["elapsed_time"] = elapsed
+
+        if job_data["status"] == "running" and job_data.get("progress", 0) > 0:
+            estimated_total = elapsed / (job_data["progress"] / 100.0)
+            job_data["estimated_remaining"] = max(0, estimated_total - elapsed)
+
+    return jsonify(job_data)
+
 
 # ============================================================================
 # PRODUCTION PLANAR CALIBRATION ROUTES
@@ -676,3 +783,320 @@ def planar_load_results():
     except Exception as e:
         logger.error(f"Error loading planar calibration results: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+@calibration_bp.route("/calibration/planar/calibrate_all", methods=["POST"])
+def planar_calibrate_all():
+    """Start batch planar calibration job for all images for a camera"""
+    data = request.get_json() or {}
+    source_path_idx = int(data.get("source_path_idx", 0))
+    camera = camera_number(data.get("camera", 1))
+    file_pattern = data.get("file_pattern", "calib%05d.tif")
+    pattern_cols = int(data.get("pattern_cols", 10))
+    pattern_rows = int(data.get("pattern_rows", 10))
+    dot_spacing_mm = float(data.get("dot_spacing_mm", 28.89))
+    enhance_dots = bool(data.get("enhance_dots", True))
+    asymmetric = bool(data.get("asymmetric", False))
+    dt = float(data.get("dt", 1.0))
+
+    job_id = str(uuid.uuid4())
+
+    def run_planar_calibration():
+        try:
+            calibration_jobs[job_id] = {
+                "status": "starting",
+                "progress": 0,
+                "processed_indices": [],
+                "total_images": 0,
+                "start_time": time.time(),
+                "error": None,
+            }
+            cfg = get_config()
+            source_root = Path(cfg.source_paths[source_path_idx])
+            base_root = Path(cfg.base_paths[source_path_idx])
+            cam_input_dir = source_root / "calibration" / f"Cam{camera}"
+            # Find calibration images
+            if "%" in file_pattern:
+                image_files = []
+                i = 1
+                while True:
+                    filename = file_pattern % i
+                    filepath = cam_input_dir / filename
+                    if filepath.exists():
+                        image_files.append(str(filepath))
+                        i += 1
+                    else:
+                        break
+            else:
+                image_files = sorted(glob.glob(str(cam_input_dir / file_pattern)))
+            total_images = len(image_files)
+            calibration_jobs[job_id]["total_images"] = total_images
+            if total_images == 0:
+                calibration_jobs[job_id]["status"] = "failed"
+                calibration_jobs[job_id]["error"] = "No calibration images found"
+                return
+            # Create calibrator
+            calibrator = PlanarCalibrator(
+                source_dir=source_root,
+                base_dir=base_root,
+                camera_count=1,
+                file_pattern=file_pattern,
+                pattern_cols=pattern_cols,
+                pattern_rows=pattern_rows,
+                dot_spacing_mm=dot_spacing_mm,
+                asymmetric=asymmetric,
+                enhance_dots=enhance_dots,
+                dt=dt,
+            )
+            # Process all images
+            for idx, img_path in enumerate(image_files):
+                try:
+                    calibrator.selected_image_idx = idx + 1  # 1-based
+                    calibrator.process_camera(camera)
+                    calibration_jobs[job_id]["processed_indices"].append(idx)
+                    calibration_jobs[job_id]["progress"] = int(
+                        ((idx + 1) / total_images) * 100
+                    )
+                    calibration_jobs[job_id]["status"] = "running"
+                except Exception as e:
+                    logger.error(f"Error processing image {img_path}: {e}")
+            calibration_jobs[job_id]["status"] = "completed"
+            calibration_jobs[job_id]["progress"] = 100
+        except Exception as e:
+            logger.error(f"Planar calibration job {job_id} failed: {e}")
+            calibration_jobs[job_id]["status"] = "failed"
+            calibration_jobs[job_id]["error"] = str(e)
+
+    thread = threading.Thread(target=run_planar_calibration)
+    thread.daemon = True
+    thread.start()
+    return jsonify(
+        {
+            "job_id": job_id,
+            "status": "starting",
+            "message": f"Planar calibration job started for camera {camera}",
+            "total_images": None,
+        }
+    )
+
+
+@calibration_bp.route(
+    "/calibration/planar/calibrate_all/status/<job_id>", methods=["GET"]
+)
+def planar_calibrate_all_status(job_id):
+    """Get batch planar calibration job status"""
+    if job_id not in calibration_jobs:
+        return jsonify({"error": "Job not found"}), 404
+    job_data = calibration_jobs[job_id].copy()
+    if "start_time" in job_data:
+        elapsed = time.time() - job_data["start_time"]
+        job_data["elapsed_time"] = elapsed
+        if job_data["status"] == "running" and job_data.get("progress", 0) > 0:
+            estimated_total = elapsed / (job_data["progress"] / 100.0)
+            job_data["estimated_remaining"] = max(0, estimated_total - elapsed)
+    return jsonify(job_data)
+
+
+# ============================================================================
+# SCALE FACTOR CALIBRATION ROUTES
+# ============================================================================
+
+
+@calibration_bp.route("/calibration/scale_factor/calibrate_vectors", methods=["POST"])
+def scale_factor_calibrate_vectors():
+    """Start scale factor calibration job with progress tracking."""
+    data = request.get_json() or {}
+    source_path_idx = int(data.get("source_path_idx", 0))
+    camera = camera_number(data.get("camera", 1))
+    dt = float(data.get("dt", 1.0))
+    px_per_mm = float(data.get("px_per_mm", 1.0))
+    image_count = int(data.get("image_count", 1000))
+    x_offset = data.get("x_offset", 0)
+    y_offset = data.get("y_offset", 0)
+    type_name = data.get("type_name", "instantaneous")
+
+    job_id = str(uuid.uuid4())
+
+    def run_scale_factor_calibration():
+        try:
+            scale_factor_jobs[job_id] = {
+                "status": "starting",
+                "progress": 0,
+                "processed_runs": 0,
+                "processed_files": 0,
+                "total_files": 0,
+                "start_time": time.time(),
+                "error": None,
+            }
+
+            cfg = get_config()
+            base_root = Path(cfg.base_paths[source_path_idx])
+            paths_uncal = get_data_paths(
+                base_dir=base_root,
+                num_images=image_count,
+                cam=camera,
+                type_name=type_name,
+                use_uncalibrated=True,
+            )
+            paths_calib = get_data_paths(
+                base_dir=base_root,
+                num_images=image_count,
+                cam=camera,
+                type_name=type_name,
+                use_uncalibrated=False,
+            )
+            data_dir_uncal = paths_uncal["data_dir"]
+            data_dir_cal = paths_calib["data_dir"]
+            data_dir_cal.mkdir(parents=True, exist_ok=True)
+
+            coords_path_uncal = data_dir_uncal / "coordinates.mat"
+            coords_path_cal = data_dir_cal / "coordinates.mat"
+            vector_files = []
+            for run in range(1, image_count + 1):
+                vector_file_uncal = data_dir_uncal / f"{run:05d}.mat"
+                vector_file_cal = data_dir_cal / f"{run:05d}.mat"
+                if vector_file_uncal.exists():
+                    vector_files.append((run, vector_file_uncal, vector_file_cal))
+            total_files = len(vector_files) + (1 if coords_path_uncal.exists() else 0)
+            scale_factor_jobs[job_id]["total_files"] = total_files
+            processed_files = 0
+            if total_files == 0:
+                scale_factor_jobs[job_id]["status"] = "failed"
+                scale_factor_jobs[job_id]["error"] = "No data files found to process"
+                return
+            scale_factor_jobs[job_id]["status"] = "running"
+            # --- Process coordinates as struct array ---
+            if coords_path_uncal.exists():
+                mat = scipy.io.loadmat(
+                    str(coords_path_uncal), struct_as_record=False, squeeze_me=True
+                )
+                coordinates = mat.get("coordinates", None)
+                if coordinates is not None:
+                    # Build output struct array
+                    coord_dtype = np.dtype([("x", "O"), ("y", "O")])
+                    out_coords = np.empty(len(coordinates), dtype=coord_dtype)
+                    processed_runs = 0
+                    # Zero-base x and y before offset
+                    for run_idx, run_coords in enumerate(coordinates):
+                        x = getattr(run_coords, "x", None)
+                        y = getattr(run_coords, "y", None)
+                        if x is not None and y is not None:
+                            # Zero-base: subtract first value
+                            x0 = x.flat[0] if x.size > 0 else 0
+                            y0 = y.flat[0] if y.size > 0 else 0
+                            x_calib = (x - x0) / px_per_mm + x_offset
+                            y_calib = -np.flipud((y - y0) / px_per_mm) + y_offset
+                            out_coords[run_idx] = (x_calib, y_calib)
+                            processed_runs += 1
+                        else:
+                            out_coords[run_idx] = (np.array([]), np.array([]))
+                    scipy.io.savemat(str(coords_path_cal), {"coordinates": out_coords})
+                    scale_factor_jobs[job_id]["processed_runs"] = processed_runs
+                    logger.info(f"Updated coordinates for {processed_runs} runs")
+                processed_files += 1
+                scale_factor_jobs[job_id]["processed_files"] = processed_files
+                scale_factor_jobs[job_id]["progress"] = int(
+                    (processed_files / total_files) * 100
+                )
+            # --- Process vector files as struct array ---
+            piv_dtype = np.dtype([("ux", "O"), ("uy", "O"), ("b_mask", "O")])
+            for run, vector_file_uncal, vector_file_cal in vector_files:
+                try:
+                    mat = scipy.io.loadmat(
+                        str(vector_file_uncal), struct_as_record=False, squeeze_me=True
+                    )
+                    # Only support struct format (not cell arrays)
+                    if "piv_result" not in mat:
+                        logger.warning(
+                            f"Vector file {vector_file_uncal} missing 'piv_result' field."
+                        )
+                        continue
+                    piv_result = mat["piv_result"]
+                    # Calibrate all runs in piv_result (assume struct array)
+                    out_piv = np.empty(len(piv_result), dtype=piv_dtype)
+                    for idx, cell in enumerate(piv_result):
+                        ux = getattr(cell, "ux", None)
+                        uy = getattr(cell, "uy", None)
+                        b_mask = getattr(
+                            cell,
+                            "b_mask",
+                            np.zeros_like(ux) if ux is not None else np.array([]),
+                        )
+                        if ux is not None and uy is not None:
+                            ux_calib = ux / px_per_mm / dt / 1000
+                            uy_calib = uy / px_per_mm / dt / 1000
+                            out_piv[idx] = (ux_calib, uy_calib, b_mask)
+                        else:
+                            out_piv[idx] = (np.array([]), np.array([]), np.array([]))
+                    scipy.io.savemat(str(vector_file_cal), {"piv_result": out_piv})
+                except Exception as e:
+                    logger.error(
+                        f"Error processing vector file {vector_file_uncal}: {e}"
+                    )
+                processed_files += 1
+                scale_factor_jobs[job_id]["processed_files"] = processed_files
+                scale_factor_jobs[job_id]["progress"] = int(
+                    (processed_files / total_files) * 100
+                )
+            scale_factor_jobs[job_id]["status"] = "completed"
+            scale_factor_jobs[job_id]["progress"] = 100
+            logger.info(
+                f"Scale factor calibration completed: {processed_files} files processed"
+            )
+        except Exception as e:
+            logger.error(f"Scale factor calibration job {job_id} failed: {e}")
+            scale_factor_jobs[job_id]["status"] = "failed"
+            scale_factor_jobs[job_id]["error"] = str(e)
+
+    # Start job in background thread
+    thread = threading.Thread(target=run_scale_factor_calibration)
+    thread.daemon = True
+    thread.start()
+
+    return jsonify(
+        {
+            "job_id": job_id,
+            "status": "starting",
+            "message": f"Scale factor calibration job started for camera {camera}",
+            "image_count": image_count,
+        }
+    )
+
+
+@calibration_bp.route("/calibration/scale_factor/status/<job_id>", methods=["GET"])
+def scale_factor_status(job_id):
+    """Get scale factor calibration job status"""
+    if job_id not in scale_factor_jobs:
+        return jsonify({"error": "Job not found"}), 404
+
+    job_data = scale_factor_jobs[job_id].copy()
+
+    # Add timing info
+    if "start_time" in job_data:
+        elapsed = time.time() - job_data["start_time"]
+        job_data["elapsed_time"] = elapsed
+
+        if job_data["status"] == "running" and job_data.get("progress", 0) > 0:
+            estimated_total = elapsed / (job_data["progress"] / 100.0)
+            job_data["estimated_remaining"] = max(0, estimated_total - elapsed)
+
+    return jsonify(job_data)
+
+
+@calibration_bp.route("/calibration/status", methods=["GET"])
+def calibration_status():
+    """Get calibration status - unified endpoint for all calibration types"""
+    source_path_idx = request.args.get("source_path_idx", default=0, type=int)
+    camera = camera_number(request.args.get("camera", default=1, type=int))
+    cal_type = request.args.get("type", None)
+
+    # For now, return not_started for all status requests
+    # This prevents 404 errors in the frontend
+    return jsonify(
+        {
+            "status": "not_started",
+            "source_path_idx": source_path_idx,
+            "camera": camera,
+            "type": cal_type,
+        }
+    )

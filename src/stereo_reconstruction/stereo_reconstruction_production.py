@@ -29,7 +29,7 @@ VECTOR_PATTERN = "%05d.mat"  # Pattern for vector files
 TYPE_NAME = "instantaneous"  # Type name for calibrated data directory
 MAX_CORRESPONDENCE_DISTANCE = 5.0  # Maximum distance in mm for point correspondence
 MIN_TRIANGULATION_ANGLE = 5.0  # Minimum angle in degrees for triangulation
-RUNS_TO_PROCESS = [6]  # List of run numbers to process (1-based)
+DT = 0.01  # Time between frames in seconds
 # ===================================================================
 
 # Configure logging
@@ -50,6 +50,7 @@ class StereoReconstructor:
         max_distance=5.0,
         min_angle=5.0,
         progress_cb=None,
+        dt=1.0,  # NEW: time between frames in seconds
     ):
         self.base_dir = Path(base_dir)
         self.camera_pairs = camera_pairs
@@ -60,6 +61,7 @@ class StereoReconstructor:
         self.min_angle = min_angle
         self._stereo_diag_done = False
         self.progress_cb = progress_cb
+        self.dt = dt  # Store dt
 
     def load_stereo_calibration(self, cam1_num, cam2_num):
         stereo_file = (
@@ -90,7 +92,7 @@ class StereoReconstructor:
             )
         return stereo_data
 
-    def load_uncalibrated_coordinates(self, cam_num, runs_to_process=None):
+    def load_uncalibrated_coordinates(self, cam_num):
         paths = get_data_paths(
             self.base_dir,
             num_images=self.image_count,
@@ -99,13 +101,37 @@ class StereoReconstructor:
             use_uncalibrated=True,
         )
         coords_file = paths["data_dir"]
-        x_list, y_list = load_coords_from_directory(coords_file, runs=runs_to_process)
+        logger.info(f"Loading coordinates from: {coords_file}")
+
+        # First try to detect available runs by looking at coordinate files
+        coord_files = list(coords_file.glob("coords_run*.mat"))
+        if coord_files:
+            # Extract run numbers from filenames
+            available_runs = []
+            for f in sorted(coord_files):
+                try:
+                    run_num = int(f.stem.split("_run")[-1])
+                    available_runs.append(run_num)
+                except ValueError:
+                    continue
+            logger.info(f"Found coordinate files for runs: {available_runs}")
+            x_list, y_list = load_coords_from_directory(
+                coords_file, runs=available_runs
+            )
+        else:
+            # Fallback: try to load all runs without specifying
+            logger.info("No specific run files found, trying to load all coordinates")
+            x_list, y_list = load_coords_from_directory(coords_file, runs=None)
+            available_runs = list(range(1, len(x_list) + 1)) if x_list else []
+
+        logger.info(f"Loaded {len(x_list)} coordinate sets")
         filtered_coords = []
-        for x, y in zip(x_list, y_list):
-            filtered_coords.append({"x_px": x, "y_px": y, "run": 1})
+        for i, (x, y) in enumerate(zip(x_list, y_list)):
+            run_num = available_runs[i] if i < len(available_runs) else i + 1
+            filtered_coords.append({"x_px": x, "y_px": y, "run": run_num})
         return filtered_coords
 
-    def load_uncalibrated_vectors(self, cam_num, frame_idx, run_idx=0):
+    def load_uncalibrated_vectors(self, cam_num, frame_idx, run_idx):
         paths = get_data_paths(
             self.base_dir,
             num_images=self.image_count,
@@ -114,21 +140,41 @@ class StereoReconstructor:
             use_uncalibrated=True,
         )
         vector_file = paths["data_dir"] / (self.vector_pattern % frame_idx)
+        logger.debug(f"Looking for vector file: {vector_file}")
         if not vector_file.exists():
             raise FileNotFoundError(f"Vector file not found: {vector_file}")
+        logger.debug(f"Loading vector file: {vector_file}")
         vector_data = read_mat_contents(str(vector_file))
-        if vector_data.ndim == 3 and vector_data.shape[0] == 3:
-            ux_px = vector_data[0, :, :]
-            uy_px = vector_data[1, :, :]
-            b_mask = vector_data[2, :, :]
+        logger.debug(f"Vector data shape: {vector_data.shape}")
+
+        # Extract data for the specific run
+        if vector_data.ndim == 4 and vector_data.shape[0] >= run_idx:
+            # Multiple runs in file: (runs, 3, height, width)
+            ux_px = vector_data[run_idx - 1, 0, :, :]
+            uy_px = vector_data[run_idx - 1, 1, :, :]
+            b_mask = vector_data[run_idx - 1, 2, :, :]
         elif (
             vector_data.ndim == 4
             and vector_data.shape[0] == 1
             and vector_data.shape[1] == 3
         ):
+            # Single run with extra dimension: (1, 3, height, width)
+            # Assume this single run corresponds to the requested run
+            logger.debug(
+                f"Vector file contains 1 run, assuming it corresponds to requested run {run_idx}"
+            )
             ux_px = vector_data[0, 0, :, :]
             uy_px = vector_data[0, 1, :, :]
             b_mask = vector_data[0, 2, :, :]
+        elif vector_data.ndim == 3 and vector_data.shape[0] == 3:
+            # Single run: (3, height, width)
+            # Assume this single run corresponds to the requested run
+            logger.debug(
+                f"Vector file contains 1 run, assuming it corresponds to requested run {run_idx}"
+            )
+            ux_px = vector_data[0, :, :]
+            uy_px = vector_data[1, :, :]
+            b_mask = vector_data[2, :, :]
         else:
             raise ValueError(f"Unexpected vector_data shape: {vector_data.shape}")
         return {
@@ -136,6 +182,7 @@ class StereoReconstructor:
             "uy_px": uy_px,
             "b_mask": b_mask,
             "frame": frame_idx,
+            "run": run_idx,
         }
 
     def find_corresponding_points(self, coords1_px, coords2_px):
@@ -238,35 +285,44 @@ class StereoReconstructor:
         }
 
     def save_calibrated_vectors_matlab_format(
-        self, result_3d, coords1_px, coords2_px, frame_idx, output_dir, runs_to_process
+        self,
+        result_3d,
+        coords1_px,
+        coords2_px,
+        frame_idx,
+        output_dir,
+        num_runs,
+        current_run_num,
     ):
         ref_shape = coords1_px[0].shape
         ux_grid = np.full(ref_shape, np.nan, dtype=np.float64)
         uy_grid = np.full(ref_shape, np.nan, dtype=np.float64)
         uz_grid = np.full(ref_shape, np.nan, dtype=np.float64)
-        # Convert mm to m for displacement
-        velocities_3d_m = result_3d["velocities_3d"] / 1000.0
+        # Convert mm to m for displacement and divide by dt for velocity
+        velocities_3d_mps = (result_3d["velocities_3d"] / 1000.0) / max(self.dt, 1e-12)
         if result_3d["num_valid"] > 0:
             valid_indices = result_3d["indices1"]
             row_indices, col_indices = np.unravel_index(valid_indices, ref_shape)
-            ux_grid[row_indices, col_indices] = velocities_3d_m[:, 0]
-            uy_grid[row_indices, col_indices] = velocities_3d_m[:, 1]
-            uz_grid[row_indices, col_indices] = velocities_3d_m[:, 2]
-        max_run = max(runs_to_process) if runs_to_process else 1
+            ux_grid[row_indices, col_indices] = velocities_3d_mps[:, 0]
+            uy_grid[row_indices, col_indices] = velocities_3d_mps[:, 1]
+            uz_grid[row_indices, col_indices] = velocities_3d_mps[:, 2]
+
         piv_dtype = np.dtype([("ux", "O"), ("uy", "O"), ("uz", "O")])
-        piv_result = np.empty(max_run, dtype=piv_dtype)
-        for run_num in range(1, max_run + 1):
-            run_idx = run_num - 1
-            if runs_to_process and run_num in runs_to_process:
+        piv_result = np.empty(num_runs, dtype=piv_dtype)
+        for run_idx in range(num_runs):
+            run_num = run_idx + 1
+            if run_num == current_run_num:
+                # This is the current run with data
                 piv_result[run_idx] = (ux_grid, uy_grid, uz_grid)
             else:
+                # Empty run - save empty arrays
                 piv_result[run_idx] = (np.array([]), np.array([]), np.array([]))
         vector_file = output_dir / (self.vector_pattern % frame_idx)
         savemat(str(vector_file), {"piv_result": piv_result})
         return vector_file
 
     def save_stereo_coordinates(
-        self, result_3d, coords1_px, output_dir, runs_to_process
+        self, result_3d, coords1_px, output_dir, num_runs, current_run_num
     ):
         ref_shape = coords1_px[0].shape
         x_grid = np.full(ref_shape, np.nan, dtype=np.float64)
@@ -282,14 +338,16 @@ class StereoReconstructor:
             x_grid[row_indices, col_indices] = centered_xyz[:, 0]
             y_grid[row_indices, col_indices] = centered_xyz[:, 1]
             z_grid[row_indices, col_indices] = centered_xyz[:, 2]
-        max_run = max(runs_to_process) if runs_to_process else 1
+
         coord_dtype = np.dtype([("x", "O"), ("y", "O"), ("z", "O")])
-        coordinates = np.empty(max_run, dtype=coord_dtype)
-        for run_num in range(1, max_run + 1):
-            run_idx = run_num - 1
-            if runs_to_process and run_num in runs_to_process:
+        coordinates = np.empty(num_runs, dtype=coord_dtype)
+        for run_idx in range(num_runs):
+            run_num = run_idx + 1
+            if run_num == current_run_num:
+                # This is the current run with data
                 coordinates[run_idx] = (x_grid, y_grid, z_grid)
             else:
+                # Empty run - save empty arrays
                 coordinates[run_idx] = (np.array([]), np.array([]), np.array([]))
         coord_file = output_dir / "coordinates.mat"
         coords_output = {"coordinates": coordinates}
@@ -299,7 +357,7 @@ class StereoReconstructor:
     def determine_output_camera(self, cam1_num, cam2_num):
         return cam1_num
 
-    def process_camera_pair(self, cam1_num, cam2_num, runs_to_process=None):
+    def process_camera_pair(self, cam1_num, cam2_num):
         logger.info(
             f"Starting stereo 3D reconstruction for pair ({cam1_num},{cam2_num})"
         )
@@ -308,8 +366,11 @@ class StereoReconstructor:
         stereo_data_sanitized = {
             k: v for k, v in stereo_data.items() if not k.startswith("_")
         }
-        coords1_list = self.load_uncalibrated_coordinates(cam1_num, runs_to_process)
-        coords2_list = self.load_uncalibrated_coordinates(cam2_num, runs_to_process)
+        coords1_list = self.load_uncalibrated_coordinates(cam1_num)
+        coords2_list = self.load_uncalibrated_coordinates(cam2_num)
+        logger.info(f"Camera {cam1_num}: Found {len(coords1_list)} coordinate sets")
+        logger.info(f"Camera {cam2_num}: Found {len(coords2_list)} coordinate sets")
+
         if len(coords1_list) == 0:
             raise ValueError(f"No coordinate data found for Camera {cam1_num}")
         if len(coords2_list) == 0:
@@ -318,10 +379,27 @@ class StereoReconstructor:
             min_sets = min(len(coords1_list), len(coords2_list))
             coords1_list = coords1_list[:min_sets]
             coords2_list = coords2_list[:min_sets]
-        coords1 = coords1_list[0]
-        coords2 = coords2_list[0]
-        coords1_px = (coords1["x_px"], coords1["y_px"])
-        coords2_px = (coords2["x_px"], coords2["y_px"])
+            logger.info(f"Adjusted to {min_sets} coordinate sets to match both cameras")
+
+        # Check which runs have valid coordinate data
+        valid_runs = []
+        for i, (coords1, coords2) in enumerate(zip(coords1_list, coords2_list)):
+            valid_coords1 = np.sum(~np.isnan(coords1["x_px"]))
+            valid_coords2 = np.sum(~np.isnan(coords2["x_px"]))
+            run_num = coords1["run"]
+            logger.info(
+                f"Run {run_num}: Cam{cam1_num}={valid_coords1}, Cam{cam2_num}={valid_coords2} valid coordinates"
+            )
+            if valid_coords1 > 0 and valid_coords2 > 0:
+                valid_runs.append((i, run_num, valid_coords1 + valid_coords2))
+
+        if not valid_runs:
+            raise ValueError("No runs with valid coordinate data found")
+
+        logger.info(
+            f"Found {len(valid_runs)} runs with valid data: {[r[1] for r in valid_runs]}"
+        )
+
         output_cam = self.determine_output_camera(cam1_num, cam2_num)
         output_dir = (
             self.base_dir
@@ -331,54 +409,96 @@ class StereoReconstructor:
             / self.type_name
         )
         output_dir.mkdir(parents=True, exist_ok=True)
-        successful_frames = 0
-        coordinates_saved = False
-        for frame_idx in range(1, self.image_count + 1):
-            try:
-                vectors1 = self.load_uncalibrated_vectors(cam1_num, frame_idx)
-                vectors2 = self.load_uncalibrated_vectors(cam2_num, frame_idx)
-                result_3d = self.reconstruct_3d_velocities(
-                    vectors1["ux_px"],
-                    vectors1["uy_px"],
-                    vectors2["ux_px"],
-                    vectors2["uy_px"],
-                    coords1_px,
-                    coords2_px,
-                    stereo_data,
-                )
-                self.save_calibrated_vectors_matlab_format(
-                    result_3d,
-                    coords1_px,
-                    coords2_px,
-                    frame_idx,
-                    output_dir,
-                    runs_to_process,
-                )
-                if not coordinates_saved and result_3d["num_valid"] > 0:
-                    self.save_stereo_coordinates(
-                        result_3d, coords1_px, output_dir, runs_to_process
+        logger.info(f"Output directory: {output_dir}")
+
+        # Process each valid run
+        total_successful_frames = 0
+        for run_idx, run_num, total_coords in valid_runs:
+            logger.info(
+                f"Processing run {run_num} (index {run_idx}) with {total_coords} coordinates"
+            )
+
+            coords1 = coords1_list[run_idx]
+            coords2 = coords2_list[run_idx]
+            coords1_px = (coords1["x_px"], coords1["y_px"])
+            coords2_px = (coords2["x_px"], coords2["y_px"])
+
+            logger.info(
+                f"Run {run_num} coord shapes: Cam{cam1_num}={coords1_px[0].shape}, Cam{cam2_num}={coords2_px[0].shape}"
+            )
+
+            successful_frames = 0
+            coordinates_saved = False
+            for frame_idx in range(1, self.image_count + 1):
+                try:
+                    if frame_idx <= 5 or frame_idx % 100 == 0:
+                        logger.info(f"Run {run_num}, Frame {frame_idx}")
+                    vectors1 = self.load_uncalibrated_vectors(
+                        cam1_num, frame_idx, run_num
                     )
-                    coordinates_saved = True
-                successful_frames += 1
-            except Exception as e:
-                logger.debug(f"Frame {frame_idx} failed: {e}")
-            finally:
-                if self.progress_cb:
-                    try:
-                        self.progress_cb(
-                            {
-                                "camera_pair": [cam1_num, cam2_num],
-                                "processed": frame_idx,
-                                "successful": successful_frames,
-                                "total": self.image_count,
-                            }
+                    vectors2 = self.load_uncalibrated_vectors(
+                        cam2_num, frame_idx, run_num
+                    )
+                    result_3d = self.reconstruct_3d_velocities(
+                        vectors1["ux_px"],
+                        vectors1["uy_px"],
+                        vectors2["ux_px"],
+                        vectors2["uy_px"],
+                        coords1_px,
+                        coords2_px,
+                        stereo_data,
+                    )
+                    self.save_calibrated_vectors_matlab_format(
+                        result_3d,
+                        coords1_px,
+                        coords2_px,
+                        frame_idx,
+                        output_dir,
+                        len(coords1_list),
+                        run_num,
+                    )
+                    if not coordinates_saved and result_3d["num_valid"] > 0:
+                        self.save_stereo_coordinates(
+                            result_3d,
+                            coords1_px,
+                            output_dir,
+                            len(coords1_list),
+                            run_num,
                         )
-                    except Exception:
-                        pass
+                        coordinates_saved = True
+                    successful_frames += 1
+                except FileNotFoundError as e:
+                    if frame_idx <= 3:
+                        logger.warning(f"Run {run_num}, Frame {frame_idx}: {e}")
+                    break  # Stop processing this run if vector files don't exist
+                except Exception as e:
+                    if frame_idx <= 5:
+                        logger.error(f"Run {run_num}, Frame {frame_idx} failed: {e}")
+                finally:
+                    if self.progress_cb:
+                        try:
+                            self.progress_cb(
+                                {
+                                    "camera_pair": [cam1_num, cam2_num],
+                                    "processed": frame_idx,
+                                    "successful": successful_frames,
+                                    "total": self.image_count,
+                                    "current_run": run_num,
+                                }
+                            )
+                        except Exception:
+                            pass
+
+            logger.info(f"Run {run_num}: {successful_frames} successful frames")
+            total_successful_frames += successful_frames
+
+        logger.info(
+            f"All runs completed: {total_successful_frames} total successful frames"
+        )
         summary_data = {
             "stereo_calibration": stereo_data_sanitized,
             "reconstruction_summary": {
-                "total_frames_processed": successful_frames,
+                "total_frames_processed": total_successful_frames,
                 "total_frames_attempted": self.image_count,
                 "camera_pair": [cam1_num, cam2_num],
                 "output_camera": output_cam,
@@ -396,10 +516,10 @@ class StereoReconstructor:
         summary_file = output_dir / "stereo_reconstruction_summary.mat"
         savemat(str(summary_file), summary_data)
 
-    def run(self, runs_to_process=None):
+    def run(self):
         for cam1_num, cam2_num in self.camera_pairs:
             try:
-                self.process_camera_pair(cam1_num, cam2_num, runs_to_process)
+                self.process_camera_pair(cam1_num, cam2_num)
             except Exception as e:
                 logger.error(
                     f"Reconstruction failed for pair ({cam1_num},{cam2_num}): {e}"
@@ -415,8 +535,9 @@ def main():
         type_name=TYPE_NAME,
         max_distance=MAX_CORRESPONDENCE_DISTANCE,
         min_angle=MIN_TRIANGULATION_ANGLE,
+        dt=DT,
     )
-    reconstructor.run(RUNS_TO_PROCESS)
+    reconstructor.run()
 
 
 if __name__ == "__main__":
