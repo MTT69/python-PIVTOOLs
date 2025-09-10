@@ -18,10 +18,10 @@ from scipy.io import savemat
 
 # ===================== CONFIGURATION VARIABLES =====================
 # Set these variables for your calibration setup
-SOURCE_DIR = "/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Stereo_Images"
-BASE_DIR = "/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Stereo_Images/ProcessedPIV"
-CAMERA_COUNT = 2
-FILE_PATTERN = "planar_calibration_plate_*.tif"  # or 'B%05d.tif' for numbered files
+SOURCE_DIR = "/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall"
+BASE_DIR = "/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test"
+CAMERA_COUNT = 1
+FILE_PATTERN = "calib%05d.tif"  # or 'B%05d.tif' for numbered files
 
 # Grid pattern parameters
 PATTERN_COLS = 10
@@ -29,6 +29,7 @@ PATTERN_ROWS = 10
 DOT_SPACING_MM = 28.89
 ASYMMETRIC = False
 ENHANCE_DOTS = True
+SELECTED_IMAGE_IDX = 1  # Set to specific image index (1-based) to process only that image, or None to process all
 
 # ===================================================================
 
@@ -52,6 +53,7 @@ class PlanarCalibrator:
         asymmetric=False,
         enhance_dots=False,
         dt=1.0,
+        selected_image_idx=1,  # 1-based index of specific calibration image to process
     ):
         """
         Initialize planar calibrator
@@ -77,6 +79,7 @@ class PlanarCalibrator:
         self.asymmetric = asymmetric
         self.enable_dot_enhancement = enhance_dots
         self.dt = dt  # Add dt parameter
+        self.selected_image_idx = selected_image_idx
 
         # Create blob detector
         self.detector = self._create_blob_detector()
@@ -102,9 +105,9 @@ class PlanarCalibrator:
         """Create necessary output directories"""
         for cam_num in range(1, self.camera_count + 1):
             cam_base = self.base_dir / "calibration" / f"Cam{cam_num}"
-            (cam_base / "grid").mkdir(parents=True, exist_ok=True)
-            (cam_base / "models").mkdir(parents=True, exist_ok=True)
-            (cam_base / "dewarped").mkdir(parents=True, exist_ok=True)
+            (cam_base / "indices").mkdir(parents=True, exist_ok=True)
+            (cam_base / "model").mkdir(parents=True, exist_ok=True)
+            (cam_base / "dewarp").mkdir(parents=True, exist_ok=True)
 
     def enhance_dots_image(self, img, fixed_radius=9):
         """
@@ -198,13 +201,20 @@ class PlanarCalibrator:
         return False, None
 
     def calculate_reprojection_error(self, grid_points, objp_2d, H):
-        """Calculate reprojection error using homography"""
+        """Calculate reprojection error using homography and return per-axis errors"""
         H_inv = np.linalg.inv(H)
         objp_h = np.hstack([objp_2d, np.ones((objp_2d.shape[0], 1))])
-        projected = (H_inv @ objp_h.T).T
-        projected = projected[:, :2] / projected[:, 2:]
-        errors = np.linalg.norm(grid_points - projected, axis=1)
-        return errors.mean(), errors
+        projected_h = (H_inv @ objp_h.T).T
+        projected = projected_h[:, :2] / projected_h[:, 2:]
+
+        # Error vector per point (pixel units)
+        error_vec = grid_points - projected
+        errors = np.linalg.norm(error_vec, axis=1)
+        errors_x = error_vec[:, 0]
+        errors_y = error_vec[:, 1]
+
+        # Return overall mean, full vector of norms, and per-axis errors
+        return errors.mean(), errors, errors_x, errors_y
 
     def calculate_dewarped_size(self, H, img_shape):
         """Calculate optimal output size for dewarped image"""
@@ -244,10 +254,9 @@ class PlanarCalibrator:
             logger.error(f"Camera directory not found: {cam_input_dir}")
             return
 
-        # Find calibration images
+        # Build list of available image files (1-based indexing for numbered patterns)
+        image_files = []
         if "%" in self.file_pattern:
-            # Handle numbered patterns like B%05d.tif
-            image_files = []
             i = 1
             while True:
                 filename = self.file_pattern % i
@@ -258,113 +267,119 @@ class PlanarCalibrator:
                 else:
                     break
         else:
-            # Handle glob patterns like planar_calibration_plate_*.tif
             image_files = sorted(glob.glob(str(cam_input_dir / self.file_pattern)))
 
         if not image_files:
             logger.error(
-                f"No images found in {cam_input_dir} with pattern {self.file_pattern}"
+                f"No calibration images found in {cam_input_dir} with pattern {self.file_pattern}"
             )
             return
 
-        logger.info(f"Found {len(image_files)} images for Camera {cam_num}")
+        idx = int(self.selected_image_idx)
+        if idx < 1 or idx > len(image_files):
+            logger.error(
+                f"Selected image index {idx} out of range (available: 1-{len(image_files)})"
+            )
+            return
+        img_path = image_files[idx - 1]
+        logger.info(f"Processing calibration image {idx}: {img_path}")
 
-        # Create object points
+        # Create object points template
         objp = self.make_object_points()
         objp_2d = objp[:, :2]
 
-        # Process each image
-        for i, img_path in enumerate(image_files):
-            try:
-                self._process_single_image(img_path, i, cam_output_base, objp_2d)
-            except Exception as e:
-                logger.error(f"Failed to process {img_path}: {str(e)}")
-                continue
-
-    def _process_single_image(self, img_path, img_index, cam_output_base, objp_2d):
-        """Process a single calibration image"""
-        logger.info(f"Processing image {img_index}: {Path(img_path).name}")
-
-        # Load image
+        # Detect grid and process single image
         img = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
-        if img is None:
-            raise ValueError(f"Could not load image: {img_path}")
-
-        # Detect grid
         found, grid_points = self.detect_grid_in_image(img)
-        if not found:
-            raise ValueError("Grid not detected")
+        if not found or grid_points is None:
+            logger.error(f"Grid not found in image index {idx}: {img_path}")
+            return
 
-        # Ensure we have the right number of points
-        expected_points = self.pattern_size[0] * self.pattern_size[1]
-        if len(grid_points) != expected_points:
-            logger.warning(f"Expected {expected_points} points, got {len(grid_points)}")
-            objp_2d_used = objp_2d[: len(grid_points)]
-        else:
-            objp_2d_used = objp_2d
-
-        # Compute homography
-        H, _ = cv2.findHomography(grid_points, objp_2d_used, cv2.RANSAC, 3.0)
-
-        # Calculate reprojection error
-        mean_error, _ = self.calculate_reprojection_error(grid_points, objp_2d_used, H)
-        logger.info(f"Reprojection error: {mean_error:.2f} px")
-
-        # Fit camera model
-        camera_model = self._fit_camera_model(grid_points, objp_2d_used)
-
-        # Calculate dewarped image
+        # Compute homography and dewarp
+        H, _ = cv2.findHomography(
+            grid_points, objp_2d[: grid_points.shape[0]], cv2.RANSAC, 3.0
+        )
         output_size, combined_H = self.calculate_dewarped_size(H, img.shape)
         dewarped = cv2.warpPerspective(
             img, combined_H, output_size, flags=cv2.INTER_LANCZOS4
         )
 
-        # Save results
+        # Calculate reprojection error
+        mean_error, reproj_errs, reproj_errs_x, reproj_errs_y = (
+            self.calculate_reprojection_error(
+                grid_points, objp_2d[: grid_points.shape[0]], H
+            )
+        )
+
+        # Save indexing and dewarp
         self._save_results(
-            img_index,
+            idx,
             cam_output_base,
             grid_points,
             H,
-            camera_model,
+            None,
             dewarped,
             mean_error,
+            reproj_errs,
+            reproj_errs_x,
+            reproj_errs_y,
             Path(img_path).name,
         )
 
-    def _fit_camera_model(self, image_points, object_points_2d):
-        """Fit camera model using OpenCV"""
-        # Convert to proper format for OpenCV
-        img_pts = image_points.reshape(-1, 1, 2).astype(np.float32)
-
-        # Create 3D object points (add z=0)
+        # Prepare points for calibration
         obj_pts_3d = np.hstack(
-            [object_points_2d, np.zeros((len(object_points_2d), 1))]
+            [objp_2d[: grid_points.shape[0]], np.zeros((grid_points.shape[0], 1))]
         ).astype(np.float32)
-        obj_pts = obj_pts_3d.reshape(-1, 1, 3)
+        objpoints = [obj_pts_3d.reshape(-1, 1, 3)]
+        imgpoints = [grid_points.reshape(-1, 1, 2)]
 
-        # Prepare lists for calibrateCamera (it expects lists of arrays)
-        objpoints = [obj_pts]
-        imgpoints = [img_pts]
-
-        # Estimate image size from image points
-        w = int(np.max(image_points[:, 0])) + 100
-        h = int(np.max(image_points[:, 1])) + 100
-
+        # Run camera calibration
+        logger.info(f"Calibrating camera from image {idx}...")
         ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(
-            objpoints, imgpoints, (w, h), None, None
+            objpoints,
+            imgpoints,
+            (
+                int(np.max(imgpoints[0][:, 0, 0])) + 100,
+                int(np.max(imgpoints[0][:, 0, 1])) + 100,
+            ),
+            None,
+            None,
         )
 
-        # Calculate reprojection error
-        imgpoints2, _ = cv2.projectPoints(obj_pts, rvecs[0], tvecs[0], mtx, dist)
-        error = cv2.norm(img_pts, imgpoints2, cv2.NORM_L2) / len(imgpoints2)
+        # Compute reprojection errors
+        proj, _ = cv2.projectPoints(objpoints[0], rvecs[0], tvecs[0], mtx, dist)
+        proj = proj.reshape(-1, 2)
+        imgpt = imgpoints[0].reshape(-1, 2)
+        err_vec = imgpt - proj
+        all_errors = np.linalg.norm(err_vec, axis=1)
+        all_errs_x = err_vec[:, 0]
+        all_errs_y = err_vec[:, 1]
 
-        return {
+        logger.info(f"Calibration reprojection RMS: {ret:.5f}")
+
+        # Save camera model with homography
+        model_data = {
             "camera_matrix": mtx,
             "dist_coeffs": dist,
-            "rvecs": rvecs[0],
-            "tvecs": tvecs[0],
-            "reprojection_error": error,
+            "rvecs": rvecs,
+            "tvecs": tvecs,
+            "reprojection_error": ret,
+            "homography": np.array(H, dtype=np.float32),
+            "reprojection_error_x_mean": float(np.mean(np.abs(all_errs_x))),
+            "reprojection_error_y_mean": float(np.mean(np.abs(all_errs_y))),
+            "reprojection_errors": all_errors,
+            "reprojection_errors_x": all_errs_x,
+            "reprojection_errors_y": all_errs_y,
+            "num_images": 1,
+            "timestamp": datetime.now().isoformat(),
+            "pattern_size": self.pattern_size,
+            "dot_spacing_mm": self.dot_spacing_mm,
+            "dt": self.dt,
         }
+        savemat(cam_output_base / "model" / "camera_model.mat", model_data)
+        logger.info(
+            f"Saved camera model: {cam_output_base / 'model' / 'camera_model.mat'}"
+        )
 
     def _save_results(
         self,
@@ -375,48 +390,64 @@ class PlanarCalibrator:
         camera_model,
         dewarped,
         reprojection_error,
+        reproj_errs,
+        reproj_errs_x,
+        reproj_errs_y,
         original_filename,
     ):
         """Save all calibration results"""
-        # Save grid indexing
+        # Save grid indexing (store in indices folder)
         grid_data = {
             "grid_points": grid_points,
             "homography": H,
             "reprojection_error": reprojection_error,
+            "reprojection_error_x_mean": float(np.mean(np.abs(reproj_errs_x))),
+            "reprojection_error_y_mean": float(np.mean(np.abs(reproj_errs_y))),
+            "reprojection_errors": reproj_errs,
+            "reprojection_errors_x": reproj_errs_x,
+            "reprojection_errors_y": reproj_errs_y,
             "original_filename": original_filename,
             "pattern_size": self.pattern_size,
             "dot_spacing_mm": self.dot_spacing_mm,
             "dt": self.dt,  # Add dt to grid data
             "timestamp": datetime.now().isoformat(),
         }
-        savemat(cam_output_base / "grid" / f"indexing_{img_index}.mat", grid_data)
+        savemat(cam_output_base / "indices" / f"indexing_{img_index}.mat", grid_data)
 
-        # Save calibration model - CRITICAL: Include dt here
-        model_data = {
-            "camera_matrix": camera_model["camera_matrix"],
-            "dist_coeffs": camera_model["dist_coeffs"],
-            "rvecs": camera_model["rvecs"],
-            "tvecs": camera_model["tvecs"],
-            "reprojection_error": camera_model["reprojection_error"],
-            "grid_points": grid_points,
-            "homography": H,
-            "original_filename": original_filename,
-            "pattern_size": self.pattern_size,
-            "dot_spacing_mm": self.dot_spacing_mm,
-            "dt": self.dt,  # IMPORTANT: Save dt with the model for vector calibration
-            "timestamp": datetime.now().isoformat(),
-        }
-        savemat(cam_output_base / "models" / f"{img_index}.mat", model_data)
+        # Save calibration model - include dt and use camera_calibration_{idx}.mat in model folder
+        # Optionally save a per-image calibration model if provided
+        if camera_model is not None:
+            model_data = {
+                "camera_matrix": camera_model["camera_matrix"],
+                "dist_coeffs": camera_model["dist_coeffs"],
+                "rvecs": camera_model["rvecs"],
+                "tvecs": camera_model["tvecs"],
+                "reprojection_error": camera_model["reprojection_error"],
+                "reprojection_error_x_mean": float(np.mean(np.abs(reproj_errs_x))),
+                "reprojection_error_y_mean": float(np.mean(np.abs(reproj_errs_y))),
+                "reprojection_errors": reproj_errs,
+                "reprojection_errors_x": reproj_errs_x,
+                "reprojection_errors_y": reproj_errs_y,
+                "grid_points": grid_points,
+                "homography": H,
+                "original_filename": original_filename,
+                "pattern_size": self.pattern_size,
+                "dot_spacing_mm": self.dot_spacing_mm,
+                "dt": self.dt,  # IMPORTANT: Save dt with the model for vector calibration
+                "timestamp": datetime.now().isoformat(),
+            }
+            savemat(
+                cam_output_base / "model" / f"camera_calibration_{img_index}.mat",
+                model_data,
+            )
+        else:
+            logger.debug(f"No per-image camera model to save for image {img_index}")
 
-        # Save dewarped image
-        dewarped_path = (
-            cam_output_base
-            / "dewarped"
-            / f"{Path(original_filename).stem}_dewarped.tif"
-        )
+        # Save dewarped image in dewarp folder with clear name
+        dewarped_path = cam_output_base / "dewarp" / f"dewarped_{img_index}.tif"
         cv2.imwrite(str(dewarped_path), dewarped)
 
-        # Save grid visualization with indices
+        # Save grid visualization with indices into indices folder as indexes_{idx}.png
         self._save_grid_visualization(
             img_index,
             cam_output_base,
@@ -488,8 +519,8 @@ class PlanarCalibrator:
             # Invert y-axis to match image coordinates
             ax.invert_yaxis()
 
-            # Save figure
-            fig_path = cam_output_base / "grid" / f"grid_visualization_{img_index}.png"
+            # Save figure into indices folder with filename indexes_{idx}.png
+            fig_path = cam_output_base / "indices" / f"indexes_{img_index}.png"
             plt.savefig(fig_path, dpi=150, bbox_inches="tight", facecolor="white")
             plt.close(fig)
 
@@ -529,6 +560,7 @@ def main():
         dot_spacing_mm=DOT_SPACING_MM,
         asymmetric=ASYMMETRIC,
         enhance_dots=ENHANCE_DOTS,
+        selected_image_idx=SELECTED_IMAGE_IDX,  # Set to specific image index (or range) if needed
     )
 
     calibrator.run()

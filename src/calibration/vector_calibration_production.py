@@ -14,6 +14,7 @@ import cv2
 import numpy as np
 from scipy.io import loadmat, savemat
 
+sys.path.append(str(Path(__file__).parent.parent))
 from paths import get_data_paths
 from post_processing.vector_loading import load_coords_from_directory, read_mat_contents
 
@@ -32,7 +33,6 @@ RUNS_TO_PROCESS = [6]  # List of run numbers to process (1-based), or None for a
 # ===================================================================
 
 # Add src to path to import modules
-sys.path.append(str(Path(__file__).parent.parent))
 
 
 # Configure logging
@@ -98,8 +98,9 @@ class VectorCalibrator:
         )
 
         calib_dir = calib_paths["calib_dir"]
-        model_path = calib_dir / "models" / f"{self.model_index}.mat"
-
+        # Try common model filenames produced by planar calibrator
+        # Always look for the model at "model/camera_model.mat"
+        model_path = calib_dir / "model" / "camera_model.mat"
         if not model_path.exists():
             raise FileNotFoundError(f"Calibration model not found: {model_path}")
 
@@ -359,13 +360,13 @@ class VectorCalibrator:
         logger.info(f"Loaded coordinates for {len(x_coords_list)} runs")
         for i, (x_coords, y_coords) in enumerate(zip(x_coords_list, y_coords_list)):
             logger.info(
-                f"  Run {i+1}: x_coords shape={x_coords.shape}, y_coords shape={y_coords.shape}"
+                f"  Run {i + 1}: x_coords shape={x_coords.shape}, y_coords shape={y_coords.shape}"
             )
             if x_coords.size == 0 or y_coords.size == 0:
-                logger.warning(f"  Run {i+1}: EMPTY COORDINATES!")
+                logger.warning(f"  Run {i + 1}: EMPTY COORDINATES!")
             else:
                 logger.info(
-                    f"  Run {i+1}: x range=[{x_coords.min():.2f}, {x_coords.max():.2f}], y range=[{y_coords.min():.2f}, {y_coords.max():.2f}]"
+                    f"  Run {i + 1}: x range=[{x_coords.min():.2f}, {x_coords.max():.2f}], y range=[{y_coords.min():.2f}, {y_coords.max():.2f}]"
                 )
 
         # Determine max run number for proper indexing
@@ -414,8 +415,17 @@ class VectorCalibrator:
                 coordinates[run_idx] = (np.array([]), np.array([]))
 
         coords_output = {"coordinates": coordinates}
-        coords_path = calib_data_dir / "coordinates.mat"
-        savemat(str(coords_path), coords_output)  # Remove struct_as_record parameter
+        # Save calibrated coordinates to calibrated_piv output tree
+        calibrated_dir = (
+            self.base_dir
+            / "calibrated_piv"
+            / str(image_count)
+            / f"Cam{self.camera_num}"
+            / self.type_name
+        )
+        calibrated_dir.mkdir(parents=True, exist_ok=True)
+        coords_path = calibrated_dir / "coordinates.mat"
+        savemat(str(coords_path), coords_output)
         logger.info(
             f"Saved calibrated coordinates in MATLAB struct format: {coords_path}"
         )
@@ -507,10 +517,9 @@ class VectorCalibrator:
                         # Empty struct for runs not being processed
                         piv_result[run_idx] = (np.array([]), np.array([]), np.array([]))
 
+                # Save calibrated piv_result into calibrated_piv output tree
                 output_file = calib_dir / (self.vector_pattern % i)
-                savemat(
-                    str(output_file), {"piv_result": piv_result}
-                )  # Remove struct_as_record parameter
+                savemat(str(output_file), {"piv_result": piv_result})
 
                 processed_vectors.append(
                     {"ux_ms": ux_ms, "uy_ms": uy_ms, "b_mask": b_mask, "frame": i}
@@ -521,7 +530,7 @@ class VectorCalibrator:
                 continue
 
         logger.info(
-            f"Successfully processed {len(processed_vectors)} vector files in MATLAB struct format"
+            f"Successfully processed {len(processed_vectors)} vector files into {calib_dir}"
         )
 
 

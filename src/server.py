@@ -17,6 +17,7 @@ from paths import get_data_paths
 from plotting.app.views import vector_plot_bp
 from post_processing.POD.app.views import POD_bp
 from pre_processing.filters import filter_images
+from stereo_reconstruction.app.views import stereo_bp
 from video_maker.app.views import video_maker_bp
 
 app = Flask(__name__)
@@ -28,6 +29,7 @@ app.register_blueprint(masking_bp)
 app.register_blueprint(POD_bp)
 app.register_blueprint(calibration_bp)
 app.register_blueprint(video_maker_bp)
+app.register_blueprint(stereo_bp)
 
 # --- In-memory stores ---
 processed_store = {"original": {}, "processed": {}}

@@ -12,7 +12,6 @@ from video_maker.video_maker import PlotSettings, make_video_from_scalar
 
 video_maker_bp = Blueprint("video_maker", __name__, url_prefix="/video")
 
-
 # In-memory video job state
 _video_state: Dict[str, Any] = {
     "processing": False,
@@ -22,6 +21,9 @@ _video_state: Dict[str, Any] = {
     "finished_at": None,
     "error": None,
     "meta": None,
+    "out_path": None,
+    "current_frame": 0,
+    "total_frames": 0,
 }
 _video_thread: Optional[threading.Thread] = None
 _video_cancel_event = threading.Event()
@@ -42,6 +44,21 @@ def _video_reset_state():
         finished_at=None,
         error=None,
         meta=None,
+        out_path=None,
+        current_frame=0,
+        total_frames=0,
+    )
+
+
+def progress_callback(current_frame: int, total_frames: int, message: str = ""):
+    """Callback function to update progress during video creation"""
+    progress = int((current_frame / max(total_frames, 1)) * 100)
+    _video_set_state(
+        progress=progress,
+        current_frame=current_frame,
+        total_frames=total_frames,
+        message=f"Processing frame {current_frame}/{total_frames}"
+        + (f" - {message}" if message else ""),
     )
 
 
@@ -55,20 +72,23 @@ def _run_video_job(
     pick: str,
     pattern: str,
     ps: PlotSettings,
+    test_mode: bool = False,
+    test_frames: int = 50,
 ):
     """Background job to call make_video_from_scalar and update state."""
-    # cfg = get_config(refresh=True)
     try:
         _video_set_state(
             processing=True,
             progress=0,
             started_at=datetime.utcnow().isoformat(),
-            message="Video job running",
+            message="Initializing video creation",
             error=None,
             meta=None,
+            current_frame=0,
         )
+
         logger.info(
-            f"[VIDEO] Starting video job | base='{base}', cam={cam}, num_images={num_images}, run={pick}"
+            f"[VIDEO] Starting video job | base='{base}', cam={cam}, num_images={num_images}, run={pick}, test_mode={test_mode}"
         )
 
         # Resolve data/video dirs
@@ -85,30 +105,62 @@ def _run_video_job(
         if not Path(ps.out_path).is_absolute():
             ps.out_path = str(video_dir / ps.out_path)
 
-        # Note: make_video_from_scalar is not cancellable; this is best-effort
-        meta = make_video_from_scalar(data_dir, pick=pick, pattern=pattern, settings=ps)
+        # Set progress callback
+        ps.progress_callback = progress_callback
+        ps.test_mode = test_mode
+        ps.test_frames = test_frames if test_mode else None
+
+        _video_set_state(message="Starting video generation...")
+
+        # Call video creation with progress tracking
+        meta = make_video_from_scalar(
+            data_dir,
+            pick=pick,
+            pattern=pattern,
+            settings=ps,
+            cancel_event=_video_cancel_event,
+        )
+
+        if _video_cancel_event.is_set():
+            _video_set_state(
+                processing=False,
+                progress=0,
+                message="Video creation was cancelled",
+                finished_at=datetime.utcnow().isoformat(),
+                error="Cancelled by user",
+            )
+            return
 
         _video_set_state(
             progress=100,
-            message="Video completed",
+            message="Video completed successfully",
             processing=False,
             finished_at=datetime.utcnow().isoformat(),
             meta=meta,
+            out_path=ps.out_path,
+            computed_limits={
+                "lower": meta.get("vmin"),
+                "upper": meta.get("vmax"),
+                "actual_min": meta.get("actual_min"),
+                "actual_max": meta.get("actual_max"),
+                "percentile_based": ps.lower_limit is None or ps.upper_limit is None,
+            },
         )
-        logger.info("[VIDEO] Job completed successfully")
+        logger.info(f"[VIDEO] Job completed successfully. Output: {ps.out_path}")
+
     except Exception as e:
         logger.exception(f"[VIDEO] Job failed: {e}")
         _video_set_state(
             processing=False,
             error=str(e),
-            message="Video failed",
+            message=f"Video creation failed: {str(e)}",
             finished_at=datetime.utcnow().isoformat(),
         )
 
 
 @video_maker_bp.route("/start_video", methods=["POST"])
 def start_video():
-    """Start a video job with JSON payload 
+    """Start a video job with JSON payload
 
     Returns 202 when queued, 409 if a job is already running.
     """
@@ -132,19 +184,24 @@ def start_video():
     cam_raw = data.get("camera")
     try:
         cam = int(cam_raw) if cam_raw is not None else int(cfg.camera_numbers[0])
-    except Exception:
+    except (ValueError, TypeError, IndexError):
         cam = int(cfg.camera_numbers[0])
+
+    # Test mode parameters
+    test_mode = data.get("test_mode", False)
+    test_frames = int(data.get("test_frames", 50))
 
     # other params
     num_images = int(data.get("num_images", data.get("run", 1)))
     merged_flag = str(data.get("merged", "0")) in ("1", "true", "True")
     endpoint = data.get("endpoint", "") or ""
     source_type = data.get("type", "instantaneous") or "instantaneous"
+
     # prefer 'var' (new client param); fall back to 'pick' for backward-compatibility
     pick = data.get("var", None)
     if pick is None:
         pick = data.get("pick", "uy")
-    if pick not in ("ux", "uy"):
+    if pick not in ("ux", "uy", "mag"):
         pick = "uy"
     pattern = data.get("pattern", "[0-9]*.mat")
 
@@ -155,27 +212,37 @@ def start_video():
             ps.fps = int(fps)
     except Exception:
         pass
-    out_name = data.get("out_name") or f"run{num_images}_Cam{cam}_{pick}.mp4"
+
+    # Create output filename
+    out_name = data.get("out_name")
+    if not out_name:
+        test_suffix = "_test" if test_mode else ""
+        out_name = f"run{num_images}_Cam{cam}_{pick}{test_suffix}.mp4"
     ps.out_path = out_name
 
     try:
-        lower = data.get("lower_limit")
-        upper = data.get("upper_limit")
-        if lower is not None:
+        lower = data.get("lower")
+        upper = data.get("upper")
+        if lower is not None and str(lower).strip():
             ps.lower_limit = float(lower)
-        if upper is not None:
+        if upper is not None and str(upper).strip():
             ps.upper_limit = float(upper)
     except Exception:
         pass
+
     cmap = data.get("cmap")
-    if cmap:
+    if cmap and cmap != "default":
         ps.cmap = cmap
+
     dither = data.get("dither")
     if dither is not None:
         ps.dither = dither.lower() in ("1", "true", "t", "yes")
 
-    upscale = data.get("upscale")
-    ps.upscale = 4.0
+    upscale = data.get("upscale", 1)
+    try:
+        ps.upscale = float(upscale) if upscale else 1.0
+    except Exception:
+        ps.upscale = 1.0
 
     # Start background job if none running
     with _video_state_lock:
@@ -201,6 +268,8 @@ def start_video():
             pick,
             pattern,
             ps,
+            test_mode,
+            test_frames,
         ),
         daemon=True,
     )
@@ -211,7 +280,7 @@ def start_video():
 
 @video_maker_bp.route("/cancel_video", methods=["POST"])
 def cancel_video():
-    """Request cancellation of running video job. Best-effort only."""
+    """Request cancellation of running video job."""
     _video_cancel_event.set()
     with _video_state_lock:
         is_running = bool(_video_thread is not None and _video_thread.is_alive())
@@ -236,7 +305,75 @@ def video_status():
     except Exception:
         st["progress"] = 0
     st["status"] = st["progress"]
+
     # Include out_path directly if available
-    if st.get("meta") and isinstance(st["meta"], dict) and "out_path" in st["meta"]:
+    if st.get("out_path"):
+        st["out_path"] = st["out_path"]
+    elif st.get("meta") and isinstance(st["meta"], dict) and "out_path" in st["meta"]:
         st["out_path"] = st["meta"]["out_path"]
+
+    # Include computed limits if available
+    if st.get("computed_limits"):
+        st["computed_limits"] = st["computed_limits"]
+
     return jsonify(st), 200
+
+
+@video_maker_bp.route("/download", methods=["GET"])
+def download_video():
+    """Download or stream a video file by absolute path (with security check)."""
+    try:
+        import os
+        import urllib.parse
+
+        from flask import request, send_file
+
+        abs_path = request.args.get("path", "")
+        abs_path = urllib.parse.unquote(abs_path)
+        logger.info(f"[VIDEO] Download request for path: {abs_path}")
+
+        # Security: allow files under reasonable locations
+        # Allow files under the current working directory, user home, and common data directories
+        user_home = Path.home()
+        cwd = Path.cwd()
+
+        allowed_roots = [
+            user_home,  # User's home directory
+            cwd,  # Current working directory
+            Path("/tmp"),
+            Path("/var/tmp"),  # Temp directories (Unix)
+            Path("/Users"),
+            Path("/home"),  # User directories (macOS/Linux)
+        ]
+
+        # Add Windows paths if on Windows
+        if os.name == "nt":
+            allowed_roots.extend(
+                [
+                    Path("C:\\Users"),
+                    Path("C:\\temp"),
+                    Path("C:\\tmp"),
+                ]
+            )
+
+        file_path = Path(abs_path).resolve()
+        logger.info(f"[VIDEO] Resolved file path: {file_path}")
+        logger.info(f"[VIDEO] File exists: {file_path.is_file()}")
+
+        path_allowed = any(
+            allowed_root in file_path.parents or file_path == allowed_root
+            for allowed_root in allowed_roots
+        )
+        logger.info(f"[VIDEO] Path allowed: {path_allowed}")
+
+        if not file_path.is_file() or not path_allowed:
+            return (
+                jsonify({"error": f"File not found or not allowed: {file_path}"}),
+                404,
+            )
+        if not str(file_path).lower().endswith((".mp4", ".avi", ".mov", ".mkv")):
+            return jsonify({"error": "Invalid file type"}), 400
+        return send_file(str(file_path), as_attachment=False, mimetype="video/mp4")
+    except Exception as e:
+        logger.error(f"Error serving video file: {e}")
+        return jsonify({"error": "Error serving file"}), 500

@@ -2,20 +2,20 @@ import glob
 import re
 import shutil
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
-import numpy as np
-import matplotlib.pyplot as plt
 import matplotlib.colors as mpl_colors
+import matplotlib.pyplot as plt
+import numpy as np
 from scipy.io import loadmat
-import sys
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from post_processing.vector_loading import read_mat_contents
-from loguru import logger
 
 # ------------------------- Settings -------------------------
 
@@ -60,6 +60,7 @@ class PlotSettings:
     pix_fmt: str = "yuv420p"  # ensure maximum compatibility (Windows players)
     preset: str = "slow"  # encoding speed/size tradeoff
     dither: bool = True  # blue-noise pre-LUT to kill banding
+    dither_strength: float = 1.0 / 2048.0  # Lower default strength for less grain
     upscale: float | tuple | None = (
         None  # e.g. 2.0 or (H_out, W_out) or None (keep native)
     )
@@ -67,6 +68,13 @@ class PlotSettings:
     # Extra ffmpeg args (appended to the ffmpeg command) - use this to tune quality further
     ffmpeg_extra_args: tuple | list = ()
     ffmpeg_loglevel: str = "warning"
+
+    # For progress updates
+    progress_callback: callable = None
+
+    # Test mode attributes
+    test_mode: bool = False
+    test_frames: int | None = None
 
     @property
     def xlabel(self):
@@ -182,17 +190,11 @@ def _compute_global_limits_from_files(files, pick, settings: PlotSettings):
         use_two = settings.symmetric_around_zero and (vmin < 0 < vmax)
         return vmin, vmax, use_two, vmin, vmax
 
-    # If many files exist, randomly sample up to N files to speed up limit computation.
+    # Use first 50 frames for automatic limit computation
     N = 50
-    if len(files) > N:
-        rng = np.random.default_rng()
-        # choose indices without replacement and keep them sorted to preserve rough ordering
-        idx = rng.choice(len(files), size=N, replace=False)
-        files_to_check = [files[i] for i in sorted(idx)]
-    else:
-        files_to_check = files
+    files_to_check = files[:N] if len(files) > N else files
 
-    gmin, gmax = np.inf, -np.inf
+    all_values = []
     for f in files_to_check:
         try:
             arrs = read_mat_contents(str(f))
@@ -206,14 +208,32 @@ def _compute_global_limits_from_files(files, pick, settings: PlotSettings):
         )
         if masked.count() == 0:
             continue
-        gmin = min(gmin, float(masked.min()))
-        gmax = max(gmax, float(masked.max()))
 
-    if not np.isfinite(gmin) or not np.isfinite(gmax):
+        # Collect valid values for percentile calculation
+        valid_values = masked.compressed()
+        if len(valid_values) > 0:
+            all_values.extend(valid_values.flatten())
+
+    if len(all_values) == 0:
         gmin, gmax = -1.0, 1.0
+        actual_min, actual_max = gmin, gmax
+    else:
+        all_values = np.array(all_values)
+        actual_min = float(np.min(all_values))
+        actual_max = float(np.max(all_values))
+
+        # Use explicit limits if provided, otherwise use percentiles
+        if settings.lower_limit is not None:
+            gmin = float(settings.lower_limit)
+        else:
+            gmin = float(np.percentile(all_values, 5))  # 5th percentile
+
+        if settings.upper_limit is not None:
+            gmax = float(settings.upper_limit)
+        else:
+            gmax = float(np.percentile(all_values, 95))  # 95th percentile
 
     use_two = False
-    actual_min, actual_max = gmin, gmax
     if settings.symmetric_around_zero and gmin < 0 < gmax:
         vabs = max(abs(gmin), abs(gmax))
         gmin, gmax = -vabs, vabs
@@ -339,10 +359,15 @@ class FFmpegVideoWriter:
 
     def release(self):
         stdin = self.proc.stdin
-        if stdin is not None:
+        # Only close if not already closed
+        if stdin is not None and not stdin.closed:
             stdin.close()
-        # wait and capture stderr for diagnostics
-        _, stderr = self.proc.communicate()
+        # Only call communicate if stdin is not closed
+        try:
+            _, stderr = self.proc.communicate()
+        except ValueError:
+            # Already closed, ignore
+            stderr = None
         if stderr:
             try:
                 msg = stderr.decode(errors="replace").strip()
@@ -360,10 +385,12 @@ def make_video_from_scalar(
     pick: str = "uy",  # 'ux' or 'uy' or any variable name/index
     pattern: str = "[0-9]*.mat",  # exclude coordinate files
     settings: PlotSettings | None = None,
+    cancel_event=None,
 ) -> dict:
     """
     Reads a sequence of MAT files containing piv_result.{ux,uy,b_mask} and writes a high-quality MP4.
     Returns metadata dict with limits and output path.
+    Supports cancellation via cancel_event (threading.Event).
     """
     t0 = time.time()
 
@@ -371,12 +398,17 @@ def make_video_from_scalar(
     files = sorted(
         [Path(p) for p in glob.glob(str(folder / pattern))], key=_natural_key
     )
-    files = [f for f in files if 'coordinate' not in f.name.lower()]
+    files = [f for f in files if "coordinate" not in f.name.lower()]
     if len(files) == 0:
         raise FileNotFoundError(f"No MAT files found in {folder} matching '{pattern}'")
 
     if settings is None:
         settings = PlotSettings()
+
+    # Limit frames for test mode
+    if hasattr(settings, "test_mode") and getattr(settings, "test_mode", False):
+        test_frames = getattr(settings, "test_frames", 50)
+        files = files[:test_frames]
 
     # Limits
     vmin, vmax, use_two, actual_min, actual_max = _compute_global_limits_from_files(
@@ -393,7 +425,9 @@ def make_video_from_scalar(
 
     H, W = arr0.shape
     if H == 0 or W == 0:
-        raise ValueError(f"Invalid image dimensions {H}x{W} in {files[0]}. Check your MAT file data.")
+        raise ValueError(
+            f"Invalid image dimensions {H}x{W} in {files[0]}. Check your MAT file data."
+        )
     Hout, Wout = _resolve_upscale(H, W, settings.upscale)
 
     # Writer: require ffmpeg (no fallback)
@@ -414,21 +448,21 @@ def make_video_from_scalar(
         loglevel=settings.ffmpeg_loglevel,
     )
 
-    # Optional blue-noise (static frame, extremely subtle)
-    noise = _blue_noise((H, W)) if settings.dither else None
-
     # Stream frames
-    for f in files:
+    total_frames = len(files)
+    for i, f in enumerate(files):
+        if cancel_event and cancel_event.is_set():
+            break
         arrs = read_mat_contents(str(f))
         try:
             field, b_mask = _select_variable_from_arrs(arrs, str(f), pick)
         except Exception:
-            # skip frames where variable is not available
             continue
-
         H_f, W_f = field.shape
-
+        # Generate blue-noise per frame to avoid standing grain
         if settings.dither:
+            dither_strength = getattr(settings, "dither_strength", 1.0 / 2048.0)
+            noise = _blue_noise((H_f, W_f), strength=dither_strength)
             field = field.astype(np.float32) + noise
 
         idx = _to_uint16_idx(field, vmin, vmax)  # 0..1023
@@ -442,6 +476,11 @@ def make_video_from_scalar(
             rgb = cv2.resize(rgb, (Wout, Hout), interpolation=cv2.INTER_LANCZOS4)
 
         writer.write(rgb)
+        # Progress callback
+        if hasattr(settings, "progress_callback") and callable(
+            settings.progress_callback
+        ):
+            settings.progress_callback(i + 1, total_frames)
 
     writer.release()
 
@@ -469,7 +508,9 @@ def make_video_from_scalar(
 
 # ------------------------- Example usage -------------------------
 if __name__ == "__main__":
-    frames_dir = Path("C:\\Users\\ees1u24\\Desktop\\Planar_Images_with_wall\\test\\calibrated_piv\\1000\\Cam1\\instantaneous")
+    frames_dir = Path(
+        "C:\\Users\\ees1u24\\Desktop\\Planar_Images_with_wall\\test\\calibrated_piv\\1000\\Cam1\\instantaneous"
+    )
     # Optional: coordinates (not used by video)
     try:
         from post_processing.vector_loading import load_coords_from_directory
