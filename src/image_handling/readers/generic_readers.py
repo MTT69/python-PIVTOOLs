@@ -28,7 +28,10 @@ def read_png_jpeg(file_path: str) -> np.ndarray:
         try:
             import cv2
 
-            return cv2.imread(file_path, cv2.IMREAD_UNCHANGED)
+            img = cv2.imread(file_path, cv2.IMREAD_UNCHANGED)
+            if img is None:
+                raise FileNotFoundError(f"Image file could not be read: {file_path}")
+            return img
         except ImportError:
             raise ImportError(
                 "Either PIL or opencv-python is required for PNG/JPEG support"
