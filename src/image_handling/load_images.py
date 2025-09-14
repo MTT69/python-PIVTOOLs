@@ -4,26 +4,26 @@ from typing import Tuple
 import dask
 import dask.array as da
 import numpy as np
-import tifffile
 from dask.delayed import Delayed
 
 from config import Config
 
+# Import all readers to register them
+from .readers import get_reader
 
-def read_image(file_path: str) -> np.ndarray:
-    """Read an image file using tifffile.
+
+def read_image(file_path: str, **kwargs) -> np.ndarray:
+    """Read an image file using appropriate reader based on file extension.
 
     Args:
         file_path (str): Path to the image file
+        **kwargs: Additional arguments passed to the specific reader
 
     Returns:
-        tifffile.TiffFile: The image file
+        np.ndarray: The image data
     """
-    import os
-
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"Image file not found: {file_path}")
-    return tifffile.imread(file_path)
+    reader_func = get_reader(file_path)
+    return reader_func(file_path, **kwargs)
 
 
 def read_pair(idx: int, camera_path: Path, config: Config) -> Tuple[np.ndarray, ...]:
@@ -31,18 +31,32 @@ def read_pair(idx: int, camera_path: Path, config: Config) -> Tuple[np.ndarray, 
 
     Args:
         idx (int): Index of the image pair to read
+        camera_path (Path): Path to camera directory
+        config (Config): Configuration object
 
     Returns:
         tuple: A tuple containing two numpy arrays representing the images
     """
-    image_format_A, image_format_B = (
-        config.image_format
-    )  # Should be a tuple of two formats
+    image_format_A, image_format_B = config.image_format
     file_paths = [
         camera_path / (image_format_A % idx),
         camera_path / (image_format_B % idx),
     ]
-    return np.stack([read_image(file_paths[0]), read_image(file_paths[1])], axis=0)
+
+    # Check if it's a proprietary format that reads pairs natively
+    file_ext = Path(file_paths[0]).suffix.lower()
+    if file_ext == ".im7":
+        # LaVision files contain both frames, read once
+        # Extract camera number from path if needed
+        camera_no = (
+            int(str(camera_path).split("Cam")[-1]) if "Cam" in str(camera_path) else 1
+        )
+        return read_image(str(file_paths[0]), camera_no=camera_no)
+    else:
+        # Read individual frames
+        frame_a = read_image(str(file_paths[0]))
+        frame_b = read_image(str(file_paths[1]))
+        return np.stack([frame_a, frame_b], axis=0)
 
 
 def delayed_image_pair(idx: int, camera_path: Path, config: Config) -> dask.delayed:

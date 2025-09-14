@@ -6,6 +6,7 @@ from dask.distributed import Client, LocalCluster
 
 from config import Config
 from image_handling.load_images import load_images
+from image_handling.readers import list_supported_formats
 from post_processing.POD.pod_decompose import pod_decompose, pod_rebuild
 from pre_processing.preprocess import preprocess_images
 from vector_statistics.ensemble_statistics import ensemble_statistics
@@ -15,6 +16,9 @@ tracemalloc.start()
 
 
 if __name__ == "__main__":
+    # Print supported image formats
+    print(f"Supported image formats: {', '.join(list_supported_formats())}")
+
     # Start a local Dask cluster and client for distributed computation and dashboard
     cluster = LocalCluster()
     client = Client(cluster)
