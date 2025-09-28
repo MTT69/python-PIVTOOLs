@@ -2,7 +2,7 @@ import os
 
 import numpy as np
 
-from . import register_reader
+from .registry import register_reader
 
 
 def read_tiff(file_path: str) -> np.ndarray:
@@ -52,7 +52,10 @@ def read_raw(file_path: str) -> np.ndarray:
         raise ImportError("rawpy is required for RAW image support")
 
 
-register_reader([".tiff", ".tif"], read_tiff)
-register_reader([".png"], read_png_jpeg)
-register_reader([".jpg", ".jpeg"], read_png_jpeg)
-register_reader([".raw", ".cr2", ".nef", ".arw"], read_raw)
+# Register both lowercase and uppercase variants for robustness
+register_reader([".tiff", ".tif", ".TIFF", ".TIF"], read_tiff)
+register_reader([".png", ".PNG"], read_png_jpeg)
+register_reader([".jpg", ".jpeg", ".JPG", ".JPEG"], read_png_jpeg)
+register_reader(
+    [".raw", ".cr2", ".nef", ".arw", ".RAW", ".CR2", ".NEF", ".ARW"], read_raw
+)

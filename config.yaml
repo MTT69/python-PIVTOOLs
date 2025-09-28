@@ -1,9 +1,7 @@
 paths:
   base_paths:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Stereo_Images/ProcessedPIV
   - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test
   source_paths:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Stereo_Images
   - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall
   camera_numbers:
   - 1
@@ -38,16 +36,16 @@ plots:
   fontsize: 14
   title_fontsize: 16
 videos:
-- type: instantaneous
-  endpoint: ''
+- endpoint: ''
+  type: instantaneous
   use_merged: false
-  video_length: 100
   variable: ux
-- type: gamma1
-  endpoint: ''
-  use_merged: false
   video_length: 100
+- endpoint: ''
+  type: gamma1
+  use_merged: false
   variable: gamma1
+  video_length: 100
 statistics_extraction: null
 instantaneous_piv:
   window_size:
@@ -55,16 +53,7 @@ instantaneous_piv:
     - 128
   - - 64
     - 64
-  - - 32
-    - 32
-  - - 16
-    - 16
-  - - 8
-    - 8
   overlap:
-  - 50
-  - 50
-  - 50
   - 50
   - 50
   runs:
@@ -113,7 +102,5 @@ calibration:
     enhance_dots: true
     asymmetric: false
     dt: 2
-  image_format: calib%05d.tif
-filters:
-- type: time
-  batch_size: 50
+  image_format: calib%05d.tiff
+filters: []

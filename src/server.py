@@ -104,9 +104,11 @@ def get_frame_pair():
     camera = request.args.get("camera", type=int)
     idx = request.args.get("idx", type=int)
     source_path_idx = request.args.get("source_path_idx", default=0, type=int)
-    # read optional window_size parameter and ensure it's at least 1
     source_path = cfg.source_paths[source_path_idx] / camera_folder(camera)
-    pair = read_pair(idx, source_path, cfg)
+    try:
+        pair = read_pair(idx, source_path, cfg)
+    except FileNotFoundError as e:
+        return jsonify({"error": "File not found", "file": str(e)}), 404
 
     return jsonify(
         {"A": numpy_to_png_base64(pair[0]), "B": numpy_to_png_base64(pair[1])}
@@ -122,7 +124,6 @@ def filter_images_endpoint():
     start_idx = int(data.get("start_idx", 1))
     filters = data.get("filters", None)
     source_path_idx = data.get("source_path_idx")
-    # NEW: honor explicit temporal_batch_filter first
     temporal_batch_filter = data.get("temporal_batch_filter")
     if filters is not None:
         cfg.data["filters"] = filters
@@ -304,51 +305,6 @@ def get_uncalibrated_count():
     )
     percent = int((len(found) / num_images) * 100) if num_images else 0
     return jsonify({"count": len(found), "files": found, "percent": percent})
-
-
-@app.route("/calibration/compute", methods=["POST"])
-def calibration_compute():
-    """
-    Example endpoint: uses the new calibration config structure.
-    """
-    cfg = get_config()
-    # ...parse request as needed...
-    active, params = get_active_calibration_params(cfg)
-    # Use 'active' and 'params' for calibration logic
-    # ...your calibration logic here...
-    return jsonify({"status": "ok", "active": active, "params": params})
-
-
-@app.route("/calibration/set_active", methods=["POST"])
-def calibration_set_active():
-    """
-    Set the active calibration method.
-    """
-    data = request.get_json() or {}
-    method = data.get("method")
-
-    if method not in ["scale_factor", "pinhole", "stereo"]:
-        return jsonify({"error": f"Invalid calibration method: {method}"}), 400
-
-    cfg = get_config()
-    cfg.data.setdefault("calibration", {})["active"] = method
-
-    with open("config.yaml", "w", encoding="utf-8") as f:
-        yaml.dump(cfg.data, f, default_flow_style=False, sort_keys=False)
-
-    reload_config()
-    return jsonify({"status": "success", "active_method": method})
-
-
-@app.route("/calibration/get_method_params", methods=["GET"])
-def calibration_get_method_params():
-    """
-    Get parameters for a specific calibration method.
-    """
-    method = request.args.get("method", "pinhole")
-    cfg = get_config()
-    params = get_calibration_method_params(cfg, method)
-    return jsonify({"method": method, "params": params})
 
 
 if __name__ == "__main__":

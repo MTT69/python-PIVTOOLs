@@ -1,7 +1,8 @@
+import os
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, jsonify, request
 from loguru import logger
@@ -158,6 +159,91 @@ def _run_video_job(
         )
 
 
+@video_maker_bp.route("/list_videos", methods=["GET"])
+def list_videos():
+    """List available videos in the videos directory for the given base path"""
+    try:
+        # Get base path from query params
+        base_path_str = request.args.get("base_path")
+        cfg = get_config(refresh=True)
+
+        if isinstance(base_path_str, str) and base_path_str.strip():
+            base = Path(base_path_str).expanduser()
+        else:
+            # Use first base path as default if none specified
+            base = cfg.base_paths[0] if cfg.base_paths else Path.home()
+
+        logger.info(f"[VIDEO] Listing videos under base path: {base}")
+
+        # Search for videos in all possible camera directories
+        videos: List[str] = []
+
+        # First check if there's a direct videos directory
+        videos_dir = base / "videos"
+        if videos_dir.exists() and videos_dir.is_dir():
+            for ext in (".mp4", ".avi", ".mov", ".mkv"):
+                video_files = list(videos_dir.glob(f"**/*{ext}"))
+                videos.extend([str(f) for f in video_files])
+
+        # Try to find videos in standard locations - use more targeted approach
+        cam_dirs = list(base.glob("**/Cam*"))
+        for cam_dir in cam_dirs:
+            # Look for video directories
+            video_dirs = [
+                cam_dir / "videos",
+                cam_dir / "merged" / "videos",
+            ]
+
+            for video_dir in video_dirs:
+                if video_dir.exists() and video_dir.is_dir():
+                    for ext in (".mp4", ".avi", ".mov", ".mkv"):
+                        video_files = list(video_dir.glob(f"*{ext}"))
+                        videos.extend([str(f) for f in video_files])
+
+        # If still no videos found, do a deep search (but limit depth to avoid huge traversals)
+        if not videos:
+            max_depth = 5  # Limit depth to avoid excessive searching
+
+            def find_video_files(directory, current_depth=0):
+                if current_depth > max_depth:
+                    return []
+
+                found_videos = []
+                try:
+                    for item in directory.iterdir():
+                        if item.is_file() and item.suffix.lower() in (
+                            ".mp4",
+                            ".avi",
+                            ".mov",
+                            ".mkv",
+                        ):
+                            found_videos.append(str(item))
+                        elif item.is_dir() and not item.name.startswith("."):
+                            found_videos.extend(
+                                find_video_files(item, current_depth + 1)
+                            )
+                except (PermissionError, OSError):
+                    pass
+                return found_videos
+
+            videos = find_video_files(base)
+
+        # Sort by modification time (newest first)
+        videos.sort(
+            key=lambda x: os.path.getmtime(x) if os.path.exists(x) else 0, reverse=True
+        )
+
+        # Log found videos
+        logger.info(f"[VIDEO] Found {len(videos)} videos")
+        if videos:
+            logger.info(f"[VIDEO] First few videos: {videos[:3]}")
+
+        return jsonify({"videos": videos})
+    except Exception as e:
+        logger.exception(f"[VIDEO] Failed to list videos: {e}")
+        return jsonify({"error": str(e), "videos": []}), 500
+
+
 @video_maker_bp.route("/start_video", methods=["POST"])
 def start_video():
     """Start a video job with JSON payload
@@ -206,12 +292,24 @@ def start_video():
     pattern = data.get("pattern", "[0-9]*.mat")
 
     ps = PlotSettings()
-    try:
-        fps = data.get("fps")
-        if fps is not None:
-            ps.fps = int(fps)
-    except Exception:
-        pass
+
+    # Set high-quality defaults (no longer user-configurable)
+    ps.fps = 30
+    ps.crf = 18  # Good quality
+    ps.dither = False  # Disable dithering by default
+    ps.dither_strength = 0.0001  # Much lower strength than before
+
+    # Enable smoothing to reduce PIV noise
+    ps.apply_smoothing = True
+    ps.smoothing_sigma = 0.8  # Light smoothing
+    ps.median_filter_size = 3  # Remove salt-and-pepper noise
+
+    # Handle resolution from frontend (only allow 1080p and 4k)
+    resolution = data.get("resolution", "1080p")
+    if resolution == "4k":
+        ps.upscale = (2160, 3840)  # 4K UHD
+    else:  # Default to 1080p
+        ps.upscale = (1080, 1920)  # Full HD
 
     # Create output filename
     out_name = data.get("out_name")
@@ -233,16 +331,6 @@ def start_video():
     cmap = data.get("cmap")
     if cmap and cmap != "default":
         ps.cmap = cmap
-
-    dither = data.get("dither")
-    if dither is not None:
-        ps.dither = dither.lower() in ("1", "true", "t", "yes")
-
-    upscale = data.get("upscale", 1)
-    try:
-        ps.upscale = float(upscale) if upscale else 1.0
-    except Exception:
-        ps.upscale = 1.0
 
     # Start background job if none running
     with _video_state_lock:
@@ -328,12 +416,12 @@ def download_video():
 
         from flask import request, send_file
 
+        # Get and decode the path parameter
         abs_path = request.args.get("path", "")
         abs_path = urllib.parse.unquote(abs_path)
         logger.info(f"[VIDEO] Download request for path: {abs_path}")
 
         # Security: allow files under reasonable locations
-        # Allow files under the current working directory, user home, and common data directories
         user_home = Path.home()
         cwd = Path.cwd()
 
@@ -367,13 +455,30 @@ def download_video():
         logger.info(f"[VIDEO] Path allowed: {path_allowed}")
 
         if not file_path.is_file() or not path_allowed:
+            logger.error(f"[VIDEO] File not found or not allowed: {file_path}")
             return (
                 jsonify({"error": f"File not found or not allowed: {file_path}"}),
                 404,
             )
+
         if not str(file_path).lower().endswith((".mp4", ".avi", ".mov", ".mkv")):
+            logger.error(f"[VIDEO] Invalid file type: {file_path}")
             return jsonify({"error": "Invalid file type"}), 400
-        return send_file(str(file_path), as_attachment=False, mimetype="video/mp4")
+
+        # Better range request handling for video streaming
+        response = send_file(str(file_path), mimetype="video/mp4", conditional=True)
+
+        # Add CORS headers to allow video playback
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add("Access-Control-Allow-Headers", "Range")
+
+        logger.info(f"[VIDEO] Successfully serving: {file_path}")
+        return response
+
     except Exception as e:
         logger.error(f"Error serving video file: {e}")
-        return jsonify({"error": "Error serving file"}), 500
+        return jsonify({"error": f"Error serving file: {str(e)}"}), 500
+
+    except Exception as e:
+        logger.error(f"Error serving video file: {e}")
+        return jsonify({"error": f"Error serving file: {str(e)}"}), 500

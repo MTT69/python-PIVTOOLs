@@ -59,8 +59,8 @@ class PlotSettings:
     codec: str = "libx264"  # ensure H.264 by default
     pix_fmt: str = "yuv420p"  # ensure maximum compatibility (Windows players)
     preset: str = "slow"  # encoding speed/size tradeoff
-    dither: bool = True  # blue-noise pre-LUT to kill banding
-    dither_strength: float = 1.0 / 2048.0  # Lower default strength for less grain
+    dither: bool = False  # Disabled by default to avoid graininess
+    dither_strength: float = 0.0001  # Much lower strength when enabled
     upscale: float | tuple | None = (
         None  # e.g. 2.0 or (H_out, W_out) or None (keep native)
     )
@@ -75,6 +75,11 @@ class PlotSettings:
     # Test mode attributes
     test_mode: bool = False
     test_frames: int | None = None
+
+    # Noise reduction options
+    apply_smoothing: bool = True  # Enable light smoothing by default
+    smoothing_sigma: float = 0.8  # Gaussian smoothing strength
+    median_filter_size: int = 3  # Median filter to remove salt-and-pepper noise
 
     @property
     def xlabel(self):
@@ -96,14 +101,22 @@ _num_re = re.compile(r"(\d+)")
 
 def _resolve_upscale(h, w, upscale):
     """Return (H_out, W_out). `upscale` can be None, a float factor, or (H, W)."""
-    if upscale is None:
+    if upscale is None or upscale == 1.0:
         H = h
         W = w
-    if isinstance(upscale, (int, float)):
+    elif isinstance(upscale, (int, float)):
         H = int(round(h * float(upscale)))
         W = int(round(w * float(upscale)))
-    else:  # assume (H, W)
-        H, W = int(upscale[0]), int(upscale[1])
+    else:  # assume (H, W) tuple
+        target_h, target_w = upscale
+        aspect_ratio = w / h
+        # Fit to the largest possible size that matches the aspect ratio
+        if target_w / target_h > aspect_ratio:
+            H = target_h
+            W = int(target_h * aspect_ratio)
+        else:
+            W = target_w
+            H = int(target_w / aspect_ratio)
     # ensure even dims (important for yuv420p, many players/codecs)
     if H % 2:
         H += 1
@@ -136,6 +149,12 @@ def _select_variable_from_arrs(arrs, filepath: str, pick: str):
                         idx = 0
                     elif pick == "uy":
                         idx = 1
+                    elif pick == "mag":  # Calculate magnitude for vector field
+                        ux = arrs[0, 0]
+                        uy = arrs[0, 1]
+                        arr = np.sqrt(ux**2 + uy**2)
+                        b_mask = arrs[0, 2] if arrs.shape[1] > 2 else None
+                        return arr, (b_mask if b_mask is not None else None)
                     else:
                         # allow numeric string like "0"/"1"
                         try:
@@ -166,6 +185,18 @@ def _select_variable_from_arrs(arrs, filepath: str, pick: str):
                     b_mask = np.asarray(mat[key])
                     break
             return arr, b_mask
+
+        # Try to calculate magnitude if requested
+        if pick == "mag" and "ux" in mat and "uy" in mat:
+            ux = np.asarray(mat["ux"])
+            uy = np.asarray(mat["uy"])
+            arr = np.sqrt(ux**2 + uy**2)
+            b_mask = None
+            for key in ("b_mask", "bmask", "mask", "valid_mask"):
+                if key in mat:
+                    b_mask = np.asarray(mat[key])
+                    break
+            return arr, b_mask
     except Exception:
         pass
 
@@ -174,6 +205,14 @@ def _select_variable_from_arrs(arrs, filepath: str, pick: str):
         if hasattr(arrs, "get"):
             if pick in arrs:
                 arr = np.asarray(arrs[pick])
+                b_mask = arrs.get("b_mask", arrs.get("mask", None))
+                return arr, (np.asarray(b_mask) if b_mask is not None else None)
+
+            # Try to calculate magnitude if requested
+            if pick == "mag" and "ux" in arrs and "uy" in arrs:
+                ux = np.asarray(arrs["ux"])
+                uy = np.asarray(arrs["uy"])
+                arr = np.sqrt(ux**2 + uy**2)
                 b_mask = arrs.get("b_mask", arrs.get("mask", None))
                 return arr, (np.asarray(b_mask) if b_mask is not None else None)
     except Exception:
@@ -271,7 +310,8 @@ def _to_uint16_idx(frame, vmin, vmax):
     return np.clip((norm * 1023.0).round(), 0, 1023).astype(np.uint16)
 
 
-def _blue_noise(shape, strength=1.0 / 1024.0):
+def _blue_noise(shape, strength=0.0001):
+    """Generate blue noise dithering pattern with extremely low strength to minimize visible grain"""
     rng = np.random.default_rng()
     n = rng.random(shape, dtype=np.float32) - 0.5
     # light blur to decorrelate; sigma ~0.5 px
@@ -288,9 +328,9 @@ class FFmpegVideoWriter:
         width,
         height,
         fps=30,
-        crf=12,
+        crf=18,
         codec="libx264",
-        pix_fmt="yuv444p",
+        pix_fmt="yuv420p",
         preset="slow",
         extra_args=None,
         loglevel="warning",
@@ -382,8 +422,8 @@ class FFmpegVideoWriter:
 
 def make_video_from_scalar(
     folder: str | Path,
-    pick: str = "uy",  # 'ux' or 'uy' or any variable name/index
-    pattern: str = "[0-9]*.mat",  # exclude coordinate files
+    pick: str = "uy",
+    pattern: str = "[0-9]*.mat",
     settings: PlotSettings | None = None,
     cancel_event=None,
 ) -> dict:
@@ -419,7 +459,6 @@ def make_video_from_scalar(
     lut = _make_lut(settings.cmap, use_two, vmin, vmax)
 
     # Size
-
     arrs0 = read_mat_contents(str(files[0]))
     arr0, b0 = _select_variable_from_arrs(arrs0, str(files[0]), pick)
 
@@ -459,21 +498,52 @@ def make_video_from_scalar(
         except Exception:
             continue
         H_f, W_f = field.shape
-        # Generate blue-noise per frame to avoid standing grain
-        if settings.dither:
-            dither_strength = getattr(settings, "dither_strength", 1.0 / 2048.0)
-            noise = _blue_noise((H_f, W_f), strength=dither_strength)
-            field = field.astype(np.float32) + noise
+
+        # Apply noise reduction if enabled
+        if getattr(settings, "apply_smoothing", True):
+            # Convert to float for processing
+            field_smooth = field.astype(np.float32)
+
+            # Apply median filter first to remove salt-and-pepper noise
+            median_size = getattr(settings, "median_filter_size", 3)
+            if median_size > 1:
+                # Create a mask for valid data to avoid smoothing masked regions
+                # valid_mask = np.ones_like(field_smooth, dtype=bool)
+                # if b_mask is not None:
+                # ~b_mask.astype(bool)
+
+                # Apply median filter only to valid regions
+                field_smooth = cv2.medianBlur(field_smooth, median_size)
+
+            # Apply light Gaussian smoothing to reduce high-frequency noise
+            sigma = getattr(settings, "smoothing_sigma", 0.8)
+            if sigma > 0:
+                field_smooth = cv2.GaussianBlur(field_smooth, (0, 0), sigma)
+
+            # Use smoothed field
+            field = field_smooth
 
         idx = _to_uint16_idx(field, vmin, vmax)  # 0..1023
         rgb = lut[idx]  # (H,W,3) uint8 RGB
 
-        if b_mask is not None:
-            m = b_mask.astype(bool)
-            rgb[m] = settings.mask_rgb
-
-        if settings.upscale:
+        # Upscale image
+        if Hout != H or Wout != W:
             rgb = cv2.resize(rgb, (Wout, Hout), interpolation=cv2.INTER_LANCZOS4)
+            # Upscale mask with nearest-neighbor for sharp edges
+            if b_mask is not None:
+                b_mask_up = cv2.resize(
+                    b_mask.astype(np.uint8),
+                    (Wout, Hout),
+                    interpolation=cv2.INTER_NEAREST,
+                ).astype(bool)
+            else:
+                b_mask_up = None
+        else:
+            b_mask_up = b_mask.astype(bool) if b_mask is not None else None
+
+        # Apply mask after resizing
+        if b_mask_up is not None:
+            rgb[b_mask_up] = settings.mask_rgb
 
         writer.write(rgb)
         # Progress callback

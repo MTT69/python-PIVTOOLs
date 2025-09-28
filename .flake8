@@ -3,4 +3,4 @@ ignore = E203, E266, E501, W503, F403, F401, E402
 max-line-length = 100
 max-complexity = 52
 select = B,C,E,F,W,T4,B9
-exclude = .git, pivtools, .gitignore
+exclude = .git, pivtools, .gitignore, manual_tools, manual_tools/*, manual_tools/**

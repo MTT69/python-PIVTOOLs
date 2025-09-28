@@ -419,17 +419,26 @@ def plot_vector():
         vector_fmt = get_config().vector_format
         data_path = data_dir / (vector_fmt % params["frame"])
         coords_path = data_dir / "coordinates.mat"
-        b64_img, W, H, extra, effective_run = plot_from_mat(
-            mat_path=data_path,
-            coords_path=coords_path if coords_path.exists() else None,
-            var=params["var"],
-            run=params["run"],
-            save_basepath=Path("plot_vector_tmp"),
-            lower_limit=params["lower_limit"],
-            upper_limit=params["upper_limit"],
-            cmap=params["cmap"],
-            raw=params["raw"],
-        )
+        try:
+            b64_img, W, H, extra, effective_run = plot_from_mat(
+                mat_path=data_path,
+                coords_path=coords_path if coords_path.exists() else None,
+                var=params["var"],
+                run=params["run"],
+                save_basepath=Path("plot_vector_tmp"),
+                lower_limit=params["lower_limit"],
+                upper_limit=params["upper_limit"],
+                cmap=params["cmap"],
+                raw=params["raw"],
+            )
+        except FileNotFoundError as e:
+            logger.warning(f"plot_vector: .mat file not found: {e}")
+            return jsonify({"error": f"file not found: {e}"}), 404
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        except Exception as e:
+            logger.exception("plot_vector: Exception during plot_from_mat")
+            return jsonify({"error": str(e)}), 500
         meta = {"run": effective_run, "var": params["var"], "width": W, "height": H}
         if isinstance(extra, dict):
             meta.update(extra)
@@ -475,10 +484,13 @@ def plot_stats():
             cmap=params["cmap"],
             raw=params["raw"],
         )
-        meta = {"run": params["run"], "var": params["var"], "width": W, "height": H}
-        if isinstance(extra, dict):
-            meta.update(extra)
-        return jsonify({"image": b64_img, "meta": meta})
+    except FileNotFoundError as e:
+        logger.warning(f"plot_stats: .mat file not found: {e}")
+        return jsonify({"error": f"file not found: {e}"}), 404
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": f"plotting failed: {e}"}), 500
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
@@ -491,15 +503,16 @@ def check_vars():
     """Inspect a .mat and return available variable names."""
     frame = request.args.get("frame", default=None, type=int)
     params = parse_request_params(request)
-    logger.debug("check_vars: request params: %s", params)
+    logger.debug("check_vars: request params: %s", dict(request.args))
     # cfg = get_config()
     # Resolve paths using safe_get_data_paths so is_uncalibrated/use_merged are honored
     try:
         paths = safe_get_data_paths(
             base=params["base_path"], cam_num=params["camera"], params=params
         )
+        print("Resolved paths:", paths)
     except Exception as e:
-        logger.exception("check_vars: get_data_paths failed")
+        logger.error(f"check_vars: get_data_paths failed, could not resolve path: {e}")
         return jsonify({"error": f"paths resolution failed: {e}"}), 400
 
     logger.debug("check_vars: resolved paths: %s", paths)
@@ -516,9 +529,9 @@ def check_vars():
     # Load and inspect mat_path (use robust loader to avoid races)
     try:
         data_mat = _loadmat_safe(mat_path)
-    except FileNotFoundError as e:
-        logger.exception("check_vars: timed out waiting for mat: %s", mat_path)
-        return jsonify({"error": str(e)}), 500
+    except FileNotFoundError:
+        logger.warning(f"check_vars: .mat file not found: {mat_path}")
+        return jsonify({"error": "File not found", "file": str(mat_path)}), 404
     except Exception as e:
         logger.exception("check_vars: failed to load mat %s", mat_path)
         return jsonify({"error": f"failed to load mat: {e}"}), 500

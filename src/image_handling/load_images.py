@@ -52,6 +52,9 @@ def read_pair(idx: int, camera_path: Path, config: Config) -> Tuple[np.ndarray, 
             int(str(camera_path).split("Cam")[-1]) if "Cam" in str(camera_path) else 1
         )
         return read_image(str(file_paths[0]), camera_no=camera_no)
+    elif file_ext == ".cine":
+        # For .cine, pass frame index (idx-1 for 0-based)
+        return read_image(str(file_paths[0]), idx=idx - 1, frames=2)
     else:
         # Read individual frames
         frame_a = read_image(str(file_paths[0]))
