@@ -15,10 +15,10 @@ from calibration.calibration_planar.planar_calibration_production import (
     PlanarCalibrator,
 )
 from calibration.vector_calibration_production import VectorCalibrator
-from common.utils import camera_number, numpy_to_png_base64
 from config import get_config
 from paths import get_data_paths
 from plotting.app.views import extract_coordinates
+from utils import camera_number, numpy_to_png_base64
 
 
 def cache_key(source_path_idx, camera):

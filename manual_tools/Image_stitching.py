@@ -10,7 +10,7 @@ sys.path.append(str(Path(__file__).parent.parent / "src"))
 
 
 from paths import get_data_paths
-from post_processing.vector_loading import (
+from vector_loading import (
     load_coords_from_directory,
     load_vectors_from_directory,
 )

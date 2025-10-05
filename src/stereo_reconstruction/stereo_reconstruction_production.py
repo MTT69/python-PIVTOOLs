@@ -18,7 +18,7 @@ from scipy.io import loadmat, savemat
 # Add src to path to import modules
 sys.path.append(str(Path(__file__).parent.parent))
 from paths import get_data_paths
-from post_processing.vector_loading import load_coords_from_directory, read_mat_contents
+from vector_loading import load_coords_from_directory, read_mat_contents
 
 # ===================== CONFIGURATION VARIABLES =====================
 # Set these variables for your stereo reconstruction setup

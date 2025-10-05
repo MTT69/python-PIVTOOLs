@@ -1,6 +1,8 @@
 from pathlib import Path
 from typing import Callable, Dict, List
 
+from .generic_readers import read_png_jpeg, read_raw, read_tiff
+
 # Registry for image readers
 _READERS: Dict[str, Callable] = {}
 
@@ -37,3 +39,10 @@ def get_reader(file_path: str) -> Callable:
 def list_supported_formats() -> List[str]:
     """List all supported file formats."""
     return list(_READERS.keys())
+
+
+# Register only lowercase variants for robustness
+register_reader([".tiff", ".tif"], read_tiff)
+register_reader([".png"], read_png_jpeg)
+register_reader([".jpg", ".jpeg"], read_png_jpeg)
+register_reader([".raw", ".cr2", ".nef", ".arw"], read_raw)

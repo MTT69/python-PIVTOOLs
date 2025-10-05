@@ -207,33 +207,4 @@ def plot_scalar_field(variable, mask, settings):
         ax.set_xlabel(settings._xlabel)
         ax.set_ylabel(settings._ylabel)
 
-    # labels = [f"{t:.2f}" for t in ticks]
-    # cbar.set_ticks(ticks)
-    # cbar.set_ticklabels(labels)
-    # cbar.ax.yaxis.set_major_locator(FixedLocator(ticks))
-    # cbar.ax.yaxis.set_major_formatter(FixedFormatter(labels))
-
-    # ax.set_title(f"{settings.title}")  # Set plot title
-    # ax.set_xlabel(settings._xlabel)     # Set x-axis label
-    # ax.set_ylabel(settings._ylabel)     # Set y-axis label
-
-    # Do not save or close here; return figure to caller for handling
     return fig, ax, im
-    # ax.set_ylabel(settings._ylabel)     # Set y-axis label
-    # # Save figure if save_name is provided
-    # if settings.save_name:
-    #     fig.savefig(f"{settings.save_name}{settings.save_extension}", dpi=1200, bbox_inches='tight')
-    # plt.close(fig)
-
-    # # Optionally save variable as pickle file
-    # if settings.save_pickle:
-    #     import pickle
-    #     with open(f"{settings.save_name}.pkl", 'wb') as f:
-    #         pickle.dump(variable, f)
-    # plt.close(fig)
-
-    # # Optionally save variable as pickle file
-    # if settings.save_pickle:
-    #     import pickle
-    #     with open(f"{settings.save_name}.pkl", 'wb') as f:
-    #         pickle.dump(variable, f)

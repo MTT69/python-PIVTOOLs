@@ -59,12 +59,12 @@ from flask import Blueprint, jsonify, request
 from loguru import logger
 from scipy.io.matlab.mio5_params import mat_struct
 
-from common.utils import camera_number, numpy_to_png_base64
 from config import get_config
 
 # Import production calibration and reconstruction classes
 from stereo_reconstruction.stereo_calibration_production import StereoCalibrator
 from stereo_reconstruction.stereo_reconstruction_production import StereoReconstructor
+from utils import camera_number, numpy_to_png_base64
 
 stereo_bp = Blueprint("stereo", __name__)
 

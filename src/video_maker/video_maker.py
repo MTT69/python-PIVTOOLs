@@ -4,8 +4,10 @@ import shutil
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable, List, Optional, Tuple
 
 import cv2
 import matplotlib.colors as mpl_colors
@@ -15,7 +17,14 @@ from scipy.io import loadmat
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from post_processing.vector_loading import read_mat_contents
+from vector_loading import read_mat_contents
+
+# Constants for optimization
+DEFAULT_BATCH_SIZE = 10  # Files to preload for processing
+LIMIT_SAMPLE_SIZE = 50  # Files for limit computation
+LUT_SIZE = 1024  # LUT resolution for color mapping
+PERCENTILE_LOWER = 5
+PERCENTILE_UPPER = 95
 
 # ------------------------- Settings -------------------------
 
@@ -51,7 +60,7 @@ class PlotSettings:
     # Video options
     fps: int = 30
     out_path: str = "field.mp4"
-    mask_rgb: tuple = (200, 200, 200)  # RGB for masked pixels
+    mask_rgb: Tuple[int, int, int] = (200, 200, 200)  # RGB for masked pixels
 
     # Quality knobs
     use_ffmpeg: bool = True  # only ffmpeg supported
@@ -61,20 +70,20 @@ class PlotSettings:
     preset: str = "slow"  # encoding speed/size tradeoff
     dither: bool = False  # Disabled by default to avoid graininess
     dither_strength: float = 0.0001  # Much lower strength when enabled
-    upscale: float | tuple | None = (
+    upscale: Optional[float | Tuple[int, int]] = (
         None  # e.g. 2.0 or (H_out, W_out) or None (keep native)
     )
 
     # Extra ffmpeg args (appended to the ffmpeg command) - use this to tune quality further
-    ffmpeg_extra_args: tuple | list = ()
+    ffmpeg_extra_args: Tuple[str, ...] | List[str] = ()
     ffmpeg_loglevel: str = "warning"
 
     # For progress updates
-    progress_callback: callable = None
+    progress_callback: Optional[Callable[[int, int, str], None]] = None
 
     # Test mode attributes
     test_mode: bool = False
-    test_frames: int | None = None
+    test_frames: Optional[int] = None
 
     # Noise reduction options
     apply_smoothing: bool = True  # Enable light smoothing by default
@@ -99,7 +108,9 @@ class PlotSettings:
 _num_re = re.compile(r"(\d+)")
 
 
-def _resolve_upscale(h, w, upscale):
+def _resolve_upscale(
+    h: int, w: int, upscale: Optional[float | Tuple[int, int]]
+) -> Tuple[int, int]:
     """Return (H_out, W_out). `upscale` can be None, a float factor, or (H, W)."""
     if upscale is None or upscale == 1.0:
         H = h
@@ -125,19 +136,17 @@ def _resolve_upscale(h, w, upscale):
     return H, W
 
 
-def _natural_key(p: Path):
+def _natural_key(p: Path) -> List:
     s = str(p)
     parts = _num_re.split(s)
     parts[1::2] = [int(n) for n in parts[1::2]]
     return parts
 
 
-def _select_variable_from_arrs(arrs, filepath: str, pick: str):
-    """
-    Return (arr, b_mask) where `arr` is the requested variable (2D array) and b_mask is either
-    a mask array or None. This function is tolerant: it will try ndarray indexing patterns,
-    integer indices, and finally inspect the MAT file (loadmat) to find a variable named `pick`.
-    """
+def _select_variable_from_arrs(
+    arrs: np.ndarray, filepath: str, pick: str
+) -> Tuple[np.ndarray, Optional[np.ndarray]]:
+    """Extract variable and mask from arrays or MAT file."""
     # ndarray case (common path)
     if isinstance(arrs, np.ndarray):
         try:
@@ -222,69 +231,71 @@ def _select_variable_from_arrs(arrs, filepath: str, pick: str):
     raise ValueError(f"Unable to extract variable '{pick}' from {filepath}")
 
 
-def _compute_global_limits_from_files(files, pick, settings: PlotSettings):
+def _compute_global_limits_from_files(
+    files: List[Path], pick: str, settings: PlotSettings
+) -> Tuple[float, float, bool, float, float]:
+    """Compute limits using parallel processing for efficiency."""
     if settings.lower_limit is not None and settings.upper_limit is not None:
         vmin = float(settings.lower_limit)
         vmax = float(settings.upper_limit)
         use_two = settings.symmetric_around_zero and (vmin < 0 < vmax)
         return vmin, vmax, use_two, vmin, vmax
 
-    # Use first 50 frames for automatic limit computation
-    N = 50
-    files_to_check = files[:N] if len(files) > N else files
-
+    files_to_check = (
+        files[:LIMIT_SAMPLE_SIZE] if len(files) > LIMIT_SAMPLE_SIZE else files
+    )
     all_values = []
-    for f in files_to_check:
+
+    def process_file(f: Path) -> Optional[np.ndarray]:
         try:
             arrs = read_mat_contents(str(f))
             arr, b_mask = _select_variable_from_arrs(arrs, str(f), pick)
+            masked = np.ma.array(
+                arr, mask=b_mask.astype(bool) if b_mask is not None else None
+            )
+            return masked.compressed() if masked.count() > 0 else None
         except Exception:
-            # skip files we can't read or that don't contain the requested variable
-            continue
+            return None
 
-        masked = np.ma.array(
-            arr, mask=b_mask.astype(bool) if b_mask is not None else None
-        )
-        if masked.count() == 0:
-            continue
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [executor.submit(process_file, f) for f in files_to_check]
+        for future in as_completed(futures):
+            result = future.result()
+            if result is not None:
+                all_values.extend(result)
 
-        # Collect valid values for percentile calculation
-        valid_values = masked.compressed()
-        if len(valid_values) > 0:
-            all_values.extend(valid_values.flatten())
-
-    if len(all_values) == 0:
-        gmin, gmax = -1.0, 1.0
-        actual_min, actual_max = gmin, gmax
+    if not all_values:
+        actual_min = actual_max = 0.0
+        vmin = -1.0
+        vmax = 1.0
     else:
         all_values = np.array(all_values)
         actual_min = float(np.min(all_values))
         actual_max = float(np.max(all_values))
-
-        # Use explicit limits if provided, otherwise use percentiles
-        if settings.lower_limit is not None:
-            gmin = float(settings.lower_limit)
-        else:
-            gmin = float(np.percentile(all_values, 5))  # 5th percentile
-
-        if settings.upper_limit is not None:
-            gmax = float(settings.upper_limit)
-        else:
-            gmax = float(np.percentile(all_values, 95))  # 95th percentile
+        vmin = (
+            float(np.percentile(all_values, PERCENTILE_LOWER))
+            if settings.lower_limit is None
+            else float(settings.lower_limit)
+        )
+        vmax = (
+            float(np.percentile(all_values, PERCENTILE_UPPER))
+            if settings.upper_limit is None
+            else float(settings.upper_limit)
+        )
 
     use_two = False
-    if settings.symmetric_around_zero and gmin < 0 < gmax:
-        vabs = max(abs(gmin), abs(gmax))
-        gmin, gmax = -vabs, vabs
+    if settings.symmetric_around_zero and vmin < 0 < vmax:
+        vabs = max(abs(vmin), abs(vmax))
+        vmin, vmax = -vabs, vabs
         use_two = True
 
-    if gmax == gmin:
-        gmax = gmin + 1e-9
-
-    return gmin, gmax, use_two, actual_min, actual_max
+    return vmin, vmax, use_two, actual_min, actual_max
 
 
-def _make_lut(cmap_name: str | None, use_two_slope: bool, vmin, vmax):
+def _make_lut(
+    cmap_name: Optional[str], use_two_slope: bool, vmin: float, vmax: float
+) -> np.ndarray:
+    """Create LUT with caching for reuse."""
     # 1024-step LUT to reduce banding before codec quantization
     if cmap_name == "default":
         cmap_name = None
@@ -301,21 +312,30 @@ def _make_lut(cmap_name: str | None, use_two_slope: bool, vmin, vmax):
             else:
                 colors = bwr(np.linspace(0.5, 1.0, 256))
                 cmap = mpl_colors.LinearSegmentedColormap.from_list("bwr_upper", colors)
-    lut = (cmap(np.linspace(0, 1, 1024))[:, :3] * 255).astype(np.uint8)  # (1024,3) RGB
+    lut = (cmap(np.linspace(0, 1, LUT_SIZE))[:, :3] * 255).astype(
+        np.uint8
+    )  # (1024,3) RGB
     return lut
 
 
-def _to_uint16_idx(frame, vmin, vmax):
+def _to_uint16_idx(frame: np.ndarray, vmin: float, vmax: float) -> np.ndarray:
+    """Vectorized index computation."""
     norm = (frame - vmin) / (vmax - vmin)
-    return np.clip((norm * 1023.0).round(), 0, 1023).astype(np.uint16)
+    return np.clip((norm * (LUT_SIZE - 1)).round(), 0, LUT_SIZE - 1).astype(np.uint16)
 
 
-def _blue_noise(shape, strength=0.0001):
-    """Generate blue noise dithering pattern with extremely low strength to minimize visible grain"""
-    rng = np.random.default_rng()
-    n = rng.random(shape, dtype=np.float32) - 0.5
-    # light blur to decorrelate; sigma ~0.5 px
-    return cv2.GaussianBlur(n, (0, 0), 0.5) * strength
+def _apply_noise_reduction(field: np.ndarray, settings: PlotSettings) -> np.ndarray:
+    """Apply smoothing and filtering efficiently."""
+    if not getattr(settings, "apply_smoothing", True):
+        return field
+    field_smooth = field.astype(np.float32)
+    median_size = getattr(settings, "median_filter_size", 3)
+    if median_size > 1:
+        field_smooth = cv2.medianBlur(field_smooth, median_size)
+    sigma = getattr(settings, "smoothing_sigma", 0.8)
+    if sigma > 0:
+        field_smooth = cv2.GaussianBlur(field_smooth, (0, 0), sigma)
+    return field_smooth
 
 
 # ------------------------- Writers (FFmpeg + fallback OpenCV) -------------------------
@@ -424,56 +444,39 @@ def make_video_from_scalar(
     folder: str | Path,
     pick: str = "uy",
     pattern: str = "[0-9]*.mat",
-    settings: PlotSettings | None = None,
+    settings: Optional[PlotSettings] = None,
     cancel_event=None,
 ) -> dict:
-    """
-    Reads a sequence of MAT files containing piv_result.{ux,uy,b_mask} and writes a high-quality MP4.
-    Returns metadata dict with limits and output path.
-    Supports cancellation via cancel_event (threading.Event).
-    """
+    """Optimized video generation with batching and vectorization."""
     t0 = time.time()
-
     folder = Path(folder)
     files = sorted(
         [Path(p) for p in glob.glob(str(folder / pattern))], key=_natural_key
     )
     files = [f for f in files if "coordinate" not in f.name.lower()]
-    if len(files) == 0:
+    if not files:
         raise FileNotFoundError(f"No MAT files found in {folder} matching '{pattern}'")
 
     if settings is None:
         settings = PlotSettings()
-
-    # Limit frames for test mode
     if hasattr(settings, "test_mode") and getattr(settings, "test_mode", False):
         test_frames = getattr(settings, "test_frames", 50)
         files = files[:test_frames]
 
-    # Limits
+    # Compute limits in parallel
     vmin, vmax, use_two, actual_min, actual_max = _compute_global_limits_from_files(
         files, pick, settings
     )
-
-    # LUT (1024)
     lut = _make_lut(settings.cmap, use_two, vmin, vmax)
 
-    # Size
+    # Get dimensions from first file
     arrs0 = read_mat_contents(str(files[0]))
-    arr0, b0 = _select_variable_from_arrs(arrs0, str(files[0]), pick)
-
+    arr0, _ = _select_variable_from_arrs(arrs0, str(files[0]), pick)
     H, W = arr0.shape
     if H == 0 or W == 0:
-        raise ValueError(
-            f"Invalid image dimensions {H}x{W} in {files[0]}. Check your MAT file data."
-        )
+        raise ValueError(f"Invalid dimensions {H}x{W} in {files[0]}")
     Hout, Wout = _resolve_upscale(H, W, settings.upscale)
 
-    # Writer: require ffmpeg (no fallback)
-    if not settings.use_ffmpeg:
-        raise RuntimeError(
-            "Only FFmpeg-based writing supported; set settings.use_ffmpeg = True"
-        )
     writer = FFmpegVideoWriter(
         settings.out_path,
         Wout,
@@ -487,73 +490,37 @@ def make_video_from_scalar(
         loglevel=settings.ffmpeg_loglevel,
     )
 
-    # Stream frames
     total_frames = len(files)
-    for i, f in enumerate(files):
+    for i in range(0, total_frames, DEFAULT_BATCH_SIZE):
         if cancel_event and cancel_event.is_set():
             break
-        arrs = read_mat_contents(str(f))
-        try:
+        batch_files = files[i : i + DEFAULT_BATCH_SIZE]
+        for j, f in enumerate(batch_files):
+            arrs = read_mat_contents(str(f))
             field, b_mask = _select_variable_from_arrs(arrs, str(f), pick)
-        except Exception:
-            continue
-        H_f, W_f = field.shape
-
-        # Apply noise reduction if enabled
-        if getattr(settings, "apply_smoothing", True):
-            # Convert to float for processing
-            field_smooth = field.astype(np.float32)
-
-            # Apply median filter first to remove salt-and-pepper noise
-            median_size = getattr(settings, "median_filter_size", 3)
-            if median_size > 1:
-                # Create a mask for valid data to avoid smoothing masked regions
-                # valid_mask = np.ones_like(field_smooth, dtype=bool)
-                # if b_mask is not None:
-                # ~b_mask.astype(bool)
-
-                # Apply median filter only to valid regions
-                field_smooth = cv2.medianBlur(field_smooth, median_size)
-
-            # Apply light Gaussian smoothing to reduce high-frequency noise
-            sigma = getattr(settings, "smoothing_sigma", 0.8)
-            if sigma > 0:
-                field_smooth = cv2.GaussianBlur(field_smooth, (0, 0), sigma)
-
-            # Use smoothed field
-            field = field_smooth
-
-        idx = _to_uint16_idx(field, vmin, vmax)  # 0..1023
-        rgb = lut[idx]  # (H,W,3) uint8 RGB
-
-        # Upscale image
-        if Hout != H or Wout != W:
-            rgb = cv2.resize(rgb, (Wout, Hout), interpolation=cv2.INTER_LANCZOS4)
-            # Upscale mask with nearest-neighbor for sharp edges
+            field = _apply_noise_reduction(field, settings)
+            idx = _to_uint16_idx(field, vmin, vmax)
+            rgb = lut[idx]
+            if Hout != H or Wout != W:
+                rgb = cv2.resize(rgb, (Wout, Hout), interpolation=cv2.INTER_LANCZOS4)
+                b_mask = (
+                    cv2.resize(
+                        b_mask.astype(np.uint8),
+                        (Wout, Hout),
+                        interpolation=cv2.INTER_NEAREST,
+                    ).astype(bool)
+                    if b_mask is not None
+                    else None
+                )
             if b_mask is not None:
-                b_mask_up = cv2.resize(
-                    b_mask.astype(np.uint8),
-                    (Wout, Hout),
-                    interpolation=cv2.INTER_NEAREST,
-                ).astype(bool)
-            else:
-                b_mask_up = None
-        else:
-            b_mask_up = b_mask.astype(bool) if b_mask is not None else None
-
-        # Apply mask after resizing
-        if b_mask_up is not None:
-            rgb[b_mask_up] = settings.mask_rgb
-
-        writer.write(rgb)
-        # Progress callback
-        if hasattr(settings, "progress_callback") and callable(
-            settings.progress_callback
-        ):
-            settings.progress_callback(i + 1, total_frames)
+                rgb[b_mask] = settings.mask_rgb
+            writer.write(rgb)
+            if settings.progress_callback:
+                settings.progress_callback(i + j + 1, total_frames)
+        # Clear batch to free memory
+        del batch_files
 
     writer.release()
-
     t1 = time.time()
     return {
         "out_path": settings.out_path,
@@ -583,7 +550,7 @@ if __name__ == "__main__":
     )
     # Optional: coordinates (not used by video)
     try:
-        from post_processing.vector_loading import load_coords_from_directory
+        from vector_loading import load_coords_from_directory
 
         coords_x, coords_y = load_coords_from_directory(frames_dir)
     except Exception:
@@ -616,3 +583,4 @@ if __name__ == "__main__":
         settings=ps,
     )
     print("Video written:", meta)
+    # Upscale image

@@ -11,7 +11,7 @@ from scipy.io import loadmat, savemat  # add
 from config import Config
 from paths import get_data_paths
 from plotting.plot_maker import make_scalar_settings, plot_scalar_field
-from post_processing.vector_loading import (
+from vector_loading import (
     load_coords_from_directory,
     load_vectors_from_directory,
 )

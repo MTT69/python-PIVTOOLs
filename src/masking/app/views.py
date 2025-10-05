@@ -3,47 +3,15 @@ from pathlib import Path
 import numpy as np
 from flask import Blueprint, jsonify, request
 
-from common.utils import camera_folder, camera_number, numpy_to_png_base64
 from config import get_config
-from image_handling.load_images import read_pair
-from post_processing.vector_loading import read_mask_from_mat, save_mask_to_mat
+from utils import camera_folder, camera_number
+from vector_loading import read_mask_from_mat, save_mask_to_mat
 
 masking_bp = Blueprint("masking", __name__)
 
 
 def _cfg():
     return get_config()
-
-
-@masking_bp.route("/get_raw_image", methods=["GET"])
-def get_raw_image():
-    basepath_idx = request.args.get("basepath_idx", default=0, type=int)
-    camera = camera_number(request.args.get("camera", default=1, type=int))
-    index = request.args.get("index", default=0, type=int)
-    frame = request.args.get("frame", default="A")
-    if frame not in ("A", "B"):
-        return jsonify({"error": "frame must be 'A' or 'B'"}), 400
-    frame_idx = 0 if frame == "A" else 1
-
-    try:
-        cfg = _cfg()
-        base_paths = cfg.source_paths
-        if basepath_idx < 0 or basepath_idx >= len(base_paths):
-            return jsonify({"error": "basepath_idx out of range"}), 400
-        camera_path = base_paths[basepath_idx] / camera_folder(camera)
-        pair = read_pair(index, camera_path, cfg)
-        if frame_idx >= pair.shape[0]:
-            return jsonify({"error": "requested frame index out of bounds"}), 400
-        img = pair[frame_idx]
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-    vmin = float(np.min(img))
-    vmax = float(np.max(img))
-
-    b64_img = numpy_to_png_base64(img)
-
-    return jsonify({"image": b64_img, "vmin": vmin, "vmax": vmax})
 
 
 @masking_bp.route("/save_mask_array", methods=["POST"])
