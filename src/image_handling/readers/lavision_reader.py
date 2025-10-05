@@ -19,7 +19,7 @@ def read_lavision_im7(
         import lvpyio as lv
     except ImportError:
         raise ImportError(
-            "LaVision library not available. Please install lavisionlib or equivalent."
+            "LaVision library not available. Please install."
         )
 
     if not os.path.exists(file_path):

@@ -2,7 +2,7 @@ import base64
 from io import BytesIO
 from pathlib import Path
 from typing import Dict, Optional, Tuple
-
+import random
 import matplotlib
 from loguru import logger
 from scipy.io import loadmat
@@ -377,6 +377,9 @@ def plot_vector():
     except ValueError as e:
         logger.warning(f"plot_vector: validation error: {e}")
         return jsonify({"success": False, "error": str(e)}), 400
+    except FileNotFoundError as e:
+        logger.warning(f"plot_vector: file not found: {e}")
+        return jsonify({"success": False, "error": "File not found"}), 404
     except Exception:
         logger.exception("plot_vector: unexpected error")
         return jsonify({"success": False, "error": "Internal server error"}), 500
@@ -780,80 +783,6 @@ def get_stats_value_at_position():
                 coords_mat = loadmat(
                     str(coords_file), struct_as_record=False, squeeze_me=True
                 )
-                if "coordinates" in coords_mat:
-                    coords_struct = coords_mat["coordinates"]
-                    cx, cy = extract_coordinates(coords_struct, effective_run)
-                    cx_arr, cy_arr = np.asarray(cx), np.asarray(cy)
-                    if cx_arr.shape == var_arr.shape:
-                        coord_x, coord_y = float(cx_arr[i, j]), float(cy_arr[i, j])
-                        physical_coord_used = True
-        except Exception as e:
-            logger.debug(f"Coordinates load failed: {e}")
-        if not physical_coord_used:
-            x_arr = np.asarray(getattr(pr, "x", None))
-            y_arr = np.asarray(getattr(pr, "y", None))
-            if x_arr is not None and x_arr.shape == var_arr.shape:
-                x_min, x_max = float(np.nanmin(x_arr)), float(np.nanmax(x_arr))
-                coord_x = x_min + xp * (x_max - x_min)
-            else:
-                coord_x = float(j)
-            if y_arr is not None and y_arr.shape == var_arr.shape:
-                y_min, y_max = float(np.nanmin(y_arr)), float(np.nanmax(y_arr))
-                coord_y = y_min + yp * (y_max - y_min)
-            else:
-                coord_y = float(i)
-        ux_arr = np.asarray(getattr(pr, "ux", None))
-        uy_arr = np.asarray(getattr(pr, "uy", None))
-        ux_val = (
-            float(ux_arr[i, j])
-            if ux_arr is not None and ux_arr.shape == var_arr.shape
-            else None
-        )
-        uy_val = (
-            float(uy_arr[i, j])
-            if uy_arr is not None and uy_arr.shape == var_arr.shape
-            else None
-        )
-        val = float(var_arr[i, j]) if var_arr.shape == var_arr.shape else None
-        result = {
-            "x": coord_x,
-            "y": coord_y,
-            "ux": ux_val,
-            "uy": uy_val,
-            "value": val,
-            "i": i,
-            "j": j,
-        }
-        return jsonify({"success": True, **result})
-    except ValueError as e:
-        logger.warning(f"get_stats_value_at_position: validation error: {e}")
-        return jsonify({"success": False, "error": str(e)}), 400
-    except Exception:
-        logger.exception("get_stats_value_at_position: unexpected error")
-        return jsonify({"success": False, "error": "Internal server error"}), 500
-        mean_stats_dir = Path(paths["stats_dir"]) / "mean_stats"
-        mat_path = mean_stats_dir / "mean_stats.mat"
-        if not mat_path.exists():
-            raise ValueError(f"Mean stats not found: {mat_path}")
-        piv_result = load_piv_result(mat_path)
-        pr, effective_run = find_non_empty_run(piv_result, params["var"], params["run"])
-        if pr is None:
-            raise ValueError("No non-empty run found")
-        var_arr = np.asarray(getattr(pr, params["var"]))
-        if var_arr.ndim < 2:
-            raise ValueError("Unexpected variable array shape")
-        H, W = var_arr.shape
-        xp = max(0.0, min(1.0, x_percent))
-        yp = max(0.0, min(1.0, y_percent))
-        j = int(round(xp * (W - 1)))
-        i = int(round(yp * (H - 1)))
-        i, j = max(0, min(H - 1, i)), max(0, min(W - 1, j))
-        physical_coord_used = False
-        coord_x = coord_y = None
-        try:
-            coords_file = mean_stats_dir / "coordinates.mat"
-            if coords_file.exists():
-                coords_mat = _loadmat_safe(coords_file, max_wait=0.5)
                 if "coordinates" in coords_mat:
                     coords_struct = coords_mat["coordinates"]
                     cx, cy = extract_coordinates(coords_struct, effective_run)

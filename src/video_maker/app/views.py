@@ -224,23 +224,43 @@ def start_video():
     data = request.get_json(silent=True) or {}
     cfg = get_config(refresh=True)
 
+    # Validate inputs
     base_path_str = data.get("base_path")
-    base = Path(base_path_str).expanduser() if base_path_str else cfg.base_paths[0]
+    if not base_path_str:
+        return jsonify({"error": "base_path is required"}), 400
+    base = Path(base_path_str).expanduser()
+    if not base.exists():
+        return jsonify({"error": "Invalid base_path"}), 400
 
     cam_raw = data.get("camera")
-    cam = int(cam_raw) if cam_raw is not None else int(cfg.camera_numbers[0])
+    if cam_raw is None:
+        return jsonify({"error": "camera is required"}), 400
+    try:
+        cam = int(cam_raw)
+        if cam < 1:
+            raise ValueError
+    except ValueError:
+        return jsonify({"error": "Invalid camera number"}), 400
 
     test_mode = data.get("test_mode", False)
+    if not isinstance(test_mode, bool):
+        return jsonify({"error": "test_mode must be boolean"}), 400
     test_frames = int(data.get("test_frames", 50))
+    if test_frames < 1:
+        return jsonify({"error": "test_frames must be positive"}), 400
 
     num_images = int(data.get("num_images", data.get("run", 1)))
+    if num_images < 1:
+        return jsonify({"error": "num_images must be positive"}), 400
     merged_flag = str(data.get("merged", "0")) in ("1", "true", "True")
     endpoint = data.get("endpoint", "") or ""
     source_type = data.get("type", "instantaneous") or "instantaneous"
+    if source_type not in ["instantaneous", "ensemble"]:  # Add allowed types
+        return jsonify({"error": "Invalid source_type"}), 400
 
     pick = data.get("var", None) or data.get("pick", "uy")
     if pick not in ("ux", "uy", "mag"):
-        pick = "uy"
+        return jsonify({"error": "Invalid pick variable"}), 400
     pattern = data.get("pattern", "[0-9]*.mat")
 
     ps = PlotSettings()
@@ -258,8 +278,8 @@ def start_video():
         upper = data.get("upper")
         ps.lower_limit = float(lower) if lower and str(lower).strip() else None
         ps.upper_limit = float(upper) if upper and str(upper).strip() else None
-    except Exception:
-        pass
+    except ValueError:
+        return jsonify({"error": "Invalid lower/upper limits"}), 400
 
     cmap = data.get("cmap")
     if cmap and cmap != "default":
@@ -354,6 +374,7 @@ def download_video():
             for allowed_root in allowed_roots
         )
         if not path_allowed:
+            logger.warning(f"Attempted download of disallowed path: {abs_path}")
             return jsonify({"error": "File not allowed"}), 403
         response = send_file(
             str(abs_path), mimetype="video/mp4", conditional=True, as_attachment=True

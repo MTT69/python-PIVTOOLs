@@ -1,0 +1,16 @@
+dask[complete]
+tifffile
+numpy
+scipy
+dask-image
+scipy
+typeguard
+opencv-python
+scikit-image
+
+[dev]
+black
+isort
+flake8
+cornflakes
+pandas

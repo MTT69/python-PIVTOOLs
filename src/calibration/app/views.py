@@ -29,27 +29,6 @@ calibration_cache = {}
 calibration_bp = Blueprint("calibration", __name__)
 
 
-def _cfg():
-    return get_config()
-
-
-def _resolve_calibration_image(source_path_idx: int, camera: int, index: int = 1):
-    cfg = get_config()
-    source_root = Path(cfg.source_paths[source_path_idx])
-    # Use get_data_paths to get calibration directory
-    paths = get_data_paths(
-        base_dir=source_root,
-        num_images=1,
-        cam=camera,
-        type_name="",
-        calibration=True,
-    )
-    calib_dir = paths["calib_dir"]
-    filename = cfg.calibration_filename(index)
-    img_path = calib_dir / filename
-    return img_path
-
-
 # Global job tracking
 calibration_jobs = {}
 vector_jobs = {}
@@ -255,17 +234,6 @@ def planar_get_image():
     image_index = request.args.get("image_index", default=0, type=int)
     file_pattern = request.args.get("file_pattern", default="calib%05d.tif")
 
-    # Get default file pattern from config if using default
-    if file_pattern == "calib%05d.tif":
-        try:
-            cfg = get_config()
-            # Try to get from calibration.pinhole.file_pattern
-            pinhole_config = cfg.calibration.get("pinhole", {})
-            file_pattern = pinhole_config.get("file_pattern", file_pattern)
-            logger.info(f"Using file pattern from config: {file_pattern}")
-        except Exception as e:
-            logger.warning(f"Could not load file pattern from config: {e}")
-
     try:
         cfg = get_config()
         source_root = Path(cfg.source_paths[source_path_idx])
@@ -371,27 +339,6 @@ def planar_detect_grid():
     asymmetric = bool(data.get("asymmetric", False))
     dt = float(data.get("dt", 1.0))
 
-    # Get default values from config
-    try:
-        cfg = get_config()
-        pinhole_config = cfg.calibration.get("pinhole", {})
-
-        # Only override if still using defaults
-        if file_pattern == "calib%05d.tif":
-            file_pattern = pinhole_config.get("file_pattern", file_pattern)
-        if pattern_cols == 10:
-            pattern_cols = int(pinhole_config.get("pattern_cols", pattern_cols))
-        if pattern_rows == 10:
-            pattern_rows = int(pinhole_config.get("pattern_rows", pattern_rows))
-        if dt == 1.0:
-            dt = float(pinhole_config.get("dt", dt))
-
-        logger.info(
-            f"Using config values - file_pattern: {file_pattern}, pattern: {pattern_cols}x{pattern_rows}, dt: {dt}"
-        )
-    except Exception as e:
-        logger.warning(f"Could not load config defaults: {e}")
-
     try:
         cfg = get_config()
         source_root = Path(cfg.source_paths[source_path_idx])
@@ -468,26 +415,6 @@ def planar_compute():
     enhance_dots = bool(data.get("enhance_dots", True))
     asymmetric = bool(data.get("asymmetric", False))
     dt = float(data.get("dt", 1.0))
-
-    # Get default values from config
-    try:
-        cfg = get_config()
-        pinhole_config = cfg.calibration.get("pinhole", {})
-        if file_pattern == "calib%05d.tif":
-            file_pattern = pinhole_config.get("file_pattern", file_pattern)
-        if pattern_cols == 10:
-            pattern_cols = int(pinhole_config.get("pattern_cols", pattern_cols))
-        if pattern_rows == 10:
-            pattern_rows = int(pinhole_config.get("pattern_rows", pattern_rows))
-        if dot_spacing_mm == 28.89:
-            dot_spacing_mm = float(pinhole_config.get("dot_spacing_mm", dot_spacing_mm))
-        if dt == 1.0:
-            dt = float(pinhole_config.get("dt", dt))
-        logger.info(
-            f"Using config values - file_pattern: {file_pattern}, pattern: {pattern_cols}x{pattern_rows}, spacing: {dot_spacing_mm}mm, dt: {dt}s"
-        )
-    except Exception as e:
-        logger.warning(f"Could not load config defaults: {e}")
 
     try:
         cfg = get_config()

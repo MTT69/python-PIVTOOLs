@@ -13,36 +13,6 @@ STEREO CALIBRATION:
 - Get grid detection visualization images for quality assessment
 - Validate calibration parameters before processing
 - Preview grid detection on sample images
-
-VECTOR CALIBRATION (3D RECONSTRUCTION):
-- Run 3D velocity reconstruction from stereo PIV data
-- Progress tracking for large vector datasets
-- Load reconstruction results and statistics
-
-QUALITY ASSURANCE:
-- Comprehensive validation of inputs and parameters
-- Enhanced error handling and user feedback
-- Grid detection quality assessment
-- Calibration quality metrics (reprojection errors, angles, etc.)
-
-JOB MANAGEMENT:
-- Asynchronous processing with job tracking
-- Real-time progress updates
-- Job cancellation and cleanup
-- Batch status monitoring
-
-VISUALIZATION:
-- Grid detection images with labeled points
-- Calibration quality assessment displays
-- Progress indicators and status updates
-
-The endpoints integrate with the production stereo calibration classes:
-- StereoCalibrator: For camera pair calibration
-- StereoReconstructor: For 3D velocity reconstruction
-- VectorCalibrator: For vector field calibration
-
-All endpoints follow REST conventions and provide comprehensive error handling
-for production deployment.
 """
 
 import base64
@@ -77,10 +47,6 @@ def generate_job_id():
     global job_id_counter
     job_id_counter += 1
     return f"stereo_job_{job_id_counter}_{int(time.time())}"
-
-
-def _cfg():
-    return get_config()
 
 
 def _to_dict(obj):

@@ -13,6 +13,7 @@ import cv2
 import matplotlib.colors as mpl_colors
 import matplotlib.pyplot as plt
 import numpy as np
+from loguru import logger
 from scipy.io import loadmat
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -447,9 +448,15 @@ def make_video_from_scalar(
     settings: Optional[PlotSettings] = None,
     cancel_event=None,
 ) -> dict:
-    """Optimized video generation with batching and vectorization."""
+    """
+    Optimized video generation with batching and vectorization.
+    Validates inputs, handles errors gracefully, and optimizes memory usage.
+    """
     t0 = time.time()
     folder = Path(folder)
+    if not folder.exists() or not folder.is_dir():
+        raise ValueError(f"Invalid folder path: {folder}")
+    
     files = sorted(
         [Path(p) for p in glob.glob(str(folder / pattern))], key=_natural_key
     )
@@ -464,63 +471,86 @@ def make_video_from_scalar(
         files = files[:test_frames]
 
     # Compute limits in parallel
-    vmin, vmax, use_two, actual_min, actual_max = _compute_global_limits_from_files(
-        files, pick, settings
-    )
+    try:
+        vmin, vmax, use_two, actual_min, actual_max = _compute_global_limits_from_files(
+            files, pick, settings
+        )
+    except Exception as e:
+        logger.error(f"Failed to compute limits: {e}")
+        raise
+
     lut = _make_lut(settings.cmap, use_two, vmin, vmax)
 
     # Get dimensions from first file
-    arrs0 = read_mat_contents(str(files[0]))
-    arr0, _ = _select_variable_from_arrs(arrs0, str(files[0]), pick)
-    H, W = arr0.shape
-    if H == 0 or W == 0:
-        raise ValueError(f"Invalid dimensions {H}x{W} in {files[0]}")
+    try:
+        arrs0 = read_mat_contents(str(files[0]))
+        arr0, _ = _select_variable_from_arrs(arrs0, str(files[0]), pick)
+        H, W = arr0.shape
+        if H == 0 or W == 0:
+            raise ValueError(f"Invalid dimensions {H}x{W} in {files[0]}")
+    except Exception as e:
+        logger.error(f"Failed to read first file {files[0]}: {e}")
+        raise
+
     Hout, Wout = _resolve_upscale(H, W, settings.upscale)
 
-    writer = FFmpegVideoWriter(
-        settings.out_path,
-        Wout,
-        Hout,
-        fps=settings.fps,
-        crf=settings.crf,
-        codec=settings.codec,
-        pix_fmt=settings.pix_fmt,
-        preset=settings.preset,
-        extra_args=settings.ffmpeg_extra_args,
-        loglevel=settings.ffmpeg_loglevel,
-    )
+    try:
+        writer = FFmpegVideoWriter(
+            settings.out_path,
+            Wout,
+            Hout,
+            fps=settings.fps,
+            crf=settings.crf,
+            codec=settings.codec,
+            pix_fmt=settings.pix_fmt,
+            preset=settings.preset,
+            extra_args=settings.ffmpeg_extra_args,
+            loglevel=settings.ffmpeg_loglevel,
+        )
+    except RuntimeError as e:
+        logger.error(f"FFmpeg writer initialization failed: {e}")
+        raise
 
     total_frames = len(files)
     for i in range(0, total_frames, DEFAULT_BATCH_SIZE):
         if cancel_event and cancel_event.is_set():
+            logger.info("Video creation cancelled")
             break
         batch_files = files[i : i + DEFAULT_BATCH_SIZE]
         for j, f in enumerate(batch_files):
-            arrs = read_mat_contents(str(f))
-            field, b_mask = _select_variable_from_arrs(arrs, str(f), pick)
-            field = _apply_noise_reduction(field, settings)
-            idx = _to_uint16_idx(field, vmin, vmax)
-            rgb = lut[idx]
-            if Hout != H or Wout != W:
-                rgb = cv2.resize(rgb, (Wout, Hout), interpolation=cv2.INTER_LANCZOS4)
-                b_mask = (
-                    cv2.resize(
-                        b_mask.astype(np.uint8),
-                        (Wout, Hout),
-                        interpolation=cv2.INTER_NEAREST,
-                    ).astype(bool)
-                    if b_mask is not None
-                    else None
-                )
-            if b_mask is not None:
-                rgb[b_mask] = settings.mask_rgb
-            writer.write(rgb)
-            if settings.progress_callback:
-                settings.progress_callback(i + j + 1, total_frames)
-        # Clear batch to free memory
+            try:
+                arrs = read_mat_contents(str(f))
+                field, b_mask = _select_variable_from_arrs(arrs, str(f), pick)
+                field = _apply_noise_reduction(field, settings)
+                idx = _to_uint16_idx(field, vmin, vmax)
+                rgb = lut[idx]
+                if Hout != H or Wout != W:
+                    rgb = cv2.resize(rgb, (Wout, Hout), interpolation=cv2.INTER_LANCZOS4)
+                    b_mask = (
+                        cv2.resize(
+                            b_mask.astype(np.uint8),
+                            (Wout, Hout),
+                            interpolation=cv2.INTER_NEAREST,
+                        ).astype(bool)
+                        if b_mask is not None
+                        else None
+                    )
+                if b_mask is not None:
+                    rgb[b_mask] = settings.mask_rgb
+                writer.write(rgb)
+                if settings.progress_callback:
+                    settings.progress_callback(i + j + 1, total_frames)
+            except Exception as e:
+                logger.error(f"Error processing file {f}: {e}")
+                continue  # Skip bad files but continue processing
+        # Clear batch to free memory immediately
         del batch_files
 
-    writer.release()
+    try:
+        writer.release()
+    except Exception as e:
+        logger.error(f"Error releasing writer: {e}")
+
     t1 = time.time()
     return {
         "out_path": settings.out_path,
@@ -541,46 +571,3 @@ def make_video_from_scalar(
         "crf": getattr(settings, "crf", None),
         "codec": getattr(settings, "codec", None),
     }
-
-
-# ------------------------- Example usage -------------------------
-if __name__ == "__main__":
-    frames_dir = Path(
-        "C:\\Users\\ees1u24\\Desktop\\Planar_Images_with_wall\\test\\calibrated_piv\\1000\\Cam1\\instantaneous"
-    )
-    # Optional: coordinates (not used by video)
-    try:
-        from vector_loading import load_coords_from_directory
-
-        coords_x, coords_y = load_coords_from_directory(frames_dir)
-    except Exception:
-        coords_x = coords_y = None
-
-    ps = PlotSettings(
-        variableName=r"$u_y$",
-        variableUnits=r"mm/s",
-        cmap=None,  # None → automatic based on sign/symmetry
-        lower_limit=-5,
-        upper_limit=200,  # or set explicit limits
-        symmetric_around_zero=True,
-        fps=60,
-        out_path="uy_hq.mp4",
-        use_ffmpeg=True,
-        crf=18,
-        codec="libx264",
-        pix_fmt="yuv420p",
-        preset="slow",
-        dither=True,
-        upscale=4.0,  # moderate upscale to improve apparent resolution
-        ffmpeg_extra_args=(),
-        ffmpeg_loglevel="info",
-    )
-
-    meta = make_video_from_scalar(
-        folder=frames_dir,
-        pick="ux",  # 'ux' or 'uy'
-        pattern="[0-9]*.mat",  # exclude coordinate file
-        settings=ps,
-    )
-    print("Video written:", meta)
-    # Upscale image

@@ -1,0 +1,20 @@
+Metadata-Version: 2.4
+Name: pypivtools
+Version: 0.1.0
+Requires-Dist: dask[complete]
+Requires-Dist: tifffile
+Requires-Dist: numpy
+Requires-Dist: scipy
+Requires-Dist: dask-image
+Requires-Dist: scipy
+Requires-Dist: typeguard
+Requires-Dist: opencv-python
+Requires-Dist: scikit-image
+Provides-Extra: dev
+Requires-Dist: black; extra == "dev"
+Requires-Dist: isort; extra == "dev"
+Requires-Dist: flake8; extra == "dev"
+Requires-Dist: cornflakes; extra == "dev"
+Requires-Dist: pandas; extra == "dev"
+Dynamic: provides-extra
+Dynamic: requires-dist
