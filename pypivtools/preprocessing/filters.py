@@ -1,3 +1,7 @@
+import logging
+import sys
+from pathlib import Path
+
 import dask.array as da
 import numpy as np
 from dask_image.ndfilters import (
@@ -8,8 +12,9 @@ from dask_image.ndfilters import (
     uniform_filter,
 )
 
-from pypivtools.config import Config
-import logging
+# Add src to path for unified imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+from config import Config
 
 
 def time_filter(images: da.Array) -> da.Array:

@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Tuple
+import logging
 
 import dask
 import dask.array as da
@@ -26,7 +27,7 @@ def read_image(file_path: str, **kwargs) -> np.ndarray:
     return reader_func(file_path, **kwargs)
 
 
-def read_pair(idx: int, camera_path: Path, config: Config) -> Tuple[np.ndarray, ...]:
+def read_pair(idx: int, camera_path: Path, config: Config) -> np.ndarray:
     """Read a pair of images (A and B frames).
 
     Args:
@@ -35,13 +36,25 @@ def read_pair(idx: int, camera_path: Path, config: Config) -> Tuple[np.ndarray, 
         config (Config): Configuration object
 
     Returns:
-        tuple: A tuple containing two numpy arrays representing the images
+        np.ndarray: Stacked array of shape (2, H, W) containing frame A and B
     """
-    image_format_A, image_format_B = config.image_format
-    file_paths = [
-        camera_path / (image_format_A % idx),
-        camera_path / (image_format_B % idx),
-    ]
+    # Get image format - handle both time-resolved (single format) and non-time-resolved (A/B pair)
+    image_format = config.image_format
+    
+    if isinstance(image_format, tuple):
+        # Non-time-resolved: separate A and B formats
+        image_format_A, image_format_B = image_format
+        file_paths = [
+            camera_path / (image_format_A % idx),
+            camera_path / (image_format_B % idx),
+        ]
+    else:
+        # Time-resolved: single format (shouldn't happen for PIV pairs, but handle it)
+        logging.warning("Time-resolved format detected for PIV pairs, this may not work correctly")
+        file_paths = [
+            camera_path / (image_format % idx),
+            camera_path / (image_format.replace("_A", "_B") % idx),
+        ]
 
     # Check if it's a proprietary format that reads pairs natively
     file_ext = Path(file_paths[0]).suffix.lower()
@@ -62,14 +75,14 @@ def read_pair(idx: int, camera_path: Path, config: Config) -> Tuple[np.ndarray, 
         return np.stack([frame_a, frame_b], axis=0)
 
 
-def delayed_image_pair(idx: int, camera_path: Path, config: Config) -> dask.delayed:
+def delayed_image_pair(idx: int, camera_path: Path, config: Config) -> Delayed:
     """Create a delayed task to read a pair of images.
 
     Args:
         idx (int): Index of the image pair to read
 
     Returns:
-        dask.delayed: A delayed task representing the image pair
+        Delayed: A delayed task representing the image pair
     """
 
     return dask.delayed(read_pair)(idx, camera_path, config)
@@ -100,12 +113,16 @@ def load_images(camera: int, config: Config, source: Path = None) -> da.Array:
         camera (int): The camera number.
         config (Config): The configuration object.
         source (Path, optional): The root directory for camera folders.
+            If None, uses first source_path from config.
 
     Returns:
         da.Array: A Dask array containing the loaded image pairs.
     """
-
+    if source is None:
+        source = config.source_paths[0]
+    
     camera_path = source / f"Cam{camera}"
+    logging.info("Lazily loading images with Dask for camera: Cam%d from %s", camera, camera_path)
     delayed_image_pairs = [
         delayed_image_pair(idx, camera_path, config)
         for idx in range(1, config.num_images + 1)

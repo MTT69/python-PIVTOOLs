@@ -1,8 +1,10 @@
 from pathlib import Path
+import logging
 
 import yaml
 
 _CONFIG = None  # singleton cache
+_LOGGING_INITIALIZED = False  # Track if logging has been set up
 
 
 class Config:
@@ -19,6 +21,9 @@ class Config:
             #     file_path = source_path / camera_folder / (self.image_format[0] % 1)
             # img = tifffile.imread(file_path) # bye bye
             # self.image_dtype = img.dtype
+        
+        # Setup logging only once globally
+        self._setup_logging()
 
     @property
     def time_resolved(self):
@@ -210,6 +215,168 @@ class Config:
             self.data["calibration"]["active"] = method
         else:
             raise ValueError(f"Unknown calibration method: {method}")
+
+    # --- PIV-specific properties from pypivtools ---
+    @property
+    def window_sizes(self):
+        """Return PIV window sizes from instantaneous_piv configuration."""
+        return self.data.get("instantaneous_piv", {}).get("window_size", [])
+
+    @property
+    def overlap(self):
+        """Return PIV overlap percentages."""
+        overlaps = self.data.get("instantaneous_piv", {}).get("overlap", [])
+        # Ensure we have as many overlaps as window sizes
+        if overlaps and len(overlaps) == 1 and len(self.window_sizes) > 1:
+            overlaps = overlaps * len(self.window_sizes)
+        return overlaps
+
+    @property
+    def num_peaks(self):
+        """Return number of peaks to detect in correlation."""
+        return self.data.get("instantaneous_piv", {}).get("num_peaks", 1)
+
+    @property
+    def dt(self):
+        """Return time difference between frames."""
+        # Check active calibration method
+        active_method = self.active_calibration_method
+        if active_method == "stereo":
+            return self.stereo_calibration.get("dt", 1)
+        elif active_method == "pinhole":
+            return self.pinhole_calibration.get("dt", 1)
+        elif active_method == "scale_factor":
+            return self.scale_factor_calibration.get("dt", 1)
+        return 1
+
+    @property
+    def window_type(self):
+        """Return PIV window type (e.g., 'gaussian', 'A')."""
+        return self.data.get("instantaneous_piv", {}).get("window_type", "A")
+
+    @property
+    def backend(self):
+        """Return processing backend ('cpu' or 'gpu')."""
+        return self.data.get("processing", {}).get("backend", "cpu").lower()
+
+    @property
+    def num_passes(self):
+        """Return number of PIV passes."""
+        return len(self.window_sizes)
+
+    @property
+    def debug(self):
+        """Return debug flag."""
+        return self.data.get("processing", {}).get("debug", False)
+
+    @property
+    def omp_threads(self):
+        """Return number of OMP threads as string."""
+        return str(self.data.get("processing", {}).get("omp_threads", 1))
+
+    @property
+    def dask_workers_per_node(self):
+        """Return number of Dask workers per node."""
+        return self.data.get("processing", {}).get("dask_workers_per_node", 1)
+
+    @property
+    def dask_threads_per_worker(self):
+        """Return number of threads per Dask worker."""
+        return self.data.get("processing", {}).get("dask_threads_per_worker", 1)
+
+    @property
+    def dask_memory_limit(self):
+        """Return memory limit per Dask worker."""
+        return self.data.get("processing", {}).get("dask_memory_limit", "4GB")
+
+    @property
+    def peak_finder(self):
+        """Return peak finder method (converted to numeric code)."""
+        peak_finder = self.data.get("instantaneous_piv", {}).get("peak_finder", "gauss3").lower()
+        if peak_finder == "gauss3":
+            return 3
+        elif peak_finder == "gauss4":
+            return 4
+        elif peak_finder == "gauss5":
+            return 5
+        elif peak_finder == "gauss6":
+            return 6
+        else:
+            raise ValueError(
+                f"Invalid peak_finder: {peak_finder}. Must be 'gauss3', 'gauss4', 'gauss5', or 'gauss6'."
+            )
+
+    @property
+    def ensemble_piv(self):
+        """Return True if ensemble PIV is enabled."""
+        return self.data.get("processing", {}).get("ensemble", False)
+
+    @property
+    def secondary_peak(self):
+        """Return True if secondary peak detection is enabled."""
+        return self.data.get("instantaneous_piv", {}).get("secondary_peak", False)
+
+    # --- Logging properties ---
+    @property
+    def log_file(self) -> str:
+        """Return log file path."""
+        return self.data.get("logging", {}).get("file", "pypiv.log")
+
+    @property
+    def log_level(self) -> str:
+        """Return log level as string."""
+        return self.data.get("logging", {}).get("level", "INFO").upper()
+
+    @property
+    def log_console(self) -> bool:
+        """Return True if console logging is enabled."""
+        return self.data.get("logging", {}).get("console", True)
+
+    def _setup_logging(self):
+        """Setup logging based on configuration. Only runs once globally."""
+        global _LOGGING_INITIALIZED
+        
+        if _LOGGING_INITIALIZED:
+            return
+        
+        _LOGGING_INITIALIZED = True
+        
+        log_level = getattr(logging, self.log_level, logging.INFO)
+        
+        # Get root logger
+        root_logger = logging.getLogger()
+        root_logger.setLevel(log_level)
+        
+        # Clear any existing handlers to avoid duplicates
+        root_logger.handlers.clear()
+        
+        # Add file handler
+        file_handler = logging.FileHandler(self.log_file)
+        file_handler.setLevel(log_level)
+        file_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+        file_handler.setFormatter(file_formatter)
+        root_logger.addHandler(file_handler)
+        
+        # Add console handler if requested
+        if self.log_console:
+            console_handler = logging.StreamHandler()
+            console_handler.setLevel(log_level)
+            console_formatter = logging.Formatter(
+                "%(asctime)s [%(levelname)s] %(message)s"
+            )
+            console_handler.setFormatter(console_formatter)
+            root_logger.addHandler(console_handler)
+
+        logging.info(
+            "Logging initialized. Level: %s, File: %s", self.log_level, self.log_file
+        )
+
+    @property
+    def image_dtype(self):
+        """Return image data type as numpy dtype."""
+        import numpy as np
+        dtype_str = self.data.get("images", {}).get("dtype", "uint16")
+        return np.dtype(dtype_str)
 
 
 def get_config(refresh: bool = False) -> Config:

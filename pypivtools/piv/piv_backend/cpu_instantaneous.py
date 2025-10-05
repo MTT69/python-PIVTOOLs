@@ -1,8 +1,9 @@
 import ctypes
 import logging
 import os
+import sys
 import warnings
-
+from pathlib import Path
 import cv2
 import dask.array as da
 import numpy as np
@@ -10,15 +11,16 @@ from dask.distributed import get_worker
 from scipy.ndimage import gaussian_filter
 from scipy.signal import convolve2d
 
-from pypivtools.config import Config
+# Add src to path for unified imports
+
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))
+
+from config import Config
 from pypivtools.piv.piv_backend.base import CrossCorrelator
+
 from pypivtools.piv.piv_result import PIVPassResult, PIVResult
 
-
 class InstantaneousCorrelatorCPU(CrossCorrelator):
-    # Edge margin: exclude vectors this many pixels from image boundaries
-    # Edge vectors are unreliable as particles move out of frame
-    EDGE_MARGIN = 32
 
     def __init__(self, config: Config) -> None:
         super().__init__()
@@ -224,6 +226,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                         pk_loc_y[b_large_disp] = np.nan
                         pk_height[b_large_disp] = np.nan
 
+                        # delta_ab_pred is (n_x, n_y, 2) matching pk_loc (n_peaks, n_x, n_y)
                         pk_loc_x += self.delta_ab_pred[:, :, 0][None, :, :]
                         pk_loc_y += self.delta_ab_pred[:, :, 1][None, :, :]
                         rows, cols = np.indices(n_windows)
@@ -232,17 +235,18 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
 
                         nan_mask = np.isnan(ux_mat) | np.isnan(uy_mat)
                         
-                        # Mark edge vectors as invalid to prevent propagation
-                        # Window centers within EDGE_MARGIN are excluded
+                        # Mark edge vectors as invalid to prevent error propagation
+                        # Window centers within EDGE_MARGIN of boundaries are excluded
+                        EDGE_MARGIN = 64
                         win_ctrs_x_grid, win_ctrs_y_grid = np.meshgrid(
                             self.win_ctrs_x[pass_idx],
                             self.win_ctrs_y[pass_idx]
                         )
                         edge_mask = (
-                            (win_ctrs_x_grid < self.EDGE_MARGIN) |
-                            (win_ctrs_x_grid > self.W - self.EDGE_MARGIN - 1) |
-                            (win_ctrs_y_grid < self.EDGE_MARGIN) |
-                            (win_ctrs_y_grid > self.H - self.EDGE_MARGIN - 1)
+                            (win_ctrs_x_grid < EDGE_MARGIN) |
+                            (win_ctrs_x_grid > self.W - EDGE_MARGIN - 1) |
+                            (win_ctrs_y_grid < EDGE_MARGIN) |
+                            (win_ctrs_y_grid > self.H - EDGE_MARGIN - 1)
                         )
                         nan_mask |= edge_mask
 
@@ -305,11 +309,6 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     n_pre = self.n_pre_all[pass_idx]
                     n_post = self.n_post_all[pass_idx]
 
-                    # Pad with edge replication for image warping purposes
-                    # This extrapolates interior displacement to edge regions
-                    # Edge vectors are marked as NaN elsewhere and not saved
-                    # But edge displacement estimates improve warping of nearby
-                    # interior regions
                     self.delta_ab_old = np.pad(
                         self.delta_ab_old,
                         ((n_pre[0], n_post[0]), (n_pre[1], n_post[1]), (0, 0)),
@@ -368,14 +367,13 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         
         # Exclude windows within EDGE_MARGIN pixels of image boundaries
         # This prevents unreliable edge vectors from propagating errors
-        # Note: Images are still warped at edges using extrapolated
-        # displacement for better interior vector accuracy
+        EDGE_MARGIN = 32  # pixels from edge to exclude
         
         # Calculate valid region for window centers
-        min_x = self.EDGE_MARGIN
-        max_x = Nx - self.EDGE_MARGIN - 1
-        min_y = self.EDGE_MARGIN
-        max_y = Ny - self.EDGE_MARGIN - 1
+        min_x = EDGE_MARGIN
+        max_x = Nx - EDGE_MARGIN - 1
+        min_y = EDGE_MARGIN
+        max_y = Ny - EDGE_MARGIN - 1
 
         # Original window center range
         first_ctr_x = -0.5 + win_x / 2
@@ -453,8 +451,9 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         :return: Adjusted images and predicted displacements.
         :rtype: tuple[np.ndarray, np.ndarray, np.ndarray]
         """
+        # delta_ab_pred must match the C library's grid ordering: (n_x, n_y, 2)
         self.delta_ab_pred = np.zeros(
-            (len(self.win_ctrs_y[pass_idx]), len(self.win_ctrs_x[pass_idx]), 2),
+            (len(self.win_ctrs_x[pass_idx]), len(self.win_ctrs_y[pass_idx]), 2),
             dtype=np.float32,
         )
         if pass_idx == 0:
@@ -517,8 +516,9 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
 
         im_mesh_A = self.im_mesh + delta_0a
         im_mesh_B = self.im_mesh + delta_0b
+        # delta_ab_pred must match the C library's grid ordering: (n_x, n_y, 2)
         self.delta_ab_pred = np.zeros(
-            (len(self.win_ctrs_y[pass_idx]), len(self.win_ctrs_x[pass_idx]), 2),
+            (len(self.win_ctrs_x[pass_idx]), len(self.win_ctrs_y[pass_idx]), 2),
             dtype=np.float32,
         )
 

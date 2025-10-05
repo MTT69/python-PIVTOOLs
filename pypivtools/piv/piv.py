@@ -1,10 +1,15 @@
 import logging
+import sys
 import numpy as np
 from pathlib import Path
 from typing import List, Optional
 from dask import array as da
 from dask.distributed import Client
-from pypivtools.config import Config
+
+# Add src to path for unified imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+from config import Config
+
 from pypivtools.piv.piv_backend.factory import make_correlator_backend
 from pypivtools.piv.piv_result import PIVResult
 from pypivtools.piv.save_results import save_piv_result_distributed

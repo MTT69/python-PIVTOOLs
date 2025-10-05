@@ -2,13 +2,18 @@
 Module for saving PIV results to .mat files compatible with post-processing code.
 """
 import logging
+import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import numpy as np
 import scipy.io
 
-from pypivtools.config import Config
+# Add src to path for unified imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+from config import Config
+from paths import get_data_paths
+
 from pypivtools.piv.piv_result import PIVResult, PIVPassResult
 
 
@@ -414,83 +419,28 @@ def _create_piv_struct_all_passes(
     return piv_struct
 
 
-def get_data_paths(
-    base_dir: Path,
-    num_images: int,
-    camera: str,
-    type_name: str,
-    endpoint: str = "",
-    use_uncalibrated: bool = True,
-) -> dict:
-    """
-    Construct directories for PIV data following standardized structure.
-    
-    This function follows the same pattern as the post-processing code.
-    
-    Parameters
-    ----------
-    base_dir : Path
-        Base directory for all data.
-    num_images : int
-        Number of images being processed.
-    camera : str
-        Camera identifier (e.g., "Cam1" or "1").
-    type_name : str
-        PIV type name (e.g., "instantaneous", "ensemble").
-    endpoint : str
-        Optional subfolder within the data directory.
-    use_uncalibrated : bool
-        If True, use uncalibrated_piv directory.
-        If False, use calibrated_piv directory.
-        
-    Returns
-    -------
-    dict
-        Dictionary with 'data_dir' key pointing to output directory.
-    """
-    base_dir = Path(base_dir)
-    
-    # Ensure camera has "Cam" prefix
-    if not camera.startswith("Cam"):
-        camera = f"Cam{camera}"
-    
-    # Build path following the standard structure
-    if use_uncalibrated:
-        data_dir = (
-            base_dir / "uncalibrated_piv" / str(num_images) /
-            camera / type_name
-        )
-    else:
-        data_dir = (
-            base_dir / "calibrated_piv" / str(num_images) /
-            camera / type_name
-        )
-    
-    if endpoint:
-        data_dir = data_dir / endpoint
-    
-    return dict(data_dir=data_dir)
+# Note: get_data_paths is imported from src/paths.py at the top of this file
 
 
 def get_output_path(
     config: Config,
-    camera: str,
+    camera: Union[int, str],
     create: bool = True,
     use_uncalibrated: bool = True,
 ) -> Path:
     """
-    Get the output path for a specific camera's PIV results.
+    Get the output path for a specific camera's PIV results using the GUI path structure.
     
     Follows the standardized directory structure:
-    - Uncalibrated: base_path/uncalibrated_piv/{num_images}/{camera}/{type}
-    - Calibrated: base_path/calibrated_piv/{num_images}/{camera}/{type}
+    - Uncalibrated: base_path/uncalibrated_piv/{num_images}/Cam{camera}/instantaneous
+    - Calibrated: base_path/calibrated_piv/{num_images}/Cam{camera}/instantaneous
     
     Parameters
     ----------
     config : Config
         Configuration object.
-    camera : str
-        Camera folder name (e.g., "Cam1").
+    camera : Union[int, str]
+        Camera number (int) or camera folder name (str, e.g., "Cam1").
     create : bool
         If True, create the directory if it doesn't exist.
     use_uncalibrated : bool
@@ -502,29 +452,31 @@ def get_output_path(
     Path
         Output path for PIV results.
     """
-    base_path = Path(config.base_path)
+    base_path = config.base_paths[0]
     
-    # Ensure camera has "Cam" prefix
-    if not camera.startswith("Cam"):
-        camera = f"Cam{camera}"
+    # Convert camera to int if it's a string
+    if isinstance(camera, str):
+        if camera.startswith("Cam"):
+            camera_num = int(camera[3:])
+        else:
+            camera_num = int(camera)
+    else:
+        camera_num = camera
     
-    # Get PIV type from config (e.g., "instantaneous")
-    piv_type = (
-        config.piv_type if hasattr(config, 'piv_type')
-        else 'instantaneous'
+    # Get PIV type - default to instantaneous
+    piv_type = "instantaneous" if config.data.get("processing", {}).get("instantaneous", True) else "ensemble"
+    
+    # Use get_data_paths from src/paths.py (positional args: base_dir, num_images, cam, type_name)
+    paths = get_data_paths(
+        base_path,
+        config.num_images,
+        camera_num,
+        piv_type,
+        endpoint="",
+        use_uncalibrated=use_uncalibrated
     )
     
-    # Build path following the standard structure
-    if use_uncalibrated:
-        output_path = (
-            base_path / "uncalibrated_piv" / str(config.num_images) /
-            camera / piv_type
-        )
-    else:
-        output_path = (
-            base_path / "calibrated_piv" / str(config.num_images) /
-            camera / piv_type
-        )
+    output_path = paths["data_dir"]
     
     if create:
         output_path.mkdir(parents=True, exist_ok=True)

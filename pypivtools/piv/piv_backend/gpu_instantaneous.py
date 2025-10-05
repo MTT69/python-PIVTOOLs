@@ -1,7 +1,13 @@
+import sys
+from pathlib import Path
+
 import dask.array as da
 import numpy as np
 
-from pypivtools.config import Config
+# Add src to path for unified imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))
+from config import Config
+
 from pypivtools.piv.piv_backend.base import CrossCorrelator
 
 

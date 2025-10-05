@@ -1,4 +1,6 @@
 from abc import ABC, abstractmethod
+import sys
+from pathlib import Path
 
 import cv2
 import dask.array as da
@@ -8,7 +10,9 @@ import scipy.sparse.linalg as spla
 from scipy.interpolate import griddata
 from skimage.restoration import inpaint_biharmonic
 
-from pypivtools.config import Config
+# Add src to path for unified imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))
+from config import Config
 
 
 class CrossCorrelator(ABC):

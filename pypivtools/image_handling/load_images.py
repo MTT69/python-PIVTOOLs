@@ -1,59 +1,96 @@
 import logging
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, Union
+import sys
 
 import dask
 import dask.array as da
 import numpy as np
-import tifffile
 from dask.delayed import Delayed
-from dask.distributed import get_worker
-from typeguard import config
+import tifffile
 
-from pypivtools.config import Config
+# Add src to path for unified imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+from config import Config
+
+# Try to import advanced readers from src
+HAS_ADVANCED_READERS = False
+get_reader = None
+try:
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+    from image_handling.readers import get_reader
+    HAS_ADVANCED_READERS = True
+except ImportError:
+    HAS_ADVANCED_READERS = False
+    logging.warning("Advanced image readers not available, falling back to tifffile")
 
 
-def read_image(file_path: str) -> np.ndarray:
-    """Read an image file using tifffile.
+def read_image(file_path: str, **kwargs) -> np.ndarray:
+    """Read an image file using appropriate reader.
 
     Args:
         file_path (str): Path to the image file
+        **kwargs: Additional arguments for specific readers
 
     Returns:
-        tifffile.TiffFile: The image file
+        np.ndarray: The image data
     """
-    return tifffile.imread(file_path)
+    if HAS_ADVANCED_READERS and get_reader is not None:
+        reader_func = get_reader(file_path)
+        return reader_func(file_path, **kwargs)
+    else:
+        return tifffile.imread(file_path)
 
 
 def read_pair(
     idx: int, camera_path: Path, config: Config
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Read a pair of images
+) -> np.ndarray:
+    """Read a pair of images (A and B frames).
 
     Args:
         idx (int): Index of the image pair to read
+        camera_path (Path): Path to camera directory
+        config (Config): Configuration object
 
     Returns:
-        tuple: A tuple containing two numpy arrays representing the images
+        np.ndarray: Stacked array of shape (2, H, W) with frame A and B
     """
-
-    file_paths = [f"{idx:04d}_A.tif", f"{idx:04d}_B.tif"]
+    # Get image format - handle both time-resolved (single format) and non-time-resolved (A/B pair)
     image_format = config.image_format
+    
+    if isinstance(image_format, tuple):
+        # Non-time-resolved: separate A and B formats
+        image_format_A, image_format_B = image_format
+        file_paths = [
+            camera_path / (image_format_A % idx),
+            camera_path / (image_format_B % idx),
+        ]
+    else:
+        # Time-resolved: single format, derive B from A
+        file_paths = [
+            camera_path / (image_format % idx),
+            camera_path / (image_format.replace("_A", "_B") % idx),
+        ]
 
-    file_paths = [
-        camera_path / (image_format % idx),
-        camera_path / (image_format.replace("_A", "_B") % idx),
-    ]
-    return np.stack(
-        [
-            read_image(file_paths[0]).astype(config.image_dtype),
-            read_image(file_paths[1]).astype(config.image_dtype),
-        ],
-        axis=0,
-    )
+    # Check if it's a proprietary format that reads pairs natively
+    file_ext = Path(file_paths[0]).suffix.lower()
+    if HAS_ADVANCED_READERS and file_ext == ".im7":
+        # LaVision files contain both frames, read once
+        camera_no = (
+            int(str(camera_path).split("Cam")[-1]) if "Cam" in str(camera_path) else 1
+        )
+        return read_image(str(file_paths[0]), camera_no=camera_no)
+    elif HAS_ADVANCED_READERS and file_ext == ".cine":
+        # For .cine, pass frame index (idx-1 for 0-based)
+        return read_image(str(file_paths[0]), idx=idx - 1, frames=2)
+    else:
+        # Read individual frames
+        frame_a = read_image(str(file_paths[0]))
+        frame_b = read_image(str(file_paths[1]))
+        return np.stack([frame_a, frame_b], axis=0)
 
 
-def delayed_image_pair(idx: int, camera_path: Path, config: Config) -> dask.delayed:
+def delayed_image_pair(idx: int, camera_path: Path, config: Config) -> Delayed:
     """Create a delayed task to read a pair of images.
 
     Args:

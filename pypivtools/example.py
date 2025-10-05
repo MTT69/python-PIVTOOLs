@@ -1,12 +1,17 @@
 import logging
 import os
+import sys
 import tracemalloc
 import time
+from pathlib import Path
 
 from dask.distributed import wait
 
-from pypivtools.config import Config
-from pypivtools.image_handling.load_images import load_images
+# Add src to path for unified imports
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+from config import Config
+from image_handling.load_images import load_images
+
 from pypivtools.piv.piv import perform_piv_and_save
 from pypivtools.piv.save_results import (
     save_coordinates_from_config_distributed,
@@ -47,19 +52,22 @@ if __name__ == "__main__":
             logging.info("  local_dir: %s", meta.get("local_directory"))
             logging.info("  nanny: %s", meta.get("nanny"))
 
-        camera_folders = config.cameras
+        camera_numbers = config.camera_numbers
+        source_path = config.source_paths[0]
+        base_path = config.base_paths[0]
 
-        for camera in camera_folders:
-            logging.info("Processing camera: %s", camera)
+        for camera_num in camera_numbers:
+            logging.info("Processing camera: Cam%d", camera_num)
 
-            images = load_images(camera, config)
+            # Load images from source path
+            images = load_images(camera_num, config, source=source_path)
             # processed_images = preprocess_images(images, config)
             
             # Get output path for this camera (uncalibrated PIV)
-            # Path: base_path/uncalibrated_piv/{num_images}/{camera}/{type}
+            # Path: base_path/uncalibrated_piv/{num_images}/Cam{camera_num}/instantaneous
             output_path = get_output_path(
                 config,
-                camera,
+                camera_num,
                 use_uncalibrated=True
             )
             
@@ -99,7 +107,10 @@ if __name__ == "__main__":
 
             tracemalloc.stop()
     except Exception as e:
-        print(f"Error {e}", flush=True)
+        import traceback
+        print(f"Error: {e}", flush=True)
+        print(f"Traceback:", flush=True)
+        traceback.print_exc()
     finally:
         client.close()
         end_time = time.time()  # End timer

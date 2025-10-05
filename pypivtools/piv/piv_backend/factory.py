@@ -1,4 +1,9 @@
-from pypivtools.config import Config
+import sys
+from pathlib import Path
+
+# Add src to path for unified imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))
+from config import Config
 from pypivtools.piv.piv_backend.cpu_instantaneous import InstantaneousCorrelatorCPU
 from pypivtools.piv.piv_backend.gpu_instantaneous import InstantaneousCorrelatorGPU
 

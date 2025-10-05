@@ -1,11 +1,15 @@
 import logging
 import os
+import sys
 from collections import defaultdict
+from pathlib import Path
 from typing import List, Tuple
 
 from dask.distributed import Client, LocalCluster
 
-from pypivtools.config import Config
+# Add src to path for unified imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+from config import Config
 
 
 def make_cluster(
