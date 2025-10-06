@@ -252,7 +252,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                             (win_ctrs_y_grid < EDGE_MARGIN) |
                             (win_ctrs_y_grid > self.H - EDGE_MARGIN - 1)
                         )
-                        nan_mask |= edge_mask
+                        # nan_mask |= edge_mask
                         
                         # Apply user-defined mask if provided
                         if self.mask is not None:
@@ -261,7 +261,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                                 self.win_ctrs_y[pass_idx],
                                 self.mask
                             )
-                            nan_mask |= user_mask
+                            # nan_mask |= user_mask
 
                         # nan_mask |= self._piv_2d_outlier(
                         #     ux_mat,

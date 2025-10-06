@@ -2,11 +2,13 @@
 Test script to process a single image pair without Dask.
 Prints all relevant array shapes to diagnose dimension issues.
 """
-import logging
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend
+import matplotlib.pyplot as plt
 import sys
-import numpy as np
 from pathlib import Path
-
+import logging
+import numpy as np
 # Add src to path for unified imports
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 from config import Config
@@ -36,9 +38,9 @@ def print_array_info(name, arr, indent=0):
 def test_single_image():
     """Process a single image pair and print all relevant sizes."""
     
-    print("="*80)
+    print("=" * 80)
     print("SINGLE IMAGE PIV TEST - SHAPE DIAGNOSTICS")
-    print("="*80)
+    print("=" * 80)
     print()
     
     # Load configuration
@@ -119,6 +121,29 @@ def test_single_image():
         print(f"  - Total windows: {len(correlator.win_ctrs_x[pass_idx]) * len(correlator.win_ctrs_y[pass_idx])}")
         print()
     
+    # Export win_ctrs_x and win_ctrs_y for pass 0
+    if len(config.window_sizes) > 0:
+        # Removed: np.savetxt('win_ctrs_x_pass0.csv', correlator.win_ctrs_x[0], delimiter=',')
+        # Removed: np.savetxt('win_ctrs_y_pass0.csv', correlator.win_ctrs_y[0], delimiter=',')
+        # Removed: print("Exported win_ctrs_x and win_ctrs_y for pass 0 to .csv files")
+        
+        # Compute and export edge_mask for pass 0
+        EDGE_MARGIN = 64
+        win_ctrs_x_grid, win_ctrs_y_grid = np.meshgrid(
+            correlator.win_ctrs_x[0],
+            correlator.win_ctrs_y[0],
+        )
+        edge_mask = (
+            (win_ctrs_x_grid < EDGE_MARGIN) |
+            (win_ctrs_x_grid > config.image_shape[1] - EDGE_MARGIN - 1) |
+            (win_ctrs_y_grid < EDGE_MARGIN) |
+            (win_ctrs_y_grid > config.image_shape[0] - EDGE_MARGIN - 1)
+        )
+        print(f"Edge mask shape: {edge_mask.shape}")
+        # Removed: np.savetxt('edge_mask_pass0.csv', edge_mask.astype(int), delimiter=',')
+        # Removed: print("Exported edge_mask for pass 0 to .csv file")
+        print()
+    
     # Run PIV
     print("-" * 80)
     print("RUNNING PIV")
@@ -194,14 +219,10 @@ def test_single_image():
                     print(f"  Ux range: [{np.nanmin(pass_result.ux_mat):.3f}, {np.nanmax(pass_result.ux_mat):.3f}]")
                     print(f"  Uy range: [{np.nanmin(pass_result.uy_mat):.3f}, {np.nanmax(pass_result.uy_mat):.3f}]")
         
-        print("\n" + "="*80)
-        print("TEST COMPLETED SUCCESSFULLY")
-        print("="*80)
-        
     except Exception as e:
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("ERROR DURING PIV PROCESSING")
-        print("="*80)
+        print("=" * 80)
         print(f"Error: {e}")
         
         import traceback

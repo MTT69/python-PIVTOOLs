@@ -10026,3 +10026,1033 @@ ValueError: could not broadcast input array from shape (30,34) into shape (34,30
 2025-10-06 11:44:43,864 [INFO] Logging initialized. Level: INFO, File: pypiv.log
 2025-10-06 11:44:43,875 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
 2025-10-06 11:44:43,877 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 11:45:37,619 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 11:45:37,628 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 11:45:37,631 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 11:45:37,690 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 11:45:37,690 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 11:45:37,690 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 11:45:37,690 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 11:49:55,936 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 11:49:55,946 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 11:49:55,949 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 11:49:56,048 [INFO] Error in correlate_batch for image 0: could not broadcast input array from shape (34,30) into shape (30,34)
+2025-10-06 11:49:56,050 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 149, in correlate_batch
+    self._predictor_corrector(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        pass_idx,
+        ^^^^^^^^^
+    ...<2 lines>...
+        win_type=config.window_type,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/test_single_image.py", line 154, in instrumented_predictor
+    result = original_predictor(pass_idx, image_a, image_b, interpolator, win_type)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 569, in _predictor_corrector
+    self.delta_ab_pred[..., d] = cv2.remap(
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^
+ValueError: could not broadcast input array from shape (34,30) into shape (30,34)
+
+2025-10-06 11:50:28,331 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 11:50:28,337 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 11:50:28,337 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 11:51:07,063 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 11:51:08,194 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 11:51:08,194 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 11:51:08,239 [INFO] Worker logging configured successfully
+2025-10-06 11:51:08,239 [INFO] Worker logging configured successfully
+2025-10-06 11:51:08,240 [INFO] Dask cluster started successfully
+2025-10-06 11:51:08,240 [INFO] Dask Worker Info:
+2025-10-06 11:51:08,240 [INFO] Worker tcp://127.0.0.1:64377
+2025-10-06 11:51:08,240 [INFO]   pid: None
+2025-10-06 11:51:08,240 [INFO]   host: 127.0.0.1
+2025-10-06 11:51:08,240 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-9frn57bu
+2025-10-06 11:51:08,240 [INFO]   nanny: False
+2025-10-06 11:51:08,240 [INFO] Dask Worker Info:
+2025-10-06 11:51:08,240 [INFO] Worker tcp://127.0.0.1:64378
+2025-10-06 11:51:08,240 [INFO]   pid: None
+2025-10-06 11:51:08,240 [INFO]   host: 127.0.0.1
+2025-10-06 11:51:08,240 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-lavnqpwp
+2025-10-06 11:51:08,241 [INFO]   nanny: False
+2025-10-06 11:51:08,241 [INFO] Processing camera: Cam1
+2025-10-06 11:51:08,241 [INFO] Lazily loading images with Dask for camera: Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
+2025-10-06 11:51:08,290 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 11:51:08,294 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 11:51:10,925 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00002.mat
+2025-10-06 11:51:10,930 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00007.mat
+2025-10-06 11:51:11,368 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00005.mat
+2025-10-06 11:51:11,392 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00004.mat
+2025-10-06 11:51:13,443 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00003.mat
+2025-10-06 11:51:13,447 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00006.mat
+2025-10-06 11:51:13,454 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00008.mat
+2025-10-06 11:51:13,458 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00010.mat
+2025-10-06 11:51:13,540 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00001.mat
+2025-10-06 11:51:14,624 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00009.mat
+2025-10-06 11:51:15,780 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00015.mat
+2025-10-06 11:51:15,783 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00014.mat
+2025-10-06 11:51:15,789 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00013.mat
+2025-10-06 11:51:15,793 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00011.mat
+2025-10-06 11:51:15,796 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00016.mat
+2025-10-06 11:51:15,800 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00017.mat
+2025-10-06 11:51:15,937 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00019.mat
+2025-10-06 11:51:15,940 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00012.mat
+2025-10-06 11:51:16,461 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00018.mat
+2025-10-06 11:51:18,118 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00020.mat
+2025-10-06 11:51:18,290 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00023.mat
+2025-10-06 11:51:19,377 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00026.mat
+2025-10-06 11:51:19,818 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00024.mat
+2025-10-06 11:51:19,821 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00022.mat
+2025-10-06 11:51:19,825 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00021.mat
+2025-10-06 11:51:20,783 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00025.mat
+2025-10-06 11:51:21,629 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00027.mat
+2025-10-06 11:51:24,469 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00031.mat
+2025-10-06 11:51:24,473 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00030.mat
+2025-10-06 11:51:24,709 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00028.mat
+2025-10-06 11:51:24,717 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00038.mat
+2025-10-06 11:51:24,722 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00029.mat
+2025-10-06 11:51:24,989 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00032.mat
+2025-10-06 11:51:24,994 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00033.mat
+2025-10-06 11:51:24,998 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00034.mat
+2025-10-06 11:51:25,003 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00035.mat
+2025-10-06 11:51:25,007 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00037.mat
+2025-10-06 11:51:25,011 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00036.mat
+2025-10-06 11:51:27,589 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00046.mat
+2025-10-06 11:51:28,557 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00045.mat
+2025-10-06 11:51:29,834 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00041.mat
+2025-10-06 11:51:29,853 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00039.mat
+2025-10-06 11:51:33,713 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00040.mat
+2025-10-06 11:51:33,717 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00043.mat
+2025-10-06 11:51:33,723 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00042.mat
+2025-10-06 11:51:33,729 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00044.mat
+2025-10-06 11:51:33,737 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00049.mat
+2025-10-06 11:51:33,744 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00047.mat
+2025-10-06 11:51:33,757 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00050.mat
+2025-10-06 11:51:33,767 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00048.mat
+2025-10-06 11:51:35,910 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-db6c2647147b42fca55a1cf8068f8de9 cancelled for reason: unknown.
+2025-10-06 11:51:35,912 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-5f075729d2ba4b138f4fd36925e94a90 cancelled for reason: unknown.
+2025-10-06 11:51:35,913 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-3376faae86f0413fb8c5e91673f747df cancelled for reason: unknown.
+2025-10-06 11:51:35,914 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-b232ed138ec94186b613dc8231ea08f0 cancelled for reason: unknown.
+2025-10-06 11:51:36,349 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-286e7ce78eb5482e8cb4619f0cf3367c cancelled for reason: unknown.
+2025-10-06 11:51:36,350 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-5209a2d6ef6d45bfa38a39be7cc59750 cancelled for reason: unknown.
+2025-10-06 11:51:36,350 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-2ecaa008120542b6bc4e470bd502ed02 cancelled for reason: unknown.
+2025-10-06 11:51:36,350 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-f100167f03414d4a8c5b8cdc8fa45ee9 cancelled for reason: unknown.
+2025-10-06 11:51:36,350 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-bb4402336af445eca95efa190f5e9863 cancelled for reason: unknown.
+2025-10-06 11:51:36,350 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-21e6b166d0314ceab2d63ca54998e941 cancelled for reason: unknown.
+2025-10-06 11:51:36,350 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-a108dfb15e1644f39961900e9703e3c0 cancelled for reason: unknown.
+2025-10-06 11:51:36,351 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-41a9a1bafb2a4131ae081ad169d811c5 cancelled for reason: unknown.
+2025-10-06 11:51:36,351 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-142c4de908274a68a84351bb843d490a cancelled for reason: unknown.
+2025-10-06 11:51:40,323 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 11:51:40,323 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 11:54:14,045 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 11:54:14,055 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 11:54:14,057 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 11:54:49,003 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 11:54:50,102 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 11:54:50,102 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 11:54:50,172 [INFO] Worker logging configured successfully
+2025-10-06 11:54:50,172 [INFO] Worker logging configured successfully
+2025-10-06 11:54:50,172 [INFO] Dask cluster started successfully
+2025-10-06 11:54:50,173 [INFO] Dask Worker Info:
+2025-10-06 11:54:50,173 [INFO] Worker tcp://127.0.0.1:64636
+2025-10-06 11:54:50,173 [INFO]   pid: None
+2025-10-06 11:54:50,173 [INFO]   host: 127.0.0.1
+2025-10-06 11:54:50,173 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-wg2dumn6
+2025-10-06 11:54:50,173 [INFO]   nanny: False
+2025-10-06 11:54:50,173 [INFO] Dask Worker Info:
+2025-10-06 11:54:50,173 [INFO] Worker tcp://127.0.0.1:64637
+2025-10-06 11:54:50,173 [INFO]   pid: None
+2025-10-06 11:54:50,173 [INFO]   host: 127.0.0.1
+2025-10-06 11:54:50,173 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-g_pk39u1
+2025-10-06 11:54:50,173 [INFO]   nanny: False
+2025-10-06 11:54:50,173 [INFO] Processing camera: Cam1
+2025-10-06 11:54:50,173 [INFO] Lazily loading images with Dask for camera: Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
+2025-10-06 11:54:50,225 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 11:54:50,226 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 11:54:53,297 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00007.mat
+2025-10-06 11:54:53,301 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00006.mat
+2025-10-06 11:54:53,563 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00002.mat
+2025-10-06 11:54:53,772 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00001.mat
+2025-10-06 11:54:53,774 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00004.mat
+2025-10-06 11:54:53,778 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00003.mat
+2025-10-06 11:54:53,792 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00005.mat
+2025-10-06 11:54:55,897 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00010.mat
+2025-10-06 11:54:55,903 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00009.mat
+2025-10-06 11:54:56,328 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00008.mat
+2025-10-06 11:54:56,331 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00012.mat
+2025-10-06 11:54:56,587 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00011.mat
+2025-10-06 11:54:57,874 [ERROR] PIV processing failed: in <TCP (closed) ConnectionPool.who_has local=tcp://127.0.0.1:64660 remote=tcp://127.0.0.1:64629>: Stream is closed
+2025-10-06 11:54:57,874 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-74c5bfdb5b484e15b5717e265770f802 cancelled for reason: unknown.
+2025-10-06 11:54:57,875 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-fcffacfeb9444ae1acb2b1827cd4e73f cancelled for reason: unknown.
+2025-10-06 11:54:57,875 [ERROR] PIV processing failed: in <TCP (closed) ConnectionPool.who_has local=tcp://127.0.0.1:64660 remote=tcp://127.0.0.1:64629>: Stream is closed
+2025-10-06 11:54:57,875 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-56576e343ec8455cacb8ae9e2fa76b9b cancelled for reason: unknown.
+2025-10-06 11:54:57,875 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-853e803fdc5c4bee87a67cfba438f71e cancelled for reason: unknown.
+2025-10-06 11:54:57,875 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-3e2e6fed07534bee9cd110dcb3c31518 cancelled for reason: unknown.
+2025-10-06 11:54:57,875 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-5cc08bce7e894b33a6f611d0632c910a cancelled for reason: unknown.
+2025-10-06 11:54:57,875 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-9253362e5c1f4c8ebca4be9c76944414 cancelled for reason: unknown.
+2025-10-06 11:54:57,876 [ERROR] PIV processing failed: in <TCP (closed) ConnectionPool.who_has local=tcp://127.0.0.1:64660 remote=tcp://127.0.0.1:64629>: Stream is closed
+2025-10-06 11:54:57,876 [ERROR] PIV processing failed: in <TCP (closed) ConnectionPool.who_has local=tcp://127.0.0.1:64660 remote=tcp://127.0.0.1:64629>: Stream is closed
+2025-10-06 11:54:57,900 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-81751518edb543acb2343cb15cb4d5e1 cancelled for reason: unknown.
+2025-10-06 11:54:57,900 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-f1ef7a25c40348928a030acd5d45cc96 cancelled for reason: unknown.
+2025-10-06 11:57:09,960 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 11:57:09,970 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 11:57:09,973 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 11:57:10,037 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 11:57:10,038 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 11:57:10,038 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 11:57:10,038 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 12:03:29,334 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:03:29,339 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:03:29,340 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:03:29,391 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 12:03:29,392 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 12:03:29,392 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 12:03:29,392 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 12:04:15,267 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:04:15,273 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:04:15,273 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:04:15,324 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 12:04:15,325 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 265, in correlate_batch
+    nan_mask |= user_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 12:04:15,325 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 12:04:15,325 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 318, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 265, in correlate_batch
+    nan_mask |= user_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 12:04:41,340 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:04:41,347 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:04:41,348 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:04:41,422 [INFO] Error in correlate_batch for image 0: could not broadcast input array from shape (34,30) into shape (30,34)
+2025-10-06 12:04:41,423 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 149, in correlate_batch
+    self._predictor_corrector(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        pass_idx,
+        ^^^^^^^^^
+    ...<2 lines>...
+        win_type=config.window_type,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/test_single_image.py", line 177, in instrumented_predictor
+    result = original_predictor(pass_idx, image_a, image_b, interpolator, win_type)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 566, in _predictor_corrector
+    self.delta_ab_pred[..., d] = cv2.remap(
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^
+ValueError: could not broadcast input array from shape (34,30) into shape (30,34)
+
+2025-10-06 12:04:51,794 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:04:51,800 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:04:51,801 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:04:51,867 [INFO] Error in correlate_batch for image 0: could not broadcast input array from shape (34,30) into shape (30,34)
+2025-10-06 12:04:51,868 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 149, in correlate_batch
+    self._predictor_corrector(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        pass_idx,
+        ^^^^^^^^^
+    ...<2 lines>...
+        win_type=config.window_type,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/test_single_image.py", line 177, in instrumented_predictor
+    result = original_predictor(pass_idx, image_a, image_b, interpolator, win_type)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 566, in _predictor_corrector
+    self.delta_ab_pred[..., d] = cv2.remap(
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^
+ValueError: could not broadcast input array from shape (34,30) into shape (30,34)
+
+2025-10-06 12:05:30,686 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:05:30,691 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:05:30,692 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:05:30,757 [INFO] Error in correlate_batch for image 0: could not broadcast input array from shape (34,30) into shape (30,34)
+2025-10-06 12:05:30,757 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 149, in correlate_batch
+    self._predictor_corrector(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        pass_idx,
+        ^^^^^^^^^
+    ...<2 lines>...
+        win_type=config.window_type,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/test_single_image.py", line 177, in instrumented_predictor
+    result = original_predictor(pass_idx, image_a, image_b, interpolator, win_type)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 566, in _predictor_corrector
+    self.delta_ab_pred[..., d] = cv2.remap(
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^
+ValueError: could not broadcast input array from shape (34,30) into shape (30,34)
+
+2025-10-06 12:08:02,546 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:08:02,556 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:08:02,559 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:08:02,628 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 12:08:02,629 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 12:08:02,629 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 12:08:02,629 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 12:09:21,628 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:09:21,634 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:09:21,635 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:09:21,688 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 12:09:21,688 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 12:09:21,688 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 12:09:21,688 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 320, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 12:10:27,320 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:10:27,329 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:10:27,332 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:10:27,413 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 12:10:27,414 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 267, in correlate_batch
+    nan_mask |= user_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 12:10:27,414 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 12:10:27,414 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 321, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 267, in correlate_batch
+    nan_mask |= user_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 12:12:50,765 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:12:50,773 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:12:50,775 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:12:50,834 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 12:12:50,835 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 267, in correlate_batch
+    nan_mask |= user_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 12:12:50,835 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 12:12:50,836 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 321, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 267, in correlate_batch
+    nan_mask |= user_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 12:24:26,350 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:24:26,360 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:24:26,363 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:28:15,627 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:28:40,137 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:28:40,143 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:28:40,146 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:29:34,865 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:29:34,869 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:29:34,870 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:31:08,514 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:31:08,518 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:31:08,519 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:34:10,856 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:34:10,863 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:34:10,867 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:35:02,990 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:35:02,995 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:35:02,996 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:35:15,501 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:35:15,506 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:35:15,507 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:35:26,764 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:35:26,769 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:35:26,770 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:37:26,028 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:37:26,037 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:37:26,040 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:38:04,387 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:38:04,392 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:38:04,393 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:39:38,478 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:39:38,483 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:39:38,483 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:40:47,929 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:40:47,934 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:40:47,934 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:41:41,431 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:41:41,436 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:41:41,437 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:43:22,230 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:43:22,234 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:43:22,235 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:43:51,522 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:43:51,526 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:43:51,527 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:44:54,750 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:44:54,755 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:44:54,756 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:44:54,805 [INFO] Error in correlate_batch for image 0: name 'nan_mask' is not defined
+2025-10-06 12:44:54,805 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 293, in correlate_batch
+    if nan_mask.any():
+       ^^^^^^^^
+NameError: name 'nan_mask' is not defined
+
+2025-10-06 12:44:54,805 [INFO] Error in correlate_batch for image 0: name 'nan_mask' is not defined
+2025-10-06 12:44:54,806 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 293, in correlate_batch
+    if nan_mask.any():
+       ^^^^^^^^
+NameError: name 'nan_mask' is not defined
+
+2025-10-06 12:45:11,840 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:45:11,845 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:45:11,846 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:45:11,895 [INFO] Error in correlate_batch for image 0: name 'nan_mask' is not defined
+2025-10-06 12:45:11,895 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 341, in correlate_batch
+    nan_mask=np.copy(nan_mask),
+                     ^^^^^^^^
+NameError: name 'nan_mask' is not defined
+
+2025-10-06 12:45:41,087 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:45:41,091 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:45:41,092 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:46:24,416 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:46:24,425 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:46:24,427 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:48:05,739 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:48:05,748 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:48:05,750 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 12:49:42,491 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 12:49:42,495 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 12:49:42,496 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 13:03:08,312 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 13:03:08,321 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 13:03:08,325 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 14:13:10,602 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 14:13:10,610 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 14:13:10,613 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 14:14:28,298 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 14:14:28,303 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 14:14:28,304 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 14:15:16,910 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 14:15:16,915 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 14:15:16,915 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 14:19:05,037 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 14:19:05,046 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 14:19:05,049 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 14:19:52,136 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 14:19:52,142 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 14:19:52,144 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 14:20:57,422 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 14:20:57,428 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 14:20:57,430 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 14:22:48,377 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 14:22:48,383 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 14:22:48,384 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 14:25:31,849 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 14:25:31,856 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 14:25:31,860 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 14:25:31,925 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (1,17,15) (1,15,17) (1,17,15) 
+2025-10-06 14:25:31,926 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 235, in correlate_batch
+    pk_loc_x += self.delta_ab_pred[:, :, 0][None, :, :]
+ValueError: operands could not be broadcast together with shapes (1,17,15) (1,15,17) (1,17,15) 
+
+2025-10-06 14:25:31,926 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (1,17,15) (1,15,17) (1,17,15) 
+2025-10-06 14:25:31,926 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 318, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 235, in correlate_batch
+    pk_loc_x += self.delta_ab_pred[:, :, 0][None, :, :]
+ValueError: operands could not be broadcast together with shapes (1,17,15) (1,15,17) (1,17,15) 
+
+2025-10-06 14:27:26,571 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 14:27:26,580 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 14:27:26,582 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 14:41:28,492 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 14:41:28,501 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 14:41:28,506 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 14:41:50,999 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 14:41:51,008 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 14:41:51,010 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 14:44:17,555 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 14:44:17,566 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 14:44:17,568 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 14:57:49,815 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 14:57:49,822 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 14:57:49,827 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 15:02:44,985 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 15:02:44,993 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 15:02:44,995 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 15:04:20,645 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 15:04:20,646 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 15:04:20,649 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 15:04:57,021 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 15:04:57,021 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 15:04:57,024 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 15:06:12,554 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 15:06:12,562 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 15:06:12,567 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 15:06:52,653 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 15:06:52,659 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 15:06:52,662 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 15:13:10,215 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 15:13:10,224 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 15:13:10,227 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 15:14:24,199 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 15:14:25,368 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 15:14:25,368 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 15:14:25,417 [INFO] Worker logging configured successfully
+2025-10-06 15:14:25,417 [INFO] Worker logging configured successfully
+2025-10-06 15:14:25,417 [INFO] Dask cluster started successfully
+2025-10-06 15:14:25,417 [INFO] Dask Worker Info:
+2025-10-06 15:14:25,418 [INFO] Worker tcp://127.0.0.1:54547
+2025-10-06 15:14:25,418 [INFO]   pid: None
+2025-10-06 15:14:25,418 [INFO]   host: 127.0.0.1
+2025-10-06 15:14:25,418 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-z822d9ql
+2025-10-06 15:14:25,418 [INFO]   nanny: False
+2025-10-06 15:14:25,418 [INFO] Dask Worker Info:
+2025-10-06 15:14:25,418 [INFO] Worker tcp://127.0.0.1:54548
+2025-10-06 15:14:25,418 [INFO]   pid: None
+2025-10-06 15:14:25,418 [INFO]   host: 127.0.0.1
+2025-10-06 15:14:25,418 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-l2w9xalw
+2025-10-06 15:14:25,418 [INFO]   nanny: False
+2025-10-06 15:14:25,418 [INFO] Processing camera: Cam1
+2025-10-06 15:14:25,418 [INFO] Lazily loading images with Dask for camera: Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
+2025-10-06 15:14:25,468 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 15:14:25,472 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 15:14:28,736 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00005.mat
+2025-10-06 15:14:28,742 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00004.mat
+2025-10-06 15:14:28,888 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00002.mat
+2025-10-06 15:14:29,250 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00001.mat
+2025-10-06 15:14:29,254 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00003.mat
+2025-10-06 15:14:29,267 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00008.mat
+2025-10-06 15:14:29,272 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00006.mat
+2025-10-06 15:14:30,331 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00007.mat
+2025-10-06 15:14:30,334 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00009.mat
+2025-10-06 15:14:30,694 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00011.mat
+2025-10-06 15:14:33,823 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-7e0a812dbd9849418f9d88360f145134 cancelled for reason: unknown.
+2025-10-06 15:14:33,854 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-165f40b3e7f44efc8590b81ae990355d cancelled for reason: unknown.
+2025-10-06 15:20:32,763 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 15:20:32,764 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 15:20:32,766 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 15:22:46,514 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 15:22:46,524 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 15:22:46,527 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 15:23:09,587 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 15:23:09,591 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 15:23:09,592 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 15:23:39,483 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 15:23:39,488 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 15:23:39,489 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 15:24:16,258 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 15:24:17,378 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 15:24:17,378 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 15:24:17,432 [INFO] Worker logging configured successfully
+2025-10-06 15:24:17,432 [INFO] Worker logging configured successfully
+2025-10-06 15:24:17,432 [INFO] Dask cluster started successfully
+2025-10-06 15:24:17,433 [INFO] Dask Worker Info:
+2025-10-06 15:24:17,433 [INFO] Worker tcp://127.0.0.1:54848
+2025-10-06 15:24:17,433 [INFO]   pid: None
+2025-10-06 15:24:17,433 [INFO]   host: 127.0.0.1
+2025-10-06 15:24:17,433 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-pm30dap1
+2025-10-06 15:24:17,433 [INFO]   nanny: False
+2025-10-06 15:24:17,433 [INFO] Dask Worker Info:
+2025-10-06 15:24:17,433 [INFO] Worker tcp://127.0.0.1:54849
+2025-10-06 15:24:17,433 [INFO]   pid: None
+2025-10-06 15:24:17,433 [INFO]   host: 127.0.0.1
+2025-10-06 15:24:17,433 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-0lkfu2m0
+2025-10-06 15:24:17,433 [INFO]   nanny: False
+2025-10-06 15:24:17,433 [INFO] Processing camera: Cam1
+2025-10-06 15:24:17,433 [INFO] Lazily loading images with Dask for camera: Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
+2025-10-06 15:24:17,483 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 15:24:17,484 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 15:24:20,284 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00001.mat
+2025-10-06 15:24:20,287 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00008.mat
+2025-10-06 15:24:21,458 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00005.mat
+2025-10-06 15:24:21,742 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00002.mat
+2025-10-06 15:24:21,745 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00006.mat
+2025-10-06 15:24:21,747 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00007.mat
+2025-10-06 15:24:21,751 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00010.mat
+2025-10-06 15:24:21,763 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00003.mat
+2025-10-06 15:24:21,790 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00004.mat
+2025-10-06 15:24:22,638 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00009.mat
+2025-10-06 15:24:25,484 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00011.mat
+2025-10-06 15:24:25,487 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00020.mat
+2025-10-06 15:24:25,492 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00017.mat
+2025-10-06 15:24:25,519 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00012.mat
+2025-10-06 15:24:25,523 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00016.mat
+2025-10-06 15:24:30,201 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00013.mat
+2025-10-06 15:24:30,205 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00014.mat
+2025-10-06 15:24:30,208 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00015.mat
+2025-10-06 15:24:30,212 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00019.mat
+2025-10-06 15:24:30,216 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00021.mat
+2025-10-06 15:24:30,222 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00022.mat
+2025-10-06 15:24:30,225 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00023.mat
+2025-10-06 15:24:30,230 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00025.mat
+2025-10-06 15:24:30,234 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00024.mat
+2025-10-06 15:24:30,240 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00026.mat
+2025-10-06 15:24:31,663 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/1000/Cam1/instantaneous/B00018.mat
+2025-10-06 15:24:32,304 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-ac2f85d0ba814c1988450dde11e20c42 cancelled for reason: unknown.
+2025-10-06 15:28:02,523 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 15:28:03,684 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 15:28:03,685 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 15:28:03,754 [INFO] Worker logging configured successfully
+2025-10-06 15:28:03,755 [INFO] Worker logging configured successfully
+2025-10-06 15:28:03,755 [INFO] Dask cluster started successfully
+2025-10-06 15:28:03,755 [INFO] Dask Worker Info:
+2025-10-06 15:28:03,755 [INFO] Worker tcp://127.0.0.1:55021
+2025-10-06 15:28:03,755 [INFO]   pid: None
+2025-10-06 15:28:03,756 [INFO]   host: 127.0.0.1
+2025-10-06 15:28:03,756 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-fqrarfz5
+2025-10-06 15:28:03,756 [INFO]   nanny: False
+2025-10-06 15:28:03,756 [INFO] Dask Worker Info:
+2025-10-06 15:28:03,756 [INFO] Worker tcp://127.0.0.1:55022
+2025-10-06 15:28:03,756 [INFO]   pid: None
+2025-10-06 15:28:03,756 [INFO]   host: 127.0.0.1
+2025-10-06 15:28:03,756 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-v9dpceut
+2025-10-06 15:28:03,756 [INFO]   nanny: False
+2025-10-06 15:28:03,756 [INFO] Processing camera: Cam1
+2025-10-06 15:28:03,756 [INFO] Lazily loading images with Dask for camera: Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
+2025-10-06 15:28:03,807 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 15:28:03,811 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 15:28:05,688 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:05,689 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:05,689 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:05,689 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:05,689 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:05,747 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:05,748 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:05,748 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:05,748 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:05,748 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:05,823 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:05,823 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:05,823 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:05,823 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:05,823 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:05,871 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:05,871 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:05,871 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:05,872 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:05,872 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:05,916 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:05,916 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:05,916 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:05,917 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:05,917 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:05,990 [WARNING] PIVResult has no passes for frame 8. Skipping save.
+2025-10-06 15:28:05,990 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:05,990 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:05,990 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:05,991 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:05,991 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:06,022 [WARNING] PIVResult has no passes for frame 1. Skipping save.
+2025-10-06 15:28:06,023 [WARNING] PIVResult has no passes for frame 3. Skipping save.
+2025-10-06 15:28:06,024 [WARNING] PIVResult has no passes for frame 5. Skipping save.
+2025-10-06 15:28:06,037 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:06,037 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:06,037 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:06,037 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:06,037 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:06,039 [WARNING] PIVResult has no passes for frame 2. Skipping save.
+2025-10-06 15:28:06,083 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:06,084 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:06,084 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:06,084 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:06,084 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:06,134 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:06,134 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:06,134 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:06,134 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:06,134 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:06,137 [WARNING] PIVResult has no passes for frame 4. Skipping save.
+2025-10-06 15:28:06,138 [WARNING] PIVResult has no passes for frame 6. Skipping save.
+2025-10-06 15:28:06,139 [WARNING] PIVResult has no passes for frame 7. Skipping save.
+2025-10-06 15:28:06,168 [WARNING] PIVResult has no passes for frame 9. Skipping save.
+2025-10-06 15:28:07,510 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:07,511 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:07,511 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:07,511 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:07,511 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:07,511 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:07,512 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:07,512 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:07,512 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:07,512 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:07,582 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:07,583 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:07,583 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:07,583 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:07,583 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:07,634 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:07,634 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:07,634 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:07,635 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:07,635 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:07,683 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:07,683 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:07,683 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:07,684 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:07,684 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:07,687 [WARNING] PIVResult has no passes for frame 14. Skipping save.
+2025-10-06 15:28:07,693 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:07,693 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:07,693 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:07,694 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:07,694 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:07,705 [WARNING] PIVResult has no passes for frame 15. Skipping save.
+2025-10-06 15:28:07,946 [WARNING] PIVResult has no passes for frame 11. Skipping save.
+2025-10-06 15:28:07,946 [WARNING] PIVResult has no passes for frame 16. Skipping save.
+2025-10-06 15:28:07,968 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:07,969 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:07,969 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:07,969 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:07,969 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:08,016 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:08,016 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:08,016 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:08,016 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:08,016 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:08,017 [WARNING] PIVResult has no passes for frame 12. Skipping save.
+2025-10-06 15:28:08,020 [WARNING] PIVResult has no passes for frame 13. Skipping save.
+2025-10-06 15:28:08,022 [WARNING] PIVResult has no passes for frame 17. Skipping save.
+2025-10-06 15:28:08,065 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:08,066 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:08,066 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:08,066 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:08,066 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:08,070 [WARNING] PIVResult has no passes for frame 10. Skipping save.
+2025-10-06 15:28:08,120 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:08,120 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:08,120 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:08,120 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:08,120 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:08,124 [WARNING] PIVResult has no passes for frame 18. Skipping save.
+2025-10-06 15:28:08,150 [WARNING] PIVResult has no passes for frame 19. Skipping save.
+2025-10-06 15:28:10,293 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:10,293 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:10,293 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:10,294 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:10,294 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:10,426 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:10,426 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:10,426 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:10,427 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:28:10,428 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:28:10,464 [WARNING] PIVResult has no passes for frame 27. Skipping save.
+2025-10-06 15:28:10,587 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-131198d4db4342ab805c05cc9b3d5abe cancelled for reason: unknown.
+2025-10-06 15:28:10,588 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-4cccdeba2d174c098dc80e1fabe5bea0 cancelled for reason: unknown.
+2025-10-06 15:28:10,592 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-8d2427deb9824ff5aa041bb871385ea2 cancelled for reason: unknown.
+2025-10-06 15:28:10,593 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-b18beff12b3845dba10b4ddaaaca0e78 cancelled for reason: unknown.
+2025-10-06 15:28:10,593 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-15f4c8f6056044a9801712825ab1b672 cancelled for reason: unknown.
+2025-10-06 15:28:10,593 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-9aa09929ca4c4c63a8b72601f1f66754 cancelled for reason: unknown.
+2025-10-06 15:28:10,593 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-a777842c17b7464180e60b1d56daaf3f cancelled for reason: unknown.
+2025-10-06 15:28:10,593 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-c95399360c334c8ca99190051653a5d3 cancelled for reason: unknown.
+2025-10-06 15:28:10,593 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-4930cc45417c4b43b0d890c6d715a957 cancelled for reason: unknown.
+2025-10-06 15:28:10,593 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-e641ef8b267f4620946553ff53657ec9 cancelled for reason: unknown.
+2025-10-06 15:28:10,593 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-b6aa22e4a3f84da5b97f9635fb21ea6c cancelled for reason: unknown.
+2025-10-06 15:28:10,593 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-8a4285e0e44b478587f5ca850cd2f415 cancelled for reason: unknown.
+2025-10-06 15:28:10,594 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-65e84dfb6aae4a48a8b5c19b0914830b cancelled for reason: unknown.
+2025-10-06 15:28:10,594 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-f2e6a809f6ff40bc9e4101cf7c55987f cancelled for reason: unknown.
+2025-10-06 15:29:39,479 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 15:29:39,483 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 15:29:39,485 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 15:29:39,532 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:29:39,532 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:29:39,532 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+2025-10-06 15:29:39,533 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 317, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 255, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,17) (17,15) (15,17) 
+
+2025-10-06 15:30:49,316 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-06 15:30:49,321 [INFO] Loading mask for Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/mask_Cam1.mat
+2025-10-06 15:30:49,322 [INFO] Mask loaded: 121756/1179648 pixels masked (10.3%)
+2025-10-06 15:30:49,390 [INFO] Error in correlate_batch for image 0: could not broadcast input array from shape (34,30) into shape (30,34)
+2025-10-06 15:30:49,390 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 149, in correlate_batch
+    self._predictor_corrector(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        pass_idx,
+        ^^^^^^^^^
+    ...<2 lines>...
+        win_type=config.window_type,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/test_single_image.py", line 179, in instrumented_predictor
+    result = original_predictor(pass_idx, image_a, image_b, interpolator, win_type)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 565, in _predictor_corrector
+    self.delta_ab_pred[..., d] = cv2.remap(
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^
+ValueError: could not broadcast input array from shape (34,30) into shape (30,34)
+
