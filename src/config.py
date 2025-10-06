@@ -378,6 +378,36 @@ class Config:
         dtype_str = self.data.get("images", {}).get("dtype", "uint16")
         return np.dtype(dtype_str)
 
+    # --- Masking properties ---
+    @property
+    def masking_enabled(self):
+        """Return whether masking is enabled."""
+        return self.data.get("masking", {}).get("enabled", False)
+
+    @property
+    def mask_file_pattern(self):
+        """Return mask filename pattern. Default 'mask_Cam%d.mat'."""
+        return self.data.get("masking", {}).get("mask_file_pattern", "mask_Cam%d.mat")
+
+    def get_mask_path(self, camera_num: int, source_path_idx: int = 0):
+        """
+        Get the full path to the mask file for a given camera.
+        
+        Parameters
+        ----------
+        camera_num : int
+            Camera number (e.g., 1 for Cam1)
+        source_path_idx : int, optional
+            Index into source_paths list, defaults to 0
+            
+        Returns
+        -------
+        Path
+            Full path to the mask .mat file
+        """
+        mask_filename = self.mask_file_pattern % camera_num
+        return self.source_paths[source_path_idx] / mask_filename
+
 
 def get_config(refresh: bool = False) -> Config:
     """Return shared Config instance. Pass refresh=True to reload from disk."""

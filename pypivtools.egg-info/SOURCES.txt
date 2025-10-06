@@ -1,6 +1,5 @@
 README.md
 setup.py
-pypivtools/config.py
 pypivtools/example.py
 pypivtools.egg-info/PKG-INFO
 pypivtools.egg-info/SOURCES.txt

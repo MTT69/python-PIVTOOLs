@@ -85,7 +85,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         # Cache interpolation grids for performance
         self._cache_interpolation_grids(config=config)
 
-    def correlate_batch(self, images: np.ndarray, config: Config) -> PIVResult:
+    def correlate_batch(self, images: np.ndarray, config: Config, mask: np.ndarray = None) -> PIVResult:
         """
         Run PIV correlation on a batch of image pairs using libbulkxcorr2d.
 
@@ -95,6 +95,9 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             Dask array of shape (N, 2, H, W), where axis 1 = [ImageA, ImageB].
         config : Config
             Config object containing window sizes, overlap, etc.
+        mask : np.ndarray, optional
+            Boolean mask array of shape (H, W) where True indicates masked regions.
+            Vectors in masked regions will be invalidated (set to NaN).
 
         Returns
         -------
@@ -108,6 +111,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         piv_result_all = PIVResult()
         self.delta_ab_pred = None
         self.delta_ab_old = None
+        self.mask = mask  # Store mask for use in vector invalidation
         im_i = np.arange(self.H)
         im_j = np.arange(self.W)
         im_imat, im_jmat = np.meshgrid(im_i, im_j, indexing="ij")
@@ -249,6 +253,15 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                             (win_ctrs_y_grid > self.H - EDGE_MARGIN - 1)
                         )
                         nan_mask |= edge_mask
+                        
+                        # Apply user-defined mask if provided
+                        if self.mask is not None:
+                            user_mask = self._apply_mask_to_vectors(
+                                self.win_ctrs_x[pass_idx],
+                                self.win_ctrs_y[pass_idx],
+                                self.mask
+                            )
+                            nan_mask |= user_mask
 
                         # nan_mask |= self._piv_2d_outlier(
                         #     ux_mat,
@@ -908,3 +921,47 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 map_x = ix.reshape(win_x.shape).astype(np.float32)
                 map_y = iy.reshape(win_x.shape).astype(np.float32)
                 self.cached_predictor_maps.append((map_x, map_y))
+
+    def _apply_mask_to_vectors(
+        self,
+        win_ctrs_x: np.ndarray,
+        win_ctrs_y: np.ndarray,
+        mask: np.ndarray
+    ) -> np.ndarray:
+        """
+        Apply user-defined mask to invalidate vectors in masked regions.
+        
+        A vector is invalidated if its window center falls within a masked region
+        (where mask == True).
+        
+        Parameters
+        ----------
+        win_ctrs_x : np.ndarray
+            1D array of window center x-coordinates
+        win_ctrs_y : np.ndarray
+            1D array of window center y-coordinates
+        mask : np.ndarray
+            Boolean mask array of shape (H, W) where True indicates masked regions
+            
+        Returns
+        -------
+        np.ndarray
+            Boolean mask of shape (len(win_ctrs_y), len(win_ctrs_x)) where
+            True indicates vectors to invalidate
+        """
+        # Create meshgrid of window centers
+        win_x_grid, win_y_grid = np.meshgrid(win_ctrs_x, win_ctrs_y)
+        
+        # Round to nearest pixel indices
+        win_x_idx = np.round(win_x_grid).astype(int)
+        win_y_idx = np.round(win_y_grid).astype(int)
+        
+        # Clip to valid image bounds
+        win_x_idx = np.clip(win_x_idx, 0, mask.shape[1] - 1)
+        win_y_idx = np.clip(win_y_idx, 0, mask.shape[0] - 1)
+        
+        # Sample mask at window center locations
+        # mask[y, x] where True = masked region
+        vector_mask = mask[win_y_idx, win_x_idx]
+        
+        return vector_mask

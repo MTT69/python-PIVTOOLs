@@ -8,15 +8,18 @@
 /******************************************************************************
  * Lightweight Levenberg-Marquardt implementation for Gaussian peak fitting
  * 
- * This replaces the heavy GSL multifit solver with a fast, specialized
- * implementation optimized for PIV peak localization.
+ * Supports 3-point, 4-DOF, 5-DOF, and 6-DOF Gaussian fits for PIV analysis
  * 
- * Key optimizations:
- * - Direct Jacobian computation without matrix library overhead
- * - Small fixed-size problems (5x5 windows) allow stack allocation
- * - Specialized for Gaussian fitting (no general-purpose solver overhead)
- * - Fewer iterations needed for PIV correlation peaks
- *****************************************************************************/
+ * KNOWN TECHNICAL DEBT:
+ * - Code duplication: LM iteration logic is repeated in lm_gauss4_fit, 
+ *   lm_gauss5_fit, and lm_gauss6_fit. This should be refactored into a 
+ *   common helper function that accepts function pointers for model 
+ *   evaluation and Jacobian computation.
+ * 
+ * - Non-standard 6-DOF parameterization: The 6-DOF model uses inverse 
+ *   covariance matrix elements instead of standard deviations and rotation,
+ *   making it confusing and error-prone. See lm_gauss6_fit() for details.
+ ******************************************************************************/
 
 /* Fast 3-point parabolic estimator - used as initial guess and fallback */
 static void threept_estimate(const float *xcorr, const int *N, float *peak_loc, float *A_out, float *sx_out, float *sy_out)
@@ -52,12 +55,90 @@ static void threept_estimate(const float *xcorr, const int *N, float *peak_loc, 
 	*sy_out = (float)sqrt(-4.0f / (denom_y + FLT_EPSILON));
 }
 
-/* Evaluate 2D Gaussian: A * exp(-((i-i0)^2/sx^2 + (j-j0)^2/sy^2)) */
-static inline float eval_gauss(float i, float j, float A, float i0, float j0, float sx, float sy)
+/* Evaluate 4-DOF Gaussian: A * exp(-((i-i0)^2 + (j-j0)^2)/s^2) - circular Gaussian */
+static inline float eval_gauss4(float i, float j, float A, float i0, float j0, float s)
+{
+	float di = (i - i0) / s;
+	float dj = (j - j0) / s;
+	return A * expf(-(di*di + dj*dj));
+}
+
+/* Evaluate 5-DOF Gaussian: A * exp(-((i-i0)^2/sx^2 + (j-j0)^2/sy^2)) - elliptical */
+static inline float eval_gauss5(float i, float j, float A, float i0, float j0, float sx, float sy)
 {
 	float di = (i - i0) / sx;
 	float dj = (j - j0) / sy;
 	return A * expf(-(di*di + dj*dj));
+}
+
+/* Evaluate 6-DOF Gaussian with correlation term - rotated elliptical 
+ * NOTE: sx, sy, sxy are elements of the INVERSE covariance matrix, not standard deviations
+ * Model: A * exp(-0.5 * (di^2/sx + dj^2/sy + 2*di*dj*sxy))
+ * where sx = sigma_x^2, sy = sigma_y^2 in the inverse covariance representation
+ */
+static inline float eval_gauss6(float i, float j, float A, float i0, float j0, float sx, float sy, float sxy)
+{
+	float di = i - i0;
+	float dj = j - j0;
+	return A * expf(-0.5f * (di*di/sx + dj*dj/sy + 2.0f*di*dj*sxy));
+}
+
+/* Compute residual and Jacobian for 4-DOF Gaussian fit */
+static float compute_residual_jacobian_4dof(
+	const float *xcorr, const int *N,
+	float A, float i0, float j0, float s,
+	float *JtJ, float *Jtr, int compute_jacobian)
+{
+	int ii, jj, idx;
+	float residual_sum = 0.0f;
+	const int n_params = 4;
+	
+	if(compute_jacobian) {
+		memset(JtJ, 0, n_params * n_params * sizeof(float));
+		memset(Jtr, 0, n_params * sizeof(float));
+	}
+	
+	for(ii = 0; ii < N[0]; ++ii) {
+		float i = (float)(ii - (N[0]-1)/2);
+		
+		for(jj = 0; jj < N[1]; ++jj) {
+			float j = (float)(jj - (N[1]-1)/2);
+			idx = ii * N[1] + jj;
+			
+			float pred = eval_gauss4(i, j, A, i0, j0, s);
+			float r = pred - xcorr[idx];
+			residual_sum += r * r;
+			
+			if(compute_jacobian) {
+				float di = (i - i0) / s;
+				float dj = (j - j0) / s;
+				float r2 = di*di + dj*dj;
+				
+				float J[4];
+				J[0] = pred / A;                           /* dF/dA */
+				J[1] = 2.0f * pred * di / s;              /* dF/di0 */
+				J[2] = 2.0f * pred * dj / s;              /* dF/dj0 */
+				J[3] = 2.0f * pred * r2 / s;              /* dF/ds */
+				
+				for(int p1 = 0; p1 < n_params; ++p1) {
+					Jtr[p1] += J[p1] * r;
+					for(int p2 = 0; p2 <= p1; ++p2) {
+						JtJ[p1 * n_params + p2] += J[p1] * J[p2];
+					}
+				}
+			}
+		}
+	}
+	
+	if(compute_jacobian) {
+		for(int p1 = 0; p1 < n_params; ++p1) {
+			for(int p2 = p1 + 1; p2 < n_params; ++p2) {
+				JtJ[p1 * n_params + p2] = JtJ[p2 * n_params + p1];
+			}
+		}
+	}
+	
+	return residual_sum;
 }
 
 /* Compute residual and Jacobian for 5-DOF Gaussian fit */
@@ -70,13 +151,11 @@ static float compute_residual_jacobian_5dof(
 	float residual_sum = 0.0f;
 	const int n_params = 5;
 	
-	/* Initialize outputs */
 	if(compute_jacobian) {
 		memset(JtJ, 0, n_params * n_params * sizeof(float));
 		memset(Jtr, 0, n_params * sizeof(float));
 	}
 	
-	/* Loop over all pixels in window */
 	for(ii = 0; ii < N[0]; ++ii) {
 		float i = (float)(ii - (N[0]-1)/2);
 		
@@ -84,13 +163,11 @@ static float compute_residual_jacobian_5dof(
 			float j = (float)(jj - (N[1]-1)/2);
 			idx = ii * N[1] + jj;
 			
-			/* Compute prediction and residual */
-			float pred = eval_gauss(i, j, A, i0, j0, sx, sy);
+			float pred = eval_gauss5(i, j, A, i0, j0, sx, sy);
 			float r = pred - xcorr[idx];
 			residual_sum += r * r;
 			
 			if(compute_jacobian) {
-				/* Compute Jacobian: J = [dF/dA, dF/di0, dF/dj0, dF/dsx, dF/dsy] */
 				float di = (i - i0) / sx;
 				float dj = (j - j0) / sy;
 				
@@ -101,7 +178,6 @@ static float compute_residual_jacobian_5dof(
 				J[3] = 2.0f * pred * di * di / sx; /* dF/dsx */
 				J[4] = 2.0f * pred * dj * dj / sy; /* dF/dsy */
 				
-				/* Accumulate J^T * J and J^T * r */
 				for(int p1 = 0; p1 < n_params; ++p1) {
 					Jtr[p1] += J[p1] * r;
 					for(int p2 = 0; p2 <= p1; ++p2) {
@@ -112,7 +188,65 @@ static float compute_residual_jacobian_5dof(
 		}
 	}
 	
-	/* Fill upper triangle of JtJ (symmetric matrix) */
+	if(compute_jacobian) {
+		for(int p1 = 0; p1 < n_params; ++p1) {
+			for(int p2 = p1 + 1; p2 < n_params; ++p2) {
+				JtJ[p1 * n_params + p2] = JtJ[p2 * n_params + p1];
+			}
+		}
+	}
+	
+	return residual_sum;
+}
+
+/* Compute residual and Jacobian for 6-DOF Gaussian fit */
+static float compute_residual_jacobian_6dof(
+	const float *xcorr, const int *N,
+	float A, float i0, float j0, float sx, float sy, float sxy,
+	float *JtJ, float *Jtr, int compute_jacobian)
+{
+	int ii, jj, idx;
+	float residual_sum = 0.0f;
+	const int n_params = 6;
+	
+	if(compute_jacobian) {
+		memset(JtJ, 0, n_params * n_params * sizeof(float));
+		memset(Jtr, 0, n_params * sizeof(float));
+	}
+	
+	for(ii = 0; ii < N[0]; ++ii) {
+		float i = (float)(ii - (N[0]-1)/2);
+		
+		for(jj = 0; jj < N[1]; ++jj) {
+			float j = (float)(jj - (N[1]-1)/2);
+			idx = ii * N[1] + jj;
+			
+			float pred = eval_gauss6(i, j, A, i0, j0, sx, sy, sxy);
+			float r = pred - xcorr[idx];
+			residual_sum += r * r;
+			
+			if(compute_jacobian) {
+				float di = i - i0;
+				float dj = j - j0;
+				
+				float J[6];
+				J[0] = pred / A;                                    /* dF/dA */
+				J[1] = pred * (di/sx + dj*sxy);                    /* dF/di0 */
+				J[2] = pred * (dj/sy + di*sxy);                    /* dF/dj0 */
+				J[3] = 0.5f * pred * di * di / (sx * sx);          /* dF/dsx - FIXED: removed incorrect negative sign */
+				J[4] = 0.5f * pred * dj * dj / (sy * sy);          /* dF/dsy - FIXED: removed incorrect negative sign */
+				J[5] = -pred * di * dj;                            /* dF/dsxy */
+				
+				for(int p1 = 0; p1 < n_params; ++p1) {
+					Jtr[p1] += J[p1] * r;
+					for(int p2 = 0; p2 <= p1; ++p2) {
+						JtJ[p1 * n_params + p2] += J[p1] * J[p2];
+					}
+				}
+			}
+		}
+	}
+	
 	if(compute_jacobian) {
 		for(int p1 = 0; p1 < n_params; ++p1) {
 			for(int p2 = p1 + 1; p2 < n_params; ++p2) {
@@ -127,11 +261,11 @@ static float compute_residual_jacobian_5dof(
 /* Solve (JtJ + lambda*diag(JtJ)) * delta = -Jtr using Cholesky decomposition */
 static int solve_lm_step(const float *JtJ, const float *Jtr, float lambda, float *delta, int n)
 {
-	float A[25]; /* Max 5x5 matrix */
-	float L[25];
+	float A[36]; /* Max 6x6 matrix */
+	float L[36];
+	float y[6];
 	int i, j, k;
 	
-	/* A = JtJ + lambda * diag(JtJ) */
 	memcpy(A, JtJ, n * n * sizeof(float));
 	for(i = 0; i < n; ++i) {
 		A[i * n + i] *= (1.0f + lambda);
@@ -146,7 +280,7 @@ static int solve_lm_step(const float *JtJ, const float *Jtr, float lambda, float
 				sum -= L[i * n + k] * L[j * n + k];
 			}
 			if(i == j) {
-				if(sum <= 0.0f) return -1; /* Not positive definite */
+				if(sum <= 0.0f) return -1;
 				L[i * n + j] = sqrtf(sum);
 			} else {
 				L[i * n + j] = sum / L[j * n + j];
@@ -155,7 +289,6 @@ static int solve_lm_step(const float *JtJ, const float *Jtr, float lambda, float
 	}
 	
 	/* Forward substitution: L * y = -Jtr */
-	float y[5];
 	for(i = 0; i < n; ++i) {
 		float sum = -Jtr[i];
 		for(j = 0; j < i; ++j) {
@@ -176,106 +309,243 @@ static int solve_lm_step(const float *JtJ, const float *Jtr, float lambda, float
 	return 0;
 }
 
-/* Fast Levenberg-Marquardt for 5-DOF Gaussian fitting */
-void lm_gauss5_fit(const float *xcorr, const int *N, float *peak_loc, float *fitval, float *sig)
+/* Fast Levenberg-Marquardt for 4-DOF Gaussian fitting (circular) */
+static void lm_gauss4_fit(const float *xcorr, const int *N, float *peak_loc, float *fitval, float *sig)
 {
-	float A, i0, j0, sx, sy;
-	float JtJ[25], Jtr[5], delta[5];
+	float A, i0, j0, s;
+	float JtJ[16], Jtr[4], delta[4];
 	float lambda = 0.01f;
 	float residual, new_residual;
 	int iter, ii, jj, idx;
-	const int max_iter = 20; /* Reduced from 100 - PIV peaks converge fast */
+	const int max_iter = 20;
 	const float tol = 1e-6f;
 	
-	/* Get initial guess from 3-point estimator */
+	/* Get initial guess */
+	float sx, sy;
 	threept_estimate(xcorr, N, peak_loc, &A, &sx, &sy);
 	i0 = peak_loc[0];
 	j0 = peak_loc[1];
+	s = sqrtf(sx * sx + sy * sy); /* Combined width */
 	
-	/* Clamp initial guess to reasonable bounds */
+	/* Clamp bounds */
 	i0 = fminf(fmaxf(i0, -2.0f), 2.0f);
 	j0 = fminf(fmaxf(j0, -2.0f), 2.0f);
-	sx = fminf(fmaxf(sx, 0.5f), 3.0f);
-	sy = fminf(fmaxf(sy, 0.5f), 3.0f);
+	s = fminf(fmaxf(s, 0.5f), 3.0f);
 	
-	/* Initial residual */
-	residual = compute_residual_jacobian_5dof(xcorr, N, A, i0, j0, sx, sy, JtJ, Jtr, 1);
+	residual = compute_residual_jacobian_4dof(xcorr, N, A, i0, j0, s, JtJ, Jtr, 1);
 	
-	/* Levenberg-Marquardt iterations */
 	for(iter = 0; iter < max_iter; ++iter) {
-		/* Solve for step */
-		if(solve_lm_step(JtJ, Jtr, lambda, delta, 5) != 0) {
-			break; /* Singular matrix, stop */
-		}
+		if(solve_lm_step(JtJ, Jtr, lambda, delta, 4) != 0) break;
 		
-		/* Try step */
 		float A_new = A + delta[0];
 		float i0_new = i0 + delta[1];
 		float j0_new = j0 + delta[2];
-		float sx_new = sx + delta[3];
-		float sy_new = sy + delta[4];
+		float s_new = s + delta[3];
 		
-		/* Enforce bounds */
 		A_new = fmaxf(A_new, A * 0.5f);
 		i0_new = fminf(fmaxf(i0_new, -2.5f), 2.5f);
 		j0_new = fminf(fmaxf(j0_new, -2.5f), 2.5f);
-		sx_new = fminf(fmaxf(sx_new, 0.25f), 4.0f);
-		sy_new = fminf(fmaxf(sy_new, 0.25f), 4.0f);
+		s_new = fminf(fmaxf(s_new, 0.25f), 4.0f);
 		
-		/* Evaluate new residual */
-		new_residual = compute_residual_jacobian_5dof(xcorr, N, A_new, i0_new, j0_new, sx_new, sy_new, NULL, NULL, 0);
+		new_residual = compute_residual_jacobian_4dof(xcorr, N, A_new, i0_new, j0_new, s_new, NULL, NULL, 0);
 		
-		/* Accept or reject step */
 		if(new_residual < residual) {
-			/* Good step: accept and decrease damping */
-			A = A_new;
-			i0 = i0_new;
-			j0 = j0_new;
-			sx = sx_new;
-			sy = sy_new;
-			
+			A = A_new; i0 = i0_new; j0 = j0_new; s = s_new;
 			float improvement = (residual - new_residual) / (residual + FLT_EPSILON);
 			residual = new_residual;
 			lambda *= 0.5f;
-			
-			/* Recompute Jacobian at new point */
-			compute_residual_jacobian_5dof(xcorr, N, A, i0, j0, sx, sy, JtJ, Jtr, 1);
-			
-			/* Check convergence */
-			if(improvement < tol) {
-				break;
-			}
+			compute_residual_jacobian_4dof(xcorr, N, A, i0, j0, s, JtJ, Jtr, 1);
+			if(improvement < tol) break;
 		} else {
-			/* Bad step: reject and increase damping */
 			lambda *= 2.0f;
-			if(lambda > 1e6f) {
-				break; /* Damping too large, stop */
-			}
+			if(lambda > 1e6f) break;
 		}
 	}
 	
-	/* Store results */
 	peak_loc[0] = i0;
 	peak_loc[1] = j0;
-	sig[0] = sx;
-	sig[1] = sy;
-	sig[2] = 0.0f; /* No correlation term in 5-DOF fit */
+	sig[0] = s;
+	sig[1] = s;
+	sig[2] = 0.0f;
 	
-	/* Evaluate fit function if requested */
 	if(fitval) {
 		for(ii = 0; ii < N[0]; ++ii) {
 			float i = (float)(ii - (N[0]-1)/2);
 			for(jj = 0; jj < N[1]; ++jj) {
 				float j = (float)(jj - (N[1]-1)/2);
 				idx = ii * N[1] + jj;
-				fitval[idx] = eval_gauss(i, j, A, i0, j0, sx, sy);
+				fitval[idx] = eval_gauss4(i, j, A, i0, j0, s);
+			}
+		}
+	}
+}
+
+/* Fast Levenberg-Marquardt for 5-DOF Gaussian fitting */
+static void lm_gauss5_fit(const float *xcorr, const int *N, float *peak_loc, float *fitval, float *sig)
+{
+	float A, i0, j0, sx, sy;
+	float JtJ[25], Jtr[5], delta[5];
+	float lambda = 0.01f;
+	float residual, new_residual;
+	int iter, ii, jj, idx;
+	const int max_iter = 20;
+	const float tol = 1e-6f;
+	
+	threept_estimate(xcorr, N, peak_loc, &A, &sx, &sy);
+	i0 = peak_loc[0];
+	j0 = peak_loc[1];
+	
+	i0 = fminf(fmaxf(i0, -2.0f), 2.0f);
+	j0 = fminf(fmaxf(j0, -2.0f), 2.0f);
+	sx = fminf(fmaxf(sx, 0.5f), 3.0f);
+	sy = fminf(fmaxf(sy, 0.5f), 3.0f);
+	
+	residual = compute_residual_jacobian_5dof(xcorr, N, A, i0, j0, sx, sy, JtJ, Jtr, 1);
+	
+	for(iter = 0; iter < max_iter; ++iter) {
+		if(solve_lm_step(JtJ, Jtr, lambda, delta, 5) != 0) break;
+		
+		float A_new = A + delta[0];
+		float i0_new = i0 + delta[1];
+		float j0_new = j0 + delta[2];
+		float sx_new = sx + delta[3];
+		float sy_new = sy + delta[4];
+		
+		A_new = fmaxf(A_new, A * 0.5f);
+		i0_new = fminf(fmaxf(i0_new, -2.5f), 2.5f);
+		j0_new = fminf(fmaxf(j0_new, -2.5f), 2.5f);
+		sx_new = fminf(fmaxf(sx_new, 0.25f), 4.0f);
+		sy_new = fminf(fmaxf(sy_new, 0.25f), 4.0f);
+		
+		new_residual = compute_residual_jacobian_5dof(xcorr, N, A_new, i0_new, j0_new, sx_new, sy_new, NULL, NULL, 0);
+		
+		if(new_residual < residual) {
+			A = A_new; i0 = i0_new; j0 = j0_new; sx = sx_new; sy = sy_new;
+			float improvement = (residual - new_residual) / (residual + FLT_EPSILON);
+			residual = new_residual;
+			lambda *= 0.5f;
+			compute_residual_jacobian_5dof(xcorr, N, A, i0, j0, sx, sy, JtJ, Jtr, 1);
+			if(improvement < tol) break;
+		} else {
+			lambda *= 2.0f;
+			if(lambda > 1e6f) break;
+		}
+	}
+	
+	peak_loc[0] = i0;
+	peak_loc[1] = j0;
+	sig[0] = sx;
+	sig[1] = sy;
+	sig[2] = 0.0f;
+	
+	if(fitval) {
+		for(ii = 0; ii < N[0]; ++ii) {
+			float i = (float)(ii - (N[0]-1)/2);
+			for(jj = 0; jj < N[1]; ++jj) {
+				float j = (float)(jj - (N[1]-1)/2);
+				idx = ii * N[1] + jj;
+				fitval[idx] = eval_gauss5(i, j, A, i0, j0, sx, sy);
+			}
+		}
+	}
+}
+
+/* Fast Levenberg-Marquardt for 6-DOF Gaussian fitting 
+ * 
+ * WARNING: This function uses a non-standard parameterization!
+ * - Parameters sx, sy, sxy represent elements of the INVERSE covariance matrix
+ * - sx and sy behave like variances (sigma^2), NOT standard deviations
+ * - Output parameters sig[0] and sig[1] are SWAPPED (sig[0]=sy, sig[1]=sx)
+ * 
+ * KNOWN ISSUES:
+ * - Confusing parameterization makes the code hard to understand and verify
+ * - Output parameter swapping is error-prone and undocumented
+ * 
+ * RECOMMENDATION: Refactor to use standard Gaussian parameterization with
+ * amplitude, center (i0, j0), standard deviations (sigma_x, sigma_y), and
+ * rotation angle theta. This would make derivatives easier to verify and
+ * output easier to interpret.
+ */
+static void lm_gauss6_fit(const float *xcorr, const int *N, float *peak_loc, float *fitval, float *sig)
+{
+	float A, i0, j0, sx, sy, sxy;
+	float JtJ[36], Jtr[6], delta[6];
+	float lambda = 0.01f;
+	float residual, new_residual;
+	int iter, ii, jj, idx;
+	const int max_iter = 20;
+	const float tol = 1e-6f;
+	
+	threept_estimate(xcorr, N, peak_loc, &A, &sx, &sy);
+	i0 = peak_loc[0];
+	j0 = peak_loc[1];
+	sxy = 0.0f;
+	
+	i0 = fminf(fmaxf(i0, -2.0f), 2.0f);
+	j0 = fminf(fmaxf(j0, -2.0f), 2.0f);
+	sx = fminf(fmaxf(sx * sx, 0.25f), 9.0f);
+	sy = fminf(fmaxf(sy * sy, 0.25f), 9.0f);
+	
+	residual = compute_residual_jacobian_6dof(xcorr, N, A, i0, j0, sx, sy, sxy, JtJ, Jtr, 1);
+	
+	for(iter = 0; iter < max_iter; ++iter) {
+		if(solve_lm_step(JtJ, Jtr, lambda, delta, 6) != 0) break;
+		
+		float A_new = A + delta[0];
+		float i0_new = i0 + delta[1];
+		float j0_new = j0 + delta[2];
+		float sx_new = sx + delta[3];
+		float sy_new = sy + delta[4];
+		float sxy_new = sxy + delta[5];
+		
+		A_new = fmaxf(A_new, A * 0.5f);
+		i0_new = fminf(fmaxf(i0_new, -2.5f), 2.5f);
+		j0_new = fminf(fmaxf(j0_new, -2.5f), 2.5f);
+		sx_new = fminf(fmaxf(sx_new, 0.1f), 16.0f);
+		sy_new = fminf(fmaxf(sy_new, 0.1f), 16.0f);
+		float sxy_max = 0.95f / sqrtf(sx_new * sy_new);
+		sxy_new = fminf(fmaxf(sxy_new, -sxy_max), sxy_max);
+		
+		new_residual = compute_residual_jacobian_6dof(xcorr, N, A_new, i0_new, j0_new, sx_new, sy_new, sxy_new, NULL, NULL, 0);
+		
+		if(new_residual < residual) {
+			A = A_new; i0 = i0_new; j0 = j0_new; 
+			sx = sx_new; sy = sy_new; sxy = sxy_new;
+			float improvement = (residual - new_residual) / (residual + FLT_EPSILON);
+			residual = new_residual;
+			lambda *= 0.5f;
+			compute_residual_jacobian_6dof(xcorr, N, A, i0, j0, sx, sy, sxy, JtJ, Jtr, 1);
+			if(improvement < tol) break;
+		} else {
+			lambda *= 2.0f;
+			if(lambda > 1e6f) break;
+		}
+	}
+	
+	peak_loc[0] = i0;
+	peak_loc[1] = j0;
+	/* WARNING: Output parameters are swapped! sig[0]=sy, sig[1]=sx
+	 * This is confusing and should be refactored. The 6-DOF model uses
+	 * inverse covariance parameterization which differs from standard
+	 * Gaussian parameterization used in 4-DOF and 5-DOF models. */
+	sig[0] = sy;
+	sig[1] = sx;
+	sig[2] = -(sxy * (sx * sy - sxy * sxy));
+	
+	if(fitval) {
+		for(ii = 0; ii < N[0]; ++ii) {
+			float i = (float)(ii - (N[0]-1)/2);
+			for(jj = 0; jj < N[1]; ++jj) {
+				float j = (float)(jj - (N[1]-1)/2);
+				idx = ii * N[1] + jj;
+				fitval[idx] = eval_gauss6(i, j, A, i0, j0, sx, sy, sxy);
 			}
 		}
 	}
 }
 
 /******************************************************************************
- * Main peak localization function - drop-in replacement for lsqpeaklocate
+ * Main peak localization function
  *****************************************************************************/
 void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPeaks, int iFitType, float *std_dev)
 {
@@ -289,24 +559,18 @@ void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPe
 	float peak[2];
 	float sig[3];
 	
-	/* Make a copy of xcorr that we can manipulate */
 	xcorr_copy = (float*)malloc(sizeof(float) * N[0] * N[1]);
 	memcpy(xcorr_copy, xcorr, N[0] * N[1] * sizeof(float));
 	Nsub[0] = PKSIZE_X;
 	Nsub[1] = PKSIZE_Y;
 	
-	/* Iterate over peaks */
 	for(iPeak = 0; iPeak < nPeaks; ++iPeak)
 	{
-		/* Find maximum value in array - search in central 3/4 of domain */
 		i0 = j0 = 0;
 		fPeakHeight = 0;
-		for(i = N[0]/8; i < N[0]*7/8; ++i)
-		{
-			for(j = N[1]/8; j < N[1]*7/8; ++j)
-			{
-				if(xcorr_copy[SUB2IND_2D(i, j, N[0])] > fPeakHeight)
-				{
+		for(i = N[0]/8; i < N[0]*7/8; ++i) {
+			for(j = N[1]/8; j < N[1]*7/8; ++j) {
+				if(xcorr_copy[SUB2IND_2D(i, j, N[0])] > fPeakHeight) {
 					fPeakHeight = xcorr_copy[SUB2IND_2D(i, j, N[0])];
 					i0 = i;
 					j0 = j;
@@ -314,63 +578,78 @@ void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPe
 			}
 		}
 		
-		/* Error out if peak height is not positive */
-		if(fPeakHeight <= 0)
+		if(fPeakHeight <= 0 ||
+		   i0 < (PKSIZE_X-1)/2 || i0 >= N[0]-(PKSIZE_X-1)/2  ||
+		   j0 < (PKSIZE_Y-1)/2 || j0 >= N[1]-(PKSIZE_Y-1)/2 ||
+		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0-1, j0, N[0])] ||
+		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0+1, j0, N[0])] ||
+		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0, j0-1, N[0])] ||
+		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0, j0+1, N[0])])
 		{
 			peak_loc[SUB2IND_2D(0, iPeak, 3)] = NAN;
 			peak_loc[SUB2IND_2D(1, iPeak, 3)] = NAN;
 			peak_loc[SUB2IND_2D(2, iPeak, 3)] = 0;
+			std_dev[SUB2IND_2D(0, iPeak, 3)] = 0;
+			std_dev[SUB2IND_2D(1, iPeak, 3)] = 0;
+			std_dev[SUB2IND_2D(2, iPeak, 3)] = 0;
 			continue;
 		}
 		
-		/* Error out if too close to edges or not a local maximum */
-		if(i0 < (PKSIZE_X-1)/2 || i0 >= N[0]-(PKSIZE_X-1)/2  
-			|| j0 < (PKSIZE_Y-1)/2 || j0 >= N[1]-(PKSIZE_Y-1)/2 
-			|| fPeakHeight <= xcorr_copy[SUB2IND_2D(i0-1, j0, N[0])] 
-			|| fPeakHeight <= xcorr_copy[SUB2IND_2D(i0+1, j0, N[0])] 
-			|| fPeakHeight <= xcorr_copy[SUB2IND_2D(i0, j0-1, N[0])] 
-			|| fPeakHeight <= xcorr_copy[SUB2IND_2D(i0, j0+1, N[0])])
-		{
-			peak_loc[SUB2IND_2D(0, iPeak, 3)] = NAN;
-			peak_loc[SUB2IND_2D(1, iPeak, 3)] = NAN;
-			peak_loc[SUB2IND_2D(2, iPeak, 3)] = 0;
-			continue;
-		}
-		
-		/* Extract subwindow around peak */
-		for(i = 0; i < PKSIZE_X; ++i)
-		{
-			for(j = 0; j < PKSIZE_Y; ++j)
-			{
+		/* Extract subwindow */
+		for(i = 0; i < PKSIZE_X; ++i) {
+			for(j = 0; j < PKSIZE_Y; ++j) {
 				subxcorr[i * PKSIZE_Y + j] = xcorr_copy[SUB2IND_2D(i0 + i - (PKSIZE_X-1)/2, j0 + j - (PKSIZE_Y-1)/2, N[0])];
 			}
 		}
 		
-		/* Perform least-squares fit
-		 * For first peak, use requested fit type; for subsequent peaks use 3-point
-		 */
-		if(iPeak == 0 && iFitType >= 4) {
-			/* Use fast LM solver for 5-DOF fit (iFitType 4, 5, 6 all use 5-DOF) */
-			lm_gauss5_fit(subxcorr, Nsub, peak, fitval, sig);
+		/* Perform fit based on type - only use higher order fits for first peak */
+		if(iPeak == 0) {
+			switch(iFitType) {
+				case 6:
+					lm_gauss6_fit(subxcorr, Nsub, peak, fitval, sig);
+					break;
+				case 5:
+					lm_gauss5_fit(subxcorr, Nsub, peak, fitval, sig);
+					break;
+				case 4:
+					lm_gauss4_fit(subxcorr, Nsub, peak, fitval, sig);
+					break;
+				case 3:
+				default:
+					/* 3-point estimator */
+					{
+						float A, sx, sy;
+						threept_estimate(subxcorr, Nsub, peak, &A, &sx, &sy);
+						sig[0] = sx;
+						sig[1] = sy;
+						sig[2] = 0.0f;
+						for(i = 0; i < PKSIZE_X; ++i) {
+							float fi = (float)(i - (PKSIZE_X-1)/2);
+							for(j = 0; j < PKSIZE_Y; ++j) {
+								float fj = (float)(j - (PKSIZE_Y-1)/2);
+								fitval[i * PKSIZE_Y + j] = eval_gauss5(fi, fj, A, peak[0], peak[1], sx, sy);
+							}
+						}
+					}
+					break;
+			}
 		} else {
-			/* Use 3-point estimator for speed */
+			/* Subsequent peaks: use fast 3-point for speed */
 			float A, sx, sy;
 			threept_estimate(subxcorr, Nsub, peak, &A, &sx, &sy);
 			sig[0] = sx;
 			sig[1] = sy;
 			sig[2] = 0.0f;
-			
-			/* Evaluate fit */
 			for(i = 0; i < PKSIZE_X; ++i) {
 				float fi = (float)(i - (PKSIZE_X-1)/2);
 				for(j = 0; j < PKSIZE_Y; ++j) {
 					float fj = (float)(j - (PKSIZE_Y-1)/2);
-					fitval[i * PKSIZE_Y + j] = eval_gauss(fi, fj, A, peak[0], peak[1], sx, sy);
+					fitval[i * PKSIZE_Y + j] = eval_gauss5(fi, fj, A, peak[0], peak[1], sx, sy);
 				}
 			}
 		}
 		
-		/* Save peak location and subtract fit from correlation plane */
+		/* Save results */
 		peak_loc[SUB2IND_2D(0, iPeak, 3)] = peak[0] + i0;
 		peak_loc[SUB2IND_2D(1, iPeak, 3)] = peak[1] + j0;
 		peak_loc[SUB2IND_2D(2, iPeak, 3)] = fPeakHeight;
@@ -378,17 +657,15 @@ void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPe
 		std_dev[SUB2IND_2D(1, iPeak, 3)] = sig[1];
 		std_dev[SUB2IND_2D(2, iPeak, 3)] = sig[2];
 		
-		for(i = 0; i < PKSIZE_X; ++i)
-		{
-			for(j = 0; j < PKSIZE_Y; ++j)
-			{
+		/* Subtract fit from correlation plane */
+		for(i = 0; i < PKSIZE_X; ++i) {
+			for(j = 0; j < PKSIZE_Y; ++j) {
 				idx = SUB2IND_2D(i0 + i - (PKSIZE_X-1)/2, j0 + j - (PKSIZE_Y-1)/2, N[0]);
 				xcorr_copy[idx] = MAX(0, xcorr_copy[idx] - fitval[i * PKSIZE_Y + j]);
 			}
 		}
 	}
 	
-	/* Clean up and exit */
 	free(xcorr_copy);
-	return;
 }
+			

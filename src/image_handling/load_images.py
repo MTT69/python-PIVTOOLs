@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, Optional
 import logging
 
 import dask
@@ -8,6 +8,7 @@ import numpy as np
 from dask.delayed import Delayed
 
 from config import Config
+from vector_loading import read_mask_from_mat
 
 # Import all readers to register them
 from .readers import get_reader
@@ -133,3 +134,74 @@ def load_images(camera: int, config: Config, source: Path = None) -> da.Array:
         (config.piv_chunk_size, 2, *config.image_shape)
     )  # Always 2 for frame pairs
     return pairs_stack
+
+
+def load_mask_for_camera(
+    camera_num: int, config: Config, source_path_idx: int = 0
+) -> Optional[np.ndarray]:
+    """
+    Load a mask for a specific camera from a .mat file.
+    
+    The mask is a boolean array of shape (H, W) where True indicates
+    regions to mask out (invalid regions). This function loads the mask
+    once per camera, which can then be passed through the PIV pipeline.
+    
+    Parameters
+    ----------
+    camera_num : int
+        Camera number (e.g., 1 for Cam1)
+    config : Config
+        Configuration object
+    source_path_idx : int, optional
+        Index into source_paths list, defaults to 0
+        
+    Returns
+    -------
+    Optional[np.ndarray]
+        Boolean mask array of shape (H, W) where True = masked region,
+        or None if masking is disabled or mask file doesn't exist
+        
+    Notes
+    -----
+    The mask file is expected to be saved by the Flask masking endpoint
+    with the format specified in config.masking.mask_file_pattern
+    (default: 'mask_Cam%d.mat')
+    """
+    if not config.masking_enabled:
+        logging.info("Masking is disabled in config")
+        return None
+    
+    try:
+        mask_path = config.get_mask_path(camera_num, source_path_idx)
+        
+        if not mask_path.exists():
+            logging.warning(
+                "Mask file not found for Cam%d at %s. Proceeding without mask.",
+                camera_num, mask_path
+            )
+            return None
+        
+        logging.info("Loading mask for Cam%d from %s", camera_num, mask_path)
+        mask, polygons = read_mask_from_mat(str(mask_path))
+        
+        # Ensure mask is boolean
+        mask = np.asarray(mask, dtype=bool)
+        
+        # Log mask statistics
+        masked_pixels = np.sum(mask)
+        total_pixels = mask.size
+        mask_fraction = masked_pixels / total_pixels if total_pixels > 0 else 0
+        
+        logging.info(
+            "Mask loaded: %d/%d pixels masked (%.1f%%)",
+            masked_pixels, total_pixels, mask_fraction * 100
+        )
+        
+        return mask
+        
+    except Exception as e:
+        logging.error(
+            "Failed to load mask for Cam%d: %s. Proceeding without mask.",
+            camera_num, e
+        )
+        return None

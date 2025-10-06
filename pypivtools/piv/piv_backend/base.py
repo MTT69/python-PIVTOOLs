@@ -18,7 +18,7 @@ from config import Config
 class CrossCorrelator(ABC):
 
     @abstractmethod
-    def correlate_batch(self, images: np.ndarray, config: Config) -> da.Array:
+    def correlate_batch(self, images: np.ndarray, config: Config, mask: np.ndarray = None) -> da.Array:
         pass
 
     def _window_weight_fun(

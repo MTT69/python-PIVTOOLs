@@ -10,7 +10,7 @@ from dask.distributed import wait
 # Add src to path for unified imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from config import Config
-from image_handling.load_images import load_images
+from image_handling.load_images import load_images, load_mask_for_camera
 
 from pypivtools.piv.piv import perform_piv_and_save
 from pypivtools.piv.save_results import (
@@ -20,11 +20,11 @@ from pypivtools.piv.save_results import (
 from pypivtools.piv_cluster.cluster import start_cluster
 
 if __name__ == "__main__":
-
+    
     start_time = time.time()  # Start timer
 
     config = Config()
-    os.environ["OMP_NUM_THREADS"] = config.omp_threads
+    # os.environ["OMP_NUM_THREADS"] = config.omp_threads
     if config.debug:
         tracemalloc.start()
 
@@ -63,6 +63,9 @@ if __name__ == "__main__":
             images = load_images(camera_num, config, source=source_path)
             # processed_images = preprocess_images(images, config)
             
+            # Load mask once per camera (if masking is enabled)
+            mask = load_mask_for_camera(camera_num, config, source_path_idx=0)
+            
             # Get output path for this camera (uncalibrated PIV)
             # Path: base_path/uncalibrated_piv/{num_images}/Cam{camera_num}/instantaneous
             output_path = get_output_path(
@@ -80,6 +83,7 @@ if __name__ == "__main__":
                 output_path,
                 start_frame=1,
                 pass_index=None,  # Save all passes
+                mask=mask,  # Pass mask through to PIV processing
             )
             
             # Submit coordinate saving task (runs once per camera)
@@ -109,7 +113,7 @@ if __name__ == "__main__":
     except Exception as e:
         import traceback
         print(f"Error: {e}", flush=True)
-        print(f"Traceback:", flush=True)
+        print("Traceback:", flush=True)
         traceback.print_exc()
     finally:
         client.close()

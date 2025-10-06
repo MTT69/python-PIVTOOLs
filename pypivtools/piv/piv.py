@@ -31,6 +31,7 @@ def perform_piv_and_save(
     output_path: Path,
     start_frame: int = 1,
     pass_index: Optional[int] = None,
+    mask: Optional[np.ndarray] = None,
 ) -> List:
     """
     Perform PIV and save results in parallel on workers.
@@ -54,6 +55,9 @@ def perform_piv_and_save(
     pass_index : Optional[int]
         If specified, save only this pass (0-based).
         If None, save all passes.
+    mask : Optional[np.ndarray]
+        Boolean mask array of shape (H, W) where True indicates masked regions.
+        If provided, vectors in masked regions will be invalidated (set to NaN).
         
     Returns
     -------
@@ -66,8 +70,8 @@ def perform_piv_and_save(
         block = images[i]
         frame_number = start_frame + i
         
-        # Submit PIV task
-        piv_future = client.submit(_piv_single_pass, block, config)
+        # Submit PIV task with mask
+        piv_future = client.submit(_piv_single_pass, block, config, mask)
         
         # Chain save task to PIV result
         save_future = client.submit(
@@ -114,6 +118,7 @@ def perform_piv(images: da.Array, config: Config, client: Client) -> List:
 def _piv_single_pass(
     image_block: da.Array,
     config: Config,
+    mask: Optional[np.ndarray] = None,
 ) -> PIVResult:
     try:
         image_block = image_block.compute()
@@ -121,7 +126,7 @@ def _piv_single_pass(
             # Shape: (2, H, W)
             image_block = image_block[np.newaxis, ...]  # Shape: (1, 2, H, W)
         correlator = make_correlator_backend(config)
-        piv_results = correlator.correlate_batch(image_block, config=config)
+        piv_results = correlator.correlate_batch(image_block, config=config, mask=mask)
     except Exception as e:
         # Return a PIVResult containing error information
         error_result = PIVResult()

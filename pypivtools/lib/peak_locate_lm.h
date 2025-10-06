@@ -24,7 +24,4 @@
 /* Main peak localization function - compatible with existing interface */
 void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPeaks, int iFitType, float *std_dev);
 
-/* Fast 5-DOF Gaussian fitting with Levenberg-Marquardt */
-void lm_gauss5_fit(const float *xcorr, const int *N, float *peak_loc, float *fitval, float *sig);
-
 #endif

@@ -7079,3 +7079,1048 @@ Traceback (most recent call last):
   File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/client.py", line 2394, in wait
     raise AllExit()
 distributed.client.AllExit
+2025-10-05 21:13:23,123 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-05 21:13:23,128 [INFO] 127.0.0.1 - - [05/Oct/2025 21:13:23] "GET /config HTTP/1.1" 200 -
+2025-10-05 21:13:23,128 [INFO] 127.0.0.1 - - [05/Oct/2025 21:13:23] "GET /config HTTP/1.1" 200 -
+2025-10-05 21:14:34,956 [INFO] 127.0.0.1 - - [05/Oct/2025 21:14:34] "POST /update_config HTTP/1.1" 200 -
+2025-10-05 21:14:49,386 [INFO] 127.0.0.1 - - [05/Oct/2025 21:14:49] "POST /update_config HTTP/1.1" 200 -
+2025-10-05 21:14:51,697 [INFO] 127.0.0.1 - - [05/Oct/2025 21:14:51] "GET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-10-05 21:14:51,698 [INFO] 127.0.0.1 - - [05/Oct/2025 21:14:51] "GET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-10-05 21:17:02,461 [INFO] 127.0.0.1 - - [05/Oct/2025 21:17:02] "POST /save_mask_array HTTP/1.1" 200 -
+2025-10-05 21:22:22,294 [INFO] 127.0.0.1 - - [05/Oct/2025 21:22:22] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-10-05 21:22:22,296 [INFO] 127.0.0.1 - - [05/Oct/2025 21:22:22] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-10-05 21:22:22,297 [INFO] 127.0.0.1 - - [05/Oct/2025 21:22:22] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-10-05 21:22:22,336 [INFO] 127.0.0.1 - - [05/Oct/2025 21:22:22] "GET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-10-05 21:22:22,338 [INFO] 127.0.0.1 - - [05/Oct/2025 21:22:22] "GET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-10-05 21:22:22,367 [INFO] 127.0.0.1 - - [05/Oct/2025 21:22:22] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-10-05 21:22:22,529 [INFO] 127.0.0.1 - - [05/Oct/2025 21:22:22] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-10-05 21:22:48,644 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-05 21:22:50,525 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-05 21:22:50,564 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-05 21:22:50,578 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-05 21:22:50,583 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-05 21:22:50,594 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-05 21:22:50,599 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-05 21:22:50,631 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-05 21:22:50,631 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-05 21:22:50,650 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-05 21:22:50,653 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-05 21:22:50,704 [INFO] Worker logging configured successfully
+2025-10-05 21:22:50,704 [INFO] Worker logging configured successfully
+2025-10-05 21:22:50,704 [INFO] Worker logging configured successfully
+2025-10-05 21:22:50,704 [INFO] Worker logging configured successfully
+2025-10-05 21:22:50,704 [INFO] Worker logging configured successfully
+2025-10-05 21:22:50,704 [INFO] Worker logging configured successfully
+2025-10-05 21:22:50,704 [INFO] Worker logging configured successfully
+2025-10-05 21:22:50,704 [INFO] Worker logging configured successfully
+2025-10-05 21:22:50,705 [INFO] Worker logging configured successfully
+2025-10-05 21:22:50,705 [INFO] Worker logging configured successfully
+2025-10-05 21:22:50,705 [INFO] Dask cluster started successfully
+2025-10-05 21:22:50,706 [INFO] Dask Worker Info:
+2025-10-05 21:22:50,706 [INFO] Worker tcp://127.0.0.1:57373
+2025-10-05 21:22:50,706 [INFO]   pid: None
+2025-10-05 21:22:50,706 [INFO]   host: 127.0.0.1
+2025-10-05 21:22:50,706 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-4_r8uvvl
+2025-10-05 21:22:50,706 [INFO]   nanny: False
+2025-10-05 21:22:50,706 [INFO] Dask Worker Info:
+2025-10-05 21:22:50,706 [INFO] Worker tcp://127.0.0.1:57376
+2025-10-05 21:22:50,706 [INFO]   pid: None
+2025-10-05 21:22:50,706 [INFO]   host: 127.0.0.1
+2025-10-05 21:22:50,706 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-25fp3nkg
+2025-10-05 21:22:50,706 [INFO]   nanny: False
+2025-10-05 21:22:50,706 [INFO] Dask Worker Info:
+2025-10-05 21:22:50,706 [INFO] Worker tcp://127.0.0.1:57379
+2025-10-05 21:22:50,706 [INFO]   pid: None
+2025-10-05 21:22:50,706 [INFO]   host: 127.0.0.1
+2025-10-05 21:22:50,706 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-pk8gmduz
+2025-10-05 21:22:50,706 [INFO]   nanny: False
+2025-10-05 21:22:50,706 [INFO] Dask Worker Info:
+2025-10-05 21:22:50,706 [INFO] Worker tcp://127.0.0.1:57380
+2025-10-05 21:22:50,706 [INFO]   pid: None
+2025-10-05 21:22:50,706 [INFO]   host: 127.0.0.1
+2025-10-05 21:22:50,706 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-12n_879r
+2025-10-05 21:22:50,706 [INFO]   nanny: False
+2025-10-05 21:22:50,706 [INFO] Dask Worker Info:
+2025-10-05 21:22:50,706 [INFO] Worker tcp://127.0.0.1:57385
+2025-10-05 21:22:50,706 [INFO]   pid: None
+2025-10-05 21:22:50,706 [INFO]   host: 127.0.0.1
+2025-10-05 21:22:50,706 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-iibefmu0
+2025-10-05 21:22:50,706 [INFO]   nanny: False
+2025-10-05 21:22:50,707 [INFO] Processing camera: Cam1
+2025-10-05 21:22:50,707 [INFO] Lazily loading images with Dask for camera: Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
+2025-10-05 21:22:56,622 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-566b8c53e0b44de7aff692a62c069c9d cancelled for reason: unknown.
+2025-10-05 21:22:56,622 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-860d91d06126444a96f1fe98c9aac421 cancelled for reason: unknown.
+2025-10-05 21:22:56,642 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-c08b245c89bc41bf857550085be1c862 cancelled for reason: unknown.
+2025-10-05 21:22:56,642 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-a9492252129b46e797b0b501a0748052 cancelled for reason: unknown.
+2025-10-05 21:22:56,643 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-6e1af4da1a2143d6a7bb5b0e9eb63346 cancelled for reason: unknown.
+2025-10-05 21:22:56,643 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-34a5469fca8949ab97e9990daf0e1e8f cancelled for reason: unknown.
+2025-10-05 21:22:56,646 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-56f607058b6e416e88f93ceae5c44497 cancelled for reason: unknown.
+2025-10-05 21:22:56,646 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-253a8542b24c487ab6879b03b3ffcb99 cancelled for reason: unknown.
+2025-10-05 21:22:56,646 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-d0e8d5e67fe042298b1ba1cb3100ebcc cancelled for reason: unknown.
+2025-10-05 21:22:56,646 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-4fac9b80d6d1432eaff856efb202870c cancelled for reason: unknown.
+2025-10-05 21:22:56,647 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-58484f8250744b6496e8eed508ea9ec3 cancelled for reason: unknown.
+2025-10-05 21:22:56,648 [ERROR] PIV processing failed: in <TCP (closed) ConnectionPool.who_has local=tcp://127.0.0.1:57423 remote=tcp://127.0.0.1:57349>: Stream is closed
+2025-10-05 21:22:56,649 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-6a277109681b4367b35bc620cc8b4b9c cancelled for reason: unknown.
+2025-10-05 21:22:56,649 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-9656314a68cf42ce859d079da9358f08 cancelled for reason: unknown.
+2025-10-05 21:22:56,649 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-cd81d78edaa24fda9166515c8f552fdb cancelled for reason: unknown.
+2025-10-05 21:22:56,649 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-3864ba7e3209462bba70c2690c8e6904 cancelled for reason: unknown.
+2025-10-05 21:22:56,651 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-305fc294ab134981b02ab753a49f32bb cancelled for reason: unknown.
+2025-10-05 21:22:56,652 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-dba4f9f56ad34a69adbecaa625f398ab cancelled for reason: unknown.
+2025-10-05 21:25:20,395 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-05 21:25:21,624 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-05 21:25:21,624 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-05 21:25:21,624 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-05 21:25:21,624 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-05 21:25:21,711 [INFO] Worker logging configured successfully
+2025-10-05 21:25:21,711 [INFO] Worker logging configured successfully
+2025-10-05 21:25:21,711 [INFO] Worker logging configured successfully
+2025-10-05 21:25:21,711 [INFO] Worker logging configured successfully
+2025-10-05 21:25:21,711 [INFO] Dask cluster started successfully
+2025-10-05 21:25:21,712 [INFO] Dask Worker Info:
+2025-10-05 21:25:21,712 [INFO] Worker tcp://127.0.0.1:57630
+2025-10-05 21:25:21,712 [INFO]   pid: None
+2025-10-05 21:25:21,712 [INFO]   host: 127.0.0.1
+2025-10-05 21:25:21,712 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-7asy79ga
+2025-10-05 21:25:21,712 [INFO]   nanny: False
+2025-10-05 21:25:21,712 [INFO] Dask Worker Info:
+2025-10-05 21:25:21,712 [INFO] Worker tcp://127.0.0.1:57631
+2025-10-05 21:25:21,712 [INFO]   pid: None
+2025-10-05 21:25:21,712 [INFO]   host: 127.0.0.1
+2025-10-05 21:25:21,712 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-vi5vuawb
+2025-10-05 21:25:21,712 [INFO]   nanny: False
+2025-10-05 21:25:21,712 [INFO] Dask Worker Info:
+2025-10-05 21:25:21,712 [INFO] Worker tcp://127.0.0.1:57632
+2025-10-05 21:25:21,712 [INFO]   pid: None
+2025-10-05 21:25:21,712 [INFO]   host: 127.0.0.1
+2025-10-05 21:25:21,712 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-fwwzm5hw
+2025-10-05 21:25:21,712 [INFO]   nanny: False
+2025-10-05 21:25:21,712 [INFO] Dask Worker Info:
+2025-10-05 21:25:21,712 [INFO] Worker tcp://127.0.0.1:57633
+2025-10-05 21:25:21,712 [INFO]   pid: None
+2025-10-05 21:25:21,712 [INFO]   host: 127.0.0.1
+2025-10-05 21:25:21,712 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-ktarc7s0
+2025-10-05 21:25:21,712 [INFO]   nanny: False
+2025-10-05 21:25:21,712 [INFO] Processing camera: Cam1
+2025-10-05 21:25:21,712 [INFO] Lazily loading images with Dask for camera: Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
+2025-10-05 21:25:27,612 [INFO] Worker: 3 Starting processing of 1 image pairs
+2025-10-05 21:25:27,613 [INFO] Worker: 3 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:27,624 [INFO] Worker: 2 Starting processing of 1 image pairs
+2025-10-05 21:25:27,625 [INFO] Worker: 2 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:27,638 [INFO] Worker: 1 Starting processing of 1 image pairs
+2025-10-05 21:25:27,638 [INFO] Worker: 1 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:27,662 [INFO] Worker: 0 Starting processing of 1 image pairs
+2025-10-05 21:25:27,663 [INFO] Worker: 0 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:27,691 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,691 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,691 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,692 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,692 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,707 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,707 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,707 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,708 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,708 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,719 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,720 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,720 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,720 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,720 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,726 [INFO] Worker: 1 Starting processing of 1 image pairs
+2025-10-05 21:25:27,726 [INFO] Worker: 1 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:27,767 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,768 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,768 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,769 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,769 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,771 [INFO] Worker: 2 Starting processing of 1 image pairs
+2025-10-05 21:25:27,771 [INFO] Worker: 2 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:27,785 [INFO] Worker: 1 Starting processing of 1 image pairs
+2025-10-05 21:25:27,785 [INFO] Worker: 1 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:27,788 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,788 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,788 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,789 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,789 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,803 [INFO] Worker: 3 Starting processing of 1 image pairs
+2025-10-05 21:25:27,803 [INFO] Worker: 3 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:27,819 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,819 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,819 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,820 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,820 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,825 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,825 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,825 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,825 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,825 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,837 [INFO] Worker: 2 Starting processing of 1 image pairs
+2025-10-05 21:25:27,838 [INFO] Worker: 2 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:27,840 [INFO] Worker: 0 Starting processing of 1 image pairs
+2025-10-05 21:25:27,840 [INFO] Worker: 0 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:27,842 [INFO] Worker: 1 Starting processing of 1 image pairs
+2025-10-05 21:25:27,842 [INFO] Worker: 1 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:27,852 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,852 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,852 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,853 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,853 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,868 [INFO] Worker: 3 Starting processing of 1 image pairs
+2025-10-05 21:25:27,869 [INFO] Worker: 3 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:27,881 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,882 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,882 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,882 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,882 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,885 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,885 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,885 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,886 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,886 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,888 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,889 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,889 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,889 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,889 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,898 [INFO] Worker: 2 Starting processing of 1 image pairs
+2025-10-05 21:25:27,898 [INFO] Worker: 2 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:27,901 [INFO] Worker: 0 Starting processing of 1 image pairs
+2025-10-05 21:25:27,901 [INFO] Worker: 0 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:27,915 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,915 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,915 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,916 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,916 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,925 [INFO] Worker: 3 Starting processing of 1 image pairs
+2025-10-05 21:25:27,925 [INFO] Worker: 3 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:27,937 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,937 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,937 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,938 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,938 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,941 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,941 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,941 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,941 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,941 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,951 [INFO] Worker: 0 Starting processing of 1 image pairs
+2025-10-05 21:25:27,951 [INFO] Worker: 0 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:27,964 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,964 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,964 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,964 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,964 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,986 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,987 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,987 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:27,987 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:27,987 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:28,026 [WARNING] PIVResult has no passes for frame 18. Skipping save.
+2025-10-05 21:25:28,037 [WARNING] PIVResult has no passes for frame 14. Skipping save.
+2025-10-05 21:25:28,041 [INFO] Worker: 3 Starting processing of 1 image pairs
+2025-10-05 21:25:28,041 [INFO] Worker: 3 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:28,070 [WARNING] PIVResult has no passes for frame 10. Skipping save.
+2025-10-05 21:25:28,071 [WARNING] PIVResult has no passes for frame 8. Skipping save.
+2025-10-05 21:25:28,075 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:28,075 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:28,075 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:28,075 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:28,075 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:28,088 [WARNING] PIVResult has no passes for frame 3. Skipping save.
+2025-10-05 21:25:28,088 [WARNING] PIVResult has no passes for frame 7. Skipping save.
+2025-10-05 21:25:28,089 [WARNING] PIVResult has no passes for frame 12. Skipping save.
+2025-10-05 21:25:28,104 [WARNING] PIVResult has no passes for frame 9. Skipping save.
+2025-10-05 21:25:28,105 [WARNING] PIVResult has no passes for frame 5. Skipping save.
+2025-10-05 21:25:28,105 [WARNING] PIVResult has no passes for frame 13. Skipping save.
+2025-10-05 21:25:28,105 [WARNING] PIVResult has no passes for frame 16. Skipping save.
+2025-10-05 21:25:28,106 [WARNING] PIVResult has no passes for frame 4. Skipping save.
+2025-10-05 21:25:28,106 [WARNING] PIVResult has no passes for frame 11. Skipping save.
+2025-10-05 21:25:28,106 [WARNING] PIVResult has no passes for frame 2. Skipping save.
+2025-10-05 21:25:28,107 [WARNING] PIVResult has no passes for frame 6. Skipping save.
+2025-10-05 21:25:28,107 [WARNING] PIVResult has no passes for frame 15. Skipping save.
+2025-10-05 21:25:28,120 [INFO] Worker: 3 Starting processing of 1 image pairs
+2025-10-05 21:25:28,120 [INFO] Worker: 3 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:28,154 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:28,155 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:28,155 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:28,155 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:28,155 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:28,165 [WARNING] PIVResult has no passes for frame 1. Skipping save.
+2025-10-05 21:25:28,167 [WARNING] PIVResult has no passes for frame 17. Skipping save.
+2025-10-05 21:25:29,609 [INFO] Worker: 2 Starting processing of 1 image pairs
+2025-10-05 21:25:29,609 [INFO] Worker: 2 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:29,643 [INFO] Worker: 1 Starting processing of 1 image pairs
+2025-10-05 21:25:29,643 [INFO] Worker: 1 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:29,648 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:29,648 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:29,648 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:29,649 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:29,649 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:29,671 [INFO] Worker: 3 Starting processing of 1 image pairs
+2025-10-05 21:25:29,671 [INFO] Worker: 3 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:29,682 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:29,682 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:29,682 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:29,682 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:29,682 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:29,708 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:29,708 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:29,708 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:29,708 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:29,708 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:29,957 [INFO] Worker: 2 Starting processing of 1 image pairs
+2025-10-05 21:25:29,957 [INFO] Worker: 2 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:29,979 [INFO] Worker: 1 Starting processing of 1 image pairs
+2025-10-05 21:25:29,979 [INFO] Worker: 1 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:29,982 [INFO] Worker: 0 Starting processing of 1 image pairs
+2025-10-05 21:25:29,982 [INFO] Worker: 0 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:29,994 [INFO] Worker: 3 Starting processing of 1 image pairs
+2025-10-05 21:25:29,994 [INFO] Worker: 3 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:30,003 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,003 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,003 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,003 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,003 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,017 [WARNING] PIVResult has no passes for frame 38. Skipping save.
+2025-10-05 21:25:30,024 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,025 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,026 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,027 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,027 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,027 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,027 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,027 [WARNING] PIVResult has no passes for frame 28. Skipping save.
+2025-10-05 21:25:30,028 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,029 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,029 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,034 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,037 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,037 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,037 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,037 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,039 [INFO] Worker: 2 Starting processing of 1 image pairs
+2025-10-05 21:25:30,039 [INFO] Worker: 2 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:30,042 [INFO] Worker: 1 Starting processing of 1 image pairs
+2025-10-05 21:25:30,042 [INFO] Worker: 1 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:30,048 [INFO] Worker: 0 Starting processing of 1 image pairs
+2025-10-05 21:25:30,049 [INFO] Worker: 0 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:30,055 [INFO] Worker: 3 Starting processing of 1 image pairs
+2025-10-05 21:25:30,055 [INFO] Worker: 3 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:30,088 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,088 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,088 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,088 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,088 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,088 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,088 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,088 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,089 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,089 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,091 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,091 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,091 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,092 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,092 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,100 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,100 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,101 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,102 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,102 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,103 [INFO] Worker: 2 Starting processing of 1 image pairs
+2025-10-05 21:25:30,103 [INFO] Worker: 2 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:30,105 [INFO] Worker: 1 Starting processing of 1 image pairs
+2025-10-05 21:25:30,105 [INFO] Worker: 1 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:30,107 [INFO] Worker: 0 Starting processing of 1 image pairs
+2025-10-05 21:25:30,107 [INFO] Worker: 0 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:30,117 [INFO] Worker: 3 Starting processing of 1 image pairs
+2025-10-05 21:25:30,117 [INFO] Worker: 3 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:30,147 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,148 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,148 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,148 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,148 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,148 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,149 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,149 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,149 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,149 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,154 [WARNING] PIVResult has no passes for frame 26. Skipping save.
+2025-10-05 21:25:30,154 [WARNING] PIVResult has no passes for frame 31. Skipping save.
+2025-10-05 21:25:30,155 [WARNING] PIVResult has no passes for frame 41. Skipping save.
+2025-10-05 21:25:30,158 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,159 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,159 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,159 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,159 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,160 [WARNING] PIVResult has no passes for frame 19. Skipping save.
+2025-10-05 21:25:30,160 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,160 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,160 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,161 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,161 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,163 [INFO] Worker: 2 Starting processing of 1 image pairs
+2025-10-05 21:25:30,163 [INFO] Worker: 2 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:30,174 [INFO] Worker: 3 Starting processing of 1 image pairs
+2025-10-05 21:25:30,174 [INFO] Worker: 3 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:30,175 [INFO] Worker: 0 Starting processing of 1 image pairs
+2025-10-05 21:25:30,175 [INFO] Worker: 0 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:30,202 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,202 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,202 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,203 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,203 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,212 [INFO] Worker: 2 Starting processing of 1 image pairs
+2025-10-05 21:25:30,212 [INFO] Worker: 2 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:30,214 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,214 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,214 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,214 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,214 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,214 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,214 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,214 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,214 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,214 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,225 [INFO] Worker: 3 Starting processing of 1 image pairs
+2025-10-05 21:25:30,226 [INFO] Worker: 3 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:30,226 [INFO] Worker: 0 Starting processing of 1 image pairs
+2025-10-05 21:25:30,227 [INFO] Worker: 0 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:30,251 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,251 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,251 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,252 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,252 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,262 [INFO] Worker: 2 Starting processing of 1 image pairs
+2025-10-05 21:25:30,262 [INFO] Worker: 2 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:30,265 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,266 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,266 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,266 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,266 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,266 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,266 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,266 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,267 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,267 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,279 [INFO] Worker: 0 Starting processing of 1 image pairs
+2025-10-05 21:25:30,279 [INFO] Worker: 0 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:30,279 [INFO] Worker: 3 Starting processing of 1 image pairs
+2025-10-05 21:25:30,279 [INFO] Worker: 3 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:30,301 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,301 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,301 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,301 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,301 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,311 [WARNING] PIVResult has no passes for frame 40. Skipping save.
+2025-10-05 21:25:30,312 [WARNING] PIVResult has no passes for frame 48. Skipping save.
+2025-10-05 21:25:30,317 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,318 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,318 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,318 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,318 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,319 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,319 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,319 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,320 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,320 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,329 [INFO] Worker: 0 Starting processing of 1 image pairs
+2025-10-05 21:25:30,329 [INFO] Worker: 0 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:30,331 [INFO] Worker: 3 Starting processing of 1 image pairs
+2025-10-05 21:25:30,331 [INFO] Worker: 3 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:30,366 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,366 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,366 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,366 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,366 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,367 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,367 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,367 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,368 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,368 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,370 [WARNING] PIVResult has no passes for frame 25. Skipping save.
+2025-10-05 21:25:30,371 [WARNING] PIVResult has no passes for frame 33. Skipping save.
+2025-10-05 21:25:30,372 [WARNING] PIVResult has no passes for frame 36. Skipping save.
+2025-10-05 21:25:30,372 [WARNING] PIVResult has no passes for frame 46. Skipping save.
+2025-10-05 21:25:30,376 [INFO] Worker: 0 Starting processing of 1 image pairs
+2025-10-05 21:25:30,376 [INFO] Worker: 0 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:30,409 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,410 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,410 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,410 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,410 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,419 [INFO] Worker: 0 Starting processing of 1 image pairs
+2025-10-05 21:25:30,419 [INFO] Worker: 0 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:30,452 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,452 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,452 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,452 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,452 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,463 [INFO] Worker: 0 Starting processing of 1 image pairs
+2025-10-05 21:25:30,463 [INFO] Worker: 0 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:30,496 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,496 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,496 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,497 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,497 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,523 [WARNING] PIVResult has no passes for frame 23. Skipping save.
+2025-10-05 21:25:30,524 [WARNING] PIVResult has no passes for frame 39. Skipping save.
+2025-10-05 21:25:30,524 [WARNING] PIVResult has no passes for frame 43. Skipping save.
+2025-10-05 21:25:30,560 [WARNING] PIVResult has no passes for frame 20. Skipping save.
+2025-10-05 21:25:30,560 [WARNING] PIVResult has no passes for frame 27. Skipping save.
+2025-10-05 21:25:30,560 [WARNING] PIVResult has no passes for frame 37. Skipping save.
+2025-10-05 21:25:30,568 [WARNING] PIVResult has no passes for frame 42. Skipping save.
+2025-10-05 21:25:30,569 [WARNING] PIVResult has no passes for frame 22. Skipping save.
+2025-10-05 21:25:30,569 [WARNING] PIVResult has no passes for frame 30. Skipping save.
+2025-10-05 21:25:30,570 [WARNING] PIVResult has no passes for frame 35. Skipping save.
+2025-10-05 21:25:30,571 [WARNING] PIVResult has no passes for frame 47. Skipping save.
+2025-10-05 21:25:30,571 [WARNING] PIVResult has no passes for frame 45. Skipping save.
+2025-10-05 21:25:30,572 [WARNING] PIVResult has no passes for frame 29. Skipping save.
+2025-10-05 21:25:30,572 [WARNING] PIVResult has no passes for frame 21. Skipping save.
+2025-10-05 21:25:30,572 [WARNING] PIVResult has no passes for frame 32. Skipping save.
+2025-10-05 21:25:30,576 [WARNING] PIVResult has no passes for frame 24. Skipping save.
+2025-10-05 21:25:30,581 [INFO] Worker: 3 Starting processing of 1 image pairs
+2025-10-05 21:25:30,581 [INFO] Worker: 3 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:30,582 [WARNING] PIVResult has no passes for frame 34. Skipping save.
+2025-10-05 21:25:30,606 [INFO] Worker: 0 Starting processing of 1 image pairs
+2025-10-05 21:25:30,607 [INFO] Worker: 0 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:30,619 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,619 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,619 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,619 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,619 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,634 [INFO] Worker: 3 Starting processing of 1 image pairs
+2025-10-05 21:25:30,634 [INFO] Worker: 3 Processed 100% of chunk - image pair 1/1 
+2025-10-05 21:25:30,643 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,643 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,643 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,643 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,643 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,652 [WARNING] PIVResult has no passes for frame 50. Skipping save.
+2025-10-05 21:25:30,669 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,669 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,670 [INFO] Error in correlate_batch for image 0: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,670 [INFO] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 304, in correlate_batch
+    raise e
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pypivtools/piv/piv_backend/cpu_instantaneous.py", line 251, in correlate_batch
+    nan_mask |= edge_mask
+ValueError: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+
+2025-10-05 21:25:30,670 [ERROR] PIV processing failed: operands could not be broadcast together with shapes (15,18) (18,15) (15,18) 
+2025-10-05 21:25:30,678 [WARNING] PIVResult has no passes for frame 44. Skipping save.
+2025-10-05 21:25:30,679 [WARNING] PIVResult has no passes for frame 49. Skipping save.
+2025-10-05 21:25:31,452 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-81895f37a83e4885b7b648b762254bd5 cancelled for reason: unknown.
+2025-10-05 21:25:31,452 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-d7ec97f0d087474c93abd5b0737abaaf cancelled for reason: unknown.
+2025-10-05 21:25:31,519 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-1809c9637e3949f9a11934f953f16ee1 cancelled for reason: unknown.
+2025-10-05 21:25:31,519 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-ffe344682c894eafa1ccf5e6333eea11 cancelled for reason: unknown.
+2025-10-05 21:25:31,519 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-1683f6dc53814758b61761d427a7ff48 cancelled for reason: unknown.
+2025-10-05 21:25:31,519 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-e688721c293c435186daf93606250869 cancelled for reason: unknown.
+2025-10-05 21:25:31,520 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-ec8e87179142465d829e6632708b32d5 cancelled for reason: unknown.
+2025-10-05 21:25:31,520 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-e98561db3fa940758ea85185ddef2940 cancelled for reason: unknown.
+2025-10-05 21:25:31,520 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-1cebcf4dd3ef4738af073cd22ab6ba40 cancelled for reason: unknown.
+2025-10-05 21:25:31,520 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-f895126aba444ebf980bdcbe53bc8f71 cancelled for reason: unknown.
+2025-10-05 21:25:31,520 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-2b2637da9c9542d9adfb3aa348726338 cancelled for reason: unknown.
+2025-10-05 21:25:31,520 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-814e51d1c48c48c296eddbe245d573b5 cancelled for reason: unknown.
+2025-10-05 21:25:31,520 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-e02f0e4924504b268314281c088bb373 cancelled for reason: unknown.
+2025-10-05 21:25:31,520 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-8fdcbbb004d242d9baca5036e8330c61 cancelled for reason: unknown.
+2025-10-05 21:25:31,520 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-0bf55d9032324f518e02f87c6f3e6b5a cancelled for reason: unknown.
+2025-10-05 21:25:31,520 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-c21a6944276c4ac08daddeeaaa7f210b cancelled for reason: unknown.
+2025-10-05 21:25:31,521 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-ed426ce8934741b0b31ea747f1ceebfc cancelled for reason: unknown.
+2025-10-05 21:25:31,521 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-b7c61ebd2a1a432980651eef4dcf35c4 cancelled for reason: unknown.
+2025-10-05 21:25:31,521 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-edaed52935c249d181be30fed0523ba0 cancelled for reason: unknown.
+2025-10-05 21:25:31,521 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-cedfb79e428e419fa54a8ae355d2d88c cancelled for reason: unknown.
+2025-10-05 21:36:19,257 [INFO]  * Detected change in '/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/src/config.py', reloading
+2025-10-05 21:41:52,002 [INFO] Logging initialized. Level: INFO, File: pypiv.log

@@ -13,6 +13,7 @@ from config import get_config, reload_config
 from image_handling.load_images import read_pair
 from masking.app.views import masking_bp
 from paths import get_data_paths
+from piv_runner import get_runner
 from plotting.app.views import vector_plot_bp
 from post_processing.POD.app.views import POD_bp
 from pre_processing.filters import filter_images
@@ -273,12 +274,111 @@ def update_config():  # noqa: D401 simple update
 
 @app.route("/run_piv", methods=["POST"])
 def run_piv():
-    return jsonify({"status": "ok", "message": "run_piv acknowledged"}), 200
+    """
+    Start a PIV computation job as a subprocess.
+    
+    This spawns the PIV computation outside of Flask for full computational
+    performance while keeping the server responsive.
+    
+    Request body (optional):
+    {
+        "cameras": [1, 2],  // List of camera numbers to process
+        "source_path_idx": 0,  // Index of source path
+        "base_path_idx": 0,  // Index of base path
+        "config_overrides": {}  // Config overrides (future)
+    }
+    """
+    data = request.get_json() or {}
+    
+    runner = get_runner()
+    
+    # Extract parameters
+    cameras = data.get("cameras")
+    source_path_idx = data.get("source_path_idx", 0)
+    base_path_idx = data.get("base_path_idx", 0)
+    config_overrides = data.get("config_overrides")
+    
+    # Start the job
+    result = runner.start_piv_job(
+        cameras=cameras,
+        source_path_idx=source_path_idx,
+        base_path_idx=base_path_idx,
+        config_overrides=config_overrides,
+    )
+    
+    return jsonify(result), 200 if result.get("status") == "started" else 500
+
+
+@app.route("/piv_status", methods=["GET"])
+def piv_status():
+    """
+    Get status of PIV job(s).
+    
+    Query parameters:
+    - job_id: Specific job ID (optional, if omitted returns all jobs)
+    """
+    runner = get_runner()
+    job_id = request.args.get("job_id")
+    
+    if job_id:
+        status = runner.get_job_status(job_id)
+        if status:
+            return jsonify(status)
+        return jsonify({"error": "Job not found"}), 404
+    else:
+        # Return all jobs
+        jobs = runner.list_jobs()
+        return jsonify({"jobs": jobs})
+
+
+@app.route("/cancel_piv", methods=["POST"])
+def cancel_piv():
+    """
+    Cancel a running PIV job.
+    
+    Request body:
+    {
+        "job_id": "piv_20231005_143022"
+    }
+    """
+    data = request.get_json() or {}
+    job_id = data.get("job_id")
+    
+    if not job_id:
+        return jsonify({"error": "job_id required"}), 400
+    
+    runner = get_runner()
+    success = runner.cancel_job(job_id)
+    
+    if success:
+        return jsonify({"status": "cancelled", "job_id": job_id})
+    return jsonify({"error": "Failed to cancel job or job not found"}), 404
 
 
 @app.route("/cancel_run", methods=["POST"])
 def cancel_run():
-    return jsonify({"status": "ok", "message": "cancel_run placeholder"}), 200
+    """Legacy endpoint - redirects to cancel_piv"""
+    data = request.get_json() or {}
+    job_id = data.get("job_id")
+    
+    if not job_id:
+        # Cancel the most recent running job
+        runner = get_runner()
+        jobs = runner.list_jobs()
+        running = [j for j in jobs if j.get("running")]
+        if running:
+            # Cancel most recent
+            job_id = running[0]["job_id"]
+            success = runner.cancel_job(job_id)
+            if success:
+                return jsonify({"status": "cancelled", "job_id": job_id})
+    else:
+        runner = get_runner()
+        success = runner.cancel_job(job_id)
+        if success:
+            return jsonify({"status": "cancelled", "job_id": job_id})
+    
+    return jsonify({"error": "No running jobs or failed to cancel"}), 404
 
 
 @app.route("/get_uncalibrated_count", methods=["GET"])
