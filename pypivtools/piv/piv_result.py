@@ -14,6 +14,9 @@ class PIVPassResult:
     peak_mag: Optional[np.ndarray] = None
     peak_choice: Optional[np.ndarray] = None
     predictor_field: Optional[np.ndarray] = None
+    primary_peak_mag: Optional[np.ndarray] = None
+    Q_mat: Optional[np.ndarray] = None
+    edge_mask: Optional[np.ndarray] = None
 
 
 @dataclass
@@ -26,7 +29,12 @@ class PIVResult:
     def summary(self) -> str:
         s = f"PIVResult with {len(self.passes)} passes:\n"
         for i, p in enumerate(self.passes):
-            s += f"  Pass {i+1}: ux.shape={None if p.ux is None else p.ux.shape}, "
-            s += f"uy.shape={None if p.uy is None else p.uy.shape}, "
+            s += (
+                f"  Pass {i + 1}: ux.shape="
+                f"{None if p.ux_mat is None else p.ux_mat.shape}, "
+            )
+            s += (
+                f"uy.shape={None if p.uy_mat is None else p.uy_mat.shape}, "
+            )
             s += f"Q.shape={None if p.Q is None else p.Q.shape}\n"
         return s

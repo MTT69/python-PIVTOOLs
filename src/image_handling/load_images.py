@@ -1,11 +1,12 @@
 from pathlib import Path
-from typing import Tuple, Optional
+from typing import Tuple, Optional, List
 import logging
 
 import dask
 import dask.array as da
 import numpy as np
 from dask.delayed import Delayed
+from scipy.ndimage import convolve
 
 from config import Config
 from vector_loading import read_mask_from_mat
@@ -136,15 +137,64 @@ def load_images(camera: int, config: Config, source: Path = None) -> da.Array:
     return pairs_stack
 
 
+def create_rectangular_mask(config: Config) -> np.ndarray:
+    """
+    Create a rectangular edge mask based on config settings.
+    
+    Parameters
+    ----------
+    config : Config
+        Configuration object containing image shape and rectangular mask settings
+        
+    Returns
+    -------
+    np.ndarray
+        Boolean mask array of shape (H, W) where True = masked region
+    """
+    H, W = config.image_shape
+    mask = np.zeros((H, W), dtype=bool)
+    
+    rect_settings = config.mask_rectangular_settings
+    top = rect_settings.get("top", 0)
+    bottom = rect_settings.get("bottom", 0)
+    left = rect_settings.get("left", 0)
+    right = rect_settings.get("right", 0)
+    
+    # Apply edge masks
+    if top > 0:
+        mask[:top, :] = True
+    if bottom > 0:
+        mask[-bottom:, :] = True
+    if left > 0:
+        mask[:, :left] = True
+    if right > 0:
+        mask[:, -right:] = True
+    
+    masked_pixels = np.sum(mask)
+    total_pixels = mask.size
+    mask_fraction = masked_pixels / total_pixels if total_pixels > 0 else 0
+    
+    logging.debug(
+        "Created rectangular mask: top=%d, bottom=%d, left=%d, right=%d "
+        "(%d/%d pixels = %.1f%%)",
+        top, bottom, left, right, masked_pixels, total_pixels, mask_fraction * 100
+    )
+    
+    return mask
+
+
 def load_mask_for_camera(
     camera_num: int, config: Config, source_path_idx: int = 0
 ) -> Optional[np.ndarray]:
     """
-    Load a mask for a specific camera from a .mat file.
+    Load or create a mask for a specific camera.
     
     The mask is a boolean array of shape (H, W) where True indicates
-    regions to mask out (invalid regions). This function loads the mask
-    once per camera, which can then be passed through the PIV pipeline.
+    regions to mask out (invalid regions). 
+    
+    Supports two modes:
+    - 'file': Load mask from .mat file (created by Flask masking endpoint)
+    - 'rectangular': Create mask from edge pixel specifications
     
     Parameters
     ----------
@@ -159,49 +209,187 @@ def load_mask_for_camera(
     -------
     Optional[np.ndarray]
         Boolean mask array of shape (H, W) where True = masked region,
-        or None if masking is disabled or mask file doesn't exist
+        or None if masking is disabled or mask cannot be loaded
+    """
+    if not config.masking_enabled:
+        logging.debug("Masking is disabled in config")
+        return None
+    
+    mask_mode = config.mask_mode
+    
+    # Rectangular mode: create mask from edge specifications
+    if mask_mode == "rectangular":
+        logging.debug("Using rectangular edge masking")
+        return create_rectangular_mask(config)
+    
+    # File mode: load from .mat file
+    elif mask_mode == "file":
+        try:
+            mask_path = config.get_mask_path(camera_num, source_path_idx)
+            
+            if not mask_path.exists():
+                logging.warning(
+                    "Mask file not found for Cam%d at %s. Proceeding without mask.",
+                    camera_num, mask_path
+                )
+                return None
+            
+            logging.debug("Loading mask for Cam%d from %s", camera_num, mask_path)
+            mask, polygons = read_mask_from_mat(str(mask_path))
+            
+            # Ensure mask is boolean
+            mask = np.asarray(mask, dtype=bool)
+            
+            # Log mask statistics
+            masked_pixels = np.sum(mask)
+            total_pixels = mask.size
+            mask_fraction = masked_pixels / total_pixels if total_pixels > 0 else 0
+            
+            logging.debug(
+                "Mask loaded: %d/%d pixels masked (%.1f%%)",
+                masked_pixels, total_pixels, mask_fraction * 100
+            )
+            
+            return mask
+            
+        except Exception as e:
+            logging.error(
+                "Failed to load mask for Cam%d: %s. Proceeding without mask.",
+                camera_num, e
+            )
+            return None
+    
+    else:
+        logging.warning(
+            "Unknown mask mode '%s'. Must be 'file' or 'rectangular'. "
+            "Proceeding without mask.", mask_mode
+        )
+        return None
+
+
+def compute_vector_mask(
+    pixel_mask: np.ndarray,
+    config: Config,
+) -> List[np.ndarray]:
+    """
+    Compute binary vector masks for each PIV pass based on pixel mask.
+    
+    This function is analogous to MATLAB's compute_b_mask. It convolves the
+    pixel mask with box filters matching the interrogation window size for
+    each pass, then interpolates at window center positions and applies a
+    threshold to determine which vectors should be masked.
+    
+    The process:
+    1. For each pass, get the window size and overlap
+    2. Compute window center positions (same as PIV does)
+    3. Convolve pixel mask with box filter of window size
+    4. Interpolate the filtered mask at window centers
+    5. Apply threshold to create binary mask (True = masked)
+    
+    Parameters
+    ----------
+    pixel_mask : np.ndarray
+        Boolean pixel mask of shape (H, W) where True indicates masked regions
+    config : Config
+        Configuration object containing window sizes, overlap, and mask threshold
+        
+    Returns
+    -------
+    List[np.ndarray]
+        List of binary masks, one per pass. Each mask has shape (n_win_y, n_win_x)
+        where True indicates this vector should be masked (set to 0/NaN)
         
     Notes
     -----
-    The mask file is expected to be saved by the Flask masking endpoint
-    with the format specified in config.masking.mask_file_pattern
-    (default: 'mask_Cam%d.mat')
-    """
-    if not config.masking_enabled:
-        logging.info("Masking is disabled in config")
-        return None
+    The mask threshold (config.mask_threshold) determines the sensitivity:
+    - 0.0: mask vector if any pixel in window is masked
+    - 0.5: mask vector if >50% of pixels in window are masked
+    - 1.0: only mask vector if all pixels in window are masked
     
-    try:
-        mask_path = config.get_mask_path(camera_num, source_path_idx)
+    A typical value is 0.5, meaning vectors are masked if more than half
+    of the interrogation window overlaps with masked regions.
+    """
+    if pixel_mask is None:
+        return []
+    
+    # Ensure mask is float for convolution
+    im_mask = pixel_mask.astype(np.float32)
+    H, W = im_mask.shape
+    
+    vector_masks = []
+    threshold = config.mask_threshold
+    
+    for pass_idx in range(config.num_passes):
+        # Get window size and overlap for this pass
+        # config.window_sizes is in (H, W) format = (win_y, win_x)
+        win_y, win_x = config.window_sizes[pass_idx]
+        overlap = config.overlap[pass_idx]
         
-        if not mask_path.exists():
-            logging.warning(
-                "Mask file not found for Cam%d at %s. Proceeding without mask.",
-                camera_num, mask_path
-            )
-            return None
+        # Calculate window spacing
+        win_spacing_x = round((1 - overlap / 100) * win_x)
+        win_spacing_y = round((1 - overlap / 100) * win_y)
         
-        logging.info("Loading mask for Cam%d from %s", camera_num, mask_path)
-        mask, polygons = read_mask_from_mat(str(mask_path))
+        # Calculate window center positions (matching PIV computation)
+        # Using 0-based indexing: centers start at half window size
+        start_x = win_x / 2 - 0.5
+        start_y = win_y / 2 - 0.5
         
-        # Ensure mask is boolean
-        mask = np.asarray(mask, dtype=bool)
+        # Apply edge margin if needed (matching PIV's EDGE_MARGIN = 32)
+        EDGE_MARGIN = 32
+        min_x = EDGE_MARGIN
+        max_x = W - EDGE_MARGIN - 1
+        min_y = EDGE_MARGIN
+        max_y = H - EDGE_MARGIN - 1
         
-        # Log mask statistics
-        masked_pixels = np.sum(mask)
-        total_pixels = mask.size
-        mask_fraction = masked_pixels / total_pixels if total_pixels > 0 else 0
+        start_x = max(start_x, min_x)
+        start_y = max(start_y, min_y)
         
-        logging.info(
-            "Mask loaded: %d/%d pixels masked (%.1f%%)",
-            masked_pixels, total_pixels, mask_fraction * 100
+        # Calculate number of windows
+        n_win_x = int(np.floor((max_x - start_x) / win_spacing_x)) + 1
+        n_win_y = int(np.floor((max_y - start_y) / win_spacing_y)) + 1
+        
+        n_win_x = max(1, n_win_x)
+        n_win_y = max(1, n_win_y)
+        
+        # Window center positions
+        win_ctrs_x = np.linspace(
+            start_x, start_x + win_spacing_x * (n_win_x - 1), n_win_x
+        )
+        win_ctrs_y = np.linspace(
+            start_y, start_y + win_spacing_y * (n_win_y - 1), n_win_y
         )
         
-        return mask
+        # Perform 2D convolution with box filter (separable for efficiency)
+        # Convolve along y (rows) first
+        box_filter_y = np.ones((win_y, 1), dtype=np.float32) / win_y
+        f_mask = convolve(im_mask, box_filter_y, mode='constant', cval=0.0)
         
-    except Exception as e:
-        logging.error(
-            "Failed to load mask for Cam%d: %s. Proceeding without mask.",
-            camera_num, e
+        # Convolve along x (columns)
+        box_filter_x = np.ones((1, win_x), dtype=np.float32) / win_x
+        f_mask = convolve(f_mask, box_filter_x, mode='constant', cval=0.0)
+        
+        # Interpolate at window center positions using nearest neighbor
+        # Create grid of window centers
+        win_y_grid, win_x_grid = np.meshgrid(win_ctrs_y, win_ctrs_x, indexing='ij')
+        
+        # Convert to integer indices for nearest neighbor
+        win_y_idx = np.clip(np.round(win_y_grid).astype(int), 0, H - 1)
+        win_x_idx = np.clip(np.round(win_x_grid).astype(int), 0, W - 1)
+        
+        # Sample the filtered mask
+        b_mask_pass = f_mask[win_y_idx, win_x_idx] > threshold
+        
+        vector_masks.append(b_mask_pass)
+        
+        # Log statistics for this pass (debug level only)
+        masked_vectors = np.sum(b_mask_pass)
+        total_vectors = b_mask_pass.size
+        mask_fraction = masked_vectors / total_vectors if total_vectors > 0 else 0
+        
+        logging.debug(
+            "Pass %d: %d/%d vectors masked (%.1f%%), window size: (%d, %d)",
+            pass_idx + 1, masked_vectors, total_vectors,
+            mask_fraction * 100, win_y, win_x
         )
-        return None
+    
+    return vector_masks

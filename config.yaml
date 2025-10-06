@@ -1,6 +1,6 @@
 paths:
   base_paths:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB
   source_paths:
   - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall
   camera_numbers:
@@ -135,3 +135,17 @@ filters: []
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat
+  # Threshold for determining masked vectors based on overlap with pixel mask
+  # 0.0 = mask if any pixel is masked, 0.5 = mask if >50% masked, 1.0 = mask only if fully masked
+  mask_threshold: 0.01
+  # Mask mode: 'file' to load from .mat file, 'rectangular' for edge masking
+  mode: rectangular
+  # Rectangular edge masking settings (used when mode: rectangular)
+  # Specify number of pixels to mask from each edge
+  rectangular:
+    top: 64      # pixels from top edge
+    bottom: 64   # pixels from bottom edge
+    left: 0      # pixels from left edge
+    right: 0     # pixels from right edge
+  
+  # Threshold for determining masked vectors based on overlap with pixel mask

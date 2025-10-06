@@ -389,6 +389,49 @@ class Config:
         """Return mask filename pattern. Default 'mask_Cam%d.mat'."""
         return self.data.get("masking", {}).get("mask_file_pattern", "mask_Cam%d.mat")
 
+    @property
+    def mask_mode(self):
+        """
+        Return masking mode: 'file' or 'rectangular'.
+        
+        Returns
+        -------
+        str
+            'file' to load mask from .mat file, 'rectangular' for edge masking
+        """
+        return self.data.get("masking", {}).get("mode", "file")
+
+    @property
+    def mask_rectangular_settings(self):
+        """
+        Return rectangular masking settings (pixels to mask from each edge).
+        
+        Returns
+        -------
+        dict
+            Dictionary with keys: top, bottom, left, right (all in pixels)
+        """
+        default = {"top": 0, "bottom": 0, "left": 0, "right": 0}
+        return self.data.get("masking", {}).get("rectangular", default)
+
+    @property
+    def mask_threshold(self):
+        """
+        Return mask threshold for vector masking.
+        
+        This threshold determines when a vector is masked based on the fraction
+        of masked pixels within its interrogation window:
+        - 0.0: mask vector if any pixel in window is masked
+        - 0.5: mask vector if >50% of pixels in window are masked (default)
+        - 1.0: only mask vector if all pixels in window are masked
+        
+        Returns
+        -------
+        float
+            Threshold value between 0.0 and 1.0
+        """
+        return self.data.get("masking", {}).get("mask_threshold", 0.5)
+
     def get_mask_path(self, camera_num: int, source_path_idx: int = 0):
         """
         Get the full path to the mask file for a given camera.

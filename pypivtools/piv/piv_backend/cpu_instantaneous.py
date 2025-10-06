@@ -2,6 +2,7 @@ import ctypes
 import logging
 import os
 import sys
+import traceback
 import warnings
 from pathlib import Path
 import cv2
@@ -19,6 +20,7 @@ from config import Config
 from pypivtools.piv.piv_backend.base import CrossCorrelator
 
 from pypivtools.piv.piv_result import PIVPassResult, PIVResult
+
 
 class InstantaneousCorrelatorCPU(CrossCorrelator):
 
@@ -84,67 +86,53 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         
         # Cache interpolation grids for performance
         self._cache_interpolation_grids(config=config)
+        
+        # Initialize vector mask cache (computed once when mask is provided)
+        self.vector_masks = []
+        self.mask_cached = False
 
-    def correlate_batch(self, images: np.ndarray, config: Config, mask: np.ndarray = None) -> PIVResult:
-        """
-        Run PIV correlation on a batch of image pairs using libbulkxcorr2d.
+    def correlate_batch(  # type: ignore[override]
+        self, images: np.ndarray, config: Config, mask: np.ndarray | None = None
+    ) -> PIVResult:
+        """Run PIV correlation on a batch of image pairs with MATLAB-style indexing."""
 
-        Parameters
-        ----------
-        images : da.Array
-            Dask array of shape (N, 2, H, W), where axis 1 = [ImageA, ImageB].
-        config : Config
-            Config object containing window sizes, overlap, etc.
-        mask : np.ndarray, optional
-            Boolean mask array of shape (H, W) where True indicates masked regions.
-            Vectors in masked regions will be invalidated (set to NaN).
-
-        Returns
-        -------
-        da.Array
-            Output array of peak displacements per window for each image pair.
-            Shape: (N, nPeaks, nWindowsX * nWindowsY, 2) [PkLocX, PkLocY]
-        """
-
-        N, C, H, W = images.shape
+        N, _, H, W = images.shape
 
         piv_result_all = PIVResult()
         self.delta_ab_pred = None
         self.delta_ab_old = None
-        self.mask = mask  # Store mask for use in vector invalidation
-        im_i = np.arange(self.H)
-        im_j = np.arange(self.W)
-        im_imat, im_jmat = np.meshgrid(im_i, im_j, indexing="ij")
-        self.im_mesh = np.stack([im_imat, im_jmat], axis=-1)
+        self.mask = mask
+        
+        # Compute vector masks once and cache them
+        # Only compute if masking is enabled and mask is provided
+        if config.masking_enabled and mask is not None and not self.mask_cached:
+            from image_handling.load_images import compute_vector_mask
+            logging.debug("Computing vector masks from pixel mask (will be cached for subsequent batches)")
+            self.vector_masks = compute_vector_mask(mask, config)
+            self.mask_cached = True
+        elif not config.masking_enabled:
+            # Masking disabled - clear any cached masks
+            self.vector_masks = []
+            self.mask_cached = False
 
-        progress_step = max(1, N // 10)
-        # worker = get_worker()
-        # logging.info("Worker: %s Starting processing of %d image pairs", worker.name, N)
+        y_coords = np.arange(self.H, dtype=np.float32)
+        x_coords = np.arange(self.W, dtype=np.float32)
+        y_mesh, x_mesh = np.meshgrid(y_coords, x_coords, indexing="ij")
+        self.im_mesh = np.stack([y_mesh, x_mesh], axis=-1)
+
         for n in range(N):
-            if (n + 1) % progress_step == 0 or (n + 1) == N:
-
-                pct = int(((n + 1) / N) * 100)
-                # logging.info(
-                #     "Worker: %s Processed %d%% of chunk - image pair %d/%d ",
-                #     worker.name,
-                #     pct,
-                #     n + 1,
-                #     N,
-                # )
             try:
-
                 image_a = np.asarray(images[n, 0], dtype=np.float32)
                 image_b = np.asarray(images[n, 1], dtype=np.float32)
-                if not image_a.flags["F_CONTIGUOUS"]:
-                    image_a = np.asfortranarray(image_a)
 
                 if not image_a.flags["F_CONTIGUOUS"]:
-                    print("not contiguous")
                     image_a = np.asfortranarray(image_a)
+                if not image_b.flags["F_CONTIGUOUS"]:
+                    image_b = np.asfortranarray(image_b)
 
                 image_size = np.asfortranarray(np.array([H, W], dtype=np.int32))
-                for pass_idx, win_size in enumerate(config.window_sizes):
 
+                for pass_idx, win_size in enumerate(config.window_sizes):
                     image_a_prime, image_b_prime, self.delta_ab_pred = (
                         self._predictor_corrector(
                             pass_idx,
@@ -153,204 +141,184 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                             win_type=config.window_type,
                         )
                     )
-                    try:
-                        (
-                            win_size,
-                            n_windows,
-                            b_mask,
-                            n_peaks,
-                            i_peak_finder,
-                            b_ensemble,
-                            pk_loc_x,
-                            pk_loc_y,
+
+                    (
+                        win_size_arr,
+                        n_windows,
+                        b_mask,
+                        n_peaks,
+                        i_peak_finder,
+                        b_ensemble,
+                        pk_loc_x,
+                        pk_loc_y,
+                        pk_height,
+                        sx,
+                        sy,
+                        sxy,
+                        correl_plane_out,
+                    ) = self._set_lib_arguments(
+                        config=config,
+                        win_size=win_size,
+                        pass_idx=pass_idx,
+                    )
+
+                    error_code = self.lib.bulkxcorr2d(
+                        np.asfortranarray(image_a_prime),
+                        np.asfortranarray(image_b_prime),
+                        b_mask,
+                        image_size,
+                        self.win_ctrs_x[pass_idx].astype(np.float32),
+                        self.win_ctrs_y[pass_idx].astype(np.float32),
+                        n_windows,
+                        self.win_weights[pass_idx],
+                        b_ensemble,
+                        self.win_weights[pass_idx],
+                        win_size_arr,
+                        int(n_peaks),
+                        int(i_peak_finder),
+                        pk_loc_x,
+                        pk_loc_y,
+                        pk_height,
+                        sx,
+                        sy,
+                        sxy,
+                        correl_plane_out,
+                    )
+
+                    if error_code != 0:
+                        raise RuntimeError(f"bulkxcorr2d failed with error {error_code}")
+
+                    n_win_y = int(n_windows[0])
+                    n_win_x = int(n_windows[1])
+                    mask_bool = b_mask.astype(bool)
+
+                    pk_loc_x[:, mask_bool] = np.nan
+                    pk_loc_y[:, mask_bool] = np.nan
+                    pk_height[:, mask_bool] = np.nan
+
+                    win_height, win_width = win_size_arr.astype(np.int32)
+                    large_disp_mask = (
+                        (np.abs(pk_loc_x) > win_width / 4.0)
+                        | (np.abs(pk_loc_y) > win_height / 4.0)
+                    )
+                    pk_loc_x[large_disp_mask] = np.nan
+                    pk_loc_y[large_disp_mask] = np.nan
+                    pk_height[large_disp_mask] = np.nan
+
+                    pk_loc_x += self.delta_ab_pred[..., 0][np.newaxis, :, :]
+                    pk_loc_y += self.delta_ab_pred[..., 1][np.newaxis, :, :]
+
+                    primary_idx = np.zeros((1, n_win_y, n_win_x), dtype=np.intp)
+                    ux_mat = np.take_along_axis(pk_loc_x, primary_idx, axis=0)[0]
+                    uy_mat = np.take_along_axis(pk_loc_y, primary_idx, axis=0)[0]
+                    primary_peak_mag = np.take_along_axis(
+                        pk_height, primary_idx, axis=0
+                    )[0]
+
+                    nan_mask = (
+                        np.isnan(ux_mat)
+                        | np.isnan(uy_mat)
+                        | np.isnan(primary_peak_mag)
+                        | mask_bool
+                    )
+
+                    win_y_grid, win_x_grid = np.meshgrid(
+                        self.win_ctrs_y[pass_idx],
+                        self.win_ctrs_x[pass_idx],
+                        indexing="ij",
+                    )
+                    EDGE_MARGIN = 64
+                    edge_mask = (
+                        (win_x_grid < EDGE_MARGIN)
+                        | (win_x_grid > self.W - EDGE_MARGIN - 1)
+                        | (win_y_grid < EDGE_MARGIN)
+                        | (win_y_grid > self.H - EDGE_MARGIN - 1)
+                    )
+                    nan_mask |= edge_mask
+
+                    # Note: User-defined mask is already applied via b_mask (precomputed vector mask)
+                    # No need to call _apply_mask_to_vectors here as it would be redundant
+
+                    nan_mask |= primary_peak_mag < 0.2
+
+                    shifted_pk_height = np.roll(pk_height, shift=-1, axis=0)
+                    shifted_pk_height[-1, :, :] = pk_height[-1, :, :]
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore", category=RuntimeWarning)
+                        Q_mat = np.divide(
                             pk_height,
-                            sx,
-                            sy,
-                            sxy,
-                            correl_plane_out,
-                        ) = self._set_lib_arguments(
-                            config=config,
-                            win_size=win_size,
-                            pass_idx=pass_idx,
-                        )
-                        error_code = self.lib.bulkxcorr2d(
-                            np.asfortranarray(image_a_prime),
-                            np.asfortranarray(image_b_prime),
-                            b_mask,
-                            image_size,
-                            self.win_ctrs_x[pass_idx].astype(np.float32),
-                            self.win_ctrs_y[pass_idx].astype(np.float32),
-                            n_windows,
-                            self.win_weights[pass_idx],
-                            b_ensemble,
-                            self.win_weights[pass_idx],
-                            win_size,
-                            int(n_peaks),
-                            int(i_peak_finder),
-                            pk_loc_x,
-                            pk_loc_y,
-                            pk_height,
-                            sx,
-                            sy,
-                            sxy,
-                            correl_plane_out,
+                            shifted_pk_height,
+                            out=np.zeros_like(pk_height),
+                            where=shifted_pk_height > 0,
                         )
 
-                        if error_code != 0:
-                            logging.error(
-                                f"Error in correlate_batch calling for image {n}: error code: {error_code} "
-                            )
-                            raise RuntimeError(
-                                f"bulkxcorr2d failed with error {error_code}"
-                            )
-                    except Exception as e:
-                        import traceback
+                    Q = np.take_along_axis(Q_mat, primary_idx, axis=0)[0]
 
-                        logging.error(
-                            f"Error in correlate_batch calling for image {n}:  {e} ",
-                        )
-                        logging.error(f"{traceback.format_exc()}")
-                        raise e
+                    if nan_mask.any():
+                        ux_mat[nan_mask] = np.nan
+                        uy_mat[nan_mask] = np.nan
+                        primary_peak_mag[nan_mask] = np.nan
+                        Q[nan_mask] = 0.0
 
-                    try:
-                        peak_choice = np.ones(
-                            (n_windows[0], n_windows[1]), dtype=np.int32
-                        )
-                        self.peak_loc_x_after_bulk = np.copy(pk_loc_x)
-                        self.peak_loc_y_after_bulk = np.copy(pk_loc_y)
-                        for k in range(pk_loc_x.shape[0]):
-                            pk_height[k, b_mask.astype(bool)] = np.nan
-                        for k in range(pk_loc_y.shape[0]):
-                            pk_height[k, b_mask.astype(bool)] = np.nan
+                    ux_mat[mask_bool] = 0.0
+                    uy_mat[mask_bool] = 0.0
 
-                        b_large_disp = (np.abs(pk_loc_x) > win_size[0] / 4) | (
-                            np.abs(pk_loc_y) > win_size[1] / 4
-                        )
-                        pk_loc_x[b_large_disp] = np.nan
-                        pk_loc_y[b_large_disp] = np.nan
-                        pk_height[b_large_disp] = np.nan
-
-                        # delta_ab_pred is (n_x, n_y, 2) matching pk_loc (n_peaks, n_x, n_y)
-                        pk_loc_x += self.delta_ab_pred[:, :, 0][None, :, :]
-                        pk_loc_y += self.delta_ab_pred[:, :, 1][None, :, :]
-                        rows, cols = np.indices(n_windows)
-                        ux_mat = pk_loc_x[peak_choice - 1, rows, cols]
-                        uy_mat = pk_loc_y[peak_choice - 1, rows, cols]
-
-                        nan_mask = np.isnan(ux_mat) | np.isnan(uy_mat)
-                        
-                        # Mark edge vectors as invalid to prevent error propagation
-                        # Window centers within EDGE_MARGIN of boundaries are excluded
-                        EDGE_MARGIN = 64
-                        win_ctrs_x_grid, win_ctrs_y_grid = np.meshgrid(
-                            self.win_ctrs_x[pass_idx],
-                            self.win_ctrs_y[pass_idx]
-                        )
-                        edge_mask = (
-                            (win_ctrs_x_grid < EDGE_MARGIN) |
-                            (win_ctrs_x_grid > self.W - EDGE_MARGIN - 1) |
-                            (win_ctrs_y_grid < EDGE_MARGIN) |
-                            (win_ctrs_y_grid > self.H - EDGE_MARGIN - 1)
-                        )
-                        # nan_mask |= edge_mask
-                        
-                        # Apply user-defined mask if provided
-                        if self.mask is not None:
-                            user_mask = self._apply_mask_to_vectors(
-                                self.win_ctrs_x[pass_idx],
-                                self.win_ctrs_y[pass_idx],
-                                self.mask
-                            )
-                            # nan_mask |= user_mask
-
-                        # nan_mask |= self._piv_2d_outlier(
-                        #     ux_mat,
-                        #     uy_mat,
-                        # )
-
-                        # if config.secondary_peak:
-                        #     for pk in range(1, n_peaks):
-                        #         peak_choice[nan_mask] += 1
-                        #         ux_mat = pk_loc_x[peak_choice - 1, rows, cols]
-                        #         uy_mat = pk_loc_y[peak_choice - 1, rows, cols]
-                        #         nan_mask |= self._piv_2d_outlier(ux_mat, uy_mat)
-                        #         if not nan_mask.any():
-                        #             break
-
-                        peak_mag = pk_height[peak_choice - 1, rows, cols]
-
-                        nan_mask |= peak_mag < 0.2
-
-                        shifted_pk_height = np.roll(pk_height, shift=-1, axis=0)
-                        shifted_pk_height[-1, :, :] = pk_height[-1, :, :]
-
-                        with warnings.catch_warnings():
-                            warnings.simplefilter("ignore", category=RuntimeWarning)
-                            Q_mat = pk_height / shifted_pk_height
-
-                        Q = Q_mat[peak_choice - 1, rows, cols]
-
-                        if nan_mask.any():
-                            ux_mat[nan_mask] = np.nan
-                            uy_mat[nan_mask] = np.nan
-
-                            if "b_mask" in locals():
-                                ux_mat[b_mask.astype(bool)] = 0
-                                uy_mat[b_mask.astype(bool)] = 0
-
+                    if np.isnan(ux_mat).any():
                         ux_mat = self._inpaint_nans_opencv(ux_mat)
+                    if np.isnan(uy_mat).any():
                         uy_mat = self._inpaint_nans_opencv(uy_mat)
 
-                        peak_choice[nan_mask] = 0
-                        Q[nan_mask] = 0
-                        peak_mag[nan_mask] = 0
+                    ux_mat[mask_bool] = 0.0
+                    uy_mat[mask_bool] = 0.0
 
-                        if "b_mask" in locals():
-                            ux_mat[b_mask.astype(bool)] = 0
-                            uy_mat[b_mask.astype(bool)] = 0
+                    peak_choice = np.ones((n_win_y, n_win_x), dtype=np.int32)
+                    peak_choice[nan_mask] = 0
 
-                    except Exception as e:
-                        import traceback
+                    ux_mat = np.ascontiguousarray(ux_mat.astype(np.float32))
+                    uy_mat = np.ascontiguousarray(uy_mat.astype(np.float32))
+                    nan_mask = np.ascontiguousarray(nan_mask)
+                    Q = np.ascontiguousarray(Q.astype(np.float32))
+                    primary_peak_mag = np.ascontiguousarray(
+                        np.where(nan_mask, 0.0, primary_peak_mag.astype(np.float32))
+                    )
+                    pk_height = np.asfortranarray(pk_height.astype(np.float32))
+                    Q_mat = np.asfortranarray(Q_mat.astype(np.float32))
 
-                        logging.info(f"Error in correlate_batch for image {n}: {e}")
-                        logging.info(traceback.format_exc())
-                        raise e
-
-                    self.delta_ab_old = np.stack(
-                        [ux_mat, uy_mat], axis=2
-                    )  # shape (rows, cols, 2)
-                    n_pre = self.n_pre_all[pass_idx]
-                    n_post = self.n_post_all[pass_idx]
-
+                    self.delta_ab_old = np.stack([ux_mat, uy_mat], axis=2)
+                    pre_y, pre_x = self.n_pre_all[pass_idx]
+                    post_y, post_x = self.n_post_all[pass_idx]
                     self.delta_ab_old = np.pad(
                         self.delta_ab_old,
-                        ((n_pre[0], n_post[0]), (n_pre[1], n_post[1]), (0, 0)),
+                        ((pre_y, post_y), (pre_x, post_x), (0, 0)),
                         mode="edge",
                     )
 
-                    self.previous_win_spacing = [
-                        self.win_spacing_x[pass_idx],
+                    self.previous_win_spacing = (
                         self.win_spacing_y[pass_idx],
-                    ]
-                    self.prev_win_size = win_size
+                        self.win_spacing_x[pass_idx],
+                    )
+                    self.prev_win_size = (n_win_y, n_win_x)
 
                     pass_result = PIVPassResult(
-                        n_windows=n_windows,
-                        ux_mat=np.copy(ux_mat),  # processed velocities
+                        n_windows=np.array([n_win_y, n_win_x], dtype=np.int32),
+                        ux_mat=np.copy(ux_mat),
                         uy_mat=np.copy(uy_mat),
                         nan_mask=np.copy(nan_mask),
-                        Q=Q,
+                        Q=np.copy(Q),
                         peak_mag=np.copy(pk_height),
-                        peak_choice=peak_choice,
+                        peak_choice=np.copy(peak_choice),
                         predictor_field=np.copy(self.delta_ab_old),
                     )
+                    pass_result.primary_peak_mag = np.copy(primary_peak_mag)
+                    pass_result.Q_mat = np.copy(Q_mat)
+                    pass_result.edge_mask = np.copy(edge_mask)
                     piv_result_all.add_pass(pass_result)
-            except Exception as e:
-                import traceback
 
-                logging.info(f"Error in correlate_batch for image {n}: {e}")
-                logging.info(traceback.format_exc())
-                raise e
+            except Exception as exc:
+                logging.error("Error in correlate_batch for image %d: %s", n, exc)
+                logging.error(traceback.format_exc())
+                raise
+
         return piv_result_all
 
     def _compute_window_centres(
@@ -370,7 +338,9 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         :return: Tuple containing window spacing in x and y, and arrays of window center coordinates in x and y.
         :rtype: tuple[int, int, np.ndarray, np.ndarray]
         """
-        win_x, win_y = config.window_sizes[pass_idx]
+        # CRITICAL FIX: config.window_sizes is in (H, W) = (Y-size, X-size) format
+        # because C library uses column-major order where first dimension is vertical (Y)
+        win_y, win_x = config.window_sizes[pass_idx]
         overlap = config.overlap[pass_idx]
 
         w_spacing_x = round((1 - overlap / 100) * win_x)
@@ -449,70 +419,46 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         interpolator="cubic",
         win_type="A",
     ):
-        """Predictor-corrector step to adjust images based on previous displacement estimates.
+        """Predictor-corrector step to adjust images based on previous displacement estimates."""
 
-        :param pass_idx: Index of the current pass.
-        :type pass_idx: int
-        :param image_a: First image in the pair.
-        :type image_a: np.ndarray
-        :param image_b: _Second image in the pair.
-        :type image_b: np.ndarray
-        :param interpolator: Interpolation method, defaults to "cubic"
-        :type interpolator: str, optional
-        :param win_type: Window type, defaults to "A"
-        :type win_type: str, optional
-        :return: Adjusted images and predicted displacements.
-        :rtype: tuple[np.ndarray, np.ndarray, np.ndarray]
-        """
-        # delta_ab_pred must match the C library's grid ordering: (n_x, n_y, 2)
-        self.delta_ab_pred = np.zeros(
-            (len(self.win_ctrs_x[pass_idx]), len(self.win_ctrs_y[pass_idx]), 2),
-            dtype=np.float32,
-        )
+        n_win_y = len(self.win_ctrs_y[pass_idx])
+        n_win_x = len(self.win_ctrs_x[pass_idx])
+        self.delta_ab_pred = np.zeros((n_win_y, n_win_x, 2), dtype=np.float32)
+
         if pass_idx == 0:
             if self.delta_ab_old is None:
                 self.delta_ab_old = np.zeros_like(self.delta_ab_pred)
 
-            self.prev_win_size = (
-                len(self.win_ctrs_x[pass_idx]),
-                len(self.win_ctrs_y[pass_idx]),
-            )
+            self.prev_win_size = (n_win_y, n_win_x)
             self.prev_win_spacing = (
-                self.win_spacing_x[pass_idx],
                 self.win_spacing_y[pass_idx],
+                self.win_spacing_x[pass_idx],
             )
-            self.image_a_prime = image_a
-            self.image_b_prime = image_b
             return image_a.copy(), image_b.copy(), self.delta_ab_pred
 
-        # Apply Gaussian smoothing with explicit boundary handling
-        # mode='nearest' prevents circular/wrap-around effects at boundaries
+        if self.delta_ab_old is None:
+            raise RuntimeError("delta_ab_old is uninitialised before predictor step")
+
+        interp_flag = cv2.INTER_CUBIC if interpolator == "cubic" else cv2.INTER_LINEAR
+
         self.delta_ab_old[..., 0] = gaussian_filter(
             self.delta_ab_old[..., 0],
             sigma=self.sd[pass_idx],
             truncate=(self.ksize_filt[pass_idx][0] - 1) / (2 * self.sd[pass_idx]),
-            mode='nearest'
+            mode="nearest",
         )
         self.delta_ab_old[..., 1] = gaussian_filter(
             self.delta_ab_old[..., 1],
             sigma=self.sd[pass_idx],
             truncate=(self.ksize_filt[pass_idx][0] - 1) / (2 * self.sd[pass_idx]),
-            mode='nearest'
+            mode="nearest",
         )
 
         self.delta_ab_dense = np.zeros((self.H, self.W, 2), dtype=np.float32)
-
-        # Use cached interpolation grids for performance
         map_x_2d, map_y_2d = self.cached_dense_maps[pass_idx]
-        
-        # Set interpolation method
-        interp_flag = (
-            cv2.INTER_CUBIC if interpolator == "cubic"
-            else cv2.INTER_LINEAR
-        )
-        
-        # Interpolate displacement field to dense grid
-        # borderMode=BORDER_CONSTANT prevents circular/wrap-around effects
+        if map_x_2d is None or map_y_2d is None:
+            raise ValueError(f"Dense interpolation maps missing for pass {pass_idx}")
+
         for d in range(2):
             self.delta_ab_dense[..., d] = cv2.remap(
                 self.delta_ab_old[..., d].astype(np.float32),
@@ -520,68 +466,36 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 map_y_2d,
                 interp_flag,
                 borderMode=cv2.BORDER_CONSTANT,
-                borderValue=0
+                borderValue=0,
             )
 
         delta_0b = self.delta_ab_dense / 2
         delta_0a = -self.delta_ab_dense / 2
-        self.delta_ab_dense_test = np.copy(self.delta_ab_dense)
-
         im_mesh_A = self.im_mesh + delta_0a
         im_mesh_B = self.im_mesh + delta_0b
-        # delta_ab_pred must match the C library's grid ordering: (n_x, n_y, 2)
-        self.delta_ab_pred = np.zeros(
-            (len(self.win_ctrs_x[pass_idx]), len(self.win_ctrs_y[pass_idx]), 2),
-            dtype=np.float32,
-        )
 
-        # Convolve with explicit padding to avoid circular convolution
-        # mode='symmetric' prevents wrap-around at boundaries
-        pad_amt = self.ksize_filt[pass_idx][0] // 2
-        padded_x = np.pad(
-            self.delta_ab_old[..., 0], pad_amt, mode="symmetric"
-        )
-        padded_y = np.pad(
-            self.delta_ab_old[..., 1], pad_amt, mode="symmetric"
-        )
-
-        # mode='valid' with pre-padding ensures no circular convolution
-        delta_ab_filt_x = convolve2d(
-            padded_x, self.G_smooth_predictor[pass_idx], mode="valid"
-        )
-        delta_ab_filt_y = convolve2d(
-            padded_y, self.G_smooth_predictor[pass_idx], mode="valid"
-        )
-        delta_ab_filt = np.stack([delta_ab_filt_x, delta_ab_filt_y], axis=-1)
-
-        # Use cached interpolation grids for predictor
         map_x, map_y = self.cached_predictor_maps[pass_idx]
+        if map_x is None or map_y is None:
+            raise ValueError(f"Predictor interpolation maps missing for pass {pass_idx}")
 
-        # Interpolate filtered displacement to predictor grid
-        # cv2.remap is faster than map_coordinates
-        # borderMode=BORDER_CONSTANT prevents circular/wrap-around effects
-        interp_flag = cv2.INTER_CUBIC
         for d in range(2):
-            self.delta_ab_pred[..., d] = cv2.remap(
-                delta_ab_filt[..., d].astype(np.float32),
+            remapped = cv2.remap(
+                self.delta_ab_old[..., d].astype(np.float32),
                 map_x,
                 map_y,
                 interp_flag,
                 borderMode=cv2.BORDER_CONSTANT,
-                borderValue=0.0
+                borderValue=0.0,
             )
+            self.delta_ab_pred[..., d] = remapped
 
-        # Warp images using displacement field
-        # cv2.remap is faster than custom C library
-        # cv2.remap expects map coordinates in (x, y) format
-        # borderMode=BORDER_CONSTANT prevents circular/wrap-around effects
         image_a_prime = cv2.remap(
             image_a.astype(np.float32),
             im_mesh_A[..., 1].astype(np.float32),
             im_mesh_A[..., 0].astype(np.float32),
             cv2.INTER_CUBIC,
             borderMode=cv2.BORDER_CONSTANT,
-            borderValue=0
+            borderValue=0,
         )
         image_b_prime = cv2.remap(
             image_b.astype(np.float32),
@@ -589,7 +503,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             im_mesh_B[..., 0].astype(np.float32),
             cv2.INTER_CUBIC,
             borderMode=cv2.BORDER_CONSTANT,
-            borderValue=0
+            borderValue=0,
         )
 
         return image_a_prime, image_b_prime, self.delta_ab_pred
@@ -686,62 +600,44 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         :rtype: tuple
         """
         win_size = np.asfortranarray(np.array(win_size, dtype=np.int32))
+
+        n_win_y = len(self.win_ctrs_y[pass_idx])
+        n_win_x = len(self.win_ctrs_x[pass_idx])
         n_windows = np.asfortranarray(
-            np.array(
-                [len(self.win_ctrs_x[pass_idx]), len(self.win_ctrs_y[pass_idx])],
-                dtype=np.int32,
-            )
+            np.array([n_win_y, n_win_x], dtype=np.int32)
         )
 
-        total_windows = n_windows[0] * n_windows[1]
+        total_windows = n_win_y * n_win_x
 
-        b_mask = np.asfortranarray(
-            np.zeros((n_windows[0], n_windows[1]), dtype=np.uint8)
-        )
+        # Use precomputed vector mask for this pass if available
+        if hasattr(self, 'vector_masks') and self.vector_masks and pass_idx < len(self.vector_masks):
+            # Convert boolean mask to uint8 (True = 1 = masked)
+            b_mask = np.asfortranarray(self.vector_masks[pass_idx].astype(np.uint8))
+        else:
+            # No mask - create zeros
+            b_mask = np.asfortranarray(np.zeros((n_win_y, n_win_x), dtype=np.uint8))
 
         n_peaks = np.int32(config.num_peaks)
         i_peak_finder = np.int32(config.peak_finder)
         b_ensemble = bool(config.ensemble_piv)
 
-        pk_loc_x = np.asfortranarray(
-            np.zeros((n_peaks, n_windows[0], n_windows[1]), dtype=np.float32)
-        )
-
-        pk_loc_y = np.asfortranarray(
-            np.zeros((n_peaks, n_windows[0], n_windows[1]), dtype=np.float32)
-        )
-
-        pk_height = np.asfortranarray(
-            np.zeros(
-                (n_peaks, n_windows[0], n_windows[1]),
-                dtype=np.float32,
-            )
-        )
-
-        sx = np.asfortranarray(
-            np.zeros((n_peaks, n_windows[0], n_windows[1]), dtype=np.float32)
-        )
-
-        sy = np.asfortranarray(
-            np.zeros((n_peaks, n_windows[0], n_windows[1]), dtype=np.float32)
-        )
-
-        sxy = np.asfortranarray(
-            np.zeros((n_peaks, n_windows[0], n_windows[1]), dtype=np.float32)
-        )
+        out_shape = (n_peaks, n_win_y, n_win_x)
+        pk_loc_x = np.asfortranarray(np.zeros(out_shape, dtype=np.float32))
+        pk_loc_y = np.asfortranarray(np.zeros(out_shape, dtype=np.float32))
+        pk_height = np.asfortranarray(np.zeros(out_shape, dtype=np.float32))
+        sx = np.asfortranarray(np.zeros(out_shape, dtype=np.float32))
+        sy = np.asfortranarray(np.zeros(out_shape, dtype=np.float32))
+        sxy = np.asfortranarray(np.zeros(out_shape, dtype=np.float32))
 
         correl_plane_out = np.asfortranarray(
-            np.zeros(
-                total_windows * win_size[0] * win_size[1],
-                dtype=np.float32,
-            )
+            np.zeros(total_windows * win_size[0] * win_size[1], dtype=np.float32)
         )
 
         if config.debug:
             args = [
                 ("mask", b_mask),
-                ("win_ctrs_x", self.win_ctrs_x.astype(np.float32)),
-                ("win_ctrs_y", self.win_ctrs_y.astype(np.float32)),
+                ("win_ctrs_x", self.win_ctrs_x[pass_idx].astype(np.float32)),
+                ("win_ctrs_y", self.win_ctrs_y[pass_idx].astype(np.float32)),
                 ("n_windows", n_windows),
                 ("window_weight_a", self.win_weights[pass_idx]),
                 ("b_ensemble", b_ensemble),
@@ -781,90 +677,93 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         :param config: Configuration object.
         :type config: Config
         """
-        self.win_ctrs_x = []
-        self.win_ctrs_y = []
-        self.win_spacing_x = []
-        self.win_spacing_y = []
-        self.win_ctrs_x_all = []
-        self.win_ctrs_y_all = []
-        self.n_pre_all = []
-        self.n_post_all = []
-        self.ksize_filt = [0]
-        self.sd = [0]
-        self.G_smooth_predictor = [0]
+        self.win_ctrs_x: list[np.ndarray] = []
+        self.win_ctrs_y: list[np.ndarray] = []
+        self.win_spacing_x: list[int] = []
+        self.win_spacing_y: list[int] = []
+        self.win_ctrs_x_all: list[np.ndarray] = []
+        self.win_ctrs_y_all: list[np.ndarray] = []
+        self.n_pre_all: list[tuple[int, int]] = []
+        self.n_post_all: list[tuple[int, int]] = []
+        self.ksize_filt: list[tuple[int, int]] = []
+        self.sd: list[float] = []
+        self.G_smooth_predictor: list[np.ndarray] = []
 
         H, W = config.image_shape
 
-        for pass_idx, win_size in enumerate(config.window_sizes):
-            w_spacing_x, w_spacing_y, win_ctrs_x, win_ctrs_y = (
-                self._compute_window_centres(pass_idx, config)
+        for pass_idx, _ in enumerate(config.window_sizes):
+            spacing_x, spacing_y, win_ctrs_x, win_ctrs_y = self._compute_window_centres(
+                pass_idx, config
             )
 
-            win_ctrs_x_pre = np.arange(1, win_ctrs_x[0] - w_spacing_x / 2, w_spacing_x)
+            win_ctrs_x_pre = np.arange(1, win_ctrs_x[0] - spacing_x / 2, spacing_x)
             if win_ctrs_x_pre.size == 0:
                 win_ctrs_x_pre = np.array([1])
             win_ctrs_x_pre -= 1
             win_ctrs_x_post = np.arange(
-                W, win_ctrs_x[-1] + w_spacing_x / 2, -w_spacing_x
+                W, win_ctrs_x[-1] + spacing_x / 2, -spacing_x
             )
             if win_ctrs_x_post.size == 0:
                 win_ctrs_x_post = np.array([W])
             win_ctrs_x_post -= 1
-            win_ctrs_x_old = np.concatenate(
+            win_ctrs_x_all = np.concatenate(
                 [win_ctrs_x_pre, win_ctrs_x, win_ctrs_x_post[::-1]]
             )
 
-            win_ctrs_y_pre = np.arange(1, win_ctrs_y[0] - w_spacing_y / 2, w_spacing_y)
+            win_ctrs_y_pre = np.arange(1, win_ctrs_y[0] - spacing_y / 2, spacing_y)
             if win_ctrs_y_pre.size == 0:
                 win_ctrs_y_pre = np.array([1])
             win_ctrs_y_pre -= 1
             win_ctrs_y_post = np.arange(
-                H, win_ctrs_y[-1] + w_spacing_y / 2, -w_spacing_y
+                H, win_ctrs_y[-1] + spacing_y / 2, -spacing_y
             )
             if win_ctrs_y_post.size == 0:
                 win_ctrs_y_post = np.array([H])
             win_ctrs_y_post -= 1
-            win_ctrs_y_old = np.concatenate(
+            win_ctrs_y_all = np.concatenate(
                 [win_ctrs_y_pre, win_ctrs_y, win_ctrs_y_post[::-1]]
             )
 
-            n_pre = [len(win_ctrs_x_pre), len(win_ctrs_y_pre)]
-            n_post = [len(win_ctrs_x_post), len(win_ctrs_y_post)]
+            n_pre = (len(win_ctrs_y_pre), len(win_ctrs_x_pre))
+            n_post = (len(win_ctrs_y_post), len(win_ctrs_x_post))
+
             self.win_ctrs_x.append(win_ctrs_x.astype(np.float32))
             self.win_ctrs_y.append(win_ctrs_y.astype(np.float32))
-            self.win_spacing_x.append(w_spacing_x)
-            self.win_spacing_y.append(w_spacing_y)
-            self.win_ctrs_x_all.append(win_ctrs_x_old)
-            self.win_ctrs_y_all.append(win_ctrs_y_old)
+            self.win_spacing_x.append(spacing_x)
+            self.win_spacing_y.append(spacing_y)
+            self.win_ctrs_x_all.append(win_ctrs_x_all.astype(np.float32))
+            self.win_ctrs_y_all.append(win_ctrs_y_all.astype(np.float32))
             self.n_pre_all.append(n_pre)
             self.n_post_all.append(n_post)
-            if pass_idx > 0:
+
+            if pass_idx == 0:
+                self.ksize_filt.append((0, 0))
+                self.sd.append(0.0)
+                self.G_smooth_predictor.append(np.ones((1, 1), dtype=np.float32))
+            else:
+                prev_counts = (
+                    len(self.win_ctrs_y[pass_idx - 1]),
+                    len(self.win_ctrs_x[pass_idx - 1]),
+                )
+                prev_spacing = (
+                    self.win_spacing_y[pass_idx - 1],
+                    self.win_spacing_x[pass_idx - 1],
+                )
                 k_filt = (
-                    np.round(
-                        (
-                            len(self.win_ctrs_x[pass_idx - 1]),
-                            len(self.win_ctrs_y[pass_idx - 1]),
-                        )
-                        / np.array(
-                            (
-                                self.win_spacing_x[pass_idx - 1],
-                                self.win_spacing_y[pass_idx - 1],
-                            )
-                        )
-                    ).astype(int)
+                    np.round(np.array(prev_counts) / np.array(prev_spacing)).astype(int)
                     + 1
                 )
-                self.ksize_filt.append(tuple([k + (k % 2 == 0) for k in k_filt]))
-
-                self.sd.append(np.sqrt(np.prod(self.ksize_filt[pass_idx])) / 3 * 0.65)
-                self.G_smooth_predictor.append(
-                    self._window_weight_fun(
-                        self.ksize_filt[pass_idx], config.window_type
-                    )
+                k_filt_list = [int(k) for k in k_filt.tolist()]
+                k_filt_tuple = (
+                    k_filt_list[0] + (k_filt_list[0] % 2 == 0),
+                    k_filt_list[1] + (k_filt_list[1] % 2 == 0),
                 )
-                self.G_smooth_predictor[pass_idx] /= self.G_smooth_predictor[
-                    pass_idx
-                ].sum()
+                self.ksize_filt.append(k_filt_tuple)
+                self.sd.append(np.sqrt(np.prod(k_filt_tuple)) / 3 * 0.65)
+                g_kernel = self._window_weight_fun(k_filt_tuple, config.window_type)
+                g_kernel = g_kernel.astype(np.float32)
+                g_kernel /= max(np.sum(g_kernel), 1e-12)
+                self.G_smooth_predictor.append(g_kernel)
 
     def _cache_interpolation_grids(self, config: Config) -> None:
         """Cache interpolation grid coordinates for reuse across passes.
@@ -949,19 +848,19 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             Boolean mask of shape (len(win_ctrs_y), len(win_ctrs_x)) where
             True indicates vectors to invalidate
         """
-        # Create meshgrid of window centers
-        win_x_grid, win_y_grid = np.meshgrid(win_ctrs_x, win_ctrs_y)
-        
+        # Create meshgrid of window centers using MATLAB-style indexing (rows=y, cols=x)
+        grid_y, grid_x = np.meshgrid(win_ctrs_y, win_ctrs_x, indexing="ij")
+
         # Round to nearest pixel indices
-        win_x_idx = np.round(win_x_grid).astype(int)
-        win_y_idx = np.round(win_y_grid).astype(int)
-        
+        x_idx = np.round(grid_x).astype(int)
+        y_idx = np.round(grid_y).astype(int)
+
         # Clip to valid image bounds
-        win_x_idx = np.clip(win_x_idx, 0, mask.shape[1] - 1)
-        win_y_idx = np.clip(win_y_idx, 0, mask.shape[0] - 1)
-        
+        x_idx = np.clip(x_idx, 0, mask.shape[1] - 1)
+        y_idx = np.clip(y_idx, 0, mask.shape[0] - 1)
+
         # Sample mask at window center locations
         # mask[y, x] where True = masked region
-        vector_mask = mask[win_y_idx, win_x_idx]
-        
+        vector_mask = mask[y_idx, x_idx]
+
         return vector_mask
