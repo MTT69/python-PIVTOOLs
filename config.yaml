@@ -13,8 +13,8 @@ images:
   vector_format:
   - '%05d.mat'
   shape:
-  - 1200
-  - 1024
+  - 1152 # height
+  - 1024 # width
   time_resolved: false
   dtype: uint8
 batches:
@@ -30,7 +30,7 @@ processing:
   backend: cpu
   debug: false
   omp_threads: 5
-  dask_workers_per_node: 4
+  dask_workers_per_node: 2
   dask_threads_per_worker: 1
   dask_memory_limit: 3GB
 post_processing:
@@ -64,9 +64,22 @@ instantaneous_piv:
     - 128
   - - 64
     - 64
+  - - 32
+    - 32
+  - - 16
+    - 16
+  - - 16
+    - 16
+  - - 16
+    - 16
   overlap:
   - 50
   - 50
+  - 50
+  - 50
+  - 50
+  - 50
+  
   runs:
   - 6
   time_resolved: false
@@ -120,5 +133,5 @@ calibration:
   image_format: calib%05d.tiff
 filters: []
 masking:
-  enabled: false
+  enabled: true
   mask_file_pattern: mask_Cam%d.mat

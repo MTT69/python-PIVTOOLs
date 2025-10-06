@@ -118,19 +118,19 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         self.im_mesh = np.stack([im_imat, im_jmat], axis=-1)
 
         progress_step = max(1, N // 10)
-        worker = get_worker()
-        logging.info("Worker: %s Starting processing of %d image pairs", worker.name, N)
+        # worker = get_worker()
+        # logging.info("Worker: %s Starting processing of %d image pairs", worker.name, N)
         for n in range(N):
             if (n + 1) % progress_step == 0 or (n + 1) == N:
 
                 pct = int(((n + 1) / N) * 100)
-                logging.info(
-                    "Worker: %s Processed %d%% of chunk - image pair %d/%d ",
-                    worker.name,
-                    pct,
-                    n + 1,
-                    N,
-                )
+                # logging.info(
+                #     "Worker: %s Processed %d%% of chunk - image pair %d/%d ",
+                #     worker.name,
+                #     pct,
+                #     n + 1,
+                #     N,
+                # )
             try:
 
                 image_a = np.asarray(images[n, 0], dtype=np.float32)
