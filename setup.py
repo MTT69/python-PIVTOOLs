@@ -80,24 +80,31 @@ class BuildCLib(build_ext):
         subprocess.check_call(cmd)
 
 
+# Read requirements from requirements.txt
+def read_requirements():
+    """Read and parse requirements.txt file."""
+    requirements = []
+    req_file = pathlib.Path(__file__).parent / "requirements.txt"
+    
+    if req_file.exists():
+        with open(req_file, 'r') as f:
+            for line in f:
+                line = line.strip()
+                # Skip empty lines, comments, and package extras like dask[complete]
+                if line and not line.startswith('#') and not line.startswith('-'):
+                    # Skip lines that are just package names without versions (duplicates at bottom)
+                    # Only include lines with version specifiers (==, >=, etc.)
+                    if '==' in line or '>=' in line or '<=' in line or '~=' in line:
+                        requirements.append(line)
+    
+    return requirements
+
+
 setup(
     name="pypivtools",
     version="0.1.0",
     packages=["pypivtools"],
     ext_modules=[Extension("dummy", sources=[])],
     cmdclass={"build_ext": BuildCLib},
-    install_requires=[
-        "dask[complete]",
-        "tifffile",
-        "numpy",
-        "scipy",
-        "dask-image",
-        "scipy",
-        "typeguard",
-        "opencv-python",
-        "scikit-image",
-    ],
-    extras_require={
-        "dev": ["black", "isort", "flake8", "cornflakes", "pandas"],
-    },
+    install_requires=read_requirements(),
 )
