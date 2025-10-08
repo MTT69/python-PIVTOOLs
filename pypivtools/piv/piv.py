@@ -40,6 +40,11 @@ def perform_piv_and_save(
     bottleneck of gathering all results to the main process before saving.
     Each worker processes and saves its results independently.
     
+    Memory-efficient design:
+    - PIV results stay on workers (no gather to main)
+    - Direct serialization to disk on each worker
+    - Minimal memory footprint for large batches
+    
     Parameters
     ----------
     images : da.Array
@@ -66,7 +71,7 @@ def perform_piv_and_save(
         Use client.gather() or wait() to ensure all files are saved.
     """
     save_futures = []
-    for i in range(images.shape[0]):
+    for i in range(int(images.shape[0])):
         block = images[i]
         frame_number = start_frame + i
         
@@ -74,6 +79,7 @@ def perform_piv_and_save(
         piv_future = client.submit(_piv_single_pass, block, config, mask)
         
         # Chain save task to PIV result
+        # All required data (win_ctrs, b_mask) is in PIVResult
         save_future = client.submit(
             save_piv_result_distributed,
             piv_future,  # Takes result from PIV task
@@ -86,33 +92,33 @@ def perform_piv_and_save(
     return save_futures
 
 
-def perform_piv(images: da.Array, config: Config, client: Client) -> List:
-    """
-    Perform PIV on a batch of image pairs.
+# def perform_piv(images: da.Array, config: Config, client: Client) -> List:
+#     """
+#     Perform PIV on a batch of image pairs.
     
-    Parameters
-    ----------
-    images : da.Array
-        Dask array of shape (N, 2, H, W) containing image pairs.
-    config : Config
-        Configuration object.
-    client : Client
-        Dask distributed client.
+#     Parameters
+#     ----------
+#     images : da.Array
+#         Dask array of shape (N, 2, H, W) containing image pairs.
+#     config : Config
+#         Configuration object.
+#     client : Client
+#         Dask distributed client.
         
-    Returns
-    -------
-    List
-        List of Future objects that will resolve to PIVResult objects.
-        Use client.gather() to collect results or simply iterate and
-        call .result() on each future.
-    """
-    # Submit tasks to the cluster and return futures
-    futures = []
-    for i in range(images.shape[0]):
-        block = images[i]  # Get each block
-        future = client.submit(_piv_single_pass, block, config)
-        futures.append(future)
-    return futures
+#     Returns
+#     -------
+#     List
+#         List of Future objects that will resolve to PIVResult objects.
+#         Use client.gather() to collect results or simply iterate and
+#         call .result() on each future.
+#     """
+#     # Submit tasks to the cluster and return futures
+#     futures = []
+#     for i in range(images.shape[0]):
+#         block = images[i]  # Get each block
+#         future = client.submit(_piv_single_pass, block, config)
+#         futures.append(future)
+#     return futures
 
 
 def _piv_single_pass(

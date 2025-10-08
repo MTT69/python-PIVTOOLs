@@ -211,44 +211,42 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     primary_idx = np.zeros((1, n_win_y, n_win_x), dtype=np.intp)
                     ux_mat = np.take_along_axis(pk_loc_x, primary_idx, axis=0)[0]
                     uy_mat = np.take_along_axis(pk_loc_y, primary_idx, axis=0)[0]
-                    primary_peak_mag = np.take_along_axis(
-                        pk_height, primary_idx, axis=0
-                    )[0]
-
-                    nan_mask = (
-                        np.isnan(ux_mat)
-                        | np.isnan(uy_mat)
-                        | np.isnan(primary_peak_mag)
-                        | mask_bool
-                    )
-
-                    # Temporarily disable edge masking. Keep a placeholder
-                    # edge_mask (all False) so downstream code that expects
-                    # this variable continues to work. To re-enable edge
-                    # masking, restore the original block above.
-                    #
-                    # Original code (commented):
-                    # win_y_grid, win_x_grid = np.meshgrid(
-                    #     self.win_ctrs_y[pass_idx],
-                    #     self.win_ctrs_x[pass_idx],
-                    #     indexing="ij",
-                    # )
-                    # EDGE_MARGIN = 64
-                    # edge_mask = (
-                    #     (win_x_grid < EDGE_MARGIN)
-                    #     | (win_x_grid > self.W - EDGE_MARGIN - 1)
-                    #     | (win_y_grid < EDGE_MARGIN)
-                    #     | (win_y_grid > self.H - EDGE_MARGIN - 1)
-                    # )
-                    # nan_mask |= edge_mask
-
-                    # No-op edge mask (no vectors excluded by edges)
+                    # Use direct indexing without meshgrid for outlier detection and peak selection
                     n_win_y = int(n_windows[0])
                     n_win_x = int(n_windows[1])
+                    peak_choice = np.ones((n_win_y, n_win_x), dtype=np.int32)
+
+                    # Initial peak selection
+                    ux_mat = pk_loc_x[0]
+                    uy_mat = pk_loc_y[0]
+
+                    nan_mask = np.isnan(ux_mat) | np.isnan(uy_mat)
+                    nan_mask |= self._piv_2d_outlier(ux_mat, uy_mat)
+
+                    # No-op edge mask (no vectors excluded by edges)
                     edge_mask = np.zeros((n_win_y, n_win_x), dtype=bool)
 
+                    if config.secondary_peak:
+                        for pk in range(1, n_peaks):
+                            # Increment peak_choice for nan_mask locations
+                            peak_choice[nan_mask] += 1
+                            # Clamp peak_choice to valid range
+                            peak_choice = np.clip(peak_choice, 1, n_peaks)
+                            # Select new peak for nan_mask locations
+                            ux_mat = np.choose(peak_choice - 1, pk_loc_x)
+                            uy_mat = np.choose(peak_choice - 1, pk_loc_y)
+                            nan_mask |= self._piv_2d_outlier(ux_mat, uy_mat)
+                            if not nan_mask.any():
+                                break
+
+                    # Select primary peak magnitude
+                    primary_peak_mag = np.choose(peak_choice - 1, pk_height)
+                    nan_mask |= np.isnan(primary_peak_mag)
+
+                    nan_mask |= mask_bool
                     nan_mask |= primary_peak_mag < 0.2
 
+                    # Q calculation (peak ratio)
                     shifted_pk_height = np.roll(pk_height, shift=-1, axis=0)
                     shifted_pk_height[-1, :, :] = pk_height[-1, :, :]
                     with warnings.catch_warnings():
@@ -260,7 +258,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                             where=shifted_pk_height > 0,
                         )
 
-                    Q = np.take_along_axis(Q_mat, primary_idx, axis=0)[0]
+                    Q = np.choose(peak_choice - 1, Q_mat)
 
                     if nan_mask.any():
                         ux_mat[nan_mask] = np.nan
@@ -272,14 +270,12 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     uy_mat[mask_bool] = 0.0
 
                     if np.isnan(ux_mat).any():
-                        ux_mat = self._inpaint_nans_opencv(ux_mat)
+                        ux_mat = self._inpaint_nans_biharm(ux_mat)
                     if np.isnan(uy_mat).any():
-                        uy_mat = self._inpaint_nans_opencv(uy_mat)
+                        uy_mat = self._inpaint_nans_biharm(uy_mat)
 
                     ux_mat[mask_bool] = 0.0
                     uy_mat[mask_bool] = 0.0
-
-                    peak_choice = np.ones((n_win_y, n_win_x), dtype=np.int32)
                     peak_choice[nan_mask] = 0
 
                     ux_mat = np.ascontiguousarray(ux_mat.astype(np.float32))

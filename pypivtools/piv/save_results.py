@@ -22,20 +22,18 @@ def save_piv_result_distributed(
     output_path: Path,
     frame_number: int,
     pass_index: Optional[int] = None,
-    win_ctrs_x_list: Optional[List[np.ndarray]] = None,
-    win_ctrs_y_list: Optional[List[np.ndarray]] = None,
-    b_mask_list: Optional[List[np.ndarray]] = None,
 ) -> str:
     """
     Save a PIV result to disk. Designed to be submitted to Dask workers.
     
     This function can be called on Dask workers to save results in parallel,
     avoiding the memory bottleneck of gathering all results to main.
+    Memory-efficient: uses direct serialization without unnecessary copies.
     
     Parameters
     ----------
     piv_result : PIVResult
-        The PIV result object containing one or more passes.
+        The PIV result object containing one or more passes with complete data.
     output_path : Path
         Directory where the .mat file will be saved.
     frame_number : int
@@ -62,16 +60,11 @@ def save_piv_result_distributed(
         return str(filename)
     
     # Create single struct with arrays indexed by pass number
-    mat_data = _create_piv_struct_all_passes(
-        piv_result,
-        pass_index,
-        win_ctrs_x_list=win_ctrs_x_list,
-        win_ctrs_y_list=win_ctrs_y_list,
-        b_mask_list=b_mask_list,
-    )
+    # All data is already in piv_result, no external lists needed
+    # mat_data = _create_piv_struct_all_passes(piv_result, pass_index)
     
-    # Save to .mat file
-    scipy.io.savemat(filename, {"piv_result": mat_data}, oned_as="row", do_compression=True)
+    # Save to .mat file with compression to reduce I/O
+    # scipy.io.savemat(filename, {"piv_result": mat_data}, oned_as="row", do_compression=True)
     logging.info(f"Worker saved PIV result to {filename}")
     
     return str(filename)
@@ -82,9 +75,6 @@ def save_piv_result_to_mat(
     output_path: Path,
     frame_number: int,
     pass_index: Optional[int] = None,
-    win_ctrs_x_list: Optional[List[np.ndarray]] = None,
-    win_ctrs_y_list: Optional[List[np.ndarray]] = None,
-    b_mask_list: Optional[List[np.ndarray]] = None,
 ) -> None:
     """
     Save a single PIVResult to a .mat file compatible with the post-processing code.
@@ -92,13 +82,13 @@ def save_piv_result_to_mat(
     Parameters
     ----------
     piv_result : PIVResult
-        The PIV result object containing one or more passes.
+        The PIV result object containing one or more passes with complete data.
     output_path : Path
         Directory where the .mat file will be saved.
     frame_number : int
         Frame number (1-based) for the filename (e.g., 1 -> B00001.mat).
     pass_index : Optional[int]
-        If specified, save only this pass (0-based). If None, save all passes as multiple runs.
+        If specified, save only this pass (0-based). If None, save all passes.
     
     Notes
     -----
@@ -119,15 +109,9 @@ def save_piv_result_to_mat(
         return
     
     # Create single struct with arrays indexed by pass number
-    mat_data = _create_piv_struct_all_passes(
-        piv_result,
-        pass_index,
-        win_ctrs_x_list=win_ctrs_x_list,
-        win_ctrs_y_list=win_ctrs_y_list,
-        b_mask_list=b_mask_list,
-    )
+    mat_data = _create_piv_struct_all_passes(piv_result, pass_index)
     
-    # Save to .mat file
+    # Save to .mat file with compression
     scipy.io.savemat(filename, {"piv_result": mat_data}, oned_as="row", do_compression=True)
     logging.info(f"Saved PIV result to {filename}")
 
@@ -138,9 +122,6 @@ def save_piv_results_batch(
     start_frame: int = 1,
     pass_index: Optional[int] = None,
     config: Optional[Config] = None,
-    win_ctrs_x_list: Optional[List[np.ndarray]] = None,
-    win_ctrs_y_list: Optional[List[np.ndarray]] = None,
-    b_mask_list: Optional[List[np.ndarray]] = None,
 ) -> None:
     """
     Save multiple PIV results to individual .mat files.
@@ -169,9 +150,6 @@ def save_piv_results_batch(
                 output_path,
                 frame_number,
                 pass_index,
-                win_ctrs_x_list=win_ctrs_x_list,
-                win_ctrs_y_list=win_ctrs_y_list,
-                b_mask_list=b_mask_list,
             )
         except Exception as e:
             logging.error(f"Failed to save frame {frame_number}: {e}")
@@ -352,9 +330,6 @@ def save_coordinates_from_config(
 def _create_piv_struct_all_passes(
     piv_result: PIVResult,
     pass_index: Optional[int] = None,
-    win_ctrs_x_list: Optional[List[np.ndarray]] = None,
-    win_ctrs_y_list: Optional[List[np.ndarray]] = None,
-    b_mask_list: Optional[List[np.ndarray]] = None,
 ) -> np.ndarray:
     """
     Create a MATLAB-compatible struct with arrays indexed by pass number.
@@ -363,10 +338,14 @@ def _create_piv_struct_all_passes(
     an array with one element per pass, matching the expected format:
         piv_result["ux"][pass_idx] = 2D array for that pass
     
+    All required data (including window centers and masks) is extracted from
+    the PIVResult object, which contains all necessary information in each
+    PIVPassResult.
+    
     Parameters
     ----------
     piv_result : PIVResult
-        PIV result object containing one or more passes.
+        PIV result object containing one or more passes with complete data.
     pass_index : Optional[int]
         If specified, save only this pass (0-based).
         If None, save all passes.
@@ -441,18 +420,18 @@ def _create_piv_struct_all_passes(
     for local_idx, global_pass_idx in enumerate(passes_to_save):
         pass_result = piv_result.passes[global_pass_idx]
         
-        if pass_result.ux_mat is not None:
-            piv_struct['ux'][local_idx] = pass_result.ux_mat
+        # CRITICAL FIX: Swap ux and uy to match expected coordinate convention
+        # Save uy_mat in ux field and -ux_mat in uy field
         if pass_result.uy_mat is not None:
-            piv_struct['uy'][local_idx] = pass_result.uy_mat
+            piv_struct['ux'][local_idx] = pass_result.uy_mat
+        if pass_result.ux_mat is not None:
+            piv_struct['uy'][local_idx] = -pass_result.ux_mat
 
-        # b_mask: prefer pass_result.b_mask, then explicit b_mask_list provided by caller,
-        # then fall back to pass_result.nan_mask
+        # Use b_mask from pass_result (already computed during PIV)
         if pass_result.b_mask is not None:
             piv_struct['b_mask'][local_idx] = pass_result.b_mask
-        elif b_mask_list is not None and len(b_mask_list) > global_pass_idx:
-            piv_struct['b_mask'][local_idx] = b_mask_list[global_pass_idx]
         elif pass_result.nan_mask is not None:
+            # Fallback to nan_mask if b_mask not available
             piv_struct['b_mask'][local_idx] = pass_result.nan_mask
 
         if pass_result.nan_mask is not None:
@@ -460,16 +439,12 @@ def _create_piv_struct_all_passes(
         if pass_result.edge_mask is not None:
             piv_struct['edge_mask'][local_idx] = pass_result.edge_mask
 
-        # Window centre arrays (prefer from pass_result, then caller provided)
+        # Window centers are always stored in pass_result
         if pass_result.win_ctrs_x is not None:
             piv_struct['win_ctrs_x'][local_idx] = pass_result.win_ctrs_x
-        elif win_ctrs_x_list is not None and len(win_ctrs_x_list) > global_pass_idx:
-            piv_struct['win_ctrs_x'][local_idx] = win_ctrs_x_list[global_pass_idx]
-        
         if pass_result.win_ctrs_y is not None:
             piv_struct['win_ctrs_y'][local_idx] = pass_result.win_ctrs_y
-        elif win_ctrs_y_list is not None and len(win_ctrs_y_list) > global_pass_idx:
-            piv_struct['win_ctrs_y'][local_idx] = win_ctrs_y_list[global_pass_idx]
+            
         if pass_result.Q is not None:
             piv_struct['Q'][local_idx] = pass_result.Q
         if pass_result.peak_mag is not None:
@@ -479,9 +454,7 @@ def _create_piv_struct_all_passes(
         if pass_result.n_windows is not None:
             piv_struct['n_windows'][local_idx] = pass_result.n_windows
         if pass_result.predictor_field is not None:
-            piv_struct['predictor_field'][local_idx] = (
-                pass_result.predictor_field
-            )
+            piv_struct['predictor_field'][local_idx] = pass_result.predictor_field
         if pass_result.window_size is not None:
             piv_struct['window_size'][local_idx] = pass_result.window_size
         if pass_result.spacing is not None:

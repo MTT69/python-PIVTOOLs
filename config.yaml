@@ -18,7 +18,7 @@ images:
   time_resolved: false
   dtype: uint8
 batches:
-  size: 30
+  size: 5
 logging:
   file: pypiv.log
   level: INFO
@@ -32,7 +32,7 @@ processing:
   omp_threads: 5
   dask_workers_per_node: 1
   dask_threads_per_worker: 1
-  dask_memory_limit: 3GB
+  dask_memory_limit: 5GB
 post_processing:
 - type: POD
   settings:
