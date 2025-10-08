@@ -1,12 +1,12 @@
 paths:
   base_paths:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images
   source_paths:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images
   camera_numbers:
   - 1
 images:
-  num_images: 1000
+  num_images: 30
   image_format:
   - B%05d_A.tif
   - B%05d_B.tif
@@ -18,7 +18,7 @@ images:
   time_resolved: false
   dtype: uint8
 batches:
-  size: 50
+  size: 30
 logging:
   file: pypiv.log
   level: INFO
@@ -30,13 +30,13 @@ processing:
   backend: cpu
   debug: false
   omp_threads: 5
-  dask_workers_per_node: 2
+  dask_workers_per_node: 1
   dask_threads_per_worker: 1
   dask_memory_limit: 3GB
 post_processing:
 - type: POD
   settings:
-    k_modes: 15
+    k_modes: 1
     randomised: false
     stack_u_y: true
     normalise: false

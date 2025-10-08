@@ -21,7 +21,7 @@ def make_cluster(
         n_workers=n_workers_per_node,
         threads_per_worker=threads_per_worker,
         memory_limit=memory_limit,
-        nanny=False,
+        nanny=True,
     )
     client = Client(cluster)
     return cluster, client

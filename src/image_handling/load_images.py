@@ -334,12 +334,18 @@ def compute_vector_mask(
         start_x = win_x / 2 - 0.5
         start_y = win_y / 2 - 0.5
         
-        # Apply edge margin if needed (matching PIV's EDGE_MARGIN = 32)
-        EDGE_MARGIN = 32
-        min_x = EDGE_MARGIN
-        max_x = W - EDGE_MARGIN - 1
-        min_y = EDGE_MARGIN
-        max_y = H - EDGE_MARGIN - 1
+        # Temporarily disable edge margin (set to full image bounds)
+        # Original code (commented):
+        # # Apply edge margin if needed (matching PIV's EDGE_MARGIN = 32)
+        # EDGE_MARGIN = 0
+        # min_x = EDGE_MARGIN
+        # max_x = W - EDGE_MARGIN - 1
+        # min_y = EDGE_MARGIN
+        # max_y = H - EDGE_MARGIN - 1
+        min_x = 0
+        max_x = W - 1
+        min_y = 0
+        max_y = H - 1
         
         start_x = max(start_x, min_x)
         start_y = max(start_y, min_y)

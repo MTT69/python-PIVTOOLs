@@ -17,6 +17,11 @@ class PIVPassResult:
     primary_peak_mag: Optional[np.ndarray] = None
     Q_mat: Optional[np.ndarray] = None
     edge_mask: Optional[np.ndarray] = None
+    b_mask: Optional[np.ndarray] = None
+    window_size: Optional[tuple[int, int]] = None
+    spacing: Optional[tuple[int, int]] = None
+    win_ctrs_x: Optional[np.ndarray] = None
+    win_ctrs_y: Optional[np.ndarray] = None
 
 
 @dataclass

@@ -22,6 +22,9 @@ def save_piv_result_distributed(
     output_path: Path,
     frame_number: int,
     pass_index: Optional[int] = None,
+    win_ctrs_x_list: Optional[List[np.ndarray]] = None,
+    win_ctrs_y_list: Optional[List[np.ndarray]] = None,
+    b_mask_list: Optional[List[np.ndarray]] = None,
 ) -> str:
     """
     Save a PIV result to disk. Designed to be submitted to Dask workers.
@@ -59,10 +62,16 @@ def save_piv_result_distributed(
         return str(filename)
     
     # Create single struct with arrays indexed by pass number
-    mat_data = _create_piv_struct_all_passes(piv_result, pass_index)
+    mat_data = _create_piv_struct_all_passes(
+        piv_result,
+        pass_index,
+        win_ctrs_x_list=win_ctrs_x_list,
+        win_ctrs_y_list=win_ctrs_y_list,
+        b_mask_list=b_mask_list,
+    )
     
     # Save to .mat file
-    scipy.io.savemat(filename, {"piv_result": mat_data}, oned_as="row")
+    scipy.io.savemat(filename, {"piv_result": mat_data}, oned_as="row", do_compression=True)
     logging.info(f"Worker saved PIV result to {filename}")
     
     return str(filename)
@@ -73,6 +82,9 @@ def save_piv_result_to_mat(
     output_path: Path,
     frame_number: int,
     pass_index: Optional[int] = None,
+    win_ctrs_x_list: Optional[List[np.ndarray]] = None,
+    win_ctrs_y_list: Optional[List[np.ndarray]] = None,
+    b_mask_list: Optional[List[np.ndarray]] = None,
 ) -> None:
     """
     Save a single PIVResult to a .mat file compatible with the post-processing code.
@@ -107,10 +119,16 @@ def save_piv_result_to_mat(
         return
     
     # Create single struct with arrays indexed by pass number
-    mat_data = _create_piv_struct_all_passes(piv_result, pass_index)
+    mat_data = _create_piv_struct_all_passes(
+        piv_result,
+        pass_index,
+        win_ctrs_x_list=win_ctrs_x_list,
+        win_ctrs_y_list=win_ctrs_y_list,
+        b_mask_list=b_mask_list,
+    )
     
     # Save to .mat file
-    scipy.io.savemat(filename, {"piv_result": mat_data}, oned_as="row")
+    scipy.io.savemat(filename, {"piv_result": mat_data}, oned_as="row", do_compression=True)
     logging.info(f"Saved PIV result to {filename}")
 
 
@@ -120,6 +138,9 @@ def save_piv_results_batch(
     start_frame: int = 1,
     pass_index: Optional[int] = None,
     config: Optional[Config] = None,
+    win_ctrs_x_list: Optional[List[np.ndarray]] = None,
+    win_ctrs_y_list: Optional[List[np.ndarray]] = None,
+    b_mask_list: Optional[List[np.ndarray]] = None,
 ) -> None:
     """
     Save multiple PIV results to individual .mat files.
@@ -143,7 +164,15 @@ def save_piv_results_batch(
     for i, piv_result in enumerate(piv_results):
         frame_number = start_frame + i
         try:
-            save_piv_result_to_mat(piv_result, output_path, frame_number, pass_index)
+            save_piv_result_to_mat(
+                piv_result,
+                output_path,
+                frame_number,
+                pass_index,
+                win_ctrs_x_list=win_ctrs_x_list,
+                win_ctrs_y_list=win_ctrs_y_list,
+                b_mask_list=b_mask_list,
+            )
         except Exception as e:
             logging.error(f"Failed to save frame {frame_number}: {e}")
 
@@ -202,7 +231,7 @@ def save_coordinates(
         coords_data[i] = coords_struct[0]
     
     filename = output_path / "coordinates.mat"
-    scipy.io.savemat(filename, {"coordinates": coords_data}, oned_as="row")
+    scipy.io.savemat(filename, {"coordinates": coords_data}, oned_as="row", do_compression=True)
     logging.info(f"Saved coordinates to {filename}")
 
 
@@ -258,7 +287,7 @@ def save_coordinates_from_config_distributed(
     output_path.mkdir(parents=True, exist_ok=True)
     
     filename = output_path / "coordinates.mat"
-    scipy.io.savemat(filename, {"coordinates": coords_data}, oned_as="row")
+    scipy.io.savemat(filename, {"coordinates": coords_data}, oned_as="row", do_compression=True)
     logging.info(f"Worker saved coordinates to {filename}")
     
     return str(filename)
@@ -316,13 +345,16 @@ def save_coordinates_from_config(
     output_path.mkdir(parents=True, exist_ok=True)
     
     filename = output_path / "coordinates.mat"
-    scipy.io.savemat(filename, {"coordinates": coords_data}, oned_as="row")
+    scipy.io.savemat(filename, {"coordinates": coords_data}, oned_as="row", do_compression=True)
     logging.info(f"Saved coordinates to {filename}")
 
 
 def _create_piv_struct_all_passes(
     piv_result: PIVResult,
     pass_index: Optional[int] = None,
+    win_ctrs_x_list: Optional[List[np.ndarray]] = None,
+    win_ctrs_y_list: Optional[List[np.ndarray]] = None,
+    b_mask_list: Optional[List[np.ndarray]] = None,
 ) -> np.ndarray:
     """
     Create a MATLAB-compatible struct with arrays indexed by pass number.
@@ -364,11 +396,17 @@ def _create_piv_struct_all_passes(
         ('ux', object),
         ('uy', object),
         ('b_mask', object),
+        ('nan_mask', object),
+        ('edge_mask', object),
+        ('win_ctrs_x', object),
+        ('win_ctrs_y', object),
         ('Q', object),
         ('peak_mag', object),
         ('peak_choice', object),
         ('n_windows', object),
         ('predictor_field', object),
+        ('window_size', object),
+        ('spacing', object),
     ]
     
     # Create the struct with shape (n_passes_to_save,)
@@ -387,11 +425,17 @@ def _create_piv_struct_all_passes(
         piv_struct['ux'][i] = empty
         piv_struct['uy'][i] = empty
         piv_struct['b_mask'][i] = empty
+        piv_struct['nan_mask'][i] = empty
+        piv_struct['edge_mask'][i] = empty
+        piv_struct['win_ctrs_x'][i] = empty
+        piv_struct['win_ctrs_y'][i] = empty
         piv_struct['Q'][i] = empty
         piv_struct['peak_mag'][i] = empty
         piv_struct['peak_choice'][i] = empty
         piv_struct['n_windows'][i] = empty
         piv_struct['predictor_field'][i] = empty
+        piv_struct['window_size'][i] = None
+        piv_struct['spacing'][i] = None
     
     # Fill with actual data for selected passes
     for local_idx, global_pass_idx in enumerate(passes_to_save):
@@ -401,8 +445,31 @@ def _create_piv_struct_all_passes(
             piv_struct['ux'][local_idx] = pass_result.ux_mat
         if pass_result.uy_mat is not None:
             piv_struct['uy'][local_idx] = pass_result.uy_mat
-        if pass_result.nan_mask is not None:
+
+        # b_mask: prefer pass_result.b_mask, then explicit b_mask_list provided by caller,
+        # then fall back to pass_result.nan_mask
+        if pass_result.b_mask is not None:
+            piv_struct['b_mask'][local_idx] = pass_result.b_mask
+        elif b_mask_list is not None and len(b_mask_list) > global_pass_idx:
+            piv_struct['b_mask'][local_idx] = b_mask_list[global_pass_idx]
+        elif pass_result.nan_mask is not None:
             piv_struct['b_mask'][local_idx] = pass_result.nan_mask
+
+        if pass_result.nan_mask is not None:
+            piv_struct['nan_mask'][local_idx] = pass_result.nan_mask
+        if pass_result.edge_mask is not None:
+            piv_struct['edge_mask'][local_idx] = pass_result.edge_mask
+
+        # Window centre arrays (prefer from pass_result, then caller provided)
+        if pass_result.win_ctrs_x is not None:
+            piv_struct['win_ctrs_x'][local_idx] = pass_result.win_ctrs_x
+        elif win_ctrs_x_list is not None and len(win_ctrs_x_list) > global_pass_idx:
+            piv_struct['win_ctrs_x'][local_idx] = win_ctrs_x_list[global_pass_idx]
+        
+        if pass_result.win_ctrs_y is not None:
+            piv_struct['win_ctrs_y'][local_idx] = pass_result.win_ctrs_y
+        elif win_ctrs_y_list is not None and len(win_ctrs_y_list) > global_pass_idx:
+            piv_struct['win_ctrs_y'][local_idx] = win_ctrs_y_list[global_pass_idx]
         if pass_result.Q is not None:
             piv_struct['Q'][local_idx] = pass_result.Q
         if pass_result.peak_mag is not None:
@@ -415,6 +482,10 @@ def _create_piv_struct_all_passes(
             piv_struct['predictor_field'][local_idx] = (
                 pass_result.predictor_field
             )
+        if pass_result.window_size is not None:
+            piv_struct['window_size'][local_idx] = pass_result.window_size
+        if pass_result.spacing is not None:
+            piv_struct['spacing'][local_idx] = pass_result.spacing
     
     return piv_struct
 

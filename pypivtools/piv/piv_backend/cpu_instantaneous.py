@@ -222,22 +222,30 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                         | mask_bool
                     )
 
-                    win_y_grid, win_x_grid = np.meshgrid(
-                        self.win_ctrs_y[pass_idx],
-                        self.win_ctrs_x[pass_idx],
-                        indexing="ij",
-                    )
-                    EDGE_MARGIN = 64
-                    edge_mask = (
-                        (win_x_grid < EDGE_MARGIN)
-                        | (win_x_grid > self.W - EDGE_MARGIN - 1)
-                        | (win_y_grid < EDGE_MARGIN)
-                        | (win_y_grid > self.H - EDGE_MARGIN - 1)
-                    )
-                    nan_mask |= edge_mask
+                    # Temporarily disable edge masking. Keep a placeholder
+                    # edge_mask (all False) so downstream code that expects
+                    # this variable continues to work. To re-enable edge
+                    # masking, restore the original block above.
+                    #
+                    # Original code (commented):
+                    # win_y_grid, win_x_grid = np.meshgrid(
+                    #     self.win_ctrs_y[pass_idx],
+                    #     self.win_ctrs_x[pass_idx],
+                    #     indexing="ij",
+                    # )
+                    # EDGE_MARGIN = 64
+                    # edge_mask = (
+                    #     (win_x_grid < EDGE_MARGIN)
+                    #     | (win_x_grid > self.W - EDGE_MARGIN - 1)
+                    #     | (win_y_grid < EDGE_MARGIN)
+                    #     | (win_y_grid > self.H - EDGE_MARGIN - 1)
+                    # )
+                    # nan_mask |= edge_mask
 
-                    # Note: User-defined mask is already applied via b_mask (precomputed vector mask)
-                    # No need to call _apply_mask_to_vectors here as it would be redundant
+                    # No-op edge mask (no vectors excluded by edges)
+                    n_win_y = int(n_windows[0])
+                    n_win_x = int(n_windows[1])
+                    edge_mask = np.zeros((n_win_y, n_win_x), dtype=bool)
 
                     nan_mask |= primary_peak_mag < 0.2
 
@@ -308,10 +316,13 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                         peak_mag=np.copy(pk_height),
                         peak_choice=np.copy(peak_choice),
                         predictor_field=np.copy(self.delta_ab_old),
+                        b_mask=b_mask.reshape((n_win_y, n_win_x)).astype(bool),
+                        window_size=win_size,
+                        spacing=(self.win_spacing_y[pass_idx], self.win_spacing_x[pass_idx]),
+                        win_ctrs_x=self.win_ctrs_x[pass_idx],
+                        win_ctrs_y=self.win_ctrs_y[pass_idx],
+                        edge_mask=edge_mask,
                     )
-                    pass_result.primary_peak_mag = np.copy(primary_peak_mag)
-                    pass_result.Q_mat = np.copy(Q_mat)
-                    pass_result.edge_mask = np.copy(edge_mask)
                     piv_result_all.add_pass(pass_result)
 
             except Exception as exc:
@@ -348,15 +359,23 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
 
         Nx, Ny = config.image_shape[1], config.image_shape[0]
         
-        # Exclude windows within EDGE_MARGIN pixels of image boundaries
-        # This prevents unreliable edge vectors from propagating errors
-        EDGE_MARGIN = 32  # pixels from edge to exclude
-        
-        # Calculate valid region for window centers
-        min_x = EDGE_MARGIN
-        max_x = Nx - EDGE_MARGIN - 1
-        min_y = EDGE_MARGIN
-        max_y = Ny - EDGE_MARGIN - 1
+        # Temporarily disable exclusion of windows near image edges.
+        # This removes the EDGE_MARGIN constraint so window centres cover
+        # the full image. To re-enable edge exclusion, restore the
+        # original EDGE_MARGIN logic below.
+        #
+        # Original (commented):
+        # EDGE_MARGIN = 32  # pixels from edge to exclude
+        # min_x = EDGE_MARGIN
+        # max_x = Nx - EDGE_MARGIN - 1
+        # min_y = EDGE_MARGIN
+        # max_y = Ny - EDGE_MARGIN - 1
+
+        # Use full image bounds for window centre placement
+        min_x = 0
+        max_x = Nx - 1
+        min_y = 0
+        max_y = Ny - 1
 
         # Original window center range
         first_ctr_x = -0.5 + win_x / 2
@@ -611,11 +630,11 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
 
         # Use precomputed vector mask for this pass if available
         if hasattr(self, 'vector_masks') and self.vector_masks and pass_idx < len(self.vector_masks):
-            # Convert boolean mask to uint8 (True = 1 = masked)
-            b_mask = np.asfortranarray(self.vector_masks[pass_idx].astype(np.uint8))
+            cached_mask = self.vector_masks[pass_idx]
+            b_mask = np.asfortranarray(cached_mask.astype(np.uint8))
         else:
-            # No mask - create zeros
             b_mask = np.asfortranarray(np.zeros((n_win_y, n_win_x), dtype=np.uint8))
+            logging.debug("No vector mask applied for pass %d", pass_idx)
 
         n_peaks = np.int32(config.num_peaks)
         i_peak_finder = np.int32(config.peak_finder)
@@ -821,46 +840,45 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 map_y = iy.reshape(win_x.shape).astype(np.float32)
                 self.cached_predictor_maps.append((map_x, map_y))
 
-    def _apply_mask_to_vectors(
-        self,
-        win_ctrs_x: np.ndarray,
-        win_ctrs_y: np.ndarray,
-        mask: np.ndarray
-    ) -> np.ndarray:
-        """
-        Apply user-defined mask to invalidate vectors in masked regions.
+    # def _apply_mask_to_vectors(
+    #     self,
+    #     win_ctrs_x: np.ndarray,
+    #     win_ctrs_y: np.ndarray,
+    #     mask: np.ndarray
+    # ) -> np.ndarray:
+    #     """
+    #     Apply user-defined mask to invalidate vectors in masked regions.
         
-        A vector is invalidated if its window center falls within a masked region
-        (where mask == True).
+    #     A vector is invalidated if its window center falls within a masked region
+    #     (where mask == True).
         
-        Parameters
-        ----------
-        win_ctrs_x : np.ndarray
-            1D array of window center x-coordinates
-        win_ctrs_y : np.ndarray
-            1D array of window center y-coordinates
-        mask : np.ndarray
-            Boolean mask array of shape (H, W) where True indicates masked regions
+    #     Parameters
+    #     ----------
+    #     win_ctrs_x : np.ndarray
+    #         1D array of window center x-coordinates
+    #     win_ctrs_y : np.ndarray
+    #         1D array of window center y-coordinates
+    #     mask : np.ndarray
+    #         Boolean mask array of shape (H, W) where True indicates masked regions
             
-        Returns
-        -------
-        np.ndarray
-            Boolean mask of shape (len(win_ctrs_y), len(win_ctrs_x)) where
-            True indicates vectors to invalidate
-        """
-        # Create meshgrid of window centers using MATLAB-style indexing (rows=y, cols=x)
-        grid_y, grid_x = np.meshgrid(win_ctrs_y, win_ctrs_x, indexing="ij")
+    #     Returns
+    #     -------
+    #     np.ndarray
+    #         Boolean mask of shape (len(win_ctrs_y), len(win_ctrs_x)) where
+    #         True indicates vectors to invalidate
+    #     """
+    #     grid_y, grid_x = np.meshgrid(win_ctrs_y, win_ctrs_x, indexing="ij")
 
-        # Round to nearest pixel indices
-        x_idx = np.round(grid_x).astype(int)
-        y_idx = np.round(grid_y).astype(int)
+    #     # Round to nearest pixel indices
+    #     x_idx = np.round(grid_x).astype(int)
+    #     y_idx = np.round(grid_y).astype(int)
 
-        # Clip to valid image bounds
-        x_idx = np.clip(x_idx, 0, mask.shape[1] - 1)
-        y_idx = np.clip(y_idx, 0, mask.shape[0] - 1)
+    #     # Clip to valid image bounds
+    #     x_idx = np.clip(x_idx, 0, mask.shape[1] - 1)
+    #     y_idx = np.clip(y_idx, 0, mask.shape[0] - 1)
 
-        # Sample mask at window center locations
-        # mask[y, x] where True = masked region
-        vector_mask = mask[y_idx, x_idx]
+    #     # Sample mask at window center locations
+    #     # mask[y, x] where True = masked region
+    #     vector_mask = mask[y_idx, x_idx]
 
-        return vector_mask
+    #     return vector_mask
