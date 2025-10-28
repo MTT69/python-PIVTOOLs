@@ -798,3 +798,80 @@
 2025-10-28 14:43:23,819 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00030.mat
 2025-10-28 14:43:23,821 [INFO] PIV and save completed: 30 frames saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous
 2025-10-28 14:43:23,823 [INFO] Coordinates saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous
+2025-10-28 17:53:18,019 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-28 17:53:19,373 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-28 17:53:19,377 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-28 17:53:19,387 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-28 17:53:19,413 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-28 17:53:19,422 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-28 17:53:19,455 [INFO] Worker logging configured successfully
+2025-10-28 17:53:19,456 [INFO] Worker logging configured successfully
+2025-10-28 17:53:19,456 [INFO] Worker logging configured successfully
+2025-10-28 17:53:19,456 [INFO] Worker logging configured successfully
+2025-10-28 17:53:19,456 [INFO] Worker logging configured successfully
+2025-10-28 17:53:19,457 [INFO] Dask cluster started successfully
+2025-10-28 17:53:19,457 [INFO] Dask Worker Info:
+2025-10-28 17:53:19,457 [INFO] Worker tcp://127.0.0.1:62344
+2025-10-28 17:53:19,457 [INFO]   pid: None
+2025-10-28 17:53:19,457 [INFO]   host: 127.0.0.1
+2025-10-28 17:53:19,457 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-aua4zcsc
+2025-10-28 17:53:19,457 [INFO]   nanny: True
+2025-10-28 17:53:19,458 [INFO] Dask Worker Info:
+2025-10-28 17:53:19,458 [INFO] Worker tcp://127.0.0.1:62347
+2025-10-28 17:53:19,458 [INFO]   pid: None
+2025-10-28 17:53:19,458 [INFO]   host: 127.0.0.1
+2025-10-28 17:53:19,458 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-9y4p3bsr
+2025-10-28 17:53:19,458 [INFO]   nanny: True
+2025-10-28 17:53:19,458 [INFO] Dask Worker Info:
+2025-10-28 17:53:19,458 [INFO] Worker tcp://127.0.0.1:62350
+2025-10-28 17:53:19,458 [INFO]   pid: None
+2025-10-28 17:53:19,458 [INFO]   host: 127.0.0.1
+2025-10-28 17:53:19,458 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-j6l5phix
+2025-10-28 17:53:19,458 [INFO]   nanny: True
+2025-10-28 17:53:19,458 [INFO] Dask Worker Info:
+2025-10-28 17:53:19,458 [INFO] Worker tcp://127.0.0.1:62353
+2025-10-28 17:53:19,458 [INFO]   pid: None
+2025-10-28 17:53:19,458 [INFO]   host: 127.0.0.1
+2025-10-28 17:53:19,458 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-ctuxctss
+2025-10-28 17:53:19,458 [INFO]   nanny: True
+2025-10-28 17:53:19,458 [INFO] Dask Worker Info:
+2025-10-28 17:53:19,458 [INFO] Worker tcp://127.0.0.1:62356
+2025-10-28 17:53:19,458 [INFO]   pid: None
+2025-10-28 17:53:19,458 [INFO]   host: 127.0.0.1
+2025-10-28 17:53:19,458 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-jjrszkcg
+2025-10-28 17:53:19,458 [INFO]   nanny: True
+2025-10-28 17:53:19,458 [INFO] Processing camera: Cam1
+2025-10-28 17:53:19,458 [INFO] Lazily loading images with Dask for camera: Cam1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/Cam1
+2025-10-28 17:53:19,905 [INFO] Worker saved coordinates to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/coordinates.mat
+2025-10-28 17:53:21,248 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00023.mat
+2025-10-28 17:53:22,246 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00002.mat
+2025-10-28 17:53:23,081 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00008.mat
+2025-10-28 17:53:23,120 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00024.mat
+2025-10-28 17:53:23,157 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00025.mat
+2025-10-28 17:53:23,244 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00006.mat
+2025-10-28 17:53:24,301 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00030.mat
+2025-10-28 17:53:24,353 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00001.mat
+2025-10-28 17:53:25,095 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00026.mat
+2025-10-28 17:53:26,196 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00027.mat
+2025-10-28 17:53:26,238 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00019.mat
+2025-10-28 17:53:26,249 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00022.mat
+2025-10-28 17:53:26,251 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00021.mat
+2025-10-28 17:53:26,292 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00007.mat
+2025-10-28 17:53:26,294 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00011.mat
+2025-10-28 17:53:26,336 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00029.mat
+2025-10-28 17:53:26,338 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00010.mat
+2025-10-28 17:53:27,211 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00015.mat
+2025-10-28 17:53:27,236 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00013.mat
+2025-10-28 17:53:27,239 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00009.mat
+2025-10-28 17:53:27,258 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00004.mat
+2025-10-28 17:53:27,276 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00012.mat
+2025-10-28 17:53:27,277 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00005.mat
+2025-10-28 17:53:27,378 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00014.mat
+2025-10-28 17:53:27,414 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00017.mat
+2025-10-28 17:53:27,449 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00003.mat
+2025-10-28 17:53:27,485 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00016.mat
+2025-10-28 17:53:27,520 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00020.mat
+2025-10-28 17:53:27,970 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00028.mat
+2025-10-28 17:53:28,833 [INFO] Worker saved PIV result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous/B00018.mat
+2025-10-28 17:53:28,835 [INFO] PIV and save completed: 30 frames saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous
+2025-10-28 17:53:28,837 [INFO] Coordinates saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test_images/uncalibrated_piv/30/Cam1/instantaneous
