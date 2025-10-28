@@ -29,12 +29,13 @@ def read_image(file_path: str, **kwargs) -> np.ndarray:
     return reader_func(file_path, **kwargs)
 
 
-def read_pair(idx: int, camera_path: Path, config: Config) -> np.ndarray:
+def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.ndarray:
     """Read a pair of images (A and B frames).
 
     Args:
         idx (int): Index of the image pair to read
-        camera_path (Path): Path to camera directory
+        camera_path (Path): Path to camera directory or set file
+        camera (int): Camera number
         config (Config): Configuration object
 
     Returns:
@@ -42,6 +43,17 @@ def read_pair(idx: int, camera_path: Path, config: Config) -> np.ndarray:
     """
     # Get image format - handle both time-resolved (single format) and non-time-resolved (A/B pair)
     image_format = config.image_format
+    
+    # Special handling for .ims/.set files (set files in source directory)
+    if str(image_format).endswith(('.ims', '.set')):
+        # For .ims/.set files, camera_path is the source directory
+        # image_format should be a string for .set files
+        if isinstance(image_format, str):
+            set_file_path = camera_path / image_format
+        else:
+            raise ValueError(f"For .set files, image_format must be a string, got {type(image_format)}")
+        
+        return read_image(str(set_file_path), camera_no=camera, im_no=idx)
     
     if isinstance(image_format, tuple):
         # Non-time-resolved: separate A and B formats
@@ -63,9 +75,7 @@ def read_pair(idx: int, camera_path: Path, config: Config) -> np.ndarray:
     if file_ext == ".im7":
         # LaVision files contain both frames, read once
         # Extract camera number from path if needed
-        camera_no = (
-            int(str(camera_path).split("Cam")[-1]) if "Cam" in str(camera_path) else 1
-        )
+        camera_no = camera  # Use the passed camera number
         return read_image(str(file_paths[0]), camera_no=camera_no)
     elif file_ext == ".cine":
         # For .cine, pass frame index (idx-1 for 0-based)
@@ -77,17 +87,20 @@ def read_pair(idx: int, camera_path: Path, config: Config) -> np.ndarray:
         return np.stack([frame_a, frame_b], axis=0)
 
 
-def delayed_image_pair(idx: int, camera_path: Path, config: Config) -> Delayed:
+def delayed_image_pair(idx: int, camera_path: Path, camera: int, config: Config) -> Delayed:
     """Create a delayed task to read a pair of images.
 
     Args:
         idx (int): Index of the image pair to read
+        camera_path (Path): Path to camera directory or set file
+        camera (int): Camera number
+        config (Config): Configuration object
 
     Returns:
         Delayed: A delayed task representing the image pair
     """
 
-    return dask.delayed(read_pair)(idx, camera_path, config)
+    return dask.delayed(read_pair)(idx, camera_path, camera, config)
 
 
 def to_dask_array(delayed_pair: Delayed, config: Config) -> da.Array:
@@ -123,10 +136,16 @@ def load_images(camera: int, config: Config, source: Path = None) -> da.Array:
     if source is None:
         source = config.source_paths[0]
     
-    camera_path = source / f"Cam{camera}"
-    logging.info("Lazily loading images with Dask for camera: Cam%d from %s", camera, camera_path)
+    # For .ims/.set files, there are no camera subdirectories
+    if str(config.image_format).endswith(('.ims', '.set')):
+        camera_path = source  # No camera subdirectory for set files
+        logging.info("Loading images from set file in directory: %s for camera: Cam%d", source, camera)
+    else:
+        camera_path = source / f"Cam{camera}"
+        logging.info("Lazily loading images with Dask for camera: Cam%d from %s", camera, camera_path)
+    
     delayed_image_pairs = [
-        delayed_image_pair(idx, camera_path, config)
+        delayed_image_pair(idx, camera_path, camera, config)
         for idx in range(1, config.num_images + 1)
     ]
     dask_pairs = [to_dask_array(pair, config) for pair in delayed_image_pairs]

@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 
 import numpy as np
 
@@ -46,4 +47,101 @@ def read_lavision_pair(file_path: str, camera_no: int = 1) -> np.ndarray:
     return read_lavision_im7(file_path, camera_no, frames=2)
 
 
+def read_lavision_ims(file_path: str, camera_no: Optional[int] = None, im_no: Optional[int] = None) -> np.ndarray:
+    """Read LaVision .ims files from a set file.
+    
+    .ims files are stored in a single .set file containing all cameras and frames.
+    This function reads the set file and extracts the appropriate frames for the
+    specified camera and image number.
+    
+    Args:
+        file_path: Path to the .set file (for .ims format)
+        camera_no: Camera number (1-based). If None, extracted from file_path (legacy)
+        im_no: Image number (1-based). If None, extracted from file_path (legacy)
+        
+    Returns:
+        np.ndarray: Array of shape (2, H, W) containing frame A and B
+    """
+    import sys
+    from pathlib import Path
+    
+    if sys.platform == "darwin":
+        raise ImportError(
+            "LaVision libraries are not supported on macOS (darwin). Please use a supported platform."
+        )
+    
+    try:
+        import lvpyio as lv
+    except ImportError:
+        raise ImportError(
+            "LaVision library not available. Please install lvpyio."
+        )
+    
+    path = Path(file_path)
+    
+    # Determine if file_path is a .set file or a legacy .ims file path
+    if path.suffix.lower() == '.set' or (camera_no is not None and im_no is not None):
+        # Modern .ims format: file_path is the .set file
+        source_dir = path.parent
+        if camera_no is None or im_no is None:
+            raise ValueError("camera_no and im_no must be provided for .set files")
+    else:
+        # Legacy path parsing for backward compatibility
+        # Extract camera number from path (e.g., "Cam1" -> 1)
+        if camera_no is None:
+            camera_match = None
+            for part in path.parts:
+                if part.startswith("Cam") and part[3:].isdigit():
+                    camera_match = int(part[3:])
+                    break
+            if camera_match is None:
+                raise ValueError(f"Could not extract camera number from path: {file_path}")
+            camera_no = camera_match
+        
+        # Extract image number from filename (e.g., "001.ims" -> 1)
+        if im_no is None:
+            stem = path.stem
+            if stem.isdigit():
+                im_no = int(stem)
+            else:
+                raise ValueError(f"Could not extract image number from filename: {path.name}")
+        
+        # Source directory is typically the parent of the CamX directory
+        source_dir = path.parent.parent
+    
+    if not source_dir.exists():
+        raise FileNotFoundError(f"Source directory not found: {source_dir}")
+    
+    # Read the set file
+    try:
+        set_file = lv.read_set(str(source_dir))
+        im = set_file[im_no - 1]  # 0-based indexing in Python
+    except Exception as e:
+        raise RuntimeError(f"Failed to read set file from {source_dir}: {e}")
+    
+    # Extract frames for this camera
+    data = np.zeros((2, *im.frames[0].components["PIXEL"].planes[0].shape), dtype=np.float64)
+    
+    for j in range(2):
+        # Frame indexing: 2*cameraNo-(2-j)
+        frame_idx = 2 * camera_no - (2 - j)
+        frame = im.frames[frame_idx]
+        
+        # Apply scaling
+        i_scale = frame.scales.i.slope
+        i_offset = frame.scales.i.offset
+        u_arr = frame.components["PIXEL"].planes[0] * i_scale + i_offset
+        
+        data[j, :, :] = u_arr
+    
+    set_file.close()
+    return data.astype(np.float32)
+
+
+def read_lavision_ims_pair(file_path: str, **kwargs) -> np.ndarray:
+    """Read LaVision .ims file and return as frame pair."""
+    return read_lavision_ims(file_path, **kwargs)
+
+
 register_reader([".im7"], read_lavision_pair)
+register_reader([".ims"], read_lavision_ims_pair)
