@@ -61,10 +61,10 @@ def save_piv_result_distributed(
     
     # Create single struct with arrays indexed by pass number
     # All data is already in piv_result, no external lists needed
-    # mat_data = _create_piv_struct_all_passes(piv_result, pass_index)
+    mat_data = _create_piv_struct_all_passes(piv_result, pass_index)
     
     # Save to .mat file with compression to reduce I/O
-    # scipy.io.savemat(filename, {"piv_result": mat_data}, oned_as="row", do_compression=True)
+    scipy.io.savemat(filename, {"piv_result": mat_data}, oned_as="row", do_compression=True)
     logging.info(f"Worker saved PIV result to {filename}")
     
     return str(filename)

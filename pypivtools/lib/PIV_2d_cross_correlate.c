@@ -124,9 +124,9 @@ unsigned char bulkxcorr2d(const float *fImageA, const float *fImageB, const floa
 			/* get points in correlation window 
 			 * round limits to nearest integer
 			 */
-			xmin		= (int)floor(fWinCtrsX[ii] - ((float)nWindowSize[0]-1.0)/2 + 0.5);		
-			ymin		= (int)floor(fWinCtrsY[jj] - ((float)nWindowSize[1]-1.0)/2 + 0.5);
-
+			xmin		= (int)floor(fWinCtrsY[ii] - ((float)nWindowSize[0]-1.0)/2 + 0.5);		
+			ymin		= (int)floor(fWinCtrsX[jj] - ((float)nWindowSize[1]-1.0)/2 + 0.5);
+			// printf("Window %d: ii=%d jj=%d xmin=%d, ymin=%d\n", iWindowIdx, ii, jj, xmin, ymin);
 			for(j = 0, y = ymin; j < nWindowSize[1]; ++j, ++y)
 			{
 				for(i = 0, x = xmin; i < nWindowSize[0]; ++i, ++x)
