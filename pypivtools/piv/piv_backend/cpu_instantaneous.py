@@ -26,10 +26,15 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
 
     def __init__(self, config: Config) -> None:
         super().__init__()
+        # Use platform-appropriate library extension
+        lib_extension = ".dll" if os.name == "nt" else ".so"
         lib_path = os.path.join(
-            os.path.dirname(__file__), "../..", "lib", "libbulkxcorr2d.so"
+            os.path.dirname(__file__), "../..", "lib", f"libbulkxcorr2d{lib_extension}"
         )
         lib_path = os.path.abspath(lib_path)
+        if not os.path.isfile(lib_path):
+            raise FileNotFoundError(f"Required library file not found: {lib_path}")
+        print(lib_path)
         self.lib = ctypes.CDLL(lib_path)
         self.lib.bulkxcorr2d.restype = ctypes.c_ubyte
         self.delta_ab_pred = None
@@ -39,7 +44,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         self.lib.bulkxcorr2d.argtypes = [
             np.ctypeslib.ndpointer(dtype=np.float32, flags="F_CONTIGUOUS"),  # fImageA
             np.ctypeslib.ndpointer(dtype=np.float32, flags="F_CONTIGUOUS"),  # fImageB
-            np.ctypeslib.ndpointer(dtype=np.uint8, flags="F_CONTIGUOUS"),  # fMask
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="F_CONTIGUOUS"),  # fMask (FIXED: should be float32)
             np.ctypeslib.ndpointer(dtype=np.int32, flags="F_CONTIGUOUS"),  # nImageSize
             np.ctypeslib.ndpointer(dtype=np.float32, flags="F_CONTIGUOUS"),  # fWinCtrsX
             np.ctypeslib.ndpointer(dtype=np.float32, flags="F_CONTIGUOUS"),  # fWinCtrsY
