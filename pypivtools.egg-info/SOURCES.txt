@@ -6,3 +6,5 @@ pypivtools.egg-info/SOURCES.txt
 pypivtools.egg-info/dependency_links.txt
 pypivtools.egg-info/requires.txt
 pypivtools.egg-info/top_level.txt
+pypivtools/lib/libbulkxcorr2d.dll
+pypivtools/lib/libinterp2custom.dll

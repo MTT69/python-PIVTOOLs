@@ -6,7 +6,7 @@ paths:
   camera_numbers:
   - 1
 images:
-  num_images: 1
+  num_images: 1000
   image_format:
   - B%05d_A.tif
   - B%05d_B.tif
@@ -29,9 +29,9 @@ processing:
   stereo: false
   backend: cpu
   debug: false
-  omp_threads: 1
+  omp_threads: 2
   dask_workers_per_node: 1
-  dask_threads_per_worker: 1
+  dask_threads_per_worker: 10
   dask_memory_limit: 30GB
 post_processing:
 - type: POD

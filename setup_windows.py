@@ -19,7 +19,7 @@ class BuildCLib(build_ext):
         fftw_lib = os.environ.get('FFTW_LIB_PATH')
 
         lib_extension = '.dll'
-        openmp_flag = '/openmp'
+        openmp_flag = '/openmp:experimental'
         shared_flag = '/LD'
         opt_flag = '/O2'
 

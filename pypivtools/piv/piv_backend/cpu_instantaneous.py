@@ -34,7 +34,11 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         lib_path = os.path.abspath(lib_path)
         if not os.path.isfile(lib_path):
             raise FileNotFoundError(f"Required library file not found: {lib_path}")
-        print(lib_path)
+        # Add vcpkg bin directory to DLL search path on Windows
+        if os.name == "nt":
+            vcpkg_bin = os.path.join(os.environ.get('FFTW_LIB_PATH', '').replace('lib', 'bin'))
+            if vcpkg_bin and os.path.isdir(vcpkg_bin):
+                os.add_dll_directory(vcpkg_bin)
         self.lib = ctypes.CDLL(lib_path)
         self.lib.bulkxcorr2d.restype = ctypes.c_ubyte
         self.delta_ab_pred = None
@@ -44,7 +48,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         self.lib.bulkxcorr2d.argtypes = [
             np.ctypeslib.ndpointer(dtype=np.float32, flags="F_CONTIGUOUS"),  # fImageA
             np.ctypeslib.ndpointer(dtype=np.float32, flags="F_CONTIGUOUS"),  # fImageB
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="F_CONTIGUOUS"),  # fMask (FIXED: should be float32)
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="F_CONTIGUOUS"),  # fMask
             np.ctypeslib.ndpointer(dtype=np.int32, flags="F_CONTIGUOUS"),  # nImageSize
             np.ctypeslib.ndpointer(dtype=np.float32, flags="F_CONTIGUOUS"),  # fWinCtrsX
             np.ctypeslib.ndpointer(dtype=np.float32, flags="F_CONTIGUOUS"),  # fWinCtrsY
@@ -632,9 +636,9 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         # Use precomputed vector mask for this pass if available
         if hasattr(self, 'vector_masks') and self.vector_masks and pass_idx < len(self.vector_masks):
             cached_mask = self.vector_masks[pass_idx]
-            b_mask = np.asfortranarray(cached_mask.astype(np.uint8))
+            b_mask = np.asfortranarray(cached_mask.astype(np.float32))
         else:
-            b_mask = np.asfortranarray(np.zeros((n_win_y, n_win_x), dtype=np.uint8))
+            b_mask = np.asfortranarray(np.zeros((n_win_y, n_win_x), dtype=np.float32))
             logging.debug("No vector mask applied for pass %d", pass_idx)
 
         n_peaks = np.int32(config.num_peaks)
