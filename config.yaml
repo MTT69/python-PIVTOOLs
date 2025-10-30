@@ -6,7 +6,7 @@ paths:
   camera_numbers:
   - 1
 images:
-  num_images: 1000
+  num_images: 100
   image_format:
   - B%05d_A.tif
   - B%05d_B.tif
@@ -18,7 +18,7 @@ images:
   time_resolved: false
   dtype: uint8
 batches:
-  size: 1
+  size: 100
 logging:
   file: pypiv.log
   level: INFO
@@ -30,9 +30,9 @@ processing:
   backend: cpu
   debug: false
   omp_threads: 2
-  dask_workers_per_node: 1
-  dask_threads_per_worker: 10
-  dask_memory_limit: 30GB
+  dask_workers_per_node: 20
+  dask_threads_per_worker: 1
+  dask_memory_limit: 2GB
 post_processing:
 - type: POD
   settings:

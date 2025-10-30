@@ -14,6 +14,11 @@ from vector_loading import read_mask_from_mat
 # Import all readers to register them
 from .readers import get_reader
 
+try:
+    from line_profiler import profile
+except ImportError:
+    profile = lambda f: f
+
 
 def read_image(file_path: str, **kwargs) -> np.ndarray:
     """Read an image file using appropriate reader based on file extension.
@@ -285,7 +290,7 @@ def load_mask_for_camera(
         )
         return None
 
-
+@profile
 def compute_vector_mask(
     pixel_mask: np.ndarray,
     config: Config,

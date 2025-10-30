@@ -2,6 +2,7 @@ import ctypes
 import logging
 import os
 import sys
+import time
 import traceback
 import warnings
 from pathlib import Path
@@ -11,6 +12,12 @@ import numpy as np
 from dask.distributed import get_worker
 from scipy.ndimage import gaussian_filter
 from scipy.signal import convolve2d
+
+# Try to import line_profiler for detailed profiling
+try:
+    from line_profiler import profile
+except ImportError:
+    profile = lambda f: f
 
 # Add src to path for unified imports
 
@@ -99,7 +106,11 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         # Initialize vector mask cache (computed once when mask is provided)
         self.vector_masks = []
         self.mask_cached = False
+        
+        # Store pass times for profiling
+        self.pass_times = []
 
+    @profile
     def correlate_batch(  # type: ignore[override]
         self, images: np.ndarray, config: Config, mask: np.ndarray | None = None
     ) -> PIVResult:
@@ -111,6 +122,9 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         self.delta_ab_pred = None
         self.delta_ab_old = None
         self.mask = mask
+        
+        # Clear pass times for this batch
+        self.pass_times = []
         
         # Compute vector masks once and cache them
         # Only compute if masking is enabled and mask is provided
@@ -142,6 +156,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 image_size = np.asfortranarray(np.array([H, W], dtype=np.int32))
 
                 for pass_idx, win_size in enumerate(config.window_sizes):
+                    pass_start = time.perf_counter()
                     image_a_prime, image_b_prime, self.delta_ab_pred = (
                         self._predictor_corrector(
                             pass_idx,
@@ -328,6 +343,8 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                         win_ctrs_y=self.win_ctrs_y[pass_idx],
                         edge_mask=edge_mask,
                     )
+                    pass_time = time.perf_counter() - pass_start
+                    self.pass_times.append((n, pass_idx, pass_time))
                     piv_result_all.add_pass(pass_result)
 
             except Exception as exc:
@@ -434,7 +451,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
 
         for name, arr in args:
             logging.info(f"{name}: {_describe(arr)}")
-
+    @profile
     def _predictor_corrector(
         self,
         pass_idx: int,
@@ -531,7 +548,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         )
 
         return image_a_prime, image_b_prime, self.delta_ab_pred
-
+    @profile
     def _piv_2d_outlier(
         self,
         ux: np.ndarray,
