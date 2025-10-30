@@ -312,6 +312,11 @@ class Config:
         return self.data.get("processing", {}).get("ensemble", False)
 
     @property
+    def outlier_detection(self):
+        """Return True if outlier detection is enabled."""
+        return self.data.get("processing", {}).get("outlier_detection", True)
+
+    @property
     def secondary_peak(self):
         """Return True if secondary peak detection is enabled."""
         return self.data.get("instantaneous_piv", {}).get("secondary_peak", False)

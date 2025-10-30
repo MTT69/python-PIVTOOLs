@@ -66,6 +66,14 @@ if __name__ == "__main__":
             # Load mask once per camera (if masking is enabled)
             mask = load_mask_for_camera(camera_num, config, source_path_idx=0)
             
+            # Pre-compute vector masks once per camera (if masking is enabled)
+            vector_masks = None
+            if config.masking_enabled and mask is not None:
+                from image_handling.load_images import compute_vector_mask
+                logging.info("Pre-computing vector masks for Cam%d", camera_num)
+                vector_masks = compute_vector_mask(mask, config)
+                logging.info("Vector masks computed: %d passes", len(vector_masks))
+            
             # Get output path for this camera (uncalibrated PIV)
             # Path: base_path/uncalibrated_piv/{num_images}/Cam{camera_num}/instantaneous
             output_path = get_output_path(
@@ -83,7 +91,7 @@ if __name__ == "__main__":
                 output_path,
                 start_frame=1,
                 pass_index=None,  # Save all passes
-                mask=mask,  # Pass mask through to PIV processing
+                vector_masks=vector_masks,  # Pass pre-computed vector masks
             )
             
             # Submit coordinate saving task (runs once per camera)

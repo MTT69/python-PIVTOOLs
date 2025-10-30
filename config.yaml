@@ -32,7 +32,8 @@ processing:
   omp_threads: 2
   dask_workers_per_node: 20
   dask_threads_per_worker: 1
-  dask_memory_limit: 2GB
+  dask_memory_limit: 2.5GB
+  outlier_detection: true
 post_processing:
 - type: POD
   settings:

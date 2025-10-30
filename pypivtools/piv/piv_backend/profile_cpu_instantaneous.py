@@ -42,11 +42,16 @@ def profile_cpu_instantaneous():
 
     print(f"Loaded {num_images} image pairs")
 
-    # Load mask if enabled
-    mask = None
+    # Load mask and compute vector masks if enabled
+    vector_masks = None
     if config.masking_enabled:
         mask = load_mask_for_camera(camera_num, config, source_path_idx=0)
-        print("Loaded mask")
+        if mask is not None:
+            from image_handling.load_images import compute_vector_mask
+            vector_masks = compute_vector_mask(mask, config)
+            print("Loaded mask and computed vector masks")
+        else:
+            print("Masking enabled but no mask found")
     else:
         print("Masking disabled")
 
@@ -57,7 +62,7 @@ def profile_cpu_instantaneous():
     # Warm up caches with first image
     print("\nWarming up caches with first image...")
     start_warmup = time.perf_counter()
-    warmup_result = correlator.correlate_batch(images[:1], config, mask)
+    warmup_result = correlator.correlate_batch(images[:1], config, vector_masks)
     warmup_time = time.perf_counter() - start_warmup
     print(".2f")
 
@@ -80,7 +85,7 @@ def profile_cpu_instantaneous():
         global_img_idx = 1  # Start from 1 since 0 is warmup
         for i, img_pair in enumerate(images_to_profile):
             # Removed print statement for cleaner output
-            result = correlator.correlate_batch(img_pair[np.newaxis], config, mask)
+            result = correlator.correlate_batch(img_pair[np.newaxis], config, vector_masks)
             # Extend with global image index
             for pass_data in correlator.pass_times:
                 all_pass_times.append((global_img_idx, pass_data[1], pass_data[2]))

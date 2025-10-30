@@ -3467,3 +3467,1379 @@ ctypes.ArgumentError: argument 3: TypeError: array must have data type float32
 2025-10-30 11:29:28,430 [INFO] Worker saved PIV result to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\B00055.mat
 2025-10-30 11:29:28,433 [INFO] PIV and save completed: 100 frames saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
 2025-10-30 11:29:28,436 [INFO] Coordinates saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-30 13:17:31,916 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 13:17:31,917 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 13:51:10,173 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 13:51:10,173 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 13:51:12,322 [ERROR] Error in correlate_batch for image 0: OpenCV(4.12.0) :-1: error: (-5:Bad argument) in function 'remap'
+> Overload resolution failed:
+>  - Layout of the output array dst is incompatible with cv::Mat
+>  - Expected Ptr<cv::UMat> for argument 'dst'
+
+2025-10-30 13:51:12,341 [ERROR] Traceback (most recent call last):
+  File "C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\pypivtools\piv\piv_backend\cpu_instantaneous.py", line 161, in correlate_batch
+    self._predictor_corrector(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        pass_idx,
+        ^^^^^^^^^
+    ...<2 lines>...
+        win_type=config.window_type,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\line_profiler\profiler_mixin.py", line 414, in wrapper
+    result = func(*args, **kwds)
+  File "C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\pypivtools\piv\piv_backend\cpu_instantaneous.py", line 539, in _predictor_corrector
+    cv2.remap(
+    ~~~~~~~~~^
+        image_a.astype(np.float32),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+        borderValue=0,
+        ^^^^^^^^^^^^^^
+    )
+    ^
+cv2.error: OpenCV(4.12.0) :-1: error: (-5:Bad argument) in function 'remap'
+> Overload resolution failed:
+>  - Layout of the output array dst is incompatible with cv::Mat
+>  - Expected Ptr<cv::UMat> for argument 'dst'
+
+
+2025-10-30 13:54:14,241 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 13:54:14,242 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 14:04:00,878 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 14:04:00,879 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 14:11:52,919 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 14:11:52,920 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 14:23:16,231 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 14:23:16,232 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 14:32:33,794 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 14:32:33,795 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 14:32:33,797 [INFO] dtype =  uint8
+2025-10-30 14:32:33,798 [INFO] dtype =  uint8
+2025-10-30 14:32:33,798 [INFO] dtype =  uint8
+2025-10-30 14:32:33,798 [INFO] dtype =  uint8
+2025-10-30 14:32:33,799 [INFO] dtype =  uint8
+2025-10-30 14:32:33,799 [INFO] dtype =  uint8
+2025-10-30 14:32:33,799 [INFO] dtype =  uint8
+2025-10-30 14:32:33,799 [INFO] dtype =  uint8
+2025-10-30 14:32:33,800 [INFO] dtype =  uint8
+2025-10-30 14:32:33,800 [INFO] dtype =  uint8
+2025-10-30 14:32:33,800 [INFO] dtype =  uint8
+2025-10-30 14:32:33,800 [INFO] dtype =  uint8
+2025-10-30 14:32:33,801 [INFO] dtype =  uint8
+2025-10-30 14:32:33,801 [INFO] dtype =  uint8
+2025-10-30 14:32:33,801 [INFO] dtype =  uint8
+2025-10-30 14:32:33,802 [INFO] dtype =  uint8
+2025-10-30 14:32:33,802 [INFO] dtype =  uint8
+2025-10-30 14:32:33,802 [INFO] dtype =  uint8
+2025-10-30 14:32:33,803 [INFO] dtype =  uint8
+2025-10-30 14:32:33,803 [INFO] dtype =  uint8
+2025-10-30 14:32:33,803 [INFO] dtype =  uint8
+2025-10-30 14:32:33,804 [INFO] dtype =  uint8
+2025-10-30 14:32:33,804 [INFO] dtype =  uint8
+2025-10-30 14:32:33,804 [INFO] dtype =  uint8
+2025-10-30 14:32:33,805 [INFO] dtype =  uint8
+2025-10-30 14:32:33,805 [INFO] dtype =  uint8
+2025-10-30 14:32:33,805 [INFO] dtype =  uint8
+2025-10-30 14:32:33,806 [INFO] dtype =  uint8
+2025-10-30 14:32:33,806 [INFO] dtype =  uint8
+2025-10-30 14:32:33,806 [INFO] dtype =  uint8
+2025-10-30 14:32:33,807 [INFO] dtype =  uint8
+2025-10-30 14:32:33,807 [INFO] dtype =  uint8
+2025-10-30 14:32:33,807 [INFO] dtype =  uint8
+2025-10-30 14:32:33,807 [INFO] dtype =  uint8
+2025-10-30 14:32:33,808 [INFO] dtype =  uint8
+2025-10-30 14:32:33,808 [INFO] dtype =  uint8
+2025-10-30 14:32:33,808 [INFO] dtype =  uint8
+2025-10-30 14:32:33,808 [INFO] dtype =  uint8
+2025-10-30 14:32:33,809 [INFO] dtype =  uint8
+2025-10-30 14:32:33,809 [INFO] dtype =  uint8
+2025-10-30 14:32:33,809 [INFO] dtype =  uint8
+2025-10-30 14:32:33,809 [INFO] dtype =  uint8
+2025-10-30 14:32:33,810 [INFO] dtype =  uint8
+2025-10-30 14:32:33,810 [INFO] dtype =  uint8
+2025-10-30 14:32:33,810 [INFO] dtype =  uint8
+2025-10-30 14:32:33,810 [INFO] dtype =  uint8
+2025-10-30 14:32:33,811 [INFO] dtype =  uint8
+2025-10-30 14:32:33,811 [INFO] dtype =  uint8
+2025-10-30 14:32:33,811 [INFO] dtype =  uint8
+2025-10-30 14:32:33,811 [INFO] dtype =  uint8
+2025-10-30 14:32:33,812 [INFO] dtype =  uint8
+2025-10-30 14:32:33,812 [INFO] dtype =  uint8
+2025-10-30 14:32:33,812 [INFO] dtype =  uint8
+2025-10-30 14:32:33,812 [INFO] dtype =  uint8
+2025-10-30 14:32:33,813 [INFO] dtype =  uint8
+2025-10-30 14:32:33,813 [INFO] dtype =  uint8
+2025-10-30 14:32:33,813 [INFO] dtype =  uint8
+2025-10-30 14:32:33,813 [INFO] dtype =  uint8
+2025-10-30 14:32:33,814 [INFO] dtype =  uint8
+2025-10-30 14:32:33,814 [INFO] dtype =  uint8
+2025-10-30 14:32:33,814 [INFO] dtype =  uint8
+2025-10-30 14:32:33,814 [INFO] dtype =  uint8
+2025-10-30 14:32:33,815 [INFO] dtype =  uint8
+2025-10-30 14:32:33,815 [INFO] dtype =  uint8
+2025-10-30 14:32:33,815 [INFO] dtype =  uint8
+2025-10-30 14:32:33,815 [INFO] dtype =  uint8
+2025-10-30 14:32:33,816 [INFO] dtype =  uint8
+2025-10-30 14:32:33,816 [INFO] dtype =  uint8
+2025-10-30 14:32:33,816 [INFO] dtype =  uint8
+2025-10-30 14:32:33,816 [INFO] dtype =  uint8
+2025-10-30 14:32:33,817 [INFO] dtype =  uint8
+2025-10-30 14:32:33,817 [INFO] dtype =  uint8
+2025-10-30 14:32:33,817 [INFO] dtype =  uint8
+2025-10-30 14:32:33,817 [INFO] dtype =  uint8
+2025-10-30 14:32:33,818 [INFO] dtype =  uint8
+2025-10-30 14:32:33,818 [INFO] dtype =  uint8
+2025-10-30 14:32:33,818 [INFO] dtype =  uint8
+2025-10-30 14:32:33,818 [INFO] dtype =  uint8
+2025-10-30 14:32:33,819 [INFO] dtype =  uint8
+2025-10-30 14:32:33,819 [INFO] dtype =  uint8
+2025-10-30 14:32:33,819 [INFO] dtype =  uint8
+2025-10-30 14:32:33,819 [INFO] dtype =  uint8
+2025-10-30 14:32:33,819 [INFO] dtype =  uint8
+2025-10-30 14:32:33,820 [INFO] dtype =  uint8
+2025-10-30 14:32:33,820 [INFO] dtype =  uint8
+2025-10-30 14:32:33,820 [INFO] dtype =  uint8
+2025-10-30 14:32:33,820 [INFO] dtype =  uint8
+2025-10-30 14:32:33,820 [INFO] dtype =  uint8
+2025-10-30 14:32:33,820 [INFO] dtype =  uint8
+2025-10-30 14:32:33,821 [INFO] dtype =  uint8
+2025-10-30 14:32:33,821 [INFO] dtype =  uint8
+2025-10-30 14:32:33,821 [INFO] dtype =  uint8
+2025-10-30 14:32:33,821 [INFO] dtype =  uint8
+2025-10-30 14:32:33,821 [INFO] dtype =  uint8
+2025-10-30 14:32:33,822 [INFO] dtype =  uint8
+2025-10-30 14:32:33,822 [INFO] dtype =  uint8
+2025-10-30 14:32:33,822 [INFO] dtype =  uint8
+2025-10-30 14:32:33,822 [INFO] dtype =  uint8
+2025-10-30 14:32:33,822 [INFO] dtype =  uint8
+2025-10-30 14:32:33,822 [INFO] dtype =  uint8
+2025-10-30 14:39:15,045 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 14:39:15,046 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 14:39:15,049 [INFO] dtype =  uint8
+2025-10-30 14:39:15,049 [INFO] dtype =  uint8
+2025-10-30 14:39:15,050 [INFO] dtype =  uint8
+2025-10-30 14:39:15,050 [INFO] dtype =  uint8
+2025-10-30 14:39:15,050 [INFO] dtype =  uint8
+2025-10-30 14:39:15,051 [INFO] dtype =  uint8
+2025-10-30 14:39:15,051 [INFO] dtype =  uint8
+2025-10-30 14:39:15,051 [INFO] dtype =  uint8
+2025-10-30 14:39:15,052 [INFO] dtype =  uint8
+2025-10-30 14:39:15,052 [INFO] dtype =  uint8
+2025-10-30 14:39:15,053 [INFO] dtype =  uint8
+2025-10-30 14:39:15,053 [INFO] dtype =  uint8
+2025-10-30 14:39:15,053 [INFO] dtype =  uint8
+2025-10-30 14:39:15,054 [INFO] dtype =  uint8
+2025-10-30 14:39:15,054 [INFO] dtype =  uint8
+2025-10-30 14:39:15,055 [INFO] dtype =  uint8
+2025-10-30 14:39:15,055 [INFO] dtype =  uint8
+2025-10-30 14:39:15,055 [INFO] dtype =  uint8
+2025-10-30 14:39:15,056 [INFO] dtype =  uint8
+2025-10-30 14:39:15,056 [INFO] dtype =  uint8
+2025-10-30 14:39:15,056 [INFO] dtype =  uint8
+2025-10-30 14:39:15,056 [INFO] dtype =  uint8
+2025-10-30 14:39:15,057 [INFO] dtype =  uint8
+2025-10-30 14:39:15,057 [INFO] dtype =  uint8
+2025-10-30 14:39:15,057 [INFO] dtype =  uint8
+2025-10-30 14:39:15,057 [INFO] dtype =  uint8
+2025-10-30 14:39:15,058 [INFO] dtype =  uint8
+2025-10-30 14:39:15,058 [INFO] dtype =  uint8
+2025-10-30 14:39:15,058 [INFO] dtype =  uint8
+2025-10-30 14:39:15,059 [INFO] dtype =  uint8
+2025-10-30 14:39:15,059 [INFO] dtype =  uint8
+2025-10-30 14:39:15,059 [INFO] dtype =  uint8
+2025-10-30 14:39:15,059 [INFO] dtype =  uint8
+2025-10-30 14:39:15,060 [INFO] dtype =  uint8
+2025-10-30 14:39:15,060 [INFO] dtype =  uint8
+2025-10-30 14:39:15,060 [INFO] dtype =  uint8
+2025-10-30 14:39:15,061 [INFO] dtype =  uint8
+2025-10-30 14:39:15,061 [INFO] dtype =  uint8
+2025-10-30 14:39:15,061 [INFO] dtype =  uint8
+2025-10-30 14:39:15,061 [INFO] dtype =  uint8
+2025-10-30 14:39:15,062 [INFO] dtype =  uint8
+2025-10-30 14:39:15,062 [INFO] dtype =  uint8
+2025-10-30 14:39:15,062 [INFO] dtype =  uint8
+2025-10-30 14:39:15,062 [INFO] dtype =  uint8
+2025-10-30 14:39:15,063 [INFO] dtype =  uint8
+2025-10-30 14:39:15,063 [INFO] dtype =  uint8
+2025-10-30 14:39:15,063 [INFO] dtype =  uint8
+2025-10-30 14:39:15,063 [INFO] dtype =  uint8
+2025-10-30 14:39:15,064 [INFO] dtype =  uint8
+2025-10-30 14:39:15,064 [INFO] dtype =  uint8
+2025-10-30 14:39:15,064 [INFO] dtype =  uint8
+2025-10-30 14:39:15,064 [INFO] dtype =  uint8
+2025-10-30 14:39:15,065 [INFO] dtype =  uint8
+2025-10-30 14:39:15,065 [INFO] dtype =  uint8
+2025-10-30 14:39:15,065 [INFO] dtype =  uint8
+2025-10-30 14:39:15,065 [INFO] dtype =  uint8
+2025-10-30 14:39:15,065 [INFO] dtype =  uint8
+2025-10-30 14:39:15,066 [INFO] dtype =  uint8
+2025-10-30 14:39:15,066 [INFO] dtype =  uint8
+2025-10-30 14:39:15,066 [INFO] dtype =  uint8
+2025-10-30 14:39:15,066 [INFO] dtype =  uint8
+2025-10-30 14:39:15,067 [INFO] dtype =  uint8
+2025-10-30 14:39:15,067 [INFO] dtype =  uint8
+2025-10-30 14:39:15,067 [INFO] dtype =  uint8
+2025-10-30 14:39:15,067 [INFO] dtype =  uint8
+2025-10-30 14:39:15,067 [INFO] dtype =  uint8
+2025-10-30 14:39:15,068 [INFO] dtype =  uint8
+2025-10-30 14:39:15,068 [INFO] dtype =  uint8
+2025-10-30 14:39:15,068 [INFO] dtype =  uint8
+2025-10-30 14:39:15,068 [INFO] dtype =  uint8
+2025-10-30 14:39:15,068 [INFO] dtype =  uint8
+2025-10-30 14:39:15,068 [INFO] dtype =  uint8
+2025-10-30 14:39:15,069 [INFO] dtype =  uint8
+2025-10-30 14:39:15,069 [INFO] dtype =  uint8
+2025-10-30 14:39:15,069 [INFO] dtype =  uint8
+2025-10-30 14:39:15,070 [INFO] dtype =  uint8
+2025-10-30 14:39:15,070 [INFO] dtype =  uint8
+2025-10-30 14:39:15,070 [INFO] dtype =  uint8
+2025-10-30 14:39:15,070 [INFO] dtype =  uint8
+2025-10-30 14:39:15,070 [INFO] dtype =  uint8
+2025-10-30 14:39:15,070 [INFO] dtype =  uint8
+2025-10-30 14:39:15,071 [INFO] dtype =  uint8
+2025-10-30 14:39:15,071 [INFO] dtype =  uint8
+2025-10-30 14:39:15,071 [INFO] dtype =  uint8
+2025-10-30 14:39:15,071 [INFO] dtype =  uint8
+2025-10-30 14:39:15,071 [INFO] dtype =  uint8
+2025-10-30 14:39:15,071 [INFO] dtype =  uint8
+2025-10-30 14:39:15,072 [INFO] dtype =  uint8
+2025-10-30 14:39:15,072 [INFO] dtype =  uint8
+2025-10-30 14:39:15,072 [INFO] dtype =  uint8
+2025-10-30 14:39:15,072 [INFO] dtype =  uint8
+2025-10-30 14:39:15,072 [INFO] dtype =  uint8
+2025-10-30 14:39:15,073 [INFO] dtype =  uint8
+2025-10-30 14:39:15,073 [INFO] dtype =  uint8
+2025-10-30 14:39:15,073 [INFO] dtype =  uint8
+2025-10-30 14:39:15,073 [INFO] dtype =  uint8
+2025-10-30 14:39:15,073 [INFO] dtype =  uint8
+2025-10-30 14:39:15,073 [INFO] dtype =  uint8
+2025-10-30 14:39:15,074 [INFO] dtype =  uint8
+2025-10-30 14:39:15,074 [INFO] dtype =  uint8
+2025-10-30 14:41:10,232 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 14:41:10,241 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 14:54:34,061 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 14:54:35,782 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 14:54:36,020 [INFO] Worker logging configured successfully
+2025-10-30 14:54:36,021 [INFO] Dask cluster started successfully
+2025-10-30 14:54:36,022 [INFO] Dask Worker Info:
+2025-10-30 14:54:36,022 [INFO] Worker tcp://127.0.0.1:64540
+2025-10-30 14:54:36,022 [INFO]   pid: None
+2025-10-30 14:54:36,023 [INFO]   host: 127.0.0.1
+2025-10-30 14:54:36,023 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-ogaumw12
+2025-10-30 14:54:36,023 [INFO]   nanny: True
+2025-10-30 14:54:36,023 [INFO] Processing camera: Cam1
+2025-10-30 14:54:36,024 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 14:54:36,241 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\1\Cam1\instantaneous\coordinates.mat
+2025-10-30 14:54:36,696 [INFO] Processing image pair 0/0
+2025-10-30 14:54:36,696 [INFO] images type: <class 'numpy.ndarray'>, shape: (1, 2, 1152, 1024)
+2025-10-30 14:54:36,697 [INFO] images[n,0] type: <class 'numpy.ndarray'>, shape: (1152, 1024)
+2025-10-30 14:54:36,697 [INFO] images[n,1] type: <class 'numpy.ndarray'>, shape: (1152, 1024)
+2025-10-30 14:54:36,699 [INFO] Converting images[0,0] to numpy array took 0.002 seconds
+2025-10-30 14:54:36,699 [INFO] image_a shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 14:54:36,701 [INFO] Converting images[0,1] to numpy array took 0.001 seconds
+2025-10-30 14:54:36,701 [INFO] image_b shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 14:54:36,702 [INFO] image_a is not F_CONTIGUOUS, converting...
+2025-10-30 14:54:36,705 [INFO] Making image_a F_CONTIGUOUS took 0.003 seconds
+2025-10-30 14:54:36,705 [INFO] image_b is not F_CONTIGUOUS, converting...
+2025-10-30 14:54:36,709 [INFO] Making image_b F_CONTIGUOUS took 0.004 seconds
+2025-10-30 14:54:37,481 [INFO] PIV and save completed: 1 frames saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\1\Cam1\instantaneous
+2025-10-30 14:54:37,483 [INFO] Coordinates saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\1\Cam1\instantaneous
+2025-10-30 15:42:27,768 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 15:42:27,769 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 15:42:28,231 [INFO] Processing image pair 0/0
+2025-10-30 15:42:28,232 [INFO] images type: <class 'dask.array.core.Array'>, shape: (1, 2, 1152, 1024)
+2025-10-30 15:42:28,234 [INFO] images[n,0] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:42:28,236 [INFO] images[n,1] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:42:28,284 [INFO] Converting images[0,0] to numpy array took 0.048 seconds
+2025-10-30 15:42:28,285 [INFO] image_a shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:42:28,295 [INFO] Converting images[0,1] to numpy array took 0.009 seconds
+2025-10-30 15:42:28,295 [INFO] image_b shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:42:28,295 [INFO] image_a is not F_CONTIGUOUS, converting...
+2025-10-30 15:42:28,300 [INFO] Making image_a F_CONTIGUOUS took 0.004 seconds
+2025-10-30 15:42:28,300 [INFO] image_b is not F_CONTIGUOUS, converting...
+2025-10-30 15:42:28,304 [INFO] Making image_b F_CONTIGUOUS took 0.003 seconds
+2025-10-30 15:43:44,939 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 15:43:44,941 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 15:43:45,313 [INFO] Processing image pair 0/0
+2025-10-30 15:43:45,314 [INFO] images type: <class 'dask.array.core.Array'>, shape: (1, 2, 1152, 1024)
+2025-10-30 15:43:45,316 [INFO] images[n,0] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:43:45,317 [INFO] images[n,1] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:43:45,400 [INFO] Converting images[0,0] to numpy array took 0.083 seconds
+2025-10-30 15:43:45,401 [INFO] image_a shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:43:45,448 [INFO] Converting images[0,1] to numpy array took 0.046 seconds
+2025-10-30 15:43:45,449 [INFO] image_b shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:43:45,449 [INFO] image_a is not F_CONTIGUOUS, converting...
+2025-10-30 15:43:45,453 [INFO] Making image_a F_CONTIGUOUS took 0.004 seconds
+2025-10-30 15:43:45,454 [INFO] image_b is not F_CONTIGUOUS, converting...
+2025-10-30 15:43:45,458 [INFO] Making image_b F_CONTIGUOUS took 0.004 seconds
+2025-10-30 15:43:46,069 [INFO] Processing image pair 0/0
+2025-10-30 15:43:46,069 [INFO] images type: <class 'dask.array.core.Array'>, shape: (1, 2, 1152, 1024)
+2025-10-30 15:43:46,071 [INFO] images[n,0] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:43:46,073 [INFO] images[n,1] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:43:46,133 [INFO] Converting images[0,0] to numpy array took 0.060 seconds
+2025-10-30 15:43:46,134 [INFO] image_a shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:43:46,188 [INFO] Converting images[0,1] to numpy array took 0.054 seconds
+2025-10-30 15:43:46,189 [INFO] image_b shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:43:46,189 [INFO] image_a is not F_CONTIGUOUS, converting...
+2025-10-30 15:43:46,194 [INFO] Making image_a F_CONTIGUOUS took 0.004 seconds
+2025-10-30 15:43:46,194 [INFO] image_b is not F_CONTIGUOUS, converting...
+2025-10-30 15:43:46,198 [INFO] Making image_b F_CONTIGUOUS took 0.004 seconds
+2025-10-30 15:43:46,615 [INFO] Processing image pair 0/0
+2025-10-30 15:43:46,615 [INFO] images type: <class 'dask.array.core.Array'>, shape: (1, 2, 1152, 1024)
+2025-10-30 15:43:46,617 [INFO] images[n,0] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:43:46,619 [INFO] images[n,1] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:43:46,678 [INFO] Converting images[0,0] to numpy array took 0.060 seconds
+2025-10-30 15:43:46,679 [INFO] image_a shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:43:46,736 [INFO] Converting images[0,1] to numpy array took 0.057 seconds
+2025-10-30 15:43:46,736 [INFO] image_b shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:43:46,737 [INFO] image_a is not F_CONTIGUOUS, converting...
+2025-10-30 15:43:46,740 [INFO] Making image_a F_CONTIGUOUS took 0.003 seconds
+2025-10-30 15:43:46,740 [INFO] image_b is not F_CONTIGUOUS, converting...
+2025-10-30 15:43:46,744 [INFO] Making image_b F_CONTIGUOUS took 0.004 seconds
+2025-10-30 15:43:47,162 [INFO] Processing image pair 0/0
+2025-10-30 15:43:47,163 [INFO] images type: <class 'dask.array.core.Array'>, shape: (1, 2, 1152, 1024)
+2025-10-30 15:43:47,165 [INFO] images[n,0] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:43:47,166 [INFO] images[n,1] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:43:47,222 [INFO] Converting images[0,0] to numpy array took 0.056 seconds
+2025-10-30 15:43:47,223 [INFO] image_a shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:43:47,276 [INFO] Converting images[0,1] to numpy array took 0.053 seconds
+2025-10-30 15:43:47,276 [INFO] image_b shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:43:47,276 [INFO] image_a is not F_CONTIGUOUS, converting...
+2025-10-30 15:43:47,280 [INFO] Making image_a F_CONTIGUOUS took 0.003 seconds
+2025-10-30 15:43:47,280 [INFO] image_b is not F_CONTIGUOUS, converting...
+2025-10-30 15:43:47,284 [INFO] Making image_b F_CONTIGUOUS took 0.004 seconds
+2025-10-30 15:43:47,700 [INFO] Processing image pair 0/0
+2025-10-30 15:43:47,700 [INFO] images type: <class 'dask.array.core.Array'>, shape: (1, 2, 1152, 1024)
+2025-10-30 15:43:47,702 [INFO] images[n,0] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:43:47,704 [INFO] images[n,1] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:43:47,765 [INFO] Converting images[0,0] to numpy array took 0.061 seconds
+2025-10-30 15:43:47,766 [INFO] image_a shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:43:47,820 [INFO] Converting images[0,1] to numpy array took 0.054 seconds
+2025-10-30 15:43:47,821 [INFO] image_b shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:43:47,821 [INFO] image_a is not F_CONTIGUOUS, converting...
+2025-10-30 15:43:47,825 [INFO] Making image_a F_CONTIGUOUS took 0.004 seconds
+2025-10-30 15:43:47,826 [INFO] image_b is not F_CONTIGUOUS, converting...
+2025-10-30 15:43:47,830 [INFO] Making image_b F_CONTIGUOUS took 0.004 seconds
+2025-10-30 15:43:48,255 [INFO] Processing image pair 0/0
+2025-10-30 15:43:48,256 [INFO] images type: <class 'dask.array.core.Array'>, shape: (1, 2, 1152, 1024)
+2025-10-30 15:43:48,258 [INFO] images[n,0] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:43:48,259 [INFO] images[n,1] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:43:48,318 [INFO] Converting images[0,0] to numpy array took 0.059 seconds
+2025-10-30 15:43:48,319 [INFO] image_a shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:43:48,373 [INFO] Converting images[0,1] to numpy array took 0.054 seconds
+2025-10-30 15:43:48,374 [INFO] image_b shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:43:48,375 [INFO] image_a is not F_CONTIGUOUS, converting...
+2025-10-30 15:43:48,379 [INFO] Making image_a F_CONTIGUOUS took 0.004 seconds
+2025-10-30 15:43:48,379 [INFO] image_b is not F_CONTIGUOUS, converting...
+2025-10-30 15:43:48,385 [INFO] Making image_b F_CONTIGUOUS took 0.006 seconds
+2025-10-30 15:43:48,793 [INFO] Processing image pair 0/0
+2025-10-30 15:43:48,793 [INFO] images type: <class 'dask.array.core.Array'>, shape: (1, 2, 1152, 1024)
+2025-10-30 15:43:48,795 [INFO] images[n,0] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:43:48,796 [INFO] images[n,1] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:43:48,857 [INFO] Converting images[0,0] to numpy array took 0.061 seconds
+2025-10-30 15:43:48,858 [INFO] image_a shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:43:48,912 [INFO] Converting images[0,1] to numpy array took 0.054 seconds
+2025-10-30 15:43:48,913 [INFO] image_b shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:43:48,913 [INFO] image_a is not F_CONTIGUOUS, converting...
+2025-10-30 15:43:48,917 [INFO] Making image_a F_CONTIGUOUS took 0.004 seconds
+2025-10-30 15:43:48,917 [INFO] image_b is not F_CONTIGUOUS, converting...
+2025-10-30 15:43:48,921 [INFO] Making image_b F_CONTIGUOUS took 0.004 seconds
+2025-10-30 15:43:49,334 [INFO] Processing image pair 0/0
+2025-10-30 15:43:49,335 [INFO] images type: <class 'dask.array.core.Array'>, shape: (1, 2, 1152, 1024)
+2025-10-30 15:43:49,336 [INFO] images[n,0] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:43:49,338 [INFO] images[n,1] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:43:49,393 [INFO] Converting images[0,0] to numpy array took 0.055 seconds
+2025-10-30 15:43:49,394 [INFO] image_a shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:43:49,447 [INFO] Converting images[0,1] to numpy array took 0.053 seconds
+2025-10-30 15:43:49,448 [INFO] image_b shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:43:49,448 [INFO] image_a is not F_CONTIGUOUS, converting...
+2025-10-30 15:43:49,454 [INFO] Making image_a F_CONTIGUOUS took 0.006 seconds
+2025-10-30 15:43:49,455 [INFO] image_b is not F_CONTIGUOUS, converting...
+2025-10-30 15:43:49,461 [INFO] Making image_b F_CONTIGUOUS took 0.006 seconds
+2025-10-30 15:43:49,879 [INFO] Processing image pair 0/0
+2025-10-30 15:43:49,879 [INFO] images type: <class 'dask.array.core.Array'>, shape: (1, 2, 1152, 1024)
+2025-10-30 15:43:49,881 [INFO] images[n,0] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:43:49,882 [INFO] images[n,1] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:43:49,942 [INFO] Converting images[0,0] to numpy array took 0.059 seconds
+2025-10-30 15:43:49,942 [INFO] image_a shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:43:49,996 [INFO] Converting images[0,1] to numpy array took 0.054 seconds
+2025-10-30 15:43:49,997 [INFO] image_b shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:43:49,997 [INFO] image_a is not F_CONTIGUOUS, converting...
+2025-10-30 15:43:50,002 [INFO] Making image_a F_CONTIGUOUS took 0.004 seconds
+2025-10-30 15:43:50,002 [INFO] image_b is not F_CONTIGUOUS, converting...
+2025-10-30 15:43:50,006 [INFO] Making image_b F_CONTIGUOUS took 0.003 seconds
+2025-10-30 15:43:50,416 [INFO] Processing image pair 0/0
+2025-10-30 15:43:50,417 [INFO] images type: <class 'dask.array.core.Array'>, shape: (1, 2, 1152, 1024)
+2025-10-30 15:43:50,419 [INFO] images[n,0] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:43:50,420 [INFO] images[n,1] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:43:50,479 [INFO] Converting images[0,0] to numpy array took 0.058 seconds
+2025-10-30 15:43:50,479 [INFO] image_a shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:43:50,533 [INFO] Converting images[0,1] to numpy array took 0.053 seconds
+2025-10-30 15:43:50,533 [INFO] image_b shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:43:50,534 [INFO] image_a is not F_CONTIGUOUS, converting...
+2025-10-30 15:43:50,539 [INFO] Making image_a F_CONTIGUOUS took 0.005 seconds
+2025-10-30 15:43:50,539 [INFO] image_b is not F_CONTIGUOUS, converting...
+2025-10-30 15:43:50,544 [INFO] Making image_b F_CONTIGUOUS took 0.005 seconds
+2025-10-30 15:56:12,861 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 15:56:12,877 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 15:56:13,335 [INFO] Processing image pair 0/0
+2025-10-30 15:56:13,336 [INFO] images type: <class 'dask.array.core.Array'>, shape: (1, 2, 1152, 1024)
+2025-10-30 15:56:13,337 [INFO] images[n,0] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:56:13,337 [INFO] images[n,1] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:56:13,397 [INFO] Converting images[0,0] to numpy array took 0.060 seconds
+2025-10-30 15:56:13,398 [INFO] image_a shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:56:13,423 [INFO] Converting images[0,1] to numpy array took 0.025 seconds
+2025-10-30 15:56:13,424 [INFO] image_b shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:56:13,424 [INFO] image_a is not F_CONTIGUOUS, converting...
+2025-10-30 15:56:13,428 [INFO] Making image_a F_CONTIGUOUS took 0.004 seconds
+2025-10-30 15:56:13,429 [INFO] image_b is not F_CONTIGUOUS, converting...
+2025-10-30 15:56:13,433 [INFO] Making image_b F_CONTIGUOUS took 0.004 seconds
+2025-10-30 15:56:14,020 [INFO] Processing image pair 0/0
+2025-10-30 15:56:14,020 [INFO] images type: <class 'dask.array.core.Array'>, shape: (1, 2, 1152, 1024)
+2025-10-30 15:56:14,021 [INFO] images[n,0] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:56:14,022 [INFO] images[n,1] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:56:14,054 [INFO] Converting images[0,0] to numpy array took 0.032 seconds
+2025-10-30 15:56:14,055 [INFO] image_a shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:56:14,087 [INFO] Converting images[0,1] to numpy array took 0.032 seconds
+2025-10-30 15:56:14,087 [INFO] image_b shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:56:14,088 [INFO] image_a is not F_CONTIGUOUS, converting...
+2025-10-30 15:56:14,092 [INFO] Making image_a F_CONTIGUOUS took 0.004 seconds
+2025-10-30 15:56:14,092 [INFO] image_b is not F_CONTIGUOUS, converting...
+2025-10-30 15:56:14,095 [INFO] Making image_b F_CONTIGUOUS took 0.003 seconds
+2025-10-30 15:56:14,480 [INFO] Processing image pair 0/0
+2025-10-30 15:56:14,481 [INFO] images type: <class 'dask.array.core.Array'>, shape: (1, 2, 1152, 1024)
+2025-10-30 15:56:14,482 [INFO] images[n,0] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:56:14,483 [INFO] images[n,1] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:56:14,515 [INFO] Converting images[0,0] to numpy array took 0.032 seconds
+2025-10-30 15:56:14,516 [INFO] image_a shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:56:14,544 [INFO] Converting images[0,1] to numpy array took 0.028 seconds
+2025-10-30 15:56:14,545 [INFO] image_b shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:56:14,545 [INFO] image_a is not F_CONTIGUOUS, converting...
+2025-10-30 15:56:14,549 [INFO] Making image_a F_CONTIGUOUS took 0.004 seconds
+2025-10-30 15:56:14,549 [INFO] image_b is not F_CONTIGUOUS, converting...
+2025-10-30 15:56:14,554 [INFO] Making image_b F_CONTIGUOUS took 0.004 seconds
+2025-10-30 15:56:14,935 [INFO] Processing image pair 0/0
+2025-10-30 15:56:14,935 [INFO] images type: <class 'dask.array.core.Array'>, shape: (1, 2, 1152, 1024)
+2025-10-30 15:56:14,936 [INFO] images[n,0] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:56:14,937 [INFO] images[n,1] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:56:14,966 [INFO] Converting images[0,0] to numpy array took 0.029 seconds
+2025-10-30 15:56:14,966 [INFO] image_a shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:56:14,995 [INFO] Converting images[0,1] to numpy array took 0.028 seconds
+2025-10-30 15:56:14,995 [INFO] image_b shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:56:14,995 [INFO] image_a is not F_CONTIGUOUS, converting...
+2025-10-30 15:56:14,999 [INFO] Making image_a F_CONTIGUOUS took 0.003 seconds
+2025-10-30 15:56:15,006 [INFO] image_b is not F_CONTIGUOUS, converting...
+2025-10-30 15:56:15,010 [INFO] Making image_b F_CONTIGUOUS took 0.005 seconds
+2025-10-30 15:56:15,401 [INFO] Processing image pair 0/0
+2025-10-30 15:56:15,401 [INFO] images type: <class 'dask.array.core.Array'>, shape: (1, 2, 1152, 1024)
+2025-10-30 15:56:15,402 [INFO] images[n,0] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:56:15,403 [INFO] images[n,1] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:56:15,432 [INFO] Converting images[0,0] to numpy array took 0.028 seconds
+2025-10-30 15:56:15,432 [INFO] image_a shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:56:15,461 [INFO] Converting images[0,1] to numpy array took 0.029 seconds
+2025-10-30 15:56:15,461 [INFO] image_b shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:56:15,461 [INFO] image_a is not F_CONTIGUOUS, converting...
+2025-10-30 15:56:15,465 [INFO] Making image_a F_CONTIGUOUS took 0.004 seconds
+2025-10-30 15:56:15,465 [INFO] image_b is not F_CONTIGUOUS, converting...
+2025-10-30 15:56:15,471 [INFO] Making image_b F_CONTIGUOUS took 0.006 seconds
+2025-10-30 15:56:15,854 [INFO] Processing image pair 0/0
+2025-10-30 15:56:15,854 [INFO] images type: <class 'dask.array.core.Array'>, shape: (1, 2, 1152, 1024)
+2025-10-30 15:56:15,855 [INFO] images[n,0] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:56:15,856 [INFO] images[n,1] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:56:15,884 [INFO] Converting images[0,0] to numpy array took 0.028 seconds
+2025-10-30 15:56:15,884 [INFO] image_a shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:56:15,913 [INFO] Converting images[0,1] to numpy array took 0.028 seconds
+2025-10-30 15:56:15,913 [INFO] image_b shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:56:15,913 [INFO] image_a is not F_CONTIGUOUS, converting...
+2025-10-30 15:56:15,917 [INFO] Making image_a F_CONTIGUOUS took 0.004 seconds
+2025-10-30 15:56:15,918 [INFO] image_b is not F_CONTIGUOUS, converting...
+2025-10-30 15:56:15,921 [INFO] Making image_b F_CONTIGUOUS took 0.003 seconds
+2025-10-30 15:56:16,298 [INFO] Processing image pair 0/0
+2025-10-30 15:56:16,299 [INFO] images type: <class 'dask.array.core.Array'>, shape: (1, 2, 1152, 1024)
+2025-10-30 15:56:16,299 [INFO] images[n,0] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:56:16,300 [INFO] images[n,1] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:56:16,329 [INFO] Converting images[0,0] to numpy array took 0.029 seconds
+2025-10-30 15:56:16,330 [INFO] image_a shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:56:16,358 [INFO] Converting images[0,1] to numpy array took 0.028 seconds
+2025-10-30 15:56:16,364 [INFO] image_b shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:56:16,364 [INFO] image_a is not F_CONTIGUOUS, converting...
+2025-10-30 15:56:16,367 [INFO] Making image_a F_CONTIGUOUS took 0.003 seconds
+2025-10-30 15:56:16,368 [INFO] image_b is not F_CONTIGUOUS, converting...
+2025-10-30 15:56:16,372 [INFO] Making image_b F_CONTIGUOUS took 0.004 seconds
+2025-10-30 15:56:16,747 [INFO] Processing image pair 0/0
+2025-10-30 15:56:16,747 [INFO] images type: <class 'dask.array.core.Array'>, shape: (1, 2, 1152, 1024)
+2025-10-30 15:56:16,748 [INFO] images[n,0] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:56:16,749 [INFO] images[n,1] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:56:16,777 [INFO] Converting images[0,0] to numpy array took 0.028 seconds
+2025-10-30 15:56:16,777 [INFO] image_a shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:56:16,806 [INFO] Converting images[0,1] to numpy array took 0.028 seconds
+2025-10-30 15:56:16,806 [INFO] image_b shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:56:16,807 [INFO] image_a is not F_CONTIGUOUS, converting...
+2025-10-30 15:56:16,813 [INFO] Making image_a F_CONTIGUOUS took 0.006 seconds
+2025-10-30 15:56:16,813 [INFO] image_b is not F_CONTIGUOUS, converting...
+2025-10-30 15:56:16,816 [INFO] Making image_b F_CONTIGUOUS took 0.003 seconds
+2025-10-30 15:56:17,194 [INFO] Processing image pair 0/0
+2025-10-30 15:56:17,194 [INFO] images type: <class 'dask.array.core.Array'>, shape: (1, 2, 1152, 1024)
+2025-10-30 15:56:17,195 [INFO] images[n,0] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:56:17,196 [INFO] images[n,1] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:56:17,225 [INFO] Converting images[0,0] to numpy array took 0.029 seconds
+2025-10-30 15:56:17,225 [INFO] image_a shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:56:17,253 [INFO] Converting images[0,1] to numpy array took 0.028 seconds
+2025-10-30 15:56:17,253 [INFO] image_b shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:56:17,253 [INFO] image_a is not F_CONTIGUOUS, converting...
+2025-10-30 15:56:17,257 [INFO] Making image_a F_CONTIGUOUS took 0.003 seconds
+2025-10-30 15:56:17,257 [INFO] image_b is not F_CONTIGUOUS, converting...
+2025-10-30 15:56:17,261 [INFO] Making image_b F_CONTIGUOUS took 0.004 seconds
+2025-10-30 15:56:17,639 [INFO] Processing image pair 0/0
+2025-10-30 15:56:17,640 [INFO] images type: <class 'dask.array.core.Array'>, shape: (1, 2, 1152, 1024)
+2025-10-30 15:56:17,642 [INFO] images[n,0] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:56:17,642 [INFO] images[n,1] type: <class 'dask.array.core.Array'>, shape: (1152, 1024)
+2025-10-30 15:56:17,671 [INFO] Converting images[0,0] to numpy array took 0.029 seconds
+2025-10-30 15:56:17,671 [INFO] image_a shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:56:17,700 [INFO] Converting images[0,1] to numpy array took 0.028 seconds
+2025-10-30 15:56:17,700 [INFO] image_b shape: (1152, 1024), dtype: float32, flags.F_CONTIGUOUS: False
+2025-10-30 15:56:17,700 [INFO] image_a is not F_CONTIGUOUS, converting...
+2025-10-30 15:56:17,704 [INFO] Making image_a F_CONTIGUOUS took 0.004 seconds
+2025-10-30 15:56:17,704 [INFO] image_b is not F_CONTIGUOUS, converting...
+2025-10-30 15:56:17,708 [INFO] Making image_b F_CONTIGUOUS took 0.003 seconds
+2025-10-30 15:59:40,959 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 15:59:42,756 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 15:59:43,010 [INFO] Worker logging configured successfully
+2025-10-30 15:59:43,011 [INFO] Dask cluster started successfully
+2025-10-30 15:59:43,014 [INFO] Worker tcp://127.0.0.1:59269: pid=N/A, host=127.0.0.1, memory=2000000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-i1v7z0mz, nanny=True
+2025-10-30 15:59:43,014 [INFO] Worker tcp://127.0.0.1:59270: pid=N/A, host=127.0.0.1, memory=2000000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-94qizvdv, nanny=True
+2025-10-30 15:59:43,014 [INFO] Processing camera: Cam1
+2025-10-30 15:59:43,014 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 15:59:45,912 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 15:59:46,473 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 15:59:46,775 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 15:59:47,119 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 15:59:51,203 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 15:59:53,598 [ERROR] Error during processing: No module named 'bokeh'
+2025-10-30 15:59:53,750 [INFO] Total elapsed time: 12.79 seconds
+2025-10-30 15:59:54,027 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:01:50,564 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:01:52,892 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:01:52,893 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:01:53,017 [INFO] Worker logging configured successfully
+2025-10-30 16:01:53,018 [INFO] Dask cluster started successfully
+2025-10-30 16:01:53,020 [INFO] Worker tcp://127.0.0.1:59356: pid=N/A, host=127.0.0.1, memory=2000000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-xz6ex6ps, nanny=True
+2025-10-30 16:01:53,020 [INFO] Worker tcp://127.0.0.1:59357: pid=N/A, host=127.0.0.1, memory=2000000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-rg11babm, nanny=True
+2025-10-30 16:01:53,021 [INFO] Processing camera: Cam1
+2025-10-30 16:01:53,021 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 16:01:55,588 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:01:56,072 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:01:56,393 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:01:56,796 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:01:58,957 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:02:02,510 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:02:04,934 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:02:05,639 [INFO] Total elapsed time: 15.07 seconds
+2025-10-30 16:02:07,286 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:02:29,779 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:02:31,840 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:02:31,954 [INFO] Worker logging configured successfully
+2025-10-30 16:02:31,956 [INFO] Dask cluster started successfully
+2025-10-30 16:02:31,956 [INFO] Dask Worker Info:
+2025-10-30 16:02:31,957 [INFO] Worker tcp://127.0.0.1:59432
+2025-10-30 16:02:31,957 [INFO]   pid: None
+2025-10-30 16:02:31,957 [INFO]   host: 127.0.0.1
+2025-10-30 16:02:31,957 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-j_nunz3k
+2025-10-30 16:02:31,958 [INFO]   nanny: True
+2025-10-30 16:02:31,958 [INFO] Dask Worker Info:
+2025-10-30 16:02:31,958 [INFO] Worker tcp://127.0.0.1:59433
+2025-10-30 16:02:31,958 [INFO]   pid: None
+2025-10-30 16:02:31,958 [INFO]   host: 127.0.0.1
+2025-10-30 16:02:31,958 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-ivvd9hs3
+2025-10-30 16:02:31,959 [INFO]   nanny: True
+2025-10-30 16:02:31,959 [INFO] Processing camera: Cam1
+2025-10-30 16:02:31,959 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 16:02:34,512 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:02:34,770 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:02:35,243 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:02:35,785 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:05:04,282 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:05:06,651 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:05:06,651 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:05:06,861 [INFO] Worker logging configured successfully
+2025-10-30 16:05:06,862 [INFO] Dask cluster started successfully
+2025-10-30 16:05:06,863 [INFO] Dask Worker Info:
+2025-10-30 16:05:06,863 [INFO] Worker tcp://127.0.0.1:59507
+2025-10-30 16:05:06,863 [INFO]   pid: None
+2025-10-30 16:05:06,863 [INFO]   host: 127.0.0.1
+2025-10-30 16:05:06,863 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-2gihld83
+2025-10-30 16:05:06,863 [INFO]   nanny: True
+2025-10-30 16:05:06,863 [INFO] Dask Worker Info:
+2025-10-30 16:05:06,863 [INFO] Worker tcp://127.0.0.1:59508
+2025-10-30 16:05:06,863 [INFO]   pid: None
+2025-10-30 16:05:06,863 [INFO]   host: 127.0.0.1
+2025-10-30 16:05:06,863 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-1dvnn1g4
+2025-10-30 16:05:06,863 [INFO]   nanny: True
+2025-10-30 16:05:06,864 [INFO] Processing camera: Cam1
+2025-10-30 16:05:06,864 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 16:05:07,983 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:05:09,714 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:05:09,899 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:05:12,336 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:05:12,385 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:05:15,161 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:05:15,470 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:05:15,673 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:05:16,021 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:05:17,807 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:05:18,008 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:05:18,371 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:05:18,651 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:05:20,435 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:05:20,583 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:05:21,058 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:05:21,074 [INFO] PIV and save completed: 100 frames saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-30 16:05:21,141 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:05:21,158 [INFO] Coordinates saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-30 16:05:22,734 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:07:44,970 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:07:47,034 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:07:47,035 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:07:47,176 [INFO] Worker logging configured successfully
+2025-10-30 16:07:47,176 [INFO] Worker logging configured successfully
+2025-10-30 16:07:47,177 [INFO] Dask cluster started successfully
+2025-10-30 16:07:47,177 [INFO] Dask Worker Info:
+2025-10-30 16:07:47,177 [INFO] Worker tcp://127.0.0.1:54004
+2025-10-30 16:07:47,178 [INFO]   pid: None
+2025-10-30 16:07:47,178 [INFO]   host: 127.0.0.1
+2025-10-30 16:07:47,178 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-e9exc0wr
+2025-10-30 16:07:47,178 [INFO]   nanny: True
+2025-10-30 16:07:47,178 [INFO] Dask Worker Info:
+2025-10-30 16:07:47,178 [INFO] Worker tcp://127.0.0.1:54005
+2025-10-30 16:07:47,178 [INFO]   pid: None
+2025-10-30 16:07:47,178 [INFO]   host: 127.0.0.1
+2025-10-30 16:07:47,179 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-pmp02ygh
+2025-10-30 16:07:47,179 [INFO]   nanny: True
+2025-10-30 16:07:47,179 [INFO] Processing camera: Cam1
+2025-10-30 16:07:47,179 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 16:07:49,689 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:07:49,898 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:07:52,380 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:07:52,630 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:07:55,034 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:07:55,353 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:07:55,658 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:07:58,036 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:07:58,036 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:07:58,245 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:07:58,862 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:08:00,601 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:08:00,723 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:08:00,830 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:08:03,209 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:08:03,311 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:08:03,352 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-51c77fdefe41457180a04f166022e8a3 cancelled for reason: unknown.
+2025-10-30 16:08:03,353 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-459ffc6c8a6f4be5a2e4f9206a262fb8 cancelled for reason: unknown.
+2025-10-30 16:08:03,353 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-3b77f29daf954fa9a53b27226b79d352 cancelled for reason: unknown.
+2025-10-30 16:08:03,353 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-36e59b58aa9a47098bec6d84bceffbd8 cancelled for reason: unknown.
+2025-10-30 16:08:03,353 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-d32758a0bc2a4420ba08df98cf5e4fc7 cancelled for reason: unknown.
+2025-10-30 16:08:03,353 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-57ce308888874cd99b5fe10a9c77803c cancelled for reason: unknown.
+2025-10-30 16:08:03,354 [INFO] PIV and save completed: 100 frames saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-30 16:08:03,592 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:08:03,669 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:08:38,074 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:08:40,175 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:08:40,175 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:08:40,284 [INFO] Worker logging configured successfully
+2025-10-30 16:08:40,284 [INFO] Worker logging configured successfully
+2025-10-30 16:08:40,285 [INFO] Dask cluster started successfully
+2025-10-30 16:08:40,285 [INFO] Dask Worker Info:
+2025-10-30 16:08:40,285 [INFO] Worker tcp://127.0.0.1:54141
+2025-10-30 16:08:40,285 [INFO]   pid: None
+2025-10-30 16:08:40,286 [INFO]   host: 127.0.0.1
+2025-10-30 16:08:40,286 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-rqoupm23
+2025-10-30 16:08:40,286 [INFO]   nanny: True
+2025-10-30 16:08:40,286 [INFO] Dask Worker Info:
+2025-10-30 16:08:40,286 [INFO] Worker tcp://127.0.0.1:54142
+2025-10-30 16:08:40,286 [INFO]   pid: None
+2025-10-30 16:08:40,286 [INFO]   host: 127.0.0.1
+2025-10-30 16:08:40,287 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-8udy_7ml
+2025-10-30 16:08:40,287 [INFO]   nanny: True
+2025-10-30 16:08:40,287 [INFO] Processing camera: Cam1
+2025-10-30 16:08:40,287 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 16:08:41,793 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:08:53,679 [INFO] PIV and save completed: 100 frames saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-30 16:08:53,681 [INFO] Coordinates saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-30 16:12:09,620 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:12:11,741 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:12:11,893 [INFO] Worker logging configured successfully
+2025-10-30 16:12:11,894 [INFO] Worker logging configured successfully
+2025-10-30 16:12:11,895 [INFO] Dask cluster started successfully
+2025-10-30 16:12:11,895 [INFO] Dask Worker Info:
+2025-10-30 16:12:11,896 [INFO] Worker tcp://127.0.0.1:56431
+2025-10-30 16:12:11,896 [INFO]   pid: None
+2025-10-30 16:12:11,896 [INFO]   host: 127.0.0.1
+2025-10-30 16:12:11,896 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-mr4t5dmk
+2025-10-30 16:12:11,896 [INFO]   nanny: True
+2025-10-30 16:12:11,897 [INFO] Dask Worker Info:
+2025-10-30 16:12:11,897 [INFO] Worker tcp://127.0.0.1:56432
+2025-10-30 16:12:11,897 [INFO]   pid: None
+2025-10-30 16:12:11,897 [INFO]   host: 127.0.0.1
+2025-10-30 16:12:11,897 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-rpaphmt8
+2025-10-30 16:12:11,898 [INFO]   nanny: True
+2025-10-30 16:12:11,898 [INFO] Processing camera: Cam1
+2025-10-30 16:12:11,898 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 16:12:20,965 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:12:27,613 [INFO] PIV and save completed: 100 frames saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-30 16:12:27,615 [INFO] Coordinates saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-30 16:15:04,444 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:15:06,580 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:15:06,581 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:15:06,689 [INFO] Worker logging configured successfully
+2025-10-30 16:15:06,690 [INFO] Dask cluster started successfully
+2025-10-30 16:15:06,691 [INFO] Dask Worker Info:
+2025-10-30 16:15:06,691 [INFO] Worker tcp://127.0.0.1:52927
+2025-10-30 16:15:06,691 [INFO]   pid: None
+2025-10-30 16:15:06,691 [INFO]   host: 127.0.0.1
+2025-10-30 16:15:06,692 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-lo26v5a_
+2025-10-30 16:15:06,692 [INFO]   nanny: True
+2025-10-30 16:15:06,692 [INFO] Dask Worker Info:
+2025-10-30 16:15:06,692 [INFO] Worker tcp://127.0.0.1:52928
+2025-10-30 16:15:06,692 [INFO]   pid: None
+2025-10-30 16:15:06,693 [INFO]   host: 127.0.0.1
+2025-10-30 16:15:06,693 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-vmdj_x8s
+2025-10-30 16:15:06,693 [INFO]   nanny: True
+2025-10-30 16:15:06,693 [INFO] Processing camera: Cam1
+2025-10-30 16:15:06,693 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 16:15:09,398 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:15:09,576 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:15:10,042 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:15:10,365 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:15:31,407 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:15:33,536 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:15:33,691 [INFO] Worker logging configured successfully
+2025-10-30 16:15:33,692 [INFO] Dask cluster started successfully
+2025-10-30 16:15:33,693 [INFO] Dask Worker Info:
+2025-10-30 16:15:33,693 [INFO] Worker tcp://127.0.0.1:52979
+2025-10-30 16:15:33,693 [INFO]   pid: None
+2025-10-30 16:15:33,694 [INFO]   host: 127.0.0.1
+2025-10-30 16:15:33,694 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-3yap0vyq
+2025-10-30 16:15:33,694 [INFO]   nanny: True
+2025-10-30 16:15:33,694 [INFO] Dask Worker Info:
+2025-10-30 16:15:33,694 [INFO] Worker tcp://127.0.0.1:52980
+2025-10-30 16:15:33,694 [INFO]   pid: None
+2025-10-30 16:15:33,695 [INFO]   host: 127.0.0.1
+2025-10-30 16:15:33,695 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-y5xubsyk
+2025-10-30 16:15:33,695 [INFO]   nanny: True
+2025-10-30 16:15:33,695 [INFO] Processing camera: Cam1
+2025-10-30 16:15:33,695 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 16:15:35,339 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:15:37,227 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:15:37,642 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:15:40,016 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:15:41,187 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:15:43,681 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:15:44,885 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:15:45,289 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:15:47,536 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:15:47,929 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:15:48,219 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:15:49,300 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:15:50,661 [INFO] PIV and save completed: 100 frames saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-30 16:15:50,664 [INFO] Coordinates saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-30 16:15:51,090 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:24:36,865 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:24:40,851 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:24:40,926 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:24:40,927 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:24:40,934 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:24:40,937 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:24:40,938 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:24:40,946 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:24:41,130 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:24:41,140 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:24:41,155 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:24:41,176 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:24:41,176 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:24:41,179 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:24:41,179 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:24:41,186 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:24:41,188 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:24:41,188 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:24:41,189 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:24:41,193 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:24:41,400 [INFO] Worker logging configured successfully
+2025-10-30 16:24:41,403 [INFO] Worker logging configured successfully
+2025-10-30 16:24:41,411 [INFO] Dask cluster started successfully
+2025-10-30 16:24:41,412 [INFO] Dask Worker Info:
+2025-10-30 16:24:41,412 [INFO] Worker tcp://127.0.0.1:62258
+2025-10-30 16:24:41,412 [INFO]   pid: None
+2025-10-30 16:24:41,413 [INFO]   host: 127.0.0.1
+2025-10-30 16:24:41,413 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-j4cgn6wr
+2025-10-30 16:24:41,413 [INFO]   nanny: True
+2025-10-30 16:24:41,413 [INFO] Dask Worker Info:
+2025-10-30 16:24:41,414 [INFO] Worker tcp://127.0.0.1:62273
+2025-10-30 16:24:41,414 [INFO]   pid: None
+2025-10-30 16:24:41,414 [INFO]   host: 127.0.0.1
+2025-10-30 16:24:41,415 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-sgdzdezp
+2025-10-30 16:24:41,415 [INFO]   nanny: True
+2025-10-30 16:24:41,415 [INFO] Dask Worker Info:
+2025-10-30 16:24:41,415 [INFO] Worker tcp://127.0.0.1:62276
+2025-10-30 16:24:41,416 [INFO]   pid: None
+2025-10-30 16:24:41,416 [INFO]   host: 127.0.0.1
+2025-10-30 16:24:41,416 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-byegc0hb
+2025-10-30 16:24:41,417 [INFO]   nanny: True
+2025-10-30 16:24:41,417 [INFO] Dask Worker Info:
+2025-10-30 16:24:41,418 [INFO] Worker tcp://127.0.0.1:62277
+2025-10-30 16:24:41,418 [INFO]   pid: None
+2025-10-30 16:24:41,419 [INFO]   host: 127.0.0.1
+2025-10-30 16:24:41,420 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-juhz_o2k
+2025-10-30 16:24:41,420 [INFO]   nanny: True
+2025-10-30 16:24:41,421 [INFO] Dask Worker Info:
+2025-10-30 16:24:41,421 [INFO] Worker tcp://127.0.0.1:62279
+2025-10-30 16:24:41,421 [INFO]   pid: None
+2025-10-30 16:24:41,421 [INFO]   host: 127.0.0.1
+2025-10-30 16:24:41,422 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-gt0mf8tj
+2025-10-30 16:24:41,422 [INFO]   nanny: True
+2025-10-30 16:24:41,423 [INFO] Processing camera: Cam1
+2025-10-30 16:24:41,423 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 16:24:46,327 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:25:01,047 [INFO] PIV and save completed: 100 frames saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-30 16:25:01,049 [INFO] Coordinates saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-30 16:25:38,808 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:25:42,614 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:25:42,636 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:25:42,673 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:25:42,675 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:25:42,678 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:25:42,696 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:25:42,710 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:25:42,762 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:25:42,777 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:25:42,786 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:25:42,795 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:25:42,795 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:25:42,803 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:25:42,806 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:25:42,818 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:25:42,820 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:25:42,823 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:25:42,839 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:25:42,855 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:25:42,897 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:25:43,090 [INFO] Worker logging configured successfully
+2025-10-30 16:25:43,092 [INFO] Worker logging configured successfully
+2025-10-30 16:25:43,102 [INFO] Dask cluster started successfully
+2025-10-30 16:25:43,105 [INFO] Worker tcp://127.0.0.1:49158: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-gvl2y3cy, nanny=True
+2025-10-30 16:25:43,105 [INFO] Worker tcp://127.0.0.1:65448: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-sip2moae, nanny=True
+2025-10-30 16:25:43,106 [INFO] Worker tcp://127.0.0.1:65451: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-sq1tqfc6, nanny=True
+2025-10-30 16:25:43,106 [INFO] Worker tcp://127.0.0.1:65464: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-en7ja_mu, nanny=True
+2025-10-30 16:25:43,106 [INFO] Worker tcp://127.0.0.1:65465: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-t4a3w_0c, nanny=True
+2025-10-30 16:25:43,106 [INFO] Processing camera: Cam1
+2025-10-30 16:25:43,106 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 16:25:49,091 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:25:57,333 [INFO] Completed processing for Cam1. Saved 100 frames to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-30 16:25:59,675 [INFO] Dask profiling report saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\dask_profile_report.html
+2025-10-30 16:25:59,679 [INFO] Total elapsed time: 20.87 seconds
+2025-10-30 16:31:06,890 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:31:10,905 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:31:10,964 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:31:10,971 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:31:10,977 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:31:10,983 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:31:10,984 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:31:10,987 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:31:10,998 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:31:11,014 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:31:11,046 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:31:11,079 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:31:11,084 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:31:11,084 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:31:11,086 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:31:11,105 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:31:11,110 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:31:11,110 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:31:11,110 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:31:11,126 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:31:11,308 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:31:11,418 [INFO] Worker logging configured successfully
+2025-10-30 16:31:11,422 [INFO] Worker logging configured successfully
+2025-10-30 16:31:11,423 [INFO] Worker logging configured successfully
+2025-10-30 16:31:11,432 [INFO] Dask cluster started successfully
+2025-10-30 16:31:11,434 [INFO] Worker tcp://127.0.0.1:53934: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-_mthe6k9, nanny=True
+2025-10-30 16:31:11,434 [INFO] Worker tcp://127.0.0.1:53951: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-_s6xtdum, nanny=True
+2025-10-30 16:31:11,434 [INFO] Worker tcp://127.0.0.1:53952: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-a_pgy9xw, nanny=True
+2025-10-30 16:31:11,435 [INFO] Worker tcp://127.0.0.1:53957: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-tdhaik2v, nanny=True
+2025-10-30 16:31:11,435 [INFO] Worker tcp://127.0.0.1:53960: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-22j177vt, nanny=True
+2025-10-30 16:31:11,435 [INFO] Processing camera: Cam1
+2025-10-30 16:31:11,435 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 16:31:21,967 [INFO] Total elapsed time: 15.08 seconds
+2025-10-30 16:34:05,606 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:34:09,629 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:34:09,634 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:34:09,669 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:34:09,671 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:34:09,686 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:34:09,716 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:34:09,717 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:34:09,726 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:34:09,747 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:34:09,777 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:34:09,781 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:34:09,783 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:34:09,783 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:34:09,785 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:34:09,791 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:34:09,817 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:34:09,857 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:34:09,922 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:34:09,953 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:34:10,039 [INFO] Worker logging configured successfully
+2025-10-30 16:34:10,039 [INFO] Worker logging configured successfully
+2025-10-30 16:34:10,040 [INFO] Worker logging configured successfully
+2025-10-30 16:34:10,041 [INFO] Worker logging configured successfully
+2025-10-30 16:34:10,041 [INFO] Worker logging configured successfully
+2025-10-30 16:34:10,041 [INFO] Worker logging configured successfully
+2025-10-30 16:34:10,042 [INFO] Worker logging configured successfully
+2025-10-30 16:34:10,043 [INFO] Worker logging configured successfully
+2025-10-30 16:34:10,044 [INFO] Worker logging configured successfully
+2025-10-30 16:34:10,044 [INFO] Worker logging configured successfully
+2025-10-30 16:34:10,045 [INFO] Worker logging configured successfully
+2025-10-30 16:34:10,045 [INFO] Worker logging configured successfully
+2025-10-30 16:34:10,046 [INFO] Dask cluster started successfully
+2025-10-30 16:34:10,049 [INFO] Worker tcp://127.0.0.1:57881: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-5gd8qk44, nanny=True
+2025-10-30 16:34:10,049 [INFO] Worker tcp://127.0.0.1:57887: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-njolnu2o, nanny=True
+2025-10-30 16:34:10,050 [INFO] Worker tcp://127.0.0.1:57899: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-os9m9q6u, nanny=True
+2025-10-30 16:34:10,050 [INFO] Worker tcp://127.0.0.1:57900: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-ss7aeju4, nanny=True
+2025-10-30 16:34:10,050 [INFO] Worker tcp://127.0.0.1:57909: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-8_7o9gyz, nanny=True
+2025-10-30 16:34:10,050 [INFO] Processing camera: Cam1
+2025-10-30 16:34:10,051 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 16:34:13,331 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:34:26,879 [INFO] Completed processing for Cam1. Saved 100 frames to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-30 16:34:28,059 [INFO] Dask profiling report saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\dask_profile_report.html
+2025-10-30 16:34:28,093 [INFO] Total elapsed time: 22.49 seconds
+2025-10-30 16:36:43,424 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:36:47,515 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:36:47,540 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:36:47,571 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:36:47,572 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:36:47,723 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:36:47,775 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:36:47,787 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:36:47,813 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:36:47,843 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:36:47,863 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:36:47,869 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:36:47,874 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:36:47,889 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:36:47,904 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:36:47,906 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:36:47,908 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:36:47,912 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:36:47,920 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:36:47,931 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:36:47,974 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:36:48,121 [INFO] Worker logging configured successfully
+2025-10-30 16:36:48,122 [INFO] Worker logging configured successfully
+2025-10-30 16:36:48,130 [INFO] Dask cluster started successfully
+2025-10-30 16:36:48,132 [INFO] Worker tcp://127.0.0.1:54615: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-dezclbm1, nanny=True
+2025-10-30 16:36:48,132 [INFO] Worker tcp://127.0.0.1:54622: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-j0sp7hf4, nanny=True
+2025-10-30 16:36:48,133 [INFO] Worker tcp://127.0.0.1:54623: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-_66h6ns7, nanny=True
+2025-10-30 16:36:48,133 [INFO] Worker tcp://127.0.0.1:54625: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-3q9vthpj, nanny=True
+2025-10-30 16:36:48,133 [INFO] Worker tcp://127.0.0.1:54633: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-lqsi972f, nanny=True
+2025-10-30 16:36:48,134 [INFO] Processing camera: Cam1
+2025-10-30 16:36:48,134 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 16:36:49,739 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:49,742 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:49,743 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:49,744 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:49,745 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:49,749 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:49,776 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:49,777 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:49,778 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:49,778 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:49,779 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:49,779 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:49,802 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:49,804 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:49,805 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:49,813 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:49,828 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:49,933 [WARNING] PIVResult has no passes for frame 22. Skipping save.
+2025-10-30 16:36:49,934 [WARNING] PIVResult has no passes for frame 26. Skipping save.
+2025-10-30 16:36:49,934 [WARNING] PIVResult has no passes for frame 9. Skipping save.
+2025-10-30 16:36:49,934 [WARNING] PIVResult has no passes for frame 4. Skipping save.
+2025-10-30 16:36:49,935 [WARNING] PIVResult has no passes for frame 6. Skipping save.
+2025-10-30 16:36:49,935 [WARNING] PIVResult has no passes for frame 7. Skipping save.
+2025-10-30 16:36:49,936 [WARNING] PIVResult has no passes for frame 8. Skipping save.
+2025-10-30 16:36:49,937 [WARNING] PIVResult has no passes for frame 1. Skipping save.
+2025-10-30 16:36:49,939 [WARNING] PIVResult has no passes for frame 2. Skipping save.
+2025-10-30 16:36:49,939 [WARNING] PIVResult has no passes for frame 10. Skipping save.
+2025-10-30 16:36:49,973 [WARNING] PIVResult has no passes for frame 17. Skipping save.
+2025-10-30 16:36:49,973 [WARNING] PIVResult has no passes for frame 19. Skipping save.
+2025-10-30 16:36:49,974 [WARNING] PIVResult has no passes for frame 18. Skipping save.
+2025-10-30 16:36:49,974 [WARNING] PIVResult has no passes for frame 28. Skipping save.
+2025-10-30 16:36:49,975 [WARNING] PIVResult has no passes for frame 15. Skipping save.
+2025-10-30 16:36:49,975 [WARNING] PIVResult has no passes for frame 14. Skipping save.
+2025-10-30 16:36:49,975 [WARNING] PIVResult has no passes for frame 5. Skipping save.
+2025-10-30 16:36:49,975 [WARNING] PIVResult has no passes for frame 12. Skipping save.
+2025-10-30 16:36:49,976 [WARNING] PIVResult has no passes for frame 25. Skipping save.
+2025-10-30 16:36:49,976 [WARNING] PIVResult has no passes for frame 24. Skipping save.
+2025-10-30 16:36:49,977 [WARNING] PIVResult has no passes for frame 20. Skipping save.
+2025-10-30 16:36:49,997 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,000 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,011 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,011 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,012 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,016 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,030 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,033 [WARNING] PIVResult has no passes for frame 21. Skipping save.
+2025-10-30 16:36:50,034 [WARNING] PIVResult has no passes for frame 23. Skipping save.
+2025-10-30 16:36:50,038 [WARNING] PIVResult has no passes for frame 16. Skipping save.
+2025-10-30 16:36:50,043 [WARNING] PIVResult has no passes for frame 11. Skipping save.
+2025-10-30 16:36:50,043 [WARNING] PIVResult has no passes for frame 29. Skipping save.
+2025-10-30 16:36:50,050 [WARNING] PIVResult has no passes for frame 27. Skipping save.
+2025-10-30 16:36:50,056 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,064 [WARNING] PIVResult has no passes for frame 3. Skipping save.
+2025-10-30 16:36:50,089 [WARNING] PIVResult has no passes for frame 13. Skipping save.
+2025-10-30 16:36:50,747 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,758 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,768 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,780 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,782 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,790 [WARNING] PIVResult has no passes for frame 34. Skipping save.
+2025-10-30 16:36:50,791 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,800 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,802 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,807 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,814 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,814 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,815 [WARNING] PIVResult has no passes for frame 42. Skipping save.
+2025-10-30 16:36:50,815 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,818 [WARNING] PIVResult has no passes for frame 43. Skipping save.
+2025-10-30 16:36:50,831 [WARNING] PIVResult has no passes for frame 44. Skipping save.
+2025-10-30 16:36:50,832 [WARNING] PIVResult has no passes for frame 35. Skipping save.
+2025-10-30 16:36:50,832 [WARNING] PIVResult has no passes for frame 45. Skipping save.
+2025-10-30 16:36:50,832 [WARNING] PIVResult has no passes for frame 33. Skipping save.
+2025-10-30 16:36:50,832 [WARNING] PIVResult has no passes for frame 37. Skipping save.
+2025-10-30 16:36:50,836 [WARNING] PIVResult has no passes for frame 32. Skipping save.
+2025-10-30 16:36:50,842 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,846 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,848 [WARNING] PIVResult has no passes for frame 31. Skipping save.
+2025-10-30 16:36:50,849 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,873 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,876 [WARNING] PIVResult has no passes for frame 47. Skipping save.
+2025-10-30 16:36:50,877 [WARNING] PIVResult has no passes for frame 41. Skipping save.
+2025-10-30 16:36:50,880 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,883 [WARNING] PIVResult has no passes for frame 38. Skipping save.
+2025-10-30 16:36:50,884 [WARNING] PIVResult has no passes for frame 48. Skipping save.
+2025-10-30 16:36:50,884 [WARNING] PIVResult has no passes for frame 40. Skipping save.
+2025-10-30 16:36:50,885 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,886 [WARNING] PIVResult has no passes for frame 46. Skipping save.
+2025-10-30 16:36:50,898 [WARNING] PIVResult has no passes for frame 36. Skipping save.
+2025-10-30 16:36:50,909 [WARNING] PIVResult has no passes for frame 30. Skipping save.
+2025-10-30 16:36:50,930 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,937 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,942 [WARNING] PIVResult has no passes for frame 39. Skipping save.
+2025-10-30 16:36:50,950 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,959 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,980 [WARNING] PIVResult has no passes for frame 49. Skipping save.
+2025-10-30 16:36:50,983 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:50,990 [WARNING] PIVResult has no passes for frame 52. Skipping save.
+2025-10-30 16:36:51,041 [WARNING] PIVResult has no passes for frame 51. Skipping save.
+2025-10-30 16:36:51,092 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,095 [WARNING] PIVResult has no passes for frame 50. Skipping save.
+2025-10-30 16:36:51,127 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,139 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,175 [WARNING] PIVResult has no passes for frame 56. Skipping save.
+2025-10-30 16:36:51,176 [WARNING] PIVResult has no passes for frame 53. Skipping save.
+2025-10-30 16:36:51,196 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,208 [WARNING] PIVResult has no passes for frame 57. Skipping save.
+2025-10-30 16:36:51,209 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,211 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,212 [WARNING] PIVResult has no passes for frame 55. Skipping save.
+2025-10-30 16:36:51,212 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,214 [WARNING] PIVResult has no passes for frame 54. Skipping save.
+2025-10-30 16:36:51,215 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,216 [WARNING] PIVResult has no passes for frame 58. Skipping save.
+2025-10-30 16:36:51,217 [WARNING] PIVResult has no passes for frame 59. Skipping save.
+2025-10-30 16:36:51,232 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,248 [WARNING] PIVResult has no passes for frame 61. Skipping save.
+2025-10-30 16:36:51,250 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,268 [WARNING] PIVResult has no passes for frame 62. Skipping save.
+2025-10-30 16:36:51,307 [WARNING] PIVResult has no passes for frame 60. Skipping save.
+2025-10-30 16:36:51,334 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,352 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,376 [WARNING] PIVResult has no passes for frame 63. Skipping save.
+2025-10-30 16:36:51,384 [WARNING] PIVResult has no passes for frame 64. Skipping save.
+2025-10-30 16:36:51,406 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,425 [WARNING] PIVResult has no passes for frame 66. Skipping save.
+2025-10-30 16:36:51,436 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,449 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,456 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,459 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,461 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,465 [WARNING] PIVResult has no passes for frame 67. Skipping save.
+2025-10-30 16:36:51,467 [WARNING] PIVResult has no passes for frame 68. Skipping save.
+2025-10-30 16:36:51,470 [WARNING] PIVResult has no passes for frame 70. Skipping save.
+2025-10-30 16:36:51,470 [WARNING] PIVResult has no passes for frame 69. Skipping save.
+2025-10-30 16:36:51,504 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,529 [WARNING] PIVResult has no passes for frame 65. Skipping save.
+2025-10-30 16:36:51,692 [WARNING] PIVResult has no passes for frame 71. Skipping save.
+2025-10-30 16:36:51,775 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,778 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,800 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,801 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,801 [WARNING] PIVResult has no passes for frame 73. Skipping save.
+2025-10-30 16:36:51,801 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,804 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,824 [WARNING] PIVResult has no passes for frame 75. Skipping save.
+2025-10-30 16:36:51,825 [WARNING] PIVResult has no passes for frame 76. Skipping save.
+2025-10-30 16:36:51,825 [WARNING] PIVResult has no passes for frame 77. Skipping save.
+2025-10-30 16:36:51,850 [WARNING] PIVResult has no passes for frame 72. Skipping save.
+2025-10-30 16:36:51,893 [WARNING] PIVResult has no passes for frame 74. Skipping save.
+2025-10-30 16:36:51,929 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,936 [WARNING] PIVResult has no passes for frame 78. Skipping save.
+2025-10-30 16:36:51,967 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,969 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,974 [WARNING] PIVResult has no passes for frame 81. Skipping save.
+2025-10-30 16:36:51,980 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:51,981 [WARNING] PIVResult has no passes for frame 83. Skipping save.
+2025-10-30 16:36:51,996 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:52,001 [WARNING] PIVResult has no passes for frame 84. Skipping save.
+2025-10-30 16:36:52,028 [WARNING] PIVResult has no passes for frame 79. Skipping save.
+2025-10-30 16:36:52,037 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:52,052 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:52,056 [WARNING] PIVResult has no passes for frame 80. Skipping save.
+2025-10-30 16:36:52,064 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:52,090 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:52,097 [WARNING] PIVResult has no passes for frame 82. Skipping save.
+2025-10-30 16:36:52,116 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:52,153 [WARNING] PIVResult has no passes for frame 85. Skipping save.
+2025-10-30 16:36:52,158 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:52,178 [WARNING] PIVResult has no passes for frame 86. Skipping save.
+2025-10-30 16:36:52,178 [WARNING] PIVResult has no passes for frame 88. Skipping save.
+2025-10-30 16:36:52,217 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:52,234 [WARNING] PIVResult has no passes for frame 89. Skipping save.
+2025-10-30 16:36:52,248 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:52,249 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:52,266 [WARNING] PIVResult has no passes for frame 90. Skipping save.
+2025-10-30 16:36:52,266 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:52,271 [WARNING] PIVResult has no passes for frame 92. Skipping save.
+2025-10-30 16:36:52,285 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:36:52,397 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:52,400 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:52,408 [WARNING] PIVResult has no passes for frame 97. Skipping save.
+2025-10-30 16:36:52,409 [WARNING] PIVResult has no passes for frame 93. Skipping save.
+2025-10-30 16:36:52,411 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:52,413 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:52,415 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:52,416 [WARNING] PIVResult has no passes for frame 94. Skipping save.
+2025-10-30 16:36:52,416 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:52,417 [WARNING] PIVResult has no passes for frame 98. Skipping save.
+2025-10-30 16:36:52,419 [WARNING] PIVResult has no passes for frame 95. Skipping save.
+2025-10-30 16:36:52,420 [WARNING] PIVResult has no passes for frame 100. Skipping save.
+2025-10-30 16:36:52,452 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:52,465 [WARNING] PIVResult has no passes for frame 96. Skipping save.
+2025-10-30 16:36:52,501 [ERROR] PIV processing failed: unhashable type: 'list'
+2025-10-30 16:36:52,516 [WARNING] PIVResult has no passes for frame 99. Skipping save.
+2025-10-30 16:36:52,519 [INFO] Completed processing for Cam1. Saved 100 frames to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-30 16:36:54,867 [INFO] Dask profiling report saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\dask_profile_report.html
+2025-10-30 16:36:54,870 [INFO] Total elapsed time: 11.44 seconds
+2025-10-30 16:37:37,314 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:37:41,412 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:37:41,417 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:37:41,460 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:37:41,473 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:37:41,496 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:37:41,501 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:37:41,509 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:37:41,513 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:37:41,525 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:37:41,526 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:37:41,530 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:37:41,585 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:37:41,597 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:37:41,597 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:37:41,600 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:37:41,602 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:37:41,603 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:37:41,616 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:37:41,617 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:37:41,858 [INFO] Worker logging configured successfully
+2025-10-30 16:37:41,860 [INFO] Worker logging configured successfully
+2025-10-30 16:37:41,866 [INFO] Dask cluster started successfully
+2025-10-30 16:37:41,869 [INFO] Worker tcp://127.0.0.1:59836: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-00kbtw5l, nanny=True
+2025-10-30 16:37:41,869 [INFO] Worker tcp://127.0.0.1:59837: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-6zhvjeud, nanny=True
+2025-10-30 16:37:41,870 [INFO] Worker tcp://127.0.0.1:59846: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-ao14v3w6, nanny=True
+2025-10-30 16:37:41,870 [INFO] Worker tcp://127.0.0.1:59857: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-y8f_7sit, nanny=True
+2025-10-30 16:37:41,870 [INFO] Worker tcp://127.0.0.1:59866: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-hx0a_k21, nanny=True
+2025-10-30 16:37:41,872 [INFO] Processing camera: Cam1
+2025-10-30 16:37:41,872 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 16:37:50,368 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:37:54,159 [INFO] Completed processing for Cam1. Saved 100 frames to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-30 16:37:55,320 [INFO] Dask profiling report saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\dask_profile_report.html
+2025-10-30 16:37:55,323 [INFO] Total elapsed time: 18.00 seconds
+2025-10-30 16:38:45,310 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:38:49,414 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:38:49,462 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:38:49,464 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:38:49,465 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:38:49,465 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:38:49,466 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:38:49,480 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:38:49,522 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:38:49,539 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:38:49,550 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:38:49,558 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:38:49,586 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:38:49,593 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:38:49,599 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:38:49,599 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:38:49,611 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:38:49,622 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:38:49,632 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:38:49,641 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:38:49,807 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:38:49,930 [INFO] Worker logging configured successfully
+2025-10-30 16:38:49,930 [INFO] Worker logging configured successfully
+2025-10-30 16:38:49,930 [INFO] Worker logging configured successfully
+2025-10-30 16:38:49,930 [INFO] Worker logging configured successfully
+2025-10-30 16:38:49,931 [INFO] Worker logging configured successfully
+2025-10-30 16:38:49,931 [INFO] Worker logging configured successfully
+2025-10-30 16:38:49,931 [INFO] Worker logging configured successfully
+2025-10-30 16:38:49,931 [INFO] Worker logging configured successfully
+2025-10-30 16:38:49,931 [INFO] Worker logging configured successfully
+2025-10-30 16:38:49,931 [INFO] Worker logging configured successfully
+2025-10-30 16:38:49,931 [INFO] Worker logging configured successfully
+2025-10-30 16:38:49,931 [INFO] Worker logging configured successfully
+2025-10-30 16:38:49,931 [INFO] Worker logging configured successfully
+2025-10-30 16:38:49,932 [INFO] Worker logging configured successfully
+2025-10-30 16:38:49,932 [INFO] Worker logging configured successfully
+2025-10-30 16:38:49,932 [INFO] Worker logging configured successfully
+2025-10-30 16:38:49,932 [INFO] Worker logging configured successfully
+2025-10-30 16:38:49,932 [INFO] Worker logging configured successfully
+2025-10-30 16:38:49,932 [INFO] Worker logging configured successfully
+2025-10-30 16:38:49,936 [INFO] Dask cluster started successfully
+2025-10-30 16:38:49,938 [INFO] Worker tcp://127.0.0.1:64423: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-uh7zjvzm, nanny=True
+2025-10-30 16:38:49,939 [INFO] Worker tcp://127.0.0.1:64438: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-eh8mfrm9, nanny=True
+2025-10-30 16:38:49,939 [INFO] Worker tcp://127.0.0.1:64439: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-0mbpfgpf, nanny=True
+2025-10-30 16:38:49,939 [INFO] Worker tcp://127.0.0.1:64440: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-nvwcy7ai, nanny=True
+2025-10-30 16:38:49,939 [INFO] Worker tcp://127.0.0.1:64441: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-3xjcs2kn, nanny=True
+2025-10-30 16:38:49,939 [INFO] Processing camera: Cam1
+2025-10-30 16:38:49,939 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 16:38:53,305 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:39:05,147 [INFO] Completed processing for Cam1. Saved 100 frames to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-30 16:39:06,275 [INFO] Dask profiling report saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\dask_profile_report.html
+2025-10-30 16:39:06,277 [INFO] Total elapsed time: 20.96 seconds
+2025-10-30 16:40:50,727 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:40:54,691 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:40:54,696 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:40:54,698 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:40:54,714 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:40:54,745 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:40:54,772 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:40:54,798 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:40:54,799 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:40:54,845 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:40:54,845 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:40:54,846 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:40:54,848 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:40:54,862 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:40:54,863 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:40:54,927 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:40:54,927 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:40:54,963 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:40:54,975 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:40:54,997 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:40:54,999 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 16:40:55,139 [INFO] Worker logging configured successfully
+2025-10-30 16:40:55,143 [INFO] Worker logging configured successfully
+2025-10-30 16:40:55,153 [INFO] Dask cluster started successfully
+2025-10-30 16:40:55,162 [INFO] Worker tcp://127.0.0.1:49736: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-j61u05_b, nanny=True
+2025-10-30 16:40:55,163 [INFO] Worker tcp://127.0.0.1:49737: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-gjzzu2e2, nanny=True
+2025-10-30 16:40:55,163 [INFO] Worker tcp://127.0.0.1:49744: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-29m80kkb, nanny=True
+2025-10-30 16:40:55,163 [INFO] Worker tcp://127.0.0.1:49749: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-4i8__9d3, nanny=True
+2025-10-30 16:40:55,164 [INFO] Worker tcp://127.0.0.1:49752: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-f9vixvxv, nanny=True
+2025-10-30 16:40:55,164 [INFO] Processing camera: Cam1
+2025-10-30 16:40:55,165 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 16:40:58,379 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 16:41:09,179 [INFO] Completed processing for Cam1. Saved 100 frames to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-30 16:41:10,336 [INFO] Dask profiling report saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\dask_profile_report.html
+2025-10-30 16:41:10,338 [INFO] Total elapsed time: 19.60 seconds
+2025-10-30 17:07:53,987 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:07:58,382 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:07:58,387 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:07:58,407 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:07:58,428 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:07:58,432 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:07:58,475 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:07:58,476 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:07:58,492 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:07:58,496 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:07:58,502 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:07:58,516 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:07:58,518 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:07:58,518 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:07:58,534 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:07:58,541 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:07:58,569 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:07:58,627 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:07:58,628 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:07:58,820 [INFO] Worker logging configured successfully
+2025-10-30 17:07:58,823 [INFO] Worker logging configured successfully
+2025-10-30 17:07:58,831 [INFO] Dask cluster started successfully
+2025-10-30 17:07:58,833 [INFO] Worker tcp://127.0.0.1:55718: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-odvqttoq, nanny=True
+2025-10-30 17:07:58,833 [INFO] Worker tcp://127.0.0.1:55723: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-jf7n7keu, nanny=True
+2025-10-30 17:07:58,834 [INFO] Worker tcp://127.0.0.1:55730: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-c5f9eg1u, nanny=True
+2025-10-30 17:07:58,834 [INFO] Worker tcp://127.0.0.1:55736: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-1h78tb2j, nanny=True
+2025-10-30 17:07:58,834 [INFO] Worker tcp://127.0.0.1:55737: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-r6npg_0l, nanny=True
+2025-10-30 17:07:58,834 [INFO] Processing camera: Cam1
+2025-10-30 17:07:58,834 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 17:08:01,046 [ERROR] Error during processing: perform_piv_and_save() got an unexpected keyword argument 'mask'
+2025-10-30 17:08:01,051 [INFO] Total elapsed time: 7.06 seconds
+2025-10-30 17:09:37,407 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:09:41,273 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:09:41,299 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:09:41,305 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:09:41,322 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:09:41,334 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:09:41,337 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:09:41,341 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:09:41,479 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:09:41,479 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:09:41,514 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:09:41,517 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:09:41,533 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:09:41,536 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:09:41,538 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:09:41,576 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:09:41,578 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:09:41,578 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:09:41,579 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:09:41,579 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:09:41,647 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-30 17:09:41,771 [INFO] Worker logging configured successfully
+2025-10-30 17:09:41,772 [INFO] Worker logging configured successfully
+2025-10-30 17:09:41,772 [INFO] Worker logging configured successfully
+2025-10-30 17:09:41,773 [INFO] Worker logging configured successfully
+2025-10-30 17:09:41,774 [INFO] Worker logging configured successfully
+2025-10-30 17:09:41,775 [INFO] Worker logging configured successfully
+2025-10-30 17:09:41,776 [INFO] Worker logging configured successfully
+2025-10-30 17:09:41,777 [INFO] Worker logging configured successfully
+2025-10-30 17:09:41,777 [INFO] Worker logging configured successfully
+2025-10-30 17:09:41,777 [INFO] Worker logging configured successfully
+2025-10-30 17:09:41,777 [INFO] Worker logging configured successfully
+2025-10-30 17:09:41,777 [INFO] Worker logging configured successfully
+2025-10-30 17:09:41,777 [INFO] Worker logging configured successfully
+2025-10-30 17:09:41,779 [INFO] Dask cluster started successfully
+2025-10-30 17:09:41,781 [INFO] Worker tcp://127.0.0.1:60499: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-jbk6ot2e, nanny=True
+2025-10-30 17:09:41,782 [INFO] Worker tcp://127.0.0.1:60510: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-9n_9r02p, nanny=True
+2025-10-30 17:09:41,782 [INFO] Worker tcp://127.0.0.1:60511: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-beay0pdb, nanny=True
+2025-10-30 17:09:41,782 [INFO] Worker tcp://127.0.0.1:60516: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-fvtp7j9e, nanny=True
+2025-10-30 17:09:41,782 [INFO] Worker tcp://127.0.0.1:60517: pid=N/A, host=127.0.0.1, memory=2500000000, local_dir=C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-4a7yqhhz, nanny=True
+2025-10-30 17:09:41,783 [INFO] Processing camera: Cam1
+2025-10-30 17:09:41,783 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-30 17:09:42,150 [INFO] Pre-computed vector masks: 6 passes
+2025-10-30 17:09:49,499 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-30 17:09:54,583 [INFO] Completed processing for Cam1. Saved 100 frames to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-30 17:09:55,664 [INFO] Dask profiling report saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\dask_profile_report.html
+2025-10-30 17:09:55,689 [INFO] Total elapsed time: 18.27 seconds

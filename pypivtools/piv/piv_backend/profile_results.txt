@@ -1,59 +1,59 @@
 Detailed profiling statistics (top 20 functions by cumulative time):
-         801963 function calls (552109 primitive calls) in 5.189 seconds
+         919351 function calls (826356 primitive calls) in 4.068 seconds
 
    Ordered by: cumulative time
-   List reduced from 868 to 20 due to restriction <20>
+   List reduced from 913 to 20 due to restriction <20>
 
    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
-      9/1    0.000    0.000    5.190    5.190 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\pypivtools\piv\piv_backend\cpu_instantaneous.py:113(correlate_batch)
-     18/1    0.000    0.000    5.190    5.190 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\src\config.py:382(masking_enabled)
-      9/1    0.000    0.000    5.190    5.190 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\lib\_function_base_impl.py:5112(_meshgrid_dispatcher)
-      9/1    0.000    0.000    5.190    5.190 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\lib\_function_base_impl.py:5117(meshgrid)
-      9/1    0.000    0.000    5.190    5.190 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\lib\_stride_tricks_impl.py:477(_broadcast_arrays_dispatcher)
-      9/1    0.000    0.000    5.190    5.190 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\lib\_stride_tricks_impl.py:481(broadcast_arrays)
-      9/1    0.000    0.000    5.190    5.190 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\lib\_stride_tricks_impl.py:413(_broadcast_shape)
-     72/1    0.000    0.000    5.190    5.190 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\lib\_stride_tricks_impl.py:340(_broadcast_to)
-    450/1    0.003    0.000    5.190    5.190 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\lib\_function_base_impl.py:339(iterable)
-     72/1    0.001    0.000    5.190    5.190 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\lib\_stride_tricks_impl.py:24(_maybe_view_as_subclass)
-     27/1    0.000    0.000    5.190    5.190 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\lib\_function_base_impl.py:5263(<genexpr>)
-    931/1    0.001    0.000    5.187    5.187 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\_core\shape_base.py:370(_stack_dispatcher)
-    931/1    0.002    0.000    5.187    5.187 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\_core\shape_base.py:208(_arrays_for_stack_dispatcher)
-    931/1    0.006    0.000    5.187    5.187 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\_core\shape_base.py:380(stack)
-   1471/1    0.055    0.000    5.187    5.187 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\_core\multiarray.py:180(concatenate)
-     36/3    0.001    0.000    5.185    1.728 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\dask\array\core.py:1993(__getitem__)
-     36/3    0.000    0.000    5.184    1.728 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\dask\array\slicing.py:799(normalize_index)
-     36/3    0.000    0.000    5.184    1.728 C:\Python313\Lib\contextlib.py:82(inner)
-     36/3    0.000    0.000    5.184    1.728 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\dask\array\slicing.py:100(slice_array)
-     36/3    0.000    0.000    5.184    1.728 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\dask\array\slicing.py:178(slice_with_newaxes)
+     54/1    0.001    0.000    3.986    3.986 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\pypivtools\piv\piv_backend\cpu_instantaneous.py:480(_predictor_corrector)
+     63/1    0.000    0.000    3.986    3.986 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\_core\numeric.py:58(_zeros_like_dispatcher)
+     63/1    0.000    0.000    3.986    3.986 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\_core\numeric.py:64(zeros_like)
+    441/1    0.302    0.001    3.986    3.986 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\_core\multiarray.py:107(empty_like)
+   1089/7    0.031    0.000    3.945    0.564 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\_core\shape_base.py:380(stack)
+  1089/22    0.001    0.000    3.942    0.179 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\_core\shape_base.py:370(_stack_dispatcher)
+  1089/22    0.001    0.000    3.942    0.179 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\_core\shape_base.py:208(_arrays_for_stack_dispatcher)
+     54/1    0.000    0.000    3.942    3.942 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\pypivtools\piv\piv_backend\cpu_instantaneous.py:651(_piv_2d_outlier)
+  1413/22    0.001    0.000    3.942    0.179 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\_core\multiarray.py:180(concatenate)
+    162/1    0.001    0.000    3.942    3.942 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\lib\_arraypad_impl.py:537(_pad_dispatcher)
+    162/1    0.002    0.000    3.942    3.942 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\lib\_arraypad_impl.py:545(pad)
+    270/1    0.001    0.000    3.942    3.942 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\lib\_arraypad_impl.py:470(_as_pairs)
+    162/1    0.000    0.000    3.942    3.942 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\_core\fromnumeric.py:3614(_round_dispatcher)
+    162/1    0.000    0.000    3.942    3.942 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\_core\fromnumeric.py:3618(round)
+    918/1    0.003    0.000    3.942    3.942 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\_core\fromnumeric.py:51(_wrapfunc)
+    162/1    0.001    0.000    3.942    3.942 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\lib\_arraypad_impl.py:86(_pad_simple)
+    540/1    0.001    0.000    3.942    3.942 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\lib\_arraypad_impl.py:109(<genexpr>)
+    540/1    0.001    0.000    3.942    3.942 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\lib\_arraypad_impl.py:120(<genexpr>)
+    378/1    0.001    0.000    3.942    3.942 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\lib\_arraypad_impl.py:58(_view_roi)
+    378/1    0.001    0.000    3.942    3.942 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\lib\_arraypad_impl.py:129(_set_pad_area)
 
 
 
 Top 20 functions by total time:
-         801963 function calls (552109 primitive calls) in 5.189 seconds
+         919351 function calls (826356 primitive calls) in 4.068 seconds
 
    Ordered by: internal time
-   List reduced from 868 to 20 due to restriction <20>
+   List reduced from 913 to 20 due to restriction <20>
 
    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
-   3040/1    0.851    0.000    5.099    5.099 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\scipy\ndimage\_ni_support.py:37(_extend_mode_to_code)
-    918/1    0.502    0.001    5.137    5.137 C:\Python313\Lib\ctypes\__init__.py:530(cast)
-      783    0.455    0.001    0.455    0.001 {built-in method numpy.asfortranarray}
-     2448    0.382    0.000    0.382    0.000 {method 'astype' of 'numpy.ndarray' objects}
-      270    0.347    0.001    0.347    0.001 {remap}
-  15190/1    0.324    0.000    5.099    5.099 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\_core\multiarray.py:995(ravel_multi_index)
-   2772/0    0.264    0.000    0.000          C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\ma\core.py:3771(_get_data)
-    540/1    0.217    0.000    5.102    5.102 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\_core\numeric.py:450(count_nonzero)
-      108    0.198    0.002    0.198    0.002 {built-in method scipy.sparse.linalg._dsolve._superlu.gssv}
-  15190/1    0.112    0.000    5.099    5.099 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\skimage\restoration\inpaint.py:13(_get_neighborhood)
-     1116    0.104    0.000    0.104    0.000 {method 'copy' of 'numpy.ndarray' objects}
-      324    0.100    0.000    0.100    0.000 {method 'argsort' of 'numpy.ndarray' objects}
-     4357    0.084    0.000    0.084    0.000 {method 'reduce' of 'numpy.ufunc' objects}
-   251326    0.083    0.000    0.083    0.000 {built-in method _warnings.warn}
-    810/1    0.081    0.000    5.099    5.099 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\lib\_function_base_impl.py:898(copy)
-    432/1    0.079    0.000    5.099    5.099 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\_core\fromnumeric.py:69(_wrapreduction)
-   1471/1    0.055    0.000    5.187    5.187 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\_core\multiarray.py:180(concatenate)
-    324/1    0.054    0.000    5.102    5.102 C:\Python313\Lib\warnings.py:509(__exit__)
-     54/1    0.046    0.001    5.144    5.144 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\src\config.py:267(debug)
-4257/3933    0.035    0.000    0.034    0.000 {built-in method numpy.array}
+  216/108    0.694    0.003    1.453    0.013 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\line_profiler\profiler_mixin.py:410(wrapper)
+      783    0.428    0.001    0.428    0.001 {built-in method numpy.asfortranarray}
+     2232    0.372    0.000    0.372    0.000 {method 'astype' of 'numpy.ndarray' objects}
+      270    0.359    0.001    0.359    0.001 {remap}
+    441/1    0.302    0.001    3.986    3.986 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\_core\multiarray.py:107(empty_like)
+ 3132/109    0.269    0.000    3.937    0.036 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\scipy\ndimage\_filters.py:483(_invalid_origin)
+      108    0.170    0.002    0.170    0.002 {built-in method scipy.sparse.linalg._dsolve._superlu.gssv}
+      108    0.165    0.002    0.458    0.004 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\skimage\restoration\inpaint.py:33(_inpaint_biharmonic_single_region)
+      108    0.085    0.001    0.105    0.001 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\scipy\interpolate\_ndgriddata.py:88(__init__)
+      108    0.078    0.001    0.081    0.001 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\scipy\interpolate\_ndgriddata.py:97(__call__)
+     2989    0.076    0.000    0.076    0.000 {method 'reduce' of 'numpy.ufunc' objects}
+      342    0.069    0.000    0.069    0.000 {method 'copy' of 'numpy.ndarray' objects}
+       18    0.064    0.004    0.068    0.004 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\dask\array\core.py:5433(concatenate3)
+    13420    0.033    0.000    0.033    0.000 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\skimage\restoration\inpaint.py:13(_get_neighborhood)
+2745/2637    0.032    0.000    0.032    0.000 {built-in method numpy.array}
+   1089/7    0.031    0.000    3.945    0.564 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\_core\shape_base.py:380(stack)
+    846/0    0.029    0.000    0.000          C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\numpy\_core\multiarray.py:1098(copyto)
+14167/14148    0.027    0.000    0.515    0.000 {built-in method numpy.asarray}
+   756/72    0.025    0.000    0.411    0.006 C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\dask\_task_spec.py:744(__call__)
+    215/0    0.023    0.000    0.000          C:\Python313\Lib\warnings.py:509(__exit__)
 
 

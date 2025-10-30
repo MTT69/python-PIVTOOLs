@@ -27,8 +27,13 @@ def run_camera_processing(client, config, camera_num, source_path, base_path):
     # Load images
     images = load_images(camera_num, config, source=source_path)
 
-    # Load mask
+    # Load mask and pre-compute vector masks
     mask = load_mask_for_camera(camera_num, config, source_path_idx=0)
+    vector_masks = None
+    if config.masking_enabled and mask is not None:
+        from image_handling.load_images import compute_vector_mask
+        vector_masks = compute_vector_mask(mask, config)
+        logging.info(f"Pre-computed vector masks: {len(vector_masks)} passes")
 
     # Output path for uncalibrated PIV
     output_path = get_output_path(config, camera_num, use_uncalibrated=True)
@@ -38,7 +43,7 @@ def run_camera_processing(client, config, camera_num, source_path, base_path):
         images, config, client, output_path,
         start_frame=1,
         pass_index=None,
-        mask=mask
+        vector_masks=vector_masks
     )
 
     # Save coordinates

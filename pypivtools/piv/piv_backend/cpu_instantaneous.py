@@ -6,6 +6,7 @@ import time
 import traceback
 import warnings
 from pathlib import Path
+from typing import List
 import cv2
 import dask.array as da
 import numpy as np
@@ -25,12 +26,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))
 
 from config import Config
 from pypivtools.piv.piv_backend.base import CrossCorrelator
-
 from pypivtools.piv.piv_result import PIVPassResult, PIVResult
 
 
 class InstantaneousCorrelatorCPU(CrossCorrelator):
-
     def __init__(self, config: Config) -> None:
         super().__init__()
         # Use platform-appropriate library extension
@@ -99,20 +98,19 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
 
         self._cache_window_padding(config=config)
         self.H, self.W = config.image_shape
-        
+
         # Cache interpolation grids for performance
         self._cache_interpolation_grids(config=config)
-        
-        # Initialize vector mask cache (computed once when mask is provided)
+
+        # Initialize vector masks (will be set in correlate_batch)
         self.vector_masks = []
-        self.mask_cached = False
-        
+
         # Store pass times for profiling
         self.pass_times = []
 
     @profile
     def correlate_batch(  # type: ignore[override]
-        self, images: np.ndarray, config: Config, mask: np.ndarray | None = None
+        self, images: np.ndarray, config: Config, vector_masks: List[np.ndarray] | None = None
     ) -> PIVResult:
         """Run PIV correlation on a batch of image pairs with MATLAB-style indexing."""
 
@@ -121,22 +119,12 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         piv_result_all = PIVResult()
         self.delta_ab_pred = None
         self.delta_ab_old = None
-        self.mask = mask
-        
+
         # Clear pass times for this batch
         self.pass_times = []
-        
-        # Compute vector masks once and cache them
-        # Only compute if masking is enabled and mask is provided
-        if config.masking_enabled and mask is not None and not self.mask_cached:
-            from image_handling.load_images import compute_vector_mask
-            logging.debug("Computing vector masks from pixel mask (will be cached for subsequent batches)")
-            self.vector_masks = compute_vector_mask(mask, config)
-            self.mask_cached = True
-        elif not config.masking_enabled:
-            # Masking disabled - clear any cached masks
-            self.vector_masks = []
-            self.mask_cached = False
+
+        # Use pre-computed vector masks
+        self.vector_masks = vector_masks if vector_masks is not None else []
 
         y_coords = np.arange(self.H, dtype=np.float32)
         x_coords = np.arange(self.W, dtype=np.float32)
@@ -245,7 +233,8 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     uy_mat = pk_loc_y[0]
 
                     nan_mask = np.isnan(ux_mat) | np.isnan(uy_mat)
-                    nan_mask |= self._piv_2d_outlier(ux_mat, uy_mat)
+                    if config.outlier_detection:
+                        nan_mask |= self._piv_2d_outlier(ux_mat, uy_mat)
 
                     # No-op edge mask (no vectors excluded by edges)
                     edge_mask = np.zeros((n_win_y, n_win_x), dtype=bool)
@@ -259,7 +248,8 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                             # Select new peak for nan_mask locations
                             ux_mat = np.choose(peak_choice - 1, pk_loc_x)
                             uy_mat = np.choose(peak_choice - 1, pk_loc_y)
-                            nan_mask |= self._piv_2d_outlier(ux_mat, uy_mat)
+                            if config.outlier_detection:
+                                nan_mask |= self._piv_2d_outlier(ux_mat, uy_mat)
                             if not nan_mask.any():
                                 break
 
@@ -511,7 +501,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             )
 
         delta_0b = self.delta_ab_dense / 2
-        delta_0a = -self.delta_ab_dense / 2
+        delta_0a = -delta_0b
         im_mesh_A = self.im_mesh + delta_0a
         im_mesh_B = self.im_mesh + delta_0b
 
@@ -622,6 +612,93 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             | (n_neighbours < 6).any(axis=2)
         )
         return b_filter
+    # @profile
+    # def _piv_2d_outlier(
+    #     self,
+    #     ux: np.ndarray,
+    #     uy: np.ndarray,
+    #     epsilon: float = 0.2,
+    #     threshold: float = 2.0,
+    # ):
+    #     """
+    #     Check for outliers in 2D PIV data using a fast mean/stddev filter.
+        
+    #     This is an optimized version that replaces the slow `np.nanmedian`
+    #     with `np.nanmean` and `np.nanstd`. The logic is changed from
+    #     a median-absolute-deviation (MAD) filter to a standard-deviation
+    #     (Z-score) filter.
+
+    #     :param ux: Horizontal velocity component.
+    #     :type ux: np.ndarray
+    #     :param uy: Vertical velocity component.
+    #     :type uy: np.ndarray
+    #     :param epsilon: Regularization parameter, defaults to 0.2.
+    #     :type epsilon: float, optional
+    #     :param threshold: Outlier threshold (in standard deviations), defaults to 2.0.
+    #     :type threshold: float, optional
+    #     :return: Boolean array indicating outliers.
+    #     :rtype: np.ndarray
+    #     """
+    #     n_wx, n_wy = ux.shape
+
+    #     ui = np.stack([ux, uy], axis=-1)
+
+    #     r_0p = np.zeros((n_wx, n_wy, 2))
+    #     n_neighbours = np.zeros((n_wx, n_wy, 2))
+
+    #     for c in range(2):
+    #         U = ui[..., c]
+    #         U_pad = np.pad(U, 1, mode="constant", constant_values=np.nan)
+
+    #         U_nn = np.zeros((n_wx, n_wy, 8))
+    #         U_nn[..., 0] = U_pad[0:-2, 0:-2]
+    #         U_nn[..., 1] = U_pad[0:-2, 1:-1]
+    #         U_nn[..., 2] = U_pad[0:-2, 2:]
+    #         U_nn[..., 3] = U_pad[1:-1, 0:-2]
+    #         U_nn[..., 4] = U_pad[1:-1, 2:]
+    #         U_nn[..., 5] = U_pad[2:, 2:]
+    #         U_nn[..., 6] = U_pad[2:, 1:-1]
+    #         U_nn[..., 7] = U_pad[2:, 0:-2]
+
+    #         # --- OPTIMIZATION START ---
+    #         # Replace slow nanmedian with fast nanmean and nanstd
+    #         with warnings.catch_warnings():
+    #             warnings.simplefilter("ignore", category=RuntimeWarning)
+                
+    #             # 1. Calculate the mean of the 8 neighbors (replaces U_med)
+    #             U_mean = np.nanmean(U_nn, axis=2)
+                
+    #             # 2. Calculate the standard deviation of the 8 neighbors (replaces r_m)
+    #             U_std = np.nanstd(U_nn, axis=2)
+
+    #         # 3. Calculate deviation of the point from the neighbors' mean
+    #         r_0 = np.abs(U_mean - U)
+            
+    #         # 4. Normalize the deviation by the neighbors' standard deviation
+    #         # This is now a "Z-score" relative to the neighborhood
+    #         r_0p[..., c] = r_0 / (U_std + epsilon)
+    #         # --- OPTIMIZATION END ---
+
+    #         # Count valid neighbors (this part is fast and should be kept)
+    #         n_neigh = convolve2d(
+    #             np.logical_not(np.isnan(U)).astype(float),
+    #             np.ones((3, 3)),
+    #             mode="same",
+    #             boundary="fill",
+    #             fillvalue=0,
+    #         )
+    #         n_neighbours[..., c] = n_neigh
+            
+    #     with warnings.catch_warnings():
+    #         warnings.simplefilter("ignore", category=RuntimeWarning)
+    #         r_0_combined = np.nanmax(r_0p, axis=2)
+            
+    #     b_filter = (
+    #         (r_0_combined > threshold)
+    #         | np.isnan(r_0p).any(axis=2)
+    #         | (n_neighbours < 6).any(axis=2) # Keep the valid neighbor check
+    #     )
+    #     return b_filter
 
     def _set_lib_arguments(
         self,

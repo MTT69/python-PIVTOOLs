@@ -31,7 +31,7 @@ def perform_piv_and_save(
     output_path: Path,
     start_frame: int = 1,
     pass_index: Optional[int] = None,
-    mask: Optional[np.ndarray] = None,
+    vector_masks: Optional[List[np.ndarray]] = None,
 ) -> List:
     """
     Perform PIV and save results in parallel on workers.
@@ -60,9 +60,10 @@ def perform_piv_and_save(
     pass_index : Optional[int]
         If specified, save only this pass (0-based).
         If None, save all passes.
-    mask : Optional[np.ndarray]
-        Boolean mask array of shape (H, W) where True indicates masked regions.
-        If provided, vectors in masked regions will be invalidated (set to NaN).
+    vector_masks : Optional[List[np.ndarray]]
+        Pre-computed vector masks for each PIV pass. Each mask should be a boolean
+        array of shape (n_win_y, n_win_x) where True indicates vectors to mask.
+        If provided, these are used directly instead of computing from pixel masks.
         
     Returns
     -------
@@ -75,8 +76,8 @@ def perform_piv_and_save(
         block = images[i]
         frame_number = start_frame + i
         
-        # Submit PIV task with mask
-        piv_future = client.submit(_piv_single_pass, block, config, mask)
+        # Submit PIV task with pre-computed vector masks
+        piv_future = client.submit(_piv_single_pass, block, config, vector_masks)
         
         # Chain save task to PIV result
         # All required data (win_ctrs, b_mask) is in PIVResult
@@ -124,7 +125,7 @@ def perform_piv_and_save(
 def _piv_single_pass(
     image_block: da.Array,
     config: Config,
-    mask: Optional[np.ndarray] = None,
+    vector_masks: Optional[List[np.ndarray]] = None,
 ) -> PIVResult:
     try:
         image_block = image_block.compute()
@@ -132,7 +133,7 @@ def _piv_single_pass(
             # Shape: (2, H, W)
             image_block = image_block[np.newaxis, ...]  # Shape: (1, 2, H, W)
         correlator = make_correlator_backend(config)
-        piv_results = correlator.correlate_batch(image_block, config=config, mask=mask)
+        piv_results = correlator.correlate_batch(image_block, config=config, vector_masks=vector_masks)
     except Exception as e:
         # Return a PIVResult containing error information
         error_result = PIVResult()

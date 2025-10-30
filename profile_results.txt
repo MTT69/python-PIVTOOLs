@@ -1,6 +1,6 @@
 Timer unit: 1e-06 s
 
-Total time: 6.23625 s
+Total time: 14.7069 s
 File: C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\pypivtools\piv\piv_backend\cpu_instantaneous.py
 Function: InstantaneousCorrelatorCPU.correlate_batch at line 113
 
@@ -12,426 +12,581 @@ Line #      Hits         Time  Per Hit   % Time  Line Contents
    116                                               ) -> PIVResult:
    117                                                   """Run PIV correlation on a batch of image pairs with MATLAB-style indexing."""
    118                                           
-   119        10         71.0      7.1      0.0          N, _, H, W = images.shape
+   119        10         68.8      6.9      0.0          N, _, H, W = images.shape
    120                                           
-   121        10         40.8      4.1      0.0          piv_result_all = PIVResult()
-   122        10        163.2     16.3      0.0          self.delta_ab_pred = None
-   123        10        618.4     61.8      0.0          self.delta_ab_old = None
-   124        10          5.1      0.5      0.0          self.mask = mask
+   121        10         42.1      4.2      0.0          piv_result_all = PIVResult()
+   122        10        520.7     52.1      0.0          self.delta_ab_pred = None
+   123        10        474.0     47.4      0.0          self.delta_ab_old = None
+   124        10          4.0      0.4      0.0          self.mask = mask
    125                                                   
    126                                                   # Clear pass times for this batch
-   127        10          9.3      0.9      0.0          self.pass_times = []
+   127        10          9.0      0.9      0.0          self.pass_times = []
    128                                                   
    129                                                   # Compute vector masks once and cache them
    130                                                   # Only compute if masking is enabled and mask is provided
-   131        10         45.7      4.6      0.0          if config.masking_enabled and mask is not None and not self.mask_cached:
-   132         1          2.0      2.0      0.0              from image_handling.load_images import compute_vector_mask
-   133         1         20.8     20.8      0.0              logging.debug("Computing vector masks from pixel mask (will be cached for subsequent batches)")
-   134         1     339073.9 339073.9      5.4              self.vector_masks = compute_vector_mask(mask, config)
-   135         1          1.0      1.0      0.0              self.mask_cached = True
-   136         9         14.6      1.6      0.0          elif not config.masking_enabled:
+   131        10         39.5      4.0      0.0          if config.masking_enabled and mask is not None and not self.mask_cached:
+   132         1          2.7      2.7      0.0              from image_handling.load_images import compute_vector_mask
+   133         1         18.7     18.7      0.0              logging.debug("Computing vector masks from pixel mask (will be cached for subsequent batches)")
+   134         1     336743.7 336743.7      2.3              self.vector_masks = compute_vector_mask(mask, config)
+   135         1          0.8      0.8      0.0              self.mask_cached = True
+   136         9         14.3      1.6      0.0          elif not config.masking_enabled:
    137                                                       # Masking disabled - clear any cached masks
    138                                                       self.vector_masks = []
    139                                                       self.mask_cached = False
    140                                           
-   141        10         51.1      5.1      0.0          y_coords = np.arange(self.H, dtype=np.float32)
-   142        10         21.6      2.2      0.0          x_coords = np.arange(self.W, dtype=np.float32)
-   143        10      21680.0   2168.0      0.3          y_mesh, x_mesh = np.meshgrid(y_coords, x_coords, indexing="ij")
-   144        10      29091.8   2909.2      0.5          self.im_mesh = np.stack([y_mesh, x_mesh], axis=-1)
+   141        10         63.1      6.3      0.0          y_coords = np.arange(self.H, dtype=np.float32)
+   142        10         21.5      2.1      0.0          x_coords = np.arange(self.W, dtype=np.float32)
+   143        10      23495.8   2349.6      0.2          y_mesh, x_mesh = np.meshgrid(y_coords, x_coords, indexing="ij")
+   144        10      28558.9   2855.9      0.2          self.im_mesh = np.stack([y_mesh, x_mesh], axis=-1)
    145                                           
-   146        20         28.6      1.4      0.0          for n in range(N):
-   147        10          5.5      0.6      0.0              try:
-   148        10     158242.3  15824.2      2.5                  image_a = np.asarray(images[n, 0], dtype=np.float32)
-   149        10     129375.1  12937.5      2.1                  image_b = np.asarray(images[n, 1], dtype=np.float32)
+   146        20         28.9      1.4      0.0          for n in range(N):
+   147        10          4.8      0.5      0.0              try:
+   148        10    5006774.9 500677.5     34.0                  image_a = np.asarray(images[n, 0], dtype=np.float32)
+   149        10    4876750.7 487675.1     33.2                  image_b = np.asarray(images[n, 1], dtype=np.float32)
    150                                           
-   151        10         23.7      2.4      0.0                  if not image_a.flags["F_CONTIGUOUS"]:
-   152        10      36478.2   3647.8      0.6                      image_a = np.asfortranarray(image_a)
-   153        10         12.4      1.2      0.0                  if not image_b.flags["F_CONTIGUOUS"]:
-   154        10      34901.9   3490.2      0.6                      image_b = np.asfortranarray(image_b)
+   151        10         34.3      3.4      0.0                  if not image_a.flags["F_CONTIGUOUS"]:
+   152        10      35349.3   3534.9      0.2                      image_a = np.asfortranarray(image_a)
+   153        10         20.4      2.0      0.0                  if not image_b.flags["F_CONTIGUOUS"]:
+   154        10      36843.3   3684.3      0.3                      image_b = np.asfortranarray(image_b)
    155                                           
-   156        10        108.2     10.8      0.0                  image_size = np.asfortranarray(np.array([H, W], dtype=np.int32))
+   156        10        144.6     14.5      0.0                  image_size = np.asfortranarray(np.array([H, W], dtype=np.int32))
    157                                           
-   158        70        140.9      2.0      0.0                  for pass_idx, win_size in enumerate(config.window_sizes):
-   159        60         68.2      1.1      0.0                      pass_start = time.perf_counter()
-   160        60      26735.3    445.6      0.4                      image_a_prime, image_b_prime, self.delta_ab_pred = (
-   161       120    1754558.3  14621.3     28.1                          self._predictor_corrector(
-   162        60         16.3      0.3      0.0                              pass_idx,
-   163        60         20.9      0.3      0.0                              image_a,
-   164        60         26.8      0.4      0.0                              image_b,
-   165        60        249.3      4.2      0.0                              win_type=config.window_type,
+   158        70        180.4      2.6      0.0                  for pass_idx, win_size in enumerate(config.window_sizes):
+   159        60         78.8      1.3      0.0                      pass_start = time.perf_counter()
+   160        60      25403.5    423.4      0.2                      image_a_prime, image_b_prime, self.delta_ab_pred = (
+   161       120    1675275.3  13960.6     11.4                          self._predictor_corrector(
+   162        60         17.7      0.3      0.0                              pass_idx,
+   163        60         25.3      0.4      0.0                              image_a,
+   164        60         22.6      0.4      0.0                              image_b,
+   165        60        233.8      3.9      0.0                              win_type=config.window_type,
    166                                                                   )
    167                                                               )
    168                                           
-   169        60         38.1      0.6      0.0                      (
-   170        60         50.5      0.8      0.0                          win_size_arr,
-   171        60         34.7      0.6      0.0                          n_windows,
-   172        60         53.1      0.9      0.0                          b_mask,
-   173        60         39.6      0.7      0.0                          n_peaks,
+   169        60         47.6      0.8      0.0                      (
+   170        60         56.7      0.9      0.0                          win_size_arr,
+   171        60         32.5      0.5      0.0                          n_windows,
+   172        60         55.3      0.9      0.0                          b_mask,
+   173        60         36.1      0.6      0.0                          n_peaks,
    174        60         17.0      0.3      0.0                          i_peak_finder,
-   175        60         14.5      0.2      0.0                          b_ensemble,
-   176        60         50.0      0.8      0.0                          pk_loc_x,
-   177        60         42.3      0.7      0.0                          pk_loc_y,
-   178        60         53.9      0.9      0.0                          pk_height,
-   179        60         39.6      0.7      0.0                          sx,
-   180        60        130.1      2.2      0.0                          sy,
-   181        60        222.5      3.7      0.0                          sxy,
-   182        60      47937.7    799.0      0.8                          correl_plane_out,
-   183       120       8530.3     71.1      0.1                      ) = self._set_lib_arguments(
-   184        60         40.0      0.7      0.0                          config=config,
-   185        60         45.8      0.8      0.0                          win_size=win_size,
-   186        60         17.1      0.3      0.0                          pass_idx=pass_idx,
+   175        60         18.0      0.3      0.0                          b_ensemble,
+   176        60         42.6      0.7      0.0                          pk_loc_x,
+   177        60         41.3      0.7      0.0                          pk_loc_y,
+   178        60         51.4      0.9      0.0                          pk_height,
+   179        60         43.0      0.7      0.0                          sx,
+   180        60         42.3      0.7      0.0                          sy,
+   181        60         34.2      0.6      0.0                          sxy,
+   182        60      45392.5    756.5      0.3                          correl_plane_out,
+   183       120       7672.8     63.9      0.1                      ) = self._set_lib_arguments(
+   184        60         48.0      0.8      0.0                          config=config,
+   185        60         38.7      0.6      0.0                          win_size=win_size,
+   186        60         16.7      0.3      0.0                          pass_idx=pass_idx,
    187                                                               )
    188                                           
-   189       120     741408.0   6178.4     11.9                      error_code = self.lib.bulkxcorr2d(
-   190        60     208108.7   3468.5      3.3                          np.asfortranarray(image_a_prime),
-   191        60     204617.6   3410.3      3.3                          np.asfortranarray(image_b_prime),
-   192        60         48.7      0.8      0.0                          b_mask,
-   193        60         39.2      0.7      0.0                          image_size,
-   194        60        314.6      5.2      0.0                          self.win_ctrs_x[pass_idx].astype(np.float32),
-   195        60        111.2      1.9      0.0                          self.win_ctrs_y[pass_idx].astype(np.float32),
-   196        60         38.3      0.6      0.0                          n_windows,
-   197        60         47.3      0.8      0.0                          self.win_weights[pass_idx],
-   198        60         35.3      0.6      0.0                          b_ensemble,
-   199        60         27.6      0.5      0.0                          self.win_weights[pass_idx],
-   200        60         27.1      0.5      0.0                          win_size_arr,
-   201        60         97.2      1.6      0.0                          int(n_peaks),
-   202        60         29.7      0.5      0.0                          int(i_peak_finder),
-   203        60         25.4      0.4      0.0                          pk_loc_x,
-   204        60         21.9      0.4      0.0                          pk_loc_y,
-   205        60         25.9      0.4      0.0                          pk_height,
-   206        60         20.8      0.3      0.0                          sx,
-   207        60         17.3      0.3      0.0                          sy,
-   208        60         19.8      0.3      0.0                          sxy,
-   209        60         22.5      0.4      0.0                          correl_plane_out,
+   189       120     781427.1   6511.9      5.3                      error_code = self.lib.bulkxcorr2d(
+   190        60     206586.9   3443.1      1.4                          np.asfortranarray(image_a_prime),
+   191        60     190869.9   3181.2      1.3                          np.asfortranarray(image_b_prime),
+   192        60         60.0      1.0      0.0                          b_mask,
+   193        60         38.3      0.6      0.0                          image_size,
+   194        60        377.7      6.3      0.0                          self.win_ctrs_x[pass_idx].astype(np.float32),
+   195        60         94.5      1.6      0.0                          self.win_ctrs_y[pass_idx].astype(np.float32),
+   196        60         32.4      0.5      0.0                          n_windows,
+   197        60         69.0      1.1      0.0                          self.win_weights[pass_idx],
+   198        60         25.4      0.4      0.0                          b_ensemble,
+   199        60         21.3      0.4      0.0                          self.win_weights[pass_idx],
+   200        60         35.7      0.6      0.0                          win_size_arr,
+   201        60         94.4      1.6      0.0                          int(n_peaks),
+   202        60         31.4      0.5      0.0                          int(i_peak_finder),
+   203        60         26.6      0.4      0.0                          pk_loc_x,
+   204        60         18.2      0.3      0.0                          pk_loc_y,
+   205        60         25.0      0.4      0.0                          pk_height,
+   206        60         22.5      0.4      0.0                          sx,
+   207        60         27.2      0.5      0.0                          sy,
+   208        60         21.8      0.4      0.0                          sxy,
+   209        60         19.8      0.3      0.0                          correl_plane_out,
    210                                                               )
    211                                           
-   212        60        101.3      1.7      0.0                      if error_code != 0:
+   212        60         94.2      1.6      0.0                      if error_code != 0:
    213                                                                   raise RuntimeError(f"bulkxcorr2d failed with error {error_code}")
    214                                           
-   215        60        287.0      4.8      0.0                      n_win_y = int(n_windows[0])
-   216        60         49.8      0.8      0.0                      n_win_x = int(n_windows[1])
-   217        60       1074.5     17.9      0.0                      mask_bool = b_mask.astype(bool)
+   215        60        325.0      5.4      0.0                      n_win_y = int(n_windows[0])
+   216        60         51.9      0.9      0.0                      n_win_x = int(n_windows[1])
+   217        60       1187.4     19.8      0.0                      mask_bool = b_mask.astype(bool)
    218                                           
-   219        60       2540.4     42.3      0.0                      pk_loc_x[:, mask_bool] = np.nan
-   220        60       1409.0     23.5      0.0                      pk_loc_y[:, mask_bool] = np.nan
-   221        60       1339.7     22.3      0.0                      pk_height[:, mask_bool] = np.nan
+   219        60       2585.8     43.1      0.0                      pk_loc_x[:, mask_bool] = np.nan
+   220        60       1412.5     23.5      0.0                      pk_loc_y[:, mask_bool] = np.nan
+   221        60       1373.7     22.9      0.0                      pk_height[:, mask_bool] = np.nan
    222                                           
-   223        60        524.7      8.7      0.0                      win_height, win_width = win_size_arr.astype(np.int32)
-   224        60         66.8      1.1      0.0                      large_disp_mask = (
-   225       120       2614.8     21.8      0.0                          (np.abs(pk_loc_x) > win_width / 4.0)
-   226        60        591.1      9.9      0.0                          | (np.abs(pk_loc_y) > win_height / 4.0)
+   223        60        541.5      9.0      0.0                      win_height, win_width = win_size_arr.astype(np.int32)
+   224        60         58.0      1.0      0.0                      large_disp_mask = (
+   225       120       2568.6     21.4      0.0                          (np.abs(pk_loc_x) > win_width / 4.0)
+   226        60        639.7     10.7      0.0                          | (np.abs(pk_loc_y) > win_height / 4.0)
    227                                                               )
-   228        60        597.2     10.0      0.0                      pk_loc_x[large_disp_mask] = np.nan
-   229        60        446.0      7.4      0.0                      pk_loc_y[large_disp_mask] = np.nan
-   230        60        385.4      6.4      0.0                      pk_height[large_disp_mask] = np.nan
+   228        60        597.4     10.0      0.0                      pk_loc_x[large_disp_mask] = np.nan
+   229        60        438.2      7.3      0.0                      pk_loc_y[large_disp_mask] = np.nan
+   230        60        403.0      6.7      0.0                      pk_height[large_disp_mask] = np.nan
    231                                           
-   232        60       1597.3     26.6      0.0                      pk_loc_x += self.delta_ab_pred[..., 0][np.newaxis, :, :]
-   233        60        701.0     11.7      0.0                      pk_loc_y += self.delta_ab_pred[..., 1][np.newaxis, :, :]
+   232        60       1649.2     27.5      0.0                      pk_loc_x += self.delta_ab_pred[..., 0][np.newaxis, :, :]
+   233        60        766.7     12.8      0.0                      pk_loc_y += self.delta_ab_pred[..., 1][np.newaxis, :, :]
    234                                           
-   235        60        640.0     10.7      0.0                      primary_idx = np.zeros((1, n_win_y, n_win_x), dtype=np.intp)
-   236        60       6195.7    103.3      0.1                      ux_mat = np.take_along_axis(pk_loc_x, primary_idx, axis=0)[0]
-   237        60       3126.5     52.1      0.1                      uy_mat = np.take_along_axis(pk_loc_y, primary_idx, axis=0)[0]
+   235        60        619.0     10.3      0.0                      primary_idx = np.zeros((1, n_win_y, n_win_x), dtype=np.intp)
+   236        60       6367.4    106.1      0.0                      ux_mat = np.take_along_axis(pk_loc_x, primary_idx, axis=0)[0]
+   237        60       3123.5     52.1      0.0                      uy_mat = np.take_along_axis(pk_loc_y, primary_idx, axis=0)[0]
    238                                                               # Use direct indexing without meshgrid for outlier detection and peak selection
-   239        60         42.9      0.7      0.0                      n_win_y = int(n_windows[0])
-   240        60         32.2      0.5      0.0                      n_win_x = int(n_windows[1])
-   241        60       1010.3     16.8      0.0                      peak_choice = np.ones((n_win_y, n_win_x), dtype=np.int32)
+   239        60         46.2      0.8      0.0                      n_win_y = int(n_windows[0])
+   240        60         37.3      0.6      0.0                      n_win_x = int(n_windows[1])
+   241        60       1059.4     17.7      0.0                      peak_choice = np.ones((n_win_y, n_win_x), dtype=np.int32)
    242                                           
    243                                                               # Initial peak selection
-   244        60         44.6      0.7      0.0                      ux_mat = pk_loc_x[0]
-   245        60         32.9      0.5      0.0                      uy_mat = pk_loc_y[0]
+   244        60         55.1      0.9      0.0                      ux_mat = pk_loc_x[0]
+   245        60         38.4      0.6      0.0                      uy_mat = pk_loc_y[0]
    246                                           
-   247        60        433.0      7.2      0.0                      nan_mask = np.isnan(ux_mat) | np.isnan(uy_mat)
-   248        60    1237440.9  20624.0     19.8                      nan_mask |= self._piv_2d_outlier(ux_mat, uy_mat)
-   249                                           
-   250                                                               # No-op edge mask (no vectors excluded by edges)
-   251        60        130.1      2.2      0.0                      edge_mask = np.zeros((n_win_y, n_win_x), dtype=bool)
-   252                                           
-   253        60        281.3      4.7      0.0                      if config.secondary_peak:
-   254                                                                   for pk in range(1, n_peaks):
-   255                                                                       # Increment peak_choice for nan_mask locations
-   256                                                                       peak_choice[nan_mask] += 1
-   257                                                                       # Clamp peak_choice to valid range
-   258                                                                       peak_choice = np.clip(peak_choice, 1, n_peaks)
-   259                                                                       # Select new peak for nan_mask locations
-   260                                                                       ux_mat = np.choose(peak_choice - 1, pk_loc_x)
-   261                                                                       uy_mat = np.choose(peak_choice - 1, pk_loc_y)
-   262                                                                       nan_mask |= self._piv_2d_outlier(ux_mat, uy_mat)
-   263                                                                       if not nan_mask.any():
-   264                                                                           break
-   265                                           
-   266                                                               # Select primary peak magnitude
-   267        60       3819.6     63.7      0.1                      primary_peak_mag = np.choose(peak_choice - 1, pk_height)
-   268        60        547.9      9.1      0.0                      nan_mask |= np.isnan(primary_peak_mag)
-   269                                           
-   270        60         92.8      1.5      0.0                      nan_mask |= mask_bool
-   271        60        573.1      9.6      0.0                      nan_mask |= primary_peak_mag < 0.2
-   272                                           
-   273                                                               # Q calculation (peak ratio)
-   274        60       2143.5     35.7      0.0                      shifted_pk_height = np.roll(pk_height, shift=-1, axis=0)
-   275        60        128.2      2.1      0.0                      shifted_pk_height[-1, :, :] = pk_height[-1, :, :]
-   276       120        577.7      4.8      0.0                      with warnings.catch_warnings():
-   277        60        437.6      7.3      0.0                          warnings.simplefilter("ignore", category=RuntimeWarning)
-   278       120       1247.4     10.4      0.0                          Q_mat = np.divide(
-   279        60         27.3      0.5      0.0                              pk_height,
-   280        60         16.5      0.3      0.0                              shifted_pk_height,
-   281        60        705.1     11.8      0.0                              out=np.zeros_like(pk_height),
-   282        60        161.3      2.7      0.0                              where=shifted_pk_height > 0,
-   283                                                                   )
-   284                                           
-   285        60       2976.3     49.6      0.0                      Q = np.choose(peak_choice - 1, Q_mat)
+   247        60        445.5      7.4      0.0                      nan_mask = np.isnan(ux_mat) | np.isnan(uy_mat)
+   248        60        377.5      6.3      0.0                      if config.outlier_detection:
+   249        60     251929.4   4198.8      1.7                          nan_mask |= self._piv_2d_outlier(ux_mat, uy_mat)
+   250                                           
+   251                                                               # No-op edge mask (no vectors excluded by edges)
+   252        60        128.0      2.1      0.0                      edge_mask = np.zeros((n_win_y, n_win_x), dtype=bool)
+   253                                           
+   254        60        281.1      4.7      0.0                      if config.secondary_peak:
+   255                                                                   for pk in range(1, n_peaks):
+   256                                                                       # Increment peak_choice for nan_mask locations
+   257                                                                       peak_choice[nan_mask] += 1
+   258                                                                       # Clamp peak_choice to valid range
+   259                                                                       peak_choice = np.clip(peak_choice, 1, n_peaks)
+   260                                                                       # Select new peak for nan_mask locations
+   261                                                                       ux_mat = np.choose(peak_choice - 1, pk_loc_x)
+   262                                                                       uy_mat = np.choose(peak_choice - 1, pk_loc_y)
+   263                                                                       if config.outlier_detection:
+   264                                                                           nan_mask |= self._piv_2d_outlier(ux_mat, uy_mat)
+   265                                                                       if not nan_mask.any():
+   266                                                                           break
+   267                                           
+   268                                                               # Select primary peak magnitude
+   269        60       3952.6     65.9      0.0                      primary_peak_mag = np.choose(peak_choice - 1, pk_height)
+   270        60        553.0      9.2      0.0                      nan_mask |= np.isnan(primary_peak_mag)
+   271                                           
+   272        60         98.0      1.6      0.0                      nan_mask |= mask_bool
+   273        60        553.8      9.2      0.0                      nan_mask |= primary_peak_mag < 0.2
+   274                                           
+   275                                                               # Q calculation (peak ratio)
+   276        60       2406.6     40.1      0.0                      shifted_pk_height = np.roll(pk_height, shift=-1, axis=0)
+   277        60        127.9      2.1      0.0                      shifted_pk_height[-1, :, :] = pk_height[-1, :, :]
+   278       120        579.0      4.8      0.0                      with warnings.catch_warnings():
+   279        60        443.2      7.4      0.0                          warnings.simplefilter("ignore", category=RuntimeWarning)
+   280       120       1199.8     10.0      0.0                          Q_mat = np.divide(
+   281        60         19.5      0.3      0.0                              pk_height,
+   282        60         15.0      0.2      0.0                              shifted_pk_height,
+   283        60        702.4     11.7      0.0                              out=np.zeros_like(pk_height),
+   284        60        157.4      2.6      0.0                              where=shifted_pk_height > 0,
+   285                                                                   )
    286                                           
-   287        60        268.4      4.5      0.0                      if nan_mask.any():
-   288        60        792.4     13.2      0.0                          ux_mat[nan_mask] = np.nan
-   289        60        667.1     11.1      0.0                          uy_mat[nan_mask] = np.nan
-   290        60        765.2     12.8      0.0                          primary_peak_mag[nan_mask] = np.nan
-   291        60        718.9     12.0      0.0                          Q[nan_mask] = 0.0
-   292                                           
-   293        60        275.3      4.6      0.0                      ux_mat[mask_bool] = 0.0
-   294        60        262.8      4.4      0.0                      uy_mat[mask_bool] = 0.0
-   295                                           
-   296        60        337.4      5.6      0.0                      if np.isnan(ux_mat).any():
-   297        60     612431.0  10207.2      9.8                          ux_mat = self._inpaint_nans_biharm(ux_mat)
-   298        60        831.1     13.9      0.0                      if np.isnan(uy_mat).any():
-   299        60     579295.1   9654.9      9.3                          uy_mat = self._inpaint_nans_biharm(uy_mat)
-   300                                           
-   301        60        470.7      7.8      0.0                      ux_mat[mask_bool] = 0.0
-   302        60        273.9      4.6      0.0                      uy_mat[mask_bool] = 0.0
-   303        60        937.2     15.6      0.0                      peak_choice[nan_mask] = 0
-   304                                           
-   305        60        367.8      6.1      0.0                      ux_mat = np.ascontiguousarray(ux_mat.astype(np.float32))
-   306        60        148.5      2.5      0.0                      uy_mat = np.ascontiguousarray(uy_mat.astype(np.float32))
-   307        60        246.6      4.1      0.0                      nan_mask = np.ascontiguousarray(nan_mask)
-   308        60        306.3      5.1      0.0                      Q = np.ascontiguousarray(Q.astype(np.float32))
-   309       120         82.8      0.7      0.0                      primary_peak_mag = np.ascontiguousarray(
-   310        60        864.1     14.4      0.0                          np.where(nan_mask, 0.0, primary_peak_mag.astype(np.float32))
-   311                                                               )
-   312        60        273.9      4.6      0.0                      pk_height = np.asfortranarray(pk_height.astype(np.float32))
-   313        60        322.7      5.4      0.0                      Q_mat = np.asfortranarray(Q_mat.astype(np.float32))
-   314                                           
-   315        60       1382.8     23.0      0.0                      self.delta_ab_old = np.stack([ux_mat, uy_mat], axis=2)
-   316        60         55.9      0.9      0.0                      pre_y, pre_x = self.n_pre_all[pass_idx]
-   317        60         44.7      0.7      0.0                      post_y, post_x = self.n_post_all[pass_idx]
-   318       120       8082.1     67.4      0.1                      self.delta_ab_old = np.pad(
-   319        60         17.6      0.3      0.0                          self.delta_ab_old,
-   320        60         31.2      0.5      0.0                          ((pre_y, post_y), (pre_x, post_x), (0, 0)),
-   321        60         22.5      0.4      0.0                          mode="edge",
-   322                                                               )
-   323                                           
-   324        60         39.1      0.7      0.0                      self.previous_win_spacing = (
-   325        60         41.4      0.7      0.0                          self.win_spacing_y[pass_idx],
-   326        60         39.6      0.7      0.0                          self.win_spacing_x[pass_idx],
-   327                                                               )
-   328        60         25.4      0.4      0.0                      self.prev_win_size = (n_win_y, n_win_x)
-   329                                           
-   330       120        784.0      6.5      0.0                      pass_result = PIVPassResult(
-   331        60        122.8      2.0      0.0                          n_windows=np.array([n_win_y, n_win_x], dtype=np.int32),
-   332        60        258.0      4.3      0.0                          ux_mat=np.copy(ux_mat),
-   333        60        271.2      4.5      0.0                          uy_mat=np.copy(uy_mat),
-   334        60        161.8      2.7      0.0                          nan_mask=np.copy(nan_mask),
-   335        60        239.5      4.0      0.0                          Q=np.copy(Q),
-   336        60        216.1      3.6      0.0                          peak_mag=np.copy(pk_height),
-   337        60        223.9      3.7      0.0                          peak_choice=np.copy(peak_choice),
-   338        60        280.5      4.7      0.0                          predictor_field=np.copy(self.delta_ab_old),
-   339        60        820.8     13.7      0.0                          b_mask=b_mask.reshape((n_win_y, n_win_x)).astype(bool),
-   340        60         27.9      0.5      0.0                          window_size=win_size,
-   341        60         25.9      0.4      0.0                          spacing=(self.win_spacing_y[pass_idx], self.win_spacing_x[pass_idx]),
-   342        60         46.3      0.8      0.0                          win_ctrs_x=self.win_ctrs_x[pass_idx],
-   343        60         36.3      0.6      0.0                          win_ctrs_y=self.win_ctrs_y[pass_idx],
-   344        60         17.0      0.3      0.0                          edge_mask=edge_mask,
-   345                                                               )
-   346        60        169.4      2.8      0.0                      pass_time = time.perf_counter() - pass_start
-   347        60         58.1      1.0      0.0                      self.pass_times.append((n, pass_idx, pass_time))
-   348        60        216.0      3.6      0.0                      piv_result_all.add_pass(pass_result)
-   349                                           
-   350                                                       except Exception as exc:
-   351                                                           logging.error("Error in correlate_batch for image %d: %s", n, exc)
-   352                                                           logging.error(traceback.format_exc())
-   353                                                           raise
-   354                                           
-   355        10          3.4      0.3      0.0          return piv_result_all
+   287        60       3014.2     50.2      0.0                      Q = np.choose(peak_choice - 1, Q_mat)
+   288                                           
+   289        60        289.3      4.8      0.0                      if nan_mask.any():
+   290        60        756.9     12.6      0.0                          ux_mat[nan_mask] = np.nan
+   291        60        606.1     10.1      0.0                          uy_mat[nan_mask] = np.nan
+   292        60        723.3     12.1      0.0                          primary_peak_mag[nan_mask] = np.nan
+   293        60        687.3     11.5      0.0                          Q[nan_mask] = 0.0
+   294                                           
+   295        60        265.4      4.4      0.0                      ux_mat[mask_bool] = 0.0
+   296        60        264.2      4.4      0.0                      uy_mat[mask_bool] = 0.0
+   297                                           
+   298        60        308.2      5.1      0.0                      if np.isnan(ux_mat).any():
+   299        60     579910.4   9665.2      3.9                          ux_mat = self._inpaint_nans_biharm(ux_mat)
+   300        60        833.5     13.9      0.0                      if np.isnan(uy_mat).any():
+   301        60     529980.6   8833.0      3.6                          uy_mat = self._inpaint_nans_biharm(uy_mat)
+   302                                           
+   303        60        485.9      8.1      0.0                      ux_mat[mask_bool] = 0.0
+   304        60        264.4      4.4      0.0                      uy_mat[mask_bool] = 0.0
+   305        60        867.2     14.5      0.0                      peak_choice[nan_mask] = 0
+   306                                           
+   307        60        330.9      5.5      0.0                      ux_mat = np.ascontiguousarray(ux_mat.astype(np.float32))
+   308        60        297.4      5.0      0.0                      uy_mat = np.ascontiguousarray(uy_mat.astype(np.float32))
+   309        60        252.5      4.2      0.0                      nan_mask = np.ascontiguousarray(nan_mask)
+   310        60        538.9      9.0      0.0                      Q = np.ascontiguousarray(Q.astype(np.float32))
+   311       120        247.9      2.1      0.0                      primary_peak_mag = np.ascontiguousarray(
+   312        60        784.3     13.1      0.0                          np.where(nan_mask, 0.0, primary_peak_mag.astype(np.float32))
+   313                                                               )
+   314        60        289.4      4.8      0.0                      pk_height = np.asfortranarray(pk_height.astype(np.float32))
+   315        60        231.3      3.9      0.0                      Q_mat = np.asfortranarray(Q_mat.astype(np.float32))
+   316                                           
+   317        60       1411.5     23.5      0.0                      self.delta_ab_old = np.stack([ux_mat, uy_mat], axis=2)
+   318        60         59.5      1.0      0.0                      pre_y, pre_x = self.n_pre_all[pass_idx]
+   319        60         47.2      0.8      0.0                      post_y, post_x = self.n_post_all[pass_idx]
+   320       120       8065.7     67.2      0.1                      self.delta_ab_old = np.pad(
+   321        60         17.7      0.3      0.0                          self.delta_ab_old,
+   322        60         32.9      0.5      0.0                          ((pre_y, post_y), (pre_x, post_x), (0, 0)),
+   323        60         20.1      0.3      0.0                          mode="edge",
+   324                                                               )
+   325                                           
+   326        60         38.5      0.6      0.0                      self.previous_win_spacing = (
+   327        60         38.0      0.6      0.0                          self.win_spacing_y[pass_idx],
+   328        60         34.7      0.6      0.0                          self.win_spacing_x[pass_idx],
+   329                                                               )
+   330        60         26.7      0.4      0.0                      self.prev_win_size = (n_win_y, n_win_x)
+   331                                           
+   332       120        774.9      6.5      0.0                      pass_result = PIVPassResult(
+   333        60        125.2      2.1      0.0                          n_windows=np.array([n_win_y, n_win_x], dtype=np.int32),
+   334        60        289.6      4.8      0.0                          ux_mat=np.copy(ux_mat),
+   335        60        233.2      3.9      0.0                          uy_mat=np.copy(uy_mat),
+   336        60        153.4      2.6      0.0                          nan_mask=np.copy(nan_mask),
+   337        60        181.5      3.0      0.0                          Q=np.copy(Q),
+   338        60        206.6      3.4      0.0                          peak_mag=np.copy(pk_height),
+   339        60        239.3      4.0      0.0                          peak_choice=np.copy(peak_choice),
+   340        60        376.9      6.3      0.0                          predictor_field=np.copy(self.delta_ab_old),
+   341        60        807.4     13.5      0.0                          b_mask=b_mask.reshape((n_win_y, n_win_x)).astype(bool),
+   342        60         25.2      0.4      0.0                          window_size=win_size,
+   343        60         26.2      0.4      0.0                          spacing=(self.win_spacing_y[pass_idx], self.win_spacing_x[pass_idx]),
+   344        60         31.7      0.5      0.0                          win_ctrs_x=self.win_ctrs_x[pass_idx],
+   345        60         37.5      0.6      0.0                          win_ctrs_y=self.win_ctrs_y[pass_idx],
+   346        60         17.1      0.3      0.0                          edge_mask=edge_mask,
+   347                                                               )
+   348        60        196.4      3.3      0.0                      pass_time = time.perf_counter() - pass_start
+   349        60         65.3      1.1      0.0                      self.pass_times.append((n, pass_idx, pass_time))
+   350        60        214.6      3.6      0.0                      piv_result_all.add_pass(pass_result)
+   351                                           
+   352                                                       except Exception as exc:
+   353                                                           logging.error("Error in correlate_batch for image %d: %s", n, exc)
+   354                                                           logging.error(traceback.format_exc())
+   355                                                           raise
+   356                                           
+   357        10          3.3      0.3      0.0          return piv_result_all
 
-Total time: 1.69169 s
+Total time: 1.61253 s
 File: C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\pypivtools\piv\piv_backend\cpu_instantaneous.py
-Function: InstantaneousCorrelatorCPU._predictor_corrector at line 454
+Function: InstantaneousCorrelatorCPU._predictor_corrector at line 456
 
 Line #      Hits         Time  Per Hit   % Time  Line Contents
 ==============================================================
-   454                                               @profile
-   455                                               def _predictor_corrector(
-   456                                                   self,
-   457                                                   pass_idx: int,
-   458                                                   image_a: np.ndarray,
-   459                                                   image_b: np.ndarray,
-   460                                                   interpolator="cubic",
-   461                                                   win_type="A",
-   462                                               ):
-   463                                                   """Predictor-corrector step to adjust images based on previous displacement estimates."""
-   464                                           
-   465        60        101.4      1.7      0.0          n_win_y = len(self.win_ctrs_y[pass_idx])
-   466        60         51.4      0.9      0.0          n_win_x = len(self.win_ctrs_x[pass_idx])
-   467        60        356.6      5.9      0.0          self.delta_ab_pred = np.zeros((n_win_y, n_win_x, 2), dtype=np.float32)
-   468                                           
-   469        60         32.2      0.5      0.0          if pass_idx == 0:
-   470        10          4.9      0.5      0.0              if self.delta_ab_old is None:
-   471        10        216.4     21.6      0.0                  self.delta_ab_old = np.zeros_like(self.delta_ab_pred)
-   472                                           
-   473        10          7.4      0.7      0.0              self.prev_win_size = (n_win_y, n_win_x)
-   474        10          4.7      0.5      0.0              self.prev_win_spacing = (
-   475        10          6.8      0.7      0.0                  self.win_spacing_y[pass_idx],
-   476        10          5.1      0.5      0.0                  self.win_spacing_x[pass_idx],
-   477                                                       )
-   478        10      34744.6   3474.5      2.1              return image_a.copy(), image_b.copy(), self.delta_ab_pred
-   479                                           
-   480        50         18.6      0.4      0.0          if self.delta_ab_old is None:
-   481                                                       raise RuntimeError("delta_ab_old is uninitialised before predictor step")
-   482                                           
-   483        50         69.4      1.4      0.0          interp_flag = cv2.INTER_CUBIC if interpolator == "cubic" else cv2.INTER_LINEAR
+   456                                               @profile
+   457                                               def _predictor_corrector(
+   458                                                   self,
+   459                                                   pass_idx: int,
+   460                                                   image_a: np.ndarray,
+   461                                                   image_b: np.ndarray,
+   462                                                   interpolator="cubic",
+   463                                                   win_type="A",
+   464                                               ):
+   465                                                   """Predictor-corrector step to adjust images based on previous displacement estimates."""
+   466                                           
+   467        60        148.4      2.5      0.0          n_win_y = len(self.win_ctrs_y[pass_idx])
+   468        60         51.2      0.9      0.0          n_win_x = len(self.win_ctrs_x[pass_idx])
+   469        60        577.1      9.6      0.0          self.delta_ab_pred = np.zeros((n_win_y, n_win_x, 2), dtype=np.float32)
+   470                                           
+   471        60         29.9      0.5      0.0          if pass_idx == 0:
+   472        10          5.8      0.6      0.0              if self.delta_ab_old is None:
+   473        10        273.9     27.4      0.0                  self.delta_ab_old = np.zeros_like(self.delta_ab_pred)
+   474                                           
+   475        10          6.2      0.6      0.0              self.prev_win_size = (n_win_y, n_win_x)
+   476        10          5.1      0.5      0.0              self.prev_win_spacing = (
+   477        10          7.9      0.8      0.0                  self.win_spacing_y[pass_idx],
+   478        10          7.7      0.8      0.0                  self.win_spacing_x[pass_idx],
+   479                                                       )
+   480        10      35249.1   3524.9      2.2              return image_a.copy(), image_b.copy(), self.delta_ab_pred
+   481                                           
+   482        50         19.2      0.4      0.0          if self.delta_ab_old is None:
+   483                                                       raise RuntimeError("delta_ab_old is uninitialised before predictor step")
    484                                           
-   485       100       9566.1     95.7      0.6          self.delta_ab_old[..., 0] = gaussian_filter(
-   486        50         30.7      0.6      0.0              self.delta_ab_old[..., 0],
-   487        50         28.2      0.6      0.0              sigma=self.sd[pass_idx],
-   488        50         86.9      1.7      0.0              truncate=(self.ksize_filt[pass_idx][0] - 1) / (2 * self.sd[pass_idx]),
-   489        50         15.3      0.3      0.0              mode="nearest",
-   490                                                   )
-   491       100       7162.2     71.6      0.4          self.delta_ab_old[..., 1] = gaussian_filter(
-   492        50         24.1      0.5      0.0              self.delta_ab_old[..., 1],
-   493        50         18.3      0.4      0.0              sigma=self.sd[pass_idx],
-   494        50         36.6      0.7      0.0              truncate=(self.ksize_filt[pass_idx][0] - 1) / (2 * self.sd[pass_idx]),
-   495        50         14.2      0.3      0.0              mode="nearest",
-   496                                                   )
-   497                                           
-   498        50      16535.6    330.7      1.0          self.delta_ab_dense = np.zeros((self.H, self.W, 2), dtype=np.float32)
-   499        50         44.3      0.9      0.0          map_x_2d, map_y_2d = self.cached_dense_maps[pass_idx]
-   500        50         17.4      0.3      0.0          if map_x_2d is None or map_y_2d is None:
-   501                                                       raise ValueError(f"Dense interpolation maps missing for pass {pass_idx}")
-   502                                           
-   503       150        201.8      1.3      0.0          for d in range(2):
-   504       200     267694.1   1338.5     15.8              self.delta_ab_dense[..., d] = cv2.remap(
-   505       100        950.0      9.5      0.1                  self.delta_ab_old[..., d].astype(np.float32),
-   506       100         36.8      0.4      0.0                  map_x_2d,
-   507       100         34.6      0.3      0.0                  map_y_2d,
-   508       100         39.5      0.4      0.0                  interp_flag,
-   509       100         48.1      0.5      0.0                  borderMode=cv2.BORDER_CONSTANT,
-   510       100         29.7      0.3      0.0                  borderValue=0,
-   511                                                       )
-   512                                           
-   513        50     119901.7   2398.0      7.1          delta_0b = self.delta_ab_dense / 2
-   514        50     258570.7   5171.4     15.3          delta_0a = -self.delta_ab_dense / 2
-   515        50     105816.5   2116.3      6.3          im_mesh_A = self.im_mesh + delta_0a
-   516        50     109128.7   2182.6      6.5          im_mesh_B = self.im_mesh + delta_0b
-   517                                           
-   518        50        129.5      2.6      0.0          map_x, map_y = self.cached_predictor_maps[pass_idx]
-   519        50         61.4      1.2      0.0          if map_x is None or map_y is None:
-   520                                                       raise ValueError(f"Predictor interpolation maps missing for pass {pass_idx}")
-   521                                           
-   522       150        360.4      2.4      0.0          for d in range(2):
-   523       200       7856.5     39.3      0.5              remapped = cv2.remap(
-   524       100       2058.0     20.6      0.1                  self.delta_ab_old[..., d].astype(np.float32),
-   525       100         50.6      0.5      0.0                  map_x,
-   526       100         49.2      0.5      0.0                  map_y,
-   527       100         46.6      0.5      0.0                  interp_flag,
-   528       100         70.5      0.7      0.0                  borderMode=cv2.BORDER_CONSTANT,
-   529       100         47.8      0.5      0.0                  borderValue=0.0,
-   530                                                       )
-   531       100        711.7      7.1      0.0              self.delta_ab_pred[..., d] = remapped
-   532                                           
-   533       100     167108.0   1671.1      9.9          image_a_prime = cv2.remap(
-   534        50      63102.6   1262.1      3.7              image_a.astype(np.float32),
-   535        50      64940.4   1298.8      3.8              im_mesh_A[..., 1].astype(np.float32),
-   536        50      64445.5   1288.9      3.8              im_mesh_A[..., 0].astype(np.float32),
-   537        50        108.1      2.2      0.0              cv2.INTER_CUBIC,
-   538        50         38.9      0.8      0.0              borderMode=cv2.BORDER_CONSTANT,
-   539        50         32.0      0.6      0.0              borderValue=0,
-   540                                                   )
-   541       100     166644.5   1666.4      9.9          image_b_prime = cv2.remap(
-   542        50      66817.9   1336.4      3.9              image_b.astype(np.float32),
-   543        50      81149.2   1623.0      4.8              im_mesh_B[..., 1].astype(np.float32),
-   544        50      73896.5   1477.9      4.4              im_mesh_B[..., 0].astype(np.float32),
-   545        50         76.8      1.5      0.0              cv2.INTER_CUBIC,
-   546        50         40.5      0.8      0.0              borderMode=cv2.BORDER_CONSTANT,
-   547        50         39.2      0.8      0.0              borderValue=0,
-   548                                                   )
-   549                                           
-   550        50        159.8      3.2      0.0          return image_a_prime, image_b_prime, self.delta_ab_pred
+   485        50         57.1      1.1      0.0          interp_flag = cv2.INTER_CUBIC if interpolator == "cubic" else cv2.INTER_LINEAR
+   486                                           
+   487       100       9588.0     95.9      0.6          self.delta_ab_old[..., 0] = gaussian_filter(
+   488        50         32.9      0.7      0.0              self.delta_ab_old[..., 0],
+   489        50         28.2      0.6      0.0              sigma=self.sd[pass_idx],
+   490        50         91.6      1.8      0.0              truncate=(self.ksize_filt[pass_idx][0] - 1) / (2 * self.sd[pass_idx]),
+   491        50         14.4      0.3      0.0              mode="nearest",
+   492                                                   )
+   493       100       7002.4     70.0      0.4          self.delta_ab_old[..., 1] = gaussian_filter(
+   494        50         25.4      0.5      0.0              self.delta_ab_old[..., 1],
+   495        50         15.3      0.3      0.0              sigma=self.sd[pass_idx],
+   496        50         32.9      0.7      0.0              truncate=(self.ksize_filt[pass_idx][0] - 1) / (2 * self.sd[pass_idx]),
+   497        50         13.7      0.3      0.0              mode="nearest",
+   498                                                   )
+   499                                           
+   500        50      16183.8    323.7      1.0          self.delta_ab_dense = np.zeros((self.H, self.W, 2), dtype=np.float32)
+   501        50         53.2      1.1      0.0          map_x_2d, map_y_2d = self.cached_dense_maps[pass_idx]
+   502        50         17.4      0.3      0.0          if map_x_2d is None or map_y_2d is None:
+   503                                                       raise ValueError(f"Dense interpolation maps missing for pass {pass_idx}")
+   504                                           
+   505       150        217.0      1.4      0.0          for d in range(2):
+   506       200     287021.8   1435.1     17.8              self.delta_ab_dense[..., d] = cv2.remap(
+   507       100       1042.8     10.4      0.1                  self.delta_ab_old[..., d].astype(np.float32),
+   508       100         43.0      0.4      0.0                  map_x_2d,
+   509       100         35.6      0.4      0.0                  map_y_2d,
+   510       100         38.8      0.4      0.0                  interp_flag,
+   511       100         55.6      0.6      0.0                  borderMode=cv2.BORDER_CONSTANT,
+   512       100         27.5      0.3      0.0                  borderValue=0,
+   513                                                       )
+   514                                           
+   515        50     123966.2   2479.3      7.7          delta_0b = self.delta_ab_dense / 2
+   516        50     124566.0   2491.3      7.7          delta_0a = -delta_0b
+   517        50     110107.7   2202.2      6.8          im_mesh_A = self.im_mesh + delta_0a
+   518        50     112414.9   2248.3      7.0          im_mesh_B = self.im_mesh + delta_0b
+   519                                           
+   520        50        131.6      2.6      0.0          map_x, map_y = self.cached_predictor_maps[pass_idx]
+   521        50         52.6      1.1      0.0          if map_x is None or map_y is None:
+   522                                                       raise ValueError(f"Predictor interpolation maps missing for pass {pass_idx}")
+   523                                           
+   524       150        372.5      2.5      0.0          for d in range(2):
+   525       200       7994.5     40.0      0.5              remapped = cv2.remap(
+   526       100       1882.9     18.8      0.1                  self.delta_ab_old[..., d].astype(np.float32),
+   527       100         40.4      0.4      0.0                  map_x,
+   528       100         36.3      0.4      0.0                  map_y,
+   529       100         30.7      0.3      0.0                  interp_flag,
+   530       100         53.7      0.5      0.0                  borderMode=cv2.BORDER_CONSTANT,
+   531       100         34.7      0.3      0.0                  borderValue=0.0,
+   532                                                       )
+   533       100        708.1      7.1      0.0              self.delta_ab_pred[..., d] = remapped
+   534                                           
+   535       100     172143.1   1721.4     10.7          image_a_prime = cv2.remap(
+   536        50      64991.4   1299.8      4.0              image_a.astype(np.float32),
+   537        50      72716.8   1454.3      4.5              im_mesh_A[..., 1].astype(np.float32),
+   538        50      70857.2   1417.1      4.4              im_mesh_A[..., 0].astype(np.float32),
+   539        50         98.3      2.0      0.0              cv2.INTER_CUBIC,
+   540        50         35.1      0.7      0.0              borderMode=cv2.BORDER_CONSTANT,
+   541        50         30.2      0.6      0.0              borderValue=0,
+   542                                                   )
+   543       100     171060.8   1710.6     10.6          image_b_prime = cv2.remap(
+   544        50      67028.2   1340.6      4.2              image_b.astype(np.float32),
+   545        50      78554.8   1571.1      4.9              im_mesh_B[..., 1].astype(np.float32),
+   546        50      74287.8   1485.8      4.6              im_mesh_B[..., 0].astype(np.float32),
+   547        50         92.3      1.8      0.0              cv2.INTER_CUBIC,
+   548        50         34.6      0.7      0.0              borderMode=cv2.BORDER_CONSTANT,
+   549        50         25.3      0.5      0.0              borderValue=0,
+   550                                                   )
+   551                                           
+   552        50        163.9      3.3      0.0          return image_a_prime, image_b_prime, self.delta_ab_pred
 
-Total time: 1.2288 s
+Total time: 0.247177 s
 File: C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\pypivtools\piv\piv_backend\cpu_instantaneous.py
-Function: InstantaneousCorrelatorCPU._piv_2d_outlier at line 551
+Function: InstantaneousCorrelatorCPU._piv_2d_outlier at line 627
 
 Line #      Hits         Time  Per Hit   % Time  Line Contents
 ==============================================================
-   551                                               @profile
-   552                                               def _piv_2d_outlier(
-   553                                                   self,
-   554                                                   ux: np.ndarray,
-   555                                                   uy: np.ndarray,
-   556                                                   epsilon: float = 0.2,
-   557                                                   threshold: float = 2.0,
-   558                                               ):
-   559                                                   """Check for outliers in 2D PIV data.
-   560                                           
-   561                                                   :param ux: Horizontal velocity component.
-   562                                                   :type ux: np.ndarray
-   563                                                   :param uy: Vertical velocity component.
-   564                                                   :type uy: np.ndarray
-   565                                                   :param epsilon: Regularization parameter, defaults to 0.2.
-   566                                                   :type epsilon: float, optional
-   567                                                   :param threshold: Outlier threshold, defaults to 2.0.
-   568                                                   :type threshold: float, optional
-   569                                                   :return: Boolean array indicating outliers.
-   570                                                   :rtype: np.ndarray
-   571                                                   """
-   572        60         57.0      0.9      0.0          n_wx, n_wy = ux.shape
-   573                                           
-   574        60       2198.5     36.6      0.2          ui = np.stack([ux, uy], axis=-1)
-   575                                           
-   576        60        824.7     13.7      0.1          r_0p = np.zeros((n_wx, n_wy, 2))
-   577        60        866.4     14.4      0.1          n_neighbours = np.zeros((n_wx, n_wy, 2))
-   578                                           
-   579       180        129.4      0.7      0.0          for c in range(2):
-   580       120         85.0      0.7      0.0              U = ui[..., c]
-   581       120      12184.6    101.5      1.0              U_pad = np.pad(U, 1, mode="constant", constant_values=np.nan)
-   582                                           
-   583       120       2711.8     22.6      0.2              U_nn = np.zeros((n_wx, n_wy, 8))
-   584       120      12828.5    106.9      1.0              U_nn[..., 0] = U_pad[0:-2, 0:-2]
-   585       120       1338.3     11.2      0.1              U_nn[..., 1] = U_pad[0:-2, 1:-1]
-   586       120       1137.5      9.5      0.1              U_nn[..., 2] = U_pad[0:-2, 2:]
-   587       120       1113.1      9.3      0.1              U_nn[..., 3] = U_pad[1:-1, 0:-2]
-   588       120       1108.3      9.2      0.1              U_nn[..., 4] = U_pad[1:-1, 2:]
-   589       120       1116.0      9.3      0.1              U_nn[..., 5] = U_pad[2:, 2:]
-   590       120       1104.6      9.2      0.1              U_nn[..., 6] = U_pad[2:, 1:-1]
-   591       120       1098.7      9.2      0.1              U_nn[..., 7] = U_pad[2:, 0:-2]
-   592                                           
-   593       240       1991.8      8.3      0.2              with warnings.catch_warnings():
-   594       120       1459.1     12.2      0.1                  warnings.simplefilter("ignore", category=RuntimeWarning)
-   595       120     555537.4   4629.5     45.2                  U_med = np.nanmedian(U_nn, axis=2)
-   596                                           
-   597       120       1986.0     16.6      0.2              r_0 = np.abs(U_med - U)
-   598       120      51225.2    426.9      4.2              r_i = np.abs(U_nn - U_med[..., None])
-   599                                           
-   600       240       1514.2      6.3      0.1              with warnings.catch_warnings():
-   601       120       1154.6      9.6      0.1                  warnings.simplefilter("ignore", category=RuntimeWarning)
-   602       120     531487.0   4429.1     43.3                  r_m = np.nanmedian(r_i, axis=2)
-   603                                           
-   604       120       2163.5     18.0      0.2              r_0p[..., c] = r_0 / (r_m + epsilon)
-   605                                           
-   606                                                       # Count valid neighbors using convolution with explicit boundaries
-   607                                                       # boundary='fill' with fillvalue=0 prevents circular wrap-around
-   608       240      18372.4     76.6      1.5              n_neigh = convolve2d(
-   609       120       1530.1     12.8      0.1                  np.logical_not(np.isnan(U)).astype(float),
-   610       120        783.9      6.5      0.1                  np.ones((3, 3)),
-   611       120         63.1      0.5      0.0                  mode="same",
-   612       120         45.5      0.4      0.0                  boundary="fill",
-   613       120         31.0      0.3      0.0                  fillvalue=0,
-   614                                                       )
-   615       120       1174.5      9.8      0.1              n_neighbours[..., c] = n_neigh
-   616       120        589.3      4.9      0.0          with warnings.catch_warnings():
-   617        60        495.3      8.3      0.0              warnings.simplefilter("ignore", category=RuntimeWarning)
-   618        60      11220.1    187.0      0.9              r_0_combined = np.nanmax(r_0p, axis=2)
-   619        60         17.8      0.3      0.0          b_filter = (
-   620       180        386.5      2.1      0.0              (r_0_combined > threshold)
-   621        60       2881.8     48.0      0.2              | np.isnan(r_0p).any(axis=2)
-   622        60       2764.9     46.1      0.2              | (n_neighbours < 6).any(axis=2)
-   623                                                   )
-   624        60         19.5      0.3      0.0          return b_filter
+   627                                               @profile
+   628                                               def _piv_2d_outlier(
+   629                                                   self,
+   630                                                   ux: np.ndarray,
+   631                                                   uy: np.ndarray,
+   632                                                   epsilon: float = 0.2,
+   633                                                   threshold: float = 2.0,
+   634                                               ):
+   635                                                   """
+   636                                                   Check for outliers in 2D PIV data using a fast mean/stddev filter.
+   637                                                   
+   638                                                   This is an optimized version that replaces the slow `np.nanmedian`
+   639                                                   with `np.nanmean` and `np.nanstd`. The logic is changed from
+   640                                                   a median-absolute-deviation (MAD) filter to a standard-deviation
+   641                                                   (Z-score) filter.
+   642                                           
+   643                                                   :param ux: Horizontal velocity component.
+   644                                                   :type ux: np.ndarray
+   645                                                   :param uy: Vertical velocity component.
+   646                                                   :type uy: np.ndarray
+   647                                                   :param epsilon: Regularization parameter, defaults to 0.2.
+   648                                                   :type epsilon: float, optional
+   649                                                   :param threshold: Outlier threshold (in standard deviations), defaults to 2.0.
+   650                                                   :type threshold: float, optional
+   651                                                   :return: Boolean array indicating outliers.
+   652                                                   :rtype: np.ndarray
+   653                                                   """
+   654        60         80.2      1.3      0.0          n_wx, n_wy = ux.shape
+   655                                           
+   656        60       2325.7     38.8      0.9          ui = np.stack([ux, uy], axis=-1)
+   657                                           
+   658        60        942.6     15.7      0.4          r_0p = np.zeros((n_wx, n_wy, 2))
+   659        60       1129.7     18.8      0.5          n_neighbours = np.zeros((n_wx, n_wy, 2))
+   660                                           
+   661       180        121.9      0.7      0.0          for c in range(2):
+   662       120         81.7      0.7      0.0              U = ui[..., c]
+   663       120      12454.1    103.8      5.0              U_pad = np.pad(U, 1, mode="constant", constant_values=np.nan)
+   664                                           
+   665       120       3080.8     25.7      1.2              U_nn = np.zeros((n_wx, n_wy, 8))
+   666       120      13186.0    109.9      5.3              U_nn[..., 0] = U_pad[0:-2, 0:-2]
+   667       120       1457.4     12.1      0.6              U_nn[..., 1] = U_pad[0:-2, 1:-1]
+   668       120       1228.2     10.2      0.5              U_nn[..., 2] = U_pad[0:-2, 2:]
+   669       120       1212.1     10.1      0.5              U_nn[..., 3] = U_pad[1:-1, 0:-2]
+   670       120       1187.9      9.9      0.5              U_nn[..., 4] = U_pad[1:-1, 2:]
+   671       120       1189.7      9.9      0.5              U_nn[..., 5] = U_pad[2:, 2:]
+   672       120       1177.4      9.8      0.5              U_nn[..., 6] = U_pad[2:, 1:-1]
+   673       120       1179.2      9.8      0.5              U_nn[..., 7] = U_pad[2:, 0:-2]
+   674                                           
+   675                                                       # --- OPTIMIZATION START ---
+   676                                                       # Replace slow nanmedian with fast nanmean and nanstd
+   677       240       2100.4      8.8      0.8              with warnings.catch_warnings():
+   678       120       1638.9     13.7      0.7                  warnings.simplefilter("ignore", category=RuntimeWarning)
+   679                                                           
+   680                                                           # 1. Calculate the mean of the 8 neighbors (replaces U_med)
+   681       120      58945.8    491.2     23.8                  U_mean = np.nanmean(U_nn, axis=2)
+   682                                                           
+   683                                                           # 2. Calculate the standard deviation of the 8 neighbors (replaces r_m)
+   684       120      98647.9    822.1     39.9                  U_std = np.nanstd(U_nn, axis=2)
+   685                                           
+   686                                                       # 3. Calculate deviation of the point from the neighbors' mean
+   687       120       1765.5     14.7      0.7              r_0 = np.abs(U_mean - U)
+   688                                                       
+   689                                                       # 4. Normalize the deviation by the neighbors' standard deviation
+   690                                                       # This is now a "Z-score" relative to the neighborhood
+   691       120       1598.1     13.3      0.6              r_0p[..., c] = r_0 / (U_std + epsilon)
+   692                                                       # --- OPTIMIZATION END ---
+   693                                           
+   694                                                       # Count valid neighbors (this part is fast and should be kept)
+   695       240      18625.0     77.6      7.5              n_neigh = convolve2d(
+   696       120       1246.8     10.4      0.5                  np.logical_not(np.isnan(U)).astype(float),
+   697       120        715.2      6.0      0.3                  np.ones((3, 3)),
+   698       120         58.0      0.5      0.0                  mode="same",
+   699       120         51.0      0.4      0.0                  boundary="fill",
+   700       120         31.2      0.3      0.0                  fillvalue=0,
+   701                                                       )
+   702       120       1000.1      8.3      0.4              n_neighbours[..., c] = n_neigh
+   703                                                       
+   704       120        592.8      4.9      0.2          with warnings.catch_warnings():
+   705        60        497.9      8.3      0.2              warnings.simplefilter("ignore", category=RuntimeWarning)
+   706        60      11449.4    190.8      4.6              r_0_combined = np.nanmax(r_0p, axis=2)
+   707                                                       
+   708        60         33.4      0.6      0.0          b_filter = (
+   709       180        410.1      2.3      0.2              (r_0_combined > threshold)
+   710        60       2952.5     49.2      1.2              | np.isnan(r_0p).any(axis=2)
+   711        60       2763.6     46.1      1.1              | (n_neighbours < 6).any(axis=2) # Keep the valid neighbor check
+   712                                                   )
+   713        60         19.0      0.3      0.0          return b_filter
+
+Total time: 0.336377 s
+File: C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\src\image_handling\load_images.py
+Function: compute_vector_mask at line 293
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   293                                           @profile
+   294                                           def compute_vector_mask(
+   295                                               pixel_mask: np.ndarray,
+   296                                               config: Config,
+   297                                           ) -> List[np.ndarray]:
+   298                                               """
+   299                                               Compute binary vector masks for each PIV pass based on pixel mask.
+   300                                               
+   301                                               This function is analogous to MATLAB's compute_b_mask. It convolves the
+   302                                               pixel mask with box filters matching the interrogation window size for
+   303                                               each pass, then interpolates at window center positions and applies a
+   304                                               threshold to determine which vectors should be masked.
+   305                                               
+   306                                               The process:
+   307                                               1. For each pass, get the window size and overlap
+   308                                               2. Compute window center positions (same as PIV does)
+   309                                               3. Convolve pixel mask with box filter of window size
+   310                                               4. Interpolate the filtered mask at window centers
+   311                                               5. Apply threshold to create binary mask (True = masked)
+   312                                               
+   313                                               Parameters
+   314                                               ----------
+   315                                               pixel_mask : np.ndarray
+   316                                                   Boolean pixel mask of shape (H, W) where True indicates masked regions
+   317                                               config : Config
+   318                                                   Configuration object containing window sizes, overlap, and mask threshold
+   319                                                   
+   320                                               Returns
+   321                                               -------
+   322                                               List[np.ndarray]
+   323                                                   List of binary masks, one per pass. Each mask has shape (n_win_y, n_win_x)
+   324                                                   where True indicates this vector should be masked (set to 0/NaN)
+   325                                                   
+   326                                               Notes
+   327                                               -----
+   328                                               The mask threshold (config.mask_threshold) determines the sensitivity:
+   329                                               - 0.0: mask vector if any pixel in window is masked
+   330                                               - 0.5: mask vector if >50% of pixels in window are masked
+   331                                               - 1.0: only mask vector if all pixels in window are masked
+   332                                               
+   333                                               A typical value is 0.5, meaning vectors are masked if more than half
+   334                                               of the interrogation window overlaps with masked regions.
+   335                                               """
+   336         1          0.6      0.6      0.0      if pixel_mask is None:
+   337                                                   return []
+   338                                               
+   339                                               # Ensure mask is float for convolution
+   340         1       1527.4   1527.4      0.5      im_mask = pixel_mask.astype(np.float32)
+   341         1          1.7      1.7      0.0      H, W = im_mask.shape
+   342                                               
+   343         1          0.8      0.8      0.0      vector_masks = []
+   344         1          7.1      7.1      0.0      threshold = config.mask_threshold
+   345                                               
+   346         7         11.3      1.6      0.0      for pass_idx in range(config.num_passes):
+   347                                                   # Get window size and overlap for this pass
+   348                                                   # config.window_sizes is in (H, W) format = (win_y, win_x)
+   349         6         16.7      2.8      0.0          win_y, win_x = config.window_sizes[pass_idx]
+   350         6         19.8      3.3      0.0          overlap = config.overlap[pass_idx]
+   351                                                   
+   352                                                   # Calculate window spacing
+   353         6         12.8      2.1      0.0          win_spacing_x = round((1 - overlap / 100) * win_x)
+   354         6          3.6      0.6      0.0          win_spacing_y = round((1 - overlap / 100) * win_y)
+   355                                                   
+   356                                                   # Calculate window center positions (matching PIV computation)
+   357                                                   # Using 0-based indexing: centers start at half window size
+   358         6          3.5      0.6      0.0          start_x = win_x / 2 - 0.5
+   359         6          2.4      0.4      0.0          start_y = win_y / 2 - 0.5
+   360                                                   
+   361                                                   # Temporarily disable edge margin (set to full image bounds)
+   362                                                   # Original code (commented):
+   363                                                   # # Apply edge margin if needed (matching PIV's EDGE_MARGIN = 32)
+   364                                                   # EDGE_MARGIN = 0
+   365                                                   # min_x = EDGE_MARGIN
+   366                                                   # max_x = W - EDGE_MARGIN - 1
+   367                                                   # min_y = EDGE_MARGIN
+   368                                                   # max_y = H - EDGE_MARGIN - 1
+   369         6          2.1      0.4      0.0          min_x = 0
+   370         6          1.9      0.3      0.0          max_x = W - 1
+   371         6          1.5      0.2      0.0          min_y = 0
+   372         6          1.9      0.3      0.0          max_y = H - 1
+   373                                                   
+   374         6          4.9      0.8      0.0          start_x = max(start_x, min_x)
+   375         6          2.0      0.3      0.0          start_y = max(start_y, min_y)
+   376                                                   
+   377                                                   # Calculate number of windows
+   378         6         26.0      4.3      0.0          n_win_x = int(np.floor((max_x - start_x) / win_spacing_x)) + 1
+   379         6          6.4      1.1      0.0          n_win_y = int(np.floor((max_y - start_y) / win_spacing_y)) + 1
+   380                                                   
+   381         6          3.6      0.6      0.0          n_win_x = max(1, n_win_x)
+   382         6          2.5      0.4      0.0          n_win_y = max(1, n_win_y)
+   383                                                   
+   384                                                   # Window center positions
+   385        12        227.7     19.0      0.1          win_ctrs_x = np.linspace(
+   386         6          3.5      0.6      0.0              start_x, start_x + win_spacing_x * (n_win_x - 1), n_win_x
+   387                                                   )
+   388        12         82.8      6.9      0.0          win_ctrs_y = np.linspace(
+   389         6          2.1      0.4      0.0              start_y, start_y + win_spacing_y * (n_win_y - 1), n_win_y
+   390                                                   )
+   391                                                   
+   392                                                   # Perform 2D convolution with box filter (separable for efficiency)
+   393                                                   # Convolve along y (rows) first
+   394         6         57.2      9.5      0.0          box_filter_y = np.ones((win_y, 1), dtype=np.float32) / win_y
+   395         6     226262.2  37710.4     67.3          f_mask = convolve(im_mask, box_filter_y, mode='constant', cval=0.0)
+   396                                                   
+   397                                                   # Convolve along x (columns)
+   398         6        136.9     22.8      0.0          box_filter_x = np.ones((1, win_x), dtype=np.float32) / win_x
+   399         6     106271.5  17711.9     31.6          f_mask = convolve(f_mask, box_filter_x, mode='constant', cval=0.0)
+   400                                                   
+   401                                                   # Interpolate at window center positions using nearest neighbor
+   402                                                   # Create grid of window centers
+   403         6        635.7    106.0      0.2          win_y_grid, win_x_grid = np.meshgrid(win_ctrs_y, win_ctrs_x, indexing='ij')
+   404                                                   
+   405                                                   # Convert to integer indices for nearest neighbor
+   406         6        371.5     61.9      0.1          win_y_idx = np.clip(np.round(win_y_grid).astype(int), 0, H - 1)
+   407         6        181.5     30.2      0.1          win_x_idx = np.clip(np.round(win_x_grid).astype(int), 0, W - 1)
+   408                                                   
+   409                                                   # Sample the filtered mask
+   410         6        247.5     41.2      0.1          b_mask_pass = f_mask[win_y_idx, win_x_idx] > threshold
+   411                                                   
+   412         6          4.8      0.8      0.0          vector_masks.append(b_mask_pass)
+   413                                                   
+   414                                                   # Log statistics for this pass (debug level only)
+   415         6        146.4     24.4      0.0          masked_vectors = np.sum(b_mask_pass)
+   416         6          4.4      0.7      0.0          total_vectors = b_mask_pass.size
+   417         6          6.5      1.1      0.0          mask_fraction = masked_vectors / total_vectors if total_vectors > 0 else 0
+   418                                                   
+   419        12         65.2      5.4      0.0          logging.debug(
+   420         6          2.1      0.4      0.0              "Pass %d: %d/%d vectors masked (%.1f%%), window size: (%d, %d)",
+   421         6          2.5      0.4      0.0              pass_idx + 1, masked_vectors, total_vectors,
+   422         6          4.7      0.8      0.0              mask_fraction * 100, win_y, win_x
+   423                                                   )
+   424                                               
+   425         1          0.2      0.2      0.0      return vector_masks
 

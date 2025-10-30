@@ -65,7 +65,7 @@ def save_piv_result_distributed(
     
     # Save to .mat file with compression to reduce I/O
     scipy.io.savemat(filename, {"piv_result": mat_data}, oned_as="row", do_compression=True)
-    logging.info(f"Worker saved PIV result to {filename}")
+    logging.debug(f"Worker saved PIV result to {filename}")
     
     return str(filename)
 
@@ -113,7 +113,7 @@ def save_piv_result_to_mat(
     
     # Save to .mat file with compression
     scipy.io.savemat(filename, {"piv_result": mat_data}, oned_as="row", do_compression=True)
-    logging.info(f"Saved PIV result to {filename}")
+    logging.debug(f"Saved PIV result to {filename}")
 
 
 def save_piv_results_batch(
