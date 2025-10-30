@@ -84,7 +84,7 @@ if __name__ == "__main__":
             
             # Perform PIV and save in parallel on workers
             # This avoids gathering all results to main process
-            save_futures = perform_piv_and_save(
+            save_futures, scattered_cache = perform_piv_and_save(
                 images,
                 config,
                 client,
@@ -94,11 +94,12 @@ if __name__ == "__main__":
                 vector_masks=vector_masks,  # Pass pre-computed vector masks
             )
             
-            # Submit coordinate saving task (runs once per camera)
+            # Submit coordinate saving task (runs once per camera) with shared cache
             coords_future = client.submit(
                 save_coordinates_from_config_distributed,
                 config,
                 output_path,
+                scattered_cache,  # Use the same scattered cache
             )
             
             # Wait for all PIV+save tasks to complete

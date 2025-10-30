@@ -11,6 +11,12 @@ import scipy.sparse.linalg as spla
 from scipy.interpolate import griddata
 from skimage.restoration import inpaint_biharmonic
 
+# Try to import line_profiler for detailed profiling
+try:
+    from line_profiler import profile
+except ImportError:
+    profile = lambda f: f
+
 # Add src to path for unified imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))
 from config import Config
@@ -108,6 +114,7 @@ class CrossCorrelator(ABC):
 
         return weight
     
+    @profile
     def _inpaint_nans_biharm(self, A):
         mask = np.isnan(A)
         A_filled = np.copy(A)
@@ -122,7 +129,7 @@ class CrossCorrelator(ABC):
         )
 
         return inpaint_biharmonic(A_filled, mask)
-    
+    @profile
     def _inpaint_nans_griddata(self, A):
         """
         Fast NaN inpainting using scipy.interpolate.griddata.

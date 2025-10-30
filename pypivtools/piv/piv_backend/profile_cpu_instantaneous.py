@@ -16,18 +16,25 @@ from pypivtools.piv.piv_backend.cpu_instantaneous import InstantaneousCorrelator
 
 def profile_cpu_instantaneous():
     """
-    Profile the CPU instantaneous correlator with line-by-line timing breakdown.
+    Profile the CPU instantaneous correlator with comprehensive timing breakdown.
     Runs 10 images: first one warms up caches, next 9 are profiled.
-    Provides timing info per pass and overall.
+    Provides timing info per pass, memory usage, and detailed profiling.
     """
+    overall_start = time.perf_counter()
+
     config = Config()
 
     # Use first camera and source path
     camera_num = config.camera_numbers[0]
     source_path = config.source_paths[0]
 
-    print("Loading images...")
-    # Load images (assuming we have at least 10 image pairs)
+    print("=" * 60)
+    print("COMPREHENSIVE CPU INSTANTANEOUS CORRELATOR PROFILING")
+    print("=" * 60)
+
+    # PHASE 1: Data Loading
+    print("\n[PHASE 1] Loading images...")
+    phase_start = time.perf_counter()
     all_images = load_images(camera_num, config, source=source_path)
 
     # Handle color images: convert to grayscale if needed
@@ -40,9 +47,23 @@ def profile_cpu_instantaneous():
     num_images = min(10, all_images.shape[0])
     images = all_images[:num_images]
 
-    print(f"Loaded {num_images} image pairs")
+    print(f"Slicing {num_images} image pairs from dask array")
 
-    # Load mask and compute vector masks if enabled
+    # CRITICAL FIX: Compute dask array to numpy array BEFORE profiling
+    # This matches the real workflow where image_block.compute() is called in _piv_single_pass
+    print("Computing dask array to numpy (this may take a moment)...")
+    start_compute = time.perf_counter()
+    images = images.compute()  # Convert from dask to numpy array
+    compute_time = time.perf_counter() - start_compute
+    print(".2f")
+    print(f"Images shape: {images.shape}, dtype: {images.dtype}")
+
+    data_loading_time = time.perf_counter() - phase_start
+    print(".2f")
+
+    # PHASE 2: Mask Loading
+    print("\n[PHASE 2] Loading masks...")
+    phase_start = time.perf_counter()
     vector_masks = None
     if config.masking_enabled:
         mask = load_mask_for_camera(camera_num, config, source_path_idx=0)
@@ -55,26 +76,33 @@ def profile_cpu_instantaneous():
     else:
         print("Masking disabled")
 
-    # Instantiate correlator
-    correlator = InstantaneousCorrelatorCPU(config)
-    print("Instantiated correlator")
-
-    # Warm up caches with first image
-    print("\nWarming up caches with first image...")
-    start_warmup = time.perf_counter()
-    warmup_result = correlator.correlate_batch(images[:1], config, vector_masks)
-    warmup_time = time.perf_counter() - start_warmup
+    mask_loading_time = time.perf_counter() - phase_start
     print(".2f")
 
-    # Now profile the remaining 9 images
-    images_to_profile = images[1:10]  # Take next 9, or fewer if not available
+    # PHASE 3: Correlator Initialization
+    print("\n[PHASE 3] Initializing correlator...")
+    phase_start = time.perf_counter()
+    correlator = InstantaneousCorrelatorCPU(config)
+    correlator_init_time = time.perf_counter() - phase_start
+    print(".2f")
+
+    # PHASE 4: Warmup
+    print("\n[PHASE 4] Warming up caches with first image...")
+    phase_start = time.perf_counter()
+    warmup_result = correlator.correlate_batch(images[:1], config, vector_masks)
+    warmup_time = time.perf_counter() - phase_start
+    print(".2f")
+
+    # PHASE 5: Profiling
+    print(f"\n[PHASE 5] Profiling correlation on {num_images-1} images...")
+    images_to_profile = images[1:num_images]  # Take remaining images
     num_to_profile = len(images_to_profile)
 
     if num_to_profile == 0:
         print("Not enough images to profile (need at least 2 total)")
         return
 
-    print(f"\nProfiling {num_to_profile} images...")
+    print(f"Profiling {num_to_profile} images...")
 
     # Use cProfile for detailed line-by-line profiling
     pr = cProfile.Profile()
@@ -106,10 +134,35 @@ def profile_cpu_instantaneous():
     print(".2f")
     print(".4f")
 
+    # PHASE 6: Analysis and Output
+    print("\n[PHASE 6] Analysis and Output...")
+
+    # Comprehensive timing summary
+    print("\n" + "=" * 60)
+    print("COMPREHENSIVE TIMING SUMMARY")
+    print("=" * 60)
+    print(f"{'Phase':<25} {'Time (s)':<10} {'% of Total':<10}")
+    print("-" * 60)
+
+    total_time = data_loading_time + mask_loading_time + correlator_init_time + warmup_time + total_profile_time
+    phases = [
+        ("Data Loading", data_loading_time),
+        ("Mask Loading", mask_loading_time),
+        ("Correlator Init", correlator_init_time),
+        ("Warmup", warmup_time),
+        ("Profiling", total_profile_time),
+    ]
+
+    for phase_name, phase_time in phases:
+        pct = (phase_time / total_time * 100) if total_time > 0 else 0
+        print(f"{phase_name:<25} {phase_time:<10.2f} {pct:<10.1f}")
+
+    print("-" * 60)
+    print(f"{'TOTAL TIME':<25} {total_time:<10.2f} {'100.0':<10}")
+    print(f"{'Avg time per image':<25} {avg_time_per_image:<10.4f}")
+
     # Write line profiling results to file
-    print("Profile complete.")
-    
-    # Write line profiling results to file
+    print("\nWriting detailed profiling results...")
     profile_txt_path = Path(__file__).parent / "profile_results.txt"
     with open(profile_txt_path, 'w') as f:
         f.write("Detailed profiling statistics (top 20 functions by cumulative time):\n")
@@ -118,7 +171,7 @@ def profile_cpu_instantaneous():
         f.write("\nTop 20 functions by total time:\n")
         ps2 = pstats.Stats(pr, stream=f).sort_stats('time')
         ps2.print_stats(20)
-    
+
     print(f"Line profiling results saved to: {profile_txt_path}")
     
     # Collect and analyze per-pass times (excluding warmup)

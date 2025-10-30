@@ -216,6 +216,7 @@ def save_coordinates(
 def save_coordinates_from_config_distributed(
     config: Config,
     output_path: Path,
+    correlator_cache: Optional[dict] = None,
 ) -> str:
     """
     Generate and save coordinate grids. Designed for Dask workers.
@@ -226,6 +227,8 @@ def save_coordinates_from_config_distributed(
         Configuration object containing window sizes and overlap.
     output_path : Path
         Directory where coordinates.mat will be saved.
+    correlator_cache : Optional[dict]
+        Precomputed correlator cache to avoid redundant computation.
         
     Returns
     -------
@@ -236,8 +239,8 @@ def save_coordinates_from_config_distributed(
         InstantaneousCorrelatorCPU
     )
     
-    # Create a temporary correlator just to compute window centers
-    correlator = InstantaneousCorrelatorCPU(config)
+    # Create a temporary correlator with optional precomputed cache
+    correlator = InstantaneousCorrelatorCPU(config, precomputed_cache=correlator_cache)
     
     # Extract the cached window centers
     win_ctrs_x_list = correlator.win_ctrs_x

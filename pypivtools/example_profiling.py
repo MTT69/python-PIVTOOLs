@@ -39,15 +39,15 @@ def run_camera_processing(client, config, camera_num, source_path, base_path):
     output_path = get_output_path(config, camera_num, use_uncalibrated=True)
 
     # Perform PIV and save in parallel
-    save_futures = perform_piv_and_save(
+    save_futures, scattered_cache = perform_piv_and_save(
         images, config, client, output_path,
         start_frame=1,
         pass_index=None,
         vector_masks=vector_masks
     )
 
-    # Save coordinates
-    coords_future = client.submit(save_coordinates_from_config_distributed, config, output_path)
+    # Save coordinates using the same scattered cache
+    coords_future = client.submit(save_coordinates_from_config_distributed, config, output_path, scattered_cache)
 
     # Wait for tasks
     wait(save_futures)

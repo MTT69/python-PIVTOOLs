@@ -126,6 +126,7 @@ def to_dask_array(delayed_pair: Delayed, config: Config) -> da.Array:
     return arr
 
 
+@profile
 def load_images(camera: int, config: Config, source: Path = None) -> da.Array:
     """Load images for a specific camera.
 

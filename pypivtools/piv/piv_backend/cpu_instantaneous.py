@@ -6,7 +6,7 @@ import time
 import traceback
 import warnings
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 import cv2
 import dask.array as da
 import numpy as np
@@ -30,7 +30,8 @@ from pypivtools.piv.piv_result import PIVPassResult, PIVResult
 
 
 class InstantaneousCorrelatorCPU(CrossCorrelator):
-    def __init__(self, config: Config) -> None:
+    @profile
+    def __init__(self, config: Config, precomputed_cache: Optional[dict] = None) -> None:
         super().__init__()
         # Use platform-appropriate library extension
         lib_extension = ".dll" if os.name == "nt" else ".so"
@@ -96,17 +97,74 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             for win_size in config.window_sizes
         ]
 
-        self._cache_window_padding(config=config)
-        self.H, self.W = config.image_shape
-
-        # Cache interpolation grids for performance
-        self._cache_interpolation_grids(config=config)
+        # Use precomputed cache if provided, otherwise compute it
+        if precomputed_cache is not None:
+            self._load_precomputed_cache(precomputed_cache)
+            logging.info("Loaded precomputed correlator cache")
+        else:
+            self._cache_window_padding(config=config)
+            self.H, self.W = config.image_shape
+            # Cache interpolation grids for performance
+            self._cache_interpolation_grids(config=config)
 
         # Initialize vector masks (will be set in correlate_batch)
         self.vector_masks = []
 
         # Store pass times for profiling
         self.pass_times = []
+
+    def _load_precomputed_cache(self, cache: dict) -> None:
+        """Load precomputed cache data to avoid redundant computation.
+        
+        :param cache: Dictionary containing precomputed cache data
+        :type cache: dict
+        """
+        # Load window padding cache
+        self.win_ctrs_x = cache['win_ctrs_x']
+        self.win_ctrs_y = cache['win_ctrs_y']
+        self.win_spacing_x = cache['win_spacing_x']
+        self.win_spacing_y = cache['win_spacing_y']
+        self.win_ctrs_x_all = cache['win_ctrs_x_all']
+        self.win_ctrs_y_all = cache['win_ctrs_y_all']
+        self.n_pre_all = cache['n_pre_all']
+        self.n_post_all = cache['n_post_all']
+        self.ksize_filt = cache['ksize_filt']
+        self.sd = cache['sd']
+        self.G_smooth_predictor = cache['G_smooth_predictor']
+        
+        # Load image dimensions
+        self.H = cache['H']
+        self.W = cache['W']
+        
+        # Load interpolation grids cache
+        self.im_mesh = cache['im_mesh']
+        self.cached_dense_maps = cache['cached_dense_maps']
+        self.cached_predictor_maps = cache['cached_predictor_maps']
+
+    def get_cache_data(self) -> dict:
+        """Extract cache data for sharing across workers.
+        
+        :return: Dictionary containing all cached data
+        :rtype: dict
+        """
+        return {
+            'win_ctrs_x': self.win_ctrs_x,
+            'win_ctrs_y': self.win_ctrs_y,
+            'win_spacing_x': self.win_spacing_x,
+            'win_spacing_y': self.win_spacing_y,
+            'win_ctrs_x_all': self.win_ctrs_x_all,
+            'win_ctrs_y_all': self.win_ctrs_y_all,
+            'n_pre_all': self.n_pre_all,
+            'n_post_all': self.n_post_all,
+            'ksize_filt': self.ksize_filt,
+            'sd': self.sd,
+            'G_smooth_predictor': self.G_smooth_predictor,
+            'H': self.H,
+            'W': self.W,
+            'im_mesh': self.im_mesh,
+            'cached_dense_maps': self.cached_dense_maps,
+            'cached_predictor_maps': self.cached_predictor_maps,
+        }
 
     @profile
     def correlate_batch(  # type: ignore[override]
@@ -489,6 +547,11 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         map_x_2d, map_y_2d = self.cached_dense_maps[pass_idx]
         if map_x_2d is None or map_y_2d is None:
             raise ValueError(f"Dense interpolation maps missing for pass {pass_idx}")
+        
+        # Verify cached dense maps have correct shape
+        assert map_x_2d.shape == (self.H, self.W), f"Cached dense map X shape mismatch for pass {pass_idx}: {map_x_2d.shape} vs {(self.H, self.W)}"
+        assert map_y_2d.shape == (self.H, self.W), f"Cached dense map Y shape mismatch for pass {pass_idx}: {map_y_2d.shape} vs {(self.H, self.W)}"
+        logging.debug(f"Using cached dense interpolation maps for pass {pass_idx}")
 
         for d in range(2):
             self.delta_ab_dense[..., d] = cv2.remap(
@@ -508,6 +571,12 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         map_x, map_y = self.cached_predictor_maps[pass_idx]
         if map_x is None or map_y is None:
             raise ValueError(f"Predictor interpolation maps missing for pass {pass_idx}")
+        
+        # Verify cached predictor maps have correct shape
+        expected_pred_shape = (len(self.win_ctrs_y[pass_idx]), len(self.win_ctrs_x[pass_idx]))
+        assert map_x.shape == expected_pred_shape, f"Cached predictor map X shape mismatch for pass {pass_idx}: {map_x.shape} vs {expected_pred_shape}"
+        assert map_y.shape == expected_pred_shape, f"Cached predictor map Y shape mismatch for pass {pass_idx}: {map_y.shape} vs {expected_pred_shape}"
+        logging.debug(f"Using cached predictor interpolation maps for pass {pass_idx}")
 
         for d in range(2):
             remapped = cv2.remap(
@@ -612,6 +681,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             | (n_neighbours < 6).any(axis=2)
         )
         return b_filter
+    
     # @profile
     # def _piv_2d_outlier(
     #     self,
@@ -620,84 +690,89 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
     #     epsilon: float = 0.2,
     #     threshold: float = 2.0,
     # ):
-    #     """
-    #     Check for outliers in 2D PIV data using a fast mean/stddev filter.
+    #     """Check for outliers in 2D PIV data.
         
-    #     This is an optimized version that replaces the slow `np.nanmedian`
-    #     with `np.nanmean` and `np.nanstd`. The logic is changed from
-    #     a median-absolute-deviation (MAD) filter to a standard-deviation
-    #     (Z-score) filter.
-
     #     :param ux: Horizontal velocity component.
     #     :type ux: np.ndarray
     #     :param uy: Vertical velocity component.
     #     :type uy: np.ndarray
     #     :param epsilon: Regularization parameter, defaults to 0.2.
     #     :type epsilon: float, optional
-    #     :param threshold: Outlier threshold (in standard deviations), defaults to 2.0.
+    #     :param threshold: Outlier threshold, defaults to 2.0.
     #     :type threshold: float, optional
     #     :return: Boolean array indicating outliers.
     #     :rtype: np.ndarray
     #     """
     #     n_wx, n_wy = ux.shape
-
+        
+    #     # Stack arrays once for vectorized processing
     #     ui = np.stack([ux, uy], axis=-1)
-
+        
+    #     # Pre-allocate output arrays
     #     r_0p = np.zeros((n_wx, n_wy, 2))
     #     n_neighbours = np.zeros((n_wx, n_wy, 2))
-
+        
     #     for c in range(2):
     #         U = ui[..., c]
     #         U_pad = np.pad(U, 1, mode="constant", constant_values=np.nan)
-
-    #         U_nn = np.zeros((n_wx, n_wy, 8))
-    #         U_nn[..., 0] = U_pad[0:-2, 0:-2]
-    #         U_nn[..., 1] = U_pad[0:-2, 1:-1]
-    #         U_nn[..., 2] = U_pad[0:-2, 2:]
-    #         U_nn[..., 3] = U_pad[1:-1, 0:-2]
-    #         U_nn[..., 4] = U_pad[1:-1, 2:]
-    #         U_nn[..., 5] = U_pad[2:, 2:]
-    #         U_nn[..., 6] = U_pad[2:, 1:-1]
-    #         U_nn[..., 7] = U_pad[2:, 0:-2]
-
-    #         # --- OPTIMIZATION START ---
-    #         # Replace slow nanmedian with fast nanmean and nanstd
+            
+    #         # Use stride_tricks for faster neighbor extraction (avoids creating full U_nn array)
+    #         # Or stick with slicing but use views more efficiently
+    #         U_nn = np.array([
+    #             U_pad[0:-2, 0:-2],
+    #             U_pad[0:-2, 1:-1],
+    #             U_pad[0:-2, 2:],
+    #             U_pad[1:-1, 0:-2],
+    #             U_pad[1:-1, 2:],
+    #             U_pad[2:, 2:],
+    #             U_pad[2:, 1:-1],
+    #             U_pad[2:, 0:-2]
+    #         ])  # Shape: (8, n_wx, n_wy)
+            
+    #         U_nn = np.moveaxis(U_nn, 0, -1)  # Shape: (n_wx, n_wy, 8)
+            
+    #         # Replace nanmedian with nanmean or percentile-based approximation
+    #         # nanmedian is O(n log n), while nanmean is O(n)
+    #         # For outlier detection, mean often works nearly as well
     #         with warnings.catch_warnings():
     #             warnings.simplefilter("ignore", category=RuntimeWarning)
+    #             # Option 1: Use nanmean (much faster, ~50x speedup)
+    #             U_med = np.nanmean(U_nn, axis=2)
                 
-    #             # 1. Calculate the mean of the 8 neighbors (replaces U_med)
-    #             U_mean = np.nanmean(U_nn, axis=2)
-                
-    #             # 2. Calculate the standard deviation of the 8 neighbors (replaces r_m)
-    #             U_std = np.nanstd(U_nn, axis=2)
-
-    #         # 3. Calculate deviation of the point from the neighbors' mean
-    #         r_0 = np.abs(U_mean - U)
+    #             # Option 2: Use approximate median via sorting only valid values
+    #             # (faster than nanmedian but slower than nanmean)
+    #             # U_med = np.nanpercentile(U_nn, 50, axis=2)
             
-    #         # 4. Normalize the deviation by the neighbors' standard deviation
-    #         # This is now a "Z-score" relative to the neighborhood
-    #         r_0p[..., c] = r_0 / (U_std + epsilon)
-    #         # --- OPTIMIZATION END ---
-
-    #         # Count valid neighbors (this part is fast and should be kept)
+    #         r_0 = np.abs(U_med - U)
+    #         r_i = np.abs(U_nn - U_med[..., None])
+            
+    #         with warnings.catch_warnings():
+    #             warnings.simplefilter("ignore", category=RuntimeWarning)
+    #             r_m = np.nanmean(r_i, axis=2)  # Replace nanmedian with nanmean
+            
+    #         r_0p[..., c] = r_0 / (r_m + epsilon)
+            
+    #         # Neighbor counting - use correlate2d which can be faster
+    #         valid_mask = ~np.isnan(U)
     #         n_neigh = convolve2d(
-    #             np.logical_not(np.isnan(U)).astype(float),
-    #             np.ones((3, 3)),
+    #             valid_mask.astype(np.float32),  # Use float32 for speed
+    #             np.ones((3, 3), dtype=np.float32),
     #             mode="same",
     #             boundary="fill",
     #             fillvalue=0,
     #         )
     #         n_neighbours[..., c] = n_neigh
-            
+        
     #     with warnings.catch_warnings():
     #         warnings.simplefilter("ignore", category=RuntimeWarning)
     #         r_0_combined = np.nanmax(r_0p, axis=2)
-            
+        
     #     b_filter = (
     #         (r_0_combined > threshold)
     #         | np.isnan(r_0p).any(axis=2)
-    #         | (n_neighbours < 6).any(axis=2) # Keep the valid neighbor check
+    #         | (n_neighbours < 6).any(axis=2)
     #     )
+        
     #     return b_filter
 
     def _set_lib_arguments(
@@ -789,6 +864,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             correl_plane_out,
         )
 
+    @profile
     def _cache_window_padding(self, config: Config) -> None:
         """Cache window padding information.
 
@@ -883,6 +959,23 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 g_kernel /= max(np.sum(g_kernel), 1e-12)
                 self.G_smooth_predictor.append(g_kernel)
 
+        # Verify window padding cache integrity
+        assert len(self.win_ctrs_x) == len(config.window_sizes), f"Window centers X cache length mismatch: {len(self.win_ctrs_x)} vs {len(config.window_sizes)}"
+        assert len(self.win_ctrs_y) == len(config.window_sizes), f"Window centers Y cache length mismatch: {len(self.win_ctrs_y)} vs {len(config.window_sizes)}"
+        assert len(self.win_spacing_x) == len(config.window_sizes), f"Window spacing X cache length mismatch: {len(self.win_spacing_x)} vs {len(config.window_sizes)}"
+        assert len(self.win_spacing_y) == len(config.window_sizes), f"Window spacing Y cache length mismatch: {len(self.win_spacing_y)} vs {len(config.window_sizes)}"
+        
+        # Check that cached values are reasonable
+        for pass_idx in range(len(config.window_sizes)):
+            assert len(self.win_ctrs_x[pass_idx]) > 0, f"No X window centers cached for pass {pass_idx}"
+            assert len(self.win_ctrs_y[pass_idx]) > 0, f"No Y window centers cached for pass {pass_idx}"
+            assert self.win_spacing_x[pass_idx] > 0, f"Invalid X spacing for pass {pass_idx}: {self.win_spacing_x[pass_idx]}"
+            assert self.win_spacing_y[pass_idx] > 0, f"Invalid Y spacing for pass {pass_idx}: {self.win_spacing_y[pass_idx]}"
+        
+        logging.info(f"Successfully cached window padding for {len(config.window_sizes)} passes")
+
+    @profile
+    @profile
     def _cache_interpolation_grids(self, config: Config) -> None:
         """Cache interpolation grid coordinates for reuse across passes.
 
@@ -938,6 +1031,24 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 map_x = ix.reshape(win_x.shape).astype(np.float32)
                 map_y = iy.reshape(win_x.shape).astype(np.float32)
                 self.cached_predictor_maps.append((map_x, map_y))
+
+        # Verify caching integrity
+        assert len(self.cached_dense_maps) == len(config.window_sizes), f"Dense maps cache length mismatch: {len(self.cached_dense_maps)} vs {len(config.window_sizes)}"
+        assert len(self.cached_predictor_maps) == len(config.window_sizes), f"Predictor maps cache length mismatch: {len(self.cached_predictor_maps)} vs {len(config.window_sizes)}"
+        
+        # Check that non-zero passes have cached maps
+        for pass_idx in range(1, len(config.window_sizes)):
+            assert self.cached_dense_maps[pass_idx] is not None, f"Dense map for pass {pass_idx} is None"
+            assert self.cached_predictor_maps[pass_idx] is not None, f"Predictor map for pass {pass_idx} is None"
+            dense_x, dense_y = self.cached_dense_maps[pass_idx]
+            pred_x, pred_y = self.cached_predictor_maps[pass_idx]
+            assert dense_x.shape == (self.H, self.W), f"Dense map X shape incorrect for pass {pass_idx}: {dense_x.shape} vs {(self.H, self.W)}"
+            assert dense_y.shape == (self.H, self.W), f"Dense map Y shape incorrect for pass {pass_idx}: {dense_y.shape} vs {(self.H, self.W)}"
+            expected_pred_shape = (len(self.win_ctrs_y[pass_idx]), len(self.win_ctrs_x[pass_idx]))
+            assert pred_x.shape == expected_pred_shape, f"Predictor map X shape incorrect for pass {pass_idx}: {pred_x.shape} vs {expected_pred_shape}"
+            assert pred_y.shape == expected_pred_shape, f"Predictor map Y shape incorrect for pass {pass_idx}: {pred_y.shape} vs {expected_pred_shape}"
+        
+        logging.info(f"Successfully cached interpolation grids for {len(config.window_sizes)} passes")
 
     # def _apply_mask_to_vectors(
     #     self,
