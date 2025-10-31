@@ -2,6 +2,7 @@ import ctypes
 import logging
 import os
 import sys
+import time
 import traceback
 import warnings
 from pathlib import Path
@@ -11,6 +12,12 @@ import numpy as np
 from dask.distributed import get_worker
 from scipy.ndimage import gaussian_filter
 from scipy.signal import convolve2d
+
+# Try to import line_profiler for detailed profiling
+try:
+    from line_profiler import profile
+except ImportError:
+    profile = lambda f: f
 
 # Add src to path for unified imports
 
@@ -26,10 +33,19 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
 
     def __init__(self, config: Config) -> None:
         super().__init__()
+        # Use platform-appropriate library extension
+        lib_extension = ".dll" if os.name == "nt" else ".so"
         lib_path = os.path.join(
-            os.path.dirname(__file__), "../..", "lib", "libbulkxcorr2d.so"
+            os.path.dirname(__file__), "../..", "lib", f"libbulkxcorr2d{lib_extension}"
         )
         lib_path = os.path.abspath(lib_path)
+        if not os.path.isfile(lib_path):
+            raise FileNotFoundError(f"Required library file not found: {lib_path}")
+        # Add vcpkg bin directory to DLL search path on Windows
+        if os.name == "nt":
+            vcpkg_bin = os.path.join(os.environ.get('FFTW_LIB_PATH', '').replace('lib', 'bin'))
+            if vcpkg_bin and os.path.isdir(vcpkg_bin):
+                os.add_dll_directory(vcpkg_bin)
         self.lib = ctypes.CDLL(lib_path)
         self.lib.bulkxcorr2d.restype = ctypes.c_ubyte
         self.delta_ab_pred = None
@@ -39,7 +55,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         self.lib.bulkxcorr2d.argtypes = [
             np.ctypeslib.ndpointer(dtype=np.float32, flags="F_CONTIGUOUS"),  # fImageA
             np.ctypeslib.ndpointer(dtype=np.float32, flags="F_CONTIGUOUS"),  # fImageB
-            np.ctypeslib.ndpointer(dtype=np.uint8, flags="F_CONTIGUOUS"),  # fMask
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="F_CONTIGUOUS"),  # fMask
             np.ctypeslib.ndpointer(dtype=np.int32, flags="F_CONTIGUOUS"),  # nImageSize
             np.ctypeslib.ndpointer(dtype=np.float32, flags="F_CONTIGUOUS"),  # fWinCtrsX
             np.ctypeslib.ndpointer(dtype=np.float32, flags="F_CONTIGUOUS"),  # fWinCtrsY
@@ -90,7 +106,11 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         # Initialize vector mask cache (computed once when mask is provided)
         self.vector_masks = []
         self.mask_cached = False
+        
+        # Store pass times for profiling
+        self.pass_times = []
 
+    @profile
     def correlate_batch(  # type: ignore[override]
         self, images: np.ndarray, config: Config, mask: np.ndarray | None = None
     ) -> PIVResult:
@@ -102,6 +122,9 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         self.delta_ab_pred = None
         self.delta_ab_old = None
         self.mask = mask
+        
+        # Clear pass times for this batch
+        self.pass_times = []
         
         # Compute vector masks once and cache them
         # Only compute if masking is enabled and mask is provided
@@ -133,6 +156,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 image_size = np.asfortranarray(np.array([H, W], dtype=np.int32))
 
                 for pass_idx, win_size in enumerate(config.window_sizes):
+                    pass_start = time.perf_counter()
                     image_a_prime, image_b_prime, self.delta_ab_pred = (
                         self._predictor_corrector(
                             pass_idx,
@@ -319,6 +343,8 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                         win_ctrs_y=self.win_ctrs_y[pass_idx],
                         edge_mask=edge_mask,
                     )
+                    pass_time = time.perf_counter() - pass_start
+                    self.pass_times.append((n, pass_idx, pass_time))
                     piv_result_all.add_pass(pass_result)
 
             except Exception as exc:
@@ -425,7 +451,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
 
         for name, arr in args:
             logging.info(f"{name}: {_describe(arr)}")
-
+    @profile
     def _predictor_corrector(
         self,
         pass_idx: int,
@@ -522,7 +548,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         )
 
         return image_a_prime, image_b_prime, self.delta_ab_pred
-
+    @profile
     def _piv_2d_outlier(
         self,
         ux: np.ndarray,
@@ -627,9 +653,9 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         # Use precomputed vector mask for this pass if available
         if hasattr(self, 'vector_masks') and self.vector_masks and pass_idx < len(self.vector_masks):
             cached_mask = self.vector_masks[pass_idx]
-            b_mask = np.asfortranarray(cached_mask.astype(np.uint8))
+            b_mask = np.asfortranarray(cached_mask.astype(np.float32))
         else:
-            b_mask = np.asfortranarray(np.zeros((n_win_y, n_win_x), dtype=np.uint8))
+            b_mask = np.asfortranarray(np.zeros((n_win_y, n_win_x), dtype=np.float32))
             logging.debug("No vector mask applied for pass %d", pass_idx)
 
         n_peaks = np.int32(config.num_peaks)

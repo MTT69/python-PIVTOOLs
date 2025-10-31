@@ -10,8 +10,10 @@ KERNEL_GAUSSIAN = 1
 class Interp2Custom:
     def __init__(self, lib_path=None):
         if lib_path is None:
+            # Use platform-appropriate library extension
+            lib_extension = ".dll" if os.name == "nt" else ".so"
             lib_path = os.path.join(
-                os.path.dirname(__file__), "../lib/libinterp2custom.so"
+                os.path.dirname(__file__), "../lib", f"libinterp2custom{lib_extension}"
             )
         self.lib = ctypes.CDLL(os.path.abspath(lib_path))
 

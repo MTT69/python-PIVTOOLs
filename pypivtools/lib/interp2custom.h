@@ -6,6 +6,12 @@
 #include <string.h>
 #include <omp.h>
 
+#ifdef _WIN32
+#define EXPORT __declspec(dllexport)
+#else
+#define EXPORT
+#endif
+
 /**** defines ****/
 #define PI 3.14159265f
 #define CHUNKSIZE 1024
@@ -32,11 +38,11 @@ extern float g_fGaussKernelStd;
 extern float *g_fLUT;
 
 /**** function declarations ****/
-void interp2custom(const float *y, size_t *N, const float *f_i, const float *f_j, float *yi, int n_interp);
-float interp1custom(float *y, float *fFilterCoeffs);
-void interp1custom_vec(float *y, float *yi, int N, float *fFilterCoeffs);
-void interp1custom_generatelut(int iKernelType, int iKernelSize, float fOptions);
-void interp1custom_destroylut(void);
-float sinc(float x);
+EXPORT void interp2custom(const float *y, size_t *N, const float *f_i, const float *f_j, float *yi, int n_interp);
+EXPORT float interp1custom(float *y, float *fFilterCoeffs);
+EXPORT void interp1custom_vec(float *y, float *yi, int N, float *fFilterCoeffs);
+EXPORT void interp1custom_generatelut(int iKernelType, int iKernelSize, float fOptions);
+EXPORT void interp1custom_destroylut(void);
+EXPORT float sinc(float x);
 
 #endif

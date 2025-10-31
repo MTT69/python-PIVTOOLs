@@ -106,7 +106,7 @@ class CrossCorrelator(ABC):
             raise ValueError(f"Unrecognized window type '{window_type}'")
 
         return weight
-
+    
     def _inpaint_nans_biharm(self, A):
         mask = np.isnan(A)
         A_filled = np.copy(A)
