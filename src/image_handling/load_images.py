@@ -50,14 +50,10 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
     image_format = config.image_format
     
     # Special handling for .ims/.set files (set files in source directory)
-    if str(image_format).endswith(('.ims', '.set')):
+    if str(image_format).endswith(('.set')):
         # For .ims/.set files, camera_path is the source directory
         # image_format should be a string for .set files
-        if isinstance(image_format, str):
-            set_file_path = camera_path / image_format
-        else:
-            raise ValueError(f"For .set files, image_format must be a string, got {type(image_format)}")
-        
+        set_file_path = camera_path / image_format
         return read_image(str(set_file_path), camera_no=camera, im_no=idx)
     
     if isinstance(image_format, tuple):
@@ -68,22 +64,17 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
             camera_path / (image_format_B % idx),
         ]
     else:
-        # Time-resolved: single format (shouldn't happen for PIV pairs, but handle it)
-        logging.warning("Time-resolved format detected for PIV pairs, this may not work correctly")
         file_paths = [
             camera_path / (image_format % idx),
-            camera_path / (image_format.replace("_A", "_B") % idx),
+            camera_path / (image_format % (idx + 1)),
         ]
 
     # Check if it's a proprietary format that reads pairs natively
     file_ext = Path(file_paths[0]).suffix.lower()
     if file_ext == ".im7":
-        # LaVision files contain both frames, read once
-        # Extract camera number from path if needed
         camera_no = camera  # Use the passed camera number
         return read_image(str(file_paths[0]), camera_no=camera_no)
     elif file_ext == ".cine":
-        # For .cine, pass frame index (idx-1 for 0-based)
         return read_image(str(file_paths[0]), idx=idx - 1, frames=2)
     else:
         # Read individual frames

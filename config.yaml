@@ -2,20 +2,18 @@ paths:
   base_paths:
   - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows
   source_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall
+  - C:\Users\mtt1e23\Downloads\OneDrive_1_29-10-2025
   camera_numbers:
   - 1
 images:
   num_images: 100
-  image_format:
-  - B%05d_A.tif
-  - B%05d_B.tif
+  image_format: loop=1.set
   vector_format:
   - '%05d.mat'
   shape:
   - 1152
   - 1024
-  time_resolved: false
+  time_resolved: true
   dtype: uint8
 batches:
   size: 100

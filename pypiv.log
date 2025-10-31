@@ -8156,3 +8156,10 @@ cv2.error: OpenCV(4.12.0) :-1: error: (-5:Bad argument) in function 'remap'
 2025-10-31 09:52:15,154 [INFO] 127.0.0.1 - - [31/Oct/2025 09:52:15] "GET /get_uncalibrated_count?basepath_idx=0&camera=Cam1&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
 2025-10-31 09:52:15,445 [INFO] 127.0.0.1 - - [31/Oct/2025 09:52:15] "GET /plot/get_uncalibrated_image?basepath_idx=0&camera=Cam1&var=ux&is_uncalibrated=1&index=1 HTTP/1.1" 200 -
 2025-10-31 10:37:54,303 [INFO]  * Detected change in 'C:\\Users\\mtt1e23\\OneDrive - University of Southampton\\Documents\\python-PIVTOOLs\\src\\server.py', reloading
+2025-10-31 10:45:52,118 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 10:46:52,355 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 10:48:59,447 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 10:50:28,625 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 10:53:34,273 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 10:53:34,274 [WARNING] Time-resolved format detected for PIV pairs, this may not work correctly
+2025-10-31 11:00:25,236 [INFO] Logging initialized. Level: INFO, File: pypiv.log

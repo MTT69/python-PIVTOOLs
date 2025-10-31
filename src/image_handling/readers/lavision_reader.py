@@ -82,7 +82,7 @@ def read_lavision_ims(file_path: str, camera_no: Optional[int] = None, im_no: Op
     # Determine if file_path is a .set file or a legacy .ims file path
     if path.suffix.lower() == '.set' or (camera_no is not None and im_no is not None):
         # Modern .ims format: file_path is the .set file
-        source_dir = path.parent
+        set_file_path = str(path.parent)
         if camera_no is None or im_no is None:
             raise ValueError("camera_no and im_no must be provided for .set files")
     else:
@@ -108,16 +108,17 @@ def read_lavision_ims(file_path: str, camera_no: Optional[int] = None, im_no: Op
         
         # Source directory is typically the parent of the CamX directory
         source_dir = path.parent.parent
+        set_file_path = str(source_dir)
     
-    if not source_dir.exists():
-        raise FileNotFoundError(f"Source directory not found: {source_dir}")
+    if not Path(set_file_path).exists():
+        raise FileNotFoundError(f"Set file path not found: {set_file_path}")
     
     # Read the set file
     try:
-        set_file = lv.read_set(str(source_dir))
+        set_file = lv.read_set(set_file_path)
         im = set_file[im_no - 1]  # 0-based indexing in Python
     except Exception as e:
-        raise RuntimeError(f"Failed to read set file from {source_dir}: {e}")
+        raise RuntimeError(f"Failed to read set file from {set_file_path}: {e}")
     
     # Extract frames for this camera
     data = np.zeros((2, *im.frames[0].components["PIXEL"].planes[0].shape), dtype=np.float64)
@@ -144,4 +145,4 @@ def read_lavision_ims_pair(file_path: str, **kwargs) -> np.ndarray:
 
 
 register_reader([".im7"], read_lavision_pair)
-register_reader([".ims"], read_lavision_ims_pair)
+register_reader([".set"], read_lavision_ims_pair)
