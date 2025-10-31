@@ -5,6 +5,7 @@ from typing import Dict, Optional, Tuple
 import random
 import matplotlib
 from loguru import logger
+import scipy.io
 from scipy.io import loadmat
 
 matplotlib.use("Agg")
@@ -108,10 +109,23 @@ def create_and_return_plot(
     """
     H, W = int(var_arr.shape[0]), int(var_arr.shape[1])
     if raw:
+        # Apply transformations to raw mode as well
+        from plotting.plot_maker import apply_transformations
+        
+        arr = apply_transformations(
+            np.asarray(var_arr).squeeze(),
+            transpose=getattr(settings, "transpose", False),
+            rotation=getattr(settings, "rotation", 0),
+            flip_horizontal=getattr(settings, "flip_horizontal", False),
+            flip_vertical=getattr(settings, "flip_vertical", False),
+        )
+        
+        # Update dimensions after transformation
+        H, W = int(arr.shape[0]), int(arr.shape[1])
+        
         dpi = 100
         fig = plt.figure(figsize=(W / dpi, H / dpi), dpi=dpi)
         ax = fig.add_axes([0, 0, 1, 1])
-        arr = np.asarray(var_arr).squeeze()
         vmin = (
             getattr(settings, "lower_limit", None)
             if hasattr(settings, "lower_limit")
@@ -158,6 +172,7 @@ def create_and_return_plot(
         return b64, W, H, extra
 
     fig, ax, im = plot_scalar_field(var_arr, mask_arr, settings)
+    
     if im is None or not hasattr(im, "get_array"):
         arr = np.asarray(var_arr).squeeze()
         vmin = (
@@ -255,6 +270,26 @@ def parse_plot_params(req) -> Dict:
         "True",
         "TRUE",
     )
+    
+    # Parse transformation parameters
+    rotation_raw = req.args.get("rotation", default="0", type=str)
+    try:
+        rotation = int(rotation_raw) % 4  # Ensure 0-3 range
+    except (ValueError, TypeError):
+        rotation = 0
+    
+    flip_h_raw = req.args.get("flip_horizontal", default="0", type=str)
+    flip_horizontal = flip_h_raw in ("1", "true", "True", "TRUE")
+    
+    flip_v_raw = req.args.get("flip_vertical", default="0", type=str)
+    flip_vertical = flip_v_raw in ("1", "true", "True", "TRUE")
+    
+    transpose_raw = req.args.get("transpose", default="0", type=str)
+    transpose = transpose_raw in ("1", "true", "True", "TRUE")
+    
+    # Debug logging
+    logger.info(f"TRANSFORM PARAMS: flip_h_raw='{flip_h_raw}' -> flip_horizontal={flip_horizontal}, flip_v_raw='{flip_v_raw}' -> flip_vertical={flip_vertical}")
+    
     return {
         "base_path": base_path,
         "camera": camera,
@@ -269,6 +304,10 @@ def parse_plot_params(req) -> Dict:
         "cmap": cmap,
         "type_name": type_name,
         "raw": raw_mode,
+        "rotation": rotation,
+        "flip_horizontal": flip_horizontal,
+        "flip_vertical": flip_vertical,
+        "transpose": transpose,
     }
 
 
@@ -327,6 +366,10 @@ def load_and_plot_data(
         lower_limit=plot_kwargs.get("lower_limit"),
         upper_limit=plot_kwargs.get("upper_limit"),
         cmap=plot_kwargs.get("cmap"),
+        rotation=plot_kwargs.get("rotation", 0),
+        flip_horizontal=plot_kwargs.get("flip_horizontal", False),
+        flip_vertical=plot_kwargs.get("flip_vertical", False),
+        transpose=plot_kwargs.get("transpose", False),
     )
 
     b64_img, W, H, extra = create_and_return_plot(
@@ -371,9 +414,18 @@ def plot_vector():
             upper_limit=params["upper_limit"],
             cmap=params["cmap"],
             raw=params["raw"],
+            rotation=params["rotation"],
+            flip_horizontal=params["flip_horizontal"],
+            flip_vertical=params["flip_vertical"],
+            transpose=params["transpose"],
         )
         meta = build_response_meta(effective_run, params["var"], W, H, extra)
-        return jsonify({"success": True, "image": b64_img, "meta": meta})
+        response = jsonify({"success": True, "image": b64_img, "meta": meta})
+        # Prevent browser caching of transformed images
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
     except ValueError as e:
         logger.warning(f"plot_vector: validation error: {e}")
         return jsonify({"success": False, "error": str(e)}), 400
@@ -412,9 +464,18 @@ def plot_stats():
             upper_limit=params["upper_limit"],
             cmap=params["cmap"],
             raw=params["raw"],
+            rotation=params["rotation"],
+            flip_horizontal=params["flip_horizontal"],
+            flip_vertical=params["flip_vertical"],
+            transpose=params["transpose"],
         )
         meta = build_response_meta(params["run"], params["var"], W, H, extra)
-        return jsonify({"success": True, "image": b64_img, "meta": meta})
+        response = jsonify({"success": True, "image": b64_img, "meta": meta})
+        # Prevent browser caching of transformed images
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
     except ValueError as e:
         logger.warning(f"plot_stats: validation error: {e}")
         return jsonify({"success": False, "error": str(e)}), 400
@@ -620,6 +681,10 @@ def get_uncalibrated_image():
             variable_units="px/frame",
             length_units="px",
             raw=params["raw"],
+            rotation=params["rotation"],
+            flip_horizontal=params["flip_horizontal"],
+            flip_vertical=params["flip_vertical"],
+            transpose=params["transpose"],
         )
         meta = build_response_meta(effective_run, params["var"], W, H, extra)
         return jsonify({"success": True, "image": b64_img, "meta": meta})
@@ -683,12 +748,63 @@ def get_vector_at_position():
         var_arr = np.asarray(getattr(pr, params["var"]))
         if var_arr.ndim < 2:
             var_arr = var_arr.reshape(var_arr.shape[0], -1)
+        
+        # Load ux, uy, and mask arrays
+        ux_arr = np.asarray(getattr(pr, "ux", None))
+        uy_arr = np.asarray(getattr(pr, "uy", None))
+        
+        # Load mask array
+        try:
+            mask_arr = np.asarray(getattr(pr, "b_mask")).astype(bool)
+        except Exception:
+            mask_arr = np.zeros_like(var_arr, dtype=bool)
+        
+        # Apply transformations to match the visual display
+        from plotting.plot_maker import apply_transformations
+        
+        transpose = params.get("transpose", False)
+        rotation = params.get("rotation", 0)
+        flip_horizontal = params.get("flip_horizontal", False)
+        flip_vertical = params.get("flip_vertical", False)
+        
+        # Store original shape for checking
+        orig_shape = var_arr.shape
+        
+        # Transform all data arrays including mask
+        var_arr = apply_transformations(var_arr, transpose, rotation, flip_horizontal, flip_vertical)
+        mask_arr = apply_transformations(mask_arr, transpose, rotation, flip_horizontal, flip_vertical).astype(bool)
+        
+        if ux_arr is not None and ux_arr.shape == orig_shape:
+            ux_arr = apply_transformations(ux_arr, transpose, rotation, flip_horizontal, flip_vertical)
+        if uy_arr is not None and uy_arr.shape == orig_shape:
+            uy_arr = apply_transformations(uy_arr, transpose, rotation, flip_horizontal, flip_vertical)
+        
+        # Apply mask to data (set masked values to NaN)
+        var_arr = np.where(mask_arr, np.nan, var_arr)
+        if ux_arr is not None and ux_arr.shape == var_arr.shape:
+            ux_arr = np.where(mask_arr, np.nan, ux_arr)
+        if uy_arr is not None and uy_arr.shape == var_arr.shape:
+            uy_arr = np.where(mask_arr, np.nan, uy_arr)
+        
+        # Get transformed data shape
         H, W = var_arr.shape
+        
+        # Use the click coordinates directly in transformed space
         xp = max(0.0, min(1.0, x_percent))
         yp = max(0.0, min(1.0, y_percent))
+        
+        # Convert to array indices in transformed space
         j = int(round(xp * (W - 1)))
-        i = int(round(yp * (H - 1)))
+        # NOTE: y-axis needs to be flipped when transformations are applied
+        # because matplotlib has y=0 at bottom but arrays have i=0 at top
+        has_transforms = transpose or rotation or flip_horizontal or flip_vertical
+        if has_transforms:
+            i = int(round((1.0 - yp) * (H - 1)))  # Flip y-coordinate for transformed data
+        else:
+            i = int(round(yp * (H - 1)))  # Don't flip for untransformed data
         i, j = max(0, min(H - 1, i)), max(0, min(W - 1, j))
+        
+        # Load and transform coordinates if available
         physical_coord_used = False
         coord_x = coord_y = None
         try:
@@ -701,26 +817,31 @@ def get_vector_at_position():
                     coords_struct = coords_mat["coordinates"]
                     cx, cy = extract_coordinates(coords_struct, effective_run)
                     cx_arr, cy_arr = np.asarray(cx), np.asarray(cy)
-                    if cx_arr.shape == var_arr.shape:
-                        coord_x, coord_y = float(cx_arr[i, j]), float(cy_arr[i, j])
+                    
+                    # Check if coordinates match original shape before transformation
+                    orig_var = np.asarray(getattr(pr, params["var"]))
+                    if orig_var.ndim < 2:
+                        orig_var = orig_var.reshape(orig_var.shape[0], -1)
+                    
+                    if cx_arr.shape == orig_var.shape:
+                        if has_transforms:
+                            # Apply SAME transformations to coordinates
+                            cx_transformed = apply_transformations(cx_arr, transpose, rotation, flip_horizontal, flip_vertical)
+                            cy_transformed = apply_transformations(cy_arr, transpose, rotation, flip_horizontal, flip_vertical)
+                            coord_x, coord_y = float(cx_transformed[i, j]), float(cy_transformed[i, j])
+                        else:
+                            # No transformation, use original coordinates
+                            coord_x, coord_y = float(cx_arr[i, j]), float(cy_arr[i, j])
                         physical_coord_used = True
         except Exception as e:
             logger.debug(f"Coordinates load failed: {e}")
+        
         if not physical_coord_used:
-            x_coords = np.asarray(getattr(pr, "x", None))
-            y_coords = np.asarray(getattr(pr, "y", None))
-            if x_coords is not None and x_coords.shape == var_arr.shape:
-                x_min, x_max = float(np.nanmin(x_coords)), float(np.nanmax(x_coords))
-                coord_x = x_min + xp * (x_max - x_min)
-            else:
-                coord_x = float(j)
-            if y_coords is not None and y_coords.shape == var_arr.shape:
-                y_min, y_max = float(np.nanmin(y_coords)), float(np.nanmax(y_coords))
-                coord_y = y_min + yp * (y_max - y_min)
-            else:
-                coord_y = float(i)
-        ux_arr = np.asarray(getattr(pr, "ux", None))
-        uy_arr = np.asarray(getattr(pr, "uy", None))
+            # Fallback to simple index coordinates or interpolated physical ranges
+            coord_x = float(j)
+            coord_y = float(i)
+        
+        # Get values from transformed arrays
         ux_val = (
             float(ux_arr[i, j])
             if ux_arr is not None and ux_arr.shape == var_arr.shape
@@ -769,12 +890,63 @@ def get_stats_value_at_position():
         var_arr = np.asarray(getattr(pr, params["var"]))
         if var_arr.ndim < 2:
             raise ValueError("Unexpected variable array shape")
+        
+        # Load ux, uy, and mask arrays
+        ux_arr = np.asarray(getattr(pr, "ux", None))
+        uy_arr = np.asarray(getattr(pr, "uy", None))
+        
+        # Load mask array
+        try:
+            mask_arr = np.asarray(getattr(pr, "b_mask")).astype(bool)
+        except Exception:
+            mask_arr = np.zeros_like(var_arr, dtype=bool)
+        
+        # Apply transformations to match the visual display
+        from plotting.plot_maker import apply_transformations
+        
+        transpose = params.get("transpose", False)
+        rotation = params.get("rotation", 0)
+        flip_horizontal = params.get("flip_horizontal", False)
+        flip_vertical = params.get("flip_vertical", False)
+        
+        # Store original shape for checking
+        orig_shape = var_arr.shape
+        
+        # Transform all data arrays including mask
+        var_arr = apply_transformations(var_arr, transpose, rotation, flip_horizontal, flip_vertical)
+        mask_arr = apply_transformations(mask_arr, transpose, rotation, flip_horizontal, flip_vertical).astype(bool)
+        
+        if ux_arr is not None and ux_arr.shape == orig_shape:
+            ux_arr = apply_transformations(ux_arr, transpose, rotation, flip_horizontal, flip_vertical)
+        if uy_arr is not None and uy_arr.shape == orig_shape:
+            uy_arr = apply_transformations(uy_arr, transpose, rotation, flip_horizontal, flip_vertical)
+        
+        # Apply mask to data (set masked values to NaN)
+        var_arr = np.where(mask_arr, np.nan, var_arr)
+        if ux_arr is not None and ux_arr.shape == var_arr.shape:
+            ux_arr = np.where(mask_arr, np.nan, ux_arr)
+        if uy_arr is not None and uy_arr.shape == var_arr.shape:
+            uy_arr = np.where(mask_arr, np.nan, uy_arr)
+        
+        # Get transformed data shape
         H, W = var_arr.shape
+        
+        # Use the click coordinates directly in transformed space
         xp = max(0.0, min(1.0, x_percent))
         yp = max(0.0, min(1.0, y_percent))
+        
+        # Convert to array indices in transformed space
         j = int(round(xp * (W - 1)))
-        i = int(round(yp * (H - 1)))
+        # NOTE: y-axis needs to be flipped when transformations are applied
+        # because matplotlib has y=0 at bottom but arrays have i=0 at top
+        has_transforms = transpose or rotation or flip_horizontal or flip_vertical
+        if has_transforms:
+            i = int(round((1.0 - yp) * (H - 1)))  # Flip y-coordinate for transformed data
+        else:
+            i = int(round(yp * (H - 1)))  # Don't flip for untransformed data
         i, j = max(0, min(H - 1, i)), max(0, min(W - 1, j))
+        
+        # Load and transform coordinates if available
         physical_coord_used = False
         coord_x = coord_y = None
         try:
@@ -787,26 +959,31 @@ def get_stats_value_at_position():
                     coords_struct = coords_mat["coordinates"]
                     cx, cy = extract_coordinates(coords_struct, effective_run)
                     cx_arr, cy_arr = np.asarray(cx), np.asarray(cy)
-                    if cx_arr.shape == var_arr.shape:
-                        coord_x, coord_y = float(cx_arr[i, j]), float(cy_arr[i, j])
+                    
+                    # Check if coordinates match original shape before transformation
+                    orig_var = np.asarray(getattr(pr, params["var"]))
+                    if orig_var.ndim < 2:
+                        orig_var = orig_var.reshape(orig_var.shape[0], -1)
+                    
+                    if cx_arr.shape == orig_var.shape:
+                        if has_transforms:
+                            # Apply SAME transformations to coordinates
+                            cx_transformed = apply_transformations(cx_arr, transpose, rotation, flip_horizontal, flip_vertical)
+                            cy_transformed = apply_transformations(cy_arr, transpose, rotation, flip_horizontal, flip_vertical)
+                            coord_x, coord_y = float(cx_transformed[i, j]), float(cy_transformed[i, j])
+                        else:
+                            # No transformation, use original coordinates
+                            coord_x, coord_y = float(cx_arr[i, j]), float(cy_arr[i, j])
                         physical_coord_used = True
         except Exception as e:
             logger.debug(f"Coordinates load failed: {e}")
+        
         if not physical_coord_used:
-            x_arr = np.asarray(getattr(pr, "x", None))
-            y_arr = np.asarray(getattr(pr, "y", None))
-            if x_arr is not None and x_arr.shape == var_arr.shape:
-                x_min, x_max = float(np.nanmin(x_arr)), float(np.nanmax(x_arr))
-                coord_x = x_min + xp * (x_max - x_min)
-            else:
-                coord_x = float(j)
-            if y_arr is not None and y_arr.shape == var_arr.shape:
-                y_min, y_max = float(np.nanmin(y_arr)), float(np.nanmax(y_arr))
-                coord_y = y_min + yp * (y_max - y_min)
-            else:
-                coord_y = float(i)
-        ux_arr = np.asarray(getattr(pr, "ux", None))
-        uy_arr = np.asarray(getattr(pr, "uy", None))
+            # Fallback to simple index coordinates
+            coord_x = float(j)
+            coord_y = float(i)
+        
+        # Get values from transformed arrays
         ux_val = (
             float(ux_arr[i, j])
             if ux_arr is not None and ux_arr.shape == var_arr.shape
@@ -834,3 +1011,274 @@ def get_stats_value_at_position():
     except Exception:
         logger.exception("get_stats_value_at_position: unexpected error")
         return jsonify({"success": False, "error": "Internal server error"}), 500
+
+
+@vector_plot_bp.route("/apply_transformations_batch", methods=["POST"])
+def apply_transformations_batch():
+    """
+    Apply transformations to all vector files in a directory and save transformed .mat files.
+    
+    This endpoint applies geometric transformations (rotation, flips, transpose) to all
+    PIV vector data files in a specified frame range. It transforms all data arrays
+    (ux, uy, etc.) and the mask, and optionally saves to a new directory or overwrites.
+    
+    Request Body (JSON):
+    {
+        "base_path": "/path/to/data",
+        "camera": 1,
+        "frame_start": 1,
+        "frame_end": 100,
+        "rotation": 0,              // 0-3 (90° increments clockwise)
+        "flip_horizontal": false,   // true/false
+        "flip_vertical": false,     // true/false
+        "transpose": false,         // true/false
+        "output_mode": "new_dir",   // "new_dir" or "overwrite"
+        "type_name": "instantaneous",
+        "merged": false,
+        "use_uncalibrated": false
+    }
+    
+    Returns:
+    {
+        "success": true,
+        "processed_count": 100,
+        "failed_count": 0,
+        "output_directory": "/path/to/data_transformed",
+        "coordinates_transformed": true,
+        "transformations": {...}
+    }
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"success": False, "error": "No JSON data provided"}), 400
+        
+        # Parse parameters
+        params = {
+            "base_path": data.get("base_path"),
+            "camera": camera_number(data.get("camera", 1)),
+            "frame_start": int(data.get("frame_start", 1)),
+            "frame_end": int(data.get("frame_end", 1)),
+            "run": int(data.get("run", 1)),
+            "type_name": data.get("type_name", "instantaneous"),
+            "use_merged": data.get("merged", False),
+            "use_uncalibrated": data.get("use_uncalibrated", False),
+        }
+        
+        # Transformation parameters
+        transpose = data.get("transpose", False)
+        rotation = int(data.get("rotation", 0)) % 4
+        flip_horizontal = data.get("flip_horizontal", False)
+        flip_vertical = data.get("flip_vertical", False)
+        output_mode = "overwrite"  # Always overwrite original files
+        
+        # Check if any transformations are actually applied
+        if not (transpose or rotation or flip_horizontal or flip_vertical):
+            return jsonify({
+                "success": False, 
+                "error": "No transformations specified"
+            }), 400
+        
+        # Validate and get paths
+        paths = get_data_paths(
+            base_dir=params["base_path"],
+            num_images=get_config().num_images,
+            cam=params["camera"],
+            type_name=params["type_name"],
+            use_merged=params["use_merged"],
+            use_uncalibrated=params["use_uncalibrated"],
+        )
+        
+        data_dir = Path(paths["data_dir"])
+        vec_fmt = get_config().vector_format
+        
+        # Determine output directory
+        if output_mode == "overwrite":
+            output_dir = data_dir
+            logger.warning(f"OVERWRITING original files in: {data_dir}")
+        else:
+            output_dir = data_dir.parent / f"{data_dir.name}_transformed"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Saving transformed files to NEW directory: {output_dir}")
+        
+        # Log full paths for clarity
+        logger.info(f"Input directory:  {data_dir}")
+        logger.info(f"Output directory: {output_dir}")
+        logger.info(f"Processing frames {params['frame_start']} to {params['frame_end']}")
+        
+        from plotting.plot_maker import apply_transformations
+        
+        processed_files = []
+        failed_files = []
+        
+        # Process each frame
+        for frame_num in range(params["frame_start"], params["frame_end"] + 1):
+            try:
+                mat_path = data_dir / (vec_fmt % frame_num)
+                if not mat_path.exists():
+                    logger.debug(f"Skipping non-existent file: {mat_path}")
+                    continue
+                
+                # Load the .mat file
+                mat_data = loadmat(str(mat_path), struct_as_record=False, squeeze_me=True)
+                
+                if "piv_result" not in mat_data:
+                    failed_files.append({
+                        "frame": frame_num,
+                        "error": "No piv_result in file"
+                    })
+                    continue
+                
+                piv_result = mat_data["piv_result"]
+                
+                # Handle both single run and multiple runs
+                if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
+                    # Multiple runs - transform each
+                    for run_idx in range(piv_result.size):
+                        pr = piv_result[run_idx]
+                        _transform_piv_result_element(pr, transpose, rotation, 
+                                                     flip_horizontal, flip_vertical)
+                else:
+                    # Single run
+                    _transform_piv_result_element(piv_result, transpose, rotation,
+                                                 flip_horizontal, flip_vertical)
+                
+                # Save transformed data
+                output_path = output_dir / (vec_fmt % frame_num)
+                scipy.io.savemat(str(output_path), mat_data, do_compression=True)
+                
+                processed_files.append({
+                    "frame": frame_num,
+                    "input": str(mat_path),
+                    "output": str(output_path)
+                })
+                
+                logger.debug(f"Processed frame {frame_num}")
+                
+            except Exception as e:
+                logger.error(f"Error processing frame {frame_num}: {e}")
+                failed_files.append({
+                    "frame": frame_num,
+                    "error": str(e)
+                })
+        
+        # Also transform coordinates.mat if it exists
+        coords_transformed = False
+        coords_path = data_dir / "coordinates.mat"
+        if coords_path.exists():
+            try:
+                coords_mat = loadmat(str(coords_path), struct_as_record=False, squeeze_me=True)
+                if "coordinates" in coords_mat:
+                    coordinates = coords_mat["coordinates"]
+                    
+                    # Transform coordinates for each run
+                    if isinstance(coordinates, np.ndarray) and coordinates.dtype == object:
+                        for run_idx in range(coordinates.size):
+                            coord_el = coordinates[run_idx]
+                            _transform_coordinates_element(coord_el, transpose, rotation,
+                                                          flip_horizontal, flip_vertical)
+                    else:
+                        _transform_coordinates_element(coordinates, transpose, rotation,
+                                                      flip_horizontal, flip_vertical)
+                    
+                    # Save transformed coordinates
+                    output_coords_path = output_dir / "coordinates.mat"
+                    scipy.io.savemat(str(output_coords_path), coords_mat, do_compression=True)
+                    coords_transformed = True
+                    logger.info("Transformed coordinates.mat")
+                    
+            except Exception as e:
+                logger.error(f"Error transforming coordinates: {e}")
+        
+        # Log completion summary
+        logger.info(f"Batch transformation complete: {len(processed_files)} processed, {len(failed_files)} failed")
+        logger.info(f"Output saved to: {output_dir}")
+        
+        return jsonify({
+            "success": True,
+            "processed_count": len(processed_files),
+            "failed_count": len(failed_files),
+            "processed_files": processed_files,
+            "failed_files": failed_files,
+            "input_directory": str(data_dir),
+            "output_directory": str(output_dir),
+            "output_mode": output_mode,
+            "coordinates_transformed": coords_transformed,
+            "transformations": {
+                "transpose": transpose,
+                "rotation": rotation,
+                "flip_horizontal": flip_horizontal,
+                "flip_vertical": flip_vertical
+            }
+        })
+        
+    except ValueError as e:
+        logger.warning(f"apply_transformations_batch: validation error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception:
+        logger.exception("apply_transformations_batch: unexpected error")
+        return jsonify({"success": False, "error": "Internal server error"}), 500
+
+
+def _transform_piv_result_element(pr, transpose, rotation, flip_horizontal, flip_vertical):
+    """Helper function to transform all arrays in a piv_result element in-place."""
+    from plotting.plot_maker import apply_transformations
+    
+    # Get list of fields to transform
+    dt = getattr(pr, "dtype", None)
+    if dt and hasattr(dt, "names") and dt.names:
+        field_names = dt.names
+    else:
+        # Fallback to common fields
+        field_names = ["ux", "uy", "x", "y", "b_mask"]
+    
+    # Transform each field that exists and is 2D
+    for field_name in field_names:
+        try:
+            arr = getattr(pr, field_name, None)
+            if arr is None:
+                continue
+            
+            arr = np.asarray(arr)
+            if arr.ndim != 2:
+                continue
+            
+            # Apply transformation
+            transformed = apply_transformations(arr, transpose, rotation, 
+                                              flip_horizontal, flip_vertical)
+            
+            # Handle boolean masks specially
+            if field_name == "b_mask":
+                transformed = transformed.astype(bool)
+            
+            # Set back to the struct
+            setattr(pr, field_name, transformed)
+            
+        except Exception as e:
+            logger.debug(f"Could not transform field {field_name}: {e}")
+
+
+def _transform_coordinates_element(coord_el, transpose, rotation, flip_horizontal, flip_vertical):
+    """
+    Helper function to transform coordinate arrays to match transformed data.
+    Applies the same transformations to coordinates as applied to data arrays.
+    """
+    from plotting.plot_maker import apply_transformations
+    
+    try:
+        cx = np.asarray(getattr(coord_el, "x", None))
+        cy = np.asarray(getattr(coord_el, "y", None))
+        
+        if cx is not None and cy is not None and cx.ndim == 2 and cy.ndim == 2:
+            # Apply the same transformations to coordinates as applied to data
+            cx_transformed = apply_transformations(cx, transpose, rotation,
+                                                  flip_horizontal, flip_vertical)
+            cy_transformed = apply_transformations(cy, transpose, rotation,
+                                                  flip_horizontal, flip_vertical)
+            
+            # Set the transformed coordinate arrays
+            setattr(coord_el, "x", cx_transformed)
+            setattr(coord_el, "y", cy_transformed)
+            
+    except Exception as e:
+        logger.debug(f"Could not transform coordinates: {e}")
