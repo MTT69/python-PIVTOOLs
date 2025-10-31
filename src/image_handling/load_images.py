@@ -120,7 +120,7 @@ def to_dask_array(delayed_pair: Delayed, config: Config) -> da.Array:
     """
     arr = dask.array.from_delayed(
         delayed_pair,
-        shape=(2, *config.image_shape),  # Always 2 for frame pairs
+        shape=(2, *config.image_shape), 
         dtype=config.image_dtype,
     )
     return arr

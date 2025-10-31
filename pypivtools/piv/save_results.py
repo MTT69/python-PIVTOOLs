@@ -22,6 +22,7 @@ def save_piv_result_distributed(
     output_path: Path,
     frame_number: int,
     pass_index: Optional[int] = None,
+    vector_fmt: str = "B%05d.mat",
 ) -> str:
     """
     Save a PIV result to disk. Designed to be submitted to Dask workers.
@@ -41,6 +42,8 @@ def save_piv_result_distributed(
     pass_index : Optional[int]
         If specified, save only this pass (0-based).
         If None, save all passes.
+    vector_fmt : str
+        Format string for the filename, e.g., "B%05d.mat".
         
     Returns
     -------
@@ -50,7 +53,7 @@ def save_piv_result_distributed(
     output_path = Path(output_path)
     output_path.mkdir(parents=True, exist_ok=True)
     
-    filename = output_path / f"B{frame_number:05d}.mat"
+    filename = output_path / (vector_fmt % frame_number)
     
     if len(piv_result.passes) == 0:
         logging.warning(
@@ -68,91 +71,6 @@ def save_piv_result_distributed(
     logging.debug(f"Worker saved PIV result to {filename}")
     
     return str(filename)
-
-
-def save_piv_result_to_mat(
-    piv_result: PIVResult,
-    output_path: Path,
-    frame_number: int,
-    pass_index: Optional[int] = None,
-) -> None:
-    """
-    Save a single PIVResult to a .mat file compatible with the post-processing code.
-    
-    Parameters
-    ----------
-    piv_result : PIVResult
-        The PIV result object containing one or more passes with complete data.
-    output_path : Path
-        Directory where the .mat file will be saved.
-    frame_number : int
-        Frame number (1-based) for the filename (e.g., 1 -> B00001.mat).
-    pass_index : Optional[int]
-        If specified, save only this pass (0-based). If None, save all passes.
-    
-    Notes
-    -----
-    - If pass_index is None, saves all passes as separate runs in the .mat file
-    - If pass_index is specified, saves only that specific pass
-    - Output filename format: B{frame_number:05d}.mat
-    """
-    output_path = Path(output_path)
-    output_path.mkdir(parents=True, exist_ok=True)
-    
-    filename = output_path / f"B{frame_number:05d}.mat"
-    
-    if len(piv_result.passes) == 0:
-        logging.warning(
-            f"PIVResult has no passes for frame {frame_number}. "
-            "Skipping save."
-        )
-        return
-    
-    # Create single struct with arrays indexed by pass number
-    mat_data = _create_piv_struct_all_passes(piv_result, pass_index)
-    
-    # Save to .mat file with compression
-    scipy.io.savemat(filename, {"piv_result": mat_data}, oned_as="row", do_compression=True)
-    logging.debug(f"Saved PIV result to {filename}")
-
-
-def save_piv_results_batch(
-    piv_results: List[PIVResult],
-    output_path: Path,
-    start_frame: int = 1,
-    pass_index: Optional[int] = None,
-    config: Optional[Config] = None,
-) -> None:
-    """
-    Save multiple PIV results to individual .mat files.
-    
-    Parameters
-    ----------
-    piv_results : List[PIVResult]
-        List of PIV result objects to save.
-    output_path : Path
-        Directory where the .mat files will be saved.
-    start_frame : int
-        Starting frame number (1-based) for filenames.
-    pass_index : Optional[int]
-        If specified, save only this pass (0-based) from each result.
-    config : Optional[Config]
-        Configuration object (for future use).
-    """
-    output_path = Path(output_path)
-    output_path.mkdir(parents=True, exist_ok=True)
-    
-    for i, piv_result in enumerate(piv_results):
-        frame_number = start_frame + i
-        try:
-            save_piv_result_to_mat(
-                piv_result,
-                output_path,
-                frame_number,
-                pass_index,
-            )
-        except Exception as e:
-            logging.error(f"Failed to save frame {frame_number}: {e}")
 
 
 def save_coordinates(

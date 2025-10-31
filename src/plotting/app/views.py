@@ -608,6 +608,16 @@ def get_uncalibrated_image():
         data_dir = Path(paths["data_dir"])
         vector_fmt = cfg.vector_format
         mat_path = data_dir / (vector_fmt % idx)
+        
+        # For uncalibrated, find the highest available run
+        piv_result = load_piv_result(mat_path)
+        max_run = 1
+        if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
+            max_run = piv_result.size
+        # Override the run parameter with the highest run
+        params = dict(params)
+        params["run"] = max_run
+        
         b64_img, W, H, extra, effective_run = load_and_plot_data(
             mat_path=mat_path,
             coords_path=None,
@@ -626,6 +636,9 @@ def get_uncalibrated_image():
     except ValueError as e:
         logger.warning(f"get_uncalibrated_image: validation error: {e}")
         return jsonify({"success": False, "error": str(e)}), 400
+    except FileNotFoundError as e:
+        logger.info(f"get_uncalibrated_image: file not found: {e}")
+        return jsonify({"success": False, "error": "File not yet available"}), 404
     except Exception:
         logger.exception("get_uncalibrated_image: unexpected error")
         return jsonify({"success": False, "error": "Internal server error"}), 500

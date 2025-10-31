@@ -95,6 +95,7 @@ def perform_piv_and_save(
             output_path,
             frame_number,
             pass_index,
+            config.vector_format,
         )
         save_futures.append(save_future)
     

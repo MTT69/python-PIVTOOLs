@@ -6,19 +6,19 @@ paths:
   camera_numbers:
   - 1
 images:
-  num_images: 10
+  num_images: 100
   image_format:
   - B%05d_A.tif
   - B%05d_B.tif
   vector_format:
   - '%05d.mat'
   shape:
-  - 1152 # height
-  - 1024 # width
+  - 1152
+  - 1024
   time_resolved: false
   dtype: uint8
 batches:
-  size: 10
+  size: 100
 logging:
   file: pypiv.log
   level: INFO
@@ -30,7 +30,7 @@ processing:
   backend: cpu
   debug: false
   omp_threads: 2
-  dask_workers_per_node: 10
+  dask_workers_per_node: 20
   dask_threads_per_worker: 1
   dask_memory_limit: 2.5GB
   outlier_detection: true
@@ -69,20 +69,12 @@ instantaneous_piv:
     - 32
   - - 16
     - 16
-  - - 16
-    - 16
-  - - 16
-    - 16
   overlap:
   - 50
   - 50
   - 50
   - 50
-  - 50
-  - 50
-  
-  runs:
-  - 6
+  runs: []
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
@@ -136,17 +128,10 @@ filters: []
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat
-  # Threshold for determining masked vectors based on overlap with pixel mask
-  # 0.0 = mask if any pixel is masked, 0.5 = mask if >50% masked, 1.0 = mask only if fully masked
   mask_threshold: 0.01
-  # Mask mode: 'file' to load from .mat file, 'rectangular' for edge masking
   mode: rectangular
-  # Rectangular edge masking settings (used when mode: rectangular)
-  # Specify number of pixels to mask from each edge
   rectangular:
-    top: 64      # pixels from top edge
-    bottom: 64   # pixels from bottom edge
-    left: 0      # pixels from left edge
-    right: 0     # pixels from right edge
-  
-  # Threshold for determining masked vectors based on overlap with pixel mask
+    top: 64
+    bottom: 64
+    left: 0
+    right: 0

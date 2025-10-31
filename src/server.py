@@ -107,7 +107,7 @@ def get_frame_pair():
     source_path_idx = request.args.get("source_path_idx", default=0, type=int)
     source_path = cfg.source_paths[source_path_idx] / camera_folder(camera)
     try:
-        pair = read_pair(idx, source_path, cfg)
+        pair = read_pair(idx, source_path, camera, cfg)
     except FileNotFoundError as e:
         return jsonify({"error": "File not found", "file": str(e)}), 404
 
@@ -158,9 +158,8 @@ def filter_images_endpoint():
     source_path = cfg.source_paths[source_path_idx] / camera_folder(camera)
 
     def load_pairs():
-        pairs = [read_pair(i, source_path, cfg) for i in indices]
+        pairs = [read_pair(i, source_path, camera, cfg) for i in indices]
         arr = np.stack(pairs, axis=0)
-        # Create single temporal chunk covering entire window so time/POD operate over it
         return da.from_array(arr, chunks=(arr.shape[0], 2, *cfg.image_shape))
 
     def process_and_store():
@@ -282,28 +281,24 @@ def run_piv():
     
     Request body (optional):
     {
-        "cameras": [1, 2],  // List of camera numbers to process
-        "source_path_idx": 0,  // Index of source path
-        "base_path_idx": 0,  // Index of base path
-        "config_overrides": {}  // Config overrides (future)
+        "cameras": [1, 2, 3],  // List of camera numbers to process (optional)
+        "source_path_idx": 0,   // Index of source path (optional, default 0)
+        "base_path_idx": 0      // Index of base path (optional, default 0)
     }
     """
     data = request.get_json() or {}
-    
-    runner = get_runner()
     
     # Extract parameters
     cameras = data.get("cameras")
     source_path_idx = data.get("source_path_idx", 0)
     base_path_idx = data.get("base_path_idx", 0)
-    config_overrides = data.get("config_overrides")
     
-    # Start the job
+    # Get the runner and start the job
+    runner = get_runner()
     result = runner.start_piv_job(
         cameras=cameras,
         source_path_idx=source_path_idx,
         base_path_idx=base_path_idx,
-        config_overrides=config_overrides,
     )
     
     return jsonify(result), 200 if result.get("status") == "started" else 500
@@ -331,7 +326,7 @@ def piv_status():
         return jsonify({"jobs": jobs})
 
 
-@app.route("/cancel_piv", methods=["POST"])
+@app.route("/cancel_run", methods=["POST"])
 def cancel_piv():
     """
     Cancel a running PIV job.
@@ -353,32 +348,6 @@ def cancel_piv():
     if success:
         return jsonify({"status": "cancelled", "job_id": job_id})
     return jsonify({"error": "Failed to cancel job or job not found"}), 404
-
-
-@app.route("/cancel_run", methods=["POST"])
-def cancel_run():
-    """Legacy endpoint - redirects to cancel_piv"""
-    data = request.get_json() or {}
-    job_id = data.get("job_id")
-    
-    if not job_id:
-        # Cancel the most recent running job
-        runner = get_runner()
-        jobs = runner.list_jobs()
-        running = [j for j in jobs if j.get("running")]
-        if running:
-            # Cancel most recent
-            job_id = running[0]["job_id"]
-            success = runner.cancel_job(job_id)
-            if success:
-                return jsonify({"status": "cancelled", "job_id": job_id})
-    else:
-        runner = get_runner()
-        success = runner.cancel_job(job_id)
-        if success:
-            return jsonify({"status": "cancelled", "job_id": job_id})
-    
-    return jsonify({"error": "No running jobs or failed to cancel"}), 404
 
 
 @app.route("/get_uncalibrated_count", methods=["GET"])
