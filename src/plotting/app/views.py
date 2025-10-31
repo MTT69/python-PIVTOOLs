@@ -236,7 +236,7 @@ def create_and_return_plot(
     return b64_img, W, H, {"axes_bbox": axes_bbox}
 
 
-def parse_plot_params(req) -> Dict:
+def parse_plot_params(req) -> Dict: # efe
     """
     Minimal, explicit parsing. camera expected as int (or string of int).
     Returns a dict with normalized fields.
@@ -1026,7 +1026,7 @@ def get_stats_value_at_position():
         return jsonify({"success": False, "error": "Internal server error"}), 500
 
 
-@vector_plot_bp.route("/apply_transformations_batch", methods=["POST"])
+@vector_plot_bp.route("/apply_transformations_batch", methods=["POST"]) #efe
 def apply_transformations_batch():
     """
     Apply transformations to all vector files in a directory and save transformed .mat files.

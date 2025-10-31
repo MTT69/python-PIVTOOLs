@@ -103,7 +103,7 @@ def make_scalar_settings(
 
 
 # Function to apply transformations to data arrays
-def apply_transformations(
+def apply_transformations( # efe
     data: np.ndarray,
     transpose: bool = False,
     rotation: int = 0,
@@ -149,7 +149,7 @@ def apply_transformations(
 
 
 # Function to plot a scalar field with masking and customizable settings
-def plot_scalar_field(variable, mask, settings):
+def plot_scalar_field(variable, mask, settings): # efe
     # Extract plot settings
     plt.rcParams.update({"font.size": settings._fontsize})
     plt.rcParams["axes.titlesize"] = settings._title_fontsize
