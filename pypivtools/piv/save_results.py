@@ -21,7 +21,7 @@ def save_piv_result_distributed(
     piv_result: PIVResult,
     output_path: Path,
     frame_number: int,
-    pass_index: Optional[int] = None,
+    runs_to_save: Optional[List[int]] = None,
     vector_fmt: str = "B%05d.mat",
 ) -> str:
     """
@@ -39,9 +39,9 @@ def save_piv_result_distributed(
         Directory where the .mat file will be saved.
     frame_number : int
         Frame number (1-based) for the filename (e.g., 1 -> B00001.mat).
-    pass_index : Optional[int]
-        If specified, save only this pass (0-based).
-        If None, save all passes.
+    runs_to_save : Optional[List[int]]
+        List of pass indices (0-based) to save. If None, save all passes.
+        For passes not in this list, empty arrays will be saved.
     vector_fmt : str
         Format string for the filename, e.g., "B%05d.mat".
         
@@ -64,7 +64,7 @@ def save_piv_result_distributed(
     
     # Create single struct with arrays indexed by pass number
     # All data is already in piv_result, no external lists needed
-    mat_data = _create_piv_struct_all_passes(piv_result, pass_index)
+    mat_data = _create_piv_struct_all_passes(piv_result, runs_to_save)
     
     # Save to .mat file with compression to reduce I/O
     scipy.io.savemat(filename, {"piv_result": mat_data}, oned_as="row", do_compression=True)
@@ -73,68 +73,11 @@ def save_piv_result_distributed(
     return str(filename)
 
 
-def save_coordinates(
-    piv_result: PIVResult,
-    win_ctrs_x_list: List[np.ndarray],
-    win_ctrs_y_list: List[np.ndarray],
-    output_path: Path,
-) -> None:
-    """
-    Save coordinate grids to coordinates.mat file.
-    
-    Parameters
-    ----------
-    piv_result : PIVResult
-        A sample PIV result (to determine number of passes).
-    win_ctrs_x_list : List[np.ndarray]
-        List of x-coordinates for each pass.
-    win_ctrs_y_list : List[np.ndarray]
-        List of y-coordinates for each pass.
-    output_path : Path
-        Directory where coordinates.mat will be saved.
-        
-    Notes
-    -----
-    Creates coordinate meshgrids for each pass and saves them as a struct array.
-    Compatible with load_coords_from_directory() in post-processing code.
-    """
-    output_path = Path(output_path)
-    output_path.mkdir(parents=True, exist_ok=True)
-    
-    num_passes = len(piv_result.passes)
-    
-    if len(win_ctrs_x_list) != num_passes or len(win_ctrs_y_list) != num_passes:
-        raise ValueError(
-            f"Number of coordinate arrays ({len(win_ctrs_x_list)}, {len(win_ctrs_y_list)}) "
-            f"does not match number of passes ({num_passes})"
-        )
-    
-    # Create structured array for coordinates
-    coords_data = np.empty(num_passes, dtype=object)
-    
-    for i in range(num_passes):
-        # Create meshgrid from window centers
-        x_centers = win_ctrs_x_list[i]
-        y_centers = win_ctrs_y_list[i]
-        
-        # Create 2D coordinate grids
-        x_grid, y_grid = np.meshgrid(x_centers, y_centers, indexing='xy')
-        
-        # Create struct with x and y fields
-        coords_struct = np.empty(1, dtype=[('x', 'O'), ('y', 'O')])
-        coords_struct['x'][0] = x_grid
-        coords_struct['y'][0] = y_grid
-        coords_data[i] = coords_struct[0]
-    
-    filename = output_path / "coordinates.mat"
-    scipy.io.savemat(filename, {"coordinates": coords_data}, oned_as="row", do_compression=True)
-    logging.info(f"Saved coordinates to {filename}")
-
-
 def save_coordinates_from_config_distributed(
     config: Config,
     output_path: Path,
     correlator_cache: Optional[dict] = None,
+    runs_to_save: Optional[List[int]] = None,
 ) -> str:
     """
     Generate and save coordinate grids. Designed for Dask workers.
@@ -147,6 +90,9 @@ def save_coordinates_from_config_distributed(
         Directory where coordinates.mat will be saved.
     correlator_cache : Optional[dict]
         Precomputed correlator cache to avoid redundant computation.
+    runs_to_save : Optional[List[int]]
+        List of pass indices (0-based) to save with data. If None, save all passes.
+        For passes not in this list, empty coordinate grids will be saved.
         
     Returns
     -------
@@ -166,91 +112,46 @@ def save_coordinates_from_config_distributed(
     
     num_passes = len(config.window_sizes)
     
-    # Create structured array for coordinates
-    coords_data = np.empty(num_passes, dtype=object)
+    if runs_to_save is None:
+        runs_to_save = list(range(num_passes))
     
+
+    # Create MATLAB-style struct array with fields 'x' and 'y', shape (num_passes,)
+    dtype = [('x', object), ('y', object)]
+    coords_struct = np.empty((num_passes,), dtype=dtype)
+
     for i in range(num_passes):
-        x_centers = win_ctrs_x_list[i]
-        y_centers = win_ctrs_y_list[i]
-        
-        # Create 2D coordinate grids
-        x_grid, y_grid = np.meshgrid(x_centers, y_centers, indexing='xy')
-        
-        # Create struct with x and y fields
-        coords_struct = np.empty(1, dtype=[('x', 'O'), ('y', 'O')])
-        coords_struct['x'][0] = x_grid
-        coords_struct['y'][0] = y_grid
-        coords_data[i] = coords_struct[0]
-    
+        if i in runs_to_save:
+            x_centers = win_ctrs_x_list[i]
+            y_centers = win_ctrs_y_list[i]
+
+            # Create 2D coordinate grids
+            x_grid, y_grid = np.meshgrid(x_centers, y_centers, indexing='xy')
+
+            # Convert to half precision for space saving
+            x_grid = _convert_to_half_precision(x_grid)
+            y_grid = _convert_to_half_precision(y_grid)
+
+            coords_struct['x'][i] = x_grid
+            coords_struct['y'][i] = y_grid
+        else:
+            # Empty arrays for non-selected passes
+            coords_struct['x'][i] = np.array([], dtype=np.float16)
+            coords_struct['y'][i] = np.array([], dtype=np.float16)
+
     output_path = Path(output_path)
     output_path.mkdir(parents=True, exist_ok=True)
-    
+
     filename = output_path / "coordinates.mat"
-    scipy.io.savemat(filename, {"coordinates": coords_data}, oned_as="row", do_compression=True)
+    scipy.io.savemat(filename, {"coordinates": coords_struct}, oned_as="row", do_compression=True)
     logging.info(f"Worker saved coordinates to {filename}")
-    
+
     return str(filename)
-
-
-def save_coordinates_from_config(
-    config: Config,
-    output_path: Path,
-) -> None:
-    """
-    Generate and save coordinate grids based on configuration.
-    
-    Parameters
-    ----------
-    config : Config
-        Configuration object containing window sizes and overlap.
-    output_path : Path
-        Directory where coordinates.mat will be saved.
-        
-    Notes
-    -----
-    This is a convenience function that computes window centers from the config
-    and saves them. Useful when you don't have a PIVResult object yet.
-    """
-    from pypivtools.piv.piv_backend.cpu_instantaneous import (
-        InstantaneousCorrelatorCPU
-    )
-    
-    # Create a temporary correlator just to compute window centers
-    correlator = InstantaneousCorrelatorCPU(config)
-    
-    # Extract the cached window centers
-    win_ctrs_x_list = correlator.win_ctrs_x
-    win_ctrs_y_list = correlator.win_ctrs_y
-    
-    num_passes = len(config.window_sizes)
-    
-    # Create structured array for coordinates
-    coords_data = np.empty(num_passes, dtype=object)
-    
-    for i in range(num_passes):
-        x_centers = win_ctrs_x_list[i]
-        y_centers = win_ctrs_y_list[i]
-        
-        # Create 2D coordinate grids
-        x_grid, y_grid = np.meshgrid(x_centers, y_centers, indexing='xy')
-        
-        # Create struct with x and y fields
-        coords_struct = np.empty(1, dtype=[('x', 'O'), ('y', 'O')])
-        coords_struct['x'][0] = x_grid
-        coords_struct['y'][0] = y_grid
-        coords_data[i] = coords_struct[0]
-    
-    output_path = Path(output_path)
-    output_path.mkdir(parents=True, exist_ok=True)
-    
-    filename = output_path / "coordinates.mat"
-    scipy.io.savemat(filename, {"coordinates": coords_data}, oned_as="row", do_compression=True)
-    logging.info(f"Saved coordinates to {filename}")
 
 
 def _create_piv_struct_all_passes(
     piv_result: PIVResult,
-    pass_index: Optional[int] = None,
+    runs_to_save: Optional[List[int]] = None,
 ) -> np.ndarray:
     """
     Create a MATLAB-compatible struct with arrays indexed by pass number.
@@ -267,9 +168,9 @@ def _create_piv_struct_all_passes(
     ----------
     piv_result : PIVResult
         PIV result object containing one or more passes with complete data.
-    pass_index : Optional[int]
-        If specified, save only this pass (0-based).
-        If None, save all passes.
+    runs_to_save : Optional[List[int]]
+        List of pass indices (0-based) to save with data. If None, save all passes.
+        For passes not in this list, empty arrays will be saved.
         
     Returns
     -------
@@ -278,18 +179,13 @@ def _create_piv_struct_all_passes(
     """
     n_passes = len(piv_result.passes)
     
-    # Determine which passes to save
-    if pass_index is not None:
-        if pass_index >= n_passes:
-            raise IndexError(
-                f"Pass index {pass_index} out of range. "
-                f"PIVResult has {n_passes} passes."
-            )
-        n_passes_to_save = 1
-        passes_to_save = [pass_index]
-    else:
-        n_passes_to_save = n_passes
-        passes_to_save = list(range(n_passes))
+    # Always save all passes, but empty arrays for non-selected passes
+    n_passes_to_save = n_passes
+    passes_to_save = list(range(n_passes))
+    
+    # If runs_to_save is specified, only fill data for those passes
+    if runs_to_save is None:
+        runs_to_save = passes_to_save
     
     # Create structured dtype with all fields
     dtype = [
@@ -334,19 +230,21 @@ def _create_piv_struct_all_passes(
         piv_struct['peak_choice'][i] = empty
         piv_struct['n_windows'][i] = empty
         piv_struct['predictor_field'][i] = empty
-        piv_struct['window_size'][i] = None
-        piv_struct['spacing'][i] = None
+        piv_struct['window_size'][i] = empty
+        piv_struct['spacing'][i] = empty
     
     # Fill with actual data for selected passes
     for local_idx, global_pass_idx in enumerate(passes_to_save):
+        if global_pass_idx not in runs_to_save:
+            continue  # Skip filling for non-selected passes
         pass_result = piv_result.passes[global_pass_idx]
         
         # CRITICAL FIX: Swap ux and uy to match expected coordinate convention
         # Save uy_mat in ux field and -ux_mat in uy field
         if pass_result.uy_mat is not None:
-            piv_struct['ux'][local_idx] = pass_result.uy_mat
+            piv_struct['ux'][local_idx] = _convert_to_half_precision(pass_result.uy_mat)
         if pass_result.ux_mat is not None:
-            piv_struct['uy'][local_idx] = -pass_result.ux_mat
+            piv_struct['uy'][local_idx] = _convert_to_half_precision(-pass_result.ux_mat)
 
         # Use b_mask from pass_result (already computed during PIV)
         if pass_result.b_mask is not None:
@@ -362,20 +260,20 @@ def _create_piv_struct_all_passes(
 
         # Window centers are always stored in pass_result
         if pass_result.win_ctrs_x is not None:
-            piv_struct['win_ctrs_x'][local_idx] = pass_result.win_ctrs_x
+            piv_struct['win_ctrs_x'][local_idx] = _convert_to_half_precision(pass_result.win_ctrs_x)
         if pass_result.win_ctrs_y is not None:
-            piv_struct['win_ctrs_y'][local_idx] = pass_result.win_ctrs_y
+            piv_struct['win_ctrs_y'][local_idx] = _convert_to_half_precision(pass_result.win_ctrs_y)
             
         if pass_result.Q is not None:
-            piv_struct['Q'][local_idx] = pass_result.Q
+            piv_struct['Q'][local_idx] = _convert_to_half_precision(pass_result.Q)
         if pass_result.peak_mag is not None:
-            piv_struct['peak_mag'][local_idx] = pass_result.peak_mag
+            piv_struct['peak_mag'][local_idx] = _convert_to_half_precision(pass_result.peak_mag)
         if pass_result.peak_choice is not None:
             piv_struct['peak_choice'][local_idx] = pass_result.peak_choice
         if pass_result.n_windows is not None:
             piv_struct['n_windows'][local_idx] = pass_result.n_windows
         if pass_result.predictor_field is not None:
-            piv_struct['predictor_field'][local_idx] = pass_result.predictor_field
+            piv_struct['predictor_field'][local_idx] = _convert_to_half_precision(pass_result.predictor_field)
         if pass_result.window_size is not None:
             piv_struct['window_size'][local_idx] = pass_result.window_size
         if pass_result.spacing is not None:
@@ -447,3 +345,14 @@ def get_output_path(
         output_path.mkdir(parents=True, exist_ok=True)
     
     return output_path
+
+
+def _convert_to_half_precision(arr: np.ndarray) -> np.ndarray:
+    """
+    Convert float arrays to half precision (float16) for space saving.
+    """
+    if arr is None or arr.size == 0:
+        return arr
+    if arr.dtype.kind == 'f':
+        return arr.astype(np.float16)
+    return arr

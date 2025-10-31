@@ -90,7 +90,7 @@ if __name__ == "__main__":
                 client,
                 output_path,
                 start_frame=1,
-                pass_index=None,  # Save all passes
+                runs_to_save=config.instantaneous_runs_0based,
                 vector_masks=vector_masks,  # Pass pre-computed vector masks
             )
             
@@ -100,6 +100,7 @@ if __name__ == "__main__":
                 config,
                 output_path,
                 scattered_cache,  # Use the same scattered cache
+                config.instantaneous_runs_0based,
             )
             
             # Wait for all PIV+save tasks to complete

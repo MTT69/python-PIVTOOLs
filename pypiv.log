@@ -8163,3 +8163,700 @@ cv2.error: OpenCV(4.12.0) :-1: error: (-5:Bad argument) in function 'remap'
 2025-10-31 10:53:34,273 [INFO] Logging initialized. Level: INFO, File: pypiv.log
 2025-10-31 10:53:34,274 [WARNING] Time-resolved format detected for PIV pairs, this may not work correctly
 2025-10-31 11:00:25,236 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 11:45:20,791 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 11:45:20,793 [INFO] 127.0.0.1 - - [31/Oct/2025 11:45:20] "GET /config HTTP/1.1" 200 -
+2025-10-31 11:45:20,798 [INFO] 127.0.0.1 - - [31/Oct/2025 11:45:20] "GET /config HTTP/1.1" 200 -
+2025-10-31 11:45:26,916 [INFO] 127.0.0.1 - - [31/Oct/2025 11:45:26] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-10-31 11:45:26,930 [INFO] 127.0.0.1 - - [31/Oct/2025 11:45:26] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-10-31 11:45:26,934 [INFO] 127.0.0.1 - - [31/Oct/2025 11:45:26] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-10-31 11:45:27,015 [INFO] 127.0.0.1 - - [31/Oct/2025 11:45:27] "GET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-10-31 11:45:27,042 [INFO] 127.0.0.1 - - [31/Oct/2025 11:45:27] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-10-31 11:45:27,056 [INFO] 127.0.0.1 - - [31/Oct/2025 11:45:27] "GET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-10-31 11:45:27,087 [INFO] 127.0.0.1 - - [31/Oct/2025 11:45:27] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-10-31 11:45:27,093 [INFO] 127.0.0.1 - - [31/Oct/2025 11:45:27] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-10-31 11:45:27,896 [INFO] 127.0.0.1 - - [31/Oct/2025 11:45:27] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-10-31 11:45:27,899 [INFO] 127.0.0.1 - - [31/Oct/2025 11:45:27] "GET /config HTTP/1.1" 200 -
+2025-10-31 11:45:27,904 [INFO] 127.0.0.1 - - [31/Oct/2025 11:45:27] "GET /config HTTP/1.1" 200 -
+2025-10-31 11:45:32,327 [INFO] 127.0.0.1 - - [31/Oct/2025 11:45:32] "[33mGET /plot/check_vars?base_path=C:\\Users\\mtt1e23\\OneDrive%20-%20University%20of%20Southampton\\Documents\\%23current_processing\\query_JHTDB\\Planar_Images_with_wall\\windows&frame=1&camera=Cam1&merged=0 HTTP/1.1[0m" 404 -
+2025-10-31 11:45:32,329 [INFO] 127.0.0.1 - - [31/Oct/2025 11:45:32] "[33mGET /plot/plot_vector?base_path=C:\\Users\\mtt1e23\\OneDrive%20-%20University%20of%20Southampton\\Documents\\%23current_processing\\query_JHTDB\\Planar_Images_with_wall\\windows&frame=1&var=ux&cmap=default&run=1&camera=Cam1&merged=0&x_offset=0&y_offset=0&rotation=0&flip_horizontal=0&flip_vertical=0&transpose=0 HTTP/1.1[0m" 404 -
+2025-10-31 11:45:32,334 [INFO] 127.0.0.1 - - [31/Oct/2025 11:45:32] "[33mGET /plot/plot_vector?base_path=C:\\Users\\mtt1e23\\OneDrive%20-%20University%20of%20Southampton\\Documents\\%23current_processing\\query_JHTDB\\Planar_Images_with_wall\\windows&frame=1&var=ux&cmap=default&run=1&camera=Cam1&merged=0&x_offset=0&y_offset=0&rotation=0&flip_horizontal=0&flip_vertical=0&transpose=0 HTTP/1.1[0m" 404 -
+2025-10-31 11:46:26,052 [INFO] 127.0.0.1 - - [31/Oct/2025 11:46:26] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:46:26,056 [INFO] 127.0.0.1 - - [31/Oct/2025 11:46:26] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:46:28,063 [INFO] 127.0.0.1 - - [31/Oct/2025 11:46:28] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:46:30,057 [INFO] 127.0.0.1 - - [31/Oct/2025 11:46:30] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:46:32,060 [INFO] 127.0.0.1 - - [31/Oct/2025 11:46:32] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:46:34,062 [INFO] 127.0.0.1 - - [31/Oct/2025 11:46:34] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:46:36,063 [INFO] 127.0.0.1 - - [31/Oct/2025 11:46:36] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:46:38,058 [INFO] 127.0.0.1 - - [31/Oct/2025 11:46:38] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:46:40,066 [INFO] 127.0.0.1 - - [31/Oct/2025 11:46:40] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:46:42,065 [INFO] 127.0.0.1 - - [31/Oct/2025 11:46:42] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:46:44,063 [INFO] 127.0.0.1 - - [31/Oct/2025 11:46:44] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:46:46,070 [INFO] 127.0.0.1 - - [31/Oct/2025 11:46:46] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:46:48,064 [INFO] 127.0.0.1 - - [31/Oct/2025 11:46:48] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:46:50,065 [INFO] 127.0.0.1 - - [31/Oct/2025 11:46:50] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:46:52,064 [INFO] 127.0.0.1 - - [31/Oct/2025 11:46:52] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:46:54,056 [INFO] 127.0.0.1 - - [31/Oct/2025 11:46:54] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:46:56,059 [INFO] 127.0.0.1 - - [31/Oct/2025 11:46:56] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:46:58,238 [INFO] 127.0.0.1 - - [31/Oct/2025 11:46:58] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:00,249 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:00] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:02,238 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:02] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:04,236 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:04] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:06,242 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:06] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:08,242 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:08] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:10,243 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:10] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:12,241 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:12] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:14,237 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:14] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:16,239 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:16] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:18,238 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:18] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:20,240 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:20] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:22,239 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:22] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:24,242 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:24] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:26,240 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:26] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:28,236 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:28] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:30,241 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:30] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:32,238 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:32] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:34,243 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:34] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:36,235 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:36] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:38,241 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:38] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:40,235 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:40] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:42,239 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:42] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:44,251 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:44] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:46,240 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:46] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:48,240 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:48] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:50,244 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:50] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:52,236 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:52] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:54,236 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:54] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:56,239 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:56] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:47:58,236 [INFO] 127.0.0.1 - - [31/Oct/2025 11:47:58] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:48:58,241 [INFO] 127.0.0.1 - - [31/Oct/2025 11:48:58] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:49:58,239 [INFO] 127.0.0.1 - - [31/Oct/2025 11:49:58] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:50:58,236 [INFO] 127.0.0.1 - - [31/Oct/2025 11:50:58] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:51:58,236 [INFO] 127.0.0.1 - - [31/Oct/2025 11:51:58] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 11:52:58,236 [INFO] 127.0.0.1 - - [31/Oct/2025 11:52:58] "GET /calibration/status?source_path_idx=0&camera=1&type=scale_factor HTTP/1.1" 200 -
+2025-10-31 12:10:10,221 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:10:14,568 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:10:14,588 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:10:14,607 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:10:14,622 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:10:14,684 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:10:14,688 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:10:14,690 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:10:14,697 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:10:14,716 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:10:14,719 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:10:14,728 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:10:14,730 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:10:14,732 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:10:14,757 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:10:14,782 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:10:14,818 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:10:14,822 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:10:14,879 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:10:14,915 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:10:14,936 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:10:15,024 [INFO] Worker logging configured successfully
+2025-10-31 12:10:15,025 [INFO] Worker logging configured successfully
+2025-10-31 12:10:15,026 [INFO] Worker logging configured successfully
+2025-10-31 12:10:15,026 [INFO] Worker logging configured successfully
+2025-10-31 12:10:15,026 [INFO] Worker logging configured successfully
+2025-10-31 12:10:15,026 [INFO] Worker logging configured successfully
+2025-10-31 12:10:15,027 [INFO] Worker logging configured successfully
+2025-10-31 12:10:15,027 [INFO] Worker logging configured successfully
+2025-10-31 12:10:15,027 [INFO] Worker logging configured successfully
+2025-10-31 12:10:15,027 [INFO] Worker logging configured successfully
+2025-10-31 12:10:15,027 [INFO] Worker logging configured successfully
+2025-10-31 12:10:15,027 [INFO] Worker logging configured successfully
+2025-10-31 12:10:15,029 [INFO] Dask cluster started successfully
+2025-10-31 12:10:15,030 [INFO] Dask Worker Info:
+2025-10-31 12:10:15,030 [INFO] Worker tcp://127.0.0.1:53760
+2025-10-31 12:10:15,030 [INFO]   pid: None
+2025-10-31 12:10:15,030 [INFO]   host: 127.0.0.1
+2025-10-31 12:10:15,030 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-vpj_mm77
+2025-10-31 12:10:15,031 [INFO]   nanny: True
+2025-10-31 12:10:15,031 [INFO] Dask Worker Info:
+2025-10-31 12:10:15,031 [INFO] Worker tcp://127.0.0.1:53761
+2025-10-31 12:10:15,031 [INFO]   pid: None
+2025-10-31 12:10:15,031 [INFO]   host: 127.0.0.1
+2025-10-31 12:10:15,031 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-ye1liapa
+2025-10-31 12:10:15,032 [INFO]   nanny: True
+2025-10-31 12:10:15,032 [INFO] Dask Worker Info:
+2025-10-31 12:10:15,032 [INFO] Worker tcp://127.0.0.1:53762
+2025-10-31 12:10:15,032 [INFO]   pid: None
+2025-10-31 12:10:15,032 [INFO]   host: 127.0.0.1
+2025-10-31 12:10:15,033 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-9m5ud3mj
+2025-10-31 12:10:15,033 [INFO]   nanny: True
+2025-10-31 12:10:15,033 [INFO] Dask Worker Info:
+2025-10-31 12:10:15,033 [INFO] Worker tcp://127.0.0.1:53769
+2025-10-31 12:10:15,034 [INFO]   pid: None
+2025-10-31 12:10:15,034 [INFO]   host: 127.0.0.1
+2025-10-31 12:10:15,034 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-0jlcenzs
+2025-10-31 12:10:15,034 [INFO]   nanny: True
+2025-10-31 12:10:15,034 [INFO] Dask Worker Info:
+2025-10-31 12:10:15,034 [INFO] Worker tcp://127.0.0.1:53784
+2025-10-31 12:10:15,034 [INFO]   pid: None
+2025-10-31 12:10:15,035 [INFO]   host: 127.0.0.1
+2025-10-31 12:10:15,035 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-9j4qlybb
+2025-10-31 12:10:15,036 [INFO]   nanny: True
+2025-10-31 12:10:15,036 [INFO] Processing camera: Cam1
+2025-10-31 12:10:15,036 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-31 12:10:15,047 [INFO] Pre-computing vector masks for Cam1
+2025-10-31 12:10:15,369 [INFO] Vector masks computed: 4 passes
+2025-10-31 12:10:15,549 [INFO] Successfully cached window padding for 4 passes
+2025-10-31 12:10:15,567 [INFO] Successfully cached interpolation grids for 4 passes
+2025-10-31 12:10:15,908 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-10-31 12:10:19,131 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:19,152 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:19,152 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:19,154 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:19,198 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:19,208 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:19,250 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:19,250 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:19,255 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:19,263 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:19,282 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:19,299 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:19,369 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:19,510 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:19,798 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:20,214 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:20,221 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:20,234 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:20,268 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:20,304 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:20,328 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:20,351 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:20,354 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:20,360 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:20,447 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:20,502 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:20,687 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:20,911 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:21,032 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:21,041 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:21,073 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:21,095 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:21,127 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:21,155 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:21,450 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:21,476 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:21,677 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:21,717 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:21,823 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:21,890 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:21,899 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:21,910 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:21,914 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:21,998 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:22,383 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:22,403 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:22,523 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:22,552 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:22,574 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:22,594 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:22,663 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:22,674 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:22,700 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:22,792 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:22,828 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:22,833 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:22,928 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:22,934 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-31 12:10:22,966 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:22,987 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:23,232 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:23,233 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:23,244 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:23,375 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:23,393 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:23,408 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:23,562 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:23,662 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:23,699 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:23,780 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:23,796 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:23,798 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:23,821 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:23,839 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:23,843 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:24,055 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:24,072 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:24,225 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:24,492 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:24,594 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:24,616 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:24,632 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:24,655 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:24,682 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:24,824 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:24,856 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:24,891 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:25,213 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:25,291 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:25,331 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:25,533 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:25,724 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:25,732 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:25,756 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:25,762 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:25,928 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:25,991 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:26,154 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:26,506 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:27,040 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:27,094 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:27,829 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:10:28,306 [INFO] PIV and save completed: 100 frames saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-31 12:10:28,308 [INFO] Coordinates saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-31 12:13:18,506 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:13:22,692 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:13:22,712 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:13:22,785 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:13:22,786 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:13:22,796 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:13:22,805 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:13:22,807 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:13:22,848 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:13:22,871 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:13:22,930 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:13:22,972 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:13:22,974 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:13:22,978 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:13:22,993 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:13:23,006 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:13:23,011 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:13:23,011 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:13:23,024 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:13:23,123 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:13:23,241 [INFO] Worker logging configured successfully
+2025-10-31 12:13:23,245 [INFO] Worker logging configured successfully
+2025-10-31 12:13:23,246 [INFO] Worker logging configured successfully
+2025-10-31 12:13:23,251 [INFO] Dask cluster started successfully
+2025-10-31 12:13:23,252 [INFO] Dask Worker Info:
+2025-10-31 12:13:23,252 [INFO] Worker tcp://127.0.0.1:58663
+2025-10-31 12:13:23,253 [INFO]   pid: None
+2025-10-31 12:13:23,253 [INFO]   host: 127.0.0.1
+2025-10-31 12:13:23,254 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-4ftlzop3
+2025-10-31 12:13:23,254 [INFO]   nanny: True
+2025-10-31 12:13:23,255 [INFO] Dask Worker Info:
+2025-10-31 12:13:23,255 [INFO] Worker tcp://127.0.0.1:58666
+2025-10-31 12:13:23,255 [INFO]   pid: None
+2025-10-31 12:13:23,256 [INFO]   host: 127.0.0.1
+2025-10-31 12:13:23,256 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-ooa6mbj_
+2025-10-31 12:13:23,256 [INFO]   nanny: True
+2025-10-31 12:13:23,257 [INFO] Dask Worker Info:
+2025-10-31 12:13:23,257 [INFO] Worker tcp://127.0.0.1:58679
+2025-10-31 12:13:23,257 [INFO]   pid: None
+2025-10-31 12:13:23,257 [INFO]   host: 127.0.0.1
+2025-10-31 12:13:23,258 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-ppgv340h
+2025-10-31 12:13:23,258 [INFO]   nanny: True
+2025-10-31 12:13:23,258 [INFO] Dask Worker Info:
+2025-10-31 12:13:23,258 [INFO] Worker tcp://127.0.0.1:58680
+2025-10-31 12:13:23,259 [INFO]   pid: None
+2025-10-31 12:13:23,259 [INFO]   host: 127.0.0.1
+2025-10-31 12:13:23,260 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-veeadhvc
+2025-10-31 12:13:23,260 [INFO]   nanny: True
+2025-10-31 12:13:23,260 [INFO] Dask Worker Info:
+2025-10-31 12:13:23,261 [INFO] Worker tcp://127.0.0.1:58681
+2025-10-31 12:13:23,261 [INFO]   pid: None
+2025-10-31 12:13:23,261 [INFO]   host: 127.0.0.1
+2025-10-31 12:13:23,262 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-olxd7tyh
+2025-10-31 12:13:23,262 [INFO]   nanny: True
+2025-10-31 12:13:23,262 [INFO] Processing camera: Cam1
+2025-10-31 12:13:23,263 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-31 12:13:23,274 [INFO] Pre-computing vector masks for Cam1
+2025-10-31 12:13:23,615 [INFO] Vector masks computed: 4 passes
+2025-10-31 12:13:23,713 [INFO] Successfully cached window padding for 4 passes
+2025-10-31 12:13:23,726 [INFO] Successfully cached interpolation grids for 4 passes
+2025-10-31 12:13:23,953 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-10-31 12:13:26,459 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:26,477 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:26,478 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:26,478 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:26,506 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:26,507 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:26,508 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:26,511 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:26,561 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:26,567 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:26,586 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:26,586 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:26,616 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:26,625 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:26,672 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:26,730 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:27,562 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:27,577 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:27,667 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:27,667 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:27,695 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:27,728 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:27,754 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:27,765 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:27,863 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:28,000 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:28,020 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:28,281 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:28,311 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:28,339 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:28,345 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:28,359 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:28,447 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:28,476 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:28,581 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:28,642 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:28,923 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:28,939 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:29,010 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:29,020 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:29,250 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:29,310 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:29,501 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:29,726 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:29,729 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-31 12:13:30,046 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:30,735 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:30,738 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:30,739 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:30,739 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:30,740 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:30,743 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:30,755 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:30,757 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:30,781 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:30,822 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:30,829 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:30,874 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:30,878 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:30,902 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:31,467 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:31,478 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:31,490 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:31,506 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:31,509 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:31,530 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:31,555 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:31,565 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:31,622 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:32,119 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:32,153 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:32,162 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:32,166 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:32,171 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:32,638 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:32,694 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:32,708 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:32,718 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:33,168 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:33,220 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:33,229 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:33,634 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:33,712 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:33,732 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:34,129 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:34,189 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:34,239 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:34,601 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:34,664 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:34,736 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:35,136 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:35,237 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:35,628 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:35,725 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:36,102 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:36,205 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:36,591 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:36,680 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:37,158 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:37,638 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:38,107 [INFO] Loaded precomputed correlator cache
+2025-10-31 12:13:38,664 [INFO] PIV and save completed: 100 frames saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-31 12:13:38,666 [INFO] Coordinates saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-31 12:27:49,489 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:28:05,642 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:28:05,675 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:28:05,706 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:28:05,732 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:28:05,759 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:28:05,855 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:28:05,873 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:28:05,910 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:28:06,020 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:28:07,503 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:28:07,508 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:28:07,558 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:28:07,642 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:28:07,977 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:28:08,000 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:28:08,006 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:28:08,021 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:28:08,026 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:28:08,056 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:28:08,070 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:29:06,675 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:29:10,907 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:29:10,930 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:29:10,960 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:29:10,969 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:29:10,992 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:29:10,995 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:29:10,999 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:29:11,000 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:29:11,005 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:29:11,005 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:29:11,021 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:29:11,028 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:29:11,041 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:29:11,042 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:29:11,058 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:29:11,079 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:29:11,085 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:29:11,274 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:29:11,369 [INFO] Worker logging configured successfully
+2025-10-31 12:29:11,370 [INFO] Worker logging configured successfully
+2025-10-31 12:29:11,381 [INFO] Dask cluster started successfully
+2025-10-31 12:29:11,382 [INFO] Dask Worker Info:
+2025-10-31 12:29:11,382 [INFO] Worker tcp://127.0.0.1:58659
+2025-10-31 12:29:11,382 [INFO]   pid: None
+2025-10-31 12:29:11,383 [INFO]   host: 127.0.0.1
+2025-10-31 12:29:11,383 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-e_cljr2r
+2025-10-31 12:29:11,384 [INFO]   nanny: True
+2025-10-31 12:29:11,384 [INFO] Dask Worker Info:
+2025-10-31 12:29:11,384 [INFO] Worker tcp://127.0.0.1:58660
+2025-10-31 12:29:11,384 [INFO]   pid: None
+2025-10-31 12:29:11,385 [INFO]   host: 127.0.0.1
+2025-10-31 12:29:11,385 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-dk28uxmf
+2025-10-31 12:29:11,386 [INFO]   nanny: True
+2025-10-31 12:29:11,386 [INFO] Dask Worker Info:
+2025-10-31 12:29:11,387 [INFO] Worker tcp://127.0.0.1:58675
+2025-10-31 12:29:11,387 [INFO]   pid: None
+2025-10-31 12:29:11,387 [INFO]   host: 127.0.0.1
+2025-10-31 12:29:11,387 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-_vn0vttn
+2025-10-31 12:29:11,387 [INFO]   nanny: True
+2025-10-31 12:29:11,387 [INFO] Dask Worker Info:
+2025-10-31 12:29:11,387 [INFO] Worker tcp://127.0.0.1:58680
+2025-10-31 12:29:11,388 [INFO]   pid: None
+2025-10-31 12:29:11,388 [INFO]   host: 127.0.0.1
+2025-10-31 12:29:11,388 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-gmnhxi9x
+2025-10-31 12:29:11,388 [INFO]   nanny: True
+2025-10-31 12:29:11,388 [INFO] Dask Worker Info:
+2025-10-31 12:29:11,388 [INFO] Worker tcp://127.0.0.1:58689
+2025-10-31 12:29:11,388 [INFO]   pid: None
+2025-10-31 12:29:11,389 [INFO]   host: 127.0.0.1
+2025-10-31 12:29:11,389 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-ih79vf5f
+2025-10-31 12:29:11,389 [INFO]   nanny: True
+2025-10-31 12:29:11,389 [INFO] Processing camera: Cam1
+2025-10-31 12:29:11,389 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-31 12:29:11,399 [INFO] Pre-computing vector masks for Cam1
+2025-10-31 12:29:11,713 [INFO] Vector masks computed: 4 passes
+2025-10-31 12:29:11,825 [INFO] Successfully cached window padding for 4 passes
+2025-10-31 12:29:11,838 [INFO] Successfully cached interpolation grids for 4 passes
+2025-10-31 12:29:12,069 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-10-31 12:29:24,532 [INFO] PIV and save completed: 100 frames saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-31 12:33:25,061 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:33:29,044 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:33:29,158 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:33:29,166 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:33:29,167 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:33:29,189 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:33:29,242 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:33:29,267 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:33:29,293 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:33:29,295 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:33:29,307 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:33:29,307 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:33:29,333 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:33:29,376 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:33:29,379 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:33:29,386 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:33:29,411 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:33:29,433 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:33:29,440 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:33:29,504 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:33:29,617 [INFO] Worker logging configured successfully
+2025-10-31 12:33:29,619 [INFO] Worker logging configured successfully
+2025-10-31 12:33:29,629 [INFO] Dask cluster started successfully
+2025-10-31 12:33:29,630 [INFO] Dask Worker Info:
+2025-10-31 12:33:29,630 [INFO] Worker tcp://127.0.0.1:65015
+2025-10-31 12:33:29,630 [INFO]   pid: None
+2025-10-31 12:33:29,630 [INFO]   host: 127.0.0.1
+2025-10-31 12:33:29,631 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-dimnja8j
+2025-10-31 12:33:29,631 [INFO]   nanny: True
+2025-10-31 12:33:29,631 [INFO] Dask Worker Info:
+2025-10-31 12:33:29,632 [INFO] Worker tcp://127.0.0.1:65026
+2025-10-31 12:33:29,632 [INFO]   pid: None
+2025-10-31 12:33:29,632 [INFO]   host: 127.0.0.1
+2025-10-31 12:33:29,632 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-m1q04yx8
+2025-10-31 12:33:29,632 [INFO]   nanny: True
+2025-10-31 12:33:29,632 [INFO] Dask Worker Info:
+2025-10-31 12:33:29,632 [INFO] Worker tcp://127.0.0.1:65029
+2025-10-31 12:33:29,632 [INFO]   pid: None
+2025-10-31 12:33:29,633 [INFO]   host: 127.0.0.1
+2025-10-31 12:33:29,633 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-f31njyfk
+2025-10-31 12:33:29,633 [INFO]   nanny: True
+2025-10-31 12:33:29,633 [INFO] Dask Worker Info:
+2025-10-31 12:33:29,633 [INFO] Worker tcp://127.0.0.1:65030
+2025-10-31 12:33:29,633 [INFO]   pid: None
+2025-10-31 12:33:29,633 [INFO]   host: 127.0.0.1
+2025-10-31 12:33:29,633 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-wdmofoq9
+2025-10-31 12:33:29,634 [INFO]   nanny: True
+2025-10-31 12:33:29,634 [INFO] Dask Worker Info:
+2025-10-31 12:33:29,634 [INFO] Worker tcp://127.0.0.1:65035
+2025-10-31 12:33:29,634 [INFO]   pid: None
+2025-10-31 12:33:29,634 [INFO]   host: 127.0.0.1
+2025-10-31 12:33:29,634 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-53mgei7x
+2025-10-31 12:33:29,634 [INFO]   nanny: True
+2025-10-31 12:33:29,635 [INFO] Processing camera: Cam1
+2025-10-31 12:33:29,635 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-31 12:33:29,647 [INFO] Pre-computing vector masks for Cam1
+2025-10-31 12:33:29,979 [INFO] Vector masks computed: 4 passes
+2025-10-31 12:33:29,986 [INFO] Successfully cached window padding for 4 passes
+2025-10-31 12:33:30,000 [INFO] Successfully cached interpolation grids for 4 passes
+2025-10-31 12:33:30,247 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-10-31 12:33:36,168 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-31 12:33:41,126 [INFO] PIV and save completed: 100 frames saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-31 12:33:41,129 [INFO] Coordinates saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-31 12:40:31,943 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:40:36,047 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:40:36,066 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:40:36,075 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:40:36,084 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:40:36,125 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:40:36,251 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:40:36,259 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:40:36,259 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:40:36,271 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:40:36,282 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:40:36,283 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:40:36,283 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:40:36,284 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:40:36,285 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:40:36,290 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:40:36,297 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:40:36,346 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:40:36,555 [INFO] Worker logging configured successfully
+2025-10-31 12:40:36,556 [INFO] Worker logging configured successfully
+2025-10-31 12:40:36,557 [INFO] Worker logging configured successfully
+2025-10-31 12:40:36,557 [INFO] Worker logging configured successfully
+2025-10-31 12:40:36,558 [INFO] Worker logging configured successfully
+2025-10-31 12:40:36,558 [INFO] Worker logging configured successfully
+2025-10-31 12:40:36,559 [INFO] Worker logging configured successfully
+2025-10-31 12:40:36,559 [INFO] Worker logging configured successfully
+2025-10-31 12:40:36,559 [INFO] Worker logging configured successfully
+2025-10-31 12:40:36,560 [INFO] Worker logging configured successfully
+2025-10-31 12:40:36,560 [INFO] Worker logging configured successfully
+2025-10-31 12:40:36,561 [INFO] Worker logging configured successfully
+2025-10-31 12:40:36,561 [INFO] Worker logging configured successfully
+2025-10-31 12:40:36,563 [INFO] Dask cluster started successfully
+2025-10-31 12:40:36,564 [INFO] Dask Worker Info:
+2025-10-31 12:40:36,564 [INFO] Worker tcp://127.0.0.1:51160
+2025-10-31 12:40:36,565 [INFO]   pid: None
+2025-10-31 12:40:36,565 [INFO]   host: 127.0.0.1
+2025-10-31 12:40:36,565 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-ko8yytz6
+2025-10-31 12:40:36,565 [INFO]   nanny: True
+2025-10-31 12:40:36,566 [INFO] Dask Worker Info:
+2025-10-31 12:40:36,566 [INFO] Worker tcp://127.0.0.1:51163
+2025-10-31 12:40:36,566 [INFO]   pid: None
+2025-10-31 12:40:36,566 [INFO]   host: 127.0.0.1
+2025-10-31 12:40:36,566 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-pbtn702j
+2025-10-31 12:40:36,566 [INFO]   nanny: True
+2025-10-31 12:40:36,566 [INFO] Dask Worker Info:
+2025-10-31 12:40:36,567 [INFO] Worker tcp://127.0.0.1:51166
+2025-10-31 12:40:36,567 [INFO]   pid: None
+2025-10-31 12:40:36,567 [INFO]   host: 127.0.0.1
+2025-10-31 12:40:36,567 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-g508odys
+2025-10-31 12:40:36,567 [INFO]   nanny: True
+2025-10-31 12:40:36,568 [INFO] Dask Worker Info:
+2025-10-31 12:40:36,568 [INFO] Worker tcp://127.0.0.1:51167
+2025-10-31 12:40:36,568 [INFO]   pid: None
+2025-10-31 12:40:36,568 [INFO]   host: 127.0.0.1
+2025-10-31 12:40:36,568 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-n6acdmkj
+2025-10-31 12:40:36,568 [INFO]   nanny: True
+2025-10-31 12:40:36,568 [INFO] Dask Worker Info:
+2025-10-31 12:40:36,569 [INFO] Worker tcp://127.0.0.1:51175
+2025-10-31 12:40:36,569 [INFO]   pid: None
+2025-10-31 12:40:36,569 [INFO]   host: 127.0.0.1
+2025-10-31 12:40:36,569 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-yal3_t65
+2025-10-31 12:40:36,569 [INFO]   nanny: True
+2025-10-31 12:40:36,569 [INFO] Processing camera: Cam1
+2025-10-31 12:40:36,569 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-31 12:40:36,581 [INFO] Pre-computing vector masks for Cam1
+2025-10-31 12:40:36,914 [INFO] Vector masks computed: 4 passes
+2025-10-31 12:40:36,920 [INFO] Successfully cached window padding for 4 passes
+2025-10-31 12:40:36,934 [INFO] Successfully cached interpolation grids for 4 passes
+2025-10-31 12:40:37,184 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-10-31 12:40:53,409 [INFO] PIV and save completed: 100 frames saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-31 12:44:35,363 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:44:39,571 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:44:39,622 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:44:39,641 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:44:39,647 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:44:39,653 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:44:39,663 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:44:39,691 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:44:39,727 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:44:39,738 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:44:39,755 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:44:39,758 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:44:39,758 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:44:39,784 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:44:39,798 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:44:39,847 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:44:39,896 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:44:39,916 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:44:39,924 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:44:39,925 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:44:39,929 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-10-31 12:44:40,072 [INFO] Worker logging configured successfully
+2025-10-31 12:44:40,072 [INFO] Worker logging configured successfully
+2025-10-31 12:44:40,073 [INFO] Worker logging configured successfully
+2025-10-31 12:44:40,074 [INFO] Worker logging configured successfully
+2025-10-31 12:44:40,075 [INFO] Worker logging configured successfully
+2025-10-31 12:44:40,075 [INFO] Worker logging configured successfully
+2025-10-31 12:44:40,076 [INFO] Worker logging configured successfully
+2025-10-31 12:44:40,076 [INFO] Worker logging configured successfully
+2025-10-31 12:44:40,077 [INFO] Worker logging configured successfully
+2025-10-31 12:44:40,077 [INFO] Worker logging configured successfully
+2025-10-31 12:44:40,077 [INFO] Worker logging configured successfully
+2025-10-31 12:44:40,077 [INFO] Worker logging configured successfully
+2025-10-31 12:44:40,079 [INFO] Dask cluster started successfully
+2025-10-31 12:44:40,079 [INFO] Dask Worker Info:
+2025-10-31 12:44:40,080 [INFO] Worker tcp://127.0.0.1:61298
+2025-10-31 12:44:40,080 [INFO]   pid: None
+2025-10-31 12:44:40,080 [INFO]   host: 127.0.0.1
+2025-10-31 12:44:40,080 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-lrng94dj
+2025-10-31 12:44:40,081 [INFO]   nanny: True
+2025-10-31 12:44:40,081 [INFO] Dask Worker Info:
+2025-10-31 12:44:40,081 [INFO] Worker tcp://127.0.0.1:61311
+2025-10-31 12:44:40,081 [INFO]   pid: None
+2025-10-31 12:44:40,082 [INFO]   host: 127.0.0.1
+2025-10-31 12:44:40,082 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-i3v30krs
+2025-10-31 12:44:40,082 [INFO]   nanny: True
+2025-10-31 12:44:40,082 [INFO] Dask Worker Info:
+2025-10-31 12:44:40,082 [INFO] Worker tcp://127.0.0.1:61314
+2025-10-31 12:44:40,083 [INFO]   pid: None
+2025-10-31 12:44:40,083 [INFO]   host: 127.0.0.1
+2025-10-31 12:44:40,083 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-o4px5wds
+2025-10-31 12:44:40,083 [INFO]   nanny: True
+2025-10-31 12:44:40,083 [INFO] Dask Worker Info:
+2025-10-31 12:44:40,084 [INFO] Worker tcp://127.0.0.1:61315
+2025-10-31 12:44:40,084 [INFO]   pid: None
+2025-10-31 12:44:40,084 [INFO]   host: 127.0.0.1
+2025-10-31 12:44:40,084 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-xjgu9yvi
+2025-10-31 12:44:40,085 [INFO]   nanny: True
+2025-10-31 12:44:40,085 [INFO] Dask Worker Info:
+2025-10-31 12:44:40,085 [INFO] Worker tcp://127.0.0.1:61316
+2025-10-31 12:44:40,085 [INFO]   pid: None
+2025-10-31 12:44:40,085 [INFO]   host: 127.0.0.1
+2025-10-31 12:44:40,086 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-c1olih5d
+2025-10-31 12:44:40,086 [INFO]   nanny: True
+2025-10-31 12:44:40,086 [INFO] Processing camera: Cam1
+2025-10-31 12:44:40,086 [INFO] Lazily loading images with Dask for camera: Cam1 from C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-10-31 12:44:40,097 [INFO] Pre-computing vector masks for Cam1
+2025-10-31 12:44:40,411 [INFO] Vector masks computed: 4 passes
+2025-10-31 12:44:40,525 [INFO] Successfully cached window padding for 4 passes
+2025-10-31 12:44:40,539 [INFO] Successfully cached interpolation grids for 4 passes
+2025-10-31 12:44:40,764 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-10-31 12:44:46,027 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-10-31 12:44:52,247 [INFO] PIV and save completed: 100 frames saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-10-31 12:44:52,250 [INFO] Coordinates saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous

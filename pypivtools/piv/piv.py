@@ -30,7 +30,7 @@ def perform_piv_and_save(
     client: Client,
     output_path: Path,
     start_frame: int = 1,
-    pass_index: Optional[int] = None,
+    runs_to_save: Optional[List[int]] = None,
     vector_masks: Optional[List[np.ndarray]] = None,
 ) -> List:
     """
@@ -57,9 +57,9 @@ def perform_piv_and_save(
         Directory where .mat files will be saved.
     start_frame : int
         Starting frame number (1-based) for filenames.
-    pass_index : Optional[int]
-        If specified, save only this pass (0-based).
-        If None, save all passes.
+    runs_to_save : Optional[List[int]]
+        List of pass indices (0-based) to save. If None, save all passes.
+        For passes not in this list, empty arrays will be saved.
     vector_masks : Optional[List[np.ndarray]]
         Pre-computed vector masks for each PIV pass. Each mask should be a boolean
         array of shape (n_win_y, n_win_x) where True indicates vectors to mask.
@@ -94,7 +94,7 @@ def perform_piv_and_save(
             piv_future,  # Takes result from PIV task
             output_path,
             frame_number,
-            pass_index,
+            runs_to_save,
             config.vector_format,
         )
         save_futures.append(save_future)

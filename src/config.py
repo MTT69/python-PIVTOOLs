@@ -97,6 +97,15 @@ class Config:
         return self.data.get("instantaneous_piv", {}).get("runs", [])
 
     @property
+    def instantaneous_runs_0based(self):
+        runs = self.instantaneous_runs
+        if runs:
+            return [r - 1 for r in runs]
+        else:
+            # Default to last pass if runs is empty
+            return [self.num_passes - 1]
+
+    @property
     def instantaneous_window_sizes(self):
         return self.data.get("instantaneous_piv", {}).get("window_size", [])
 

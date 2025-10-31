@@ -100,7 +100,6 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         # Use precomputed cache if provided, otherwise compute it
         if precomputed_cache is not None:
             self._load_precomputed_cache(precomputed_cache)
-            logging.info("Loaded precomputed correlator cache")
         else:
             self._cache_window_padding(config=config)
             self.H, self.W = config.image_shape
