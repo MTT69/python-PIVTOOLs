@@ -31,6 +31,7 @@ def read_image(file_path: str, **kwargs) -> np.ndarray:
         np.ndarray: The image data
     """
     reader_func = get_reader(file_path)
+    logging.debug("Using reader %s for file %s", reader_func.__name__, file_path)
     return reader_func(file_path, **kwargs)
 
 
@@ -48,12 +49,11 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
     """
     # Get image format - handle both time-resolved (single format) and non-time-resolved (A/B pair)
     image_format = config.image_format
-    
     # Special handling for .ims/.set files (set files in source directory)
-    if str(image_format).endswith(('.set')):
+    if '.set' in str(image_format[0]):
         # For .ims/.set files, camera_path is the source directory
-        # image_format should be a string for .set files
-        set_file_path = camera_path / image_format
+        set_file_path = camera_path.parent / image_format[0]
+        
         return read_image(str(set_file_path), camera_no=camera, im_no=idx)
     
     if isinstance(image_format, tuple):
@@ -134,7 +134,7 @@ def load_images(camera: int, config: Config, source: Path = None) -> da.Array:
         source = config.source_paths[0]
     
     # For .ims/.set files, there are no camera subdirectories
-    if str(config.image_format).endswith(('.ims', '.set')):
+    if '.ims' in str(config.image_format) or '.set' in str(config.image_format):
         camera_path = source  # No camera subdirectory for set files
         logging.info("Loading images from set file in directory: %s for camera: Cam%d", source, camera)
     else:

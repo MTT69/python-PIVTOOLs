@@ -229,7 +229,7 @@ def create_and_return_plot(
     return b64_img, W, H, {"axes_bbox": axes_bbox}
 
 
-def parse_plot_params(req) -> Dict:
+def parse_plot_params(req) -> Dict: # efe
     """
     Minimal, explicit parsing. camera expected as int (or string of int).
     Returns a dict with normalized fields.

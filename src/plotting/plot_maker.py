@@ -88,9 +88,8 @@ def make_scalar_settings(
         symmetric_around_zero=symmetric_around_zero,
     )
 
-
 # Function to plot a scalar field with masking and customizable settings
-def plot_scalar_field(variable, mask, settings):
+def plot_scalar_field(variable, mask, settings): # efe
     # Extract plot settings
     plt.rcParams.update({"font.size": settings._fontsize})
     plt.rcParams["axes.titlesize"] = settings._title_fontsize

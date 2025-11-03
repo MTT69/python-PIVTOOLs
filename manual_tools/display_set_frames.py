@@ -60,13 +60,14 @@ def read_lavision_set_frames(set_file_path: str, camera_no: int = 1, im_no: int 
 
 def main():
     # Hardcoded path for this specific request
-    set_file_path = r"C:\Users\mtt1e23\Downloads\OneDrive_1_29-10-2025\loop=1.set"
+    # set_file_path = r"C:\Users\mtt1e23\Downloads\OneDrive_1_29-10-2025\loop=1.set"
+    set_file_path = r"D:\Wake_PIV_16_8\Case_A_Phase_003_Run_1.set"
 
     print(f"Attempting to open: {set_file_path}")
 
     # Read the frames
     try:
-        frames = read_lavision_set_frames(set_file_path, camera_no=1, im_no=1)
+        frames = read_lavision_set_frames(set_file_path, camera_no=1, im_no=0)
         print(f"Successfully read frames with shape: {frames.shape}")
     except Exception as e:
         print(f"Error reading frames: {e}")

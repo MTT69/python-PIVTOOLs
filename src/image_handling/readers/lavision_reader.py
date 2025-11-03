@@ -82,7 +82,8 @@ def read_lavision_ims(file_path: str, camera_no: Optional[int] = None, im_no: Op
     # Determine if file_path is a .set file or a legacy .ims file path
     if path.suffix.lower() == '.set' or (camera_no is not None and im_no is not None):
         # Modern .ims format: file_path is the .set file
-        set_file_path = str(path.parent)
+        # set_file_path = str(path.parent)
+        set_file_path = file_path
         if camera_no is None or im_no is None:
             raise ValueError("camera_no and im_no must be provided for .set files")
     else:
