@@ -74,7 +74,8 @@ instantaneous_piv:
   - 50
   - 50
   - 50
-  runs: [3,4]
+  runs:
+  - 4
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
@@ -91,12 +92,8 @@ calibration_format:
 calibration:
   active: stereo
   scale_factor:
-    dt: 1
+    dt: 0.01
     px_per_mm: 3.41
-    x_offset:
-    - 0
-    y_offset:
-    - 0
   pinhole:
     source_path_idx: 1
     camera: 1
@@ -124,7 +121,9 @@ calibration:
     asymmetric: false
     dt: 2
   image_format: calib%05d.tiff
-filters: []
+filters:
+- type: time
+  batch_size: 50
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat

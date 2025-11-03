@@ -70,131 +70,17 @@ export default function VectorViewer({ backendUrl = "/backend", config }: { back
     downloadCurrentView,
     copyCurrentView,
     fetchLimits,  // Added: Now available from the hook
+    applyTransformation,
+    applyTransformationToAllFrames,
+    transformationJob,
+    appliedTransforms,
+    setAppliedTransforms,
+    clearTransforms,
     MAG_SIZE,
     dpr,
-    rotation,
-    setRotation,
-    flipHorizontal,
-    setFlipHorizontal,
-    flipVertical,
-    setFlipVertical,
-    transpose,
-    setTranspose,
     effectiveDir,  // Added: Import effectiveDir from hook
   } = useVectorViewer({ backendUrl, config });
   
-  // Add cache-busting key that changes when transformations change
-  const transformKey = `${rotation}-${flipHorizontal}-${flipVertical}-${transpose}`;
-  
-  // Add separate loading state for batch operations
-  const [batchLoading, setBatchLoading] = useState(false);
-  const [showBatchModal, setShowBatchModal] = useState(false);
-  const [batchResult, setBatchResult] = useState<{
-    success: boolean;
-    processed?: number;
-    failed?: number;
-    output?: string;
-    coordsTransformed?: boolean;
-    error?: string;
-  } | null>(null);
-  
-  // Handlers for image operations
-  const handleRotateLeft = () => {
-    setRotation((prev) => (prev + 3) % 4); // Counter-clockwise: add 3 (same as -1 mod 4)
-  };
-
-  const handleRotateRight = () => {
-    setRotation((prev) => (prev + 1) % 4); // Clockwise
-  };
-
-  const handleFlipHorizontal = () => {
-    setFlipHorizontal((prev) => !prev);
-  };
-
-  const handleFlipVertical = () => {
-    setFlipVertical((prev) => !prev);
-  };
-
-  const handleTranspose = () => {
-    setTranspose((prev) => !prev);
-  };
-
-  const resetTransformations = () => {
-    setRotation(0);
-    setFlipHorizontal(false);
-    setFlipVertical(false);
-    setTranspose(false);
-  };
-
-  // Handler for applying transformations to all frames
-  const handleApplyToAll = async () => {
-    if (!effectiveDir) {
-      return;
-    }
-
-    setShowBatchModal(true);
-    setBatchResult(null);
-    setBatchLoading(true);
-
-    try {
-      const body = {
-        base_path: effectiveDir,
-        camera: parseInt(camera.replace(/[^\d]/g, "") || "1"),
-        frame_start: 1,
-        frame_end: maxFrameCount,
-        rotation: rotation,
-        flip_horizontal: flipHorizontal,
-        flip_vertical: flipVertical,
-        transpose: transpose,
-        output_mode: "new_dir",
-        type_name: "instantaneous",
-        merged: merged,
-        use_uncalibrated: false
-      };
-
-      const url = `${backendUrl}/plot/apply_transformations_batch`;
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      const json = await res.json();
-      
-      if (!res.ok) {
-        throw new Error(json.error || "Failed to apply transformations");
-      }
-
-      setBatchResult({
-        success: true,
-        processed: json.processed_count,
-        failed: json.failed_count,
-        output: json.output_directory,
-        coordsTransformed: json.coordinates_transformed,
-      });
-      
-    } catch (e: any) {
-      setBatchResult({
-        success: false,
-        error: e.message,
-      });
-    } finally {
-      setBatchLoading(false);
-    }
-  };
-
-  const closeBatchModal = () => {
-    setShowBatchModal(false);
-    setBatchResult(null);
-  };
-
-  // Auto re-render when transformations change (if already rendered)
-  useEffect(() => {
-    if (imageSrc && (rotation !== 0 || flipHorizontal || flipVertical || transpose)) {
-      void handleRender();
-    }
-  }, [rotation, flipHorizontal, flipVertical, transpose]);
-
   // Remember last valid hover values so we don't show a loading spinner
   // while backend updates arrive. Only update when hoverData contains valid coords.
   const [lastValidHover, setLastValidHover] = useState<any | null>(null);
@@ -203,107 +89,10 @@ export default function VectorViewer({ backendUrl = "/backend", config }: { back
       setLastValidHover(hoverData);
     }
   }, [hoverData]);
+;
 
   return (
     <div className="space-y-6">
-      {/* Batch Transformation Modal */}
-      {showBatchModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]">
-          <div className="bg-white rounded-lg shadow-2xl p-6 max-w-md w-full mx-4">
-            {batchLoading ? (
-              <>
-                <div className="flex flex-col items-center gap-4">
-                  <div className="relative">
-                    <div className="w-16 h-16 border-4 border-gray-200 rounded-full"></div>
-                    <div className="w-16 h-16 border-4 border-soton-blue border-t-transparent rounded-full animate-spin absolute top-0 left-0"></div>
-                  </div>
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    Applying Transformations
-                  </h3>
-                  <div className="text-center text-sm text-gray-600">
-                    <p>Processing {maxFrameCount} frames...</p>
-                    <p className="mt-2">
-                      Rotation: {rotation * 90}°
-                      {flipHorizontal && " • Flip H"}
-                      {flipVertical && " • Flip V"}
-                      {transpose && " • Transpose"}
-                    </p>
-                  </div>
-                </div>
-              </>
-            ) : batchResult ? (
-              <>
-                {batchResult.success ? (
-                  <div className="flex flex-col items-center gap-4">
-                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                    </div>
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      Transformation Complete!
-                    </h3>
-                    <div className="w-full space-y-2 text-sm">
-                      <div className="flex justify-between py-2 border-b">
-                        <span className="text-gray-600">Processed:</span>
-                        <span className="font-semibold text-green-600">{batchResult.processed} frames</span>
-                      </div>
-                      {batchResult.failed !== undefined && batchResult.failed > 0 && (
-                        <div className="flex justify-between py-2 border-b">
-                          <span className="text-gray-600">Failed:</span>
-                          <span className="font-semibold text-red-600">{batchResult.failed} frames</span>
-                        </div>
-                      )}
-                      {batchResult.output && (
-                        <div className="py-2 border-b">
-                          <span className="text-gray-600 block mb-1">Output Directory:</span>
-                          <span className="font-mono text-xs bg-gray-100 px-2 py-1 rounded block break-all">
-                            {batchResult.output}
-                          </span>
-                        </div>
-                      )}
-                      <div className="flex justify-between py-2">
-                        <span className="text-gray-600">Coordinates Transformed:</span>
-                        <span className="font-semibold">{batchResult.coordsTransformed ? "Yes" : "No"}</span>
-                      </div>
-                    </div>
-                    <Button
-                      onClick={closeBatchModal}
-                      className="w-full bg-soton-blue hover:bg-soton-blue/90 mt-4"
-                    >
-                      Close
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-4">
-                    <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-red-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="10" />
-                        <line x1="15" y1="9" x2="9" y2="15" />
-                        <line x1="9" y1="9" x2="15" y2="15" />
-                      </svg>
-                    </div>
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      Transformation Failed
-                    </h3>
-                    <p className="text-sm text-gray-600 text-center">
-                      {batchResult.error}
-                    </p>
-                    <Button
-                      onClick={closeBatchModal}
-                      variant="outline"
-                      className="w-full mt-4"
-                    >
-                      Close
-                    </Button>
-                  </div>
-                )}
-              </>
-            ) : null}
-          </div>
-        </div>
-      )}
-
       <Card>
         <CardHeader>
           <CardTitle>Results</CardTitle>
@@ -636,130 +425,82 @@ export default function VectorViewer({ backendUrl = "/backend", config }: { back
 
             {/* Image Operations Row */}
             {imageSrc && !error && (
-              <div className="flex items-center gap-2 p-3 bg-gray-50 border rounded-md mb-4">
-                <label className="text-sm font-medium mr-2">Image Operations:</label>
-                
-                {/* Rotate Left */}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleRotateLeft}
-                  title="Rotate 90° Counter-Clockwise"
-                  className="flex items-center gap-1.5"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M2.5 2v6h6M2.66 15.57a10 10 0 1 0 .57-8.38" />
-                  </svg>
-                  <span>Rotate Left</span>
-                </Button>
-
-                {/* Rotate Right */}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleRotateRight}
-                  title="Rotate 90° Clockwise"
-                  className="flex items-center gap-1.5"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38" />
-                  </svg>
-                  <span>Rotate Right</span>
-                </Button>
-
-                {/* Flip Horizontal */}
-                <Button
-                  size="sm"
-                  variant={flipHorizontal ? "default" : "outline"}
-                  onClick={handleFlipHorizontal}
-                  title="Flip Horizontally"
-                  className="flex items-center gap-1.5"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M8 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h3" />
-                    <path d="M16 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3" />
-                    <path d="M12 20v2" />
-                    <path d="M12 14v2" />
-                    <path d="M12 8v2" />
-                    <path d="M12 2v2" />
-                  </svg>
-                  <span>Flip Horizontal</span>
-                </Button>
-
-                {/* Flip Vertical */}
-                <Button
-                  size="sm"
-                  variant={flipVertical ? "default" : "outline"}
-                  onClick={handleFlipVertical}
-                  title="Flip Vertically"
-                  className="flex items-center gap-1.5"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v3" />
-                    <path d="M21 16v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3" />
-                    <path d="M4 12H2" />
-                    <path d="M10 12H8" />
-                    <path d="M16 12h-2" />
-                    <path d="M22 12h-2" />
-                  </svg>
-                  <span>Flip Vertical</span>
-                </Button>
-
-                {/* Transpose */}
-                <Button
-                  size="sm"
-                  variant={transpose ? "default" : "outline"}
-                  onClick={handleTranspose}
-                  title="Transpose (Swap X and Y axes)"
-                  className="flex items-center gap-1.5"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 14h-5a2 2 0 0 1-2-2V7" />
-                    <path d="M14 2L7 9l7 7" />
-                  </svg>
-                  <span>Transpose</span>
-                </Button>
-
-                {/* Reset transformations */}
-                {(rotation !== 0 || flipHorizontal || flipVertical || transpose) && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={resetTransformations}
-                    title="Reset all transformations"
-                    className="flex items-center gap-1.5 ml-2 text-red-600 hover:text-red-700 hover:bg-red-50"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                      <path d="M3 3v5h5" />
-                    </svg>
-                    <span>Reset</span>
-                  </Button>
-                )}
-
-                {/* Spacer to push Apply to All to the right */}
-                <div className="flex-grow"></div>
-
-                {/* Apply to All button */}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleApplyToAll}
-                  title="Apply current transformations to all frames"
-                  className="flex items-center gap-1.5 ml-auto"
-                  disabled={(rotation === 0 && !flipHorizontal && !flipVertical && !transpose) || batchLoading || loading}
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M3 7V5a2 2 0 0 1 2-2h2" />
-                    <path d="M17 3h2a2 2 0 0 1 2 2v2" />
-                    <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
-                    <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
-                    <rect x="7" y="7" width="10" height="10" rx="1" />
-                  </svg>
-                  <span>Apply to All</span>
-                </Button>
+              <div className="p-3 bg-gray-50 border rounded-md mb-4">
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => applyTransformationToAllFrames(appliedTransforms)}
+                      disabled={loading || appliedTransforms.length === 0}
+                      className="flex items-center gap-2"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 14h-5a2 2 0 0 1-2-2V7" />
+                        <path d="M14 2L7 9l7 7" />
+                      </svg>
+                      Apply to All Frames
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={clearTransforms}
+                      disabled={loading}
+                    >
+                      Clear Transforms
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 pt-2 border-t">
+                    <label className="text-sm font-medium mr-2">Apply individually to current frame:</label>
+                    <Button size="sm" variant="outline" onClick={() => applyTransformation('rotate_90_ccw')}>Rotate Left</Button>
+                    <Button size="sm" variant="outline" onClick={() => applyTransformation('rotate_90_cw')}>Rotate Right</Button>
+                    <Button size="sm" variant="outline" onClick={() => applyTransformation('flip_lr')}>Flip Horizontal</Button>
+                    <Button size="sm" variant="outline" onClick={() => applyTransformation('flip_ud')}>Flip Vertical</Button>
+                    <Button size="sm" variant="outline" onClick={() => applyTransformation('swap_ux_uy')}>Swap UX/UY</Button>
+                    <Button size="sm" variant="outline" onClick={() => applyTransformation('invert_ux_uy')}>Invert UX/UY</Button>
+                  </div>
+                </div>
               </div>
             )}
+              {transformationJob && (
+                <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-blue-900">
+                      Applying transformations to all frames...
+                    </span>
+                    <span className="text-sm text-blue-700">
+                      {transformationJob.status === 'completed' ? 'Complete' :
+                       transformationJob.status === 'failed' ? 'Failed' :
+                       `${transformationJob.progress}%`}
+                    </span>
+                  </div>
+                  <div className="w-full bg-blue-200 rounded-full h-2">
+                    <div
+                      className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${transformationJob.progress}%` }}
+                    ></div>
+                  </div>
+                  <div className="mt-2 text-xs text-blue-700">
+                    {transformationJob.processed_frames} / {transformationJob.total_frames} frames processed
+                    {transformationJob.elapsed_time && (
+                      <span className="ml-2">
+                        ({Math.round(transformationJob.elapsed_time)}s elapsed)
+                      </span>
+                    )}
+                    {transformationJob.estimated_remaining && transformationJob.status === 'running' && (
+                      <span className="ml-2">
+                        (~{Math.round(transformationJob.estimated_remaining)}s remaining)
+                      </span>
+                    )}
+                  </div>
+                  {transformationJob.error && (
+                    <div className="mt-2 text-xs text-red-600">
+                      Error: {transformationJob.error}
+                    </div>
+                  )}
+                </div>
+              )}
+
 
             {imageSrc && !error && (
               <div
@@ -814,16 +555,15 @@ export default function VectorViewer({ backendUrl = "/backend", config }: { back
                   className="rounded border w-full max-w-5xl select-none pointer-events-auto"
                   style={{ width: '100%', maxWidth: '1000px', height: 'auto', display: 'block' }}
                   draggable={false}
-                  key={transformKey} // Force re-render when transformations change
                 />
                 {/* Magnifier Canvas */}
                 <canvas
                   ref={magnifierRef}
                   style={{
                     display: magVisible ? 'block' : 'none',
-                    position: 'absolute',
+                    position: 'fixed',
                     pointerEvents: 'none',
-                    zIndex: 61,
+                    zIndex: 9999,
                     width: MAG_SIZE,
                     height: MAG_SIZE,
                     left: magPos.left,

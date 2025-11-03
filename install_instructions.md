@@ -8,6 +8,7 @@ Before installation, ensure you have:
 - Python 3.8 or later
 - A C compiler with OpenMP support
 - FFTW library (version 3.x)
+- FFmpeg (for video processing)
 - Git (for cloning the repository if needed)
 
 ## Quick Start
@@ -61,6 +62,32 @@ vcpkg integrate install
 vcpkg install fftw3[threads]
 ```
 
+#### 3.5 Install FFmpeg
+
+Using vcpkg:
+
+```cmd
+vcpkg install ffmpeg
+```
+
+#### 3.6 Add FFmpeg to PATH
+
+To ensure FFmpeg is available from the command line, add the vcpkg bin directory to your PATH:
+
+```cmd
+setx PATH "%PATH%;C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\vcpkg\installed\x64-windows\bin"
+```
+
+Note: Adjust the path if your vcpkg installation is in a different location.
+
+#### 3.7 Verify FFmpeg Installation
+
+```cmd
+ffmpeg -version
+```
+
+Should show FFmpeg version information.
+
 #### 4. Set Environment Variables
 
 For global vcpkg installation: (set user profile to where you installed the packages)
@@ -69,7 +96,7 @@ setx FFTW_INC_PATH "C:\Users\mtt1e23\OneDrive - University of Southampton\Docume
 setx FFTW_LIB_PATH "C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\vcpkg\installed\x64-windows\lib"
 ``
 
-#### 5. Verify FFTW Installation
+#### 6. Verify FFTW Installation
 In Developer Command Prompt for VS:
 ```cmd
 dir %FFTW_INC_PATH%\fftw3.h
@@ -78,7 +105,7 @@ dir %FFTW_LIB_PATH%\fftw3f.lib
 
 It's recommended to install Python packages like PyPIVTools in a virtual environment to avoid conflicts with system packages. If you prefer not to, ensure your global Python environment is properly configured.
 
-#### 6. Install PyPIVTools
+#### 7. Install PyPIVTools
 In Developer Command Prompt for VS:
 ```cmd
 pip install -e .
@@ -354,6 +381,11 @@ print(f"Version: {pypivtools.__version__}")
 - Ensure you're using Developer Command Prompt, not regular Command Prompt
 - For global vcpkg, `VCPKG_ROOT` should be set after `vcpkg integrate install`
 - **Permission denied errors**: Make sure you're cloning to a directory you can write to (not Program Files). Use `cd %USERPROFILE%` to go to your home directory
+
+#### "ffmpeg: command not found"
+- Ensure FFmpeg is installed via vcpkg: `vcpkg install ffmpeg`
+- Verify that the vcpkg bin directory is added to your PATH
+- Restart the command prompt after setting PATH variables
 
 If you encounter issues:
 1. Check that all environment variables are set correctly

@@ -205,7 +205,7 @@ def save_mask_to_mat(file_path: str, mask: np.ndarray, polygons):
     """
     Save the given mask array to a .mat file.
     """
-    scipy.io.savemat(file_path, {"mask": mask, "polygons": polygons})
+    scipy.io.savemat(file_path, {"mask": mask, "polygons": polygons}, do_compression=True)
 
 
 def read_mask_from_mat(file_path: str):

@@ -1,5 +1,6 @@
 import threading
 
+import dask
 import dask.array as da
 import numpy as np
 import yaml
@@ -7,7 +8,7 @@ from dask import config as dask_config
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from loguru import logger
-
+import os
 from calibration.app.views import calibration_bp
 from config import get_config, reload_config
 from image_handling.load_images import read_pair
@@ -116,6 +117,7 @@ def get_frame_pair():
     )
 
 
+
 @app.route("/filter", methods=["POST"])
 def filter_images_endpoint():
     global processing
@@ -126,8 +128,10 @@ def filter_images_endpoint():
     filters = data.get("filters", None)
     source_path_idx = data.get("source_path_idx")
     temporal_batch_filter = data.get("temporal_batch_filter")
+    
     if filters is not None:
         cfg.data["filters"] = filters
+    
     # Derive desired temporal window length
     if temporal_batch_filter:
         batch_length = int(temporal_batch_filter)
@@ -149,16 +153,35 @@ def filter_images_endpoint():
         else:
             batch_length = int(data.get("batch_length", cfg.piv_chunk_size))
             batch_len_reason = "fallback.no_filters"
+    
     if batch_length < 1:
         batch_length = 1
+    
     batch_start, batch_end = compute_batch_window(
         start_idx, batch_length, cfg.num_images
     )
     indices = list(range(batch_start, batch_end + 1))
     source_path = cfg.source_paths[source_path_idx] / camera_folder(camera)
 
-    def load_pairs():
-        pairs = [read_pair(i, source_path, camera, cfg) for i in indices]
+    def load_pairs_parallel():
+        """Load pairs in parallel using ThreadPoolExecutor."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        
+        # Use thread pool for I/O-bound image reading
+        max_workers = min(os.cpu_count(), len(indices), 8)
+        pairs = [None] * len(indices)
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_idx = {
+                executor.submit(read_pair, idx, source_path, camera, cfg): i
+                for i, idx in enumerate(indices)
+            }
+            
+            for future in as_completed(future_to_idx):
+                pos = future_to_idx[future]
+                pairs[pos] = future.result()
+        
         arr = np.stack(pairs, axis=0)
         return da.from_array(arr, chunks=(arr.shape[0], 2, *cfg.image_shape))
 
@@ -166,15 +189,34 @@ def filter_images_endpoint():
         global processing
         logger.debug("/filter processing thread started")
         try:
-            darr = load_pairs()
-            processed_all = filter_images(darr, cfg, filters_override=filters).compute()
-            original_all = darr.compute()
+            # Load with parallel I/O
+            darr = load_pairs_parallel()
+            
+            # Process with dask, then compute both in parallel
+            processed_darr = filter_images(darr, cfg, filters_override=filters)
+            
+            # Compute both original and processed in parallel
+            original_all, processed_all = dask.compute(
+                darr, 
+                processed_darr,
+                scheduler='threads'  # or 'processes' if CPU-bound
+            )
+            
+            # Store results
             k = cache_key(source_path_idx, camera)
             processed_store["original"].setdefault(k, {})
             processed_store["processed"].setdefault(k, {})
-            for rel, abs_idx in enumerate(indices):
-                processed_store["original"][k][abs_idx] = original_all[rel]
-                processed_store["processed"][k][abs_idx] = processed_all[rel]
+            
+            # Batch update dictionary (faster than individual updates)
+            processed_store["original"][k].update({
+                abs_idx: original_all[rel] 
+                for rel, abs_idx in enumerate(indices)
+            })
+            processed_store["processed"][k].update({
+                abs_idx: processed_all[rel] 
+                for rel, abs_idx in enumerate(indices)
+            })
+            
         except Exception as e:
             logger.exception(f"Error during /filter processing: {e}")
         finally:
@@ -183,6 +225,7 @@ def filter_images_endpoint():
 
     processing = True
     threading.Thread(target=process_and_store, daemon=True).start()
+    
     return jsonify(
         {
             "status": "processing",
@@ -218,7 +261,7 @@ def config_endpoint():
 
 
 @app.route("/update_config", methods=["POST"])
-def update_config():  # noqa: D401 simple update
+def update_config(): 
     data = request.get_json() or {}
     cfg = get_config()
 

@@ -46,11 +46,6 @@ class Settings:
     coords_x: np.ndarray | None = None
     coords_y: np.ndarray | None = None
     symmetric_around_zero: bool = True
-    # Transformation parameters
-    rotation: int = 0
-    flip_horizontal: bool = False
-    flip_vertical: bool = False
-    transpose: bool = False
 
 
 def make_scalar_settings(
@@ -70,10 +65,6 @@ def make_scalar_settings(
     coords_x: np.ndarray | None = None,
     coords_y: np.ndarray | None = None,
     symmetric_around_zero: bool = True,
-    rotation: int = 0,
-    flip_horizontal: bool = False,
-    flip_vertical: bool = False,
-    transpose: bool = False,
 ) -> Settings:
     return Settings(
         variableName=variable,
@@ -95,57 +86,7 @@ def make_scalar_settings(
         coords_x=coords_x,
         coords_y=coords_y,
         symmetric_around_zero=symmetric_around_zero,
-        rotation=rotation,
-        flip_horizontal=flip_horizontal,
-        flip_vertical=flip_vertical,
-        transpose=transpose,
     )
-
-
-# Function to apply transformations to data arrays
-def apply_transformations(
-    data: np.ndarray,
-    transpose: bool = False,
-    rotation: int = 0,
-    flip_horizontal: bool = False,
-    flip_vertical: bool = False,
-) -> np.ndarray:
-    """
-    Apply transformations to a 2D numpy array in the specified order:
-    1. Transpose
-    2. Rotation (90-degree increments)
-    3. Horizontal flip
-    4. Vertical flip
-    
-    Args:
-        data: 2D numpy array to transform
-        transpose: If True, swap X and Y axes
-        rotation: Number of 90-degree clockwise rotations (0, 1, 2, or 3)
-        flip_horizontal: If True, flip left-right
-        flip_vertical: If True, flip up-down
-    
-    Returns:
-        Transformed numpy array
-    """
-    result = data.copy()
-    
-    # 1. Transpose (swap axes)
-    if transpose:
-        result = np.transpose(result)
-    
-    # 2. Rotation (k=1 means 90° clockwise, k=2 means 180°, k=3 means 270° clockwise)
-    if rotation > 0:
-        result = np.rot90(result, k=-rotation)  # Negative for clockwise rotation
-    
-    # 3. Horizontal flip (left-right)
-    if flip_horizontal:
-        result = np.fliplr(result)
-    
-    # 4. Vertical flip (up-down)
-    if flip_vertical:
-        result = np.flipud(result)
-    
-    return result
 
 
 # Function to plot a scalar field with masking and customizable settings
@@ -156,86 +97,43 @@ def plot_scalar_field(variable, mask, settings):
 
     cm_label = settings.variableName + " (" + settings.variableUnits + ")"
 
-    # Store original shape before transformations for coordinate handling
-    original_var_shape = variable.shape
-    
-    # Debug logging
-    from loguru import logger
-    logger.info(f"plot_scalar_field: flip_horizontal={settings.flip_horizontal}, flip_vertical={settings.flip_vertical}, transpose={settings.transpose}, rotation={settings.rotation}")
-    
-    # Apply transformations to variable and mask
-    variable = apply_transformations(
-        variable,
-        transpose=settings.transpose,
-        rotation=settings.rotation,
-        flip_horizontal=settings.flip_horizontal,
-        flip_vertical=settings.flip_vertical,
-    )
-    
-    mask = apply_transformations(
-        mask,
-        transpose=settings.transpose,
-        rotation=settings.rotation,
-        flip_horizontal=settings.flip_horizontal,
-        flip_vertical=settings.flip_vertical,
-    )
-
     # Mask the variable array where mask is True
     masked_var = np.ma.array(variable, mask=mask)
 
     # Generate coordinate arrays: prefer provided coords_x/coords_y, else corners, else indices
     X = Y = None
-    
     if settings.coords_x is not None and settings.coords_y is not None:
-        from loguru import logger
-        
         cx, cy = np.asarray(settings.coords_x), np.asarray(settings.coords_y)
-        
-        # Check if any transformations are applied
-        has_transforms = (settings.rotation != 0 or settings.flip_horizontal or 
-                         settings.flip_vertical or settings.transpose)
-        
-        if not has_transforms:
-            # No transformations - use original coordinates as-is
-            if cx.ndim == 2 and cy.ndim == 2:
-                X, Y = cx, cy
-            elif cx.ndim == 1 and cy.ndim == 1:
+        # 2D grid case matching variable shape
+        if (
+            cx.ndim == 2
+            and cy.ndim == 2
+            and cx.shape == variable.shape
+            and cy.shape == variable.shape
+        ):
+            X, Y = cx, cy
+        # 1D axes case
+        elif cx.ndim == 1 and cy.ndim == 1:
+            ny, nx = variable.shape
+            if cx.size == nx and cy.size == ny:
                 X, Y = np.meshgrid(cx, cy)
-        else:
-            # Apply the SAME transformations to coordinates as applied to data
-            if cx.ndim == 1 and cy.ndim == 1:
-                # Convert 1D coordinates to 2D grid first
-                cx_2d, cy_2d = np.meshgrid(cx, cy)
-            else:
-                cx_2d, cy_2d = cx, cy
-            
-            # Apply transformations to coordinate arrays
-            X = apply_transformations(
-                cx_2d,
-                transpose=settings.transpose,
-                rotation=settings.rotation,
-                flip_horizontal=settings.flip_horizontal,
-                flip_vertical=settings.flip_vertical,
-            )
-            Y = apply_transformations(
-                cy_2d,
-                transpose=settings.transpose,
-                rotation=settings.rotation,
-                flip_horizontal=settings.flip_horizontal,
-                flip_vertical=settings.flip_vertical,
-            )
-            
-            logger.info(f"Transformed coordinates: X[{X.min():.2f}→{X.max():.2f}], Y[{Y.min():.2f}→{Y.max():.2f}]")
-                
     if X is None or Y is None:
-        # No coordinates provided - use simple pixel coordinates
-        ny_new, nx_new = variable.shape  # After transformation
-        X, Y = np.meshgrid(np.arange(nx_new), np.arange(ny_new))
+        if settings.corners is not None and all(
+            c is not None for c in settings.corners
+        ):
+            x0, y0, x1, y1 = settings.corners
+            ny, nx = variable.shape
+            x = np.linspace(x0, x1, nx)
+            y = np.linspace(y0, y1, ny)
+        else:
+            ny, nx = variable.shape
+            x = np.arange(nx)
+            y = np.arange(ny)
+        X, Y = np.meshgrid(x, y)
 
     # Create the plot (object-oriented API)
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(12, 7))
     ax.set_facecolor("gray")  # <-- gray shows through masked holes
-    ax.set_aspect('equal', adjustable='box')  # Maintain physical aspect ratio
 
     # Determine limits
     if settings.lower_limit is not None and settings.upper_limit is not None:
@@ -302,18 +200,11 @@ def plot_scalar_field(variable, mask, settings):
     cbar.ax.yaxis.set_major_formatter(FixedFormatter(labels))
 
     ax.set_title(f"{settings.title}")
-    
-    # Swap axis labels if transpose is applied
-    xlabel = settings._xlabel
-    ylabel = settings._ylabel
-    if settings.transpose:
-        xlabel, ylabel = ylabel, xlabel
-    
     if settings.length_units:
-        ax.set_xlabel(xlabel + f" ({settings.length_units})")
-        ax.set_ylabel(ylabel + f" ({settings.length_units})")
+        ax.set_xlabel(settings._xlabel + f" ({settings.length_units})")
+        ax.set_ylabel(settings._ylabel + f" ({settings.length_units})")
     else:
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
+        ax.set_xlabel(settings._xlabel)
+        ax.set_ylabel(settings._ylabel)
 
     return fig, ax, im

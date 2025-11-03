@@ -2,6 +2,7 @@ import glob
 import threading
 import time
 import uuid
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import cv2
@@ -214,7 +215,7 @@ def calibration_set_datum():
         coordinates[run_idx].x = cx
         coordinates[run_idx].y = cy
 
-        scipy.io.savemat(coords_path, {"coordinates": coordinates})
+        scipy.io.savemat(coords_path, {"coordinates": coordinates}, do_compression=True)
         return jsonify({"status": "ok", "run": run, "shape": [cx.shape, cy.shape]})
     except Exception as e:
         print(f"[set_datum] ERROR: {e}")
@@ -775,18 +776,39 @@ def planar_calibrate_all():
                 enhance_dots=enhance_dots,
                 dt=dt,
             )
-            # Process all images
-            for idx, img_path in enumerate(image_files):
+            # Process all images in parallel
+            def process_single_image(idx):
                 try:
-                    calibrator.selected_image_idx = idx + 1  # 1-based
+                    # Create a separate calibrator instance for this image
+                    calibrator = PlanarCalibrator(
+                        source_dir=source_root,
+                        base_dir=base_root,
+                        camera_count=1,
+                        file_pattern=file_pattern,
+                        pattern_cols=pattern_cols,
+                        pattern_rows=pattern_rows,
+                        dot_spacing_mm=dot_spacing_mm,
+                        asymmetric=asymmetric,
+                        enhance_dots=enhance_dots,
+                        dt=dt,
+                        selected_image_idx=idx + 1,  # 1-based
+                    )
                     calibrator.process_camera(camera)
+                    return idx, True
+                except Exception as e:
+                    logger.error(f"Error processing image {idx}: {e}")
+                    return idx, False
+            
+            # Use ProcessPoolExecutor for parallel processing
+            with ProcessPoolExecutor(max_workers=min(4, total_images)) as executor:
+                futures = [executor.submit(process_single_image, idx) for idx in range(total_images)]
+                for future in as_completed(futures):
+                    idx, success = future.result()
                     calibration_jobs[job_id]["processed_indices"].append(idx)
                     calibration_jobs[job_id]["progress"] = int(
-                        ((idx + 1) / total_images) * 100
+                        (len(calibration_jobs[job_id]["processed_indices"]) / total_images) * 100
                     )
                     calibration_jobs[job_id]["status"] = "running"
-                except Exception as e:
-                    logger.error(f"Error processing image {img_path}: {e}")
             calibration_jobs[job_id]["status"] = "completed"
             calibration_jobs[job_id]["progress"] = 100
         except Exception as e:
@@ -838,8 +860,6 @@ def scale_factor_calibrate_vectors():
     dt = float(data.get("dt", 1.0))
     px_per_mm = float(data.get("px_per_mm", 1.0))
     image_count = int(data.get("image_count", 1000))
-    x_offset = data.get("x_offset", 0)
-    y_offset = data.get("y_offset", 0)
     type_name = data.get("type_name", "instantaneous")
 
     job_id = str(uuid.uuid4())
@@ -858,6 +878,10 @@ def scale_factor_calibrate_vectors():
 
             cfg = get_config()
             base_root = Path(cfg.base_paths[source_path_idx])
+            if type_name == "instantaneous":
+                runs = cfg.instantaneous_runs
+            else:
+                runs = cfg.instantaneous_runs  # Default to instantaneous if unknown
             paths_uncal = get_data_paths(
                 base_dir=base_root,
                 num_images=image_count,
@@ -875,13 +899,12 @@ def scale_factor_calibrate_vectors():
             data_dir_uncal = paths_uncal["data_dir"]
             data_dir_cal = paths_calib["data_dir"]
             data_dir_cal.mkdir(parents=True, exist_ok=True)
-
             coords_path_uncal = data_dir_uncal / "coordinates.mat"
             coords_path_cal = data_dir_cal / "coordinates.mat"
             vector_files = []
             for run in range(1, image_count + 1):
-                vector_file_uncal = data_dir_uncal / f"{run:05d}.mat"
-                vector_file_cal = data_dir_cal / f"{run:05d}.mat"
+                vector_file_uncal = data_dir_uncal / (cfg.vector_format % run)
+                vector_file_cal = data_dir_cal / (cfg.vector_format % run)
                 if vector_file_uncal.exists():
                     vector_files.append((run, vector_file_uncal, vector_file_cal))
             total_files = len(vector_files) + (1 if coords_path_uncal.exists() else 0)
@@ -911,13 +934,13 @@ def scale_factor_calibrate_vectors():
                             # Zero-base: subtract first value
                             x0 = x.flat[0] if x.size > 0 else 0
                             y0 = y.flat[0] if y.size > 0 else 0
-                            x_calib = (x - x0) / px_per_mm + x_offset
-                            y_calib = -np.flipud((y - y0) / px_per_mm) + y_offset
+                            x_calib = (x - x0) / px_per_mm 
+                            y_calib = -np.flipud((y - y0) / px_per_mm)
                             out_coords[run_idx] = (x_calib, y_calib)
                             processed_runs += 1
                         else:
                             out_coords[run_idx] = (np.array([]), np.array([]))
-                    scipy.io.savemat(str(coords_path_cal), {"coordinates": out_coords})
+                    scipy.io.savemat(str(coords_path_cal), {"coordinates": out_coords}, do_compression=True)
                     scale_factor_jobs[job_id]["processed_runs"] = processed_runs
                     logger.info(f"Updated coordinates for {processed_runs} runs")
                 processed_files += 1
@@ -926,49 +949,47 @@ def scale_factor_calibrate_vectors():
                     (processed_files / total_files) * 100
                 )
             # --- Process vector files as struct array ---
-            piv_dtype = np.dtype([("ux", "O"), ("uy", "O"), ("b_mask", "O")])
-            for run, vector_file_uncal, vector_file_cal in vector_files:
-                try:
-                    mat = scipy.io.loadmat(
-                        str(vector_file_uncal), struct_as_record=False, squeeze_me=True
-                    )
-                    # Only support struct format (not cell arrays)
-                    if "piv_result" not in mat:
-                        logger.warning(
-                            f"Vector file {vector_file_uncal} missing 'piv_result' field."
-                        )
-                        continue
-                    piv_result = mat["piv_result"]
-                    # Calibrate all runs in piv_result (assume struct array)
-                    out_piv = np.empty(len(piv_result), dtype=piv_dtype)
-                    for idx, cell in enumerate(piv_result):
-                        ux = getattr(cell, "ux", None)
-                        uy = getattr(cell, "uy", None)
-                        b_mask = getattr(
-                            cell,
-                            "b_mask",
-                            np.zeros_like(ux) if ux is not None else np.array([]),
-                        )
-                        if ux is not None and uy is not None:
-                            ux_calib = ux / px_per_mm / dt / 1000
-                            uy_calib = uy / px_per_mm / dt / 1000
-                            out_piv[idx] = (ux_calib, uy_calib, b_mask)
+            
+            # Process vector files in parallel
+            vector_file_args = [
+                (run, vector_file_uncal, vector_file_cal, px_per_mm, dt)
+                for run, vector_file_uncal, vector_file_cal in vector_files
+            ]
+            successful_files = 0
+            failed_files = 0
+
+            with ProcessPoolExecutor(max_workers=min(4, len(vector_files))) as executor:
+                futures = [executor.submit(_process_vector_file_for_calibration, args) for args in vector_file_args]
+                for future in as_completed(futures):
+                    try:
+                        result = future.result()  # Get the return value
+                        if result:
+                            successful_files += 1
                         else:
-                            out_piv[idx] = (np.array([]), np.array([]), np.array([]))
-                    scipy.io.savemat(str(vector_file_cal), {"piv_result": out_piv})
-                except Exception as e:
-                    logger.error(
-                        f"Error processing vector file {vector_file_uncal}: {e}"
+                            failed_files += 1
+                    except Exception as e:
+                        logger.error(f"Future failed with exception: {e}")
+                        failed_files += 1
+                    
+                    processed_files += 1
+                    scale_factor_jobs[job_id]["processed_files"] = processed_files
+                    scale_factor_jobs[job_id]["progress"] = int(
+                        (processed_files / total_files) * 100
                     )
-                processed_files += 1
-                scale_factor_jobs[job_id]["processed_files"] = processed_files
-                scale_factor_jobs[job_id]["progress"] = int(
-                    (processed_files / total_files) * 100
-                )
+
+            # Check if any files were successfully processed
+            if failed_files > 0:
+                logger.warning(f"Scale factor calibration completed with {failed_files} failed vector files")
+
+            if successful_files == 0 and len(vector_files) > 0:
+                scale_factor_jobs[job_id]["status"] = "failed"
+                scale_factor_jobs[job_id]["error"] = "No vector files were successfully processed"
+                return
+
             scale_factor_jobs[job_id]["status"] = "completed"
             scale_factor_jobs[job_id]["progress"] = 100
             logger.info(
-                f"Scale factor calibration completed: {processed_files} files processed"
+                f"Scale factor calibration completed: {successful_files} vector files processed successfully, {failed_files} failed"
             )
         except Exception as e:
             logger.error(f"Scale factor calibration job {job_id} failed: {e}")
@@ -988,6 +1009,46 @@ def scale_factor_calibrate_vectors():
             "image_count": image_count,
         }
     )
+
+
+def _process_vector_file_for_calibration(args):
+    """Helper function for parallel vector file processing."""
+    run, vector_file_uncal, vector_file_cal, px_per_mm, dt = args
+    try:
+        logger.info(f"Processing vector file: {vector_file_uncal}")
+        mat = scipy.io.loadmat(
+            str(vector_file_uncal), struct_as_record=False, squeeze_me=True
+        )
+        # Only support struct format (not cell arrays)
+        if "piv_result" not in mat:
+            logger.warning(
+                f"Vector file {vector_file_uncal} missing 'piv_result' field."
+            )
+            return False
+        
+        piv_result = mat["piv_result"]
+        # Calibrate all runs in piv_result (assume struct array)
+        piv_dtype = np.dtype([("ux", "O"), ("uy", "O"), ("b_mask", "O")])
+        out_piv = np.empty(len(piv_result), dtype=piv_dtype)
+        for idx, cell in enumerate(piv_result):
+            ux = getattr(cell, "ux", None)
+            uy = getattr(cell, "uy", None)
+            b_mask = getattr(
+                cell,
+                "b_mask",
+                np.zeros_like(ux) if ux is not None else np.array([]),
+            )
+            if ux is not None and uy is not None:
+                ux_calib = ux / px_per_mm / dt / 1000
+                uy_calib = uy / px_per_mm / dt / 1000
+                out_piv[idx] = (ux_calib, uy_calib, b_mask)
+            else:
+                out_piv[idx] = (np.array([]), np.array([]), np.array([]))
+        scipy.io.savemat(str(vector_file_cal), {"piv_result": out_piv}, do_compression=True)
+        return True
+    except Exception as e:
+        logger.error(f"Error processing vector file {vector_file_uncal}: {e}", exc_info=True)
+        return False
 
 
 @calibration_bp.route("/calibration/scale_factor/status/<job_id>", methods=["GET"])

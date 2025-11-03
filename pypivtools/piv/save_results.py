@@ -125,8 +125,8 @@ def save_coordinates_from_config_distributed(
             x_centers = win_ctrs_x_list[i]
             y_centers = win_ctrs_y_list[i]
 
-            # Create 2D coordinate grids
-            x_grid, y_grid = np.meshgrid(x_centers, y_centers, indexing='xy')
+            # Create 2D coordinate grids with smallest y at the bottom
+            x_grid, y_grid = np.meshgrid(x_centers+1, y_centers[::-1]+1, indexing='xy')
 
             # Convert to half precision for space saving
             x_grid = _convert_to_half_precision(x_grid)
