@@ -16,7 +16,7 @@ images:
   time_resolved: false
   dtype: float32
 batches:
-  size: 1
+  size: 50
 logging:
   file: pypiv.log
   level: INFO
@@ -28,10 +28,10 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 2
+  omp_threads: 4
   dask_workers_per_node: 1
-  dask_threads_per_worker: 20
-  dask_memory_limit: 2.5GB
+  dask_threads_per_worker: 10
+  dask_memory_limit: 5GB
   outlier_detection: false
 post_processing:
 - type: POD
@@ -74,9 +74,6 @@ instantaneous_piv:
   - 50
   - 50
   runs:
-  - 1
-  - 2
-  - 3
   - 4
   time_resolved: false
   window_type: gaussian

@@ -297,8 +297,10 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     pk_loc_y[large_disp_mask] = np.nan
                     pk_height[large_disp_mask] = np.nan
 
-                    pk_loc_x += self.delta_ab_pred[..., 0][np.newaxis, :, :]
-                    pk_loc_y += self.delta_ab_pred[..., 1][np.newaxis, :, :]
+                    # delta_ab_pred[..., 0] = Y-displacement, delta_ab_pred[..., 1] = X-displacement
+                    # pk_loc_x is X-displacement, pk_loc_y is Y-displacement
+                    pk_loc_x += self.delta_ab_pred[..., 1][np.newaxis, :, :]  # Add X-predictor to X
+                    pk_loc_y += self.delta_ab_pred[..., 0][np.newaxis, :, :]  # Add Y-predictor to Y
 
                     primary_idx = np.zeros((1, n_win_y, n_win_x), dtype=np.intp)
                     ux_mat = np.take_along_axis(pk_loc_x, primary_idx, axis=0)[0]
@@ -379,7 +381,9 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     pk_height = np.ascontiguousarray(pk_height.astype(np.float32))
                     Q_mat = np.ascontiguousarray(Q_mat.astype(np.float32))
 
-                    self.delta_ab_old = np.stack([ux_mat, uy_mat], axis=2)
+                    # Stack as [Y, X] to match im_mesh structure where [..., 0] = Y and [..., 1] = X
+                    # This ensures correct image warping: im_mesh + delta_ab aligns Y with Y and X with X
+                    self.delta_ab_old = np.stack([uy_mat, ux_mat], axis=2)
                     pre_y, pre_x = self.n_pre_all[pass_idx]
                     post_y, post_x = self.n_post_all[pass_idx]
                     self.delta_ab_old = np.pad(

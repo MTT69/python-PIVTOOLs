@@ -239,12 +239,11 @@ def _create_piv_struct_all_passes(
             continue  # Skip filling for non-selected passes
         pass_result = piv_result.passes[global_pass_idx]
         
-        # CRITICAL FIX: Swap ux and uy to match expected coordinate convention
-        # Save uy_mat in ux field and -ux_mat in uy field
-        if pass_result.uy_mat is not None:
-            piv_struct['ux'][local_idx] = _convert_to_half_precision(pass_result.uy_mat)
+        # Save ux and uy directly without swapping - coordinate system is now correct
         if pass_result.ux_mat is not None:
-            piv_struct['uy'][local_idx] = _convert_to_half_precision(-pass_result.ux_mat)
+            piv_struct['ux'][local_idx] = _convert_to_half_precision(pass_result.ux_mat)
+        if pass_result.uy_mat is not None:
+            piv_struct['uy'][local_idx] = _convert_to_half_precision(pass_result.uy_mat)
 
         # Use b_mask from pass_result (already computed during PIV)
         if pass_result.b_mask is not None:

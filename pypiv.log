@@ -23023,3 +23023,97 @@ ize-hlgfinalizecompute-55daf8e5d08048a7bbe89e2a20116dc8' has 5.89 GiB worth of i
 2025-11-04 17:09:25,298 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
 2025-11-04 17:09:33,833 [INFO] PIV and save completed: 100 frames saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
 2025-11-04 17:09:33,848 [INFO] Coordinates saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-11-04 17:16:08,582 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 17:16:11,516 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 17:16:11,803 [INFO] Worker logging configured successfully
+2025-11-04 17:16:11,804 [INFO] Dask cluster started successfully
+2025-11-04 17:16:11,805 [INFO] Dask Worker Info:
+2025-11-04 17:16:11,805 [INFO] Worker tcp://127.0.0.1:62899
+2025-11-04 17:16:11,805 [INFO]   pid: None
+2025-11-04 17:16:11,806 [INFO]   host: 127.0.0.1
+2025-11-04 17:16:11,806 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-x6xtgkjb
+2025-11-04 17:16:11,807 [INFO]   nanny: True
+2025-11-04 17:16:11,807 [INFO] Processing camera: Cam1
+2025-11-04 17:16:11,833 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-04 17:16:11,839 [INFO] Pre-computing vector masks for Cam1
+2025-11-04 17:16:12,162 [INFO] Vector masks computed: 4 passes
+2025-11-04 17:16:12,261 [INFO] Successfully cached window padding for 4 passes
+2025-11-04 17:16:12,280 [INFO] Successfully cached interpolation grids for 4 passes
+2025-11-04 17:16:12,331 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-04 17:17:28,159 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 17:17:30,318 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 17:17:30,464 [INFO] Worker logging configured successfully
+2025-11-04 17:17:30,465 [INFO] Dask cluster started successfully
+2025-11-04 17:17:30,467 [INFO] Dask Worker Info:
+2025-11-04 17:17:30,467 [INFO] Worker tcp://127.0.0.1:55921
+2025-11-04 17:17:30,467 [INFO]   pid: None
+2025-11-04 17:17:30,468 [INFO]   host: 127.0.0.1
+2025-11-04 17:17:30,468 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-lam5o8qs
+2025-11-04 17:17:30,468 [INFO]   nanny: True
+2025-11-04 17:17:30,468 [INFO] Processing camera: Cam1
+2025-11-04 17:17:30,482 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-04 17:17:30,489 [INFO] Pre-computing vector masks for Cam1
+2025-11-04 17:17:30,796 [INFO] Vector masks computed: 4 passes
+2025-11-04 17:17:30,802 [INFO] Successfully cached window padding for 4 passes
+2025-11-04 17:17:30,815 [INFO] Successfully cached interpolation grids for 4 passes
+2025-11-04 17:17:30,893 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-04 17:17:56,051 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 17:17:58,234 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 17:17:58,345 [INFO] Worker logging configured successfully
+2025-11-04 17:17:58,346 [INFO] Dask cluster started successfully
+2025-11-04 17:17:58,347 [INFO] Dask Worker Info:
+2025-11-04 17:17:58,348 [INFO] Worker tcp://127.0.0.1:51562
+2025-11-04 17:17:58,348 [INFO]   pid: None
+2025-11-04 17:17:58,348 [INFO]   host: 127.0.0.1
+2025-11-04 17:17:58,348 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-if0dcs_0
+2025-11-04 17:17:58,349 [INFO]   nanny: True
+2025-11-04 17:17:58,349 [INFO] Processing camera: Cam1
+2025-11-04 17:17:58,362 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-04 17:17:58,369 [INFO] Pre-computing vector masks for Cam1
+2025-11-04 17:17:58,687 [INFO] Vector masks computed: 4 passes
+2025-11-04 17:17:58,694 [INFO] Successfully cached window padding for 4 passes
+2025-11-04 17:17:58,707 [INFO] Successfully cached interpolation grids for 4 passes
+2025-11-04 17:17:58,765 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-04 17:18:02,294 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-11-04 17:18:06,934 [INFO] PIV and save completed: 100 frames saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-11-04 17:18:06,936 [INFO] Coordinates saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-11-04 17:20:15,001 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 17:20:17,246 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 17:20:17,389 [INFO] Worker logging configured successfully
+2025-11-04 17:20:17,390 [INFO] Dask cluster started successfully
+2025-11-04 17:20:17,391 [INFO] Dask Worker Info:
+2025-11-04 17:20:17,391 [INFO] Worker tcp://127.0.0.1:53707
+2025-11-04 17:20:17,391 [INFO]   pid: None
+2025-11-04 17:20:17,391 [INFO]   host: 127.0.0.1
+2025-11-04 17:20:17,392 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-yodb2rlk
+2025-11-04 17:20:17,392 [INFO]   nanny: True
+2025-11-04 17:20:17,392 [INFO] Processing camera: Cam1
+2025-11-04 17:20:17,406 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-04 17:20:17,412 [INFO] Pre-computing vector masks for Cam1
+2025-11-04 17:20:17,759 [INFO] Vector masks computed: 4 passes
+2025-11-04 17:20:17,765 [INFO] Successfully cached window padding for 4 passes
+2025-11-04 17:20:17,779 [INFO] Successfully cached interpolation grids for 4 passes
+2025-11-04 17:20:17,846 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-04 17:20:22,192 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-11-04 17:20:25,634 [INFO] PIV and save completed: 100 frames saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-11-04 17:20:25,637 [INFO] Coordinates saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-11-04 17:26:11,395 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 17:26:13,600 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 17:26:13,738 [INFO] Worker logging configured successfully
+2025-11-04 17:26:13,739 [INFO] Dask cluster started successfully
+2025-11-04 17:26:13,740 [INFO] Dask Worker Info:
+2025-11-04 17:26:13,740 [INFO] Worker tcp://127.0.0.1:65505
+2025-11-04 17:26:13,740 [INFO]   pid: None
+2025-11-04 17:26:13,741 [INFO]   host: 127.0.0.1
+2025-11-04 17:26:13,741 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-nd3vbe0n
+2025-11-04 17:26:13,741 [INFO]   nanny: True
+2025-11-04 17:26:13,742 [INFO] Processing camera: Cam1
+2025-11-04 17:26:13,755 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-04 17:26:13,762 [INFO] Pre-computing vector masks for Cam1
+2025-11-04 17:26:14,069 [INFO] Vector masks computed: 4 passes
+2025-11-04 17:26:14,075 [INFO] Successfully cached window padding for 4 passes
+2025-11-04 17:26:14,089 [INFO] Successfully cached interpolation grids for 4 passes
+2025-11-04 17:26:14,128 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-04 17:26:17,172 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-11-04 17:26:21,978 [INFO] PIV and save completed: 100 frames saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-11-04 17:26:21,980 [INFO] Coordinates saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
