@@ -1,5 +1,6 @@
 #include "peak_locate_lm.h"
 #include "common.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -622,42 +623,52 @@ void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPe
 	/* Process each peak sequentially */
 	for(iPeak = 0; iPeak < nPeaks; ++iPeak)
 	{
-		/* Find highest remaining peak in central region */
+		/* Find highest remaining peak in central region 
+		 * N[0] = number of rows, N[1] = number of columns
+		 * i indexes rows, j indexes columns
+		 * Row-major indexing: SUB2IND_2D(row, col, num_cols)
+		 */
 		i0 = j0 = 0;
 		fPeakHeight = 0;
 		for(i = N[0]/8; i < N[0]*7/8; ++i) {
 			for(j = N[1]/8; j < N[1]*7/8; ++j) {
-				if(xcorr_copy[SUB2IND_2D(i, j, N[0])] > fPeakHeight) {
-					fPeakHeight = xcorr_copy[SUB2IND_2D(i, j, N[0])];
+				if(xcorr_copy[SUB2IND_2D(i, j, N[1])] > fPeakHeight) {
+					fPeakHeight = xcorr_copy[SUB2IND_2D(i, j, N[1])];
 					i0 = i;
 					j0 = j;
 				}
 			}
 		}
 		
-		/* Validate peak: check height and local maximum condition */
+		/* Validate peak: check height and local maximum condition 
+		 * Row-major indexing: SUB2IND_2D(row, col, num_cols)
+		 */
 		if(fPeakHeight <= 0 ||
 		   i0 < (PKSIZE_X-1)/2 || i0 >= N[0]-(PKSIZE_X-1)/2  ||
 		   j0 < (PKSIZE_Y-1)/2 || j0 >= N[1]-(PKSIZE_Y-1)/2 ||
-		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0-1, j0, N[0])] ||
-		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0+1, j0, N[0])] ||
-		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0, j0-1, N[0])] ||
-		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0, j0+1, N[0])])
+		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0-1, j0, N[1])] ||
+		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0+1, j0, N[1])] ||
+		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0, j0-1, N[1])] ||
+		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0, j0+1, N[1])])
 		{
-			/* Invalid peak: mark as NaN */
-			peak_loc[SUB2IND_2D(0, iPeak, 3)] = NAN;
-			peak_loc[SUB2IND_2D(1, iPeak, 3)] = NAN;
-			peak_loc[SUB2IND_2D(2, iPeak, 3)] = 0;
-			std_dev[SUB2IND_2D(0, iPeak, 3)] = 0;
-			std_dev[SUB2IND_2D(1, iPeak, 3)] = 0;
-			std_dev[SUB2IND_2D(2, iPeak, 3)] = 0;
+			/* Invalid peak: mark as NaN 
+			 * Row-major: array[3, nPeaks] -> stride is nPeaks
+			 */
+			peak_loc[SUB2IND_2D(0, iPeak, nPeaks)] = NAN;
+			peak_loc[SUB2IND_2D(1, iPeak, nPeaks)] = NAN;
+			peak_loc[SUB2IND_2D(2, iPeak, nPeaks)] = 0;
+			std_dev[SUB2IND_2D(0, iPeak, nPeaks)] = 0;
+			std_dev[SUB2IND_2D(1, iPeak, nPeaks)] = 0;
+			std_dev[SUB2IND_2D(2, iPeak, nPeaks)] = 0;
 			continue;
 		}
 		
-		/* Extract sub-window around peak for fitting */
+		/* Extract sub-window around peak for fitting 
+		 * Row-major indexing for both subxcorr and xcorr_copy
+		 */
 		for(i = 0; i < PKSIZE_X; ++i) {
 			for(j = 0; j < PKSIZE_Y; ++j) {
-				subxcorr[i * PKSIZE_Y + j] = xcorr_copy[SUB2IND_2D(i0 + i - (PKSIZE_X-1)/2, j0 + j - (PKSIZE_Y-1)/2, N[0])];
+				subxcorr[i * PKSIZE_Y + j] = xcorr_copy[SUB2IND_2D(i0 + i - (PKSIZE_X-1)/2, j0 + j - (PKSIZE_Y-1)/2, N[1])];
 			}
 		}
 		
@@ -708,18 +719,28 @@ void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPe
 			}
 		}
 		
-		/* Save results: convert sub-window coordinates back to full image */
-		peak_loc[SUB2IND_2D(0, iPeak, 3)] = peak[0] + i0;
-		peak_loc[SUB2IND_2D(1, iPeak, 3)] = peak[1] + j0;
-		peak_loc[SUB2IND_2D(2, iPeak, 3)] = fPeakHeight;
-		std_dev[SUB2IND_2D(0, iPeak, 3)] = sig[0];
-		std_dev[SUB2IND_2D(1, iPeak, 3)] = sig[1];
-		std_dev[SUB2IND_2D(2, iPeak, 3)] = sig[2];
+		/* Save results: convert sub-window coordinates back to full image 
+		 * peak[0] = row offset, peak[1] = col offset (both relative to sub-window center)
+		 * i0 = row index of peak in full correlation plane
+		 * j0 = col index of peak in full correlation plane
+		 * Output: peak_loc is [3, nPeaks] array in row-major
+		 *   peak_loc[0, iPeak] = row (Y) position
+		 *   peak_loc[1, iPeak] = col (X) position
+		 *   peak_loc[2, iPeak] = peak height
+		 */
+		peak_loc[SUB2IND_2D(0, iPeak, nPeaks)] = peak[0] + i0;  // Row (Y)
+		peak_loc[SUB2IND_2D(1, iPeak, nPeaks)] = peak[1] + j0;  // Col (X)
+		peak_loc[SUB2IND_2D(2, iPeak, nPeaks)] = fPeakHeight;
+		std_dev[SUB2IND_2D(0, iPeak, nPeaks)] = sig[0];
+		std_dev[SUB2IND_2D(1, iPeak, nPeaks)] = sig[1];
+		std_dev[SUB2IND_2D(2, iPeak, nPeaks)] = sig[2];
 		
-		/* Subtract fitted peak from correlation plane to find remaining peaks */
+		/* Subtract fitted peak from correlation plane to find remaining peaks 
+		 * Row-major indexing
+		 */
 		for(i = 0; i < PKSIZE_X; ++i) {
 			for(j = 0; j < PKSIZE_Y; ++j) {
-				idx = SUB2IND_2D(i0 + i - (PKSIZE_X-1)/2, j0 + j - (PKSIZE_Y-1)/2, N[0]);
+				idx = SUB2IND_2D(i0 + i - (PKSIZE_X-1)/2, j0 + j - (PKSIZE_Y-1)/2, N[1]);
 				xcorr_copy[idx] = MAX(0, xcorr_copy[idx] - fitval[i * PKSIZE_Y + j]);
 			}
 		}

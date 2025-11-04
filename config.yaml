@@ -1,22 +1,22 @@
 paths:
   base_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\im7
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows
   source_paths:
-  - D:\DAVIS_BFS\gF_Ramp_experiment\BFS_1500_1
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall
   camera_numbers:
   - 1
-  - 2
-  camera_count: 2
+  camera_count: 1
 images:
-  num_images: 50
+  num_images: 100
   image_format:
-  - B%05d.im7
+  - B%05d_A.tif
+  - B%05d_B.tif
   vector_format:
   - '%05d.mat'
   time_resolved: false
   dtype: float32
 batches:
-  size: 50
+  size: 1
 logging:
   file: pypiv.log
   level: INFO
@@ -28,10 +28,10 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 5
-  dask_workers_per_node: 2
-  dask_threads_per_worker: 1
-  dask_memory_limit: 22.5GB
+  omp_threads: 2
+  dask_workers_per_node: 1
+  dask_threads_per_worker: 20
+  dask_memory_limit: 2.5GB
   outlier_detection: false
 post_processing:
 - type: POD
@@ -66,12 +66,18 @@ instantaneous_piv:
     - 64
   - - 32
     - 32
+  - - 16
+    - 16
   overlap:
   - 50
   - 50
   - 50
+  - 50
   runs:
+  - 1
+  - 2
   - 3
+  - 4
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
@@ -117,9 +123,7 @@ calibration:
     asymmetric: false
     dt: 2
   image_format: calib%05d.tiff
-filters:
-- type: POD
-  batch_size: 50
+filters: []
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat

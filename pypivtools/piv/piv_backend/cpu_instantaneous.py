@@ -52,48 +52,50 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         self.delta_ab_old = None
         self.prev_win_size = None
         self.prev_win_spacing = None
+        # Updated to use C-contiguous (row-major) arrays
         self.lib.bulkxcorr2d.argtypes = [
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="F_CONTIGUOUS"),  # fImageA
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="F_CONTIGUOUS"),  # fImageB
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="F_CONTIGUOUS"),  # fMask
-            np.ctypeslib.ndpointer(dtype=np.int32, flags="F_CONTIGUOUS"),  # nImageSize
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="F_CONTIGUOUS"),  # fWinCtrsX
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="F_CONTIGUOUS"),  # fWinCtrsY
-            np.ctypeslib.ndpointer(dtype=np.int32, flags="F_CONTIGUOUS"),  # nWindows
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fImageA
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fImageB
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fMask
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),  # nImageSize
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWinCtrsX
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWinCtrsY
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),  # nWindows
             np.ctypeslib.ndpointer(
-                dtype=np.float32, flags="F_CONTIGUOUS"
+                dtype=np.float32, flags="C_CONTIGUOUS"
             ),  # fWindowWeightA
             ctypes.c_bool,  # bEnsemble
             np.ctypeslib.ndpointer(
-                dtype=np.float32, flags="F_CONTIGUOUS"
+                dtype=np.float32, flags="C_CONTIGUOUS"
             ),  # fWindowWeightB
-            np.ctypeslib.ndpointer(dtype=np.int32, flags="F_CONTIGUOUS"),  # nWindowSize
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),  # nWindowSize
             ctypes.c_int,  # nPeaks
             ctypes.c_int,  # iPeakFinder
             np.ctypeslib.ndpointer(
-                dtype=np.float32, flags="F_CONTIGUOUS"
+                dtype=np.float32, flags="C_CONTIGUOUS"
             ),  # fPkLocX (output)
             np.ctypeslib.ndpointer(
-                dtype=np.float32, flags="F_CONTIGUOUS"
+                dtype=np.float32, flags="C_CONTIGUOUS"
             ),  # fPkLocY (output)
             np.ctypeslib.ndpointer(
-                dtype=np.float32, flags="F_CONTIGUOUS"
+                dtype=np.float32, flags="C_CONTIGUOUS"
             ),  # fPkHeight (output)
             np.ctypeslib.ndpointer(
-                dtype=np.float32, flags="F_CONTIGUOUS"
+                dtype=np.float32, flags="C_CONTIGUOUS"
             ),  # fSx (output)
             np.ctypeslib.ndpointer(
-                dtype=np.float32, flags="F_CONTIGUOUS"
+                dtype=np.float32, flags="C_CONTIGUOUS"
             ),  # fSy (output)
             np.ctypeslib.ndpointer(
-                dtype=np.float32, flags="F_CONTIGUOUS"
+                dtype=np.float32, flags="C_CONTIGUOUS"
             ),  # fSxy (output)
             np.ctypeslib.ndpointer(
-                dtype=np.float32, flags="F_CONTIGUOUS"
+                dtype=np.float32, flags="C_CONTIGUOUS"
             ),  # fCorrelPlane_Out (output)
         ]
+        # Window weights should be C-contiguous with shape (win_height, win_width)
         self.win_weights = [
-            np.asfortranarray(self._window_weight_fun(win_size, config.window_type))
+            np.ascontiguousarray(self._window_weight_fun(win_size, config.window_type))
             for win_size in config.window_sizes
         ]
 
@@ -190,15 +192,17 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
 
         for n in range(N):
             try:
+                # Convert images to C-contiguous (row-major) format
                 image_a = np.asarray(images[n, 0], dtype=np.float32)
                 image_b = np.asarray(images[n, 1], dtype=np.float32)
 
-                if not image_a.flags["F_CONTIGUOUS"]:
-                    image_a = np.asfortranarray(image_a)
-                if not image_b.flags["F_CONTIGUOUS"]:
-                    image_b = np.asfortranarray(image_b)
+                if not image_a.flags["C_CONTIGUOUS"]:
+                    image_a = np.ascontiguousarray(image_a)
+                if not image_b.flags["C_CONTIGUOUS"]:
+                    image_b = np.ascontiguousarray(image_b)
 
-                image_size = np.asfortranarray(np.array([H, W], dtype=np.int32))
+                # Pass image_size as [H, W] in C-contiguous format
+                image_size = np.ascontiguousarray(np.array([H, W], dtype=np.int32))
 
                 for pass_idx, win_size in enumerate(config.window_sizes):
                     pass_start = time.perf_counter()
@@ -230,33 +234,52 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                         win_size=win_size,
                         pass_idx=pass_idx,
                     )
-
-                    error_code = self.lib.bulkxcorr2d(
-                        np.asfortranarray(image_a_prime),
-                        np.asfortranarray(image_b_prime),
-                        b_mask,
-                        image_size,
-                        self.win_ctrs_x[pass_idx].astype(np.float32),
-                        self.win_ctrs_y[pass_idx].astype(np.float32),
-                        n_windows,
-                        self.win_weights[pass_idx],
-                        b_ensemble,
-                        self.win_weights[pass_idx],
-                        win_size_arr,
-                        int(n_peaks),
-                        int(i_peak_finder),
-                        pk_loc_x,
-                        pk_loc_y,
-                        pk_height,
-                        sx,
-                        sy,
-                        sxy,
-                        correl_plane_out,
-                    )
+                    
+                    # Ensure images are C-contiguous before passing to C library
+                    image_a_prime_c = np.ascontiguousarray(image_a_prime)
+                    image_b_prime_c = np.ascontiguousarray(image_b_prime)
+                    
+                    try:
+                        error_code = self.lib.bulkxcorr2d(
+                            image_a_prime_c,
+                            image_b_prime_c,
+                            b_mask,
+                            image_size,
+                            self.win_ctrs_x[pass_idx].astype(np.float32),
+                            self.win_ctrs_y[pass_idx].astype(np.float32),
+                            n_windows,
+                            self.win_weights[pass_idx],
+                            b_ensemble,
+                            self.win_weights[pass_idx],
+                            win_size_arr,
+                            int(n_peaks),
+                            int(i_peak_finder),
+                            pk_loc_x,
+                            pk_loc_y,
+                            pk_height,
+                            sx,
+                            sy,
+                            sxy,
+                            correl_plane_out,
+                        )
+                    except Exception as e:
+                        logging.error(f"    Exception type: {type(e).__name__}")
+                        import traceback
+                        logging.error(traceback.format_exc())
+                        raise
 
                     if error_code != 0:
-                        raise RuntimeError(f"bulkxcorr2d failed with error {error_code}")
-
+                        error_names = {
+                            1: "ERROR_NOMEM (out of memory)",
+                            2: "ERROR_NOPLAN_FWD (FFT forward plan failed)",
+                            4: "ERROR_NOPLAN_BWD (FFT backward plan failed)",
+                            8: "ERROR_NOPLAN (general plan error)",
+                            9: "ERROR_OUT_OF_BOUNDS (array access out of bounds)"
+                        }
+                        error_msg = error_names.get(error_code, f"Unknown error code {error_code}")
+                        logging.error(f"    bulkxcorr2d returned error code {error_code}: {error_msg}")
+                        raise RuntimeError(f"bulkxcorr2d failed with error {error_code}: {error_msg}")
+                    
                     n_win_y = int(n_windows[0])
                     n_win_x = int(n_windows[1])
                     mask_bool = b_mask.astype(bool)
@@ -292,9 +315,6 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     nan_mask = np.isnan(ux_mat) | np.isnan(uy_mat)
                     if config.outlier_detection:
                         nan_mask |= self._piv_2d_outlier(ux_mat, uy_mat)
-
-                    # No-op edge mask (no vectors excluded by edges)
-                    edge_mask = np.zeros((n_win_y, n_win_x), dtype=bool)
 
                     if config.secondary_peak:
                         for pk in range(1, n_peaks):
@@ -356,8 +376,8 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     primary_peak_mag = np.ascontiguousarray(
                         np.where(nan_mask, 0.0, primary_peak_mag.astype(np.float32))
                     )
-                    pk_height = np.asfortranarray(pk_height.astype(np.float32))
-                    Q_mat = np.asfortranarray(Q_mat.astype(np.float32))
+                    pk_height = np.ascontiguousarray(pk_height.astype(np.float32))
+                    Q_mat = np.ascontiguousarray(Q_mat.astype(np.float32))
 
                     self.delta_ab_old = np.stack([ux_mat, uy_mat], axis=2)
                     pre_y, pre_x = self.n_pre_all[pass_idx]
@@ -388,7 +408,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                         spacing=(self.win_spacing_y[pass_idx], self.win_spacing_x[pass_idx]),
                         win_ctrs_x=self.win_ctrs_x[pass_idx],
                         win_ctrs_y=self.win_ctrs_y[pass_idx],
-                        edge_mask=edge_mask,
+
                     )
                     pass_time = time.perf_counter() - pass_start
                     self.pass_times.append((n, pass_idx, pass_time))
@@ -407,9 +427,11 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         """
         Compute window centers and spacing for a given pass.
         
-        Window centers are constrained to be at least EDGE_MARGIN pixels away
-        from image boundaries to avoid unreliable edge vectors where particles
-        move out of frame.
+        Matches MATLAB logic exactly:
+        - win_ctrs_x spans the width dimension (Nx = W = columns)
+        - win_ctrs_y spans the height dimension (Ny = H = rows)
+        - Window centers are in pixel coordinates (0-based)
+        - X corresponds to horizontal (width), Y to vertical (height)
 
         :param pass_idx: Index of the current pass.
         :type pass_idx: int
@@ -418,66 +440,78 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         :return: Tuple containing window spacing in x and y, and arrays of window center coordinates in x and y.
         :rtype: tuple[int, int, np.ndarray, np.ndarray]
         """
-        # CRITICAL FIX: config.window_sizes is in (H, W) = (Y-size, X-size) format
-        # because C library uses column-major order where first dimension is vertical (Y)
-        win_y, win_x = config.window_sizes[pass_idx]
+        # Image dimensions: config.image_shape = (H, W) = (rows, cols)
+        H, W = config.image_shape
+        Ny = H  # Number of rows (height)
+        Nx = W  # Number of columns (width)
+        
+        logging.debug(f"_compute_window_centres pass {pass_idx}:")
+        logging.debug(f"  Image shape (H, W) = ({H}, {W})")
+        logging.debug(f"  Ny (height/rows) = {Ny}, Nx (width/cols) = {Nx}")
+        
+        # Window size: config.window_sizes[pass_idx] = (win_height, win_width)
+        # This matches MATLAB where wsize(1)=height, wsize(2)=width
+        win_height, win_width = config.window_sizes[pass_idx]
         overlap = config.overlap[pass_idx]
-
-        w_spacing_x = round((1 - overlap / 100) * win_x)
-        w_spacing_y = round((1 - overlap / 100) * win_y)
-
-        Nx, Ny = config.image_shape[1], config.image_shape[0]
         
-        # Temporarily disable exclusion of windows near image edges.
-        # This removes the EDGE_MARGIN constraint so window centres cover
-        # the full image. To re-enable edge exclusion, restore the
-        # original EDGE_MARGIN logic below.
-        #
-        # Original (commented):
-        # EDGE_MARGIN = 32  # pixels from edge to exclude
-        # min_x = EDGE_MARGIN
-        # max_x = Nx - EDGE_MARGIN - 1
-        # min_y = EDGE_MARGIN
-        # max_y = Ny - EDGE_MARGIN - 1
+        logging.debug(f"  Window size (H, W) = ({win_height}, {win_width})")
+        logging.debug(f"  Overlap = {overlap}%")
 
-        # Use full image bounds for window centre placement
-        min_x = 0
-        max_x = Nx - 1
-        min_y = 0
-        max_y = Ny - 1
+        # Window spacing in pixels
+        win_spacing_x = round((1 - overlap / 100) * win_width)
+        win_spacing_y = round((1 - overlap / 100) * win_height)
+        
+        logging.debug(f"  Window spacing (X, Y) = ({win_spacing_x}, {win_spacing_y})")
 
-        # Original window center range
-        first_ctr_x = -0.5 + win_x / 2
-        first_ctr_y = -0.5 + win_y / 2
+        # MATLAB: win_ctrs_x = 0.5 + wsize(1)/2 : win_spacing_x : Nx - wsize(1)/2 + 0.5
+        # But MATLAB then subtracts 1 before passing to C (1-based to 0-based conversion)
+        # So in 0-based indexing: win_ctrs_x = -0.5 + wsize(1)/2 : win_spacing_x : Nx - wsize(1)/2 - 0.5
+        # For a 128-pixel window (indices 0-127), center is at 63.5
+        # For window starting at pixel 0: center = (0 + 127) / 2 = 63.5
         
-        # Adjust starting positions to respect edge margin
-        start_ctr_x = max(first_ctr_x, min_x)
-        start_ctr_y = max(first_ctr_y, min_y)
+        # First window center in X (width dimension) - 0-based array indexing
+        first_ctr_x = (win_width - 1) / 2.0  # For 128: (127)/2 = 63.5
+        # Last possible window center in X
+        last_ctr_x = Nx - (win_width + 1) / 2.0  # For W=4872, win=128: 4872 - 64.5 = 4807.5
         
-        # Calculate number of windows that fit in the valid region
-        n_win_x = int(np.floor((max_x - start_ctr_x) / w_spacing_x)) + 1
-        n_win_y = int(np.floor((max_y - start_ctr_y) / w_spacing_y)) + 1
+        # First window center in Y (height dimension) - 0-based array indexing
+        first_ctr_y = (win_height - 1) / 2.0
+        # Last possible window center in Y
+        last_ctr_y = Ny - (win_height + 1) / 2.0
+        
+        logging.debug(f"  X range: [{first_ctr_x:.2f}, {last_ctr_x:.2f}]")
+        logging.debug(f"  Y range: [{first_ctr_y:.2f}, {last_ctr_y:.2f}]")
+        
+        # Number of windows that fit
+        n_win_x = int(np.floor((last_ctr_x - first_ctr_x) / win_spacing_x)) + 1
+        n_win_y = int(np.floor((last_ctr_y - first_ctr_y) / win_spacing_y)) + 1
         
         # Ensure at least one window
         n_win_x = max(1, n_win_x)
         n_win_y = max(1, n_win_y)
+        
+        logging.debug(f"  Number of windows (X, Y) = ({n_win_x}, {n_win_y})")
 
+        # Generate window center arrays using linspace (matches MATLAB's colon operator)
         win_ctrs_x = np.linspace(
-            start_ctr_x,
-            start_ctr_x + w_spacing_x * (n_win_x - 1),
+            first_ctr_x,
+            first_ctr_x + win_spacing_x * (n_win_x - 1),
             n_win_x,
             dtype=np.float32,
         )
         win_ctrs_y = np.linspace(
-            start_ctr_y,
-            start_ctr_y + w_spacing_y * (n_win_y - 1),
+            first_ctr_y,
+            first_ctr_y + win_spacing_y * (n_win_y - 1),
             n_win_y,
             dtype=np.float32,
         )
+        
+        logging.debug(f"  win_ctrs_x: min={win_ctrs_x.min():.2f}, max={win_ctrs_x.max():.2f}, len={len(win_ctrs_x)}")
+        logging.debug(f"  win_ctrs_y: min={win_ctrs_y.min():.2f}, max={win_ctrs_y.max():.2f}, len={len(win_ctrs_y)}")
 
         return (
-            w_spacing_x,
-            w_spacing_y,
+            win_spacing_x,
+            win_spacing_y,
             np.ascontiguousarray(win_ctrs_x),
             np.ascontiguousarray(win_ctrs_y),
         )
@@ -791,37 +825,42 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         :return: Tuple of library arguments.
         :rtype: tuple
         """
-        win_size = np.asfortranarray(np.array(win_size, dtype=np.int32))
+        # Window size: [win_height, win_width] in C-contiguous format
+        win_size = np.ascontiguousarray(np.array(win_size, dtype=np.int32))
 
         n_win_y = len(self.win_ctrs_y[pass_idx])
         n_win_x = len(self.win_ctrs_x[pass_idx])
-        n_windows = np.asfortranarray(
+        # nWindows: [n_win_y, n_win_x] where n_win_y = rows, n_win_x = cols
+        n_windows = np.ascontiguousarray(
             np.array([n_win_y, n_win_x], dtype=np.int32)
         )
 
         total_windows = n_win_y * n_win_x
 
         # Use precomputed vector mask for this pass if available
+        # Mask shape: (n_win_y, n_win_x) in C-contiguous format
         if hasattr(self, 'vector_masks') and self.vector_masks and pass_idx < len(self.vector_masks):
             cached_mask = self.vector_masks[pass_idx]
-            b_mask = np.asfortranarray(cached_mask.astype(np.float32))
+            b_mask = np.ascontiguousarray(cached_mask.astype(np.float32))
         else:
-            b_mask = np.asfortranarray(np.zeros((n_win_y, n_win_x), dtype=np.float32))
+            b_mask = np.ascontiguousarray(np.zeros((n_win_y, n_win_x), dtype=np.float32))
             logging.debug("No vector mask applied for pass %d", pass_idx)
 
         n_peaks = np.int32(config.num_peaks)
         i_peak_finder = np.int32(config.peak_finder)
         b_ensemble = bool(config.ensemble_piv)
 
+        # Output arrays shape: (n_peaks, n_win_y, n_win_x) in C-contiguous format
         out_shape = (n_peaks, n_win_y, n_win_x)
-        pk_loc_x = np.asfortranarray(np.zeros(out_shape, dtype=np.float32))
-        pk_loc_y = np.asfortranarray(np.zeros(out_shape, dtype=np.float32))
-        pk_height = np.asfortranarray(np.zeros(out_shape, dtype=np.float32))
-        sx = np.asfortranarray(np.zeros(out_shape, dtype=np.float32))
-        sy = np.asfortranarray(np.zeros(out_shape, dtype=np.float32))
-        sxy = np.asfortranarray(np.zeros(out_shape, dtype=np.float32))
+        pk_loc_x = np.ascontiguousarray(np.zeros(out_shape, dtype=np.float32))
+        pk_loc_y = np.ascontiguousarray(np.zeros(out_shape, dtype=np.float32))
+        pk_height = np.ascontiguousarray(np.zeros(out_shape, dtype=np.float32))
+        sx = np.ascontiguousarray(np.zeros(out_shape, dtype=np.float32))
+        sy = np.ascontiguousarray(np.zeros(out_shape, dtype=np.float32))
+        sxy = np.ascontiguousarray(np.zeros(out_shape, dtype=np.float32))
 
-        correl_plane_out = np.asfortranarray(
+        # Correlation plane output: flattened array
+        correl_plane_out = np.ascontiguousarray(
             np.zeros(total_windows * win_size[0] * win_size[1], dtype=np.float32)
         )
 

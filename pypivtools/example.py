@@ -24,7 +24,7 @@ if __name__ == "__main__":
     start_time = time.time()  # Start timer
 
     config = Config()
-    # os.environ["OMP_NUM_THREADS"] = config.omp_threads
+    os.environ["OMP_NUM_THREADS"] = config.omp_threads
     if config.debug:
         tracemalloc.start()
 

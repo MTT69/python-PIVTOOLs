@@ -24,9 +24,7 @@ unsigned char bulkxcorr2d(const float *fImageA, const float *fImageB, const floa
 	unsigned uError;
 	sPlan sCCPlan;
 	/* Removed peak_finder_lock - LM solver is thread-safe without locks */
-
-
-
+	
 	/* calculate correlation plane weighting matrix
 	 * according to Raffel et al., the weight factors can be obtained
 	 * by convolving the image weighting function with itself
@@ -57,7 +55,11 @@ unsigned char bulkxcorr2d(const float *fImageA, const float *fImageB, const floa
 	xcorr_cache_init(wisdom_path);
 
 	/* fork here, parallelise */
+	
+	/* fork here, parallelise */
 	uError = ERROR_NONE;
+	// printf("  Max threads: %d\n", omp_get_max_threads());
+	
 	#pragma omp parallel \
         private(i, j, n, ii, jj, x, y, \
                 xmin, ymin, \
@@ -90,6 +92,7 @@ unsigned char bulkxcorr2d(const float *fImageA, const float *fImageB, const floa
 			uError		= ERROR_NOMEM;
 			goto thread_cleanup;
 		}
+		
 		/* create cross-correlation plan for this thread */
 		memset(&sCCPlan, 0, sizeof(sCCPlan));
 		#pragma omp critical
@@ -104,12 +107,23 @@ unsigned char bulkxcorr2d(const float *fImageA, const float *fImageB, const floa
 		#pragma omp for schedule(static, CHUNKSIZE) nowait
 		for(iWindowIdx = 0; iWindowIdx < nWindowsTotal; ++iWindowIdx)
 		{
+            /* Coordinate system (matching MATLAB and Python):
+             * - nWindows[0] = number of windows in Y (height) direction
+             * - nWindows[1] = number of windows in X (width) direction
+             * - fWinCtrsY[jj] = Y-coordinate of window center (row index)
+             * - fWinCtrsX[ii] = X-coordinate of window center (column index)
+             * - Row-major linearization: index = jj * nWindows[1] + ii
+             */
+			
+			/* get index in window center arrays
+			 * For row-major: linearIdx = row*nCols + col
+			 * Here: iWindowIdx = jj*nWindows[1] + ii
+			 */
+			ii			= iWindowIdx % nWindows[1];  // Column index (X)
+			jj			= iWindowIdx / nWindows[1];  // Row index (Y)
             
-			/* get index in fWinCtrsX/Y/Z */
-			ii			= iWindowIdx % nWindows[0];
-			jj			= ((iWindowIdx - ii) % (nWindows[0]*nWindows[1])) / nWindows[0];
-            
-			int mask_idx = ii * nWindows[1] + jj;
+			/* Mask uses same row-major indexing */
+			int mask_idx = jj * nWindows[1] + ii;
             
             if (mask_idx < 0 || mask_idx >= nWindows[0] * nWindows[1])
             {
@@ -121,20 +135,49 @@ unsigned char bulkxcorr2d(const float *fImageA, const float *fImageB, const floa
             {
                 continue;  // Skip this window if the mask value is 1
             }
-			/* get points in correlation window 
-			 * round limits to nearest integer
+			
+			/* Extract correlation window from images
+			 * Window center coordinates (0-based array indices):
+			 * - fWinCtrsX[ii] is the X-coordinate (column) of the window center
+			 *   For a 128-pixel window at the left edge: center = 63.5
+			 * - fWinCtrsY[jj] is the Y-coordinate (row) of the window center
+			 * Window size:
+			 * - nWindowSize[0] = window height (number of rows)
+			 * - nWindowSize[1] = window width (number of columns)
+			 * Image dimensions:
+			 * - nImageSize[0] = image height (number of rows)
+			 * - nImageSize[1] = image width (number of columns)
+			 * 
+			 * Window extraction:
+			 * - For a window of size N centered at position C:
+			 *   window covers pixels from floor(C - (N-1)/2 + 0.5) to floor(C + (N-1)/2 + 0.5)
+			 * - Example: N=128, C=63.5 -> floor(63.5 - 63.5 + 0.5) = 0 to floor(63.5 + 63.5 + 0.5) = 127
 			 */
-			xmin		= (int)floor(fWinCtrsY[ii] - ((float)nWindowSize[0]-1.0)/2 + 0.5);		
-			ymin		= (int)floor(fWinCtrsX[jj] - ((float)nWindowSize[1]-1.0)/2 + 0.5);
-			// printf("Window %d: ii=%d jj=%d xmin=%d, ymin=%d\n", iWindowIdx, ii, jj, xmin, ymin);
-			for(j = 0, y = ymin; j < nWindowSize[1]; ++j, ++y)
+			
+			/* Calculate top-left corner of window in image coordinates */
+			int row_min = (int)floor(fWinCtrsY[jj] - ((float)nWindowSize[0]-1.0)/2.0 + 0.5);
+			int col_min = (int)floor(fWinCtrsX[ii] - ((float)nWindowSize[1]-1.0)/2.0 + 0.5);
+			
+			/* Bounds check to prevent segfault */
+			if (row_min < 0 || col_min < 0 || 
+			    row_min + nWindowSize[0] > nImageSize[0] || 
+			    col_min + nWindowSize[1] > nImageSize[1]) {
+				uError = ERROR_OUT_OF_BOUNDS;
+				continue;  /* Skip this window */
+			}
+			
+			/* Extract window pixels: iterate over window rows and columns */
+			for(int row_win = 0; row_win < nWindowSize[0]; ++row_win)
 			{
-				for(i = 0, x = xmin; i < nWindowSize[0]; ++i, ++x)
+				int row_img = row_min + row_win;
+				for(int col_win = 0; col_win < nWindowSize[1]; ++col_win)
 				{
-					fWindowA[SUB2IND_2D(i, j, nWindowSize[0])] = 
-						fImageA[SUB2IND_2D(x, y, nImageSize[0])];
-					fWindowB[SUB2IND_2D(i, j, nWindowSize[0])] = 
-						fImageB[SUB2IND_2D(x, y, nImageSize[0])];
+					int col_img = col_min + col_win;
+					/* Row-major indexing: array[row, col] -> row*width + col */
+					fWindowA[SUB2IND_2D(row_win, col_win, nWindowSize[1])] = 
+						fImageA[SUB2IND_2D(row_img, col_img, nImageSize[1])];
+					fWindowB[SUB2IND_2D(row_win, col_win, nWindowSize[1])] = 
+						fImageB[SUB2IND_2D(row_img, col_img, nImageSize[1])];
 				}
 			}
 			/* Pre-multiply by weighting window and compute mean 
@@ -202,23 +245,44 @@ unsigned char bulkxcorr2d(const float *fImageA, const float *fImageB, const floa
 			    lsqpeaklocate_lm(fCorrelPlane, nWindowSize, fPeakLoc, nPeaks, iPeakFinder, fStd);
                 
     
-			    /* save displacement and peak height */
+			    /* Save displacement and peak height
+				 * Output arrays have shape [nPeaks, nWindows[0], nWindows[1]]
+				 * where nWindows[0] = Y-windows, nWindows[1] = X-windows
+				 * Peak locations from lsqpeaklocate_lm:
+				 * - fPeakLoc[0, n, 3] = row offset (Y) from window center
+				 * - fPeakLoc[1, n, 3] = column offset (X) from window center
+				 * - fPeakLoc[2, n, 3] = peak magnitude
+				 */
 			    for(n = 0; n < nPeaks; ++n)
 			    {
-				    /* save peak location */
-				    fPkLocX[SUB2IND_2D(n, iWindowIdx, nPeaks)] = 
-					    fPeakLoc[SUB2IND_2D(0, n, 3)] - nWindowSize[0]/2;
-				    fPkLocY[SUB2IND_2D(n, iWindowIdx, nPeaks)] = 
-					    fPeakLoc[SUB2IND_2D(1, n, 3)] - nWindowSize[1]/2;
-				    fSx[SUB2IND_2D(n, iWindowIdx, nPeaks)] = fStd[SUB2IND_2D(0, n, 3)];
-				    fSy[SUB2IND_2D(n, iWindowIdx, nPeaks)] = fStd[SUB2IND_2D(1, n, 3)];
-				    fSxy[SUB2IND_2D(n, iWindowIdx, nPeaks)] = fStd[SUB2IND_2D(2, n, 3)];
+				    /* Calculate linear index for this peak and window
+					 * For 3D array [nPeaks, nRows, nCols] in row-major:
+					 * index = peak*nRows*nCols + row*nCols + col
+					 */
+				    int out_idx = n * nWindows[0] * nWindows[1] + jj * nWindows[1] + ii;
+				    
+				    /* Peak location in correlation plane (centered at window size/2)
+					 * Subtract window center to get displacement from window center
+					 * fPeakLoc dimensions: [3, nPeaks] in row-major
+					 */
+				    float peak_row = fPeakLoc[SUB2IND_2D(0, n, nPeaks)];  // Y-displacement
+				    float peak_col = fPeakLoc[SUB2IND_2D(1, n, nPeaks)];  // X-displacement
+				    float peak_mag = fPeakLoc[SUB2IND_2D(2, n, nPeaks)];
+				    
+				    /* Store displacements (subtract window center to get offset) */
+				    fPkLocX[out_idx] = peak_col - nWindowSize[1]/2.0f;  // X is column
+				    fPkLocY[out_idx] = peak_row - nWindowSize[0]/2.0f;  // Y is row
+				    
+				    /* Store standard deviations */
+				    fSx[out_idx] = fStd[SUB2IND_2D(0, n, nPeaks)];
+				    fSy[out_idx] = fStd[SUB2IND_2D(1, n, nPeaks)];
+				    fSxy[out_idx] = fStd[SUB2IND_2D(2, n, nPeaks)];
     
-				    /* normalise peak height by window weight and energy content */
-				    ii 		= MIN(MAX(0,(int)fPeakLoc[SUB2IND_2D(0,n,3)]),nWindowSize[0]-1);
-				    jj 		= MIN(MAX(0,(int)fPeakLoc[SUB2IND_2D(1,n,3)]),nWindowSize[1]-1);
-				    fPkHeight[SUB2IND_2D(n, iWindowIdx, nPeaks)] = 
-					    fPeakLoc[SUB2IND_2D(2, n, 3)] * fEnergyNorm / fCorrelWeight[SUB2IND_2D(ii,jj,nWindowSize[0])];
+				    /* Normalize peak height by window weight and energy content */
+				    int pk_row = MIN(MAX(0, (int)peak_row), nWindowSize[0]-1);
+				    int pk_col = MIN(MAX(0, (int)peak_col), nWindowSize[1]-1);
+				    fPkHeight[out_idx] = peak_mag * fEnergyNorm / 
+				        fCorrelWeight[SUB2IND_2D(pk_row, pk_col, nWindowSize[1])];
 			    }
             }
 		}

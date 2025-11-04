@@ -89,51 +89,31 @@ void lsqpeaklocate(const float *xcorr, const int *N, float *peak_loc, int nPeaks
 	float peak[2];
     float sig[3];
   if (!xcorr) {
-        printf("[ERROR] xcorr pointer is NULL\n");
         return;
     }
     if (!N) {
-        printf("[ERROR] N pointer is NULL\n");
         return;
     }
     if (!peak_loc) {
-        printf("[ERROR] peak_loc pointer is NULL\n");
         return;
     }
     if (!std_dev) {
-        printf("[WARNING] std_dev pointer is NULL, will skip std reporting\n");
     }
 
     // Validate N array
     if (N[0] <= 0 || N[1] <= 0) {
-        printf("[ERROR] Invalid matrix size N[0]=%d, N[1]=%d\n", N[0], N[1]);
         return;
     }
 
     // Validate number of peaks
     if (nPeaks <= 0) {
-        printf("[ERROR] Invalid number of peaks nPeaks=%d\n", nPeaks);
         return;
     }
 
     // Validate fit type
     if (iFitType < 3 || iFitType > 6) {
-        printf("[ERROR] Invalid fit type iFitType=%d, must be 3,4,5,6\n", iFitType);
         return;
     }
-
-    // Print the inputs for debugging
-    printf("[DEBUG] lsqpeaklocate called with:\n");
-    printf("        Matrix size: N[0]=%d, N[1]=%d\n", N[0], N[1]);
-    printf("        Number of peaks: %d\n", nPeaks);
-    printf("        Fit type: %d\n", iFitType);
-    printf("        xcorr sample values: ");
-    for (i = 0; i < N[0] && i < 3; ++i) {        // print at most first 3 rows
-        for (j = 0; j < N[1] && j < 3; ++j) {    // print at most first 3 columns
-            printf("%f ", xcorr[SUB2IND_2D(i,j,N[0])]);
-        }
-    }
-    printf("\n"); 
 	/* make a copy of xcorr that we can manipulate */
 	xcorr_copy		= (float*)malloc(sizeof(float) * N[0]*N[1]);
 	memcpy(xcorr_copy, xcorr, N[0]*N[1]*sizeof(float));
