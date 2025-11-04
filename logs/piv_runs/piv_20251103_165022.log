@@ -1,0 +1,103 @@
+2025-11-03 16:50:24,153 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:50:24,156 [INFO] Auto-detected compute parameters:
+2025-11-03 16:50:24,156 [INFO]   CPU cores: 20
+2025-11-03 16:50:24,156 [INFO]   Total memory: 63.46 GB
+2025-11-03 16:50:24,156 [INFO]   Workers per node: 20
+2025-11-03 16:50:24,156 [INFO]   OMP threads: 2
+2025-11-03 16:50:24,156 [INFO]   Memory per worker: 2.86GB
+2025-11-03 16:50:24,156 [INFO]   Threads per worker: 1
+2025-11-03 16:50:28,571 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:50:28,601 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:50:28,608 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:50:28,621 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:50:28,629 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:50:28,639 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:50:28,667 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:50:28,669 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:50:28,673 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:50:28,717 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:50:28,730 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:50:28,739 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:50:28,764 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:50:28,766 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:50:28,780 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:50:28,831 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:50:28,836 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:50:28,872 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:50:28,880 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:50:28,887 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:50:29,008 [INFO] Worker logging configured successfully
+2025-11-03 16:50:29,009 [INFO] Worker logging configured successfully
+2025-11-03 16:50:29,009 [INFO] Worker logging configured successfully
+2025-11-03 16:50:29,010 [INFO] Worker logging configured successfully
+2025-11-03 16:50:29,010 [INFO] Worker logging configured successfully
+2025-11-03 16:50:29,010 [INFO] Worker logging configured successfully
+2025-11-03 16:50:29,010 [INFO] Worker logging configured successfully
+2025-11-03 16:50:29,010 [INFO] Worker logging configured successfully
+2025-11-03 16:50:29,011 [INFO] Worker logging configured successfully
+2025-11-03 16:50:29,011 [INFO] Worker logging configured successfully
+2025-11-03 16:50:29,011 [INFO] Worker logging configured successfully
+2025-11-03 16:50:29,012 [INFO] Worker logging configured successfully
+2025-11-03 16:50:29,013 [INFO] Worker logging configured successfully
+2025-11-03 16:50:29,013 [INFO] Worker logging configured successfully
+2025-11-03 16:50:29,014 [INFO] Worker logging configured successfully
+2025-11-03 16:50:29,014 [INFO] Worker logging configured successfully
+2025-11-03 16:50:29,014 [INFO] Worker logging configured successfully
+2025-11-03 16:50:29,015 [INFO] Worker logging configured successfully
+2025-11-03 16:50:29,015 [INFO] Worker logging configured successfully
+2025-11-03 16:50:29,016 [INFO] Worker logging configured successfully
+2025-11-03 16:50:29,019 [INFO] Dask cluster started successfully
+2025-11-03 16:50:29,020 [INFO] Dask Worker Info:
+2025-11-03 16:50:29,020 [INFO] Worker tcp://127.0.0.1:50958
+2025-11-03 16:50:29,020 [INFO]   pid: None
+2025-11-03 16:50:29,021 [INFO]   host: 127.0.0.1
+2025-11-03 16:50:29,021 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-i2qbyx82
+2025-11-03 16:50:29,021 [INFO]   nanny: True
+2025-11-03 16:50:29,021 [INFO] Dask Worker Info:
+2025-11-03 16:50:29,021 [INFO] Worker tcp://127.0.0.1:50967
+2025-11-03 16:50:29,021 [INFO]   pid: None
+2025-11-03 16:50:29,021 [INFO]   host: 127.0.0.1
+2025-11-03 16:50:29,022 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-pp1okzz3
+2025-11-03 16:50:29,022 [INFO]   nanny: True
+2025-11-03 16:50:29,022 [INFO] Dask Worker Info:
+2025-11-03 16:50:29,022 [INFO] Worker tcp://127.0.0.1:50968
+2025-11-03 16:50:29,022 [INFO]   pid: None
+2025-11-03 16:50:29,022 [INFO]   host: 127.0.0.1
+2025-11-03 16:50:29,022 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-8vko5w1r
+2025-11-03 16:50:29,022 [INFO]   nanny: True
+2025-11-03 16:50:29,022 [INFO] Dask Worker Info:
+2025-11-03 16:50:29,022 [INFO] Worker tcp://127.0.0.1:50973
+2025-11-03 16:50:29,022 [INFO]   pid: None
+2025-11-03 16:50:29,023 [INFO]   host: 127.0.0.1
+2025-11-03 16:50:29,023 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-os3h607v
+2025-11-03 16:50:29,023 [INFO]   nanny: True
+2025-11-03 16:50:29,023 [INFO] Dask Worker Info:
+2025-11-03 16:50:29,023 [INFO] Worker tcp://127.0.0.1:50978
+2025-11-03 16:50:29,023 [INFO]   pid: None
+2025-11-03 16:50:29,023 [INFO]   host: 127.0.0.1
+2025-11-03 16:50:29,023 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-2gayz2du
+2025-11-03 16:50:29,023 [INFO]   nanny: True
+2025-11-03 16:50:29,023 [INFO] Processing camera: Cam1 (1/2 cameras)
+2025-11-03 16:50:29,023 [INFO] Loading images from set file in directory: C:\Users\mtt1e23\Downloads\ims\ims for camera: Cam1
+2025-11-03 16:50:29,236 [INFO] Auto-detected image shape: (2048, 2048)
+2025-11-03 16:50:29,248 [INFO] Pre-computing vector masks for Cam1
+2025-11-03 16:50:30,495 [INFO] Vector masks computed: 3 passes
+2025-11-03 16:50:30,509 [INFO] Successfully cached window padding for 3 passes
+2025-11-03 16:50:30,549 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-03 16:50:30,910 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-03 16:50:41,386 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\bailey\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-11-03 16:51:00,480 [INFO] PIV and save completed: 100 frames saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\bailey\uncalibrated_piv\100\Cam1\instantaneous
+2025-11-03 16:51:00,480 [INFO] Overall progress: 100/200 frames (50%) - Camera 1 complete
+2025-11-03 16:51:00,483 [INFO] Coordinates saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\bailey\uncalibrated_piv\100\Cam1\instantaneous
+2025-11-03 16:51:00,483 [INFO] Processing camera: Cam2 (2/2 cameras)
+2025-11-03 16:51:00,483 [INFO] Loading images from set file in directory: C:\Users\mtt1e23\Downloads\ims\ims for camera: Cam2
+2025-11-03 16:51:00,495 [INFO] Pre-computing vector masks for Cam2
+2025-11-03 16:51:01,750 [INFO] Vector masks computed: 3 passes
+2025-11-03 16:51:01,751 [INFO] Successfully cached window padding for 3 passes
+2025-11-03 16:51:01,796 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-03 16:51:02,221 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-03 16:51:07,178 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\bailey\uncalibrated_piv\100\Cam2\instantaneous\coordinates.mat
+2025-11-03 16:51:31,404 [INFO] PIV and save completed: 100 frames saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\bailey\uncalibrated_piv\100\Cam2\instantaneous
+2025-11-03 16:51:31,404 [INFO] Overall progress: 200/200 frames (100%) - Camera 2 complete
+2025-11-03 16:51:31,406 [INFO] Coordinates saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\bailey\uncalibrated_piv\100\Cam2\instantaneous
+Total elapsed time: 67.26 seconds

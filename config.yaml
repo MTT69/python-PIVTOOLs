@@ -1,24 +1,22 @@
 paths:
   base_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\bailey
   source_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall
+  - C:\Users\mtt1e23\Downloads\ims\ims
   camera_numbers:
   - 1
+  - 2
+  camera_count: 2
 images:
   num_images: 100
   image_format:
-  - B%05d_A.tif
-  - B%05d_B.tif
+  - loop=1.set
   vector_format:
   - '%05d.mat'
-  shape:
-  - 1152
-  - 1024
   time_resolved: false
-  dtype: uint8
+  dtype: uint16
 batches:
-  size: 100
+  size: 10
 logging:
   file: pypiv.log
   level: INFO
@@ -29,11 +27,12 @@ processing:
   stereo: false
   backend: cpu
   debug: false
+  auto_compute_params: true
   omp_threads: 2
   dask_workers_per_node: 20
   dask_threads_per_worker: 1
   dask_memory_limit: 2.5GB
-  outlier_detection: true
+  outlier_detection: false
 post_processing:
 - type: POD
   settings:
@@ -67,15 +66,12 @@ instantaneous_piv:
     - 64
   - - 32
     - 32
-  - - 16
-    - 16
   overlap:
   - 50
   - 50
   - 50
-  - 50
   runs:
-  - 4
+  - 3
   time_resolved: false
   window_type: gaussian
   num_peaks: 1

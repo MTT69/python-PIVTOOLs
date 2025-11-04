@@ -48,14 +48,14 @@ def read_lavision_pair(file_path: str, camera_no: int = 1) -> np.ndarray:
 
 
 def read_lavision_ims(file_path: str, camera_no: Optional[int] = None, im_no: Optional[int] = None) -> np.ndarray:
-    """Read LaVision .ims files from a set file.
+    """Read LaVision images from a .set file.
     
-    .ims files are stored in a single .set file containing all cameras and frames.
+    LaVision .set files contain all cameras and frames in a single container.
     This function reads the set file and extracts the appropriate frames for the
     specified camera and image number.
     
     Args:
-        file_path: Path to the .set file (for .ims format)
+        file_path: Path to the .set file
         camera_no: Camera number (1-based). If None, extracted from file_path (legacy)
         im_no: Image number (1-based). If None, extracted from file_path (legacy)
         
@@ -79,10 +79,9 @@ def read_lavision_ims(file_path: str, camera_no: Optional[int] = None, im_no: Op
     
     path = Path(file_path)
     
-    # Determine if file_path is a .set file or a legacy .ims file path
+    # For .set files, camera_no and im_no must be provided
     if path.suffix.lower() == '.set' or (camera_no is not None and im_no is not None):
-        # Modern .ims format: file_path is the .set file
-        # set_file_path = str(path.parent)
+        # Modern format: file_path is the .set file
         set_file_path = file_path
         if camera_no is None or im_no is None:
             raise ValueError("camera_no and im_no must be provided for .set files")
@@ -99,7 +98,7 @@ def read_lavision_ims(file_path: str, camera_no: Optional[int] = None, im_no: Op
                 raise ValueError(f"Could not extract camera number from path: {file_path}")
             camera_no = camera_match
         
-        # Extract image number from filename (e.g., "001.ims" -> 1)
+        # Extract image number from filename
         if im_no is None:
             stem = path.stem
             if stem.isdigit():
@@ -141,7 +140,7 @@ def read_lavision_ims(file_path: str, camera_no: Optional[int] = None, im_no: Op
 
 
 def read_lavision_ims_pair(file_path: str, **kwargs) -> np.ndarray:
-    """Read LaVision .ims file and return as frame pair."""
+    """Read LaVision .set file and return as frame pair."""
     return read_lavision_ims(file_path, **kwargs)
 
 

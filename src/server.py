@@ -20,6 +20,8 @@ from post_processing.POD.app.views import POD_bp
 from pre_processing.filters import filter_images
 from stereo_reconstruction.app.views import stereo_bp
 from utils import camera_folder, camera_number, numpy_to_png_base64
+from vector_statistics.app.views import statistics_bp
+from vector_merging.app.views import merging_bp
 from video_maker.app.views import video_maker_bp
 
 app = Flask(__name__)
@@ -32,6 +34,8 @@ app.register_blueprint(POD_bp)
 app.register_blueprint(calibration_bp)
 app.register_blueprint(video_maker_bp)
 app.register_blueprint(stereo_bp)
+app.register_blueprint(statistics_bp)
+app.register_blueprint(merging_bp)
 
 # --- In-memory stores ---
 processed_store = {"original": {}, "processed": {}}
@@ -106,7 +110,19 @@ def get_frame_pair():
     camera = request.args.get("camera", type=int)
     idx = request.args.get("idx", type=int)
     source_path_idx = request.args.get("source_path_idx", default=0, type=int)
-    source_path = cfg.source_paths[source_path_idx] / camera_folder(camera)
+    
+    # For .set files, don't append camera folder - the .set file is in the source directory
+    image_format = cfg.image_format
+    if isinstance(image_format, tuple):
+        format_str = image_format[0]
+    else:
+        format_str = image_format
+    
+    if '.set' in str(format_str):
+        source_path = cfg.source_paths[source_path_idx]
+    else:
+        source_path = cfg.source_paths[source_path_idx] / camera_folder(camera)
+    
     try:
         pair = read_pair(idx, source_path, camera, cfg)
     except FileNotFoundError as e:
@@ -161,7 +177,18 @@ def filter_images_endpoint():
         start_idx, batch_length, cfg.num_images
     )
     indices = list(range(batch_start, batch_end + 1))
-    source_path = cfg.source_paths[source_path_idx] / camera_folder(camera)
+    
+    # For .set files, don't append camera folder - the .set file is in the source directory
+    image_format = cfg.image_format
+    if isinstance(image_format, tuple):
+        format_str = image_format[0]
+    else:
+        format_str = image_format
+    
+    if '.set' in str(format_str):
+        source_path = cfg.source_paths[source_path_idx]
+    else:
+        source_path = cfg.source_paths[source_path_idx] / camera_folder(camera)
 
     def load_pairs_parallel():
         """Load pairs in parallel using ThreadPoolExecutor."""
@@ -402,21 +429,56 @@ def get_uncalibrated_count():
     base_paths = cfg.base_paths
     base = base_paths[basepath_idx]
     num_images = cfg.num_images
-    paths = get_data_paths(base, num_images, cam, type_name, use_uncalibrated=True)
-    folder_uncal = paths["data_dir"]
+    
+    # Get all cameras that should be processed
+    camera_numbers = cfg.camera_numbers
+    total_cameras = len(camera_numbers)
+    
+    # Calculate progress across all cameras
+    total_expected_files = num_images * total_cameras
+    total_found_files = 0
+    camera_progress = {}
+    
     vector_fmt = cfg.vector_format
     expected_names = set([vector_fmt % i for i in range(1, num_images + 1)])
-    found = (
-        [
-            p.name
-            for p in sorted(folder_uncal.iterdir())
-            if p.is_file() and p.name in expected_names
-        ]
-        if folder_uncal.exists() and folder_uncal.is_dir()
-        else []
-    )
-    percent = int((len(found) / num_images) * 100) if num_images else 0
-    return jsonify({"count": len(found), "files": found, "percent": percent})
+    
+    # Count files for each camera and collect all available files
+    all_files = []
+    for camera_num in camera_numbers:
+        paths = get_data_paths(base, num_images, camera_num, type_name, use_uncalibrated=True)
+        folder_uncal = paths["data_dir"]
+        
+        found = (
+            [
+                p.name
+                for p in sorted(folder_uncal.iterdir())
+                if p.is_file() and p.name in expected_names
+            ]
+            if folder_uncal.exists() and folder_uncal.is_dir()
+            else []
+        )
+        
+        # If this is the requested camera, add its files to the list
+        if camera_num == cam:
+            all_files = found
+        
+        camera_progress[f"Cam{camera_num}"] = {
+            "count": len(found),
+            "percent": int((len(found) / num_images) * 100) if num_images else 0
+        }
+        total_found_files += len(found)
+    
+    # Calculate overall progress across all cameras
+    percent = int((total_found_files / total_expected_files) * 100) if total_expected_files else 0
+    
+    return jsonify({
+        "count": total_found_files,
+        "percent": percent,
+        "total_expected": total_expected_files,
+        "camera_progress": camera_progress,
+        "cameras": camera_numbers,
+        "files": all_files,
+    })
 
 
 if __name__ == "__main__":
