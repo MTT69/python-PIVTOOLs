@@ -111,14 +111,14 @@ def get_frame_pair():
     idx = request.args.get("idx", type=int)
     source_path_idx = request.args.get("source_path_idx", default=0, type=int)
     
-    # For .set files, don't append camera folder - the .set file is in the source directory
+    # For .set and .im7 files, don't append camera folder - all cameras are in the source directory
     image_format = cfg.image_format
     if isinstance(image_format, tuple):
         format_str = image_format[0]
     else:
         format_str = image_format
     
-    if '.set' in str(format_str):
+    if '.set' in str(format_str) or '.im7' in str(format_str):
         source_path = cfg.source_paths[source_path_idx]
     else:
         source_path = cfg.source_paths[source_path_idx] / camera_folder(camera)
@@ -178,14 +178,14 @@ def filter_images_endpoint():
     )
     indices = list(range(batch_start, batch_end + 1))
     
-    # For .set files, don't append camera folder - the .set file is in the source directory
+    # For .set and .im7 files, don't append camera folder - all cameras are in the source directory
     image_format = cfg.image_format
     if isinstance(image_format, tuple):
         format_str = image_format[0]
     else:
         format_str = image_format
     
-    if '.set' in str(format_str):
+    if '.set' in str(format_str) or '.im7' in str(format_str):
         source_path = cfg.source_paths[source_path_idx]
     else:
         source_path = cfg.source_paths[source_path_idx] / camera_folder(camera)

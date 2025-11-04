@@ -115,6 +115,13 @@ class Config:
                 else:
                     file_path = source_path / image_format
                 img = read_image(str(file_path), camera_no=camera_num, im_no=1)
+            elif '.im7' in str(image_format):
+                # For .im7 files, they're in the source directory (all cameras in one file)
+                if isinstance(image_format, tuple):
+                    file_path = source_path / (image_format[0] % 1)
+                else:
+                    file_path = source_path / (image_format % 1)
+                img = read_image(str(file_path), camera_no=camera_num)
             else:
                 # Regular files in camera subdirectories
                 camera_path = source_path / f"Cam{camera_num}"

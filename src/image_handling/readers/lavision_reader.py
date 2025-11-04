@@ -1,6 +1,6 @@
 import os
 from typing import Optional
-
+from loguru import logger
 import numpy as np
 
 from . import register_reader
@@ -9,9 +9,25 @@ from . import register_reader
 def read_lavision_im7(
     file_path: str, camera_no: int = 1, frames: int = 2
 ) -> np.ndarray:
-    """Read LaVision .im7 files."""
+    """Read LaVision .im7 files.
+    
+    LaVision .im7 files store all cameras in a single file per time instance.
+    Each file contains frame pairs (A and B) for all cameras.
+    
+    Structure: For N cameras, the file contains 2*N frames in sequence:
+    - Frames 0,1: Camera 1, frames A and B
+    - Frames 2,3: Camera 2, frames A and B
+    - etc.
+    
+    Args:
+        file_path: Path to the .im7 file
+        camera_no: Camera number (1-based indexing)
+        frames: Number of frames to read (typically 2 for PIV)
+        
+    Returns:
+        np.ndarray: Array of shape (frames, H, W) containing the image data
+    """
     import sys
-
     if sys.platform == "darwin":
         raise ImportError(
             "lvpyio is not shipped or supported on macOS (darwin). Please use a supported platform for LaVision .im7 reading."
@@ -43,7 +59,15 @@ def read_lavision_im7(
 
 
 def read_lavision_pair(file_path: str, camera_no: int = 1) -> np.ndarray:
-    """Read LaVision .im7 file and return as frame pair."""
+    """Read LaVision .im7 file and return as frame pair.
+    
+    Args:
+        file_path: Path to the .im7 file (contains all cameras for one time instance)
+        camera_no: Camera number (1-based) to extract from the file
+        
+    Returns:
+        np.ndarray: Array of shape (2, H, W) containing frame A and B for the specified camera
+    """
     return read_lavision_im7(file_path, camera_no, frames=2)
 
 

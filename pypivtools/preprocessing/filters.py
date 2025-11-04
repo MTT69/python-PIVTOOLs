@@ -47,13 +47,23 @@ def _subtract_local_min(chunk):
 
 def pod_filter(images: da.Array) -> da.Array:
     """
-    POD filter images
-
+    POD filter images using Proper Orthogonal Decomposition (Mendez et al.)
+    
+    This filter automatically identifies and removes coherent structures (signal modes)
+    from image sequences, leaving behind the random fluctuations. The process:
+    
+    1. Computes covariance matrices for each frame pair
+    2. Performs SVD to extract eigenvectors (PSI) and eigenvalues
+    3. Automatically identifies the first "noise mode" based on:
+       - Mean of eigenvector < eps_auto_psi (0.01)
+       - Eigenvalue difference < eps_auto_sigma * max_eigenvalue (0.01)
+    4. Removes all signal modes (modes before the noise mode) from the images
+    
     Args:
-        images (da.Array): Dask array containing the images.
+        images (da.Array): Dask array containing the images (N, 2, H, W).
 
     Returns:
-        da.Array: Filtered Dask array of images.
+        da.Array: Filtered Dask array of images with signal modes removed.
     """
     processed_images = images.map_blocks(_pod_filter_block, dtype=images.dtype)
     return processed_images
@@ -61,8 +71,20 @@ def pod_filter(images: da.Array) -> da.Array:
 
 def _pod_filter_block(block):
     """
-    block: numpy array of shape (N, 2, H, W)
-    returns: numpy array of same shape, filtered
+    Apply POD filtering to a block of images.
+    
+    For each frame (frame1 and frame2 separately):
+    - Reshapes images to vectors (N, H*W)
+    - Computes covariance matrix C = M @ M.T
+    - Performs SVD: C = PSI @ S @ PSI.T
+    - Identifies signal modes using automatic thresholding
+    - Reconstructs and subtracts signal modes from original images
+    
+    Args:
+        block: numpy array of shape (N, 2, H, W)
+    
+    Returns:
+        numpy array of same shape, filtered (signal removed, noise retained)
     """
     N, _, H, W = block.shape
     M1 = block[:, 0].reshape(N, -1).astype(np.float32)
@@ -77,17 +99,36 @@ def _pod_filter_block(block):
     eps_auto_sigma = 0.01
 
     def _find_auto_mode(PSI, eigvals):
+        """
+        Find the first mode that meets noise criteria.
+        Returns the number of signal modes to keep (modes before the noise mode).
+        If no noise mode is found, returns 0 (no filtering applied).
+        """
         for i in range(N - 1):
             mean_psi = np.abs(np.mean(PSI[:, i]))
             sig_diff = np.abs(eigvals[i] - eigvals[i + 1]) / eigvals[N // 2]
             if mean_psi < eps_auto_psi and sig_diff < eps_auto_sigma * eigvals[0]:
+                # Found noise mode at index i, so keep modes 0 to i-1
                 return i
-        return N
+        # No noise mode found, don't filter (return 0)
+        return 0
 
     N1 = _find_auto_mode(PSI1, S1)
     N2 = _find_auto_mode(PSI2, S2)
 
     def _evaluate_phi_tcoeff(M, PSI, N_auto):
+        """
+        Compute spatial modes (PHI) and temporal coefficients (TCoeff) for POD.
+        
+        Args:
+            M: Data matrix (N_images, N_pixels)
+            PSI: Eigenvectors from SVD of covariance matrix
+            N_auto: Number of modes to compute
+            
+        Returns:
+            PHI: List of spatial modes (normalized)
+            TC: List of temporal coefficients for each mode
+        """
         PHI = []
         TC = []
         for i in range(N_auto):

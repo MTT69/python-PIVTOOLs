@@ -853,10 +853,9 @@ def planar_calibrate_all_status(job_id):
 
 @calibration_bp.route("/calibration/scale_factor/calibrate_vectors", methods=["POST"])
 def scale_factor_calibrate_vectors():
-    """Start scale factor calibration job with progress tracking."""
+    """Start scale factor calibration job with progress tracking for all cameras."""
     data = request.get_json() or {}
     source_path_idx = int(data.get("source_path_idx", 0))
-    camera = camera_number(data.get("camera", 1))
     dt = float(data.get("dt", 1.0))
     px_per_mm = float(data.get("px_per_mm", 1.0))
     image_count = int(data.get("image_count", 1000))
@@ -866,131 +865,202 @@ def scale_factor_calibrate_vectors():
 
     def run_scale_factor_calibration():
         try:
+            cfg = get_config()
+            camera_numbers = cfg.camera_numbers
+            total_cameras = len(camera_numbers)
+            
+            # Initialize job with camera-aware tracking
             scale_factor_jobs[job_id] = {
                 "status": "starting",
                 "progress": 0,
                 "processed_runs": 0,
                 "processed_files": 0,
                 "total_files": 0,
+                "current_camera": None,
+                "total_cameras": total_cameras,
+                "processed_cameras": 0,
+                "camera_progress": {},
                 "start_time": time.time(),
                 "error": None,
             }
 
-            cfg = get_config()
             base_root = Path(cfg.base_paths[source_path_idx])
             if type_name == "instantaneous":
                 runs = cfg.instantaneous_runs
             else:
                 runs = cfg.instantaneous_runs  # Default to instantaneous if unknown
-            paths_uncal = get_data_paths(
-                base_dir=base_root,
-                num_images=image_count,
-                cam=camera,
-                type_name=type_name,
-                use_uncalibrated=True,
-            )
-            paths_calib = get_data_paths(
-                base_dir=base_root,
-                num_images=image_count,
-                cam=camera,
-                type_name=type_name,
-                use_uncalibrated=False,
-            )
-            data_dir_uncal = paths_uncal["data_dir"]
-            data_dir_cal = paths_calib["data_dir"]
-            data_dir_cal.mkdir(parents=True, exist_ok=True)
-            coords_path_uncal = data_dir_uncal / "coordinates.mat"
-            coords_path_cal = data_dir_cal / "coordinates.mat"
-            vector_files = []
-            for run in range(1, image_count + 1):
-                vector_file_uncal = data_dir_uncal / (cfg.vector_format % run)
-                vector_file_cal = data_dir_cal / (cfg.vector_format % run)
-                if vector_file_uncal.exists():
-                    vector_files.append((run, vector_file_uncal, vector_file_cal))
-            total_files = len(vector_files) + (1 if coords_path_uncal.exists() else 0)
-            scale_factor_jobs[job_id]["total_files"] = total_files
-            processed_files = 0
-            if total_files == 0:
-                scale_factor_jobs[job_id]["status"] = "failed"
-                scale_factor_jobs[job_id]["error"] = "No data files found to process"
-                return
-            scale_factor_jobs[job_id]["status"] = "running"
-            # --- Process coordinates as struct array ---
-            if coords_path_uncal.exists():
-                mat = scipy.io.loadmat(
-                    str(coords_path_uncal), struct_as_record=False, squeeze_me=True
-                )
-                coordinates = mat.get("coordinates", None)
-                if coordinates is not None:
-                    # Build output struct array
-                    coord_dtype = np.dtype([("x", "O"), ("y", "O")])
-                    out_coords = np.empty(len(coordinates), dtype=coord_dtype)
-                    processed_runs = 0
-                    # Zero-base x and y before offset
-                    for run_idx, run_coords in enumerate(coordinates):
-                        x = getattr(run_coords, "x", None)
-                        y = getattr(run_coords, "y", None)
-                        if x is not None and y is not None:
-                            # Zero-base: subtract first value
-                            x0 = x.flat[0] if x.size > 0 else 0
-                            y0 = y.flat[0] if y.size > 0 else 0
-                            x_calib = (x - x0) / px_per_mm 
-                            y_calib = -np.flipud((y - y0) / px_per_mm)
-                            out_coords[run_idx] = (x_calib, y_calib)
-                            processed_runs += 1
-                        else:
-                            out_coords[run_idx] = (np.array([]), np.array([]))
-                    scipy.io.savemat(str(coords_path_cal), {"coordinates": out_coords}, do_compression=True)
-                    scale_factor_jobs[job_id]["processed_runs"] = processed_runs
-                    logger.info(f"Updated coordinates for {processed_runs} runs")
-                processed_files += 1
-                scale_factor_jobs[job_id]["processed_files"] = processed_files
-                scale_factor_jobs[job_id]["progress"] = int(
-                    (processed_files / total_files) * 100
-                )
-            # --- Process vector files as struct array ---
             
-            # Process vector files in parallel
-            vector_file_args = [
-                (run, vector_file_uncal, vector_file_cal, px_per_mm, dt)
-                for run, vector_file_uncal, vector_file_cal in vector_files
-            ]
-            successful_files = 0
-            failed_files = 0
-
-            with ProcessPoolExecutor(max_workers=min(4, len(vector_files))) as executor:
-                futures = [executor.submit(_process_vector_file_for_calibration, args) for args in vector_file_args]
-                for future in as_completed(futures):
-                    try:
-                        result = future.result()  # Get the return value
-                        if result:
-                            successful_files += 1
-                        else:
-                            failed_files += 1
-                    except Exception as e:
-                        logger.error(f"Future failed with exception: {e}")
-                        failed_files += 1
-                    
-                    processed_files += 1
-                    scale_factor_jobs[job_id]["processed_files"] = processed_files
-                    scale_factor_jobs[job_id]["progress"] = int(
-                        (processed_files / total_files) * 100
-                    )
-
-            # Check if any files were successfully processed
-            if failed_files > 0:
-                logger.warning(f"Scale factor calibration completed with {failed_files} failed vector files")
-
-            if successful_files == 0 and len(vector_files) > 0:
+            # First pass: count total files across all cameras
+            total_files_all_cameras = 0
+            camera_file_counts = {}
+            
+            for cam_num in camera_numbers:
+                paths_uncal = get_data_paths(
+                    base_dir=base_root,
+                    num_images=image_count,
+                    cam=cam_num,
+                    type_name=type_name,
+                    use_uncalibrated=True,
+                )
+                data_dir_uncal = paths_uncal["data_dir"]
+                coords_path_uncal = data_dir_uncal / "coordinates.mat"
+                
+                camera_files = 0
+                # Count coordinate file
+                if coords_path_uncal.exists():
+                    camera_files += 1
+                
+                # Count vector files
+                for run in range(1, image_count + 1):
+                    vector_file_uncal = data_dir_uncal / (cfg.vector_format % run)
+                    if vector_file_uncal.exists():
+                        camera_files += 1
+                
+                camera_file_counts[cam_num] = camera_files
+                total_files_all_cameras += camera_files
+                scale_factor_jobs[job_id]["camera_progress"][f"Cam{cam_num}"] = {
+                    "total_files": camera_files,
+                    "processed_files": 0,
+                    "status": "pending"
+                }
+            
+            scale_factor_jobs[job_id]["total_files"] = total_files_all_cameras
+            
+            if total_files_all_cameras == 0:
                 scale_factor_jobs[job_id]["status"] = "failed"
-                scale_factor_jobs[job_id]["error"] = "No vector files were successfully processed"
+                scale_factor_jobs[job_id]["error"] = "No data files found to process for any camera"
                 return
+            
+            scale_factor_jobs[job_id]["status"] = "running"
+            
+            # Process each camera sequentially
+            total_processed_files = 0
+            
+            for cam_idx, cam_num in enumerate(camera_numbers, 1):
+                scale_factor_jobs[job_id]["current_camera"] = cam_num
+                scale_factor_jobs[job_id]["camera_progress"][f"Cam{cam_num}"]["status"] = "running"
+                logger.info(f"Processing camera {cam_num} ({cam_idx}/{total_cameras})")
+                
+                paths_uncal = get_data_paths(
+                    base_dir=base_root,
+                    num_images=image_count,
+                    cam=cam_num,
+                    type_name=type_name,
+                    use_uncalibrated=True,
+                )
+                paths_calib = get_data_paths(
+                    base_dir=base_root,
+                    num_images=image_count,
+                    cam=cam_num,
+                    type_name=type_name,
+                    use_uncalibrated=False,
+                )
+                data_dir_uncal = paths_uncal["data_dir"]
+                data_dir_cal = paths_calib["data_dir"]
+                data_dir_cal.mkdir(parents=True, exist_ok=True)
+                coords_path_uncal = data_dir_uncal / "coordinates.mat"
+                coords_path_cal = data_dir_cal / "coordinates.mat"
+                
+                # Collect vector files for this camera
+                vector_files = []
+                for run in range(1, image_count + 1):
+                    vector_file_uncal = data_dir_uncal / (cfg.vector_format % run)
+                    vector_file_cal = data_dir_cal / (cfg.vector_format % run)
+                    if vector_file_uncal.exists():
+                        vector_files.append((run, vector_file_uncal, vector_file_cal))
+                
+                camera_processed_files = 0
+                
+                # --- Process coordinates as struct array ---
+                if coords_path_uncal.exists():
+                    mat = scipy.io.loadmat(
+                        str(coords_path_uncal), struct_as_record=False, squeeze_me=True
+                    )
+                    coordinates = mat.get("coordinates", None)
+                    if coordinates is not None:
+                        # Build output struct array
+                        coord_dtype = np.dtype([("x", "O"), ("y", "O")])
+                        out_coords = np.empty(len(coordinates), dtype=coord_dtype)
+                        processed_runs = 0
+                        # Zero-base x and y before offset
+                        for run_idx, run_coords in enumerate(coordinates):
+                            x = getattr(run_coords, "x", None)
+                            y = getattr(run_coords, "y", None)
+                            if x is not None and y is not None:
+                                # Zero-base: subtract first value
+                                x0 = x.flat[0] if x.size > 0 else 0
+                                y0 = y.flat[0] if y.size > 0 else 0
+                                x_calib = (x - x0) / px_per_mm 
+                                y_calib = -np.flipud((y - y0) / px_per_mm)
+                                out_coords[run_idx] = (x_calib, y_calib)
+                                processed_runs += 1
+                            else:
+                                out_coords[run_idx] = (np.array([]), np.array([]))
+                        scipy.io.savemat(str(coords_path_cal), {"coordinates": out_coords}, do_compression=True)
+                        logger.info(f"Cam{cam_num}: Updated coordinates for {processed_runs} runs")
+                    
+                    camera_processed_files += 1
+                    total_processed_files += 1
+                    scale_factor_jobs[job_id]["processed_files"] = total_processed_files
+                    scale_factor_jobs[job_id]["camera_progress"][f"Cam{cam_num}"]["processed_files"] = camera_processed_files
+                    scale_factor_jobs[job_id]["progress"] = int(
+                        (total_processed_files / total_files_all_cameras) * 100
+                    )
+                
+                # --- Process vector files as struct array ---
+                if len(vector_files) > 0:
+                    # Process vector files in parallel
+                    vector_file_args = [
+                        (run, vector_file_uncal, vector_file_cal, px_per_mm, dt)
+                        for run, vector_file_uncal, vector_file_cal in vector_files
+                    ]
+                    successful_files = 0
+                    failed_files = 0
 
+                    with ProcessPoolExecutor(max_workers=min(4, len(vector_files))) as executor:
+                        futures = [executor.submit(_process_vector_file_for_calibration, args) for args in vector_file_args]
+                        for future in as_completed(futures):
+                            try:
+                                result = future.result()  # Get the return value
+                                if result:
+                                    successful_files += 1
+                                else:
+                                    failed_files += 1
+                            except Exception as e:
+                                logger.error(f"Future failed with exception: {e}")
+                                failed_files += 1
+                            
+                            camera_processed_files += 1
+                            total_processed_files += 1
+                            scale_factor_jobs[job_id]["processed_files"] = total_processed_files
+                            scale_factor_jobs[job_id]["camera_progress"][f"Cam{cam_num}"]["processed_files"] = camera_processed_files
+                            scale_factor_jobs[job_id]["progress"] = int(
+                                (total_processed_files / total_files_all_cameras) * 100
+                            )
+
+                    # Check if any files were successfully processed for this camera
+                    if failed_files > 0:
+                        logger.warning(f"Cam{cam_num}: Completed with {failed_files} failed vector files")
+
+                    if successful_files == 0 and len(vector_files) > 0:
+                        logger.error(f"Cam{cam_num}: No vector files were successfully processed")
+                        scale_factor_jobs[job_id]["camera_progress"][f"Cam{cam_num}"]["status"] = "failed"
+                    else:
+                        logger.info(f"Cam{cam_num}: {successful_files} vector files processed successfully")
+                        scale_factor_jobs[job_id]["camera_progress"][f"Cam{cam_num}"]["status"] = "completed"
+                else:
+                    scale_factor_jobs[job_id]["camera_progress"][f"Cam{cam_num}"]["status"] = "completed"
+                
+                scale_factor_jobs[job_id]["processed_cameras"] = cam_idx
+
+            # Final status
             scale_factor_jobs[job_id]["status"] = "completed"
             scale_factor_jobs[job_id]["progress"] = 100
+            scale_factor_jobs[job_id]["current_camera"] = None
             logger.info(
-                f"Scale factor calibration completed: {successful_files} vector files processed successfully, {failed_files} failed"
+                f"Scale factor calibration completed for all {total_cameras} cameras. Total files processed: {total_processed_files}/{total_files_all_cameras}"
             )
+            
         except Exception as e:
             logger.error(f"Scale factor calibration job {job_id} failed: {e}")
             scale_factor_jobs[job_id]["status"] = "failed"
@@ -1001,11 +1071,15 @@ def scale_factor_calibrate_vectors():
     thread.daemon = True
     thread.start()
 
+    cfg = get_config()
+    camera_numbers = cfg.camera_numbers
+
     return jsonify(
         {
             "job_id": job_id,
             "status": "starting",
-            "message": f"Scale factor calibration job started for camera {camera}",
+            "message": f"Scale factor calibration job started for {len(camera_numbers)} camera(s): {camera_numbers}",
+            "cameras": camera_numbers,
             "image_count": image_count,
         }
     )

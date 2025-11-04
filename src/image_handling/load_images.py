@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Tuple, Optional, List
-import logging
+from loguru import logger
 
 import dask
 import dask.array as da
@@ -31,17 +31,32 @@ def read_image(file_path: str, **kwargs) -> np.ndarray:
         np.ndarray: The image data
     """
     reader_func = get_reader(file_path)
-    logging.debug("Using reader %s for file %s", reader_func.__name__, file_path)
     return reader_func(file_path, **kwargs)
 
 
 def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.ndarray:
     """Read a pair of images (A and B frames).
+    
+    This function handles three main file organization strategies:
+    
+    1. Multi-camera container files (.set, .im7):
+       - All cameras stored in ONE file per time instance
+       - .set: source_dir/xxx.set contains all cameras and all time instances
+       - .im7: source_dir/B00001.im7 contains all cameras for time instance 1
+       - No camera subdirectories (Cam1/, Cam2/, etc.)
+       
+    2. Camera-specific directories with standard formats (.tif, .png, .jpg):
+       - Organized as: source_dir/Cam1/00001.tif, source_dir/Cam2/00001.tif
+       - Each camera has its own subdirectory
+       
+    3. Time-resolved formats (.cine):
+       - Camera-specific directories with video files
+       - Organized as: source_dir/Cam1/recording.cine
 
     Args:
-        idx (int): Index of the image pair to read
-        camera_path (Path): Path to camera directory or set file
-        camera (int): Camera number
+        idx (int): Index of the image pair to read (1-based)
+        camera_path (Path): Path to camera directory or source directory (for .set/.im7)
+        camera (int): Camera number (1-based)
         config (Config): Configuration object
 
     Returns:
@@ -50,8 +65,8 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
     # Get image format - handle both time-resolved (single format) and non-time-resolved (A/B pair)
     image_format = config.image_format
     
-    # Special handling for .set files (set files in source directory)
-    # Check if image_format (string or tuple) contains '.set'
+    # Special handling for .set and .im7 files (all cameras in one file per time instance)
+    # Check if image_format (string or tuple) contains '.set' or '.im7'
     if isinstance(image_format, tuple):
         format_str = image_format[0]  # Check first element for tuple
     else:
@@ -61,6 +76,12 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
         # For .set files, camera_path is the source directory
         set_file_path = camera_path / format_str
         return read_image(str(set_file_path), camera_no=camera, im_no=idx)
+    
+    if '.im7' in str(format_str):
+        # For .im7 files, camera_path is the source directory
+        # Each .im7 file contains all cameras for one time instance
+        im7_file_path = camera_path / (format_str % idx)
+        return read_image(str(im7_file_path), camera_no=camera)
     
     if isinstance(image_format, tuple):
         # Non-time-resolved: separate A and B formats
@@ -77,13 +98,10 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
 
     # Check if it's a proprietary format that reads pairs natively
     file_ext = Path(file_paths[0]).suffix.lower()
-    if file_ext == ".im7":
-        camera_no = camera  # Use the passed camera number
-        return read_image(str(file_paths[0]), camera_no=camera_no)
-    elif file_ext == ".cine":
+    if file_ext == ".cine":
         return read_image(str(file_paths[0]), idx=idx - 1, frames=2)
     else:
-        # Read individual frames
+        # Read individual frames (e.g., .tif, .png, .jpg)
         frame_a = read_image(str(file_paths[0]))
         frame_b = read_image(str(file_paths[1]))
         return np.stack([frame_a, frame_b], axis=0)
@@ -126,6 +144,20 @@ def to_dask_array(delayed_pair: Delayed, config: Config) -> da.Array:
 @profile
 def load_images(camera: int, config: Config, source: Path = None) -> da.Array:
     """Load images for a specific camera.
+    
+    This function uses Dask's lazy loading to create a task graph without
+    loading images into memory. Images are only loaded when a worker needs
+    them for processing.
+    
+    Memory Efficiency Notes:
+    - Creates lightweight delayed objects (~KB) instead of loading images (~MB each)
+    - Main process memory footprint: minimal (only task graph metadata)
+    - Actual image loading happens on workers when .compute() is called
+    - This is critical for handling 1000s of images without main process OOM
+    
+    IMPORTANT: Lazy loading DELAYS memory usage, but doesn't ELIMINATE it.
+    When a worker processes a task, it must load the full image pair into RAM.
+    The worker's memory requirement is determined by the PIV algorithm, not Dask.
 
     Args:
         camera (int): The camera number.
@@ -135,24 +167,35 @@ def load_images(camera: int, config: Config, source: Path = None) -> da.Array:
 
     Returns:
         da.Array: A Dask array containing the loaded image pairs.
+            Shape: (num_images, 2, H, W)
+            Note: This is a lazy array - no actual image data loaded yet.
     """
     if source is None:
         source = config.source_paths[0]
     
-    # For .set files, there are no camera subdirectories
+    # For .set and .im7 files, there are no camera subdirectories
+    # All cameras are stored in a single file per time instance in the source directory
+    # File format: source_directory/B00001.im7 (contains all cameras for time instance 1)
     if '.set' in str(config.image_format):
         camera_path = source  # No camera subdirectory for set files
-        logging.info("Loading images from set file in directory: %s for camera: Cam%d", source, camera)
+    elif '.im7' in str(config.image_format):
+        camera_path = source  # No camera subdirectory for set files
     else:
         camera_path = source / f"Cam{camera}"
-        logging.info("Lazily loading images with Dask for camera: Cam%d from %s", camera, camera_path)
     
+    # Create delayed objects (lazy evaluation) - no images loaded yet
+    # Memory usage here: ~1 KB per image (just metadata)
     delayed_image_pairs = [
         delayed_image_pair(idx, camera_path, camera, config)
         for idx in range(1, config.num_images + 1)
     ]
     dask_pairs = [to_dask_array(pair, config) for pair in delayed_image_pairs]
     pairs_stack = da.stack(dask_pairs, axis=0)
+    
+    # Rechunk to optimize task size for parallel processing
+    # Larger chunks = fewer tasks but more memory per task
+    # Smaller chunks = more tasks but more scheduling overhead
+    # The optimal value is set by auto-configuration based on available memory
     pairs_stack = pairs_stack.rechunk(
         (config.piv_chunk_size, 2, *config.image_shape)
     )  # Always 2 for frame pairs
@@ -196,9 +239,9 @@ def create_rectangular_mask(config: Config) -> np.ndarray:
     total_pixels = mask.size
     mask_fraction = masked_pixels / total_pixels if total_pixels > 0 else 0
     
-    logging.debug(
-        "Created rectangular mask: top=%d, bottom=%d, left=%d, right=%d "
-        "(%d/%d pixels = %.1f%%)",
+    logger.debug(
+        "Created rectangular mask: top={}, bottom={}, left={}, right={} "
+        "({}/{:.0f} pixels = {:.1f}%)",
         top, bottom, left, right, masked_pixels, total_pixels, mask_fraction * 100
     )
     
@@ -234,14 +277,14 @@ def load_mask_for_camera(
         or None if masking is disabled or mask cannot be loaded
     """
     if not config.masking_enabled:
-        logging.debug("Masking is disabled in config")
+        logger.debug("Masking is disabled in config")
         return None
     
     mask_mode = config.mask_mode
     
     # Rectangular mode: create mask from edge specifications
     if mask_mode == "rectangular":
-        logging.debug("Using rectangular edge masking")
+        logger.debug("Using rectangular edge masking")
         return create_rectangular_mask(config)
     
     # File mode: load from .mat file
@@ -250,13 +293,13 @@ def load_mask_for_camera(
             mask_path = config.get_mask_path(camera_num, source_path_idx)
             
             if not mask_path.exists():
-                logging.warning(
-                    "Mask file not found for Cam%d at %s. Proceeding without mask.",
+                logger.warning(
+                    "Mask file not found for Cam{} at {}. Proceeding without mask.",
                     camera_num, mask_path
                 )
                 return None
             
-            logging.debug("Loading mask for Cam%d from %s", camera_num, mask_path)
+            logger.debug("Loading mask for Cam{} from {}", camera_num, mask_path)
             mask, polygons = read_mask_from_mat(str(mask_path))
             
             # Ensure mask is boolean
@@ -267,23 +310,23 @@ def load_mask_for_camera(
             total_pixels = mask.size
             mask_fraction = masked_pixels / total_pixels if total_pixels > 0 else 0
             
-            logging.debug(
-                "Mask loaded: %d/%d pixels masked (%.1f%%)",
+            logger.debug(
+                "Mask loaded: {}/{} pixels masked ({:.1f}%)",
                 masked_pixels, total_pixels, mask_fraction * 100
             )
             
             return mask
             
         except Exception as e:
-            logging.error(
-                "Failed to load mask for Cam%d: %s. Proceeding without mask.",
+            logger.error(
+                "Failed to load mask for Cam{}: {}. Proceeding without mask.",
                 camera_num, e
             )
             return None
     
     else:
-        logging.warning(
-            "Unknown mask mode '%s'. Must be 'file' or 'rectangular'. "
+        logger.warning(
+            "Unknown mask mode '{}'. Must be 'file' or 'rectangular'. "
             "Proceeding without mask.", mask_mode
         )
         return None
@@ -414,8 +457,8 @@ def compute_vector_mask(
         total_vectors = b_mask_pass.size
         mask_fraction = masked_vectors / total_vectors if total_vectors > 0 else 0
         
-        logging.debug(
-            "Pass %d: %d/%d vectors masked (%.1f%%), window size: (%d, %d)",
+        logger.debug(
+            "Pass {}: {}/{} vectors masked ({:.1f}%), window size: ({}, {})",
             pass_idx + 1, masked_vectors, total_vectors,
             mask_fraction * 100, win_y, win_x
         )

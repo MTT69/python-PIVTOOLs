@@ -19869,3 +19869,1349 @@ Client lost the connection to the scheduler. Please check your connection and re
 2025-11-04 09:38:36,153 [INFO] 127.0.0.1 - - [04/Nov/2025 09:38:36] "GET /calibration/status?source_path_idx=0&type=scale_factor HTTP/1.1" 200 -
 2025-11-04 09:38:36,157 [INFO] 127.0.0.1 - - [04/Nov/2025 09:38:36] "GET /calibration/status?source_path_idx=0&type=scale_factor HTTP/1.1" 200 -
 2025-11-04 09:38:36,671 [INFO] 127.0.0.1 - - [04/Nov/2025 09:38:36] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:02:19,812 [INFO]  * Detected change in 'c:\\Users\\mtt1e23\\OneDrive - University of Southampton\\Documents\\python-PIVTOOLs\\src\\image_handling\\load_images.py', reloading
+2025-11-04 10:04:49,183 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:04:49,205 [INFO] 127.0.0.1 - - [04/Nov/2025 10:04:49] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:05:08,177 [INFO] 127.0.0.1 - - [04/Nov/2025 10:05:08] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:05:13,302 [INFO] 127.0.0.1 - - [04/Nov/2025 10:05:13] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:05:25,381 [INFO] 127.0.0.1 - - [04/Nov/2025 10:05:25] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:05:49,770 [INFO] 127.0.0.1 - - [04/Nov/2025 10:05:49] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:05:49,785 [INFO] 127.0.0.1 - - [04/Nov/2025 10:05:49] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:05:53,723 [INFO] 127.0.0.1 - - [04/Nov/2025 10:05:53] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:05:53,728 [INFO] 127.0.0.1 - - [04/Nov/2025 10:05:53] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:05:53,733 [INFO] 127.0.0.1 - - [04/Nov/2025 10:05:53] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:05:54,323 [INFO] 127.0.0.1 - - [04/Nov/2025 10:05:54] "[33mGET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-04 10:05:54,330 [INFO] 127.0.0.1 - - [04/Nov/2025 10:05:54] "[33mGET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-04 10:05:54,334 [INFO] 127.0.0.1 - - [04/Nov/2025 10:05:54] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:07:05,312 [INFO]  * Detected change in 'c:\\Users\\mtt1e23\\OneDrive - University of Southampton\\Documents\\python-PIVTOOLs\\src\\image_handling\\load_images.py', reloading
+2025-11-04 10:07:12,255 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:07:12,256 [INFO] 127.0.0.1 - - [04/Nov/2025 10:07:12] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:07:12,261 [INFO] 127.0.0.1 - - [04/Nov/2025 10:07:12] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:07:12,289 [INFO] 127.0.0.1 - - [04/Nov/2025 10:07:12] "[35m[1mGET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 500 -
+2025-11-04 10:07:12,299 [INFO] 127.0.0.1 - - [04/Nov/2025 10:07:12] "[35m[1mGET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 500 -
+2025-11-04 10:07:12,414 [INFO] 127.0.0.1 - - [04/Nov/2025 10:07:12] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:07:37,113 [INFO]  * Detected change in 'c:\\Users\\mtt1e23\\OneDrive - University of Southampton\\Documents\\python-PIVTOOLs\\src\\image_handling\\load_images.py', reloading
+2025-11-04 10:07:41,638 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:07:41,639 [INFO] 127.0.0.1 - - [04/Nov/2025 10:07:41] "GET /config HTTP/1.1" 200 -
+2025-11-04 10:07:41,643 [INFO] 127.0.0.1 - - [04/Nov/2025 10:07:41] "GET /config HTTP/1.1" 200 -
+2025-11-04 10:07:48,812 [INFO] 127.0.0.1 - - [04/Nov/2025 10:07:48] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:07:48,820 [INFO] 127.0.0.1 - - [04/Nov/2025 10:07:48] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:07:48,827 [INFO] 127.0.0.1 - - [04/Nov/2025 10:07:48] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:07:48,834 [INFO] 127.0.0.1 - - [04/Nov/2025 10:07:48] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:07:48,844 [INFO] 127.0.0.1 - - [04/Nov/2025 10:07:48] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:07:48,847 [INFO] 127.0.0.1 - - [04/Nov/2025 10:07:48] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:07:48,904 [INFO] 127.0.0.1 - - [04/Nov/2025 10:07:48] "[33mGET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-04 10:07:48,909 [INFO] 127.0.0.1 - - [04/Nov/2025 10:07:48] "[33mGET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-04 10:07:48,914 [INFO] 127.0.0.1 - - [04/Nov/2025 10:07:48] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:08:47,486 [INFO]  * Detected change in 'c:\\Users\\mtt1e23\\OneDrive - University of Southampton\\Documents\\python-PIVTOOLs\\src\\image_handling\\load_images.py', reloading
+2025-11-04 10:09:03,745 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:09:03,746 [INFO] 127.0.0.1 - - [04/Nov/2025 10:09:03] "GET /config HTTP/1.1" 200 -
+2025-11-04 10:09:03,751 [INFO] 127.0.0.1 - - [04/Nov/2025 10:09:03] "GET /config HTTP/1.1" 200 -
+2025-11-04 10:09:07,611 [INFO] 127.0.0.1 - - [04/Nov/2025 10:09:07] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:09:07,620 [INFO] 127.0.0.1 - - [04/Nov/2025 10:09:07] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:09:07,624 [INFO] 127.0.0.1 - - [04/Nov/2025 10:09:07] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:09:07,625 [INFO] 127.0.0.1 - - [04/Nov/2025 10:09:07] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:09:07,628 [INFO] 127.0.0.1 - - [04/Nov/2025 10:09:07] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:09:07,632 [INFO] 127.0.0.1 - - [04/Nov/2025 10:09:07] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:09:07,704 [INFO] 127.0.0.1 - - [04/Nov/2025 10:09:07] "[33mGET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-04 10:09:07,710 [INFO] 127.0.0.1 - - [04/Nov/2025 10:09:07] "[33mGET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-04 10:09:07,715 [INFO] 127.0.0.1 - - [04/Nov/2025 10:09:07] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:10:35,073 [INFO]  * Detected change in 'c:\\Users\\mtt1e23\\OneDrive - University of Southampton\\Documents\\python-PIVTOOLs\\src\\image_handling\\load_images.py', reloading
+2025-11-04 10:10:38,117 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:10:38,118 [INFO] 127.0.0.1 - - [04/Nov/2025 10:10:38] "GET /config HTTP/1.1" 200 -
+2025-11-04 10:10:38,122 [INFO] 127.0.0.1 - - [04/Nov/2025 10:10:38] "GET /config HTTP/1.1" 200 -
+2025-11-04 10:10:42,260 [INFO] 127.0.0.1 - - [04/Nov/2025 10:10:42] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:10:42,272 [INFO] 127.0.0.1 - - [04/Nov/2025 10:10:42] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:10:42,277 [INFO] 127.0.0.1 - - [04/Nov/2025 10:10:42] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:10:42,282 [INFO] 127.0.0.1 - - [04/Nov/2025 10:10:42] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:10:42,285 [INFO] 127.0.0.1 - - [04/Nov/2025 10:10:42] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:10:42,286 [INFO] 127.0.0.1 - - [04/Nov/2025 10:10:42] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:10:42,384 [INFO] 127.0.0.1 - - [04/Nov/2025 10:10:42] "[33mGET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-04 10:10:42,391 [INFO] 127.0.0.1 - - [04/Nov/2025 10:10:42] "[33mGET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-04 10:10:42,395 [INFO] 127.0.0.1 - - [04/Nov/2025 10:10:42] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:12:08,242 [INFO]  * Detected change in 'c:\\Users\\mtt1e23\\OneDrive - University of Southampton\\Documents\\python-PIVTOOLs\\src\\image_handling\\load_images.py', reloading
+2025-11-04 10:12:44,405 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:12:44,418 [INFO] 127.0.0.1 - - [04/Nov/2025 10:12:44] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:12:44,424 [INFO] 127.0.0.1 - - [04/Nov/2025 10:12:44] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:12:44,438 [INFO] 127.0.0.1 - - [04/Nov/2025 10:12:44] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:12:44,971 [INFO] 127.0.0.1 - - [04/Nov/2025 10:12:44] "[33mGET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-04 10:12:44,977 [INFO] 127.0.0.1 - - [04/Nov/2025 10:12:44] "[33mGET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-04 10:12:44,983 [INFO] 127.0.0.1 - - [04/Nov/2025 10:12:44] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:14:20,617 [INFO]  * Detected change in 'c:\\Users\\mtt1e23\\OneDrive - University of Southampton\\Documents\\python-PIVTOOLs\\src\\image_handling\\load_images.py', reloading
+2025-11-04 10:15:26,760 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:15:26,763 [INFO] 127.0.0.1 - - [04/Nov/2025 10:15:26] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:15:26,775 [INFO] 127.0.0.1 - - [04/Nov/2025 10:15:26] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:15:26,778 [INFO] 127.0.0.1 - - [04/Nov/2025 10:15:26] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:15:26,781 [INFO] 127.0.0.1 - - [04/Nov/2025 10:15:26] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:15:26,785 [INFO] 127.0.0.1 - - [04/Nov/2025 10:15:26] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:15:26,786 [INFO] 127.0.0.1 - - [04/Nov/2025 10:15:26] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:15:26,859 [INFO] 127.0.0.1 - - [04/Nov/2025 10:15:26] "[33mGET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-04 10:15:26,863 [INFO] 127.0.0.1 - - [04/Nov/2025 10:15:26] "[33mGET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-04 10:15:26,867 [INFO] 127.0.0.1 - - [04/Nov/2025 10:15:26] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:18:43,204 [INFO]  * Detected change in 'c:\\Users\\mtt1e23\\OneDrive - University of Southampton\\Documents\\python-PIVTOOLs\\src\\image_handling\\load_images.py', reloading
+2025-11-04 10:18:48,593 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:18:48,594 [INFO] 127.0.0.1 - - [04/Nov/2025 10:18:48] "[33mGET /plot/check_runs?base_path=C:\\Users\\mtt1e23\\OneDrive%20-%20University%20of%20Southampton\\Documents\\%23current_processing\\query_JHTDB\\Planar_Images_with_wall\\im7&camera=Cam1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-04 10:18:48,594 [INFO] 127.0.0.1 - - [04/Nov/2025 10:18:48] "GET /config HTTP/1.1" 200 -
+2025-11-04 10:18:48,598 [INFO] 127.0.0.1 - - [04/Nov/2025 10:18:48] "[33mGET /plot/check_runs?base_path=C:\\Users\\mtt1e23\\OneDrive%20-%20University%20of%20Southampton\\Documents\\%23current_processing\\query_JHTDB\\Planar_Images_with_wall\\im7&camera=Cam1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-04 10:18:48,599 [INFO] 127.0.0.1 - - [04/Nov/2025 10:18:48] "GET /config HTTP/1.1" 200 -
+2025-11-04 10:18:49,434 [INFO] 127.0.0.1 - - [04/Nov/2025 10:18:49] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:18:49,441 [INFO] 127.0.0.1 - - [04/Nov/2025 10:18:49] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:18:49,443 [INFO] 127.0.0.1 - - [04/Nov/2025 10:18:49] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:18:49,446 [INFO] 127.0.0.1 - - [04/Nov/2025 10:18:49] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:18:49,449 [INFO] 127.0.0.1 - - [04/Nov/2025 10:18:49] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:18:49,453 [INFO] 127.0.0.1 - - [04/Nov/2025 10:18:49] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:18:49,528 [INFO] 127.0.0.1 - - [04/Nov/2025 10:18:49] "[33mGET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-04 10:18:49,533 [INFO] 127.0.0.1 - - [04/Nov/2025 10:18:49] "[33mGET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-04 10:18:49,538 [INFO] 127.0.0.1 - - [04/Nov/2025 10:18:49] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:19:34,441 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:19:34,445 [INFO] 127.0.0.1 - - [04/Nov/2025 10:19:34] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:19:34,446 [INFO] 127.0.0.1 - - [04/Nov/2025 10:19:34] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:19:34,455 [INFO] 127.0.0.1 - - [04/Nov/2025 10:19:34] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:19:34,455 [INFO] 127.0.0.1 - - [04/Nov/2025 10:19:34] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:19:34,468 [INFO] 127.0.0.1 - - [04/Nov/2025 10:19:34] "[35m[1mPOST /update_config HTTP/1.1[0m" 500 -
+2025-11-04 10:19:34,533 [INFO] 127.0.0.1 - - [04/Nov/2025 10:19:34] "[33mGET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-04 10:19:34,538 [INFO] 127.0.0.1 - - [04/Nov/2025 10:19:34] "[33mGET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-04 10:19:34,542 [INFO] 127.0.0.1 - - [04/Nov/2025 10:19:34] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:20:40,696 [INFO] 127.0.0.1 - - [04/Nov/2025 10:20:40] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:24:57,792 [INFO]  * Detected change in 'c:\\Users\\mtt1e23\\OneDrive - University of Southampton\\Documents\\python-PIVTOOLs\\src\\server.py', reloading
+2025-11-04 10:25:24,458 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:25:24,467 [INFO] 127.0.0.1 - - [04/Nov/2025 10:25:24] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:25:36,890 [INFO] 127.0.0.1 - - [04/Nov/2025 10:25:36] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:25:36,894 [INFO] 127.0.0.1 - - [04/Nov/2025 10:25:36] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:25:36,898 [INFO] 127.0.0.1 - - [04/Nov/2025 10:25:36] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:25:36,902 [INFO] 127.0.0.1 - - [04/Nov/2025 10:25:36] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:25:36,907 [INFO] 127.0.0.1 - - [04/Nov/2025 10:25:36] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:25:36,908 [INFO] 127.0.0.1 - - [04/Nov/2025 10:25:36] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,696 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,698 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,885 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,886 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,887 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,889 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,891 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,893 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,895 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,898 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,899 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,903 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,903 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,913 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,917 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,921 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,925 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,927 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,931 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,932 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,935 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,942 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,945 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,953 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,954 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,956 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,959 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,960 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,976 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,979 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,980 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,983 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,984 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,984 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,986 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,988 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,989 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,991 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,992 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,992 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,998 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,998 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:30,999 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:30] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,001 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,003 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,006 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,009 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,009 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,010 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,011 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,015 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,017 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,018 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,023 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,028 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,028 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,031 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,037 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,039 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,049 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,051 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,053 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,054 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,056 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,056 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,057 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,058 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,061 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,066 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,067 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,077 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,078 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,084 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,086 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,087 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,089 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,091 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,091 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,092 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,094 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,098 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:31,098 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:32,558 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:32] "GET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:32,619 [INFO] 127.0.0.1 - - [04/Nov/2025 10:26:32] "GET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:26:35,856 [INFO]  * Detected change in 'c:\\Users\\mtt1e23\\OneDrive - University of Southampton\\Documents\\python-PIVTOOLs\\src\\image_handling\\load_images.py', reloading
+2025-11-04 10:27:59,820 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:27:59,821 [INFO] 127.0.0.1 - - [04/Nov/2025 10:27:59] "GET /config HTTP/1.1" 200 -
+2025-11-04 10:27:59,828 [INFO] 127.0.0.1 - - [04/Nov/2025 10:27:59] "GET /config HTTP/1.1" 200 -
+2025-11-04 10:28:03,536 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:03] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:03,546 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:03] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:03,550 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:03] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:03,561 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:03] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:28:03,562 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:03] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:28:03,566 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:03] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:28:05,924 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:05] "GET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:06,264 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:06] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:06,682 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:06] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:07,898 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:07] "GET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:08,302 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:08] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:14,155 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:14] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:16,284 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:16] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:16,451 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:16] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:16,610 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:16] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:16,767 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:16] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:16,927 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:16] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:17,201 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:17] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:17,366 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:17] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:17,529 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:17] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:17,699 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:17] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:17,883 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:17] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:18,052 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:18] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:18,217 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:18] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:18,380 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:18] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:18,548 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:18] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:18,700 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:18] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:18,927 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:18] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:19,361 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:19] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:19,544 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:19] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:19,712 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:19] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:19,862 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:19] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:20,028 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:20] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:20,225 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:20] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:20,387 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:20] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:20,551 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:20] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:20,713 [INFO] 127.0.0.1 - - [04/Nov/2025 10:28:20] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:28:57,253 [INFO]  * Detected change in 'c:\\Users\\mtt1e23\\OneDrive - University of Southampton\\Documents\\python-PIVTOOLs\\src\\image_handling\\readers\\lavision_reader.py', reloading
+2025-11-04 10:32:54,091 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:32:54,110 [INFO] 127.0.0.1 - - [04/Nov/2025 10:32:54] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:32:55,384 [INFO] 127.0.0.1 - - [04/Nov/2025 10:32:55] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:32:55,401 [INFO] 127.0.0.1 - - [04/Nov/2025 10:32:55] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:32:57,864 [INFO] 127.0.0.1 - - [04/Nov/2025 10:32:57] "POST /filter HTTP/1.1" 200 -
+2025-11-04 10:32:57,868 [INFO] 127.0.0.1 - - [04/Nov/2025 10:32:57] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:33:05,670 [INFO] 127.0.0.1 - - [04/Nov/2025 10:33:05] "GET /get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:33:08,818 [INFO] 127.0.0.1 - - [04/Nov/2025 10:33:08] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:33:35,073 [INFO]  * Detected change in 'c:\\Users\\mtt1e23\\OneDrive - University of Southampton\\Documents\\python-PIVTOOLs\\src\\image_handling\\load_images.py', reloading
+2025-11-04 10:34:20,125 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:34:20,125 [INFO] 127.0.0.1 - - [04/Nov/2025 10:34:20] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:34:20,126 [INFO] 127.0.0.1 - - [04/Nov/2025 10:34:20] "POST /filter HTTP/1.1" 200 -
+2025-11-04 10:34:22,989 [INFO] 127.0.0.1 - - [04/Nov/2025 10:34:22] "GET /get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:34:23,800 [INFO] 127.0.0.1 - - [04/Nov/2025 10:34:23] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:34:28,233 [INFO] 127.0.0.1 - - [04/Nov/2025 10:34:28] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:34:28,614 [INFO] 127.0.0.1 - - [04/Nov/2025 10:34:28] "GET /get_processed_pair?frame=3&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:34:28,616 [INFO] 127.0.0.1 - - [04/Nov/2025 10:34:28] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:34:35,930 [INFO] 127.0.0.1 - - [04/Nov/2025 10:34:35] "GET /get_frame_pair?camera=1&idx=2&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:34:35,941 [INFO] 127.0.0.1 - - [04/Nov/2025 10:34:35] "GET /get_frame_pair?camera=1&idx=3&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:34:36,292 [INFO] 127.0.0.1 - - [04/Nov/2025 10:34:36] "GET /get_processed_pair?frame=3&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:34:36,298 [INFO] 127.0.0.1 - - [04/Nov/2025 10:34:36] "GET /get_processed_pair?frame=3&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:34:36,728 [INFO] 127.0.0.1 - - [04/Nov/2025 10:34:36] "GET /get_processed_pair?frame=3&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:34:37,597 [ERROR] Failed to auto-detect image shape: Image file not found: D:\DAVIS_BFS\gF_Ramp_experiment\BFS_1500_1\Cam1\B00001.im7
+2025-11-04 10:34:37,598 [ERROR] Please specify 'shape' in config.yaml under 'images' section
+2025-11-04 10:36:53,583 [INFO]  * Detected change in 'c:\\Users\\mtt1e23\\OneDrive - University of Southampton\\Documents\\python-PIVTOOLs\\src\\config.py', reloading
+2025-11-04 10:37:17,834 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:37:17,835 [INFO] 127.0.0.1 - - [04/Nov/2025 10:37:17] "GET /config HTTP/1.1" 200 -
+2025-11-04 10:37:17,843 [INFO] 127.0.0.1 - - [04/Nov/2025 10:37:17] "GET /config HTTP/1.1" 200 -
+2025-11-04 10:37:21,387 [INFO] 127.0.0.1 - - [04/Nov/2025 10:37:21] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:37:21,393 [INFO] 127.0.0.1 - - [04/Nov/2025 10:37:21] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:37:21,395 [INFO] 127.0.0.1 - - [04/Nov/2025 10:37:21] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:37:21,398 [INFO] 127.0.0.1 - - [04/Nov/2025 10:37:21] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:37:21,410 [INFO] 127.0.0.1 - - [04/Nov/2025 10:37:21] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:37:21,411 [INFO] 127.0.0.1 - - [04/Nov/2025 10:37:21] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:37:23,298 [INFO] 127.0.0.1 - - [04/Nov/2025 10:37:23] "GET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:37:23,625 [INFO] 127.0.0.1 - - [04/Nov/2025 10:37:23] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:37:24,347 [INFO] 127.0.0.1 - - [04/Nov/2025 10:37:24] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:37:25,229 [INFO] 127.0.0.1 - - [04/Nov/2025 10:37:25] "GET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:37:25,577 [INFO] 127.0.0.1 - - [04/Nov/2025 10:37:25] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:37:30,529 [INFO] 127.0.0.1 - - [04/Nov/2025 10:37:30] "POST /filter HTTP/1.1" 200 -
+2025-11-04 10:37:31,207 [INFO] 127.0.0.1 - - [04/Nov/2025 10:37:31] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:37:32,344 [INFO] 127.0.0.1 - - [04/Nov/2025 10:37:32] "GET /get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:37:32,361 [INFO] 127.0.0.1 - - [04/Nov/2025 10:37:32] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:37:48,095 [INFO] Auto-detected image shape: (3248, 4872)
+2025-11-04 10:38:20,916 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:20] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:21,314 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:21] "GET /get_frame_pair?camera=1&idx=2&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:22,107 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:22] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:23,202 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:23] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:24,317 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:24] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:25,434 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:25] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:27,099 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:27] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:28,253 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:28] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:29,421 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:29] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:30,579 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:30] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:31,726 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:31] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:32,871 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:32] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:34,036 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:34] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:35,161 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:35] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:36,327 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:36] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:37,485 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:37] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:38,636 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:38] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:39,781 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:39] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:40,933 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:40] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:42,100 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:42] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:43,222 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:43] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:44,373 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:44] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:45,493 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:45] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:46,586 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:46] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:47,731 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:47] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:48,897 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:48] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:50,068 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:50] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:51,258 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:51] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:51,621 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:51] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:51,843 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:51] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:52,024 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:52] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:52,539 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:52] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:53,749 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:53] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:54,199 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:54] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:54,386 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:54] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:54,604 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:54] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:54,851 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:54] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:55,064 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:55] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:55,415 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:55] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:56,474 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:56] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:56,663 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:56] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:56,705 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:56] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:57,119 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:57] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:57,275 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:57] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:57,492 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:57] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:58,098 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:58] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:58,348 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:58] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:58,430 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:58] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:58,800 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:58] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:58,969 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:58] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:59,202 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:59] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:38:59,827 [INFO] 127.0.0.1 - - [04/Nov/2025 10:38:59] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:00,054 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:00] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:00,174 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:00] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:00,952 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:00] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:01,193 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:01] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:01,250 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:01] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:01,476 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:01] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:01,812 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:01] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:02,153 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:02] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:02,817 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:02] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:02,873 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:02] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:02,923 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:02] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:03,164 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:03] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:03,474 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:03] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:03,777 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:03] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:04,375 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:04] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:04,517 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:04] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:04,552 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:04] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:04,866 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:04] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:05,173 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:05] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:05,477 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:05] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:05,990 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:05] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:06,221 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:06] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:06,300 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:06] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:06,558 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:06] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:06,814 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:06] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:07,118 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:07] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:08,399 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:08] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:08,849 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:08] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:09,084 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:09] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:09,286 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:09] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:09,471 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:09] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:09,651 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:09] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:10,285 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:10] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:10,473 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:10] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:10,763 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:10] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:10,940 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:10] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:11,114 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:11] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:11,331 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:11] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:12,518 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:12] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:12,770 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:12] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:13,147 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:13] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:13,332 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:13] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:13,499 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:13] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:13,541 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:13] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:14,225 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:14] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:14,788 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:14] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:15,356 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:15] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:15,578 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:15] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:15,706 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:15] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:15,766 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:15] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:15,925 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:15] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:16,438 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:16] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:17,256 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:17] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:17,447 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:17] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:17,607 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:17] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:18,645 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:18] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:19,863 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:19] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:20,496 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:20] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:20,691 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:20] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:20,923 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:20] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:21,144 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:21] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:21,291 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:21] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:22,116 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:22] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:22,645 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:22] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:22,880 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:22] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:23,144 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:23] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:23,441 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:23] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:23,635 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:23] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:24,740 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:24] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:25,815 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:25] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:26,908 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:26] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:28,015 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:28] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:28,869 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:28] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:29,083 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:29] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:29,287 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:29] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:29,393 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:29] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:29,657 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:29] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:29,895 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:29] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:30,490 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:30] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:30,715 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:30] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:31,709 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:31] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:31,895 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:31] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:32,053 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:32] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:32,261 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:32] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:32,496 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:32] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:32,680 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:32] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:33,334 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:33] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:33,539 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:33] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:33,719 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:33] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:33,961 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:33] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:34,151 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:34] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:34,429 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:34] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:34,976 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:34] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:35,191 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:35] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:35,436 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:35] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:35,580 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:35] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:35,826 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:35] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:36,098 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:36] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:36,789 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:36] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:36,939 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:36] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:37,195 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:37] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:37,454 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:37] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:37,714 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:37] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:37,949 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:37] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:38,405 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:38] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:38,711 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:38] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:39,720 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:39] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:40,022 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:40] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:40,032 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:40] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:40,368 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:40] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:40,593 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:40] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:40,772 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:40] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:41,368 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:41] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:41,752 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:41] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:41,804 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:41] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:42,031 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:42] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:42,284 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:42] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:42,471 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:42] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:43,046 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:43] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:43,472 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:43] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:43,544 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:43] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:43,706 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:43] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:43,979 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:43] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:44,173 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:44] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:44,748 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:44] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:45,185 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:45] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:45,243 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:45] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:45,395 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:45] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:45,634 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:45] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:45,865 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:45] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:46,422 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:46] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:46,795 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:46] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:46,868 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:46] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:39:47,004 [INFO] 127.0.0.1 - - [04/Nov/2025 10:39:47] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:42:38,655 [INFO] 127.0.0.1 - - [04/Nov/2025 10:42:38] "GET /get_processed_pair?frame=2&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:42:41,586 [INFO] 127.0.0.1 - - [04/Nov/2025 10:42:41] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:42:43,647 [INFO] 127.0.0.1 - - [04/Nov/2025 10:42:43] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:42:44,833 [INFO] 127.0.0.1 - - [04/Nov/2025 10:42:44] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:42:44,838 [INFO] 127.0.0.1 - - [04/Nov/2025 10:42:44] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:42:44,843 [INFO] 127.0.0.1 - - [04/Nov/2025 10:42:44] "POST /update_config HTTP/1.1" 200 -
+2025-11-04 10:42:46,152 [INFO] 127.0.0.1 - - [04/Nov/2025 10:42:46] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:42:46,518 [INFO] 127.0.0.1 - - [04/Nov/2025 10:42:46] "GET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:42:47,683 [INFO] 127.0.0.1 - - [04/Nov/2025 10:42:47] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:42:48,371 [INFO] 127.0.0.1 - - [04/Nov/2025 10:42:48] "GET /get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:42:48,880 [INFO] 127.0.0.1 - - [04/Nov/2025 10:42:48] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:42:50,166 [INFO] 127.0.0.1 - - [04/Nov/2025 10:42:50] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:42:51,478 [INFO] 127.0.0.1 - - [04/Nov/2025 10:42:51] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:42:52,712 [INFO] 127.0.0.1 - - [04/Nov/2025 10:42:52] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:42:53,939 [INFO] 127.0.0.1 - - [04/Nov/2025 10:42:53] "GET /get_processed_pair?frame=1&type=processed&camera=Cam1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-04 10:42:58,757 [INFO] 127.0.0.1 - - [04/Nov/2025 10:42:58] "POST /run_piv HTTP/1.1" 200 -
+2025-11-04 10:42:58,768 [INFO] 127.0.0.1 - - [04/Nov/2025 10:42:58] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:42:59,284 [INFO] 127.0.0.1 - - [04/Nov/2025 10:42:59] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:42:59,784 [INFO] 127.0.0.1 - - [04/Nov/2025 10:42:59] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:00,282 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:00] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:00,782 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:00] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:01,286 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:01] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:01,784 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:01] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:02,284 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:02] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:02,784 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:02] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:03,285 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:03] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:03,782 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:03] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:04,282 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:04] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:04,785 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:04] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:05,281 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:05] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:05,888 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:43:05,891 [INFO] Auto-detected compute parameters:
+2025-11-04 10:43:05,891 [INFO]   CPU cores: 20
+2025-11-04 10:43:05,891 [INFO]   Total memory: 63.46 GB
+2025-11-04 10:43:05,891 [INFO]   Workers per node: 20
+2025-11-04 10:43:05,891 [INFO]   OMP threads: 2
+2025-11-04 10:43:05,892 [INFO]   Memory per worker: 2.86GB
+2025-11-04 10:43:05,892 [INFO]   Threads per worker: 1
+2025-11-04 10:43:06,237 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:06] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:07,235 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:07] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:08,241 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:08] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:09,254 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:09] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:10,263 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:10] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:10,469 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:43:10,487 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:43:10,509 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:43:10,531 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:43:10,532 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:43:10,581 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:43:10,681 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:43:10,711 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:43:10,717 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:43:10,784 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:43:10,838 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:43:10,843 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:43:10,865 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:43:10,877 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:43:10,884 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:43:10,907 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:43:10,914 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:43:10,916 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:43:10,917 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:43:10,927 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:43:11,134 [INFO] Worker logging configured successfully
+2025-11-04 10:43:11,134 [INFO] Worker logging configured successfully
+2025-11-04 10:43:11,135 [INFO] Worker logging configured successfully
+2025-11-04 10:43:11,135 [INFO] Worker logging configured successfully
+2025-11-04 10:43:11,136 [INFO] Worker logging configured successfully
+2025-11-04 10:43:11,136 [INFO] Worker logging configured successfully
+2025-11-04 10:43:11,137 [INFO] Worker logging configured successfully
+2025-11-04 10:43:11,137 [INFO] Worker logging configured successfully
+2025-11-04 10:43:11,138 [INFO] Worker logging configured successfully
+2025-11-04 10:43:11,139 [INFO] Dask cluster started successfully
+2025-11-04 10:43:11,140 [INFO] Dask Worker Info:
+2025-11-04 10:43:11,141 [INFO] Worker tcp://127.0.0.1:54129
+2025-11-04 10:43:11,141 [INFO]   pid: None
+2025-11-04 10:43:11,141 [INFO]   host: 127.0.0.1
+2025-11-04 10:43:11,141 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-j6rtscny
+2025-11-04 10:43:11,141 [INFO]   nanny: True
+2025-11-04 10:43:11,142 [INFO] Dask Worker Info:
+2025-11-04 10:43:11,142 [INFO] Worker tcp://127.0.0.1:54136
+2025-11-04 10:43:11,142 [INFO]   pid: None
+2025-11-04 10:43:11,142 [INFO]   host: 127.0.0.1
+2025-11-04 10:43:11,142 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-2pqkm761
+2025-11-04 10:43:11,142 [INFO]   nanny: True
+2025-11-04 10:43:11,143 [INFO] Dask Worker Info:
+2025-11-04 10:43:11,143 [INFO] Worker tcp://127.0.0.1:54139
+2025-11-04 10:43:11,143 [INFO]   pid: None
+2025-11-04 10:43:11,143 [INFO]   host: 127.0.0.1
+2025-11-04 10:43:11,143 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-eljbvher
+2025-11-04 10:43:11,143 [INFO]   nanny: True
+2025-11-04 10:43:11,143 [INFO] Dask Worker Info:
+2025-11-04 10:43:11,144 [INFO] Worker tcp://127.0.0.1:54142
+2025-11-04 10:43:11,144 [INFO]   pid: None
+2025-11-04 10:43:11,144 [INFO]   host: 127.0.0.1
+2025-11-04 10:43:11,144 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-j39cgr7m
+2025-11-04 10:43:11,144 [INFO]   nanny: True
+2025-11-04 10:43:11,144 [INFO] Dask Worker Info:
+2025-11-04 10:43:11,144 [INFO] Worker tcp://127.0.0.1:54145
+2025-11-04 10:43:11,144 [INFO]   pid: None
+2025-11-04 10:43:11,144 [INFO]   host: 127.0.0.1
+2025-11-04 10:43:11,145 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-rm472czw
+2025-11-04 10:43:11,145 [INFO]   nanny: True
+2025-11-04 10:43:11,145 [INFO] Processing camera: Cam1
+2025-11-04 10:43:11,249 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:11] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:12,238 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:12] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:12,344 [INFO] Auto-detected image shape: (3248, 4872)
+2025-11-04 10:43:12,374 [INFO] Pre-computing vector masks for Cam1
+2025-11-04 10:43:13,246 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:13] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:14,240 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:14] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:14,974 [INFO] Vector masks computed: 3 passes
+2025-11-04 10:43:15,040 [INFO] Successfully cached window padding for 3 passes
+2025-11-04 10:43:15,177 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-04 10:43:15,236 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:15] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:16,261 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:16] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:16,626 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-04 10:43:17,380 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:17] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:18,237 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:18] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:19,238 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:19] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:20,242 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:20] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:21,242 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:21] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:22,245 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:22] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:23,239 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:23] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:24,241 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:24] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:25,236 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:25] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:26,242 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:26] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:27,239 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:27] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:28,239 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:28] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:29,243 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:29] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:30,240 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:30] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:31,237 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:31] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:32,237 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:32] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:33,237 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:33] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:34,238 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:34] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:35,237 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:35] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:36,242 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:36] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:37,237 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:37] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:38,252 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:38] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:39,238 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:39] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:40,239 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:40] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:41,244 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:41] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:42,251 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:42] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:43,245 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:43] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:44,237 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:44] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:45,235 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:45] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:46,240 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:46] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:47,237 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:47] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:48,251 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:48] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:49,242 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:49] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:50,262 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:50] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:51,242 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:51] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:52,237 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:52] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:53,238 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:53] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:54,240 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:54] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:55,238 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:55] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:56,243 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:56] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:56,260 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\im7\uncalibrated_piv\50\Cam1\instantaneous\coordinates.mat
+2025-11-04 10:43:57,249 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:57] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:58,239 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:58] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:43:59,251 [INFO] 127.0.0.1 - - [04/Nov/2025 10:43:59] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:44:00,251 [INFO] 127.0.0.1 - - [04/Nov/2025 10:44:00] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:44:01,240 [INFO] 127.0.0.1 - - [04/Nov/2025 10:44:01] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:44:02,237 [INFO] 127.0.0.1 - - [04/Nov/2025 10:44:02] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:44:03,244 [INFO] 127.0.0.1 - - [04/Nov/2025 10:44:03] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:44:04,242 [INFO] 127.0.0.1 - - [04/Nov/2025 10:44:04] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:44:05,245 [INFO] 127.0.0.1 - - [04/Nov/2025 10:44:05] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:44:19,388 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\im7\uncalibrated_piv\50\Cam1\instantaneous\coordinates.mat
+2025-11-04 10:44:22,741 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:44:22,743 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:44:22,744 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:44:22,744 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:44:22,744 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:44:22,745 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:44:24,276 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:44:37,665 [ERROR] PIV processing failed: Attempted to run task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-fa83bc8a53484c62bb26da689aaf1b60' on 4 different workers, but all those workers died while running it. The last worker that attempt to run the task was tcp://127.0.0.1:54139. Inspecting worker logs is often a good next step to diagnose what went wrong. For more information see https://distributed.dask.org/en/stable/killed.html.
+2025-11-04 10:44:37,671 [WARNING] PIVResult has no passes for frame 35. Skipping save.
+2025-11-04 10:44:48,283 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:44:48,477 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:44:48,575 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:44:48,968 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:44:49,100 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:44:49,379 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:44:50,243 [INFO] 127.0.0.1 - - [04/Nov/2025 10:44:50] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:44:54,616 [ERROR] PIV processing failed: Attempted to run task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-d5c533967fe4492e973918ae6723f7ad' on 4 different workers, but all those workers died while running it. The last worker that attempt to run the task was tcp://127.0.0.1:56811. Inspecting worker logs is often a good next step to diagnose what went wrong. For more information see https://distributed.dask.org/en/stable/killed.html.
+2025-11-04 10:44:54,621 [WARNING] PIVResult has no passes for frame 32. Skipping save.
+2025-11-04 10:44:56,575 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:44:56,825 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:44:57,158 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:44:57,661 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:45:01,233 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:45:09,026 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:45:14,320 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:45:15,129 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:45:15,130 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:45:16,723 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:45:18,143 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:45:18,750 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:45:21,144 [ERROR] PIV processing failed: Attempted to run task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-c52cc4759c59454bb129326ee042d4ef' on 4 different workers, but all those workers died while running it. The last worker that attempt to run the task was tcp://127.0.0.1:62528. Inspecting worker logs is often a good next step to diagnose what went wrong. For more information see https://distributed.dask.org/en/stable/killed.html.
+2025-11-04 10:45:21,215 [WARNING] PIVResult has no passes for frame 25. Skipping save.
+2025-11-04 10:45:21,519 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\im7\uncalibrated_piv\50\Cam1\instantaneous\coordinates.mat
+2025-11-04 10:45:23,315 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:45:23,322 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:45:24,032 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:45:24,566 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:45:26,145 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:45:50,257 [INFO] 127.0.0.1 - - [04/Nov/2025 10:45:50] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:45:51,295 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\im7\uncalibrated_piv\50\Cam1\instantaneous\coordinates.mat
+2025-11-04 10:45:51,634 [INFO] 127.0.0.1 - - [04/Nov/2025 10:45:51] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:45:51,779 [INFO] 127.0.0.1 - - [04/Nov/2025 10:45:51] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:45:52,284 [INFO] 127.0.0.1 - - [04/Nov/2025 10:45:52] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:45:52,379 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:45:52,506 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:45:52,771 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:45:52,782 [INFO] 127.0.0.1 - - [04/Nov/2025 10:45:52] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:45:53,282 [INFO] 127.0.0.1 - - [04/Nov/2025 10:45:53] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:45:53,319 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:45:53,352 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:45:53,385 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:45:53,480 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:45:53,667 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:45:53,783 [INFO] 127.0.0.1 - - [04/Nov/2025 10:45:53] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:45:54,283 [INFO] 127.0.0.1 - - [04/Nov/2025 10:45:54] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:45:54,782 [INFO] 127.0.0.1 - - [04/Nov/2025 10:45:54] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:45:55,281 [INFO] 127.0.0.1 - - [04/Nov/2025 10:45:55] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:45:55,782 [INFO] 127.0.0.1 - - [04/Nov/2025 10:45:55] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:45:56,282 [INFO] 127.0.0.1 - - [04/Nov/2025 10:45:56] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:45:56,784 [INFO] 127.0.0.1 - - [04/Nov/2025 10:45:56] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:45:57,282 [INFO] 127.0.0.1 - - [04/Nov/2025 10:45:57] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:45:57,783 [INFO] 127.0.0.1 - - [04/Nov/2025 10:45:57] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:45:59,237 [INFO] 127.0.0.1 - - [04/Nov/2025 10:45:59] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:00,242 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:00] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:01,239 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:01] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:01,869 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:46:02,238 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:02] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:03,317 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:03] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:04,239 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:04] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:05,285 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:05] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:06,246 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:06] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:07,248 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:07] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:08,254 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:08] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:09,246 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:09] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:09,859 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:46:10,236 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:46:10,238 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:10] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:11,236 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:11] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:12,237 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:12] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:12,596 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:46:13,248 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:13] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:14,236 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:14] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:15,237 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:15] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:16,290 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:16] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:17,312 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:17] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:18,243 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:18] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:19,256 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:19] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:20,425 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:20] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:21,318 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:46:21,334 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:21] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:22,033 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:46:22,330 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:22] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:22,654 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:46:22,947 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:46:23,252 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:23] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:23,492 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:46:23,868 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:46:24,282 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:24] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:24,614 [ERROR] PIV processing failed: Attempted to run task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-367975eabe404774aac5f4f6f0e2cbd5' on 4 different workers, but all those workers died while running it. The last worker that attempt to run the task was tcp://127.0.0.1:57755. Inspecting worker logs is often a good next step to diagnose what went wrong. For more information see https://distributed.dask.org/en/stable/killed.html.
+2025-11-04 10:46:25,018 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:46:25,394 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:25] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:26,383 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:26] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:26,988 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:46:27,258 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:27] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:27,397 [WARNING] PIVResult has no passes for frame 48. Skipping save.
+2025-11-04 10:46:27,911 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:46:28,190 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:46:28,252 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:28] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:28,306 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:46:28,395 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:46:28,531 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:46:29,244 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:29] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:30,243 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:30] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:31,244 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:31] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:31,820 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:46:31,820 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:46:32,243 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:32] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:33,242 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:33] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:34,239 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:34] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:35,243 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:35] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:36,236 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:36] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:37,251 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:37] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:38,247 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:38] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:39,251 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:39] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:40,240 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:40] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:41,238 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:41] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:42,240 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:42] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:43,253 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:43] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:44,240 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:44] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:45,235 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:45] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:46,235 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:46] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:47,236 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:47] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:48,247 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:48] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:49,251 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:49] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:50,251 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:50] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:51,239 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:51] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:52,240 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:52] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:53,245 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:53] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:54,238 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:54] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:55,250 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:55] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:56,252 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:56] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:46:57,247 [INFO] 127.0.0.1 - - [04/Nov/2025 10:46:57] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:47:12,986 [INFO] 127.0.0.1 - - [04/Nov/2025 10:47:12] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:47:13,283 [INFO] 127.0.0.1 - - [04/Nov/2025 10:47:13] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:47:13,768 [INFO] 127.0.0.1 - - [04/Nov/2025 10:47:13] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:47:14,286 [INFO] 127.0.0.1 - - [04/Nov/2025 10:47:14] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:47:14,676 [INFO] 127.0.0.1 - - [04/Nov/2025 10:47:14] "[33mPOST /cancel_run HTTP/1.1[0m" 404 -
+2025-11-04 10:47:16,450 [INFO] 127.0.0.1 - - [04/Nov/2025 10:47:16] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:47:16,782 [INFO] 127.0.0.1 - - [04/Nov/2025 10:47:16] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:47:17,293 [INFO] 127.0.0.1 - - [04/Nov/2025 10:47:17] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:47:17,783 [INFO] 127.0.0.1 - - [04/Nov/2025 10:47:17] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:47:18,284 [INFO] 127.0.0.1 - - [04/Nov/2025 10:47:18] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:47:18,782 [INFO] 127.0.0.1 - - [04/Nov/2025 10:47:18] "GET /get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-04 10:47:19,460 [INFO] 127.0.0.1 - - [04/Nov/2025 10:47:19] "GET /config HTTP/1.1" 200 -
+2025-11-04 10:47:19,468 [INFO] 127.0.0.1 - - [04/Nov/2025 10:47:19] "GET /config HTTP/1.1" 200 -
+2025-11-04 10:48:07,385 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:48:07,388 [INFO] Auto-detected compute parameters:
+2025-11-04 10:48:07,388 [INFO]   CPU cores: 20
+2025-11-04 10:48:07,389 [INFO]   Total memory: 63.46 GB
+2025-11-04 10:48:07,389 [INFO]   Workers per node: 20
+2025-11-04 10:48:07,389 [INFO]   OMP threads: 2
+2025-11-04 10:48:07,389 [INFO]   Memory per worker: 2.86GB
+2025-11-04 10:48:07,390 [INFO]   Threads per worker: 1
+2025-11-04 10:48:11,689 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:48:11,698 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:48:11,717 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:48:11,719 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:48:11,723 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:48:11,760 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:48:11,806 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:48:11,833 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:48:11,850 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:48:11,860 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:48:11,866 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:48:11,885 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:48:11,912 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:48:11,917 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:48:11,929 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:48:11,955 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:48:11,955 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:48:11,970 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:48:11,984 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:48:11,990 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 10:48:12,149 [INFO] Worker logging configured successfully
+2025-11-04 10:48:12,151 [INFO] Worker logging configured successfully
+2025-11-04 10:48:12,151 [INFO] Worker logging configured successfully
+2025-11-04 10:48:12,152 [INFO] Worker logging configured successfully
+2025-11-04 10:48:12,152 [INFO] Worker logging configured successfully
+2025-11-04 10:48:12,152 [INFO] Worker logging configured successfully
+2025-11-04 10:48:12,153 [INFO] Worker logging configured successfully
+2025-11-04 10:48:12,153 [INFO] Worker logging configured successfully
+2025-11-04 10:48:12,153 [INFO] Worker logging configured successfully
+2025-11-04 10:48:12,154 [INFO] Worker logging configured successfully
+2025-11-04 10:48:12,155 [INFO] Worker logging configured successfully
+2025-11-04 10:48:12,156 [INFO] Worker logging configured successfully
+2025-11-04 10:48:12,156 [INFO] Worker logging configured successfully
+2025-11-04 10:48:12,160 [INFO] Dask cluster started successfully
+2025-11-04 10:48:12,161 [INFO] Dask Worker Info:
+2025-11-04 10:48:12,161 [INFO] Worker tcp://127.0.0.1:49401
+2025-11-04 10:48:12,161 [INFO]   pid: None
+2025-11-04 10:48:12,162 [INFO]   host: 127.0.0.1
+2025-11-04 10:48:12,162 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-c9lgfmbi
+2025-11-04 10:48:12,162 [INFO]   nanny: True
+2025-11-04 10:48:12,163 [INFO] Dask Worker Info:
+2025-11-04 10:48:12,163 [INFO] Worker tcp://127.0.0.1:49402
+2025-11-04 10:48:12,163 [INFO]   pid: None
+2025-11-04 10:48:12,163 [INFO]   host: 127.0.0.1
+2025-11-04 10:48:12,164 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-gi1hjjyq
+2025-11-04 10:48:12,164 [INFO]   nanny: True
+2025-11-04 10:48:12,164 [INFO] Dask Worker Info:
+2025-11-04 10:48:12,164 [INFO] Worker tcp://127.0.0.1:49407
+2025-11-04 10:48:12,164 [INFO]   pid: None
+2025-11-04 10:48:12,165 [INFO]   host: 127.0.0.1
+2025-11-04 10:48:12,165 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-zhxdekk8
+2025-11-04 10:48:12,165 [INFO]   nanny: True
+2025-11-04 10:48:12,165 [INFO] Dask Worker Info:
+2025-11-04 10:48:12,165 [INFO] Worker tcp://127.0.0.1:49670
+2025-11-04 10:48:12,165 [INFO]   pid: None
+2025-11-04 10:48:12,166 [INFO]   host: 127.0.0.1
+2025-11-04 10:48:12,166 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-6bwkzcyp
+2025-11-04 10:48:12,166 [INFO]   nanny: True
+2025-11-04 10:48:12,167 [INFO] Dask Worker Info:
+2025-11-04 10:48:12,167 [INFO] Worker tcp://127.0.0.1:49683
+2025-11-04 10:48:12,168 [INFO]   pid: None
+2025-11-04 10:48:12,168 [INFO]   host: 127.0.0.1
+2025-11-04 10:48:12,168 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-enp_lguv
+2025-11-04 10:48:12,168 [INFO]   nanny: True
+2025-11-04 10:48:12,168 [INFO] Processing camera: Cam1
+2025-11-04 10:48:12,811 [INFO] Auto-detected image shape: (3248, 4872)
+2025-11-04 10:48:12,825 [INFO] Pre-computing vector masks for Cam1
+2025-11-04 10:48:15,334 [INFO] Vector masks computed: 3 passes
+2025-11-04 10:48:15,341 [INFO] Successfully cached window padding for 3 passes
+2025-11-04 10:48:15,490 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-04 10:48:16,620 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-04 10:48:29,522 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\im7\uncalibrated_piv\50\Cam1\instantaneous\coordinates.mat
+2025-11-04 11:09:10,734 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:09:13,120 [INFO] Auto-detected image shape: (3248, 4872)
+2025-11-04 11:09:13,120 [INFO] === Auto-computing optimal Dask configuration ===
+2025-11-04 11:09:13,121 [INFO] System Resources:
+2025-11-04 11:09:13,121 [INFO]   CPU cores: 20
+2025-11-04 11:09:13,121 [INFO]   Total memory: 63.46 GB
+2025-11-04 11:09:13,122 [INFO] Workload Parameters:
+2025-11-04 11:09:13,122 [INFO]   Image shape: 3248x4872
+2025-11-04 11:09:13,122 [INFO]   Batch size: 50
+2025-11-04 11:09:13,122 [INFO]   Data type: uint16 (2 bytes)
+2025-11-04 11:09:13,122 [INFO]   PIV passes: 3
+2025-11-04 11:09:13,122 [INFO] Memory Analysis (per task):
+2025-11-04 11:09:13,123 [INFO]   Input images: 60.36 MB
+2025-11-04 11:09:13,123 [INFO]   FFT intermediates: 241.46 MB
+2025-11-04 11:09:13,123 [INFO]   Correlation planes: 181.09 MB
+2025-11-04 11:09:13,123 [INFO]   Window buffers: 0.12 MB
+2025-11-04 11:09:13,123 [INFO]   Result storage: 2.80 MB
+2025-11-04 11:09:13,123 [INFO]   Subtotal: 485.84 MB
+2025-11-04 11:09:13,124 [INFO]   With safety factor (2.5x): 1.19 GB
+2025-11-04 11:09:13,124 [INFO] Configuration Selected:
+2025-11-04 11:09:13,124 [INFO]   System reserve: 12.69 GB
+2025-11-04 11:09:13,124 [INFO]   Available memory: 50.76 GB
+2025-11-04 11:09:13,125 [INFO]   Max safe workers: 42
+2025-11-04 11:09:13,125 [INFO]   Workers per node: 20 (limited by CPU cores)
+2025-11-04 11:09:13,125 [INFO]   Memory per worker: 2.41GB
+2025-11-04 11:09:13,125 [INFO]   OMP threads: 1
+2025-11-04 11:09:13,126 [INFO]   Threads per worker: 1
+2025-11-04 11:09:13,126 [INFO]   Effective parallelism: 20 tasks
+2025-11-04 11:09:17,802 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:09:17,824 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:09:17,852 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:09:17,887 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:09:17,990 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:09:18,049 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:09:18,107 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:09:18,130 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:09:18,131 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:09:18,173 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:09:18,195 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:09:18,196 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:09:18,197 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:09:18,197 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:09:18,200 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:09:18,214 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:09:18,215 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:09:18,235 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:09:18,238 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:09:18,246 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:09:18,436 [INFO] Worker logging configured successfully
+2025-11-04 11:09:18,439 [INFO] Worker logging configured successfully
+2025-11-04 11:09:18,449 [INFO] Dask cluster started successfully
+2025-11-04 11:09:18,451 [INFO] Dask Worker Info:
+2025-11-04 11:09:18,451 [INFO] Worker tcp://127.0.0.1:50262
+2025-11-04 11:09:18,452 [INFO]   pid: None
+2025-11-04 11:09:18,452 [INFO]   host: 127.0.0.1
+2025-11-04 11:09:18,452 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-k_vejtk5
+2025-11-04 11:09:18,452 [INFO]   nanny: True
+2025-11-04 11:09:18,453 [INFO] Dask Worker Info:
+2025-11-04 11:09:18,453 [INFO] Worker tcp://127.0.0.1:50265
+2025-11-04 11:09:18,453 [INFO]   pid: None
+2025-11-04 11:09:18,453 [INFO]   host: 127.0.0.1
+2025-11-04 11:09:18,453 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-907ll9dt
+2025-11-04 11:09:18,454 [INFO]   nanny: True
+2025-11-04 11:09:18,454 [INFO] Dask Worker Info:
+2025-11-04 11:09:18,454 [INFO] Worker tcp://127.0.0.1:50270
+2025-11-04 11:09:18,454 [INFO]   pid: None
+2025-11-04 11:09:18,454 [INFO]   host: 127.0.0.1
+2025-11-04 11:09:18,454 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-mh7ysvb1
+2025-11-04 11:09:18,455 [INFO]   nanny: True
+2025-11-04 11:09:18,455 [INFO] Dask Worker Info:
+2025-11-04 11:09:18,455 [INFO] Worker tcp://127.0.0.1:50273
+2025-11-04 11:09:18,455 [INFO]   pid: None
+2025-11-04 11:09:18,455 [INFO]   host: 127.0.0.1
+2025-11-04 11:09:18,455 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-q7mymax0
+2025-11-04 11:09:18,456 [INFO]   nanny: True
+2025-11-04 11:09:18,456 [INFO] Dask Worker Info:
+2025-11-04 11:09:18,456 [INFO] Worker tcp://127.0.0.1:50278
+2025-11-04 11:09:18,456 [INFO]   pid: None
+2025-11-04 11:09:18,457 [INFO]   host: 127.0.0.1
+2025-11-04 11:09:18,457 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-y7yejx_t
+2025-11-04 11:09:18,457 [INFO]   nanny: True
+2025-11-04 11:09:18,457 [INFO] Processing camera: Cam1
+2025-11-04 11:09:18,475 [INFO] Pre-computing vector masks for Cam1
+2025-11-04 11:09:21,007 [INFO] Vector masks computed: 3 passes
+2025-11-04 11:09:21,100 [INFO] Successfully cached window padding for 3 passes
+2025-11-04 11:09:21,246 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-04 11:09:22,794 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-04 11:09:33,283 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\im7\uncalibrated_piv\50\Cam1\instantaneous\coordinates.mat
+2025-11-04 11:10:10,491 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-54e43e28ecc44ffe9913b97330fcc0de' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,493 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-c81a05e1b42f42beae977ecec3e7b54c' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,494 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-6aa55f0890c34262b791890973af7bbf' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,494 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-a56eb58919b94d82b776f754a0b64382' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,495 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-7c2d5ddf8e564c2d96208423d7fa46c2' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,495 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-a733e79ae4034a119ba977d8a7a946b0' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,495 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-8189242f672c444ba1831406c61d9898' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,496 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-7de0b19cfb394240a422e9b086146eaa' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,496 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-157eb4dd1dbc43d898e19b015b44db20' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,496 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-115fee198c224f2790538712b4156a3a' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,496 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-af67e22a06374c14b0e77ebea4a9a2e9' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,497 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-9efd5cb5c66641ef831d9123eb721883' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,497 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-47ee28cfc0d240c7bfabfa32453cccff' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,497 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-4c03a75aadff4799a66ed2cbf3667f8c' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,497 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-d34467400f04469db3a3238f639deed3' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,497 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-2c0a1116290e4a0494de23351c28dca5' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,498 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-f60f03e41f2b4e96a859b38d31f0d14b' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,499 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-8b77395bf80c4eb888d1a00108fb51dd' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,499 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-37290301ca2f46298af0f3d4c126803e' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,499 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-1d205b7a570c41b083a2e6754663624d' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,499 [WARNING] PIVResult has no passes for frame 33. Skipping save.
+2025-11-04 11:10:10,499 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-d2e4542d620242cd91a7a125a46e3468' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,499 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-f8c1797e1b1944fa97a56ac416e04477' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,500 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-9c999b1508dd45208db6e9b36e918f2c' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,500 [WARNING] PIVResult has no passes for frame 32. Skipping save.
+2025-11-04 11:10:10,500 [WARNING] PIVResult has no passes for frame 44. Skipping save.
+2025-11-04 11:10:10,500 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-69b61232ca074cb3a0ccf5d1cd53fce3' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,500 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-f4916d3780894a14b7d3a81c47b65266' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,500 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-1cb69a30a0204d168ed4a68667645bde' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,501 [WARNING] PIVResult has no passes for frame 26. Skipping save.
+2025-11-04 11:10:10,501 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-a3b46cfc2ae344e2be4bf0d6d98833fb' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,501 [WARNING] PIVResult has no passes for frame 35. Skipping save.
+2025-11-04 11:10:10,501 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-893d224509264d04a87e20820a4846c6' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,501 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-0056618596b04d1f86b00bb24e9ef61f' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,501 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-01efb3830286448fb02c046b281ad565' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,501 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-97f2864da20c4ebe80fa1700a61e23ea' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,501 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-4e87a45906e94d708cd853d1c5d0a12b' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,501 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-f45dcd0083c74c17a7f0452118673358' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,501 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-17e921663f024980b7909ce1a39f65d3' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,501 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-17e6fb7adecb40ec9cb08a4a8498200b' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,501 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-9fd4799370174efc91d1a9f82f4e5fff' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,502 [WARNING] PIVResult has no passes for frame 36. Skipping save.
+ize-hlgfinalizecompute-55daf8e5d08048a7bbe89e2a20116dc8' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,502 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-51e1154f202945af9651ce48c6cc3a1c' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,502 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-20da0cfb77fd42ec9f7afa4396d4e512' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,502 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-7b76d76f1b2148f7b97225fa8c0deee9' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,503 [WARNING] PIVResult has no passes for frame 41. Skipping save.
+2025-11-04 11:10:10,503 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-25ae3823692d41b2957d77b97e83de6a' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,503 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-285031ccfb8446b295a0d5f697ca28db' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,503 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-d382067ad1b0418da05c5ff8f2aa2ea6' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,503 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-8e65b4a3fca049db9a91bab94512a723' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50345 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:10,504 [WARNING] PIVResult has no passes for frame 49. Skipping save.
+2025-11-04 11:10:10,505 [WARNING] PIVResult has no passes for frame 50. Skipping save.
+2025-11-04 11:10:10,507 [WARNING] PIVResult has no passes for frame 43. Skipping save.
+2025-11-04 11:10:10,507 [WARNING] PIVResult has no passes for frame 17. Skipping save.
+2025-11-04 11:10:10,508 [WARNING] PIVResult has no passes for frame 47. Skipping save.
+2025-11-04 11:10:10,513 [WARNING] PIVResult has no passes for frame 31. Skipping save.
+2025-11-04 11:10:10,513 [WARNING] PIVResult has no passes for frame 22. Skipping save.
+2025-11-04 11:10:10,513 [WARNING] PIVResult has no passes for frame 19. Skipping save.
+2025-11-04 11:10:10,513 [WARNING] PIVResult has no passes for frame 40. Skipping save.
+2025-11-04 11:10:10,513 [WARNING] PIVResult has no passes for frame 14. Skipping save.
+2025-11-04 11:10:10,513 [WARNING] PIVResult has no passes for frame 1. Skipping save.
+2025-11-04 11:10:10,513 [WARNING] PIVResult has no passes for frame 28. Skipping save.
+2025-11-04 11:10:10,513 [WARNING] PIVResult has no passes for frame 20. Skipping save.
+2025-11-04 11:10:10,513 [WARNING] PIVResult has no passes for frame 23. Skipping save.
+2025-11-04 11:10:10,513 [WARNING] PIVResult has no passes for frame 13. Skipping save.
+2025-11-04 11:10:10,513 [WARNING] PIVResult has no passes for frame 45. Skipping save.
+2025-11-04 11:10:10,513 [WARNING] PIVResult has no passes for frame 24. Skipping save.
+2025-11-04 11:10:10,514 [WARNING] PIVResult has no passes for frame 16. Skipping save.
+2025-11-04 11:10:10,515 [WARNING] PIVResult has no passes for frame 4. Skipping save.
+2025-11-04 11:10:10,515 [WARNING] PIVResult has no passes for frame 6. Skipping save.
+2025-11-04 11:10:10,515 [WARNING] PIVResult has no passes for frame 38. Skipping save.
+2025-11-04 11:10:10,515 [WARNING] PIVResult has no passes for frame 21. Skipping save.
+2025-11-04 11:10:10,515 [WARNING] PIVResult has no passes for frame 18. Skipping save.
+2025-11-04 11:10:10,515 [WARNING] PIVResult has no passes for frame 39. Skipping save.
+2025-11-04 11:10:10,518 [WARNING] PIVResult has no passes for frame 29. Skipping save.2025-11-04 11:10:10,518 [WARNING] PIVResult has no passes for frame 7. Skipping save.
+2025-11-04 11:10:10,518 [WARNING] PIVResult has no passes for frame 2. Skipping save.
+2025-11-04 11:10:10,519 [WARNING] PIVResult has no passes for frame 11. Skipping save.
+2025-11-04 11:10:10,519 [WARNING] PIVResult has no passes for frame 8. Skipping save.
+2025-11-04 11:10:10,519 [WARNING] PIVResult has no passes for frame 15. Skipping save.
+2025-11-04 11:10:10,520 [WARNING] PIVResult has no passes for frame 48. Skipping save.
+2025-11-04 11:10:10,520 [WARNING] PIVResult has no passes for frame 10. Skipping save.
+2025-11-04 11:10:10,520 [WARNING] PIVResult has no passes for frame 25. Skipping save.
+2025-11-04 11:10:10,535 [WARNING] PIVResult has no passes for frame 27. Skipping save.
+2025-11-04 11:10:10,536 [WARNING] PIVResult has no passes for frame 46. Skipping save.
+2025-11-04 11:10:10,553 [INFO] PIV and save completed: 50 frames saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\im7\uncalibrated_piv\50\Cam1\instantaneous
+2025-11-04 11:10:10,555 [INFO] Coordinates saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\im7\uncalibrated_piv\50\Cam1\instantaneous
+2025-11-04 11:10:10,556 [INFO] Processing camera: Cam2
+2025-11-04 11:10:10,574 [INFO] Pre-computing vector masks for Cam2
+2025-11-04 11:10:13,209 [INFO] Vector masks computed: 3 passes
+2025-11-04 11:10:13,211 [INFO] Successfully cached window padding for 3 passes
+2025-11-04 11:10:13,358 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-04 11:10:14,687 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-04 11:10:20,609 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\im7\uncalibrated_piv\50\Cam2\instantaneous\coordinates.mat
+2025-11-04 11:10:20,901 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-192382e0e9ef42ce96d3c494d1fcceaf' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,901 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-efdf99d5e39942a7a74234584f32fa7a' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,902 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-14f003a85e494a52be59bcb45245f15b' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,902 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-c34a2c5b3bfc456f95f55a145f1aff97' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,902 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-cc7b8972e377405ead209b799d1c6e3f' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,903 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-25c52fccbc3b4ebea6499599bf37c0ce' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,903 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-a31b508cffa441938f3db198e6f55c02' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,904 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-59d2dd90dd344353906dcb6f51200f31' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,904 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-8f8bb1a99ec84680abedbef9c7cf70a8' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,905 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-223d3e00612b490d871151349a7f11e2' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,905 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-964edf197f304e358a5c1ef183d87dfd' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,914 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-cc1e5ce7c26d4865a7b1d4fded470cce' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,916 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-d0f0ff97492a4316a30dfbdfce9bfa5d' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,917 [WARNING] PIVResult has no passes for frame 49. Skipping save.
+2025-11-04 11:10:20,917 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-fa326e78a64b42bab9df8d85cec659a5' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,918 [WARNING] PIVResult has no passes for frame 45. Skipping save.
+2025-11-04 11:10:20,919 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-8c679648a5124991b15084cfa19009e9' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,920 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-8fd5ef9db6f64106b40ed4509e63828b' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,921 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-a1d060b2b1a34de183aea24523f9e28d' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,921 [WARNING] PIVResult has no passes for frame 2. Skipping save.
+2025-11-04 11:10:20,922 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-36bc7853b0854f79a1cc6c5a254a5cbe' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,922 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-1d944d8f5ca14e9d89aa2fffde0b4e09' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,923 [WARNING] PIVResult has no passes for frame 22. Skipping save.
+2025-11-04 11:10:20,923 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-9a751b23cf5c4869a75c7c9a27c3de5b' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,923 [WARNING] PIVResult has no passes for frame 50. Skipping save.
+2025-11-04 11:10:20,924 [WARNING] PIVResult has no passes for frame 28. Skipping save.
+2025-11-04 11:10:20,925 [WARNING] PIVResult has no passes for frame 32. Skipping save.
+2025-11-04 11:10:20,927 [WARNING] PIVResult has no passes for frame 30. Skipping save.
+2025-11-04 11:10:20,928 [WARNING] PIVResult has no passes for frame 47. Skipping save.
+2025-11-04 11:10:20,928 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-d29d811a7a61482296aae354d25e5ccc' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,929 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-0d05065a1f2744a7b413a1c2cee096c3' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,929 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-78497d71c09b441d8c0cac1ab5a006cb' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,929 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-5b78602fcaa5460bbdf910f1e333d6aa' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,930 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-7ca45dc6d7ff4ae8b8d5cd7032e3e99a' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,930 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-364f2fbcd4eb4cefbca4f316feaeddcd' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,931 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-0b8829ec3530427985aba5fa40e3d335' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,931 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-20f5d6ea2d7345d287ce22b66998216e' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,931 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-a543cedb1f73416a9c8128b45dd1e34b' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,932 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-7a855886734e4a3a919d4b8e88a685b8' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,933 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-fc0ac85a842d4340ba6e24bc688fad74' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,933 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-e5dcbbf6dda44473a72b5bd419d94203' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,933 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-83be65a9dcf94c1795586409c09aa56e' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,934 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-27e213f9824049dea93737c6dd25bbaf' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,935 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-064a317759664c6fb842730bdbdbbb39' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,935 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-a2384aa03cb34ca9942a6858a8562607' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,936 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-58e1fd9d8bc649f0a829174f598545cc' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,936 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-d9af81180e124d789bcbc007ab4596f7' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,937 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-0a3362ff6b7e4636ab7697ca5888c866' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,937 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-e27d2520ab294f80a85434b863b34e13' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,938 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-15acf82f3aa5445aa0d187057d6f4f01' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,939 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-d3781735e2a54e5d8f991c25c971d9ce' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,939 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-408d817f2a124808a98be1289695489b' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,940 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-c128e8bf45754501a8b7ac987f452c6f' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,940 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-134e7771101f4fbfb50cf498a7274228' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,941 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-078dadb961134cd887668157e739a91a' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,941 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-d36e2802adf7454aad3e87944fc36ed8' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,942 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-29e534344cad44668f13045fbacf20a3' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,942 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-832a12c6aa0849e49ab3a697dde1ca31' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,943 [ERROR] PIV processing failed: Task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-38c6919b20a24ec6b95181fbb5177875' has 5.89 GiB worth of input dependencies, but worker tcp://127.0.0.1:50278 has memory_limit set to 2.24 GiB.
+2025-11-04 11:10:20,977 [WARNING] PIVResult has no passes for frame 21. Skipping save.
+2025-11-04 11:10:20,978 [WARNING] PIVResult has no passes for frame 4. Skipping save.
+2025-11-04 11:10:20,979 [WARNING] PIVResult has no passes for frame 35. Skipping save.
+2025-11-04 11:10:20,981 [WARNING] PIVResult has no passes for frame 23. Skipping save.
+2025-11-04 11:10:20,984 [WARNING] PIVResult has no passes for frame 13. Skipping save.
+2025-11-04 11:10:20,985 [WARNING] PIVResult has no passes for frame 6. Skipping save.
+2025-11-04 11:10:20,986 [WARNING] PIVResult has no passes for frame 44. Skipping save.
+2025-11-04 11:10:20,986 [WARNING] PIVResult has no passes for frame 24. Skipping save.
+2025-11-04 11:10:20,988 [WARNING] PIVResult has no passes for frame 31. Skipping save.
+2025-11-04 11:10:20,988 [WARNING] PIVResult has no passes for frame 41. Skipping save.
+2025-11-04 11:10:20,988 [WARNING] PIVResult has no passes for frame 26. Skipping save.
+2025-11-04 11:10:20,989 [WARNING] PIVResult has no passes for frame 39. Skipping save.
+2025-11-04 11:10:20,989 [WARNING] PIVResult has no passes for frame 3. Skipping save.
+2025-11-04 11:10:20,989 [WARNING] PIVResult has no passes for frame 1. Skipping save.
+2025-11-04 11:10:20,990 [WARNING] PIVResult has no passes for frame 10. Skipping save.
+2025-11-04 11:10:20,991 [WARNING] PIVResult has no passes for frame 33. Skipping save.
+2025-11-04 11:10:20,992 [WARNING] PIVResult has no passes for frame 5. Skipping save.
+2025-11-04 11:10:20,992 [WARNING] PIVResult has no passes for frame 36. Skipping save.
+2025-11-04 11:10:20,993 [WARNING] PIVResult has no passes for frame 7. Skipping save.
+2025-11-04 11:10:20,993 [WARNING] PIVResult has no passes for frame 42. Skipping save.
+2025-11-04 11:10:20,994 [WARNING] PIVResult has no passes for frame 8. Skipping save.
+2025-11-04 11:10:20,994 [WARNING] PIVResult has no passes for frame 48. Skipping save.
+2025-11-04 11:10:20,995 [WARNING] PIVResult has no passes for frame 9. Skipping save.
+2025-11-04 11:10:20,995 [WARNING] PIVResult has no passes for frame 11. Skipping save.
+2025-11-04 11:10:20,997 [WARNING] PIVResult has no passes for frame 12. Skipping save.
+2025-11-04 11:10:20,997 [WARNING] PIVResult has no passes for frame 14. Skipping save.
+2025-11-04 11:10:20,998 [WARNING] PIVResult has no passes for frame 15. Skipping save.
+2025-11-04 11:10:20,999 [WARNING] PIVResult has no passes for frame 16. Skipping save.
+2025-11-04 11:10:21,000 [WARNING] PIVResult has no passes for frame 17. Skipping save.
+2025-11-04 11:10:21,001 [WARNING] PIVResult has no passes for frame 18. Skipping save.
+2025-11-04 11:10:21,001 [WARNING] PIVResult has no passes for frame 20. Skipping save.
+2025-11-04 11:10:21,003 [WARNING] PIVResult has no passes for frame 19. Skipping save.
+2025-11-04 11:10:21,003 [WARNING] PIVResult has no passes for frame 27. Skipping save.
+2025-11-04 11:10:21,004 [WARNING] PIVResult has no passes for frame 29. Skipping save.
+2025-11-04 11:10:21,005 [WARNING] PIVResult has no passes for frame 25. Skipping save.
+2025-11-04 11:10:21,006 [WARNING] PIVResult has no passes for frame 37. Skipping save.
+2025-11-04 11:10:21,007 [WARNING] PIVResult has no passes for frame 38. Skipping save.
+2025-11-04 11:10:21,008 [WARNING] PIVResult has no passes for frame 40. Skipping save.
+2025-11-04 11:10:21,009 [WARNING] PIVResult has no passes for frame 34. Skipping save.
+2025-11-04 11:10:21,011 [WARNING] PIVResult has no passes for frame 43. Skipping save.
+2025-11-04 11:10:21,012 [WARNING] PIVResult has no passes for frame 46. Skipping save.
+2025-11-04 11:10:21,040 [INFO] PIV and save completed: 50 frames saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\im7\uncalibrated_piv\50\Cam2\instantaneous
+2025-11-04 11:10:21,043 [INFO] Coordinates saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\im7\uncalibrated_piv\50\Cam2\instantaneous
+2025-11-04 11:18:09,258 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:18:10,346 [INFO] Auto-detected image shape: (3248, 4872)
+2025-11-04 11:18:10,347 [INFO] === Auto-computing optimal Dask configuration ===
+2025-11-04 11:18:10,348 [INFO] System Resources:
+2025-11-04 11:18:10,348 [INFO]   CPU cores: 20
+2025-11-04 11:18:10,349 [INFO]   Total memory: 63.46 GB
+2025-11-04 11:18:10,349 [INFO] Workload Parameters:
+2025-11-04 11:18:10,349 [INFO]   Image shape: 3248x4872
+2025-11-04 11:18:10,350 [INFO]   Batch size: 50
+2025-11-04 11:18:10,350 [INFO]   Data type: uint16 (2 bytes)
+2025-11-04 11:18:10,351 [INFO]   PIV passes: 3
+2025-11-04 11:18:10,351 [INFO] Memory Analysis (per worker):
+2025-11-04 11:18:10,351 [INFO]   BATCH INPUT (batch_size=50):
+2025-11-04 11:18:10,352 [INFO]     Input images per pair: 60.36 MB
+2025-11-04 11:18:10,379 [INFO]   PIV PROCESSING (per image):
+2025-11-04 11:18:10,379 [INFO]     FFT intermediates: 241.46 MB
+2025-11-04 11:18:10,379 [INFO]     Correlation planes: 181.09 MB
+2025-11-04 11:18:10,379 [INFO]     Window buffers: 0.12 MB
+2025-11-04 11:18:10,379 [INFO]     Result storage: 2.80 MB
+2025-11-04 11:18:10,379 [INFO]     Processing subtotal: 425.48 MB
+2025-11-04 11:18:10,379 [INFO]   TOTAL PER WORKER:
+2025-11-04 11:18:10,379 [INFO]     Batch + Processing: 3.36 GB
+2025-11-04 11:18:10,380 [INFO]     With safety factor (2.5x): 8.41 GB
+2025-11-04 11:18:10,380 [INFO] Configuration Selected:
+2025-11-04 11:18:10,380 [INFO]   System reserve: 12.69 GB
+2025-11-04 11:18:10,380 [INFO]   Available memory: 50.76 GB
+2025-11-04 11:18:10,380 [INFO]   Max safe workers: 6
+2025-11-04 11:18:10,380 [INFO]   Workers per node: 6 (limited by memory)
+2025-11-04 11:18:10,380 [INFO]   Memory per worker: 8.04GB
+2025-11-04 11:18:10,380 [INFO]   OMP threads: 1
+2025-11-04 11:18:10,380 [INFO]   Threads per worker: 1
+2025-11-04 11:18:10,380 [INFO]   Effective parallelism: 6 tasks
+2025-11-04 11:18:10,380 [WARNING] MEMORY CONSTRAINED: Using only 6 of 20 CPU cores
+2025-11-04 11:18:10,380 [WARNING]   14 cores will remain idle due to memory limits
+2025-11-04 11:18:10,380 [WARNING]   To use all cores, reduce batch_size from 50 to 12
+2025-11-04 11:18:13,414 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:18:13,432 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:18:13,436 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:18:13,444 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:18:13,445 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:18:13,446 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:18:13,772 [INFO] Worker logging configured successfully
+2025-11-04 11:18:13,772 [INFO] Worker logging configured successfully
+2025-11-04 11:18:13,772 [INFO] Worker logging configured successfully
+2025-11-04 11:18:13,772 [INFO] Worker logging configured successfully
+2025-11-04 11:18:13,775 [INFO] Dask cluster started successfully
+2025-11-04 11:18:13,776 [INFO] Dask Worker Info:
+2025-11-04 11:18:13,776 [INFO] Worker tcp://127.0.0.1:50068
+2025-11-04 11:18:13,776 [INFO]   pid: None
+2025-11-04 11:18:13,776 [INFO]   host: 127.0.0.1
+2025-11-04 11:18:13,777 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-vspg2lol
+2025-11-04 11:18:13,777 [INFO]   nanny: True
+2025-11-04 11:18:13,777 [INFO] Dask Worker Info:
+2025-11-04 11:18:13,777 [INFO] Worker tcp://127.0.0.1:50079
+2025-11-04 11:18:13,778 [INFO]   pid: None
+2025-11-04 11:18:13,778 [INFO]   host: 127.0.0.1
+2025-11-04 11:18:13,778 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-frqyrqr0
+2025-11-04 11:18:13,778 [INFO]   nanny: True
+2025-11-04 11:18:13,778 [INFO] Dask Worker Info:
+2025-11-04 11:18:13,778 [INFO] Worker tcp://127.0.0.1:50080
+2025-11-04 11:18:13,779 [INFO]   pid: None
+2025-11-04 11:18:13,779 [INFO]   host: 127.0.0.1
+2025-11-04 11:18:13,779 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-t8yo4ayh
+2025-11-04 11:18:13,779 [INFO]   nanny: True
+2025-11-04 11:18:13,779 [INFO] Dask Worker Info:
+2025-11-04 11:18:13,780 [INFO] Worker tcp://127.0.0.1:50085
+2025-11-04 11:18:13,780 [INFO]   pid: None
+2025-11-04 11:18:13,780 [INFO]   host: 127.0.0.1
+2025-11-04 11:18:13,780 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-qom_yrd3
+2025-11-04 11:18:13,780 [INFO]   nanny: True
+2025-11-04 11:18:13,781 [INFO] Dask Worker Info:
+2025-11-04 11:18:13,781 [INFO] Worker tcp://127.0.0.1:50086
+2025-11-04 11:18:13,781 [INFO]   pid: None
+2025-11-04 11:18:13,781 [INFO]   host: 127.0.0.1
+2025-11-04 11:18:13,781 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-efxw03xe
+2025-11-04 11:18:13,781 [INFO]   nanny: True
+2025-11-04 11:18:13,781 [INFO] Processing camera: Cam1
+2025-11-04 11:18:13,798 [INFO] Pre-computing vector masks for Cam1
+2025-11-04 11:18:16,328 [INFO] Vector masks computed: 3 passes
+2025-11-04 11:18:16,420 [INFO] Successfully cached window padding for 3 passes
+2025-11-04 11:18:16,550 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-04 11:18:17,579 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-04 11:18:19,340 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\im7\uncalibrated_piv\50\Cam1\instantaneous\coordinates.mat
+2025-11-04 11:18:36,684 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\im7\uncalibrated_piv\50\Cam1\instantaneous\coordinates.mat
+2025-11-04 11:18:39,232 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:18:39,232 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:18:39,949 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:18:42,382 [ERROR] PIV processing failed: Attempted to run task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-28d7bfb1b9144926b1e2ecdd847374ea' on 4 different workers, but all those workers died while running it. The last worker that attempt to run the task was tcp://127.0.0.1:50087. Inspecting worker logs is often a good next step to diagnose what went wrong. For more information see https://distributed.dask.org/en/stable/killed.html.
+2025-11-04 11:18:42,382 [ERROR] PIV processing failed: Attempted to run task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-b6b0a13d28034620837253f339d448d5' on 4 different workers, but all those workers died while running it. The last worker that attempt to run the task was tcp://127.0.0.1:50087. Inspecting worker logs is often a good next step to diagnose what went wrong. For more information see https://distributed.dask.org/en/stable/killed.html.
+2025-11-04 11:18:42,383 [ERROR] PIV processing failed: Attempted to run task 'getitem-rechunk-merge-finalize-hlgfinalizecompute-fe324350a0e748e587d07d6eebf2e171' on 4 different workers, but all those workers died while running it. The last worker that attempt to run the task was tcp://127.0.0.1:50087. Inspecting worker logs is often a good next step to diagnose what went wrong. For more information see https://distributed.dask.org/en/stable/killed.html.
+2025-11-04 11:18:42,408 [WARNING] PIVResult has no passes for frame 2. Skipping save.
+2025-11-04 11:18:42,418 [WARNING] PIVResult has no passes for frame 16. Skipping save.
+2025-11-04 11:18:42,427 [WARNING] PIVResult has no passes for frame 22. Skipping save.
+2025-11-04 11:18:44,329 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:18:45,007 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:20:28,779 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:20:30,434 [INFO] Auto-detected image shape: (3248, 4872)
+2025-11-04 11:20:30,435 [INFO] === Auto-computing optimal Dask configuration ===
+2025-11-04 11:20:30,436 [INFO] System Resources:
+2025-11-04 11:20:30,436 [INFO]   CPU cores: 20
+2025-11-04 11:20:30,437 [INFO]   Total memory: 63.46 GB
+2025-11-04 11:20:30,437 [INFO] Workload Parameters:
+2025-11-04 11:20:30,437 [INFO]   Image shape: 3248x4872
+2025-11-04 11:20:30,438 [INFO]   Batch size: 50
+2025-11-04 11:20:30,438 [INFO]   Data type: float32 (4 bytes)
+2025-11-04 11:20:30,438 [INFO]   PIV passes: 3
+2025-11-04 11:20:30,438 [INFO] Memory Analysis (per worker):
+2025-11-04 11:20:30,438 [INFO]   BATCH INPUT (batch_size=50):
+2025-11-04 11:20:30,439 [INFO]     Input images per pair: 120.73 MB
+2025-11-04 11:20:30,452 [INFO]   PIV PROCESSING (per image):
+2025-11-04 11:20:30,453 [INFO]     FFT intermediates: 241.46 MB
+2025-11-04 11:20:30,453 [INFO]     Correlation planes: 181.09 MB
+2025-11-04 11:20:30,453 [INFO]     Window buffers: 0.25 MB
+2025-11-04 11:20:30,453 [INFO]     Result storage: 2.80 MB
+2025-11-04 11:20:30,454 [INFO]     Processing subtotal: 425.61 MB
+2025-11-04 11:20:30,454 [INFO]   TOTAL PER WORKER:
+2025-11-04 11:20:30,454 [INFO]     Batch + Processing: 6.31 GB
+2025-11-04 11:20:30,454 [INFO]     With safety factor (2.5x): 15.78 GB
+2025-11-04 11:20:30,454 [INFO] Configuration Selected:
+2025-11-04 11:20:30,454 [INFO]   System reserve: 12.69 GB
+2025-11-04 11:20:30,455 [INFO]   Available memory: 50.76 GB
+2025-11-04 11:20:30,455 [INFO]   Max safe workers: 3
+2025-11-04 11:20:30,455 [INFO]   Workers per node: 3 (limited by memory)
+2025-11-04 11:20:30,455 [INFO]   Memory per worker: 16.08GB
+2025-11-04 11:20:30,455 [INFO]   OMP threads: 1
+2025-11-04 11:20:30,455 [INFO]   Threads per worker: 1
+2025-11-04 11:20:30,455 [INFO]   Effective parallelism: 3 tasks
+2025-11-04 11:20:30,456 [WARNING] MEMORY CONSTRAINED: Using only 3 of 20 CPU cores
+2025-11-04 11:20:30,456 [WARNING]   17 cores will remain idle due to memory limits
+2025-11-04 11:20:30,456 [WARNING]   To use all cores, reduce batch_size from 50 to 6
+2025-11-04 11:20:32,846 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:20:32,865 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:20:32,866 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:20:33,004 [INFO] Worker logging configured successfully
+2025-11-04 11:20:33,004 [INFO] Worker logging configured successfully
+2025-11-04 11:20:33,005 [INFO] Worker logging configured successfully
+2025-11-04 11:20:33,006 [INFO] Dask cluster started successfully
+2025-11-04 11:20:33,007 [INFO] Dask Worker Info:
+2025-11-04 11:20:33,007 [INFO] Worker tcp://127.0.0.1:50234
+2025-11-04 11:20:33,007 [INFO]   pid: None
+2025-11-04 11:20:33,008 [INFO]   host: 127.0.0.1
+2025-11-04 11:20:33,008 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-izxiiux_
+2025-11-04 11:20:33,008 [INFO]   nanny: True
+2025-11-04 11:20:33,008 [INFO] Dask Worker Info:
+2025-11-04 11:20:33,008 [INFO] Worker tcp://127.0.0.1:50241
+2025-11-04 11:20:33,008 [INFO]   pid: None
+2025-11-04 11:20:33,009 [INFO]   host: 127.0.0.1
+2025-11-04 11:20:33,009 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-_hare8uf
+2025-11-04 11:20:33,009 [INFO]   nanny: True
+2025-11-04 11:20:33,009 [INFO] Dask Worker Info:
+2025-11-04 11:20:33,010 [INFO] Worker tcp://127.0.0.1:50242
+2025-11-04 11:20:33,010 [INFO]   pid: None
+2025-11-04 11:20:33,011 [INFO]   host: 127.0.0.1
+2025-11-04 11:20:33,011 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-gbltg3ij
+2025-11-04 11:20:33,012 [INFO]   nanny: True
+2025-11-04 11:20:33,012 [INFO] Processing camera: Cam1
+2025-11-04 11:20:33,027 [INFO] Pre-computing vector masks for Cam1
+2025-11-04 11:20:35,564 [INFO] Vector masks computed: 3 passes
+2025-11-04 11:20:35,570 [INFO] Successfully cached window padding for 3 passes
+2025-11-04 11:20:35,709 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-04 11:20:36,279 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-04 11:20:45,283 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\im7\uncalibrated_piv\50\Cam1\instantaneous\coordinates.mat
+2025-11-04 11:22:09,912 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:30:54,824 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:30:57,185 [INFO] Auto-detected image shape: (3248, 4872)
+2025-11-04 11:30:57,187 [INFO] === Memory Configuration Validation ===
+2025-11-04 11:30:57,187 [INFO] Configuration appears safe. Using 2 workers with batch size 50.
+2025-11-04 11:30:59,951 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:30:59,951 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 11:31:00,192 [INFO] Worker logging configured successfully
+2025-11-04 11:31:00,193 [INFO] Dask cluster started successfully
+2025-11-04 11:31:00,194 [INFO] Dask Worker Info:
+2025-11-04 11:31:00,194 [INFO] Worker tcp://127.0.0.1:55644
+2025-11-04 11:31:00,194 [INFO]   pid: None
+2025-11-04 11:31:00,194 [INFO]   host: 127.0.0.1
+2025-11-04 11:31:00,194 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-jfzahzbf
+2025-11-04 11:31:00,194 [INFO]   nanny: True
+2025-11-04 11:31:00,195 [INFO] Dask Worker Info:
+2025-11-04 11:31:00,195 [INFO] Worker tcp://127.0.0.1:55645
+2025-11-04 11:31:00,195 [INFO]   pid: None
+2025-11-04 11:31:00,195 [INFO]   host: 127.0.0.1
+2025-11-04 11:31:00,195 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-x4jf03fb
+2025-11-04 11:31:00,196 [INFO]   nanny: True
+2025-11-04 11:31:00,196 [INFO] Processing camera: Cam1
+2025-11-04 11:31:00,210 [INFO] Pre-computing vector masks for Cam1
+2025-11-04 11:31:02,752 [INFO] Vector masks computed: 3 passes
+2025-11-04 11:31:02,853 [INFO] Successfully cached window padding for 3 passes
+2025-11-04 11:31:02,983 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-04 11:31:03,490 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-04 11:31:06,055 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\im7\uncalibrated_piv\50\Cam1\instantaneous\coordinates.mat
+2025-11-04 11:32:36,518 [INFO] Logging initialized. Level: INFO, File: pypiv.log

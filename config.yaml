@@ -1,22 +1,22 @@
 paths:
   base_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\bailey
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\im7
   source_paths:
-  - C:\Users\mtt1e23\Downloads\ims\ims
+  - D:\DAVIS_BFS\gF_Ramp_experiment\BFS_1500_1
   camera_numbers:
   - 1
   - 2
   camera_count: 2
 images:
-  num_images: 100
+  num_images: 50
   image_format:
-  - loop=1.set
+  - B%05d.im7
   vector_format:
   - '%05d.mat'
   time_resolved: false
-  dtype: uint16
+  dtype: float32
 batches:
-  size: 10
+  size: 50
 logging:
   file: pypiv.log
   level: INFO
@@ -27,11 +27,11 @@ processing:
   stereo: false
   backend: cpu
   debug: false
-  auto_compute_params: true
-  omp_threads: 2
-  dask_workers_per_node: 20
+  auto_compute_params: false
+  omp_threads: 5
+  dask_workers_per_node: 2
   dask_threads_per_worker: 1
-  dask_memory_limit: 2.5GB
+  dask_memory_limit: 22.5GB
   outlier_detection: false
 post_processing:
 - type: POD
@@ -118,7 +118,7 @@ calibration:
     dt: 2
   image_format: calib%05d.tiff
 filters:
-- type: time
+- type: POD
   batch_size: 50
 masking:
   enabled: true
