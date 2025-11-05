@@ -215,19 +215,34 @@ def read_mask_from_mat(file_path: str):
         mask: np.ndarray
         polygons: list of dicts with fields 'index', 'name', 'points'
     """
-    mat = scipy.io.loadmat(file_path, squeeze_me=True)
+    # Load without squeeze_me to avoid 0-d array issues with single-element cells
+    # Use struct_as_record=True (default) so structs become record arrays with dict-like access
+    mat = scipy.io.loadmat(file_path, squeeze_me=False, struct_as_record=True)
     mask = mat.get("mask", None)
     polygons_raw = mat.get("polygons", None)
     if mask is None or polygons_raw is None:
         raise ValueError(f"Missing 'mask' or 'polygons' in {file_path}")
 
-    # Assume polygons_raw is always a 1D array of structured elements
+    # Squeeze the mask manually if needed
+    mask = np.squeeze(mask)
+    
+    # polygons_raw is a numpy object array (MATLAB cell array)
+    # Flatten it to iterate (it might be [[obj1], [obj2]] or [[obj]])
+    polygons_flat = polygons_raw.flatten()
+    
     polygons = []
-    for poly in polygons_raw:
-        idx = int(poly["index"])
-        name = str(poly["name"])
-        pts = poly["points"]
-        points = pts.tolist() if isinstance(pts, np.ndarray) else list(pts)
+    for poly in polygons_flat:
+        # poly is a structured array (record) with named fields accessible via indexing
+        # Extract scalar values from 0-d arrays
+        idx_raw = poly['index'] if isinstance(poly, np.void) else poly['index'][0, 0]
+        name_raw = poly['name'] if isinstance(poly, np.void) else poly['name'][0, 0]
+        pts_raw = poly['points'] if isinstance(poly, np.void) else poly['points'][0, 0]
+        
+        idx = int(idx_raw.item() if hasattr(idx_raw, 'item') else idx_raw)
+        name = str(name_raw.item() if hasattr(name_raw, 'item') else name_raw)
+        
+        # pts might be a 2D array, convert to list of lists
+        points = pts_raw.tolist() if isinstance(pts_raw, np.ndarray) else list(pts_raw)
         polygons.append({"index": idx, "name": name, "points": points})
 
     return mask, polygons

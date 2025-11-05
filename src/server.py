@@ -334,7 +334,24 @@ def update_config():
         data = dict(data)
         data["post_processing"] = current_pp
 
+    # Store old camera_count to detect changes
+    old_camera_count = cfg.data["paths"].get("camera_count", 1)
+
     recursive_update(cfg.data, data)
+    
+    # Handle camera_numbers based on camera_count changes
+    new_camera_count = cfg.data["paths"].get("camera_count", 1)
+    if new_camera_count != old_camera_count:
+        # Reset camera_numbers to default range when camera_count changes
+        cfg.data["paths"]["camera_numbers"] = list(range(1, new_camera_count + 1))
+    else:
+        # Fix camera_numbers if camera_count was not updated
+        camera_numbers = cfg.data["paths"].get("camera_numbers", [])
+        valid_numbers = [n for n in camera_numbers if 1 <= n <= new_camera_count]
+        if not valid_numbers:
+            valid_numbers = list(range(1, new_camera_count + 1))
+        cfg.data["paths"]["camera_numbers"] = valid_numbers
+    
     with open("config.yaml", "w", encoding="utf-8") as f:
         yaml.dump(cfg.data, f, default_flow_style=False, sort_keys=False)
     reload_config()

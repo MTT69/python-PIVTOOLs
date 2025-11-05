@@ -62,7 +62,11 @@ class Config:
     @property
     def camera_numbers(self):
         """Return list of camera numbers to process."""
-        return self.data["paths"]["camera_numbers"]
+        numbers = self.data["paths"]["camera_numbers"]
+        max_allowed = self.camera_count
+        if any(n > max_allowed or n < 1 for n in numbers):
+            raise ValueError(f"Camera numbers {numbers} must be between 1 and {max_allowed}")
+        return numbers
 
     @property
     def camera_folders(self):

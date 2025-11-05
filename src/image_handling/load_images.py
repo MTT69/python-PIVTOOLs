@@ -394,44 +394,34 @@ def compute_vector_mask(
         win_spacing_x = round((1 - overlap / 100) * win_x)
         win_spacing_y = round((1 - overlap / 100) * win_y)
         
-        # Calculate window center positions (matching PIV computation)
-        # Using 0-based indexing: centers start at half window size
-        start_x = win_x / 2 - 0.5
-        start_y = win_y / 2 - 0.5
+        # Calculate window center positions (matching PIV computation exactly)
+        # For a 128-pixel window (indices 0-127), center is at 63.5
+        # First window center in X (width dimension) - 0-based array indexing
+        first_ctr_x = (win_x - 1) / 2.0  # For 128: (127)/2 = 63.5
+        # Last possible window center in X
+        last_ctr_x = W - (win_x + 1) / 2.0  # For W=4872, win=128: 4872 - 64.5 = 4807.5
         
-        # Temporarily disable edge margin (set to full image bounds)
-        # Original code (commented):
-        # # Apply edge margin if needed (matching PIV's EDGE_MARGIN = 32)
-        # EDGE_MARGIN = 0
-        # min_x = EDGE_MARGIN
-        # max_x = W - EDGE_MARGIN - 1
-        # min_y = EDGE_MARGIN
-        # max_y = H - EDGE_MARGIN - 1
-        min_x = 0
-        max_x = W - 1
-        min_y = 0
-        max_y = H - 1
-        
-        start_x = max(start_x, min_x)
-        start_y = max(start_y, min_y)
+        # First window center in Y (height dimension) - 0-based array indexing
+        first_ctr_y = (win_y - 1) / 2.0
+        # Last possible window center in Y
+        last_ctr_y = H - (win_y + 1) / 2.0
         
         # Calculate number of windows
-        n_win_x = int(np.floor((max_x - start_x) / win_spacing_x)) + 1
-        n_win_y = int(np.floor((max_y - start_y) / win_spacing_y)) + 1
+        n_win_x = int(np.floor((last_ctr_x - first_ctr_x) / win_spacing_x)) + 1
+        n_win_y = int(np.floor((last_ctr_y - first_ctr_y) / win_spacing_y)) + 1
         
+        # Ensure at least one window
         n_win_x = max(1, n_win_x)
         n_win_y = max(1, n_win_y)
         
-        # Window center positions
+        # Window center positions using linspace (matches MATLAB's colon operator)
         win_ctrs_x = np.linspace(
-            start_x, start_x + win_spacing_x * (n_win_x - 1), n_win_x
+            first_ctr_x, first_ctr_x + win_spacing_x * (n_win_x - 1), n_win_x
         )
         win_ctrs_y = np.linspace(
-            start_y, start_y + win_spacing_y * (n_win_y - 1), n_win_y
+            first_ctr_y, first_ctr_y + win_spacing_y * (n_win_y - 1), n_win_y
         )
         
-        # Perform 2D convolution with box filter (separable for efficiency)
-        # Convolve along y (rows) first
         box_filter_y = np.ones((win_y, 1), dtype=np.float32) / win_y
         f_mask = convolve(im_mask, box_filter_y, mode='constant', cval=0.0)
         

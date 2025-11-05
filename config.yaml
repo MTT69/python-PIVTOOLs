@@ -1,13 +1,14 @@
 paths:
   base_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows
+  - C:\Users\mtt1e23\Downloads\calibrated_piv_morgan
   source_paths:
   - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall
   camera_numbers:
   - 1
-  camera_count: 1
+  - 2
+  camera_count: 2
 images:
-  num_images: 100
+  num_images: 30
   image_format:
   - B%05d_A.tif
   - B%05d_B.tif
@@ -16,7 +17,7 @@ images:
   time_resolved: false
   dtype: float32
 batches:
-  size: 50
+  size: 5
 logging:
   file: pypiv.log
   level: INFO
@@ -30,8 +31,8 @@ processing:
   auto_compute_params: false
   omp_threads: 4
   dask_workers_per_node: 1
-  dask_threads_per_worker: 10
-  dask_memory_limit: 5GB
+  dask_threads_per_worker: 5
+  dask_memory_limit: 10GB
   outlier_detection: false
 post_processing:
 - type: POD
@@ -66,15 +67,12 @@ instantaneous_piv:
     - 64
   - - 32
     - 32
-  - - 16
-    - 16
   overlap:
   - 50
   - 50
   - 50
-  - 50
   runs:
-  - 4
+  - 3
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
@@ -89,12 +87,13 @@ ensemble_piv:
 calibration_format:
   image_format: calib%05d.tif
 calibration:
-  active: stereo
+  active: pinhole
   scale_factor:
-    dt: 0.01
+    dt: 0.56
     px_per_mm: 3.41
+    source_path_idx: 0
   pinhole:
-    source_path_idx: 1
+    source_path_idx: 0
     camera: 1
     image_index: 0
     file_pattern: calib%05d.tif
@@ -106,7 +105,7 @@ calibration:
     dot_distance_mm: 28.9
     grid_tolerance: 0.5
     ransac_threshold: 3
-    dt: 1
+    dt: 0.0275
   stereo:
     source_path_idx: 0
     camera_pair:

@@ -4,7 +4,7 @@ import time
 import uuid
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-
+import os
 import cv2
 import numpy as np
 import scipy.io
@@ -212,10 +212,29 @@ def calibration_set_datum():
             cy = cy + y_offset
             print(f"[set_datum] After offset, first x,y: {cx.flat[0]}, {cy.flat[0]}")
 
-        coordinates[run_idx].x = cx
-        coordinates[run_idx].y = cy
+        # Convert to proper MATLAB struct format (not cell array)
+        # Create structured numpy array with dtype [('x', object), ('y', object)]
+        num_runs = len(coordinates) if hasattr(coordinates, '__len__') else 1
+        if num_runs == 1 and not hasattr(coordinates, '__len__'):
+            num_runs = 1
+            coordinates = [coordinates]
+        
+        dtype = [('x', object), ('y', object)]
+        coords_struct = np.empty((num_runs,), dtype=dtype)
+        
+        # Copy all existing coordinates
+        for i in range(num_runs):
+            if i == run_idx:
+                # Use modified coordinates for this run
+                coords_struct['x'][i] = cx
+                coords_struct['y'][i] = cy
+            else:
+                # Copy existing coordinates
+                existing_x, existing_y = extract_coordinates(coordinates, i + 1)
+                coords_struct['x'][i] = existing_x
+                coords_struct['y'][i] = existing_y
 
-        scipy.io.savemat(coords_path, {"coordinates": coordinates}, do_compression=True)
+        scipy.io.savemat(coords_path, {"coordinates": coords_struct}, do_compression=True)
         return jsonify({"status": "ok", "run": run, "shape": [cx.shape, cy.shape]})
     except Exception as e:
         print(f"[set_datum] ERROR: {e}")
@@ -713,6 +732,30 @@ def planar_load_results():
         return jsonify({"error": str(e)}), 500
 
 
+def _process_single_image(idx, source_root, base_root, file_pattern, pattern_cols, pattern_rows, dot_spacing_mm, asymmetric, enhance_dots, dt, camera):
+    """Helper function for parallel processing of single calibration images"""
+    try:
+        # Create a separate calibrator instance for this image
+        calibrator = PlanarCalibrator(
+            source_dir=source_root,
+            base_dir=base_root,
+            camera_count=1,
+            file_pattern=file_pattern,
+            pattern_cols=pattern_cols,
+            pattern_rows=pattern_rows,
+            dot_spacing_mm=dot_spacing_mm,
+            asymmetric=asymmetric,
+            enhance_dots=enhance_dots,
+            dt=dt,
+            selected_image_idx=idx + 1,  # 1-based
+        )
+        calibrator.process_camera(camera)
+        return idx, True
+    except Exception as e:
+        logger.error(f"Error processing image {idx}: {e}")
+        return idx, False
+
+
 @calibration_bp.route("/calibration/planar/calibrate_all", methods=["POST"])
 def planar_calibrate_all():
     """Start batch planar calibration job for all images for a camera"""
@@ -776,32 +819,11 @@ def planar_calibrate_all():
                 enhance_dots=enhance_dots,
                 dt=dt,
             )
-            # Process all images in parallel
-            def process_single_image(idx):
-                try:
-                    # Create a separate calibrator instance for this image
-                    calibrator = PlanarCalibrator(
-                        source_dir=source_root,
-                        base_dir=base_root,
-                        camera_count=1,
-                        file_pattern=file_pattern,
-                        pattern_cols=pattern_cols,
-                        pattern_rows=pattern_rows,
-                        dot_spacing_mm=dot_spacing_mm,
-                        asymmetric=asymmetric,
-                        enhance_dots=enhance_dots,
-                        dt=dt,
-                        selected_image_idx=idx + 1,  # 1-based
-                    )
-                    calibrator.process_camera(camera)
-                    return idx, True
-                except Exception as e:
-                    logger.error(f"Error processing image {idx}: {e}")
-                    return idx, False
             
+            # Process all images in parallel
             # Use ProcessPoolExecutor for parallel processing
-            with ProcessPoolExecutor(max_workers=min(4, total_images)) as executor:
-                futures = [executor.submit(process_single_image, idx) for idx in range(total_images)]
+            with ProcessPoolExecutor(max_workers = min(os.cpu_count(), total_images, 8)) as executor:
+                futures = [executor.submit(_process_single_image, idx, source_root, base_root, file_pattern, pattern_cols, pattern_rows, dot_spacing_mm, asymmetric, enhance_dots, dt, camera) for idx in range(total_images)]
                 for future in as_completed(futures):
                     idx, success = future.result()
                     calibration_jobs[job_id]["processed_indices"].append(idx)

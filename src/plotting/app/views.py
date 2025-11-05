@@ -11,7 +11,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import matplotlib
 from loguru import logger
 from scipy.io import loadmat, savemat
-
+import os
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
@@ -1010,9 +1010,61 @@ def apply_transformation_to_coordinates(coords: np.ndarray, run: int, transforma
         # Coordinates stay the same for flip_lr
         pass
 
+def backup_original_data(mat: Dict, coords_mat: Optional[Dict] = None) -> Tuple[Dict, Optional[Dict]]:
+    """
+    Create backup copies of piv_result and coordinates as _original.
+    Returns updated mat and coords_mat dicts with _original fields.
+    """
+    # Backup piv_result if not already backed up
+    if "piv_result_original" not in mat:
+        logger.info("Creating backup: piv_result -> piv_result_original")
+        import copy
+        mat["piv_result_original"] = copy.deepcopy(mat["piv_result"])
+    
+    # Backup coordinates if provided and not already backed up
+    if coords_mat is not None and "coordinates_original" not in coords_mat:
+        logger.info("Creating backup: coordinates -> coordinates_original")
+        import copy
+        coords_mat["coordinates_original"] = copy.deepcopy(coords_mat["coordinates"])
+    
+    return mat, coords_mat
+
+
+def restore_original_data(mat: Dict, coords_mat: Optional[Dict] = None) -> Tuple[Dict, Optional[Dict]]:
+    """
+    Restore piv_result and coordinates from _original backups and remove backups.
+    Returns updated mat and coords_mat dicts.
+    """
+    # Restore piv_result from backup
+    if "piv_result_original" in mat:
+        logger.info("Restoring: piv_result_original -> piv_result")
+        mat["piv_result"] = mat["piv_result_original"]
+        del mat["piv_result_original"]
+        # Clear transformation list
+        mat["pending_transformations"] = []
+    
+    # Restore coordinates from backup
+    if coords_mat is not None and "coordinates_original" in coords_mat:
+        logger.info("Restoring: coordinates_original -> coordinates")
+        coords_mat["coordinates"] = coords_mat["coordinates_original"]
+        del coords_mat["coordinates_original"]
+    
+    return mat, coords_mat
+
+
+def has_original_backup(mat: Dict) -> bool:
+    """Check if original backup exists for this frame."""
+    return "piv_result_original" in mat
+
+
 @vector_plot_bp.route("/transform_frame", methods=["POST"])
 def transform_frame():
-    """Apply transformation to a frame's data and coordinates"""
+    """
+    Apply transformation to a frame's data and coordinates.
+    - First transformation creates _original backups
+    - Subsequent transformations update pending list and apply to current data
+    - Transformations are cumulative until reset or apply-to-all
+    """
     logger.info("transform_frame endpoint called")
     try:
         data = request.get_json() or {}
@@ -1023,12 +1075,16 @@ def transform_frame():
         merged_raw = data.get("merged", False)
         merged = bool(merged_raw)
         type_name = data.get("type_name", "instantaneous")
+        
         logger.info(f"transform_frame: base_path={base_path}, camera={camera}, frame={frame}, transformation={transformation}")
+        
         if not base_path:
             return jsonify({"success": False, "error": "base_path required"}), 400
-        if transformation not in ['flip_ud', 'rotate_90_cw', 'rotate_90_ccw', 'swap_ux_uy', 'invert_ux_uy', 'flip_lr']:
+        
+        valid_transforms = ['flip_ud', 'rotate_90_cw', 'rotate_90_ccw', 'swap_ux_uy', 'invert_ux_uy', 'flip_lr']
+        if transformation not in valid_transforms:
             logger.warning(f"Invalid transformation: {transformation}")
-            return jsonify({"success": False, "error": "Invalid transformation"}), 400
+            return jsonify({"success": False, "error": f"Invalid transformation. Valid: {valid_transforms}"}), 400
         
         cfg = get_config()
         paths = get_data_paths(
@@ -1039,7 +1095,7 @@ def transform_frame():
             use_merged=merged,
         )
         data_dir = paths["data_dir"]
-        print(data_dir)
+        
         # Load the mat file
         mat_file = data_dir / (cfg.vector_format % frame)
         if not mat_file.exists():
@@ -1048,30 +1104,48 @@ def transform_frame():
         logger.info(f"Loading mat file: {mat_file}")
         mat = loadmat(str(mat_file), struct_as_record=False, squeeze_me=True)
         piv_result = mat["piv_result"]
-        logger.info(f"Loaded piv_result with shape: {piv_result.shape if hasattr(piv_result, 'shape') else 'no shape'}")
         
         # Load coordinates if they exist
         coords_file = data_dir / "coordinates.mat"
+        coords_mat = None
         coords = None
         if coords_file.exists():
             logger.info(f"Loading coordinates file: {coords_file}")
             coords_mat = loadmat(str(coords_file), struct_as_record=False, squeeze_me=True)
             coords = coords_mat["coordinates"]
-            logger.info(f"Loaded coordinates")
-        else:
-            logger.info("No coordinates file found")
         
-        # Apply transformation to all runs
+        # Create backups on first transformation
+        mat, coords_mat = backup_original_data(mat, coords_mat)
+        
+        # Initialize or update pending transformations list
+        if "pending_transformations" not in mat:
+            mat["pending_transformations"] = []
+        if not isinstance(mat["pending_transformations"], list):
+            mat["pending_transformations"] = list(mat["pending_transformations"])
+        
+        mat["pending_transformations"].append(transformation)
+        logger.info(f"Pending transformations: {mat['pending_transformations']}")
+        
+        # Apply transformation to all non-empty runs in piv_result
         logger.info(f"Applying transformation '{transformation}' to piv_result")
         if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
             num_runs = piv_result.size
             logger.info(f"Multiple runs detected: {num_runs}")
             for run_idx in range(num_runs):
                 pr = piv_result[run_idx]
-                logger.info(f"Applying transformation to run {run_idx + 1}")
-                apply_transformation_to_piv_result(pr, transformation)
-                if coords is not None:
-                    apply_transformation_to_coordinates(coords, run_idx + 1, transformation)
+                # Only apply to non-empty runs
+                try:
+                    if hasattr(pr, 'ux'):
+                        ux = np.asarray(pr.ux)
+                        if ux.size > 0 and not np.all(np.isnan(ux)):
+                            logger.info(f"Applying transformation to run {run_idx + 1}")
+                            apply_transformation_to_piv_result(pr, transformation)
+                            if coords is not None:
+                                apply_transformation_to_coordinates(coords, run_idx + 1, transformation)
+                        else:
+                            logger.debug(f"Skipping empty run {run_idx + 1}")
+                except Exception as e:
+                    logger.warning(f"Error checking run {run_idx + 1}: {e}, skipping")
         else:
             # Single run
             logger.info("Single run detected")
@@ -1079,13 +1153,205 @@ def transform_frame():
             if coords is not None:
                 apply_transformation_to_coordinates(coords, 1, transformation)
         
-        # Track transformations
-        if "transformations" not in mat:
-            mat["transformations"] = []
-        if not isinstance(mat["transformations"], list):
-            mat["transformations"] = [mat["transformations"]]
-        mat["transformations"].append(transformation)
+        # Save back the mat file
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            savemat(str(mat_file), mat, do_compression=True)
         
+        # Save coordinates if they were loaded
+        if coords_mat is not None:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                savemat(str(coords_file), coords_mat, do_compression=True)
+        
+        logger.info(f"Applied {transformation} to frame {frame} for camera {camera}")
+        return jsonify({
+            "success": True,
+            "message": f"Transformation {transformation} applied successfully",
+            "pending_transformations": mat["pending_transformations"],
+            "has_original": True
+        })
+        
+    except ValueError as e:
+        logger.warning(f"transform_frame: validation error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        logger.exception(f"transform_frame: unexpected error: {e}")
+        return jsonify({"success": False, "error": "Internal server error"}), 500
+
+
+@vector_plot_bp.route("/clear_transform", methods=["POST"])
+def reset_transform():
+    """
+    Reset transformations for a specific frame by restoring from _original backups.
+    Only available if original backups exist.
+    """
+    logger.info("clear_transform endpoint called")
+    try:
+        data = request.get_json() or {}
+        base_path = data.get("base_path", "")
+        camera = camera_number(data.get("camera", 1))
+        frame = int(data.get("frame", 1))
+        merged_raw = data.get("merged", False)
+        merged = bool(merged_raw)
+        type_name = data.get("type_name", "instantaneous")
+        
+        logger.info(f"clear_transform: base_path={base_path}, camera={camera}, frame={frame}")
+        
+        if not base_path:
+            return jsonify({"success": False, "error": "base_path required"}), 400
+        
+        cfg = get_config()
+        paths = get_data_paths(
+            base_dir=Path(base_path),
+            num_images=cfg.num_images,
+            cam=camera,
+            type_name=type_name,
+            use_merged=merged,
+        )
+        data_dir = paths["data_dir"]
+        
+        # Load the mat file
+        mat_file = data_dir / (cfg.vector_format % frame)
+        if not mat_file.exists():
+            return jsonify({"success": False, "error": f"Frame file not found: {mat_file}"}), 404
+        
+        logger.info(f"Loading mat file: {mat_file}")
+        mat = loadmat(str(mat_file), struct_as_record=False, squeeze_me=True)
+        
+        # Check if backup exists
+        if not has_original_backup(mat):
+            return jsonify({"success": False, "error": "No original backup found for this frame"}), 400
+        
+        # Load coordinates if they exist
+        coords_file = data_dir / "coordinates.mat"
+        coords_mat = None
+        if coords_file.exists():
+            logger.info(f"Loading coordinates file: {coords_file}")
+            coords_mat = loadmat(str(coords_file), struct_as_record=False, squeeze_me=True)
+        
+        # Restore from backups
+        mat, coords_mat = restore_original_data(mat, coords_mat)
+        
+        # Save back the mat file
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            savemat(str(mat_file), mat, do_compression=True)
+        
+        # Save coordinates if they were loaded
+        if coords_mat is not None:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                savemat(str(coords_file), coords_mat, do_compression=True)
+        
+        logger.info(f"Reset transformations for frame {frame}, camera {camera}")
+        return jsonify({
+            "success": True,
+            "message": "Transformations reset to original",
+            "has_original": False
+        })
+        
+    except ValueError as e:
+        logger.warning(f"clear_transform: validation error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        logger.exception(f"clear_transform: unexpected error: {e}")
+        return jsonify({"success": False, "error": "Internal server error"}), 500
+
+
+@vector_plot_bp.route("/check_transform_status", methods=["GET"])
+def check_transform_status():
+    """
+    Check if a frame has pending transformations and original backup.
+    Returns transformation status for the current frame.
+    """
+    try:
+        base_path = request.args.get("base_path", "")
+        camera = camera_number(request.args.get("camera", 1))
+        frame = int(request.args.get("frame", 1))
+        merged_raw = request.args.get("merged", "0")
+        merged = merged_raw in ("1", "true", "True", "TRUE")
+        type_name = request.args.get("type_name", "instantaneous")
+        
+        if not base_path:
+            return jsonify({"success": False, "error": "base_path required"}), 400
+        
+        cfg = get_config()
+        paths = get_data_paths(
+            base_dir=Path(base_path),
+            num_images=cfg.num_images,
+            cam=camera,
+            type_name=type_name,
+            use_merged=merged,
+        )
+        data_dir = paths["data_dir"]
+        
+        mat_file = data_dir / (cfg.vector_format % frame)
+        if not mat_file.exists():
+            return jsonify({"success": False, "error": f"Frame file not found"}), 404
+        
+        mat = loadmat(str(mat_file), struct_as_record=False, squeeze_me=True)
+        
+        has_original = has_original_backup(mat)
+        pending_transforms = []
+        if "pending_transformations" in mat:
+            pt = mat["pending_transformations"]
+            if isinstance(pt, np.ndarray):
+                pending_transforms = pt.tolist()
+            elif isinstance(pt, list):
+                pending_transforms = pt
+            else:
+                pending_transforms = [str(pt)]
+        
+        return jsonify({
+            "success": True,
+            "has_original": has_original,
+            "pending_transformations": pending_transforms
+        })
+        
+    except Exception as e:
+        logger.exception(f"check_transform_status: unexpected error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+def process_frame_worker(frame, mat_file, coords_file, transformations):
+    """
+    Worker function for processing a single frame in parallel.
+    Applies transformations to piv_result and coordinates.
+    """
+    try:
+        mat = loadmat(str(mat_file), struct_as_record=False, squeeze_me=True)
+        piv_result = mat["piv_result"]
+        
+        # Load coordinates if they exist
+        coords = None
+        if coords_file and coords_file.exists():
+            coords_mat = loadmat(str(coords_file), struct_as_record=False, squeeze_me=True)
+            coords = coords_mat.get("coordinates")
+
+        # Apply transformations to all non-empty runs
+        if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
+            num_runs = piv_result.size
+            for run_idx in range(num_runs):
+                pr = piv_result[run_idx]
+                # Only apply to non-empty runs
+                try:
+                    if hasattr(pr, 'ux'):
+                        ux = np.asarray(pr.ux)
+                        if ux.size > 0 and not np.all(np.isnan(ux)):
+                            for trans in transformations:
+                                apply_transformation_to_piv_result(pr, trans)
+                                if coords is not None:
+                                    apply_transformation_to_coordinates(coords, run_idx + 1, trans)
+                except Exception as e:
+                    logger.warning(f"Error checking run {run_idx + 1} in frame {frame}: {e}, skipping")
+        else:
+            # Single run
+            for trans in transformations:
+                apply_transformation_to_piv_result(piv_result, trans)
+                if coords is not None:
+                    apply_transformation_to_coordinates(coords, 1, trans)
+
         # Save back the mat file
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
@@ -1097,47 +1363,6 @@ def transform_frame():
                 warnings.simplefilter("ignore", UserWarning)
                 savemat(str(coords_file), {"coordinates": coords}, do_compression=True)
         
-        logger.info(f"Applied {transformation} to frame {frame} for camera {camera}")
-        return jsonify({"success": True, "message": f"Transformation {transformation} applied successfully"})
-        
-    except ValueError as e:
-        logger.warning(f"transform_frame: validation error: {e}")
-        return jsonify({"success": False, "error": str(e)}), 400
-    except Exception as e:
-        logger.exception(f"transform_frame: unexpected error: {e}")
-        return jsonify({"success": False, "error": "Internal server error"}), 500
-
-
-def process_frame_worker(frame, mat_file, transformations):
-    """Worker function for processing a single frame in parallel"""
-    try:
-        mat = loadmat(str(mat_file), struct_as_record=False, squeeze_me=True)
-        piv_result = mat["piv_result"]
-
-        # Apply transformations to all runs
-        if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
-            num_runs = piv_result.size
-            for run_idx in range(num_runs):
-                pr = piv_result[run_idx]
-                for trans in transformations:
-                    apply_transformation_to_piv_result(pr, trans)
-        else:
-            # Single run
-            for trans in transformations:
-                apply_transformation_to_piv_result(piv_result, trans)
-
-        # Track transformations
-        if "transformations" not in mat:
-            mat["transformations"] = []
-        if not isinstance(mat["transformations"], list):
-            mat["transformations"] = [mat["transformations"]]
-        mat["transformations"].extend(transformations)
-
-        # Save back the mat file
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", UserWarning)
-            savemat(str(mat_file), mat, do_compression=True)
-        
         return True
     except Exception as e:
         logger.error(f"Error processing frame {frame}: {e}")
@@ -1146,26 +1371,94 @@ def process_frame_worker(frame, mat_file, transformations):
 
 @vector_plot_bp.route("/transform_all_frames", methods=["POST"])
 def transform_all_frames():
-    """Apply transformation to all frames with progress tracking"""
+    """
+    Apply transformations to all frames across all cameras.
+    - Gets pending transformations from the source frame
+    - Removes _original backups from source frame
+    - Applies transformations to all other frames in current camera
+    - Applies transformations to all frames in all other cameras
+    - Handles coordinates per camera directory
+    """
     logger.info("transform_all_frames endpoint called")
     data = request.get_json() or {}
     base_path = data.get("base_path", "")
-    camera = camera_number(data.get("camera", 1))
-    transformations = data.get("transformations", [])
-    if isinstance(transformations, str):
-        transformations = [transformations]  # backward compatibility
+    source_camera = camera_number(data.get("camera", 1))
+    source_frame = int(data.get("frame", 1))
     merged_raw = data.get("merged", False)
     merged = bool(merged_raw)
     type_name = data.get("type_name", "instantaneous")
-    image_count = int(data.get("image_count", 1000))
-    logger.info(f"transform_all_frames: base_path={base_path}, camera={camera}, transformations={transformations}, image_count={image_count}")
+    
+    logger.info(f"transform_all_frames: base_path={base_path}, source_camera={source_camera}, source_frame={source_frame}")
 
     if not base_path:
         return jsonify({"success": False, "error": "base_path required"}), 400
-    valid_transforms = ['flip_ud', 'rotate_90_cw', 'rotate_90_ccw', 'swap_ux_uy', 'invert_ux_uy', 'flip_lr']
-    if not all(t in valid_transforms for t in transformations):
-        logger.warning(f"Invalid transformations: {transformations}")
-        return jsonify({"success": False, "error": f"Invalid transformations. Valid: {valid_transforms}"}), 400
+
+    try:
+        cfg = get_config()
+        
+        # Load source frame to get pending transformations
+        source_paths = get_data_paths(
+            base_dir=Path(base_path),
+            num_images=cfg.num_images,
+            cam=source_camera,
+            type_name=type_name,
+            use_merged=merged,
+        )
+        source_data_dir = source_paths["data_dir"]
+        source_mat_file = source_data_dir / (cfg.vector_format % source_frame)
+        
+        if not source_mat_file.exists():
+            return jsonify({"success": False, "error": f"Source frame file not found: {source_mat_file}"}), 404
+        
+        # Load source frame
+        source_mat = loadmat(str(source_mat_file), struct_as_record=False, squeeze_me=True)
+        
+        # Get pending transformations
+        if "pending_transformations" not in source_mat:
+            return jsonify({"success": False, "error": "No pending transformations found on source frame"}), 400
+        
+        transformations = source_mat["pending_transformations"]
+        if isinstance(transformations, np.ndarray):
+            transformations = transformations.tolist()
+        elif not isinstance(transformations, list):
+            transformations = [str(transformations)]
+        
+        if not transformations:
+            return jsonify({"success": False, "error": "No transformations to apply"}), 400
+        
+        logger.info(f"Applying transformations: {transformations}")
+        
+        # Validate transformations
+        valid_transforms = ['flip_ud', 'rotate_90_cw', 'rotate_90_ccw', 'swap_ux_uy', 'invert_ux_uy', 'flip_lr']
+        if not all(t in valid_transforms for t in transformations):
+            return jsonify({"success": False, "error": f"Invalid transformations. Valid: {valid_transforms}"}), 400
+        
+        # Remove _original backups from source frame (it's already transformed)
+        if "piv_result_original" in source_mat:
+            del source_mat["piv_result_original"]
+        if "pending_transformations" in source_mat:
+            source_mat["pending_transformations"] = []
+        
+        # Save source frame without backups
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            savemat(str(source_mat_file), source_mat, do_compression=True)
+        
+        # Remove _original from source coordinates
+        source_coords_file = source_data_dir / "coordinates.mat"
+        if source_coords_file.exists():
+            coords_mat = loadmat(str(source_coords_file), struct_as_record=False, squeeze_me=True)
+            if "coordinates_original" in coords_mat:
+                del coords_mat["coordinates_original"]
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", UserWarning)
+                    savemat(str(source_coords_file), coords_mat, do_compression=True)
+        
+        logger.info(f"Removed backups from source frame {source_frame}, camera {source_camera}")
+        
+    except Exception as e:
+        logger.exception(f"Error preparing transform_all_frames: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
     job_id = str(uuid.uuid4())
 
@@ -1174,77 +1467,117 @@ def transform_all_frames():
             transformation_jobs[job_id] = {
                 "status": "starting",
                 "progress": 0,
+                "processed_cameras": 0,
                 "processed_frames": 0,
-                "total_frames": image_count,
+                "total_frames": 0,
                 "start_time": time.time(),
                 "error": None,
             }
 
             cfg = get_config()
-            paths = get_data_paths(
-                base_dir=Path(base_path),
-                num_images=image_count,
-                cam=camera,
-                type_name=type_name,
-                use_merged=merged,
-            )
-            data_dir = paths["data_dir"]
-
-            # Find all existing vector files
-            vector_files = []
-            for frame in range(1, image_count + 1):
-                mat_file = data_dir / (cfg.vector_format % frame)
-                if mat_file.exists():
-                    vector_files.append((frame, mat_file))
-
-            total_files = len(vector_files)
-            transformation_jobs[job_id]["total_frames"] = total_files
-
-            if total_files == 0:
-                transformation_jobs[job_id]["status"] = "failed"
-                transformation_jobs[job_id]["error"] = "No frame files found to process"
+            all_cameras = cfg.camera_numbers
+            logger.info(f"Processing cameras: {all_cameras}")
+            
+            # Calculate total work
+            total_frames_to_process = 0
+            camera_frame_map = {}
+            
+            for cam in all_cameras:
+                paths = get_data_paths(
+                    base_dir=Path(base_path),
+                    num_images=cfg.num_images,
+                    cam=cam,
+                    type_name=type_name,
+                    use_merged=merged,
+                )
+                data_dir = paths["data_dir"]
+                
+                # Find all existing vector files
+                vector_files = []
+                for frame in range(1, cfg.num_images + 1):
+                    # Skip source frame for source camera (already transformed)
+                    if cam == source_camera and frame == source_frame:
+                        continue
+                    
+                    mat_file = data_dir / (cfg.vector_format % frame)
+                    if mat_file.exists():
+                        vector_files.append((frame, mat_file))
+                
+                camera_frame_map[cam] = {
+                    "data_dir": data_dir,
+                    "vector_files": vector_files
+                }
+                total_frames_to_process += len(vector_files)
+            
+            transformation_jobs[job_id]["total_frames"] = total_frames_to_process
+            
+            if total_frames_to_process == 0:
+                transformation_jobs[job_id]["status"] = "completed"
+                transformation_jobs[job_id]["progress"] = 100
+                logger.info("No additional frames to process")
                 return
 
             transformation_jobs[job_id]["status"] = "running"
-
-            # Load coordinates once if they exist and apply transformations
-            coords_file = data_dir / "coordinates.mat"
-            if coords_file.exists():
-                coords_mat = loadmat(str(coords_file), struct_as_record=False, squeeze_me=True)
-                coords = coords_mat["coordinates"]
+            
+            # Process each camera
+            for cam in all_cameras:
+                logger.info(f"Processing camera {cam}")
+                cam_data = camera_frame_map[cam]
+                data_dir = cam_data["data_dir"]
+                vector_files = cam_data["vector_files"]
                 
-                # Apply transformations to all runs in coordinates
-                if isinstance(coords, np.ndarray) and coords.dtype == object:
-                    num_coord_runs = coords.size
-                    for run_idx in range(num_coord_runs):
+                if not vector_files:
+                    logger.info(f"No frames to process for camera {cam}")
+                    continue
+                
+                # Process coordinates for this camera
+                coords_file = data_dir / "coordinates.mat"
+                
+                if coords_file.exists():
+                    logger.info(f"Transforming coordinates for camera {cam}")
+                    coords_mat = loadmat(str(coords_file), struct_as_record=False, squeeze_me=True)
+                    coords = coords_mat["coordinates"]
+                    
+                    # Apply transformations to all runs in coordinates
+                    if isinstance(coords, np.ndarray) and coords.dtype == object:
+                        num_coord_runs = coords.size
+                        for run_idx in range(num_coord_runs):
+                            for trans in transformations:
+                                apply_transformation_to_coordinates(coords, run_idx + 1, trans)
+                    else:
+                        # Single run
                         for trans in transformations:
-                            apply_transformation_to_coordinates(coords, run_idx + 1, trans)
-                else:
-                    # Single run
-                    for trans in transformations:
-                        apply_transformation_to_coordinates(coords, 1, trans)
+                            apply_transformation_to_coordinates(coords, 1, trans)
+                    
+                    # Save transformed coordinates
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore", UserWarning)
+                        savemat(str(coords_file), {"coordinates": coords}, do_compression=True)
                 
-                # Save coordinates after transformations
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore", UserWarning)
-                    savemat(str(coords_file), {"coordinates": coords}, do_compression=True)
-
-            # Process frames in parallel
-            with ProcessPoolExecutor(max_workers=min(4, total_files)) as executor:
-                futures = [executor.submit(process_frame_worker, frame, mat_file, transformations) for frame, mat_file in vector_files]
-                for future in as_completed(futures):
-                    success = future.result()
-                    transformation_jobs[job_id]["processed_frames"] += 1
-                    transformation_jobs[job_id]["progress"] = int(
-                        (transformation_jobs[job_id]["processed_frames"] / total_files) * 100
-                    )
+                # Process frames in parallel for this camera
+                
+                with ProcessPoolExecutor(max_workers = min(os.cpu_count(), len(vector_files), 8)) as executor:
+                    futures = [
+                        executor.submit(process_frame_worker, frame, mat_file, coords_file, transformations)
+                        for frame, mat_file in vector_files
+                    ]
+                    for future in as_completed(futures):
+                        success = future.result()
+                        transformation_jobs[job_id]["processed_frames"] += 1
+                        transformation_jobs[job_id]["progress"] = int(
+                            (transformation_jobs[job_id]["processed_frames"] / total_frames_to_process) * 100
+                        )
+                
+                transformation_jobs[job_id]["processed_cameras"] += 1
+                logger.info(f"Completed camera {cam} ({transformation_jobs[job_id]['processed_cameras']}/{len(all_cameras)})")
 
             transformation_jobs[job_id]["status"] = "completed"
             transformation_jobs[job_id]["progress"] = 100
-            logger.info(f"Transformations {transformations} completed: {total_files} frames processed")
+            logger.info(f"Transformations {transformations} completed: {total_frames_to_process} frames across {len(all_cameras)} cameras")
 
         except Exception as e:
             logger.error(f"Transformation job {job_id} failed: {e}")
+            logger.exception("Full traceback:")
             transformation_jobs[job_id]["status"] = "failed"
             transformation_jobs[job_id]["error"] = str(e)
 
@@ -1257,8 +1590,8 @@ def transform_all_frames():
         {
             "job_id": job_id,
             "status": "starting",
-            "message": f"Transformations {transformations} job started for camera {camera}",
-            "total_frames": image_count,
+            "message": f"Transformations {transformations} job started across all cameras",
+            "transformations": transformations,
         }
     )
 
@@ -1281,44 +1614,3 @@ def transform_all_frames_status(job_id):
             job_data["estimated_remaining"] = max(0, estimated_total - elapsed)
 
     return jsonify(job_data)
-
-
-@vector_plot_bp.route("/clear_transform", methods=["POST"])
-def clear_transform():
-    """Clear transformations for a specific frame"""
-    logger.info("clear_transform endpoint called")
-    try:
-        data = request.get_json() or {}
-        base_path = data.get("base_path", "")
-        camera = camera_number(data.get("camera", 1))
-        frame = int(data.get("frame", 1))
-        merged_raw = data.get("merged", False)
-        merged = bool(merged_raw)
-        type_name = data.get("type_name", "instantaneous")
-        logger.info(f"clear_transform: base_path={base_path}, camera={camera}, frame={frame}")
-        
-        if not base_path:
-            return jsonify({"success": False, "error": "base_path required"}), 400
-        
-        cfg = get_config()
-        paths = get_data_paths(
-            base_dir=Path(base_path),
-            num_images=cfg.num_images,
-            cam=camera,
-            type_name=type_name,
-            use_merged=merged,
-        )
-        data_dir = paths["data_dir"]
-        
-        # For now, just log and return success
-        # In a full implementation, this would restore from backup or reset transformations
-        logger.info(f"Clearing transformations for frame {frame} in {data_dir}")
-        
-        return jsonify({"success": True, "message": "Transformations cleared successfully"})
-        
-    except ValueError as e:
-        logger.warning(f"clear_transform: validation error: {e}")
-        return jsonify({"success": False, "error": str(e)}), 400
-    except Exception as e:
-        logger.exception(f"clear_transform: unexpected error: {e}")
-        return jsonify({"success": False, "error": "Internal server error"}), 500

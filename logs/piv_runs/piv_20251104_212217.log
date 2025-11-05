@@ -1,0 +1,27 @@
+2025-11-04 21:22:25,353 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 21:22:28,028 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-04 21:22:28,302 [INFO] Worker logging configured successfully
+2025-11-04 21:22:28,303 [INFO] Dask cluster started successfully
+2025-11-04 21:22:28,304 [INFO] Dask Worker Info:
+2025-11-04 21:22:28,304 [INFO] Worker tcp://127.0.0.1:61845
+2025-11-04 21:22:28,304 [INFO]   pid: None
+2025-11-04 21:22:28,304 [INFO]   host: 127.0.0.1
+2025-11-04 21:22:28,304 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-8vulshwz
+2025-11-04 21:22:28,311 [INFO]   nanny: True
+2025-11-04 21:22:28,312 [INFO] Processing camera: Cam1
+2025-11-04 21:22:28,336 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-04 21:22:28.343 | DEBUG    | image_handling.load_images:load_mask_for_camera:287 - Using rectangular edge masking
+2025-11-04 21:22:28.344 | DEBUG    | image_handling.load_images:create_rectangular_mask:242 - Created rectangular mask: top=64, bottom=64, left=0, right=0 (131072/1179648 pixels = 11.1%)
+2025-11-04 21:22:28,344 [INFO] Pre-computing vector masks for Cam1
+2025-11-04 21:22:28.522 | DEBUG    | image_handling.load_images:compute_vector_mask:450 - Pass 1: 30/255 vectors masked (11.8%), window size: (128, 128)
+2025-11-04 21:22:28.614 | DEBUG    | image_handling.load_images:compute_vector_mask:450 - Pass 2: 155/1085 vectors masked (14.3%), window size: (64, 64)
+2025-11-04 21:22:28.645 | DEBUG    | image_handling.load_images:compute_vector_mask:450 - Pass 3: 567/4473 vectors masked (12.7%), window size: (32, 32)
+2025-11-04 21:22:28.661 | DEBUG    | image_handling.load_images:compute_vector_mask:450 - Pass 4: 2159/18161 vectors masked (11.9%), window size: (16, 16)
+2025-11-04 21:22:28,662 [INFO] Vector masks computed: 4 passes
+2025-11-04 21:22:28,740 [INFO] Successfully cached window padding for 4 passes
+2025-11-04 21:22:28,753 [INFO] Successfully cached interpolation grids for 4 passes
+2025-11-04 21:22:28,819 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-04 21:22:29,851 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-11-04 21:22:37,260 [INFO] PIV and save completed: 100 frames saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+2025-11-04 21:22:37,263 [INFO] Coordinates saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\windows\uncalibrated_piv\100\Cam1\instantaneous
+Total elapsed time: 11.92 seconds

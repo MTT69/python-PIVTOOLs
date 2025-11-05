@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
-
+import os
 import cv2
 import matplotlib.colors as mpl_colors
 import matplotlib.pyplot as plt
@@ -258,7 +258,7 @@ def _compute_global_limits_from_files(
         except Exception:
             return None
 
-    with ThreadPoolExecutor(max_workers=4) as executor:
+    with ThreadPoolExecutor(max_workers = min(os.cpu_count(), 8)) as executor:
         futures = [executor.submit(process_file, f) for f in files_to_check]
         for future in as_completed(futures):
             result = future.result()
