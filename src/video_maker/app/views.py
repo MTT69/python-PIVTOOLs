@@ -72,11 +72,12 @@ def progress_callback(current_frame: int, total_frames: int, message: str = ""):
 def _run_video_job(
     base: Path,
     cam: int,
-    num_images: int,
+    num_images: int,  # Number of images/files in the folder
+    run: int,  # Run number (1-based) for run_index
     source_type: str,
     endpoint: str,
     merged_flag: bool,
-    pick: str,
+    var: str,
     pattern: str,
     ps: PlotSettings,
     test_mode: bool = False,
@@ -95,7 +96,7 @@ def _run_video_job(
         )
 
         logger.info(
-            f"[VIDEO] Starting video job | base='{base}', cam={cam}, num_images={num_images}, run={pick}, test_mode={test_mode}"
+            f"[VIDEO] Starting video job | base='{base}', cam={cam}, num_images={num_images}, run={run}, var={var}, test_mode={test_mode}"
         )
 
         paths = get_data_paths(
@@ -118,10 +119,11 @@ def _run_video_job(
 
         meta = make_video_from_scalar(
             data_dir,
-            pick=pick,
+            var=var,
             pattern=pattern,
             settings=ps,
             cancel_event=_video_cancel_event,
+            run_index=run - 1,  # Convert run (1-based) to run_index (0-based)
         )
 
         if _video_cancel_event.is_set():
@@ -218,7 +220,22 @@ def list_videos():
 
 @video_maker_bp.route("/start_video", methods=["POST"])
 def start_video():
-    """Start video job with validation."""
+    """
+    Start video job with validation.
+    
+    Expected JSON parameters:
+    - base_path: str - Base directory path for data
+    - camera: int - Camera number (1-based)
+    - run: int - Run number (1-based)
+    - var: str - Variable to visualize ("ux", "uy", "mag")
+    - fps: int (optional) - Video frame rate (1-120, default: 30)
+    - test_mode: bool (optional) - Create test video with limited frames
+    - test_frames: int (optional) - Number of frames for test mode (default: 50)
+    - lower/upper: float (optional) - Custom color scale limits
+    - cmap: str (optional) - Matplotlib colormap name
+    - resolution: str (optional) - Video resolution ("4k" or default)
+    - out_name: str (optional) - Custom output filename
+    """
     global _video_thread
 
     data = request.get_json(silent=True) or {}
@@ -249,7 +266,18 @@ def start_video():
     if test_frames < 1:
         return jsonify({"error": "test_frames must be positive"}), 400
 
-    num_images = int(data.get("num_images", data.get("run", 1)))
+    # Parse run as the run number (1-based)
+    run_raw = data.get("run")
+    if run_raw is None:
+        return jsonify({"error": "run is required"}), 400
+    try:
+        run = int(run_raw)
+        if run < 1:
+            raise ValueError
+    except ValueError:
+        return jsonify({"error": "Invalid run number"}), 400
+
+    num_images = int(data.get("num_images", 1))  # Keep for other uses, e.g., if needed elsewhere
     if num_images < 1:
         return jsonify({"error": "num_images must be positive"}), 400
     merged_flag = str(data.get("merged", "0")) in ("1", "true", "True")
@@ -258,19 +286,28 @@ def start_video():
     if source_type not in ["instantaneous", "ensemble"]:  # Add allowed types
         return jsonify({"error": "Invalid source_type"}), 400
 
-    pick = data.get("var", None) or data.get("pick", "uy")
-    if pick not in ("ux", "uy", "mag"):
-        return jsonify({"error": "Invalid pick variable"}), 400
+    var = data.get("var", None) or data.get("var", "uy")
+    if var not in ("ux", "uy", "mag"):
+        return jsonify({"error": "Invalid var"}), 400
     pattern = data.get("pattern", "[0-9]*.mat")
 
     ps = PlotSettings()
 
-    ps.fps = 30
+    # Parse FPS with validation (frames per second for video output)
+    fps = data.get("fps", 30)  # Default to 30 FPS if not provided
+    try:
+        fps = int(fps)
+        if fps < 1 or fps > 120:  # Reasonable range: 1-120 FPS
+            return jsonify({"error": "FPS must be between 1 and 120"}), 400
+        ps.fps = fps
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid FPS value"}), 400
+
     ps.crf = 18
     ps.upscale = (1080, 1920) if data.get("resolution") != "4k" else (2160, 3840)
     ps.out_path = data.get(
         "out_name",
-        f"run{num_images}_Cam{cam}_{pick}{'_test' if test_mode else ''}.mp4",
+        f"run{run}_Cam{cam}_{var}{'_test' if test_mode else ''}.mp4",  # Use run for filename
     )
 
     try:
@@ -301,11 +338,12 @@ def start_video():
         args=(
             base,
             cam,
-            num_images,
+            num_images,  # Pass num_images for folder selection
+            run,  # Pass run for run_index
             source_type,
             endpoint,
             merged_flag,
-            pick,
+            var,
             pattern,
             ps,
             test_mode,
@@ -359,6 +397,11 @@ def download_video():
             return jsonify({"error": "Invalid file"}), 400
         user_home = Path.home()
         cwd = Path.cwd()
+        
+        # Get configured base paths for data access
+        cfg = get_config(refresh=True)
+        config_base_paths = [Path(bp).resolve() for bp in cfg.base_paths if Path(bp).exists()]
+        
         allowed_roots = [
             user_home,
             cwd,
@@ -367,6 +410,10 @@ def download_video():
             Path("/Users"),
             Path("/home"),
         ]
+        
+        # Add configured base paths to allowed roots
+        allowed_roots.extend(config_base_paths)
+        
         if os.name == "nt":
             allowed_roots.extend([Path("C:\\Users"), Path("C:\\temp"), Path("C:\\tmp")])
         path_allowed = any(
@@ -375,6 +422,8 @@ def download_video():
         )
         if not path_allowed:
             logger.warning(f"Attempted download of disallowed path: {abs_path}")
+            logger.debug(f"Allowed roots: {allowed_roots}")
+            logger.debug(f"File parents: {list(abs_path.parents)}")
             return jsonify({"error": "File not allowed"}), 403
         response = send_file(
             str(abs_path), mimetype="video/mp4", conditional=True, as_attachment=True
