@@ -16,7 +16,7 @@ images:
   time_resolved: false
   dtype: float32
 batches:
-  size: 20
+  size: 10
 logging:
   file: pypiv.log
   level: INFO
@@ -28,7 +28,7 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 2
+  omp_threads: 4
   dask_workers_per_node: 10
   dask_threads_per_worker: 1
   dask_memory_limit: 6GB
@@ -123,7 +123,7 @@ masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
-  mode: rectangular
+  mode: file
   rectangular:
     top: 64
     bottom: 64

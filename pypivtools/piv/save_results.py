@@ -193,16 +193,13 @@ def _create_piv_struct_all_passes(
         ('uy', object),
         ('b_mask', object),
         ('nan_mask', object),
-        ('edge_mask', object),
         ('win_ctrs_x', object),
         ('win_ctrs_y', object),
-        ('Q', object),
         ('peak_mag', object),
         ('peak_choice', object),
         ('n_windows', object),
         ('predictor_field', object),
         ('window_size', object),
-        ('spacing', object),
     ]
     
     # Create the struct with shape (n_passes_to_save,)
@@ -222,16 +219,13 @@ def _create_piv_struct_all_passes(
         piv_struct['uy'][i] = empty
         piv_struct['b_mask'][i] = empty
         piv_struct['nan_mask'][i] = empty
-        piv_struct['edge_mask'][i] = empty
         piv_struct['win_ctrs_x'][i] = empty
         piv_struct['win_ctrs_y'][i] = empty
-        piv_struct['Q'][i] = empty
         piv_struct['peak_mag'][i] = empty
         piv_struct['peak_choice'][i] = empty
         piv_struct['n_windows'][i] = empty
         piv_struct['predictor_field'][i] = empty
         piv_struct['window_size'][i] = empty
-        piv_struct['spacing'][i] = empty
     
     # Fill with actual data for selected passes
     for local_idx, global_pass_idx in enumerate(passes_to_save):
@@ -254,8 +248,6 @@ def _create_piv_struct_all_passes(
 
         if pass_result.nan_mask is not None:
             piv_struct['nan_mask'][local_idx] = pass_result.nan_mask
-        if pass_result.edge_mask is not None:
-            piv_struct['edge_mask'][local_idx] = pass_result.edge_mask
 
         # Window centers are always stored in pass_result
         if pass_result.win_ctrs_x is not None:
@@ -263,8 +255,6 @@ def _create_piv_struct_all_passes(
         if pass_result.win_ctrs_y is not None:
             piv_struct['win_ctrs_y'][local_idx] = _convert_to_half_precision(pass_result.win_ctrs_y)
             
-        if pass_result.Q is not None:
-            piv_struct['Q'][local_idx] = _convert_to_half_precision(pass_result.Q)
         if pass_result.peak_mag is not None:
             piv_struct['peak_mag'][local_idx] = _convert_to_half_precision(pass_result.peak_mag)
         if pass_result.peak_choice is not None:
@@ -275,8 +265,6 @@ def _create_piv_struct_all_passes(
             piv_struct['predictor_field'][local_idx] = _convert_to_half_precision(pass_result.predictor_field)
         if pass_result.window_size is not None:
             piv_struct['window_size'][local_idx] = pass_result.window_size
-        if pass_result.spacing is not None:
-            piv_struct['spacing'][local_idx] = pass_result.spacing
     
     return piv_struct
 

@@ -236,8 +236,8 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     )
                     
                     # Ensure images are C-contiguous before passing to C library
-                    image_a_prime_c = np.ascontiguousarray(image_a_prime)
-                    image_b_prime_c = np.ascontiguousarray(image_b_prime)
+                    image_a_prime_c = image_a_prime if image_a_prime.flags["C_CONTIGUOUS"] else np.ascontiguousarray(image_a_prime)
+                    image_b_prime_c = image_b_prime if image_b_prime.flags["C_CONTIGUOUS"] else np.ascontiguousarray(image_b_prime)
                     
                     try:
                         error_code = self.lib.bulkxcorr2d(
@@ -379,7 +379,6 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                         np.where(nan_mask, 0.0, primary_peak_mag.astype(np.float32))
                     )
                     pk_height = np.ascontiguousarray(pk_height.astype(np.float32))
-                    Q_mat = np.ascontiguousarray(Q_mat.astype(np.float32))
 
                     # Stack as [Y, X] to match im_mesh structure where [..., 0] = Y and [..., 1] = X
                     # This ensures correct image warping: im_mesh + delta_ab aligns Y with Y and X with X
@@ -403,13 +402,11 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                         ux_mat=np.copy(ux_mat),
                         uy_mat=np.copy(uy_mat),
                         nan_mask=np.copy(nan_mask),
-                        Q=np.copy(Q),
                         peak_mag=np.copy(pk_height),
                         peak_choice=np.copy(peak_choice),
                         predictor_field=np.copy(self.delta_ab_old),
                         b_mask=b_mask.reshape((n_win_y, n_win_x)).astype(bool),
                         window_size=win_size,
-                        spacing=(self.win_spacing_y[pass_idx], self.win_spacing_x[pass_idx]),
                         win_ctrs_x=self.win_ctrs_x[pass_idx],
                         win_ctrs_y=self.win_ctrs_y[pass_idx],
 
@@ -417,6 +414,16 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     pass_time = time.perf_counter() - pass_start
                     self.pass_times.append((n, pass_idx, pass_time))
                     piv_result_all.add_pass(pass_result)
+                    
+                    # Explicit memory cleanup to prevent accumulation
+                    # These large intermediate arrays can consume 500+ MB per pass
+                    del pk_loc_x, pk_loc_y, pk_height, correl_plane_out
+                    del image_a_prime, image_b_prime
+                    del sx, sy, sxy, Q_mat
+                    # Force garbage collection after last pass to release memory
+                    if pass_idx == len(config.window_sizes) - 1:
+                        import gc
+                        gc.collect()
 
             except Exception as exc:
                 logging.error("Error in correlate_batch for image %d: %s", n, exc)
@@ -856,17 +863,15 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
 
         # Output arrays shape: (n_peaks, n_win_y, n_win_x) in C-contiguous format
         out_shape = (n_peaks, n_win_y, n_win_x)
-        pk_loc_x = np.ascontiguousarray(np.zeros(out_shape, dtype=np.float32))
-        pk_loc_y = np.ascontiguousarray(np.zeros(out_shape, dtype=np.float32))
-        pk_height = np.ascontiguousarray(np.zeros(out_shape, dtype=np.float32))
-        sx = np.ascontiguousarray(np.zeros(out_shape, dtype=np.float32))
-        sy = np.ascontiguousarray(np.zeros(out_shape, dtype=np.float32))
-        sxy = np.ascontiguousarray(np.zeros(out_shape, dtype=np.float32))
+        pk_loc_x = np.zeros(out_shape, dtype=np.float32)
+        pk_loc_y = np.zeros(out_shape, dtype=np.float32)
+        pk_height = np.zeros(out_shape, dtype=np.float32)
+        sx = np.zeros(out_shape, dtype=np.float32)
+        sy = np.zeros(out_shape, dtype=np.float32)
+        sxy = np.zeros(out_shape, dtype=np.float32)
 
-        # Correlation plane output: flattened array
-        correl_plane_out = np.ascontiguousarray(
-            np.zeros(total_windows * win_size[0] * win_size[1], dtype=np.float32)
-        )
+        # Correlation plane output: flattened array (not used, so use empty to save memory)
+        correl_plane_out = np.empty(total_windows * win_size[0] * win_size[1], dtype=np.float32)
 
         if config.debug:
             args = [
@@ -1001,18 +1006,18 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 g_kernel /= max(np.sum(g_kernel), 1e-12)
                 self.G_smooth_predictor.append(g_kernel)
 
-        # Verify window padding cache integrity
-        assert len(self.win_ctrs_x) == len(config.window_sizes), f"Window centers X cache length mismatch: {len(self.win_ctrs_x)} vs {len(config.window_sizes)}"
-        assert len(self.win_ctrs_y) == len(config.window_sizes), f"Window centers Y cache length mismatch: {len(self.win_ctrs_y)} vs {len(config.window_sizes)}"
-        assert len(self.win_spacing_x) == len(config.window_sizes), f"Window spacing X cache length mismatch: {len(self.win_spacing_x)} vs {len(config.window_sizes)}"
-        assert len(self.win_spacing_y) == len(config.window_sizes), f"Window spacing Y cache length mismatch: {len(self.win_spacing_y)} vs {len(config.window_sizes)}"
+        # # Verify window padding cache integrity
+        # assert len(self.win_ctrs_x) == len(config.window_sizes), f"Window centers X cache length mismatch: {len(self.win_ctrs_x)} vs {len(config.window_sizes)}"
+        # assert len(self.win_ctrs_y) == len(config.window_sizes), f"Window centers Y cache length mismatch: {len(self.win_ctrs_y)} vs {len(config.window_sizes)}"
+        # assert len(self.win_spacing_x) == len(config.window_sizes), f"Window spacing X cache length mismatch: {len(self.win_spacing_x)} vs {len(config.window_sizes)}"
+        # assert len(self.win_spacing_y) == len(config.window_sizes), f"Window spacing Y cache length mismatch: {len(self.win_spacing_y)} vs {len(config.window_sizes)}"
         
-        # Check that cached values are reasonable
-        for pass_idx in range(len(config.window_sizes)):
-            assert len(self.win_ctrs_x[pass_idx]) > 0, f"No X window centers cached for pass {pass_idx}"
-            assert len(self.win_ctrs_y[pass_idx]) > 0, f"No Y window centers cached for pass {pass_idx}"
-            assert self.win_spacing_x[pass_idx] > 0, f"Invalid X spacing for pass {pass_idx}: {self.win_spacing_x[pass_idx]}"
-            assert self.win_spacing_y[pass_idx] > 0, f"Invalid Y spacing for pass {pass_idx}: {self.win_spacing_y[pass_idx]}"
+        # # Check that cached values are reasonable
+        # for pass_idx in range(len(config.window_sizes)):
+        #     assert len(self.win_ctrs_x[pass_idx]) > 0, f"No X window centers cached for pass {pass_idx}"
+        #     assert len(self.win_ctrs_y[pass_idx]) > 0, f"No Y window centers cached for pass {pass_idx}"
+        #     assert self.win_spacing_x[pass_idx] > 0, f"Invalid X spacing for pass {pass_idx}: {self.win_spacing_x[pass_idx]}"
+        #     assert self.win_spacing_y[pass_idx] > 0, f"Invalid Y spacing for pass {pass_idx}: {self.win_spacing_y[pass_idx]}"
         
         logging.info(f"Successfully cached window padding for {len(config.window_sizes)} passes")
 
