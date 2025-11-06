@@ -23,6 +23,7 @@ if __name__ == "__main__":
 
     config = Config()
     os.environ["OMP_NUM_THREADS"] = config.omp_threads
+    os.environ["MALLOC_TRIM_THRESHOLD_"] = "0"
     if config.debug:
         tracemalloc.start()
 

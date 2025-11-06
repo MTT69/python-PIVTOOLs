@@ -130,6 +130,22 @@ def create_and_return_plot(
             if hasattr(settings, "upper_limit")
             else None
         )
+        
+        # Handle NaN/Inf in automatic limit calculation
+        if vmin is None or vmax is None:
+            valid_data = arr[~(np.isnan(arr) | np.isinf(arr))]
+            if len(valid_data) > 0:
+                if vmin is None:
+                    vmin = float(np.min(valid_data))
+                if vmax is None:
+                    vmax = float(np.max(valid_data))
+            else:
+                # No valid data - use defaults
+                if vmin is None:
+                    vmin = 0.0
+                if vmax is None:
+                    vmax = 1.0
+        
         cmap = getattr(settings, "cmap", None)
         if cmap in (None, "default"):
             cmap = "viridis"
@@ -178,6 +194,22 @@ def create_and_return_plot(
             if hasattr(settings, "upper_limit")
             else None
         )
+        
+        # Handle NaN/Inf in automatic limit calculation
+        if vmin is None or vmax is None:
+            valid_data = arr[~(np.isnan(arr) | np.isinf(arr))]
+            if len(valid_data) > 0:
+                if vmin is None:
+                    vmin = float(np.min(valid_data))
+                if vmax is None:
+                    vmax = float(np.max(valid_data))
+            else:
+                # No valid data - use defaults
+                if vmin is None:
+                    vmin = 0.0
+                if vmax is None:
+                    vmax = 1.0
+        
         cmap = getattr(settings, "cmap", None) if hasattr(settings, "cmap") else None
         if cmap in (None, "default"):
             cmap = "viridis"

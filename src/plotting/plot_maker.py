@@ -138,7 +138,18 @@ def plot_scalar_field(variable, mask, settings): # efe
     if settings.lower_limit is not None and settings.upper_limit is not None:
         vmin, vmax = settings.lower_limit, settings.upper_limit
     else:
-        vmin, vmax = float(masked_var.min()), float(masked_var.max())
+        # Use nanmin/nanmax to handle NaN values properly
+        valid_data = masked_var.compressed()  # Get unmasked data
+        if len(valid_data) > 0:
+            vmin = float(np.nanmin(valid_data))
+            vmax = float(np.nanmax(valid_data))
+            # Check if min/max are still NaN (all valid data is NaN)
+            if np.isnan(vmin) or np.isnan(vmax) or np.isinf(vmin) or np.isinf(vmax):
+                # Fallback to sensible defaults
+                vmin, vmax = 0.0, 1.0
+        else:
+            # No valid data at all - use defaults
+            vmin, vmax = 0.0, 1.0
 
     # Enforce symmetric scale around zero if data spans negative and positive
     use_two_slope = False

@@ -27,6 +27,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))
 from config import Config
 from pypivtools.piv.piv_backend.base import CrossCorrelator
 from pypivtools.piv.piv_result import PIVPassResult, PIVResult
+from pypivtools.piv.piv_backend.outlier_detection import apply_outlier_detection
+from pypivtools.piv.piv_backend.infilling import apply_infilling
 
 
 class InstantaneousCorrelatorCPU(CrossCorrelator):
@@ -315,8 +317,17 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     uy_mat = pk_loc_y[0]
 
                     nan_mask = np.isnan(ux_mat) | np.isnan(uy_mat)
-                    if config.outlier_detection:
-                        nan_mask |= self._piv_2d_outlier(ux_mat, uy_mat)
+                    
+                    # Apply outlier detection if enabled
+                    if config.outlier_detection_enabled:
+                        outlier_methods = config.outlier_detection_methods
+                        if outlier_methods:
+                            # Get primary peak magnitude for peak_mag detection
+                            primary_peak_mag_temp = pk_height[0]
+                            outlier_mask = apply_outlier_detection(
+                                ux_mat, uy_mat, outlier_methods, peak_mag=primary_peak_mag_temp
+                            )
+                            nan_mask |= outlier_mask
 
                     if config.secondary_peak:
                         for pk in range(1, n_peaks):
@@ -327,8 +338,14 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                             # Select new peak for nan_mask locations
                             ux_mat = np.choose(peak_choice - 1, pk_loc_x)
                             uy_mat = np.choose(peak_choice - 1, pk_loc_y)
-                            if config.outlier_detection:
-                                nan_mask |= self._piv_2d_outlier(ux_mat, uy_mat)
+                            if config.outlier_detection_enabled:
+                                outlier_methods = config.outlier_detection_methods
+                                if outlier_methods:
+                                    primary_peak_mag_temp = np.choose(peak_choice - 1, pk_height)
+                                    outlier_mask = apply_outlier_detection(
+                                        ux_mat, uy_mat, outlier_methods, peak_mag=primary_peak_mag_temp
+                                    )
+                                    nan_mask |= outlier_mask
                             if not nan_mask.any():
                                 break
 
@@ -362,10 +379,25 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     ux_mat[mask_bool] = 0.0
                     uy_mat[mask_bool] = 0.0
 
-                    if np.isnan(ux_mat).any():
-                        ux_mat = self._inpaint_nans_biharm(ux_mat)
-                    if np.isnan(uy_mat).any():
-                        uy_mat = self._inpaint_nans_biharm(uy_mat)
+                    # Apply infilling for mid-passes or final pass
+                    is_final_pass = (pass_idx == len(config.window_sizes) - 1)
+                    
+                    if is_final_pass:
+                        # Final pass infilling (optional)
+                        final_infill_cfg = config.infilling_final_pass
+                        if final_infill_cfg.get('enabled', True) and np.isnan(ux_mat).any():
+                            infill_mask = np.isnan(ux_mat) | np.isnan(uy_mat)
+                            ux_mat, uy_mat = apply_infilling(
+                                ux_mat, uy_mat, infill_mask, final_infill_cfg
+                            )
+                    else:
+                        # Mid-pass infilling (required for predictor)
+                        if np.isnan(ux_mat).any() or np.isnan(uy_mat).any():
+                            infill_mask = np.isnan(ux_mat) | np.isnan(uy_mat)
+                            mid_infill_cfg = config.infilling_mid_pass
+                            ux_mat, uy_mat = apply_infilling(
+                                ux_mat, uy_mat, infill_mask, mid_infill_cfg
+                            )
 
                     ux_mat[mask_bool] = 0.0
                     uy_mat[mask_bool] = 0.0
@@ -652,173 +684,6 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
 
         return image_a_prime, image_b_prime, self.delta_ab_pred
     @profile
-    def _piv_2d_outlier(
-        self,
-        ux: np.ndarray,
-        uy: np.ndarray,
-        epsilon: float = 0.2,
-        threshold: float = 2.0,
-    ):
-        """Check for outliers in 2D PIV data.
-
-        :param ux: Horizontal velocity component.
-        :type ux: np.ndarray
-        :param uy: Vertical velocity component.
-        :type uy: np.ndarray
-        :param epsilon: Regularization parameter, defaults to 0.2.
-        :type epsilon: float, optional
-        :param threshold: Outlier threshold, defaults to 2.0.
-        :type threshold: float, optional
-        :return: Boolean array indicating outliers.
-        :rtype: np.ndarray
-        """
-        n_wx, n_wy = ux.shape
-
-        ui = np.stack([ux, uy], axis=-1)
-
-        r_0p = np.zeros((n_wx, n_wy, 2))
-        n_neighbours = np.zeros((n_wx, n_wy, 2))
-
-        for c in range(2):
-            U = ui[..., c]
-            U_pad = np.pad(U, 1, mode="constant", constant_values=np.nan)
-
-            U_nn = np.zeros((n_wx, n_wy, 8))
-            U_nn[..., 0] = U_pad[0:-2, 0:-2]
-            U_nn[..., 1] = U_pad[0:-2, 1:-1]
-            U_nn[..., 2] = U_pad[0:-2, 2:]
-            U_nn[..., 3] = U_pad[1:-1, 0:-2]
-            U_nn[..., 4] = U_pad[1:-1, 2:]
-            U_nn[..., 5] = U_pad[2:, 2:]
-            U_nn[..., 6] = U_pad[2:, 1:-1]
-            U_nn[..., 7] = U_pad[2:, 0:-2]
-
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", category=RuntimeWarning)
-                U_med = np.nanmedian(U_nn, axis=2)
-
-            r_0 = np.abs(U_med - U)
-            r_i = np.abs(U_nn - U_med[..., None])
-
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", category=RuntimeWarning)
-                r_m = np.nanmedian(r_i, axis=2)
-
-            r_0p[..., c] = r_0 / (r_m + epsilon)
-
-            # Count valid neighbors using convolution with explicit boundaries
-            # boundary='fill' with fillvalue=0 prevents circular wrap-around
-            n_neigh = convolve2d(
-                np.logical_not(np.isnan(U)).astype(float),
-                np.ones((3, 3)),
-                mode="same",
-                boundary="fill",
-                fillvalue=0,
-            )
-            n_neighbours[..., c] = n_neigh
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", category=RuntimeWarning)
-            r_0_combined = np.nanmax(r_0p, axis=2)
-        b_filter = (
-            (r_0_combined > threshold)
-            | np.isnan(r_0p).any(axis=2)
-            | (n_neighbours < 6).any(axis=2)
-        )
-        return b_filter
-    
-    # @profile
-    # def _piv_2d_outlier(
-    #     self,
-    #     ux: np.ndarray,
-    #     uy: np.ndarray,
-    #     epsilon: float = 0.2,
-    #     threshold: float = 2.0,
-    # ):
-    #     """Check for outliers in 2D PIV data.
-        
-    #     :param ux: Horizontal velocity component.
-    #     :type ux: np.ndarray
-    #     :param uy: Vertical velocity component.
-    #     :type uy: np.ndarray
-    #     :param epsilon: Regularization parameter, defaults to 0.2.
-    #     :type epsilon: float, optional
-    #     :param threshold: Outlier threshold, defaults to 2.0.
-    #     :type threshold: float, optional
-    #     :return: Boolean array indicating outliers.
-    #     :rtype: np.ndarray
-    #     """
-    #     n_wx, n_wy = ux.shape
-        
-    #     # Stack arrays once for vectorized processing
-    #     ui = np.stack([ux, uy], axis=-1)
-        
-    #     # Pre-allocate output arrays
-    #     r_0p = np.zeros((n_wx, n_wy, 2))
-    #     n_neighbours = np.zeros((n_wx, n_wy, 2))
-        
-    #     for c in range(2):
-    #         U = ui[..., c]
-    #         U_pad = np.pad(U, 1, mode="constant", constant_values=np.nan)
-            
-    #         # Use stride_tricks for faster neighbor extraction (avoids creating full U_nn array)
-    #         # Or stick with slicing but use views more efficiently
-    #         U_nn = np.array([
-    #             U_pad[0:-2, 0:-2],
-    #             U_pad[0:-2, 1:-1],
-    #             U_pad[0:-2, 2:],
-    #             U_pad[1:-1, 0:-2],
-    #             U_pad[1:-1, 2:],
-    #             U_pad[2:, 2:],
-    #             U_pad[2:, 1:-1],
-    #             U_pad[2:, 0:-2]
-    #         ])  # Shape: (8, n_wx, n_wy)
-            
-    #         U_nn = np.moveaxis(U_nn, 0, -1)  # Shape: (n_wx, n_wy, 8)
-            
-    #         # Replace nanmedian with nanmean or percentile-based approximation
-    #         # nanmedian is O(n log n), while nanmean is O(n)
-    #         # For outlier detection, mean often works nearly as well
-    #         with warnings.catch_warnings():
-    #             warnings.simplefilter("ignore", category=RuntimeWarning)
-    #             # Option 1: Use nanmean (much faster, ~50x speedup)
-    #             U_med = np.nanmean(U_nn, axis=2)
-                
-    #             # Option 2: Use approximate median via sorting only valid values
-    #             # (faster than nanmedian but slower than nanmean)
-    #             # U_med = np.nanpercentile(U_nn, 50, axis=2)
-            
-    #         r_0 = np.abs(U_med - U)
-    #         r_i = np.abs(U_nn - U_med[..., None])
-            
-    #         with warnings.catch_warnings():
-    #             warnings.simplefilter("ignore", category=RuntimeWarning)
-    #             r_m = np.nanmean(r_i, axis=2)  # Replace nanmedian with nanmean
-            
-    #         r_0p[..., c] = r_0 / (r_m + epsilon)
-            
-    #         # Neighbor counting - use correlate2d which can be faster
-    #         valid_mask = ~np.isnan(U)
-    #         n_neigh = convolve2d(
-    #             valid_mask.astype(np.float32),  # Use float32 for speed
-    #             np.ones((3, 3), dtype=np.float32),
-    #             mode="same",
-    #             boundary="fill",
-    #             fillvalue=0,
-    #         )
-    #         n_neighbours[..., c] = n_neigh
-        
-    #     with warnings.catch_warnings():
-    #         warnings.simplefilter("ignore", category=RuntimeWarning)
-    #         r_0_combined = np.nanmax(r_0p, axis=2)
-        
-    #     b_filter = (
-    #         (r_0_combined > threshold)
-    #         | np.isnan(r_0p).any(axis=2)
-    #         | (n_neighbours < 6).any(axis=2)
-    #     )
-        
-    #     return b_filter
-
     def _set_lib_arguments(
         self,
         config: Config,

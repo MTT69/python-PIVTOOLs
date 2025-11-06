@@ -1,4 +1,5 @@
 import threading
+from pathlib import Path
 
 import dask
 import dask.array as da
@@ -435,6 +436,64 @@ def cancel_piv():
     if success:
         return jsonify({"status": "cancelled", "job_id": job_id})
     return jsonify({"error": "Failed to cancel job or job not found"}), 404
+
+
+@app.route("/piv_logs", methods=["GET"])
+def get_piv_logs():
+    """
+    Get log content for a PIV job.
+    
+    Query parameters:
+    - job_id: Specific job ID (optional)
+    - lines: Number of lines to return from end (optional, default all)
+    - offset: Line offset from end (optional, for pagination)
+    """
+    runner = get_runner()
+    job_id = request.args.get("job_id")
+    lines = request.args.get("lines", type=int)
+    offset = request.args.get("offset", default=0, type=int)
+    
+    if not job_id:
+        # If no job_id, try to get the most recent job
+        jobs = runner.list_jobs()
+        if not jobs:
+            return jsonify({"error": "No PIV jobs found"}), 404
+        # Sort by start time and get most recent
+        jobs.sort(key=lambda x: x.get("start_time", ""), reverse=True)
+        job_id = jobs[0].get("job_id")
+    
+    status = runner.get_job_status(job_id)
+    if not status:
+        return jsonify({"error": "Job not found"}), 404
+    
+    log_file = Path(status["log_file"])
+    if not log_file.exists():
+        return jsonify({"logs": "", "job_id": job_id, "running": status["running"]})
+    
+    try:
+        with open(log_file, "r", encoding="utf-8", errors="replace") as f:
+            all_lines = f.readlines()
+        
+        # Apply offset and line limit
+        if lines:
+            start_idx = max(0, len(all_lines) - lines - offset)
+            end_idx = len(all_lines) - offset
+            log_lines = all_lines[start_idx:end_idx]
+        else:
+            log_lines = all_lines
+        
+        log_content = "".join(log_lines)
+        
+        return jsonify({
+            "logs": log_content,
+            "job_id": job_id,
+            "running": status["running"],
+            "total_lines": len(all_lines),
+            "returned_lines": len(log_lines),
+        })
+    except Exception as e:
+        logger.error(f"Error reading log file: {e}")
+        return jsonify({"error": f"Failed to read log file: {str(e)}"}), 500
 
 
 @app.route("/get_uncalibrated_count", methods=["GET"])

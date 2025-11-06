@@ -5,10 +5,9 @@ paths:
   - D:\DAVIS_BFS\gF_Ramp_experiment\BFS_1500_1
   camera_numbers:
   - 1
-  - 2
   camera_count: 2
 images:
-  num_images: 100
+  num_images: 120
   image_format:
   - B%05d.im7
   vector_format:
@@ -16,7 +15,7 @@ images:
   time_resolved: false
   dtype: float32
 batches:
-  size: 10
+  size: 30
 logging:
   file: pypiv.log
   level: INFO
@@ -32,7 +31,24 @@ processing:
   dask_workers_per_node: 10
   dask_threads_per_worker: 1
   dask_memory_limit: 6GB
-  outlier_detection: false
+outlier_detection:
+  enabled: true
+  methods:
+  - type: peak_mag
+    threshold: 0.4
+  - type: median_2d
+    epsilon: 0.2
+    threshold: 2.0
+infilling:
+  mid_pass:
+    method: local_median
+    parameters:
+      ksize: 3
+  final_pass:
+    enabled: false
+    method: knn
+    parameters:
+      ksize: 3
 post_processing:
 - type: POD
   settings:
@@ -80,9 +96,6 @@ instantaneous_piv:
 ensemble_piv:
   runs:
   - 5
-  filters:
-  - type: time
-  batch_size: 50
 calibration_format:
   image_format: calib%05d.tif
 calibration:

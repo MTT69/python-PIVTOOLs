@@ -482,9 +482,31 @@ class Config:
         return self.data.get("processing", {}).get("ensemble", False)
 
     @property
-    def outlier_detection(self):
+    def outlier_detection_enabled(self):
         """Return True if outlier detection is enabled."""
-        return self.data.get("processing", {}).get("outlier_detection", True)
+        return self.data.get("outlier_detection", {}).get("enabled", True)
+    
+    @property
+    def outlier_detection_methods(self):
+        """Return list of outlier detection methods with their parameters."""
+        return self.data.get("outlier_detection", {}).get("methods", [])
+    
+    @property
+    def infilling_mid_pass(self):
+        """Return mid-pass infilling configuration."""
+        return self.data.get("infilling", {}).get("mid_pass", {
+            "method": "local_median",
+            "parameters": {"ksize": 3}
+        })
+    
+    @property
+    def infilling_final_pass(self):
+        """Return final-pass infilling configuration."""
+        return self.data.get("infilling", {}).get("final_pass", {
+            "enabled": True,
+            "method": "local_median",
+            "parameters": {"ksize": 3}
+        })
 
     @property
     def secondary_peak(self):

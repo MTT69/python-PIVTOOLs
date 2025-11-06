@@ -1,0 +1,149 @@
+2025-11-06 16:44:19,880 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 16:44:24,157 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 16:44:24,158 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 16:44:24,159 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 16:44:24,161 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 16:44:24,163 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 16:44:24,185 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 16:44:24,213 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 16:44:24,215 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 16:44:24,225 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 16:44:24,228 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 16:44:24,520 [INFO] Worker logging configured successfully
+2025-11-06 16:44:24,520 [INFO] Worker logging configured successfully
+2025-11-06 16:44:24,520 [INFO] Worker logging configured successfully
+2025-11-06 16:44:24,520 [INFO] Worker logging configured successfully
+2025-11-06 16:44:24,520 [INFO] Worker logging configured successfully
+2025-11-06 16:44:24,520 [INFO] Worker logging configured successfully
+2025-11-06 16:44:24,521 [INFO] Worker logging configured successfully
+2025-11-06 16:44:24,522 [INFO] Worker logging configured successfully
+2025-11-06 16:44:24,523 [INFO] Worker logging configured successfully
+2025-11-06 16:44:24,523 [INFO] Worker logging configured successfully
+2025-11-06 16:44:24,524 [INFO] Dask cluster started successfully
+2025-11-06 16:44:24,525 [INFO] Dask Worker Info:
+2025-11-06 16:44:24,525 [INFO] Worker tcp://127.0.0.1:63788
+2025-11-06 16:44:24,525 [INFO]   pid: None
+2025-11-06 16:44:24,525 [INFO]   host: 127.0.0.1
+2025-11-06 16:44:24,525 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-2327p0_a
+2025-11-06 16:44:24,525 [INFO]   nanny: True
+2025-11-06 16:44:24,526 [INFO] Dask Worker Info:
+2025-11-06 16:44:24,526 [INFO] Worker tcp://127.0.0.1:63790
+2025-11-06 16:44:24,526 [INFO]   pid: None
+2025-11-06 16:44:24,526 [INFO]   host: 127.0.0.1
+2025-11-06 16:44:24,526 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-lidjx9s4
+2025-11-06 16:44:24,526 [INFO]   nanny: True
+2025-11-06 16:44:24,526 [INFO] Dask Worker Info:
+2025-11-06 16:44:24,526 [INFO] Worker tcp://127.0.0.1:63791
+2025-11-06 16:44:24,526 [INFO]   pid: None
+2025-11-06 16:44:24,526 [INFO]   host: 127.0.0.1
+2025-11-06 16:44:24,526 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-vdvmi6h2
+2025-11-06 16:44:24,527 [INFO]   nanny: True
+2025-11-06 16:44:24,527 [INFO] Dask Worker Info:
+2025-11-06 16:44:24,527 [INFO] Worker tcp://127.0.0.1:63792
+2025-11-06 16:44:24,527 [INFO]   pid: None
+2025-11-06 16:44:24,527 [INFO]   host: 127.0.0.1
+2025-11-06 16:44:24,527 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-l0w40lct
+2025-11-06 16:44:24,527 [INFO]   nanny: True
+2025-11-06 16:44:24,527 [INFO] Dask Worker Info:
+2025-11-06 16:44:24,527 [INFO] Worker tcp://127.0.0.1:63801
+2025-11-06 16:44:24,527 [INFO]   pid: None
+2025-11-06 16:44:24,527 [INFO]   host: 127.0.0.1
+2025-11-06 16:44:24,527 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-o4x_0mgt
+2025-11-06 16:44:24,528 [INFO]   nanny: True
+2025-11-06 16:44:24,528 [INFO] Processing camera: Cam1
+2025-11-06 16:44:25,654 [INFO] Auto-detected image shape: (3248, 4872)
+2025-11-06 16:44:25.656 | INFO     | image_handling.load_images:load_images:223 - Loaded 110 images with optimal chunking: 4 chunks of size ~30
+2025-11-06 16:44:25.656 | DEBUG    | image_handling.load_images:load_mask_for_camera:328 - Loading mask for Cam1 from D:\DAVIS_BFS\gF_Ramp_experiment\BFS_1500_1\mask_Cam1.mat
+2025-11-06 16:44:25.700 | DEBUG    | image_handling.load_images:load_mask_for_camera:339 - Mask loaded: 5209970/15824256 pixels masked (32.9%)
+2025-11-06 16:44:25,700 [INFO] Pre-computing vector masks for Cam1
+2025-11-06 16:44:27.681 | DEBUG    | image_handling.load_images:compute_vector_mask:476 - Pass 1: 1240/3675 vectors masked (33.7%), window size: (128, 128)
+2025-11-06 16:44:28.826 | DEBUG    | image_handling.load_images:compute_vector_mask:476 - Pass 2: 5083/15100 vectors masked (33.7%), window size: (64, 64)
+2025-11-06 16:44:29.435 | DEBUG    | image_handling.load_images:compute_vector_mask:476 - Pass 3: 20446/61206 vectors masked (33.4%), window size: (32, 32)
+2025-11-06 16:44:29,439 [INFO] Vector masks computed: 3 passes
+2025-11-06 16:44:29,576 [INFO] Successfully cached window padding for 3 passes
+2025-11-06 16:44:29,710 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-06 16:44:31,415 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-06 16:44:31,425 [INFO] Broadcast vector masks to all workers (78.1 KB total)
+2025-11-06 16:44:31,425 [INFO] Processing batch 0-29 (30 images)
+2025-11-06 16:45:34,674 - distributed.worker.memory - WARNING - Unmanaged memory use is high. This may indicate a memory leak or the memory may not be released to the OS; see https://distributed.dask.org/en/latest/worker-memory.html#memory-not-released-back-to-the-os for more information. -- Unmanaged memory: 4.07 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:34,689 - distributed.worker.memory - WARNING - Unmanaged memory use is high. This may indicate a memory leak or the memory may not be released to the OS; see https://distributed.dask.org/en/latest/worker-memory.html#memory-not-released-back-to-the-os for more information. -- Unmanaged memory: 4.07 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:34,696 - distributed.worker.memory - WARNING - Unmanaged memory use is high. This may indicate a memory leak or the memory may not be released to the OS; see https://distributed.dask.org/en/latest/worker-memory.html#memory-not-released-back-to-the-os for more information. -- Unmanaged memory: 3.86 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:34,721 - distributed.worker.memory - WARNING - Unmanaged memory use is high. This may indicate a memory leak or the memory may not be released to the OS; see https://distributed.dask.org/en/latest/worker-memory.html#memory-not-released-back-to-the-os for more information. -- Unmanaged memory: 3.86 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:34,723 - distributed.worker.memory - WARNING - Unmanaged memory use is high. This may indicate a memory leak or the memory may not be released to the OS; see https://distributed.dask.org/en/latest/worker-memory.html#memory-not-released-back-to-the-os for more information. -- Unmanaged memory: 3.85 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:34,727 - distributed.worker.memory - WARNING - Unmanaged memory use is high. This may indicate a memory leak or the memory may not be released to the OS; see https://distributed.dask.org/en/latest/worker-memory.html#memory-not-released-back-to-the-os for more information. -- Unmanaged memory: 3.86 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:34,727 - distributed.worker.memory - WARNING - Unmanaged memory use is high. This may indicate a memory leak or the memory may not be released to the OS; see https://distributed.dask.org/en/latest/worker-memory.html#memory-not-released-back-to-the-os for more information. -- Unmanaged memory: 3.89 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:34,741 - distributed.worker.memory - WARNING - Unmanaged memory use is high. This may indicate a memory leak or the memory may not be released to the OS; see https://distributed.dask.org/en/latest/worker-memory.html#memory-not-released-back-to-the-os for more information. -- Unmanaged memory: 4.08 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:34,906 - distributed.worker.memory - WARNING - Unmanaged memory use is high. This may indicate a memory leak or the memory may not be released to the OS; see https://distributed.dask.org/en/latest/worker-memory.html#memory-not-released-back-to-the-os for more information. -- Unmanaged memory: 4.08 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:36,985 - distributed.worker.memory - WARNING - Unmanaged memory use is high. This may indicate a memory leak or the memory may not be released to the OS; see https://distributed.dask.org/en/latest/worker-memory.html#memory-not-released-back-to-the-os for more information. -- Unmanaged memory: 4.01 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,261 - distributed.worker.memory - WARNING - Worker is at 80% memory usage. Pausing worker.  Process memory: 4.48 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,262 - distributed.worker.memory - WARNING - Worker is at 80% memory usage. Pausing worker.  Process memory: 4.48 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,265 - distributed.worker.memory - WARNING - Worker is at 80% memory usage. Pausing worker.  Process memory: 4.48 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,265 - distributed.worker.memory - WARNING - Worker is at 80% memory usage. Pausing worker.  Process memory: 4.48 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,266 - distributed.worker.memory - WARNING - Worker is at 80% memory usage. Pausing worker.  Process memory: 4.48 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,370 - distributed.worker.memory - WARNING - Worker is at 77% memory usage. Resuming worker. Process memory: 4.35 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,370 - distributed.worker.memory - WARNING - Worker is at 78% memory usage. Resuming worker. Process memory: 4.36 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,370 - distributed.worker.memory - WARNING - Worker is at 78% memory usage. Resuming worker. Process memory: 4.37 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,370 - distributed.worker.memory - WARNING - Worker is at 78% memory usage. Resuming worker. Process memory: 4.37 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,370 - distributed.worker.memory - WARNING - Worker is at 78% memory usage. Resuming worker. Process memory: 4.37 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,373 - distributed.worker.memory - WARNING - Worker is at 80% memory usage. Pausing worker.  Process memory: 4.51 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,382 - distributed.worker.memory - WARNING - Worker is at 80% memory usage. Pausing worker.  Process memory: 4.51 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,391 - distributed.worker.memory - WARNING - Worker is at 80% memory usage. Pausing worker.  Process memory: 4.50 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,464 - distributed.worker.memory - WARNING - Worker is at 80% memory usage. Pausing worker.  Process memory: 4.48 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,464 - distributed.worker.memory - WARNING - Worker is at 80% memory usage. Pausing worker.  Process memory: 4.49 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,464 - distributed.worker.memory - WARNING - Worker is at 80% memory usage. Pausing worker.  Process memory: 4.49 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,464 - distributed.worker.memory - WARNING - Worker is at 80% memory usage. Pausing worker.  Process memory: 4.50 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,465 - distributed.worker.memory - WARNING - Worker is at 80% memory usage. Pausing worker.  Process memory: 4.50 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,464 - distributed.worker.memory - WARNING - Worker is at 79% memory usage. Resuming worker. Process memory: 4.46 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,465 - distributed.worker.memory - WARNING - Worker is at 79% memory usage. Resuming worker. Process memory: 4.46 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,531 - distributed.worker.memory - WARNING - Worker is at 80% memory usage. Pausing worker.  Process memory: 4.48 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,539 - distributed.worker.memory - WARNING - Worker is at 80% memory usage. Pausing worker.  Process memory: 4.49 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,559 - distributed.worker.memory - WARNING - Worker is at 78% memory usage. Resuming worker. Process memory: 4.38 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,559 - distributed.worker.memory - WARNING - Worker is at 81% memory usage. Pausing worker.  Process memory: 4.56 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,559 - distributed.worker.memory - WARNING - Worker is at 78% memory usage. Resuming worker. Process memory: 4.40 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,565 - distributed.worker.memory - WARNING - Worker is at 71% memory usage. Resuming worker. Process memory: 3.97 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,566 - distributed.worker.memory - WARNING - Worker is at 71% memory usage. Resuming worker. Process memory: 3.97 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,567 - distributed.worker.memory - WARNING - Worker is at 71% memory usage. Resuming worker. Process memory: 3.97 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,575 - distributed.worker.memory - WARNING - Worker is at 71% memory usage. Resuming worker. Process memory: 3.97 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,580 - distributed.worker.memory - WARNING - Worker is at 71% memory usage. Resuming worker. Process memory: 3.97 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:45,585 - distributed.worker.memory - WARNING - Worker is at 71% memory usage. Resuming worker. Process memory: 3.97 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:47,171 - distributed.worker.memory - WARNING - Worker is at 75% memory usage. Resuming worker. Process memory: 4.21 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:47,558 - distributed.worker.memory - WARNING - Worker is at 81% memory usage. Pausing worker.  Process memory: 4.54 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:47,558 - distributed.worker.memory - WARNING - Worker is at 81% memory usage. Pausing worker.  Process memory: 4.56 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:47,558 - distributed.worker.memory - WARNING - Worker is at 80% memory usage. Pausing worker.  Process memory: 4.52 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:47,558 - distributed.worker.memory - WARNING - Worker is at 80% memory usage. Pausing worker.  Process memory: 4.51 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:47,559 - distributed.worker.memory - WARNING - Worker is at 80% memory usage. Pausing worker.  Process memory: 4.51 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:47,559 - distributed.worker.memory - WARNING - Worker is at 81% memory usage. Pausing worker.  Process memory: 4.53 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:47,574 - distributed.worker.memory - WARNING - Worker is at 81% memory usage. Pausing worker.  Process memory: 4.58 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:47,669 - distributed.worker.memory - WARNING - Worker is at 80% memory usage. Pausing worker.  Process memory: 4.51 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:47,669 - distributed.worker.memory - WARNING - Worker is at 80% memory usage. Pausing worker.  Process memory: 4.51 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:47,778 - distributed.worker.memory - WARNING - Worker is at 79% memory usage. Resuming worker. Process memory: 4.44 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:47,858 - distributed.worker.memory - WARNING - Worker is at 79% memory usage. Resuming worker. Process memory: 4.44 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:47,870 - distributed.worker.memory - WARNING - Worker is at 82% memory usage. Pausing worker.  Process memory: 4.61 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:47,870 - distributed.worker.memory - WARNING - Worker is at 83% memory usage. Pausing worker.  Process memory: 4.66 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:47,964 - distributed.worker.memory - WARNING - Worker is at 83% memory usage. Pausing worker.  Process memory: 4.65 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:47,990 - distributed.worker.memory - WARNING - Worker is at 73% memory usage. Resuming worker. Process memory: 4.09 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:48,005 - distributed.worker.memory - WARNING - Worker is at 73% memory usage. Resuming worker. Process memory: 4.11 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:48,005 - distributed.worker.memory - WARNING - Worker is at 74% memory usage. Resuming worker. Process memory: 4.15 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:48,005 - distributed.worker.memory - WARNING - Worker is at 74% memory usage. Resuming worker. Process memory: 4.14 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:48,006 - distributed.worker.memory - WARNING - Worker is at 74% memory usage. Resuming worker. Process memory: 4.14 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:48,059 - distributed.worker.memory - WARNING - Worker is at 74% memory usage. Resuming worker. Process memory: 4.14 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:48,076 - distributed.worker.memory - WARNING - Worker is at 73% memory usage. Resuming worker. Process memory: 4.09 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:48,163 - distributed.worker.memory - WARNING - Worker is at 79% memory usage. Resuming worker. Process memory: 4.44 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:48,199 - distributed.worker.memory - WARNING - Worker is at 73% memory usage. Resuming worker. Process memory: 4.09 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:48,263 - distributed.worker.memory - WARNING - Worker is at 80% memory usage. Pausing worker.  Process memory: 4.52 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:48,263 - distributed.worker.memory - WARNING - Worker is at 80% memory usage. Pausing worker.  Process memory: 4.48 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:48,263 - distributed.worker.memory - WARNING - Worker is at 81% memory usage. Pausing worker.  Process memory: 4.56 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:48,263 - distributed.worker.memory - WARNING - Worker is at 81% memory usage. Pausing worker.  Process memory: 4.55 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:48,264 - distributed.worker.memory - WARNING - Worker is at 81% memory usage. Pausing worker.  Process memory: 4.57 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:48,264 - distributed.worker.memory - WARNING - Worker is at 80% memory usage. Pausing worker.  Process memory: 4.52 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:48,264 - distributed.worker.memory - WARNING - Worker is at 81% memory usage. Pausing worker.  Process memory: 4.57 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:48,281 - distributed.worker.memory - WARNING - Worker is at 67% memory usage. Resuming worker. Process memory: 3.79 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:48,372 - distributed.worker.memory - WARNING - Worker is at 81% memory usage. Pausing worker.  Process memory: 4.54 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:48,388 - distributed.worker.memory - WARNING - Worker is at 72% memory usage. Resuming worker. Process memory: 4.06 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:49,669 - distributed.worker.memory - WARNING - Worker is at 79% memory usage. Resuming worker. Process memory: 4.46 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:49,965 - distributed.worker.memory - WARNING - Worker is at 79% memory usage. Resuming worker. Process memory: 4.47 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:50,161 - distributed.worker.memory - WARNING - Worker is at 79% memory usage. Resuming worker. Process memory: 4.45 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:50,262 - distributed.worker.memory - WARNING - Worker is at 79% memory usage. Resuming worker. Process memory: 4.44 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:50,371 - distributed.worker.memory - WARNING - Worker is at 79% memory usage. Resuming worker. Process memory: 4.44 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:50,371 - distributed.worker.memory - WARNING - Worker is at 79% memory usage. Resuming worker. Process memory: 4.44 GiB -- Worker memory limit: 5.59 GiB
+2025-11-06 16:45:50,466 - distributed.worker.memory - WARNING - Worker is at 79% memory usage. Resuming worker. Process memory: 4.45 GiB -- Worker memory limit: 5.59 GiB
