@@ -5,9 +5,10 @@ paths:
   - D:\DAVIS_BFS\gF_Ramp_experiment\BFS_1500_1
   camera_numbers:
   - 1
-  camera_count: 1
+  - 2
+  camera_count: 2
 images:
-  num_images: 102
+  num_images: 100
   image_format:
   - B%05d.im7
   vector_format:
@@ -15,7 +16,7 @@ images:
   time_resolved: false
   dtype: float32
 batches:
-  size: 2
+  size: 20
 logging:
   file: pypiv.log
   level: INFO
@@ -28,9 +29,9 @@ processing:
   debug: false
   auto_compute_params: false
   omp_threads: 2
-  dask_workers_per_node: 20
+  dask_workers_per_node: 10
   dask_threads_per_worker: 1
-  dask_memory_limit: 2.5GB
+  dask_memory_limit: 6GB
   outlier_detection: false
 post_processing:
 - type: POD

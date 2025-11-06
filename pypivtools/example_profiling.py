@@ -5,7 +5,7 @@ import tracemalloc
 import time
 from pathlib import Path
 
-from dask.distributed import wait, performance_report
+from dask.distributed import performance_report
 
 # Add src to path for unified imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -41,9 +41,9 @@ def run_camera_processing(client, config, camera_num, source_path, base_path):
         use_uncalibrated=True
     )
     
-    # Perform PIV and save in parallel on workers
-    # This avoids gathering all results to main process
-    save_futures, scattered_cache = perform_piv_and_save(
+    # Perform PIV and save in parallel on workers with batched processing
+    # This version uses client.map() for efficient task submission
+    saved_paths, scattered_cache = perform_piv_and_save(
         images,
         config,
         client,
@@ -51,6 +51,7 @@ def run_camera_processing(client, config, camera_num, source_path, base_path):
         start_frame=1,
         runs_to_save=config.instantaneous_runs_0based,
         vector_masks=vector_masks,  # Pass pre-computed vector masks
+        batch_size=config.piv_chunk_size,  # Use batch size from config.yaml
     )
     
     # Submit coordinate saving task (runs once per camera) with shared cache
@@ -62,11 +63,10 @@ def run_camera_processing(client, config, camera_num, source_path, base_path):
         config.instantaneous_runs_0based,
     )
     
-    # Wait for all PIV+save tasks to complete
-    wait(save_futures)
+    # All PIV processing already completed (gathered in batches)
     logging.info(
         "PIV and save completed: %d frames saved to %s",
-        len(save_futures), output_path
+        len(saved_paths), output_path
     )
     
     # Wait for coordinates to be saved

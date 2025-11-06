@@ -41,20 +41,38 @@ def read_lavision_im7(
 
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"Image file not found: {file_path}")
-    # Read the buffer
-    p1 = lv.read_buffer(file_path)
-    im_list = list(p1)
-    first_img = im_list[(camera_no - 1) * 2]
-    height, width = first_img.components["PIXEL"].planes[0].shape
-    data = np.zeros((frames, height, width), dtype=np.float64)
-    for j in range(frames):
-        img_idx = int(camera_no - 1) * 2 + j
-        img = im_list[img_idx]
-        i_scale = img.scales.i.slope
-        i_offset = img.scales.i.offset
-        u_arr = img.components["PIXEL"].planes[0] * i_scale + i_offset
-        data[j, :, :] = u_arr
-    del p1
+    
+    # Read the buffer as a generator
+    buffer = lv.read_buffer(file_path)
+    
+    # Calculate which frames we need for this camera
+    start_frame = (camera_no - 1) * 2
+    end_frame = start_frame + frames
+    
+    # Iterate through the generator, only processing the frames we need
+    data = None
+    for idx, img in enumerate(buffer):
+        if idx < start_frame:
+            # Skip frames before our camera
+            continue
+        elif idx < end_frame:
+            # This is one of our frames
+            if data is None:
+                # Initialize array on first needed frame
+                height, width = img.components["PIXEL"].planes[0].shape
+                data = np.zeros((frames, height, width), dtype=np.float64)
+            
+            i_scale = img.scales.i.slope
+            i_offset = img.scales.i.offset
+            u_arr = img.components["PIXEL"].planes[0] * i_scale + i_offset
+            data[idx - start_frame, :, :] = u_arr
+        else:
+            # We've got all our frames, stop iterating
+            break
+    
+    if data is None:
+        raise ValueError(f"Camera {camera_no} not found in file {file_path}")
+    
     return data.astype(np.float32)
 
 

@@ -26584,3 +26584,915 @@ ize-hlgfinalizecompute-55daf8e5d08048a7bbe89e2a20116dc8' has 5.89 GiB worth of i
 2025-11-05 17:59:39,712 [INFO] Logging initialized. Level: INFO, File: pypiv.log
 2025-11-05 17:59:40,420 [INFO] Logging initialized. Level: INFO, File: pypiv.log
 2025-11-05 17:59:40,421 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 09:59:46,460 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 09:59:50,341 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 09:59:50,359 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 09:59:50,386 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 09:59:50,388 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 09:59:50,398 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 09:59:50,403 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 09:59:50,403 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 09:59:50,405 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 09:59:50,419 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 09:59:50,421 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 09:59:50,683 [INFO] Worker logging configured successfully
+2025-11-06 09:59:50,683 [INFO] Worker logging configured successfully
+2025-11-06 09:59:50,687 [INFO] Dask cluster started successfully
+2025-11-06 09:59:50,688 [INFO] Dask Worker Info:
+2025-11-06 09:59:50,688 [INFO] Worker tcp://127.0.0.1:52089
+2025-11-06 09:59:50,688 [INFO]   pid: None
+2025-11-06 09:59:50,689 [INFO]   host: 127.0.0.1
+2025-11-06 09:59:50,689 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-jrw6fh9f
+2025-11-06 09:59:50,689 [INFO]   nanny: True
+2025-11-06 09:59:50,689 [INFO] Dask Worker Info:
+2025-11-06 09:59:50,690 [INFO] Worker tcp://127.0.0.1:52092
+2025-11-06 09:59:50,690 [INFO]   pid: None
+2025-11-06 09:59:50,690 [INFO]   host: 127.0.0.1
+2025-11-06 09:59:50,690 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-058gwmek
+2025-11-06 09:59:50,690 [INFO]   nanny: True
+2025-11-06 09:59:50,690 [INFO] Dask Worker Info:
+2025-11-06 09:59:50,690 [INFO] Worker tcp://127.0.0.1:52107
+2025-11-06 09:59:50,691 [INFO]   pid: None
+2025-11-06 09:59:50,691 [INFO]   host: 127.0.0.1
+2025-11-06 09:59:50,691 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-1ie79yla
+2025-11-06 09:59:50,691 [INFO]   nanny: True
+2025-11-06 09:59:50,691 [INFO] Dask Worker Info:
+2025-11-06 09:59:50,691 [INFO] Worker tcp://127.0.0.1:52108
+2025-11-06 09:59:50,692 [INFO]   pid: None
+2025-11-06 09:59:50,692 [INFO]   host: 127.0.0.1
+2025-11-06 09:59:50,692 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-rzkexfxm
+2025-11-06 09:59:50,692 [INFO]   nanny: True
+2025-11-06 09:59:50,692 [INFO] Dask Worker Info:
+2025-11-06 09:59:50,692 [INFO] Worker tcp://127.0.0.1:52113
+2025-11-06 09:59:50,692 [INFO]   pid: None
+2025-11-06 09:59:50,692 [INFO]   host: 127.0.0.1
+2025-11-06 09:59:50,692 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-2ug88fxk
+2025-11-06 09:59:50,692 [INFO]   nanny: True
+2025-11-06 09:59:50,693 [INFO] Processing camera: Cam1
+2025-11-06 09:59:50,716 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-06 09:59:50,720 [INFO] Pre-computing vector masks for Cam1
+2025-11-06 09:59:51,034 [INFO] Vector masks computed: 3 passes
+2025-11-06 09:59:51,163 [INFO] Successfully cached window padding for 3 passes
+2025-11-06 09:59:51,174 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-06 09:59:51,301 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-06 09:59:51,340 [INFO] Broadcast vector masks to all workers (5.7 KB total)
+2025-11-06 09:59:51,341 [INFO] Processing batch 0-19 (20 images)
+2025-11-06 09:59:52,791 [INFO] Batch 0-19 completed successfully
+2025-11-06 09:59:52,853 [INFO] Processing batch 20-39 (20 images)
+2025-11-06 09:59:54,036 [INFO] Batch 20-39 completed successfully
+2025-11-06 09:59:54,106 [INFO] Processing batch 40-59 (20 images)
+2025-11-06 09:59:55,349 [INFO] Batch 40-59 completed successfully
+2025-11-06 09:59:55,416 [INFO] Processing batch 60-79 (20 images)
+2025-11-06 09:59:56,811 [INFO] Batch 60-79 completed successfully
+2025-11-06 09:59:56,881 [INFO] Processing batch 80-99 (20 images)
+2025-11-06 09:59:58,217 [INFO] Batch 80-99 completed successfully
+2025-11-06 09:59:58,218 [INFO] All 100 images processed successfully
+2025-11-06 09:59:58,221 [INFO] PIV and save completed: 100 frames saved to C:\Users\mtt1e23\Downloads\calibrated_piv_morgan\uncalibrated_piv\100\Cam1\instantaneous
+2025-11-06 09:59:58,254 [INFO] Worker saved coordinates to C:\Users\mtt1e23\Downloads\calibrated_piv_morgan\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-11-06 09:59:58,257 [INFO] Coordinates saved to C:\Users\mtt1e23\Downloads\calibrated_piv_morgan\uncalibrated_piv\100\Cam1\instantaneous
+2025-11-06 10:02:25,776 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:02:28,740 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:02:28,754 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:02:28,757 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:02:28,790 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:02:28,798 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:02:28,800 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:02:28,812 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:02:28,813 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:02:28,814 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:02:28,818 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:02:28,991 [INFO] Worker logging configured successfully
+2025-11-06 10:02:28,992 [INFO] Worker logging configured successfully
+2025-11-06 10:02:29,001 [INFO] Dask cluster started successfully
+2025-11-06 10:02:29,002 [INFO] Dask Worker Info:
+2025-11-06 10:02:29,002 [INFO] Worker tcp://127.0.0.1:52412
+2025-11-06 10:02:29,002 [INFO]   pid: None
+2025-11-06 10:02:29,003 [INFO]   host: 127.0.0.1
+2025-11-06 10:02:29,004 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-swi6va08
+2025-11-06 10:02:29,004 [INFO]   nanny: True
+2025-11-06 10:02:29,005 [INFO] Dask Worker Info:
+2025-11-06 10:02:29,006 [INFO] Worker tcp://127.0.0.1:52415
+2025-11-06 10:02:29,006 [INFO]   pid: None
+2025-11-06 10:02:29,006 [INFO]   host: 127.0.0.1
+2025-11-06 10:02:29,006 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-sq75_h7n
+2025-11-06 10:02:29,006 [INFO]   nanny: True
+2025-11-06 10:02:29,007 [INFO] Dask Worker Info:
+2025-11-06 10:02:29,007 [INFO] Worker tcp://127.0.0.1:52416
+2025-11-06 10:02:29,007 [INFO]   pid: None
+2025-11-06 10:02:29,007 [INFO]   host: 127.0.0.1
+2025-11-06 10:02:29,008 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-3unorp_d
+2025-11-06 10:02:29,008 [INFO]   nanny: True
+2025-11-06 10:02:29,008 [INFO] Dask Worker Info:
+2025-11-06 10:02:29,008 [INFO] Worker tcp://127.0.0.1:52431
+2025-11-06 10:02:29,008 [INFO]   pid: None
+2025-11-06 10:02:29,009 [INFO]   host: 127.0.0.1
+2025-11-06 10:02:29,009 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-ev4f8u72
+2025-11-06 10:02:29,009 [INFO]   nanny: True
+2025-11-06 10:02:29,010 [INFO] Dask Worker Info:
+2025-11-06 10:02:29,010 [INFO] Worker tcp://127.0.0.1:52438
+2025-11-06 10:02:29,010 [INFO]   pid: None
+2025-11-06 10:02:29,011 [INFO]   host: 127.0.0.1
+2025-11-06 10:02:29,012 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-9x9yhpi3
+2025-11-06 10:02:29,013 [INFO]   nanny: True
+2025-11-06 10:02:29,014 [INFO] Processing camera: Cam1
+2025-11-06 10:02:29,026 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-06 10:02:29,030 [INFO] Pre-computing vector masks for Cam1
+2025-11-06 10:02:29,375 [INFO] Vector masks computed: 4 passes
+2025-11-06 10:02:29,382 [INFO] Successfully cached window padding for 4 passes
+2025-11-06 10:02:29,408 [INFO] Successfully cached interpolation grids for 4 passes
+2025-11-06 10:02:29,565 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-06 10:02:29,573 [INFO] Broadcast vector masks to all workers (23.4 KB total)
+2025-11-06 10:02:29,574 [INFO] Processing batch 0-19 (20 images)
+2025-11-06 10:02:32,182 [INFO] Batch 0-19 completed successfully
+2025-11-06 10:02:32,255 [INFO] Processing batch 20-39 (20 images)
+2025-11-06 10:02:34,996 [INFO] Batch 20-39 completed successfully
+2025-11-06 10:02:35,059 [INFO] Processing batch 40-59 (20 images)
+2025-11-06 10:02:37,678 [INFO] Batch 40-59 completed successfully
+2025-11-06 10:02:37,743 [INFO] Processing batch 60-79 (20 images)
+2025-11-06 10:02:40,627 [INFO] Batch 60-79 completed successfully
+2025-11-06 10:02:40,694 [INFO] Processing batch 80-99 (20 images)
+2025-11-06 10:02:43,360 [INFO] Batch 80-99 completed successfully
+2025-11-06 10:02:43,453 [INFO] Processing batch 100-119 (20 images)
+2025-11-06 10:02:48,356 [INFO] Batch 100-119 completed successfully
+2025-11-06 10:02:48,454 [INFO] Processing batch 120-139 (20 images)
+2025-11-06 10:02:51,682 [INFO] Batch 120-139 completed successfully
+2025-11-06 10:02:51,749 [INFO] Processing batch 140-159 (20 images)
+2025-11-06 10:02:55,374 [INFO] Batch 140-159 completed successfully
+2025-11-06 10:02:55,467 [INFO] Processing batch 160-179 (20 images)
+2025-11-06 10:02:58,635 [INFO] Batch 160-179 completed successfully
+2025-11-06 10:02:58,704 [INFO] Processing batch 180-199 (20 images)
+2025-11-06 10:03:01,954 [INFO] Batch 180-199 completed successfully
+2025-11-06 10:03:02,025 [INFO] Processing batch 200-219 (20 images)
+2025-11-06 10:03:07,990 [INFO] Batch 200-219 completed successfully
+2025-11-06 10:03:08,059 [INFO] Processing batch 220-239 (20 images)
+2025-11-06 10:03:11,263 [INFO] Batch 220-239 completed successfully
+2025-11-06 10:03:11,333 [INFO] Processing batch 240-259 (20 images)
+2025-11-06 10:03:14,747 [INFO] Batch 240-259 completed successfully
+2025-11-06 10:03:14,818 [INFO] Processing batch 260-279 (20 images)
+2025-11-06 10:03:18,109 [INFO] Batch 260-279 completed successfully
+2025-11-06 10:03:18,181 [INFO] Processing batch 280-299 (20 images)
+2025-11-06 10:03:21,621 [INFO] Batch 280-299 completed successfully
+2025-11-06 10:03:21,692 [INFO] Processing batch 300-319 (20 images)
+2025-11-06 10:03:26,566 [INFO] Batch 300-319 completed successfully
+2025-11-06 10:03:26,641 [INFO] Processing batch 320-339 (20 images)
+2025-11-06 10:03:29,400 [INFO] Batch 320-339 completed successfully
+2025-11-06 10:03:29,473 [INFO] Processing batch 340-359 (20 images)
+2025-11-06 10:03:32,250 [INFO] Batch 340-359 completed successfully
+2025-11-06 10:03:32,322 [INFO] Processing batch 360-379 (20 images)
+2025-11-06 10:03:37,846 [INFO] Batch 360-379 completed successfully
+2025-11-06 10:03:37,947 [INFO] Processing batch 380-399 (20 images)
+2025-11-06 10:03:42,485 [INFO] Batch 380-399 completed successfully
+2025-11-06 10:03:42,556 [INFO] Processing batch 400-419 (20 images)
+2025-11-06 10:03:48,570 [INFO] Batch 400-419 completed successfully
+2025-11-06 10:03:48,642 [INFO] Processing batch 420-439 (20 images)
+2025-11-06 10:09:29,703 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:09:33,759 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:09:33,789 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:09:33,794 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:09:33,890 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:09:33,904 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:09:33,916 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:09:33,946 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:09:33,997 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:09:34,021 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:09:34,098 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:09:34,099 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:09:34,134 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:09:34,142 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:09:34,146 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:09:34,153 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:09:34,157 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:09:34,161 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:09:34,163 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:09:34,165 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:09:34,165 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:09:34,312 [INFO] Worker logging configured successfully
+2025-11-06 10:09:34,315 [INFO] Worker logging configured successfully
+2025-11-06 10:09:34,328 [INFO] Dask cluster started successfully
+2025-11-06 10:09:34,329 [INFO] Dask Worker Info:
+2025-11-06 10:09:34,329 [INFO] Worker tcp://127.0.0.1:49747
+2025-11-06 10:09:34,330 [INFO]   pid: None
+2025-11-06 10:09:34,331 [INFO]   host: 127.0.0.1
+2025-11-06 10:09:34,331 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-ktqhjnmq
+2025-11-06 10:09:34,332 [INFO]   nanny: True
+2025-11-06 10:09:34,333 [INFO] Dask Worker Info:
+2025-11-06 10:09:34,333 [INFO] Worker tcp://127.0.0.1:49750
+2025-11-06 10:09:34,334 [INFO]   pid: None
+2025-11-06 10:09:34,335 [INFO]   host: 127.0.0.1
+2025-11-06 10:09:34,335 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-d9xk9tmx
+2025-11-06 10:09:34,335 [INFO]   nanny: True
+2025-11-06 10:09:34,336 [INFO] Dask Worker Info:
+2025-11-06 10:09:34,336 [INFO] Worker tcp://127.0.0.1:49751
+2025-11-06 10:09:34,337 [INFO]   pid: None
+2025-11-06 10:09:34,337 [INFO]   host: 127.0.0.1
+2025-11-06 10:09:34,338 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-dqxgg6v5
+2025-11-06 10:09:34,339 [INFO]   nanny: True
+2025-11-06 10:09:34,339 [INFO] Dask Worker Info:
+2025-11-06 10:09:34,339 [INFO] Worker tcp://127.0.0.1:49762
+2025-11-06 10:09:34,340 [INFO]   pid: None
+2025-11-06 10:09:34,340 [INFO]   host: 127.0.0.1
+2025-11-06 10:09:34,341 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-fj86es6s
+2025-11-06 10:09:34,341 [INFO]   nanny: True
+2025-11-06 10:09:34,341 [INFO] Dask Worker Info:
+2025-11-06 10:09:34,342 [INFO] Worker tcp://127.0.0.1:49765
+2025-11-06 10:09:34,342 [INFO]   pid: None
+2025-11-06 10:09:34,342 [INFO]   host: 127.0.0.1
+2025-11-06 10:09:34,342 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-9b8_0d_l
+2025-11-06 10:09:34,343 [INFO]   nanny: True
+2025-11-06 10:09:34,343 [INFO] Processing camera: Cam1
+2025-11-06 10:09:34,358 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-06 10:09:34,364 [INFO] Pre-computing vector masks for Cam1
+2025-11-06 10:09:34,697 [INFO] Vector masks computed: 4 passes
+2025-11-06 10:09:34,711 [INFO] Successfully cached window padding for 4 passes
+2025-11-06 10:09:34,725 [INFO] Successfully cached interpolation grids for 4 passes
+2025-11-06 10:09:34,996 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-06 10:09:35,069 [INFO] Broadcast vector masks to all workers (23.4 KB total)
+2025-11-06 10:09:35,069 [INFO] Processing batch 0-49 (50 images)
+2025-11-06 10:09:38,995 [INFO] Batch 0-49 completed successfully
+2025-11-06 10:09:39,115 [INFO] Processing batch 50-99 (50 images)
+2025-11-06 10:09:42,784 [INFO] Batch 50-99 completed successfully
+2025-11-06 10:09:42,894 [INFO] Processing batch 100-149 (50 images)
+2025-11-06 10:09:47,008 [INFO] Batch 100-149 completed successfully
+2025-11-06 10:09:47,168 [INFO] Processing batch 150-199 (50 images)
+2025-11-06 10:09:51,477 [INFO] Batch 150-199 completed successfully
+2025-11-06 10:09:51,611 [INFO] Processing batch 200-249 (50 images)
+2025-11-06 10:09:55,821 [INFO] Batch 200-249 completed successfully
+2025-11-06 10:09:55,940 [INFO] Processing batch 250-299 (50 images)
+2025-11-06 10:10:00,166 [INFO] Batch 250-299 completed successfully
+2025-11-06 10:10:00,331 [INFO] Processing batch 300-349 (50 images)
+2025-11-06 10:10:15,058 [INFO] Batch 300-349 completed successfully
+2025-11-06 10:10:15,209 [INFO] Processing batch 350-399 (50 images)
+2025-11-06 10:10:30,993 [INFO] Batch 350-399 completed successfully
+2025-11-06 10:10:31,160 [INFO] Processing batch 400-449 (50 images)
+2025-11-06 10:10:43,290 [INFO] Batch 400-449 completed successfully
+2025-11-06 10:10:43,459 [INFO] Processing batch 450-499 (50 images)
+2025-11-06 10:10:54,826 [INFO] Batch 450-499 completed successfully
+2025-11-06 10:10:54,988 [INFO] Processing batch 500-549 (50 images)
+2025-11-06 10:11:02,391 [INFO] Batch 500-549 completed successfully
+2025-11-06 10:11:02,501 [INFO] Processing batch 550-599 (50 images)
+2025-11-06 10:11:12,459 [INFO] Batch 550-599 completed successfully
+2025-11-06 10:11:12,624 [INFO] Processing batch 600-649 (50 images)
+2025-11-06 10:11:24,021 [INFO] Batch 600-649 completed successfully
+2025-11-06 10:11:24,189 [INFO] Processing batch 650-699 (50 images)
+2025-11-06 10:11:38,894 [INFO] Batch 650-699 completed successfully
+2025-11-06 10:11:39,081 [INFO] Processing batch 700-749 (50 images)
+2025-11-06 10:11:46,498 [INFO] Batch 700-749 completed successfully
+2025-11-06 10:11:46,702 [INFO] Processing batch 750-799 (50 images)
+2025-11-06 10:11:58,571 [INFO] Batch 750-799 completed successfully
+2025-11-06 10:11:58,783 [INFO] Processing batch 800-849 (50 images)
+2025-11-06 10:12:10,243 [INFO] Batch 800-849 completed successfully
+2025-11-06 10:12:10,458 [INFO] Processing batch 850-899 (50 images)
+2025-11-06 10:12:21,984 [INFO] Batch 850-899 completed successfully
+2025-11-06 10:12:22,182 [INFO] Processing batch 900-949 (50 images)
+2025-11-06 10:12:35,327 [INFO] Batch 900-949 completed successfully
+2025-11-06 10:12:35,499 [INFO] Processing batch 950-999 (50 images)
+2025-11-06 10:12:46,487 [INFO] Batch 950-999 completed successfully
+2025-11-06 10:12:46,490 [INFO] All 1000 images processed successfully
+2025-11-06 10:12:46,492 [INFO] PIV and save completed: 1000 frames saved to C:\Users\mtt1e23\Downloads\calibrated_piv_morgan\uncalibrated_piv\1000\Cam1\instantaneous
+2025-11-06 10:12:46,516 [INFO] Worker saved coordinates to C:\Users\mtt1e23\Downloads\calibrated_piv_morgan\uncalibrated_piv\1000\Cam1\instantaneous\coordinates.mat
+2025-11-06 10:12:46,519 [INFO] Coordinates saved to C:\Users\mtt1e23\Downloads\calibrated_piv_morgan\uncalibrated_piv\1000\Cam1\instantaneous
+2025-11-06 10:14:18,103 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:14:22,330 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:14:22,370 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:14:22,427 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:14:22,508 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:14:22,544 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:14:22,571 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:14:22,573 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:14:22,638 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:14:22,697 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:14:22,738 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:14:22,770 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:14:22,785 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:14:22,785 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:14:22,787 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:14:22,820 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:14:22,827 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:14:22,829 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:14:22,833 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:14:22,849 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:14:22,849 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:14:23,015 [INFO] Worker logging configured successfully
+2025-11-06 10:14:23,015 [INFO] Worker logging configured successfully
+2025-11-06 10:14:23,028 [INFO] Dask cluster started successfully
+2025-11-06 10:14:23,029 [INFO] Dask Worker Info:
+2025-11-06 10:14:23,029 [INFO] Worker tcp://127.0.0.1:49321
+2025-11-06 10:14:23,030 [INFO]   pid: None
+2025-11-06 10:14:23,030 [INFO]   host: 127.0.0.1
+2025-11-06 10:14:23,030 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-s_f5qtzc
+2025-11-06 10:14:23,031 [INFO]   nanny: True
+2025-11-06 10:14:23,032 [INFO] Dask Worker Info:
+2025-11-06 10:14:23,032 [INFO] Worker tcp://127.0.0.1:49326
+2025-11-06 10:14:23,033 [INFO]   pid: None
+2025-11-06 10:14:23,033 [INFO]   host: 127.0.0.1
+2025-11-06 10:14:23,033 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-xy8uxef1
+2025-11-06 10:14:23,034 [INFO]   nanny: True
+2025-11-06 10:14:23,034 [INFO] Dask Worker Info:
+2025-11-06 10:14:23,035 [INFO] Worker tcp://127.0.0.1:49331
+2025-11-06 10:14:23,035 [INFO]   pid: None
+2025-11-06 10:14:23,035 [INFO]   host: 127.0.0.1
+2025-11-06 10:14:23,036 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-3isan0aj
+2025-11-06 10:14:23,036 [INFO]   nanny: True
+2025-11-06 10:14:23,037 [INFO] Dask Worker Info:
+2025-11-06 10:14:23,038 [INFO] Worker tcp://127.0.0.1:49336
+2025-11-06 10:14:23,038 [INFO]   pid: None
+2025-11-06 10:14:23,038 [INFO]   host: 127.0.0.1
+2025-11-06 10:14:23,039 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-8ychz00x
+2025-11-06 10:14:23,039 [INFO]   nanny: True
+2025-11-06 10:14:23,040 [INFO] Dask Worker Info:
+2025-11-06 10:14:23,041 [INFO] Worker tcp://127.0.0.1:49344
+2025-11-06 10:14:23,041 [INFO]   pid: None
+2025-11-06 10:14:23,041 [INFO]   host: 127.0.0.1
+2025-11-06 10:14:23,042 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-br76atku
+2025-11-06 10:14:23,042 [INFO]   nanny: True
+2025-11-06 10:14:23,043 [INFO] Processing camera: Cam1
+2025-11-06 10:14:23,066 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-06 10:14:23,073 [INFO] Pre-computing vector masks for Cam1
+2025-11-06 10:14:23,386 [INFO] Vector masks computed: 4 passes
+2025-11-06 10:14:23,485 [INFO] Successfully cached window padding for 4 passes
+2025-11-06 10:14:23,502 [INFO] Successfully cached interpolation grids for 4 passes
+2025-11-06 10:14:23,701 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-06 10:14:23,751 [INFO] Broadcast vector masks to all workers (23.4 KB total)
+2025-11-06 10:14:23,751 [INFO] Processing batch 0-59 (60 images)
+2025-11-06 10:14:29,862 [INFO] Batch 0-59 completed successfully
+2025-11-06 10:14:30,006 [INFO] Processing batch 60-119 (60 images)
+2025-11-06 10:14:35,403 [INFO] Batch 60-119 completed successfully
+2025-11-06 10:14:35,537 [INFO] Processing batch 120-179 (60 images)
+2025-11-06 10:14:41,147 [INFO] Batch 120-179 completed successfully
+2025-11-06 10:14:41,271 [INFO] Processing batch 180-239 (60 images)
+2025-11-06 10:14:47,339 [INFO] Batch 180-239 completed successfully
+2025-11-06 10:14:47,474 [INFO] Processing batch 240-299 (60 images)
+2025-11-06 10:14:54,197 [INFO] Batch 240-299 completed successfully
+2025-11-06 10:14:54,306 [INFO] Processing batch 300-359 (60 images)
+2025-11-06 10:15:01,785 [INFO] Batch 300-359 completed successfully
+2025-11-06 10:15:01,973 [INFO] Processing batch 360-419 (60 images)
+2025-11-06 10:15:09,130 [INFO] Batch 360-419 completed successfully
+2025-11-06 10:15:09,293 [INFO] Processing batch 420-479 (60 images)
+2025-11-06 10:15:18,372 [INFO] Batch 420-479 completed successfully
+2025-11-06 10:15:18,556 [INFO] Processing batch 480-539 (60 images)
+2025-11-06 10:15:27,873 [INFO] Batch 480-539 completed successfully
+2025-11-06 10:15:28,056 [INFO] Processing batch 540-599 (60 images)
+2025-11-06 10:15:37,111 [INFO] Batch 540-599 completed successfully
+2025-11-06 10:15:37,238 [INFO] Processing batch 600-659 (60 images)
+2025-11-06 10:15:46,318 [INFO] Batch 600-659 completed successfully
+2025-11-06 10:15:46,481 [INFO] Processing batch 660-719 (60 images)
+2025-11-06 10:15:55,698 [INFO] Batch 660-719 completed successfully
+2025-11-06 10:15:55,806 [INFO] Processing batch 720-779 (60 images)
+2025-11-06 10:16:05,131 [INFO] Batch 720-779 completed successfully
+2025-11-06 10:16:05,289 [INFO] Processing batch 780-839 (60 images)
+2025-11-06 10:16:15,572 [INFO] Batch 780-839 completed successfully
+2025-11-06 10:16:15,764 [INFO] Processing batch 840-899 (60 images)
+2025-11-06 10:16:27,819 [INFO] Batch 840-899 completed successfully
+2025-11-06 10:16:28,022 [INFO] Processing batch 900-959 (60 images)
+2025-11-06 10:16:36,478 [INFO] Batch 900-959 completed successfully
+2025-11-06 10:16:36,618 [INFO] Processing batch 960-999 (40 images)
+2025-11-06 10:16:43,320 [INFO] Batch 960-999 completed successfully
+2025-11-06 10:16:43,322 [INFO] All 1000 images processed successfully
+2025-11-06 10:16:43,326 [INFO] PIV and save completed: 1000 frames saved to C:\Users\mtt1e23\Downloads\calibrated_piv_morgan\uncalibrated_piv\1000\Cam1\instantaneous
+2025-11-06 10:16:43,349 [INFO] Worker saved coordinates to C:\Users\mtt1e23\Downloads\calibrated_piv_morgan\uncalibrated_piv\1000\Cam1\instantaneous\coordinates.mat
+2025-11-06 10:16:43,352 [INFO] Coordinates saved to C:\Users\mtt1e23\Downloads\calibrated_piv_morgan\uncalibrated_piv\1000\Cam1\instantaneous
+2025-11-06 10:34:17,715 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:34:21,602 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:34:21,603 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:34:21,610 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:34:21,640 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:34:21,651 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:34:21,656 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:34:21,666 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:34:21,675 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:34:21,677 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:34:21,677 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:34:21,915 [INFO] Worker logging configured successfully
+2025-11-06 10:34:21,915 [INFO] Worker logging configured successfully
+2025-11-06 10:34:21,916 [INFO] Worker logging configured successfully
+2025-11-06 10:34:21,917 [INFO] Worker logging configured successfully
+2025-11-06 10:34:21,917 [INFO] Worker logging configured successfully
+2025-11-06 10:34:21,918 [INFO] Worker logging configured successfully
+2025-11-06 10:34:21,920 [INFO] Dask cluster started successfully
+2025-11-06 10:34:21,921 [INFO] Dask Worker Info:
+2025-11-06 10:34:21,921 [INFO] Worker tcp://127.0.0.1:61713
+2025-11-06 10:34:21,921 [INFO]   pid: None
+2025-11-06 10:34:21,921 [INFO]   host: 127.0.0.1
+2025-11-06 10:34:21,922 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-sg9u00ed
+2025-11-06 10:34:21,922 [INFO]   nanny: True
+2025-11-06 10:34:21,923 [INFO] Dask Worker Info:
+2025-11-06 10:34:21,923 [INFO] Worker tcp://127.0.0.1:61714
+2025-11-06 10:34:21,923 [INFO]   pid: None
+2025-11-06 10:34:21,923 [INFO]   host: 127.0.0.1
+2025-11-06 10:34:21,923 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-lj7keh35
+2025-11-06 10:34:21,924 [INFO]   nanny: True
+2025-11-06 10:34:21,924 [INFO] Dask Worker Info:
+2025-11-06 10:34:21,924 [INFO] Worker tcp://127.0.0.1:61715
+2025-11-06 10:34:21,924 [INFO]   pid: None
+2025-11-06 10:34:21,924 [INFO]   host: 127.0.0.1
+2025-11-06 10:34:21,925 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-hjzl6i8i
+2025-11-06 10:34:21,925 [INFO]   nanny: True
+2025-11-06 10:34:21,925 [INFO] Dask Worker Info:
+2025-11-06 10:34:21,925 [INFO] Worker tcp://127.0.0.1:61728
+2025-11-06 10:34:21,925 [INFO]   pid: None
+2025-11-06 10:34:21,925 [INFO]   host: 127.0.0.1
+2025-11-06 10:34:21,925 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-id93fwuq
+2025-11-06 10:34:21,926 [INFO]   nanny: True
+2025-11-06 10:34:21,926 [INFO] Dask Worker Info:
+2025-11-06 10:34:21,926 [INFO] Worker tcp://127.0.0.1:61739
+2025-11-06 10:34:21,926 [INFO]   pid: None
+2025-11-06 10:34:21,926 [INFO]   host: 127.0.0.1
+2025-11-06 10:34:21,926 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-14j2tq6g
+2025-11-06 10:34:21,926 [INFO]   nanny: True
+2025-11-06 10:34:21,927 [INFO] Processing camera: Cam1
+2025-11-06 10:34:23,043 [INFO] Auto-detected image shape: (3248, 4872)
+2025-11-06 10:34:23,057 [INFO] Pre-computing vector masks for Cam1
+2025-11-06 10:34:25,656 [INFO] Vector masks computed: 3 passes
+2025-11-06 10:34:25,742 [INFO] Successfully cached window padding for 3 passes
+2025-11-06 10:34:25,876 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-06 10:34:26,841 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-06 10:34:26,851 [INFO] Broadcast vector masks to all workers (78.1 KB total)
+2025-11-06 10:34:26,851 [INFO] Processing batch 0-19 (20 images)
+2025-11-06 10:35:16,229 [ERROR] Batch 0-19 failed: _process_and_save_single_pair-c6509bca02c473a46225d4efcaaf1e30 cancelled for reason: already forgotten.
+2025-11-06 10:35:51,948 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:35:54,545 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:35:54,576 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:35:54,576 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:35:54,577 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:35:54,724 [INFO] Worker logging configured successfully
+2025-11-06 10:35:54,726 [INFO] Dask cluster started successfully
+2025-11-06 10:35:54,727 [INFO] Dask Worker Info:
+2025-11-06 10:35:54,728 [INFO] Worker tcp://127.0.0.1:55509
+2025-11-06 10:35:54,728 [INFO]   pid: None
+2025-11-06 10:35:54,728 [INFO]   host: 127.0.0.1
+2025-11-06 10:35:54,728 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-dcxszdxo
+2025-11-06 10:35:54,728 [INFO]   nanny: True
+2025-11-06 10:35:54,729 [INFO] Dask Worker Info:
+2025-11-06 10:35:54,729 [INFO] Worker tcp://127.0.0.1:55520
+2025-11-06 10:35:54,729 [INFO]   pid: None
+2025-11-06 10:35:54,729 [INFO]   host: 127.0.0.1
+2025-11-06 10:35:54,730 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-x9pgonia
+2025-11-06 10:35:54,730 [INFO]   nanny: True
+2025-11-06 10:35:54,730 [INFO] Dask Worker Info:
+2025-11-06 10:35:54,730 [INFO] Worker tcp://127.0.0.1:55521
+2025-11-06 10:35:54,730 [INFO]   pid: None
+2025-11-06 10:35:54,731 [INFO]   host: 127.0.0.1
+2025-11-06 10:35:54,731 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-rsguc79i
+2025-11-06 10:35:54,731 [INFO]   nanny: True
+2025-11-06 10:35:54,731 [INFO] Dask Worker Info:
+2025-11-06 10:35:54,731 [INFO] Worker tcp://127.0.0.1:55522
+2025-11-06 10:35:54,732 [INFO]   pid: None
+2025-11-06 10:35:54,732 [INFO]   host: 127.0.0.1
+2025-11-06 10:35:54,732 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-9l2lyyph
+2025-11-06 10:35:54,732 [INFO]   nanny: True
+2025-11-06 10:35:54,732 [INFO] Dask Worker Info:
+2025-11-06 10:35:54,733 [INFO] Worker tcp://127.0.0.1:55529
+2025-11-06 10:35:54,733 [INFO]   pid: None
+2025-11-06 10:35:54,733 [INFO]   host: 127.0.0.1
+2025-11-06 10:35:54,733 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-ffhe7f75
+2025-11-06 10:35:54,733 [INFO]   nanny: True
+2025-11-06 10:35:54,734 [INFO] Processing camera: Cam1
+2025-11-06 10:35:56,654 [INFO] Auto-detected image shape: (3248, 4872)
+2025-11-06 10:35:56,667 [INFO] Pre-computing vector masks for Cam1
+2025-11-06 10:35:59,175 [INFO] Vector masks computed: 3 passes
+2025-11-06 10:35:59,189 [INFO] Successfully cached window padding for 3 passes
+2025-11-06 10:35:59,334 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-06 10:36:00,014 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-06 10:36:00,021 [INFO] Broadcast vector masks to all workers (78.1 KB total)
+2025-11-06 10:36:00,021 [INFO] Processing batch 0-19 (20 images)
+2025-11-06 10:37:26,361 [INFO] Batch 0-19 completed successfully
+2025-11-06 10:37:26,418 [INFO] Processing batch 20-39 (20 images)
+2025-11-06 10:39:06,484 [INFO] Batch 20-39 completed successfully
+2025-11-06 10:39:06,547 [INFO] Processing batch 40-59 (20 images)
+2025-11-06 10:41:14,314 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:41:17,194 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:41:17,225 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:41:17,251 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:41:17,271 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:41:17,314 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:41:17,315 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:41:17,336 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:41:17,345 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:41:17,346 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:41:17,352 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:41:17,490 [INFO] Worker logging configured successfully
+2025-11-06 10:41:17,493 [INFO] Worker logging configured successfully
+2025-11-06 10:41:17,498 [INFO] Dask cluster started successfully
+2025-11-06 10:41:17,499 [INFO] Dask Worker Info:
+2025-11-06 10:41:17,499 [INFO] Worker tcp://127.0.0.1:64933
+2025-11-06 10:41:17,500 [INFO]   pid: None
+2025-11-06 10:41:17,500 [INFO]   host: 127.0.0.1
+2025-11-06 10:41:17,501 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-et8bjpk0
+2025-11-06 10:41:17,501 [INFO]   nanny: True
+2025-11-06 10:41:17,502 [INFO] Dask Worker Info:
+2025-11-06 10:41:17,502 [INFO] Worker tcp://127.0.0.1:64938
+2025-11-06 10:41:17,503 [INFO]   pid: None
+2025-11-06 10:41:17,503 [INFO]   host: 127.0.0.1
+2025-11-06 10:41:17,503 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-4k7fpq7n
+2025-11-06 10:41:17,503 [INFO]   nanny: True
+2025-11-06 10:41:17,504 [INFO] Dask Worker Info:
+2025-11-06 10:41:17,504 [INFO] Worker tcp://127.0.0.1:64945
+2025-11-06 10:41:17,504 [INFO]   pid: None
+2025-11-06 10:41:17,504 [INFO]   host: 127.0.0.1
+2025-11-06 10:41:17,505 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-ucn96klz
+2025-11-06 10:41:17,505 [INFO]   nanny: True
+2025-11-06 10:41:17,509 [INFO] Dask Worker Info:
+2025-11-06 10:41:17,509 [INFO] Worker tcp://127.0.0.1:64948
+2025-11-06 10:41:17,509 [INFO]   pid: None
+2025-11-06 10:41:17,509 [INFO]   host: 127.0.0.1
+2025-11-06 10:41:17,510 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-lu2e6vvk
+2025-11-06 10:41:17,510 [INFO]   nanny: True
+2025-11-06 10:41:17,510 [INFO] Dask Worker Info:
+2025-11-06 10:41:17,510 [INFO] Worker tcp://127.0.0.1:64957
+2025-11-06 10:41:17,510 [INFO]   pid: None
+2025-11-06 10:41:17,510 [INFO]   host: 127.0.0.1
+2025-11-06 10:41:17,510 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-lek6fdkh
+2025-11-06 10:41:17,510 [INFO]   nanny: True
+2025-11-06 10:41:17,511 [INFO] Processing camera: Cam1
+2025-11-06 10:41:18,180 [INFO] Auto-detected image shape: (3248, 4872)
+2025-11-06 10:41:18,193 [INFO] Pre-computing vector masks for Cam1
+2025-11-06 10:41:20,713 [INFO] Vector masks computed: 3 passes
+2025-11-06 10:41:20,719 [INFO] Successfully cached window padding for 3 passes
+2025-11-06 10:41:20,852 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-06 10:41:21,728 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-06 10:41:21,739 [INFO] Broadcast vector masks to all workers (78.1 KB total)
+2025-11-06 10:41:21,739 [INFO] Processing batch 0-9 (10 images)
+2025-11-06 10:41:37,563 [INFO] Batch 0-9 completed successfully
+2025-11-06 10:41:37,658 [INFO] Processing batch 10-19 (10 images)
+2025-11-06 10:41:54,269 [INFO] Batch 10-19 completed successfully
+2025-11-06 10:41:54,363 [INFO] Processing batch 20-29 (10 images)
+2025-11-06 10:42:14,954 [INFO] Batch 20-29 completed successfully
+2025-11-06 10:42:15,019 [INFO] Processing batch 30-39 (10 images)
+2025-11-06 10:42:44,895 [INFO] Batch 30-39 completed successfully
+2025-11-06 10:42:44,980 [INFO] Processing batch 40-49 (10 images)
+2025-11-06 10:43:15,140 [INFO] Batch 40-49 completed successfully
+2025-11-06 10:43:15,232 [INFO] Processing batch 50-59 (10 images)
+2025-11-06 10:43:48,436 [INFO] Batch 50-59 completed successfully
+2025-11-06 10:43:48,535 [INFO] Processing batch 60-69 (10 images)
+2025-11-06 10:44:15,876 [INFO] Batch 60-69 completed successfully
+2025-11-06 10:44:15,979 [INFO] Processing batch 70-79 (10 images)
+2025-11-06 10:45:00,727 [INFO] Batch 70-79 completed successfully
+2025-11-06 10:45:00,829 [INFO] Processing batch 80-89 (10 images)
+2025-11-06 10:45:46,552 [INFO] Batch 80-89 completed successfully
+2025-11-06 10:45:46,650 [INFO] Processing batch 90-99 (10 images)
+2025-11-06 10:46:14,681 [INFO] Batch 90-99 completed successfully
+2025-11-06 10:46:14,682 [INFO] All 100 images processed successfully
+2025-11-06 10:46:14,696 [INFO] PIV and save completed: 100 frames saved to C:\Users\mtt1e23\Downloads\calibrated_piv_morgan\uncalibrated_piv\100\Cam1\instantaneous
+2025-11-06 10:46:14,802 [INFO] Worker saved coordinates to C:\Users\mtt1e23\Downloads\calibrated_piv_morgan\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-11-06 10:46:14,821 [INFO] Coordinates saved to C:\Users\mtt1e23\Downloads\calibrated_piv_morgan\uncalibrated_piv\100\Cam1\instantaneous
+2025-11-06 10:46:14,822 [INFO] Processing camera: Cam2
+2025-11-06 10:46:14,837 [INFO] Pre-computing vector masks for Cam2
+2025-11-06 10:46:17,384 [INFO] Vector masks computed: 3 passes
+2025-11-06 10:46:17,386 [INFO] Successfully cached window padding for 3 passes
+2025-11-06 10:46:17,527 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-06 10:46:18,357 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-06 10:46:18,392 [INFO] Broadcast vector masks to all workers (78.1 KB total)
+2025-11-06 10:46:18,392 [INFO] Processing batch 0-9 (10 images)
+2025-11-06 10:46:46,091 [INFO] Batch 0-9 completed successfully
+2025-11-06 10:46:46,169 [INFO] Processing batch 10-19 (10 images)
+2025-11-06 10:47:13,079 [INFO] Batch 10-19 completed successfully
+2025-11-06 10:47:13,169 [INFO] Processing batch 20-29 (10 images)
+2025-11-06 10:47:41,601 [INFO] Batch 20-29 completed successfully
+2025-11-06 10:47:41,706 [INFO] Processing batch 30-39 (10 images)
+2025-11-06 10:48:08,952 [INFO] Batch 30-39 completed successfully
+2025-11-06 10:48:09,037 [INFO] Processing batch 40-49 (10 images)
+2025-11-06 10:48:49,344 [INFO] Batch 40-49 completed successfully
+2025-11-06 10:48:49,455 [INFO] Processing batch 50-59 (10 images)
+2025-11-06 10:49:16,388 [INFO] Batch 50-59 completed successfully
+2025-11-06 10:49:16,474 [INFO] Processing batch 60-69 (10 images)
+2025-11-06 10:49:45,339 [INFO] Batch 60-69 completed successfully
+2025-11-06 10:49:45,443 [INFO] Processing batch 70-79 (10 images)
+2025-11-06 10:50:17,022 [INFO] Batch 70-79 completed successfully
+2025-11-06 10:50:17,105 [INFO] Processing batch 80-89 (10 images)
+2025-11-06 10:50:49,412 [INFO] Batch 80-89 completed successfully
+2025-11-06 10:50:49,506 [INFO] Processing batch 90-99 (10 images)
+2025-11-06 10:51:21,168 [INFO] Batch 90-99 completed successfully
+2025-11-06 10:51:21,169 [INFO] All 100 images processed successfully
+2025-11-06 10:51:21,183 [INFO] PIV and save completed: 100 frames saved to C:\Users\mtt1e23\Downloads\calibrated_piv_morgan\uncalibrated_piv\100\Cam2\instantaneous
+2025-11-06 10:51:21,231 [INFO] Worker saved coordinates to C:\Users\mtt1e23\Downloads\calibrated_piv_morgan\uncalibrated_piv\100\Cam2\instantaneous\coordinates.mat
+2025-11-06 10:51:21,233 [INFO] Coordinates saved to C:\Users\mtt1e23\Downloads\calibrated_piv_morgan\uncalibrated_piv\100\Cam2\instantaneous
+2025-11-06 10:54:24,892 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:54:28,344 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:54:28,387 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:54:28,397 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:54:28,410 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:54:28,411 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:54:28,420 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:54:28,431 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:54:28,434 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:54:28,456 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:54:28,461 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:54:28,724 [INFO] Worker logging configured successfully
+2025-11-06 10:54:28,726 [INFO] Worker logging configured successfully
+2025-11-06 10:54:28,734 [INFO] Dask cluster started successfully
+2025-11-06 10:54:28,735 [INFO] Dask Worker Info:
+2025-11-06 10:54:28,735 [INFO] Worker tcp://127.0.0.1:49334
+2025-11-06 10:54:28,736 [INFO]   pid: None
+2025-11-06 10:54:28,736 [INFO]   host: 127.0.0.1
+2025-11-06 10:54:28,736 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-dbryhkrq
+2025-11-06 10:54:28,737 [INFO]   nanny: True
+2025-11-06 10:54:28,737 [INFO] Dask Worker Info:
+2025-11-06 10:54:28,738 [INFO] Worker tcp://127.0.0.1:49345
+2025-11-06 10:54:28,738 [INFO]   pid: None
+2025-11-06 10:54:28,738 [INFO]   host: 127.0.0.1
+2025-11-06 10:54:28,739 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-mj_vvshn
+2025-11-06 10:54:28,739 [INFO]   nanny: True
+2025-11-06 10:54:28,739 [INFO] Dask Worker Info:
+2025-11-06 10:54:28,740 [INFO] Worker tcp://127.0.0.1:49350
+2025-11-06 10:54:28,740 [INFO]   pid: None
+2025-11-06 10:54:28,740 [INFO]   host: 127.0.0.1
+2025-11-06 10:54:28,740 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-3ucx2dve
+2025-11-06 10:54:28,740 [INFO]   nanny: True
+2025-11-06 10:54:28,740 [INFO] Dask Worker Info:
+2025-11-06 10:54:28,741 [INFO] Worker tcp://127.0.0.1:49357
+2025-11-06 10:54:28,741 [INFO]   pid: None
+2025-11-06 10:54:28,741 [INFO]   host: 127.0.0.1
+2025-11-06 10:54:28,741 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-lgie75cp
+2025-11-06 10:54:28,741 [INFO]   nanny: True
+2025-11-06 10:54:28,741 [INFO] Dask Worker Info:
+2025-11-06 10:54:28,742 [INFO] Worker tcp://127.0.0.1:49358
+2025-11-06 10:54:28,742 [INFO]   pid: None
+2025-11-06 10:54:28,742 [INFO]   host: 127.0.0.1
+2025-11-06 10:54:28,742 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-us41gmcz
+2025-11-06 10:54:28,742 [INFO]   nanny: True
+2025-11-06 10:54:28,742 [INFO] Processing camera: Cam1
+2025-11-06 10:54:31,221 [INFO] Auto-detected image shape: (3248, 4872)
+2025-11-06 10:54:31,246 [INFO] Pre-computing vector masks for Cam1
+2025-11-06 10:54:33,787 [INFO] Vector masks computed: 3 passes
+2025-11-06 10:54:33,877 [INFO] Successfully cached window padding for 3 passes
+2025-11-06 10:54:34,010 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-06 10:54:34,949 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-06 10:54:34,961 [INFO] Broadcast vector masks to all workers (78.1 KB total)
+2025-11-06 10:54:34,961 [INFO] Memory profile BEFORE PIV processing:
+2025-11-06 10:56:50,078 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:56:53,033 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:56:53,034 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:56:53,043 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:56:53,139 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:56:53,144 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:56:53,164 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:56:57,433 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:56:57,447 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:56:57,450 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:56:57,450 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:56:57,454 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:56:57,557 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:57:05,243 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:57:08,195 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:57:08,213 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:57:08,224 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:57:08,224 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:57:08,228 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:57:08,255 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:57:08,255 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:57:08,271 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:57:08,285 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:57:08,289 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:57:08,470 [INFO] Worker logging configured successfully
+2025-11-06 10:57:08,472 [INFO] Worker logging configured successfully
+2025-11-06 10:57:08,477 [INFO] Dask cluster started successfully
+2025-11-06 10:57:08,479 [INFO] Dask Worker Info:
+2025-11-06 10:57:08,479 [INFO] Worker tcp://127.0.0.1:54422
+2025-11-06 10:57:08,479 [INFO]   pid: None
+2025-11-06 10:57:08,479 [INFO]   host: 127.0.0.1
+2025-11-06 10:57:08,480 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-yv796fjm
+2025-11-06 10:57:08,480 [INFO]   nanny: True
+2025-11-06 10:57:08,480 [INFO] Dask Worker Info:
+2025-11-06 10:57:08,481 [INFO] Worker tcp://127.0.0.1:54431
+2025-11-06 10:57:08,481 [INFO]   pid: None
+2025-11-06 10:57:08,481 [INFO]   host: 127.0.0.1
+2025-11-06 10:57:08,482 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-1ekojw1w
+2025-11-06 10:57:08,482 [INFO]   nanny: True
+2025-11-06 10:57:08,482 [INFO] Dask Worker Info:
+2025-11-06 10:57:08,482 [INFO] Worker tcp://127.0.0.1:54434
+2025-11-06 10:57:08,483 [INFO]   pid: None
+2025-11-06 10:57:08,483 [INFO]   host: 127.0.0.1
+2025-11-06 10:57:08,483 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-tr8rstoy
+2025-11-06 10:57:08,484 [INFO]   nanny: True
+2025-11-06 10:57:08,484 [INFO] Dask Worker Info:
+2025-11-06 10:57:08,484 [INFO] Worker tcp://127.0.0.1:54435
+2025-11-06 10:57:08,485 [INFO]   pid: None
+2025-11-06 10:57:08,485 [INFO]   host: 127.0.0.1
+2025-11-06 10:57:08,485 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-ky3ygllt
+2025-11-06 10:57:08,486 [INFO]   nanny: True
+2025-11-06 10:57:08,486 [INFO] Dask Worker Info:
+2025-11-06 10:57:08,486 [INFO] Worker tcp://127.0.0.1:54436
+2025-11-06 10:57:08,486 [INFO]   pid: None
+2025-11-06 10:57:08,487 [INFO]   host: 127.0.0.1
+2025-11-06 10:57:08,487 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-9i1wtu9d
+2025-11-06 10:57:08,487 [INFO]   nanny: True
+2025-11-06 10:57:08,487 [INFO] Processing camera: Cam1
+2025-11-06 10:57:09,122 [INFO] Auto-detected image shape: (3248, 4872)
+2025-11-06 10:57:09,134 [INFO] Pre-computing vector masks for Cam1
+2025-11-06 10:57:11,658 [INFO] Vector masks computed: 3 passes
+2025-11-06 10:57:11,666 [INFO] Successfully cached window padding for 3 passes
+2025-11-06 10:57:11,800 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-06 10:57:12,766 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-06 10:57:12,775 [INFO] Broadcast vector masks to all workers (78.1 KB total)
+2025-11-06 10:57:12,776 [INFO] Memory profile BEFORE PIV processing:
+2025-11-06 10:57:12,778 [INFO] ================================================================================
+2025-11-06 10:57:12,778 [INFO] WORKER MEMORY PROFILE
+2025-11-06 10:57:12,778 [INFO] ================================================================================
+2025-11-06 10:57:12,779 [WARNING] Worker unknown: Error - No worker found
+2025-11-06 10:57:12,779 [WARNING] Worker unknown: Error - No worker found
+2025-11-06 10:57:12,779 [WARNING] Worker unknown: Error - No worker found
+2025-11-06 10:57:12,779 [WARNING] Worker unknown: Error - No worker found
+2025-11-06 10:57:12,779 [WARNING] Worker unknown: Error - No worker found
+2025-11-06 10:57:12,779 [WARNING] Worker unknown: Error - No worker found
+2025-11-06 10:57:12,779 [WARNING] Worker unknown: Error - No worker found
+2025-11-06 10:57:12,779 [WARNING] Worker unknown: Error - No worker found
+2025-11-06 10:57:12,779 [WARNING] Worker unknown: Error - No worker found
+2025-11-06 10:57:12,779 [WARNING] Worker unknown: Error - No worker found
+2025-11-06 10:57:12,780 [INFO] 
+================================================================================
+2025-11-06 10:57:12,780 [INFO] Note: Install psutil on workers for full memory analysis:
+2025-11-06 10:57:12,780 [INFO]   pip install psutil
+2025-11-06 10:57:12,780 [INFO] ================================================================================
+2025-11-06 10:57:12,780 [INFO] Processing batch 0-9 (10 images)
+2025-11-06 10:57:46,886 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:57:50,017 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:57:50,020 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:57:50,025 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:57:50,045 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:57:50,058 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:57:50,059 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:57:50,060 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:57:50,087 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:57:50,102 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:57:50,102 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 10:57:50,257 [INFO] Worker logging configured successfully
+2025-11-06 10:57:50,258 [INFO] Worker logging configured successfully
+2025-11-06 10:57:50,258 [INFO] Worker logging configured successfully
+2025-11-06 10:57:50,259 [INFO] Worker logging configured successfully
+2025-11-06 10:57:50,259 [INFO] Worker logging configured successfully
+2025-11-06 10:57:50,259 [INFO] Worker logging configured successfully
+2025-11-06 10:57:50,262 [INFO] Dask cluster started successfully
+2025-11-06 10:57:50,263 [INFO] Dask Worker Info:
+2025-11-06 10:57:50,263 [INFO] Worker tcp://127.0.0.1:54630
+2025-11-06 10:57:50,264 [INFO]   pid: None
+2025-11-06 10:57:50,264 [INFO]   host: 127.0.0.1
+2025-11-06 10:57:50,265 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-82irz57u
+2025-11-06 10:57:50,265 [INFO]   nanny: True
+2025-11-06 10:57:50,265 [INFO] Dask Worker Info:
+2025-11-06 10:57:50,265 [INFO] Worker tcp://127.0.0.1:54633
+2025-11-06 10:57:50,266 [INFO]   pid: None
+2025-11-06 10:57:50,266 [INFO]   host: 127.0.0.1
+2025-11-06 10:57:50,266 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-pa60cagq
+2025-11-06 10:57:50,266 [INFO]   nanny: True
+2025-11-06 10:57:50,267 [INFO] Dask Worker Info:
+2025-11-06 10:57:50,267 [INFO] Worker tcp://127.0.0.1:54644
+2025-11-06 10:57:50,267 [INFO]   pid: None
+2025-11-06 10:57:50,268 [INFO]   host: 127.0.0.1
+2025-11-06 10:57:50,268 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-qnwjhjl0
+2025-11-06 10:57:50,268 [INFO]   nanny: True
+2025-11-06 10:57:50,268 [INFO] Dask Worker Info:
+2025-11-06 10:57:50,268 [INFO] Worker tcp://127.0.0.1:54647
+2025-11-06 10:57:50,269 [INFO]   pid: None
+2025-11-06 10:57:50,269 [INFO]   host: 127.0.0.1
+2025-11-06 10:57:50,269 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-_f87xqmg
+2025-11-06 10:57:50,270 [INFO]   nanny: True
+2025-11-06 10:57:50,270 [INFO] Dask Worker Info:
+2025-11-06 10:57:50,270 [INFO] Worker tcp://127.0.0.1:54648
+2025-11-06 10:57:50,270 [INFO]   pid: None
+2025-11-06 10:57:50,270 [INFO]   host: 127.0.0.1
+2025-11-06 10:57:50,271 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-ab87qvfy
+2025-11-06 10:57:50,271 [INFO]   nanny: True
+2025-11-06 10:57:50,271 [INFO] Processing camera: Cam1
+2025-11-06 10:57:51,322 [INFO] Auto-detected image shape: (3248, 4872)
+2025-11-06 10:57:51,334 [INFO] Pre-computing vector masks for Cam1
+2025-11-06 10:57:53,888 [INFO] Vector masks computed: 3 passes
+2025-11-06 10:57:53,978 [INFO] Successfully cached window padding for 3 passes
+2025-11-06 10:57:54,110 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-06 10:57:55,075 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-06 10:57:55,085 [INFO] Broadcast vector masks to all workers (78.1 KB total)
+2025-11-06 10:57:55,085 [INFO] Memory profile BEFORE PIV processing:
+2025-11-06 10:57:55,088 [INFO] ================================================================================
+2025-11-06 10:57:55,088 [INFO] WORKER MEMORY PROFILE
+2025-11-06 10:57:55,088 [INFO] ================================================================================
+2025-11-06 10:57:55,088 [WARNING] Worker unknown: Error - No worker found
+2025-11-06 10:57:55,089 [WARNING] Worker unknown: Error - No worker found
+2025-11-06 10:57:55,089 [WARNING] Worker unknown: Error - No worker found
+2025-11-06 10:57:55,089 [WARNING] Worker unknown: Error - No worker found
+2025-11-06 10:57:55,089 [WARNING] Worker unknown: Error - No worker found
+2025-11-06 10:57:55,089 [WARNING] Worker unknown: Error - No worker found
+2025-11-06 10:57:55,089 [WARNING] Worker unknown: Error - No worker found
+2025-11-06 10:57:55,089 [WARNING] Worker unknown: Error - No worker found
+2025-11-06 10:57:55,089 [WARNING] Worker unknown: Error - No worker found
+2025-11-06 10:57:55,089 [WARNING] Worker unknown: Error - No worker found
+2025-11-06 10:57:55,090 [INFO] 
+================================================================================
+2025-11-06 10:57:55,090 [INFO] Note: Install psutil on workers for full memory analysis:
+2025-11-06 10:57:55,090 [INFO]   pip install psutil
+2025-11-06 10:57:55,090 [INFO] ================================================================================
+2025-11-06 10:57:55,090 [INFO] Processing batch 0-9 (10 images)
+2025-11-06 10:58:15,366 [INFO] Batch 0-9 completed successfully
+2025-11-06 10:58:15,441 [INFO] Processing batch 10-19 (10 images)
+2025-11-06 11:00:30,967 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 11:00:33,952 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 11:00:33,979 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 11:00:33,983 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 11:00:33,990 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 11:00:34,003 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 11:00:34,003 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 11:00:34,008 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 11:00:34,024 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 11:00:34,025 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 11:00:34,033 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 11:00:34,210 [INFO] Worker logging configured successfully
+2025-11-06 11:00:34,211 [INFO] Worker logging configured successfully
+2025-11-06 11:00:34,211 [INFO] Worker logging configured successfully
+2025-11-06 11:00:34,212 [INFO] Worker logging configured successfully
+2025-11-06 11:00:34,215 [INFO] Dask cluster started successfully
+2025-11-06 11:00:34,217 [INFO] Dask Worker Info:
+2025-11-06 11:00:34,217 [INFO] Worker tcp://127.0.0.1:53658
+2025-11-06 11:00:34,218 [INFO]   pid: None
+2025-11-06 11:00:34,218 [INFO]   host: 127.0.0.1
+2025-11-06 11:00:34,219 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-r930yw_b
+2025-11-06 11:00:34,219 [INFO]   nanny: True
+2025-11-06 11:00:34,220 [INFO] Dask Worker Info:
+2025-11-06 11:00:34,220 [INFO] Worker tcp://127.0.0.1:53671
+2025-11-06 11:00:34,221 [INFO]   pid: None
+2025-11-06 11:00:34,221 [INFO]   host: 127.0.0.1
+2025-11-06 11:00:34,222 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-19et1p77
+2025-11-06 11:00:34,222 [INFO]   nanny: True
+2025-11-06 11:00:34,222 [INFO] Dask Worker Info:
+2025-11-06 11:00:34,222 [INFO] Worker tcp://127.0.0.1:53672
+2025-11-06 11:00:34,223 [INFO]   pid: None
+2025-11-06 11:00:34,223 [INFO]   host: 127.0.0.1
+2025-11-06 11:00:34,224 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-k4aojjv_
+2025-11-06 11:00:34,224 [INFO]   nanny: True
+2025-11-06 11:00:34,224 [INFO] Dask Worker Info:
+2025-11-06 11:00:34,225 [INFO] Worker tcp://127.0.0.1:53678
+2025-11-06 11:00:34,225 [INFO]   pid: None
+2025-11-06 11:00:34,225 [INFO]   host: 127.0.0.1
+2025-11-06 11:00:34,226 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-g3kiq78b
+2025-11-06 11:00:34,226 [INFO]   nanny: True
+2025-11-06 11:00:34,226 [INFO] Dask Worker Info:
+2025-11-06 11:00:34,227 [INFO] Worker tcp://127.0.0.1:53686
+2025-11-06 11:00:34,228 [INFO]   pid: None
+2025-11-06 11:00:34,228 [INFO]   host: 127.0.0.1
+2025-11-06 11:00:34,229 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-fhwd4rfr
+2025-11-06 11:00:34,229 [INFO]   nanny: True
+2025-11-06 11:00:34,229 [INFO] Processing camera: Cam1
+2025-11-06 11:00:34,894 [INFO] Auto-detected image shape: (3248, 4872)
+2025-11-06 11:00:34,906 [INFO] Pre-computing vector masks for Cam1
+2025-11-06 11:00:37,434 [INFO] Vector masks computed: 3 passes
+2025-11-06 11:00:37,444 [INFO] Successfully cached window padding for 3 passes
+2025-11-06 11:00:37,578 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-06 11:00:38,587 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-06 11:00:38,685 [INFO] Broadcast vector masks to all workers (78.1 KB total)
+2025-11-06 11:00:38,686 [INFO] Processing batch 0-9 (10 images)
+2025-11-06 11:00:54,386 [INFO] Batch 0-9 completed successfully
+2025-11-06 11:00:54,473 [INFO] Processing batch 10-19 (10 images)
+2025-11-06 11:01:10,963 [INFO] Batch 10-19 completed successfully
+2025-11-06 11:01:11,025 [INFO] Processing batch 20-29 (10 images)
+2025-11-06 11:42:44,828 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 11:42:48,113 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 11:42:48,114 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 11:42:48,147 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 11:42:48,158 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 11:42:48,159 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 11:42:48,165 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 11:42:48,168 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 11:42:48,170 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 11:42:48,188 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 11:42:48,191 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 11:42:48,464 [INFO] Worker logging configured successfully
+2025-11-06 11:42:48,464 [INFO] Worker logging configured successfully
+2025-11-06 11:42:48,468 [INFO] Dask cluster started successfully
+2025-11-06 11:42:48,469 [INFO] Dask Worker Info:
+2025-11-06 11:42:48,469 [INFO] Worker tcp://127.0.0.1:60380
+2025-11-06 11:42:48,470 [INFO]   pid: None
+2025-11-06 11:42:48,470 [INFO]   host: 127.0.0.1
+2025-11-06 11:42:48,470 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-pa0pi824
+2025-11-06 11:42:48,471 [INFO]   nanny: True
+2025-11-06 11:42:48,471 [INFO] Dask Worker Info:
+2025-11-06 11:42:48,471 [INFO] Worker tcp://127.0.0.1:60381
+2025-11-06 11:42:48,472 [INFO]   pid: None
+2025-11-06 11:42:48,472 [INFO]   host: 127.0.0.1
+2025-11-06 11:42:48,473 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-wo9v2idf
+2025-11-06 11:42:48,473 [INFO]   nanny: True
+2025-11-06 11:42:48,473 [INFO] Dask Worker Info:
+2025-11-06 11:42:48,473 [INFO] Worker tcp://127.0.0.1:60396
+2025-11-06 11:42:48,474 [INFO]   pid: None
+2025-11-06 11:42:48,474 [INFO]   host: 127.0.0.1
+2025-11-06 11:42:48,474 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-4wykr1am
+2025-11-06 11:42:48,475 [INFO]   nanny: True
+2025-11-06 11:42:48,475 [INFO] Dask Worker Info:
+2025-11-06 11:42:48,476 [INFO] Worker tcp://127.0.0.1:60401
+2025-11-06 11:42:48,476 [INFO]   pid: None
+2025-11-06 11:42:48,477 [INFO]   host: 127.0.0.1
+2025-11-06 11:42:48,477 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-6259os1o
+2025-11-06 11:42:48,477 [INFO]   nanny: True
+2025-11-06 11:42:48,478 [INFO] Dask Worker Info:
+2025-11-06 11:42:48,478 [INFO] Worker tcp://127.0.0.1:60402
+2025-11-06 11:42:48,478 [INFO]   pid: None
+2025-11-06 11:42:48,479 [INFO]   host: 127.0.0.1
+2025-11-06 11:42:48,479 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-dd10_ia9
+2025-11-06 11:42:48,479 [INFO]   nanny: True
+2025-11-06 11:42:48,480 [INFO] Processing camera: Cam1
+2025-11-06 11:42:49,627 [INFO] Auto-detected image shape: (3248, 4872)
+2025-11-06 11:42:49,639 [INFO] Pre-computing vector masks for Cam1
+2025-11-06 11:42:52,206 [INFO] Vector masks computed: 3 passes
+2025-11-06 11:42:52,312 [INFO] Successfully cached window padding for 3 passes
+2025-11-06 11:42:52,493 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-06 11:42:53,497 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-06 11:42:53,505 [INFO] Broadcast vector masks to all workers (78.1 KB total)
+2025-11-06 11:42:53,506 [INFO] Processing batch 0-19 (20 images)
+2025-11-06 11:44:22,385 [INFO] Batch 0-19 completed successfully
+2025-11-06 11:44:22,489 [INFO] Processing batch 20-39 (20 images)
