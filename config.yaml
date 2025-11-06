@@ -2,22 +2,20 @@ paths:
   base_paths:
   - C:\Users\mtt1e23\Downloads\calibrated_piv_morgan
   source_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall
+  - D:\DAVIS_BFS\gF_Ramp_experiment\BFS_1500_1
   camera_numbers:
   - 1
-  - 2
-  camera_count: 2
+  camera_count: 1
 images:
-  num_images: 30
+  num_images: 102
   image_format:
-  - B%05d_A.tif
-  - B%05d_B.tif
+  - B%05d.im7
   vector_format:
   - '%05d.mat'
   time_resolved: false
   dtype: float32
 batches:
-  size: 5
+  size: 2
 logging:
   file: pypiv.log
   level: INFO
@@ -29,10 +27,10 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 4
-  dask_workers_per_node: 1
-  dask_threads_per_worker: 5
-  dask_memory_limit: 10GB
+  omp_threads: 2
+  dask_workers_per_node: 20
+  dask_threads_per_worker: 1
+  dask_memory_limit: 2.5GB
   outlier_detection: false
 post_processing:
 - type: POD
@@ -76,7 +74,7 @@ instantaneous_piv:
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
-  peak_finder: gauss6
+  peak_finder: gauss3
   secondary_peak: false
 ensemble_piv:
   runs:

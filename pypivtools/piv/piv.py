@@ -79,13 +79,19 @@ def perform_piv_and_save(
     scattered_cache = client.scatter(correlator_cache, broadcast=True)
     logging.info("Pre-computed and broadcast correlator cache for distributed workers")
     
+    scattered_masks = None
+    if vector_masks is not None:
+        scattered_masks = client.scatter(vector_masks, broadcast=True)
+        total_mask_size = sum(m.nbytes for m in vector_masks) / 1024
+        logging.info(f"Broadcast vector masks to all workers ({total_mask_size:.1f} KB total)")
+    
     save_futures = []
     for i in range(int(images.shape[0])):
         block = images[i]
         frame_number = start_frame + i
         
-        # Submit PIV task with scattered cache reference (not the full data)
-        piv_future = client.submit(_piv_single_pass, block, config, vector_masks, scattered_cache)
+        # Submit PIV task with scattered references (not the full data)
+        piv_future = client.submit(_piv_single_pass, block, config, scattered_masks, scattered_cache)
         
         # Chain save task to PIV result
         # All required data (win_ctrs, b_mask) is in PIVResult
