@@ -5,9 +5,9 @@ paths:
   - D:\DAVIS_BFS\gF_Ramp_experiment\BFS_1500_1
   camera_numbers:
   - 1
-  camera_count: 2
+  camera_count: 1
 images:
-  num_images: 120
+  num_images: 300
   image_format:
   - B%05d.im7
   vector_format:

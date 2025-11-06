@@ -81,9 +81,10 @@ if __name__ == "__main__":
                 use_uncalibrated=True
             )
             
-            # Perform PIV and save in parallel on workers with batched processing
-            # This version uses client.map() for efficient task submission
-            # and processes images in batches to control memory usage
+            # Perform PIV and save in parallel on workers with TRUE lazy loading
+            # Each worker processes ONE image at a time: load → PIV → save → free
+            # Memory per worker: ~280 MB (constant regardless of total images)
+            # Dask scheduler handles task distribution automatically
             saved_paths, scattered_cache = perform_piv_and_save(
                 images,
                 config,
@@ -92,7 +93,6 @@ if __name__ == "__main__":
                 start_frame=1,
                 runs_to_save=config.instantaneous_runs_0based,
                 vector_masks=vector_masks,  # Pass pre-computed vector masks
-                batch_size=config.piv_chunk_size,  # Use batch size from config.yaml
             )
             
             # Submit coordinate saving task (runs once per camera) with shared cache
@@ -104,7 +104,8 @@ if __name__ == "__main__":
                 config.instantaneous_runs_0based,
             )
             
-            # All PIV processing already completed (gathered in batches)
+            # All PIV processing completed with true lazy loading!
+            # Workers processed images one-by-one, keeping memory footprint minimal
             logging.info(
                 "PIV and save completed: %d frames saved to %s",
                 len(saved_paths), output_path

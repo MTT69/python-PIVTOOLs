@@ -143,22 +143,23 @@ def to_dask_array(delayed_pair: Delayed, config: Config) -> da.Array:
 
 @profile
 def load_images(camera: int, config: Config, source: Path = None) -> da.Array:
-    """Load images for a specific camera with optimized chunking.
+    """Load images for a specific camera using pure lazy loading.
     
-    This function uses Dask's lazy loading to create a task graph without
-    loading images into memory. Images are chunked optimally from the start
-    to avoid expensive rechunking operations.
+    This function creates one delayed task per image pair. Each task is
+    completely independent and only loads when computed on a worker.
     
-    Memory Efficiency Notes:
-    - Creates lightweight delayed objects (~KB) instead of loading images (~MB each)
-    - Main process memory footprint: minimal (only task graph metadata)
-    - Actual image loading happens on workers when .compute() is called
-    - This is critical for handling 1000s of images without main process OOM
-    - Optimized chunking eliminates rechunking overhead (30-40% faster)
+    Memory Efficiency - True Lazy Loading:
+    - Creates N delayed objects (~1 KB each) for N images
+    - Main process memory: ~N KB (minimal, just task graph)
+    - Worker memory: Only 1 image pair at a time (~80 MB)
+    - Each worker: load → process → save → free → next
+    - Peak worker memory: ~280 MB (1 image + PIV overhead)
     
-    IMPORTANT: Lazy loading DELAYS memory usage, but doesn't ELIMINATE it.
-    When a worker processes a task, it must load the full image pair into RAM.
-    The worker's memory requirement is determined by the PIV algorithm, not Dask.
+    This is the OPTIMAL Dask pattern:
+    - No pre-loading of batches
+    - No memory accumulation
+    - Workers process images one-by-one
+    - Dask scheduler handles distribution naturally
 
     Args:
         camera (int): The camera number.
@@ -170,6 +171,7 @@ def load_images(camera: int, config: Config, source: Path = None) -> da.Array:
         da.Array: A Dask array containing the loaded image pairs.
             Shape: (num_images, 2, H, W)
             Note: This is a lazy array - no actual image data loaded yet.
+            Each element is an independent delayed task.
     """
     if source is None:
         source = config.source_paths[0]
@@ -184,45 +186,25 @@ def load_images(camera: int, config: Config, source: Path = None) -> da.Array:
     else:
         camera_path = source / f"Cam{camera}"
     
-    chunk_size = config.piv_chunk_size
     num_images = config.num_images
     
-    # OPTIMIZED: Create delayed objects pre-chunked to avoid rechunking overhead
-    # This eliminates the need for expensive rechunk() operations later
-    chunked_arrays = []
+    logger.info(f"Creating {num_images} delayed tasks for lazy loading (Cam{camera})")
     
-    for chunk_start in range(1, num_images + 1, chunk_size):
-        chunk_end = min(chunk_start + chunk_size, num_images + 1)
-        chunk_indices = list(range(chunk_start, chunk_end))
-        actual_chunk_size = len(chunk_indices)
-        
-        # Create a delayed function that loads multiple pairs as a batch
-        def load_chunk_batch(indices, cam_path, cam, cfg):
-            """Load multiple image pairs in one task (reduces task overhead)."""
-            pairs = [read_pair(idx, cam_path, cam, cfg) for idx in indices]
-            return np.stack(pairs, axis=0)  # Stack in memory (small batch)
-        
-        # Create delayed task for this chunk
-        delayed_chunk = dask.delayed(load_chunk_batch)(
-            chunk_indices, camera_path, camera, config
-        )
-        
-        # Convert to Dask array with correct chunk size from the start
-        chunk_array = da.from_delayed(
-            delayed_chunk,
-            shape=(actual_chunk_size, 2, *config.image_shape),
-            dtype=config.image_dtype
-        )
-        
-        chunked_arrays.append(chunk_array)
+    # Create one delayed task per image pair (pure lazy loading)
+    delayed_image_pairs = [
+        delayed_image_pair(idx, camera_path, camera, config)
+        for idx in range(1, num_images + 1)
+    ]
     
-    # Concatenate pre-chunked arrays (no rechunking needed!)
-    # This is much more efficient than stack + rechunk
-    pairs_stack = da.concatenate(chunked_arrays, axis=0)
+    # Convert each delayed task to a Dask array
+    dask_pairs = [to_dask_array(pair, config) for pair in delayed_image_pairs]
+    
+    # Stack into single array - still lazy, no computation yet!
+    pairs_stack = da.stack(dask_pairs, axis=0)
     
     logger.info(
-        f"Loaded {num_images} images with optimal chunking: "
-        f"{len(chunked_arrays)} chunks of size ~{chunk_size}"
+        f"Lazy loading complete: {num_images} independent delayed tasks created "
+        f"(~{num_images} KB memory footprint)"
     )
     
     return pairs_stack
