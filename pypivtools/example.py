@@ -16,6 +16,7 @@ from pypivtools.piv.save_results import (
     get_output_path,
 )
 from pypivtools.piv_cluster.cluster import start_cluster
+from pypivtools.preprocessing.preprocess import preprocess_images
 
 if __name__ == "__main__":
     
@@ -58,9 +59,15 @@ if __name__ == "__main__":
         for camera_num in camera_numbers:
             logging.info("Processing camera: Cam%d", camera_num)
 
-            # Load images from source path
+            # Load images from source path (lazy loading - no memory consumption yet)
             images = load_images(camera_num, config, source=source_path)
-            # processed_images = preprocess_images(images, config)
+            
+            # Preprocess images (applies filters from config)
+            # This intelligently handles batching:
+            # - Batch filters (time, pod): rechunks to batch_size
+            # - Single-image filters: keeps single-image chunks
+            # - No filters: skips preprocessing entirely
+            processed_images = preprocess_images(images, config)
             
             # Load mask once per camera (if masking is enabled)
             mask = load_mask_for_camera(camera_num, config, source_path_idx=0)
@@ -86,7 +93,7 @@ if __name__ == "__main__":
             # Memory per worker: ~280 MB (constant regardless of total images)
             # Dask scheduler handles task distribution automatically
             saved_paths, scattered_cache = perform_piv_and_save(
-                images,
+                processed_images,  # Use preprocessed images
                 config,
                 client,
                 output_path,

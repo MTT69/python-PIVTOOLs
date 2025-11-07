@@ -5,9 +5,10 @@ paths:
   - D:\DAVIS_BFS\gF_Ramp_experiment\BFS_1500_1
   camera_numbers:
   - 1
-  camera_count: 1
+  - 2
+  camera_count: 2
 images:
-  num_images: 300
+  num_images: 50
   image_format:
   - B%05d.im7
   vector_format:
@@ -15,7 +16,7 @@ images:
   time_resolved: false
   dtype: float32
 batches:
-  size: 30
+  size: 25
 logging:
   file: pypiv.log
   level: INFO
@@ -28,35 +29,27 @@ processing:
   debug: false
   auto_compute_params: false
   omp_threads: 4
-  dask_workers_per_node: 10
+  dask_workers_per_node: 1
   dask_threads_per_worker: 1
-  dask_memory_limit: 6GB
+  dask_memory_limit: 50GB
 outlier_detection:
   enabled: true
   methods:
-  - type: peak_mag
-    threshold: 0.4
-  - type: median_2d
-    epsilon: 0.2
-    threshold: 2.0
+  - threshold: 0.25
+    type: peak_mag
+  - epsilon: 0.2
+    threshold: 2
+    type: median_2d
 infilling:
   mid_pass:
-    method: local_median
+    method: biharmonic
     parameters:
       ksize: 3
   final_pass:
-    enabled: false
-    method: knn
+    enabled: true
+    method: biharmonic
     parameters:
       ksize: 3
-post_processing:
-- type: POD
-  settings:
-    k_modes: 1
-    randomised: false
-    stack_u_y: true
-    normalise: false
-    camera: 1
 plots:
   save_extension: .png
   save_pickle: true
@@ -93,9 +86,6 @@ instantaneous_piv:
   num_peaks: 1
   peak_finder: gauss3
   secondary_peak: false
-ensemble_piv:
-  runs:
-  - 5
 calibration_format:
   image_format: calib%05d.tif
 calibration:
@@ -131,7 +121,8 @@ calibration:
     asymmetric: false
     dt: 2
   image_format: calib%05d.tiff
-filters: []
+filters:
+- type: pod
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat

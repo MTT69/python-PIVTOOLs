@@ -127,7 +127,7 @@ def plot_scalar_field(variable, mask, settings): # efe
         else:
             ny, nx = variable.shape
             x = np.arange(nx)
-            y = np.arange(ny)
+            y = np.arange(ny-1, -1, -1)
         X, Y = np.meshgrid(x, y)
 
     # Create the plot (object-oriented API)

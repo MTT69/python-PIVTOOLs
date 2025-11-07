@@ -32,6 +32,11 @@ class Config:
         self._setup_logging()
 
     @property
+    def config_dict(self):
+        """Access to raw config dictionary for advanced usage."""
+        return self.data
+
+    @property
     def time_resolved(self):
         return self.data["images"].get("time_resolved", False)
 
@@ -159,6 +164,11 @@ class Config:
     def piv_chunk_size(self):
         # Updated to use batches.size from config.yaml
         return self.data["batches"]["size"]
+
+    @property
+    def batch_size(self):
+        """Batch size for image processing."""
+        return self.data.get("batches", {}).get("size", 30)
 
     @property
     def filter_type(self):

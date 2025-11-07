@@ -345,7 +345,30 @@ def load_and_plot_data(
     pr, effective_run = find_non_empty_run(piv_result, var, run)
     if pr is None:
         raise ValueError(f"No non-empty run found for variable {var}")
-    var_arr, mask_arr = extract_var_and_mask(pr, var)
+
+    # Special handling for uncalibrated plotting of peak_mag
+    if plot_kwargs.get("raw", False) and var == "peak_mag":
+        # Expect pr to have peak_mag and peak_choice attributes
+        try:
+            peak_mag = np.asarray(getattr(pr, "peak_mag"))
+            peak_choice = np.asarray(getattr(pr, "peak_choice"))
+        except Exception:
+            raise ValueError("peak_mag or peak_choice not found in piv_result element")
+        # peak_mag: shape (n_peaks, H, W) or (1, H, W), peak_choice: (H, W) int
+        # Use peak_choice to index into peak_mag along axis 0
+        # If peak_mag is shape (1, H, W), squeeze to (H, W)
+        if peak_mag.shape[0] == 1:
+            var_arr = np.squeeze(peak_mag, axis=0)
+        else:
+            # peak_choice values are indices for axis 0
+            h, w = peak_choice.shape
+            idx = peak_choice
+            # Build (H, W) matrix by advanced indexing
+            var_arr = peak_mag[idx, np.arange(h)[:, None], np.arange(w)[None, :]]
+        # Mask: all valid
+        mask_arr = np.ones_like(var_arr, dtype=bool)
+    else:
+        var_arr, mask_arr = extract_var_and_mask(pr, var)
 
     cx = cy = None
     if coords_path and coords_path.exists():

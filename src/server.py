@@ -18,7 +18,7 @@ from paths import get_data_paths
 from piv_runner import get_runner
 from plotting.app.views import vector_plot_bp
 from post_processing.POD.app.views import POD_bp
-from pre_processing.filters import filter_images
+from pypivtools.preprocessing.preprocess import preprocess_images
 from stereo_reconstruction.app.views import stereo_bp
 from utils import camera_folder, camera_number, numpy_to_png_base64
 from vector_statistics.app.views import statistics_bp
@@ -39,7 +39,7 @@ app.register_blueprint(statistics_bp)
 app.register_blueprint(merging_bp)
 
 # --- In-memory stores ---
-processed_store = {"original": {}, "processed": {}}
+processed_store = {"processed": {}}
 processing = False
 
 # --- Utility Functions ---
@@ -144,32 +144,18 @@ def filter_images_endpoint():
     start_idx = int(data.get("start_idx", 1))
     filters = data.get("filters", None)
     source_path_idx = data.get("source_path_idx")
-    temporal_batch_filter = data.get("temporal_batch_filter")
     
     if filters is not None:
-        cfg.data["filters"] = filters
+        # Remove batch_size from filters before storing (it's configured in batches.size)
+        cleaned_filters = []
+        for f in filters:
+            cleaned = {k: v for k, v in f.items() if k != 'batch_size'}
+            cleaned_filters.append(cleaned)
+        cfg.data["filters"] = cleaned_filters
     
-    # Derive desired temporal window length
-    if temporal_batch_filter:
-        batch_length = int(temporal_batch_filter)
-        batch_len_reason = "request.temporal_batch_filter"
-    else:
-        # Fall back to largest batch_size among temporal filters if provided
-        if filters:
-            temporal_sizes = [
-                int(f.get("batch_size", 1))
-                for f in filters
-                if str(f.get("type", "")).lower() in ("time", "pod")
-            ]
-            if temporal_sizes:
-                batch_length = max(temporal_sizes)
-                batch_len_reason = "max(filter.batch_size)"
-            else:
-                batch_length = int(data.get("batch_length", cfg.piv_chunk_size))
-                batch_len_reason = "fallback.batch_length_or_config"
-        else:
-            batch_length = int(data.get("batch_length", cfg.piv_chunk_size))
-            batch_len_reason = "fallback.no_filters"
+    # Use batch size from config
+    batch_length = cfg.data.get("batches", {}).get("size", 30)
+    batch_len_reason = "config.batches.size"
     
     if batch_length < 1:
         batch_length = 1
@@ -221,25 +207,16 @@ def filter_images_endpoint():
             darr = load_pairs_parallel()
             
             # Process with dask, then compute both in parallel
-            processed_darr = filter_images(darr, cfg, filters_override=filters)
+            processed_darr = preprocess_images(darr, cfg)
             
-            # Compute both original and processed in parallel
-            original_all, processed_all = dask.compute(
-                darr, 
-                processed_darr,
-                scheduler='threads'  # or 'processes' if CPU-bound
-            )
+            # Compute processed
+            processed_all = dask.compute(processed_darr, scheduler='threads')[0]
             
             # Store results
             k = cache_key(source_path_idx, camera)
-            processed_store["original"].setdefault(k, {})
             processed_store["processed"].setdefault(k, {})
             
             # Batch update dictionary (faster than individual updates)
-            processed_store["original"][k].update({
-                abs_idx: original_all[rel] 
-                for rel, abs_idx in enumerate(indices)
-            })
             processed_store["processed"][k].update({
                 abs_idx: processed_all[rel] 
                 for rel, abs_idx in enumerate(indices)
@@ -272,8 +249,123 @@ def get_processed_pair():
     typ = request.args.get("type", "processed")
     camera = camera_number(request.args.get("camera"))
     source_path_idx = request.args.get("source_path_idx", default=0, type=int)
+    
+    logger.debug(f"Checking cache for processed frame {frame}, type {typ}, camera {camera}, source_path_idx {source_path_idx}")
     b64_a, b64_b = get_cached_pair(frame, typ, camera, source_path_idx)
+    
+    if b64_a is not None and b64_b is not None:
+        logger.debug(f"Cache hit for processed frame {frame}, type {typ}, camera {camera}")
+    else:
+        logger.debug(f"Cache miss for processed frame {frame}, type {typ}, camera {camera}")
+    
     return jsonify({"status": "ok", "A": b64_a, "B": b64_b})
+
+
+@app.route("/filter_single_frame", methods=["POST"])
+def filter_single_frame():
+    """
+    Process a single frame with spatial filters only (no batching required).
+    Returns processed images immediately without caching.
+    """
+    data = request.get_json() or {}
+    cfg = get_config()
+    camera = camera_number(data.get("camera"))
+    frame_idx = int(data.get("frame_idx", 1))
+    filters = data.get("filters", [])
+    source_path_idx = data.get("source_path_idx", 0)
+    
+    # Check if any batch filters are present (should use /filter endpoint instead)
+    batch_filters = [f for f in filters if f.get("type") in ("time", "pod")]
+    if batch_filters:
+        return jsonify({
+            "error": "Batch filters (time, pod) not supported in single-frame mode. Use /filter endpoint."
+        }), 400
+    
+    # For .set and .im7 files, don't append camera folder
+    image_format = cfg.image_format
+    if isinstance(image_format, tuple):
+        format_str = image_format[0]
+    else:
+        format_str = image_format
+    
+    if '.set' in str(format_str) or '.im7' in str(format_str):
+        source_path = cfg.source_paths[source_path_idx]
+    else:
+        source_path = cfg.source_paths[source_path_idx] / camera_folder(camera)
+    
+    try:
+        # Read the single pair
+        pair = read_pair(frame_idx, source_path, camera, cfg)
+        
+        # Convert to dask array with single frame
+        arr = np.stack([pair], axis=0)  # Shape: (1, 2, H, W)
+        images_da = da.from_array(arr, chunks=(1, 2, *cfg.image_shape))
+        
+        # Apply spatial filters
+        if filters:
+            # Temporarily set filters in config
+            old_filters = cfg.data.get("filters", [])
+            cfg.data["filters"] = filters
+            
+            try:
+                filtered = preprocess_images(images_da, cfg)
+                result = filtered.compute()
+            finally:
+                # Restore original filters
+                cfg.data["filters"] = old_filters
+        else:
+            result = arr
+        
+        # Extract the single processed pair
+        processed_pair = result[0]  # Shape: (2, H, W)
+        
+        return jsonify({
+            "status": "ok",
+            "A": numpy_to_png_base64(processed_pair[0]),
+            "B": numpy_to_png_base64(processed_pair[1])
+        })
+        
+    except Exception as e:
+        logger.error(f"Error processing single frame: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/download_image", methods=["POST"])
+def download_image():
+    """
+    Download raw or processed image as PNG with proper headers.
+    """
+    data = request.get_json() or {}
+    image_type = data.get("type", "raw")  # "raw" or "processed"
+    frame = data.get("frame", "A")  # "A" or "B"
+    base64_data = data.get("data")  # Base64 PNG data
+    frame_idx = data.get("frame_idx", 1)
+    camera = data.get("camera", 1)
+    
+    if not base64_data:
+        return jsonify({"error": "No image data provided"}), 400
+    
+    try:
+        import base64
+        from io import BytesIO
+        from flask import send_file
+        
+        # Decode base64 to binary
+        image_bytes = base64.b64decode(base64_data)
+        
+        # Create filename
+        filename = f"Cam{camera}_frame{frame_idx:05d}_{frame}_{image_type}.png"
+        
+        # Send as downloadable file
+        return send_file(
+            BytesIO(image_bytes),
+            mimetype='image/png',
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as e:
+        logger.error(f"Error downloading image: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/status", methods=["GET"])
@@ -292,6 +384,15 @@ def config_endpoint():
 def update_config(): 
     data = request.get_json() or {}
     cfg = get_config()
+    
+    # Special handling for filters: remove batch_size before saving
+    if "filters" in data:
+        cleaned_filters = []
+        for f in data["filters"]:
+            if isinstance(f, dict):
+                cleaned = {k: v for k, v in f.items() if k != 'batch_size'}
+                cleaned_filters.append(cleaned)
+        data["filters"] = cleaned_filters
 
     # Special handling: merge post_processing entries by type and deep-merge their settings
     incoming_pp = data.get("post_processing", None)

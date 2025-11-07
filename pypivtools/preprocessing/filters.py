@@ -356,6 +356,22 @@ FILTER_MAP = {
     "gaussian": gaussian_filter_dask,
 }
 
+# Filters that require batches of images to operate correctly
+BATCH_FILTERS = {"time", "pod"}
+
+
+def requires_batch(filter_type: str) -> bool:
+    """
+    Check if a filter requires batches of images to operate.
+    
+    Args:
+        filter_type (str): Type of filter (e.g., 'time', 'pod', 'gaussian')
+        
+    Returns:
+        bool: True if filter needs multiple images, False otherwise
+    """
+    return filter_type in BATCH_FILTERS
+
 
 def filter_images(images: da.Array, config: Config) -> da.Array:
     """
@@ -373,6 +389,12 @@ def filter_images(images: da.Array, config: Config) -> da.Array:
 
         func = FILTER_MAP[ftype]
         kwargs = {k: v for k, v in filt.items() if k != "type"}
+        
+        # Convert list parameters to tuples (for size, threshold, etc.)
+        for key in ['size', 'threshold']:
+            if key in kwargs and isinstance(kwargs[key], list):
+                kwargs[key] = tuple(kwargs[key])
+        
         images = func(images, **kwargs)
 
     return images
