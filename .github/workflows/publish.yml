@@ -1,89 +1,73 @@
-name: Publish to PyPI
+# This workflow builds and publishes all three PIVTOOLs packages to PyPI.
+# It is optimized to only run on release and to avoid redundant builds.
 
+name: Build and publish PIVTOOLs to PyPI
+
+# Run only when a new release is published on GitHub
 on:
   release:
     types: [published]
+  # Allow manual triggering from the GitHub Actions UI
   workflow_dispatch:
 
 jobs:
   build-sdists:
     name: Build source distributions
     runs-on: ubuntu-latest
-    
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install build
+      - name: Install build dependencies
+        run: python -m pip install build
 
-    - name: Build core sdist
-      run: |
-        cd pivtools_core
-        python -m build --sdist --outdir dist
+      - name: Build core sdist
+        run: python -m build --sdist --outdir dist pivtools_core
 
-    - name: Build CLI sdist
-      run: |
-        cd pivtools_cli
-        python -m build --sdist --outdir dist
+      - name: Build CLI sdist
+        run: python -m build --sdist --outdir dist pivtools_cli
 
-    - name: Build GUI sdist
-      run: |
-        cd pivtools_gui
-        python -m build --sdist --outdir dist
+      - name: Build GUI sdist
+        run: python -m build --sdist --outdir dist pivtools_gui
 
-    - name: Upload sdists
-      uses: actions/upload-artifact@v4
-      with:
-        name: sdists
-        path: |
-          pivtools_core/dist/*.tar.gz
-          pivtools_cli/dist/*.tar.gz
-          pivtools_gui/dist/*.tar.gz
+      - name: Upload sdists
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-sdists
+          path: dist/*.tar.gz
 
   build-pure-wheels:
-    name: Build pure Python wheels
+    name: Build pure-Python wheels
     runs-on: ubuntu-latest
-    
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install build
+      - name: Install build dependencies
+        run: python -m pip install build
 
-    - name: Build core wheel (pure Python)
-      run: |
-        cd pivtools_core
-        python -m build --wheel --outdir wheelhouse
+      - name: Build core wheel (pure)
+        run: python -m build --wheel --outdir dist pivtools_core
 
-    - name: Build GUI wheel (pure Python)
-      run: |
-        cd pivtools_gui
-        python -m build --wheel --outdir wheelhouse
+      - name: Build GUI wheel (pure)
+        run: python -m build --wheel --outdir dist pivtools_gui
 
-    - name: Upload pure wheels
-      uses: actions/upload-artifact@v4
-      with:
-        name: pure-wheels
-        path: |
-          pivtools_core/wheelhouse/*.whl
-          pivtools_gui/wheelhouse/*.whl
+      - name: Upload pure wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-pure-wheels
+          path: dist/*.whl
 
   build-c-wheels:
-    name: Build C extension wheels on ${{ matrix.os }}
+    name: Build C-extension wheels on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -91,73 +75,81 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Clean any pre-built artifacts
-      run: |
-        find . -name "*.so" -type f -delete
-        find . -name "*.dylib" -type f -delete
-        find . -name "*.dll" -type f -delete
-        find . -type d -name "build" -exec rm -rf {} + 2>/dev/null || true
-        find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
-      shell: bash
+      - name: Clean any pre-built artifacts
+        run: |
+          find . -name "*.so" -type f -delete
+          find . -name "*.dylib" -type f -delete
+          find . -name "*.dll" -type f -delete
+          find . -type d -name "build" -exec rm -rf {} + 2>/dev/null || true
+          find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
+        shell: bash
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
 
-    - name: Install dependencies
-      run: python -m pip install cibuildwheel==2.16.2
+      - name: Install cibuildwheel
+        run: python -m pip install cibuildwheel
 
-    - name: Build CLI wheels (with C extensions)
-      run: |
-        cd pivtools_cli
-        python -m cibuildwheel --output-dir wheelhouse
-      env:
-        CIBW_BUILD: cp38-* cp39-* cp310-* cp311-* cp312-*
-        CIBW_SKIP: "*-win32 *-manylinux_i686 *-musllinux*"
-        CIBW_ARCHS: "auto64"
-        CIBW_BUILD_VERBOSITY: 1
-        CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
-        CIBW_BEFORE_BUILD_LINUX: |
-          sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-* &&
-          sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-* &&
-          yum install -y fftw-devel
-        CIBW_BEFORE_BUILD_MACOS: brew install fftw gcc && export CC=gcc-13
-        CIBW_BEFORE_BUILD_WINDOWS: |
-          curl -L -o fftw.zip https://fftw.org/pub/fftw/fftw-3.3.10-dll64.zip &&
-          unzip fftw.zip -d C:\fftw &&
-          lib /def:C:\fftw\libfftw3-3.def /out:C:\fftw\libfftw3-3.lib /machine:x64
-        CIBW_ENVIRONMENT_LINUX: FFTW_INC_PATH=/usr/include FFTW_LIB_PATH=/usr/lib64
-        CIBW_ENVIRONMENT_MACOS: FFTW_INC_PATH=/opt/homebrew/include FFTW_LIB_PATH=/opt/homebrew/lib CC=gcc-13
-        CIBW_ENVIRONMENT_WINDOWS: FFTW_INC_PATH=C:\\fftw FFTW_LIB_PATH=C:\\fftw
-        # Skip test on first release - dependencies not yet on PyPI
-        # After first release, change to: CIBW_BEFORE_TEST: pip install pivtools-core
-        CIBW_TEST_COMMAND: ""
+      - name: Build CLI wheels (with C extensions)
+        run: |
+          cd pivtools_cli
+          python -m cibuildwheel --output-dir ../dist
+        env:
+          CIBW_BUILD: cp38-* cp39-* cp310-* cp311-* cp312-*
+          CIBW_SKIP: "*-win32 *-manylinux_i686 *-musllinux*"
+          CIBW_ARCHS: "auto64"
+          CIBW_BUILD_VERBOSITY: 1
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
+          CIBW_BEFORE_BUILD_LINUX: |
+            sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-* &&
+            sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-* &&
+            yum install -y fftw-devel
+          CIBW_BEFORE_BUILD_MACOS: brew install fftw gcc && export CC=gcc-13
+          CIBW_BEFORE_BUILD_WINDOWS: |
+            curl -L -o fftw.zip https://fftw.org/pub/fftw/fftw-3.3.10-dll64.zip
+            tar -xf fftw.zip -C C:\
+          CIBW_ENVIRONMENT_LINUX: FFTW_INC_PATH=/usr/include FFTW_LIB_PATH=/usr/lib64
+          CIBW_ENVIRONMENT_MACOS: FFTW_INC_PATH=/opt/homebrew/include FFTW_LIB_PATH=/opt/homebrew/lib CC=gcc-13
+          CIBW_ENVIRONMENT_WINDOWS: FFTW_INC_PATH=C:\\fftw FFTW_LIB_PATH=C:\\fftw
+          # Skip test on first release - dependencies not yet on PyPI
+          # After first release, change to: CIBW_BEFORE_TEST: pip install pivtools-core
+          CIBW_TEST_COMMAND: ""
 
-    - name: Upload C extension wheels
-      uses: actions/upload-artifact@v4
-      with:
-        name: c-wheels-${{ matrix.os }}
-        path: pivtools_cli/wheelhouse/*.whl
+      - name: Upload C-extension wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-c-wheels-${{ matrix.os }}
+          path: dist/*.whl
 
   publish:
     name: Publish to PyPI
-    runs-on: ubuntu-latest
     needs: [build-sdists, build-pure-wheels, build-c-wheels]
-    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    # Ensure this only runs for the release event
+    if: github.event_name == 'release' && github.event.action == 'published'
 
     steps:
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: dist
-        pattern: '*'
-        merge-multiple: true
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          # This pattern will download all artifacts starting with 'dist-'
+          # and merge them into the 'dist' directory.
+          pattern: dist-*
+          merge-multiple: true
 
-    - name: Publish all packages to PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        password: ${{ secrets.PYPI_API_TOKEN }}
-        skip-existing: true
+      - name: List files for verification
+        run: ls -lR dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # Use an API token stored in GitHub secrets
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          # Publish all packages found in the 'dist' directory
+          packages-dir: dist/
+          skip-existing: true
