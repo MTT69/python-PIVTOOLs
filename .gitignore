@@ -3,3 +3,31 @@ check_mat.ipynb
 .gitignore
 __pycache__/
 morgan.jpeg
+
+# Python build artifacts
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.egg-info/
+*.egg
+build/
+dist/
+*.so
+*.dylib
+*.dll
+*.o
+*.a
+*.lib
+*.exp
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
