@@ -27,15 +27,12 @@ jobs:
             cibw_arch: x86_64
             cibw_before_build: |
               brew install fftw gcc
-              export CC=/usr/local/bin/gcc-11
-              export CXX=/usr/local/bin/g++-11
+              export CC=gcc-13
           # Windows
           - os: windows-latest
             cibw_arch: AMD64
             cibw_before_build: |
-              vcpkg install fftw3[threads]:x64-windows-static
-              set FFTW_INC_PATH=C:\vcpkg\installed\x64-windows-static\include
-              set FFTW_LIB_PATH=C:\vcpkg\installed\x64-windows-static\lib
+              choco install fftw -y
 
     steps:
     - uses: actions/checkout@v4
@@ -55,7 +52,9 @@ jobs:
         CIBW_SKIP: "*-win32 *-manylinux_i686 *-musllinux*"
         CIBW_ARCHS: ${{ matrix.cibw_arch }}
         CIBW_BEFORE_BUILD: ${{ matrix.cibw_before_build }}
-        CIBW_ENVIRONMENT: FFTW_INC_PATH='${{ matrix.fftw_inc }}' FFTW_LIB_PATH='${{ matrix.fftw_lib }}'
+        CIBW_ENVIRONMENT_LINUX: FFTW_INC_PATH=/usr/include FFTW_LIB_PATH=/usr/lib64
+        CIBW_ENVIRONMENT_MACOS: FFTW_INC_PATH=/opt/homebrew/include FFTW_LIB_PATH=/opt/homebrew/lib CC=gcc-13
+        CIBW_ENVIRONMENT_WINDOWS: FFTW_INC_PATH=C:\ProgramData\chocolatey\lib\fftw\include FFTW_LIB_PATH=C:\ProgramData\chocolatey\lib\fftw\lib
 
     - uses: actions/upload-artifact@v4
       with:
@@ -63,7 +62,7 @@ jobs:
         path: ./wheelhouse/*.whl
 
   build_sdist:
-    name: Build source distribution
+    name: Build source distributions
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -76,8 +75,20 @@ jobs:
     - name: Install build dependencies
       run: python -m pip install build
 
-    - name: Build sdist
-      run: python -m build --sdist
+    - name: Build core sdist
+      run: |
+        cd pivtools_core
+        python -m build --sdist --outdir ../dist
+
+    - name: Build CLI sdist
+      run: |
+        cd pivtools_cli
+        python -m build --sdist --outdir ../dist
+
+    - name: Build GUI sdist
+      run: |
+        cd pivtools_gui
+        python -m build --sdist --outdir ../dist
 
     - uses: actions/upload-artifact@v4
       with:
