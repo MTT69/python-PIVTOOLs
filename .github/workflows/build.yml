@@ -57,7 +57,7 @@ jobs:
         CIBW_BEFORE_BUILD: ${{ matrix.cibw_before_build }}
         CIBW_ENVIRONMENT: FFTW_INC_PATH='${{ matrix.fftw_inc }}' FFTW_LIB_PATH='${{ matrix.fftw_lib }}'
 
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         name: wheels-${{ matrix.os }}-${{ matrix.cibw_arch }}
         path: ./wheelhouse/*.whl
@@ -79,7 +79,7 @@ jobs:
     - name: Build sdist
       run: python -m build --sdist
 
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         name: sdist
         path: dist/*.tar.gz
@@ -91,22 +91,22 @@ jobs:
     if: github.event_name == 'release' && github.event.action == 'published'
 
     steps:
-    - uses: actions/download-artifact@v3
+    - uses: actions/download-artifact@v4
       with:
         name: wheels-linux-x86_64
         path: dist/
 
-    - uses: actions/download-artifact@v3
+    - uses: actions/download-artifact@v4
       with:
         name: wheels-macos-x86_64
         path: dist/
 
-    - uses: actions/download-artifact@v3
+    - uses: actions/download-artifact@v4
       with:
         name: wheels-windows-AMD64
         path: dist/
 
-    - uses: actions/download-artifact@v3
+    - uses: actions/download-artifact@v4
       with:
         name: sdist
         path: dist/
