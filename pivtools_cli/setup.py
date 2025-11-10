@@ -3,7 +3,7 @@ import pathlib
 import platform
 import subprocess
 import sys
-from setuptools import setup
+from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext
 
 class BuildCLib(build_ext):
@@ -180,7 +180,15 @@ class BuildCLib(build_ext):
             print("STDERR:", result.stderr)
             raise RuntimeError(f"Command failed with return code {result.returncode}")
 
+# Dummy extension to force platform-specific wheel
+# The actual compilation is done in BuildCLib
+dummy_extension = Extension(
+    name="pivtools_cli._build_marker",
+    sources=[]
+)
+
 # This setup.py is minimal since we use pyproject.toml
 setup(
     cmdclass={"build_ext": BuildCLib},
+    ext_modules=[dummy_extension],
 )
