@@ -41,10 +41,13 @@ jobs:
         CIBW_ARCHS: "auto64"
         CIBW_BEFORE_BUILD_LINUX: yum install -y fftw-devel
         CIBW_BEFORE_BUILD_MACOS: brew install fftw gcc && export CC=gcc-13
-        CIBW_BEFORE_BUILD_WINDOWS: choco install fftw -y
+        CIBW_BEFORE_BUILD_WINDOWS: |
+          curl -L -o fftw.zip https://fftw.org/pub/fftw/fftw-3.3.10-dll64.zip
+          unzip fftw.zip -d C:\fftw
+          lib /def:C:\fftw\libfftw3-3.def /out:C:\fftw\libfftw3-3.lib /machine:x64
         CIBW_ENVIRONMENT_LINUX: FFTW_INC_PATH=/usr/include FFTW_LIB_PATH=/usr/lib64
         CIBW_ENVIRONMENT_MACOS: FFTW_INC_PATH=/opt/homebrew/include FFTW_LIB_PATH=/opt/homebrew/lib CC=gcc-13
-        CIBW_ENVIRONMENT_WINDOWS: FFTW_INC_PATH=C:\ProgramData\chocolatey\lib\fftw\include FFTW_LIB_PATH=C:\ProgramData\chocolatey\lib\fftw\lib
+        CIBW_ENVIRONMENT_WINDOWS: FFTW_INC_PATH=C:\fftw FFTW_LIB_PATH=C:\fftw
         CIBW_TEST_COMMAND: python -c "import pivtools_cli; print('CLI import successful')"
 
     - name: Build GUI package (pure Python)
