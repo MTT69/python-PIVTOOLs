@@ -26,17 +26,12 @@ jobs:
         python -m pip install --upgrade pip
         pip install build cibuildwheel
 
-    - name: Build core package wheels
+    - name: Build core package (pure Python)
       run: |
         cd pivtools_core
-        python -m cibuildwheel --output-dir wheelhouse
-      env:
-        CIBW_BUILD: cp38-* cp39-* cp310-* cp311-* cp312-*
-        CIBW_SKIP: "*-win32 *-manylinux_i686 *-musllinux*"
-        CIBW_ARCHS: "auto64"
-        CIBW_TEST_COMMAND: python -c "import pivtools_core; print('Core import successful')"
+        python -m build --wheel --outdir wheelhouse
 
-    - name: Build CLI package wheels
+    - name: Build CLI package wheels (with C extensions)
       run: |
         cd pivtools_cli
         python -m cibuildwheel --output-dir wheelhouse
@@ -44,34 +39,18 @@ jobs:
         CIBW_BUILD: cp38-* cp39-* cp310-* cp311-* cp312-*
         CIBW_SKIP: "*-win32 *-manylinux_i686 *-musllinux*"
         CIBW_ARCHS: "auto64"
-        CIBW_ENVIRONMENT: >
-          FFTW_INC_PATH=/usr/include
-          FFTW_LIB_PATH=/usr/lib/x86_64-linux-gnu
-        CIBW_ENVIRONMENT_WINDOWS: >
-          FFTW_INC_PATH=C:\fftw\include
-          FFTW_LIB_PATH=C:\fftw\lib
-        CIBW_ENVIRONMENT_MACOS: >
-          FFTW_INC_PATH=/opt/homebrew/include
-          FFTW_LIB_PATH=/opt/homebrew/lib
-        CIBW_BEFORE_BUILD: >
-          if [ "$RUNNER_OS" == "Linux" ]; then
-            apt-get update && apt-get install -y libfftw3-dev gcc
-          elif [ "$RUNNER_OS" == "macOS" ]; then
-            brew install fftw
-          elif [ "$RUNNER_OS" == "Windows" ]; then
-            choco install fftw
-          fi
+        CIBW_BEFORE_BUILD_LINUX: yum install -y fftw-devel
+        CIBW_BEFORE_BUILD_MACOS: brew install fftw gcc && export CC=gcc-13
+        CIBW_BEFORE_BUILD_WINDOWS: choco install fftw -y
+        CIBW_ENVIRONMENT_LINUX: FFTW_INC_PATH=/usr/include FFTW_LIB_PATH=/usr/lib64
+        CIBW_ENVIRONMENT_MACOS: FFTW_INC_PATH=/opt/homebrew/include FFTW_LIB_PATH=/opt/homebrew/lib CC=gcc-13
+        CIBW_ENVIRONMENT_WINDOWS: FFTW_INC_PATH=C:\ProgramData\chocolatey\lib\fftw\include FFTW_LIB_PATH=C:\ProgramData\chocolatey\lib\fftw\lib
         CIBW_TEST_COMMAND: python -c "import pivtools_cli; print('CLI import successful')"
 
-    - name: Build GUI package wheels
+    - name: Build GUI package (pure Python)
       run: |
         cd pivtools_gui
-        python -m cibuildwheel --output-dir wheelhouse
-      env:
-        CIBW_BUILD: cp38-* cp39-* cp310-* cp311-* cp312-*
-        CIBW_SKIP: "*-win32 *-manylinux_i686 *-musllinux*"
-        CIBW_ARCHS: "auto64"
-        CIBW_TEST_COMMAND: python -c "import pivtools_gui; print('GUI import successful')"
+        python -m build --wheel --outdir wheelhouse
 
     - name: Upload wheels
       uses: actions/upload-artifact@v4
