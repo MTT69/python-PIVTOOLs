@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pivtools-core"
+version = "0.1.0"
+description = "Core utilities for PIVTOOLs - Particle Image Velocimetry Tools"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+dependencies = [
+    "dask[distributed]==2025.7.0",
+    "loguru==0.7.3",
+    "numpy==2.2.6",
+    "opencv-python==4.12.0.88",
+    "pandas==2.3.1",
+    "pillow==11.3.0",
+    "PyYAML==6.0.2",
+    "scipy==1.16.1",
+    "tifffile==2025.6.11",
+    "tqdm==4.67.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/MTT69/python-PIVTOOLs"
+Repository = "https://github.com/MTT69/python-PIVTOOLs"
+Issues = "https://github.com/MTT69/python-PIVTOOLs/issues"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pivtools_core*"]
+exclude = ["tests*"]

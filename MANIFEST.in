@@ -1,0 +1,6 @@
+include README.md
+include LICENSE
+include config.yaml
+recursive-include src/static *
+recursive-include pypivtools/lib *.c
+recursive-include pypivtools/lib *.h

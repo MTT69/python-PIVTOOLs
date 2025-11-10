@@ -1,0 +1,3 @@
+[console_scripts]
+pivtools-cli = pivtools_cli.cli:main
+pivtools-gui = pivtools_gui.app:main

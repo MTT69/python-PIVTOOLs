@@ -8,7 +8,7 @@ paths:
   - 2
   camera_count: 2
 images:
-  num_images: 50
+  num_images: 10
   image_format:
   - B%05d.im7
   vector_format:
@@ -29,9 +29,9 @@ processing:
   debug: false
   auto_compute_params: false
   omp_threads: 4
-  dask_workers_per_node: 1
+  dask_workers_per_node: 5
   dask_threads_per_worker: 1
-  dask_memory_limit: 50GB
+  dask_memory_limit: 12GB
 outlier_detection:
   enabled: true
   methods:

@@ -1,0 +1,117 @@
+name: Build and publish PIVTOOLs
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [published]
+
+jobs:
+  build_wheels:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux
+          - os: ubuntu-latest
+            cibw_arch: x86_64
+            cibw_before_build: |
+              apt-get update
+              apt-get install -y libfftw3-dev gcc g++
+          # macOS
+          - os: macos-latest
+            cibw_arch: x86_64
+            cibw_before_build: |
+              brew install fftw gcc
+              export CC=/usr/local/bin/gcc-11
+              export CXX=/usr/local/bin/g++-11
+          # Windows
+          - os: windows-latest
+            cibw_arch: AMD64
+            cibw_before_build: |
+              vcpkg install fftw3[threads]:x64-windows-static
+              set FFTW_INC_PATH=C:\vcpkg\installed\x64-windows-static\include
+              set FFTW_LIB_PATH=C:\vcpkg\installed\x64-windows-static\lib
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install cibuildwheel
+      run: python -m pip install cibuildwheel==2.16.2
+
+    - name: Build wheels
+      run: python -m cibuildwheel --output-dir wheelhouse
+      env:
+        CIBW_BUILD: cp38-* cp39-* cp310-* cp311-* cp312-*
+        CIBW_SKIP: "*-win32 *-manylinux_i686 *-musllinux*"
+        CIBW_ARCHS: ${{ matrix.cibw_arch }}
+        CIBW_BEFORE_BUILD: ${{ matrix.cibw_before_build }}
+        CIBW_ENVIRONMENT: FFTW_INC_PATH='${{ matrix.fftw_inc }}' FFTW_LIB_PATH='${{ matrix.fftw_lib }}'
+
+    - uses: actions/upload-artifact@v3
+      with:
+        name: wheels-${{ matrix.os }}-${{ matrix.cibw_arch }}
+        path: ./wheelhouse/*.whl
+
+  build_sdist:
+    name: Build source distribution
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install build dependencies
+      run: python -m pip install build
+
+    - name: Build sdist
+      run: python -m build --sdist
+
+    - uses: actions/upload-artifact@v3
+      with:
+        name: sdist
+        path: dist/*.tar.gz
+
+  publish:
+    name: Publish to PyPI
+    needs: [build_wheels, build_sdist]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' && github.event.action == 'published'
+
+    steps:
+    - uses: actions/download-artifact@v3
+      with:
+        name: wheels-linux-x86_64
+        path: dist/
+
+    - uses: actions/download-artifact@v3
+      with:
+        name: wheels-macos-x86_64
+        path: dist/
+
+    - uses: actions/download-artifact@v3
+      with:
+        name: wheels-windows-AMD64
+        path: dist/
+
+    - uses: actions/download-artifact@v3
+      with:
+        name: sdist
+        path: dist/
+
+    - name: Publish to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        password: ${{ secrets.PYPI_API_TOKEN }}

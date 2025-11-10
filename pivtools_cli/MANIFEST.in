@@ -1,0 +1,4 @@
+include README.md
+include LICENSE
+recursive-include lib *.c
+recursive-include lib *.h
