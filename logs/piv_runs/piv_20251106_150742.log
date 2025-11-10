@@ -1,0 +1,128 @@
+2025-11-06 15:07:45,592 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 15:07:49,496 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 15:07:49,509 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 15:07:49,511 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 15:07:49,524 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 15:07:49,524 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 15:07:49,528 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 15:07:49,532 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 15:07:49,559 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 15:07:49,559 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 15:07:49,562 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-06 15:07:49,694 [INFO] Worker logging configured successfully
+2025-11-06 15:07:49,694 [INFO] Worker logging configured successfully
+2025-11-06 15:07:49,695 [INFO] Worker logging configured successfully
+2025-11-06 15:07:49,695 [INFO] Worker logging configured successfully
+2025-11-06 15:07:49,695 [INFO] Worker logging configured successfully
+2025-11-06 15:07:49,696 [INFO] Worker logging configured successfully
+2025-11-06 15:07:49,697 [INFO] Worker logging configured successfully
+2025-11-06 15:07:49,697 [INFO] Worker logging configured successfully
+2025-11-06 15:07:49,697 [INFO] Worker logging configured successfully
+2025-11-06 15:07:49,697 [INFO] Worker logging configured successfully
+2025-11-06 15:07:49,698 [INFO] Dask cluster started successfully
+2025-11-06 15:07:49,699 [INFO] Dask Worker Info:
+2025-11-06 15:07:49,700 [INFO] Worker tcp://127.0.0.1:61875
+2025-11-06 15:07:49,700 [INFO]   pid: None
+2025-11-06 15:07:49,700 [INFO]   host: 127.0.0.1
+2025-11-06 15:07:49,700 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-awlu4040
+2025-11-06 15:07:49,700 [INFO]   nanny: True
+2025-11-06 15:07:49,701 [INFO] Dask Worker Info:
+2025-11-06 15:07:49,701 [INFO] Worker tcp://127.0.0.1:61884
+2025-11-06 15:07:49,701 [INFO]   pid: None
+2025-11-06 15:07:49,701 [INFO]   host: 127.0.0.1
+2025-11-06 15:07:49,701 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-6e30iap2
+2025-11-06 15:07:49,701 [INFO]   nanny: True
+2025-11-06 15:07:49,701 [INFO] Dask Worker Info:
+2025-11-06 15:07:49,701 [INFO] Worker tcp://127.0.0.1:61889
+2025-11-06 15:07:49,701 [INFO]   pid: None
+2025-11-06 15:07:49,701 [INFO]   host: 127.0.0.1
+2025-11-06 15:07:49,702 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-4gw7a0z4
+2025-11-06 15:07:49,702 [INFO]   nanny: True
+2025-11-06 15:07:49,702 [INFO] Dask Worker Info:
+2025-11-06 15:07:49,702 [INFO] Worker tcp://127.0.0.1:61890
+2025-11-06 15:07:49,702 [INFO]   pid: None
+2025-11-06 15:07:49,702 [INFO]   host: 127.0.0.1
+2025-11-06 15:07:49,702 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-9i3i8joz
+2025-11-06 15:07:49,702 [INFO]   nanny: True
+2025-11-06 15:07:49,702 [INFO] Dask Worker Info:
+2025-11-06 15:07:49,703 [INFO] Worker tcp://127.0.0.1:61891
+2025-11-06 15:07:49,703 [INFO]   pid: None
+2025-11-06 15:07:49,703 [INFO]   host: 127.0.0.1
+2025-11-06 15:07:49,703 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-r9wbdsxs
+2025-11-06 15:07:49,703 [INFO]   nanny: True
+2025-11-06 15:07:49,703 [INFO] Processing camera: Cam1
+2025-11-06 15:07:50,355 [INFO] Auto-detected image shape: (3248, 4872)
+2025-11-06 15:07:50.357 | INFO     | image_handling.load_images:load_images:223 - Loaded 100 images with optimal chunking: 10 chunks of size ~10
+2025-11-06 15:07:50.358 | DEBUG    | image_handling.load_images:load_mask_for_camera:328 - Loading mask for Cam1 from D:\DAVIS_BFS\gF_Ramp_experiment\BFS_1500_1\mask_Cam1.mat
+2025-11-06 15:07:50.400 | DEBUG    | image_handling.load_images:load_mask_for_camera:339 - Mask loaded: 5209970/15824256 pixels masked (32.9%)
+2025-11-06 15:07:50,400 [INFO] Pre-computing vector masks for Cam1
+2025-11-06 15:07:52.595 | DEBUG    | image_handling.load_images:compute_vector_mask:476 - Pass 1: 1240/3675 vectors masked (33.7%), window size: (128, 128)
+2025-11-06 15:07:53.799 | DEBUG    | image_handling.load_images:compute_vector_mask:476 - Pass 2: 5083/15100 vectors masked (33.7%), window size: (64, 64)
+2025-11-06 15:07:54.421 | DEBUG    | image_handling.load_images:compute_vector_mask:476 - Pass 3: 20446/61206 vectors masked (33.4%), window size: (32, 32)
+2025-11-06 15:07:54,425 [INFO] Vector masks computed: 3 passes
+2025-11-06 15:07:54,432 [INFO] Successfully cached window padding for 3 passes
+2025-11-06 15:07:54,567 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-06 15:07:55,743 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-06 15:07:55,766 [INFO] Broadcast vector masks to all workers (78.1 KB total)
+2025-11-06 15:07:55,766 [INFO] Processing batch 0-9 (10 images)
+2025-11-06 15:08:12,298 [INFO] Batch 0-9 completed successfully
+2025-11-06 15:08:12,439 [INFO] Processing batch 10-19 (10 images)
+2025-11-06 15:08:28,375 [INFO] Batch 10-19 completed successfully
+2025-11-06 15:08:28,480 [INFO] Processing batch 20-29 (10 images)
+2025-11-06 15:08:44,089 [INFO] Batch 20-29 completed successfully
+2025-11-06 15:08:44,172 [INFO] Processing batch 30-39 (10 images)
+2025-11-06 15:09:11,957 [INFO] Batch 30-39 completed successfully
+2025-11-06 15:09:12,059 [INFO] Processing batch 40-49 (10 images)
+2025-11-06 15:09:42,379 [INFO] Batch 40-49 completed successfully
+2025-11-06 15:09:42,507 [INFO] Processing batch 50-59 (10 images)
+2025-11-06 15:10:20,985 [INFO] Batch 50-59 completed successfully
+2025-11-06 15:10:21,114 [INFO] Processing batch 60-69 (10 images)
+2025-11-06 15:10:59,711 [INFO] Batch 60-69 completed successfully
+2025-11-06 15:10:59,852 [INFO] Processing batch 70-79 (10 images)
+2025-11-06 15:11:39,326 [INFO] Batch 70-79 completed successfully
+2025-11-06 15:11:39,454 [INFO] Processing batch 80-89 (10 images)
+2025-11-06 15:12:18,624 [INFO] Batch 80-89 completed successfully
+2025-11-06 15:12:18,747 [INFO] Processing batch 90-99 (10 images)
+2025-11-06 15:12:56,438 [INFO] Batch 90-99 completed successfully
+2025-11-06 15:12:56,440 [INFO] All 100 images processed successfully
+2025-11-06 15:12:56,459 [INFO] PIV and save completed: 100 frames saved to C:\Users\mtt1e23\Downloads\calibrated_piv_morgan\uncalibrated_piv\100\Cam1\instantaneous
+2025-11-06 15:12:56,503 [INFO] Worker saved coordinates to C:\Users\mtt1e23\Downloads\calibrated_piv_morgan\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-11-06 15:12:56,506 [INFO] Coordinates saved to C:\Users\mtt1e23\Downloads\calibrated_piv_morgan\uncalibrated_piv\100\Cam1\instantaneous
+2025-11-06 15:12:56,506 [INFO] Processing camera: Cam2
+2025-11-06 15:12:56.508 | INFO     | image_handling.load_images:load_images:223 - Loaded 100 images with optimal chunking: 10 chunks of size ~10
+2025-11-06 15:12:56.508 | DEBUG    | image_handling.load_images:load_mask_for_camera:328 - Loading mask for Cam2 from D:\DAVIS_BFS\gF_Ramp_experiment\BFS_1500_1\mask_Cam2.mat
+2025-11-06 15:12:56.562 | DEBUG    | image_handling.load_images:load_mask_for_camera:339 - Mask loaded: 4056960/15824256 pixels masked (25.6%)
+2025-11-06 15:12:56,563 [INFO] Pre-computing vector masks for Cam2
+2025-11-06 15:12:58.713 | DEBUG    | image_handling.load_images:compute_vector_mask:476 - Pass 1: 975/3675 vectors masked (26.5%), window size: (128, 128)
+2025-11-06 15:12:59.923 | DEBUG    | image_handling.load_images:compute_vector_mask:476 - Pass 2: 3926/15100 vectors masked (26.0%), window size: (64, 64)
+2025-11-06 15:13:00.576 | DEBUG    | image_handling.load_images:compute_vector_mask:476 - Pass 3: 16059/61206 vectors masked (26.2%), window size: (32, 32)
+2025-11-06 15:13:00,585 [INFO] Vector masks computed: 3 passes
+2025-11-06 15:13:00,589 [INFO] Successfully cached window padding for 3 passes
+2025-11-06 15:13:00,755 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-06 15:13:01,677 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-06 15:13:01,726 [INFO] Broadcast vector masks to all workers (78.1 KB total)
+2025-11-06 15:13:01,726 [INFO] Processing batch 0-9 (10 images)
+2025-11-06 15:13:29,824 [INFO] Batch 0-9 completed successfully
+2025-11-06 15:13:29,958 [INFO] Processing batch 10-19 (10 images)
+2025-11-06 15:13:57,043 [INFO] Batch 10-19 completed successfully
+2025-11-06 15:13:57,229 [INFO] Processing batch 20-29 (10 images)
+2025-11-06 15:14:24,375 [INFO] Batch 20-29 completed successfully
+2025-11-06 15:14:24,557 [INFO] Processing batch 30-39 (10 images)
+2025-11-06 15:14:52,125 [INFO] Batch 30-39 completed successfully
+2025-11-06 15:14:52,247 [INFO] Processing batch 40-49 (10 images)
+2025-11-06 15:15:19,815 [INFO] Batch 40-49 completed successfully
+2025-11-06 15:15:19,939 [INFO] Processing batch 50-59 (10 images)
+2025-11-06 15:15:47,821 [INFO] Batch 50-59 completed successfully
+2025-11-06 15:15:47,941 [INFO] Processing batch 60-69 (10 images)
+2025-11-06 15:16:16,426 [INFO] Batch 60-69 completed successfully
+2025-11-06 15:16:16,540 [INFO] Processing batch 70-79 (10 images)
+2025-11-06 15:16:46,623 [INFO] Batch 70-79 completed successfully
+2025-11-06 15:16:46,772 [INFO] Processing batch 80-89 (10 images)
+2025-11-06 15:17:17,864 [INFO] Batch 80-89 completed successfully
+2025-11-06 15:17:17,989 [INFO] Processing batch 90-99 (10 images)
+2025-11-06 15:17:49,074 [INFO] Batch 90-99 completed successfully
+2025-11-06 15:17:49,075 [INFO] All 100 images processed successfully
+2025-11-06 15:17:49,092 [INFO] PIV and save completed: 100 frames saved to C:\Users\mtt1e23\Downloads\calibrated_piv_morgan\uncalibrated_piv\100\Cam2\instantaneous
+2025-11-06 15:17:49,116 [INFO] Worker saved coordinates to C:\Users\mtt1e23\Downloads\calibrated_piv_morgan\uncalibrated_piv\100\Cam2\instantaneous\coordinates.mat
+2025-11-06 15:17:49,119 [INFO] Coordinates saved to C:\Users\mtt1e23\Downloads\calibrated_piv_morgan\uncalibrated_piv\100\Cam2\instantaneous
+Total elapsed time: 603.53 seconds

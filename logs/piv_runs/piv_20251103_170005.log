@@ -1,0 +1,177 @@
+2025-11-03 17:00:06,799 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:00:06,802 [INFO] Auto-detected compute parameters:
+2025-11-03 17:00:06,802 [INFO]   CPU cores: 20
+2025-11-03 17:00:06,802 [INFO]   Total memory: 63.46 GB
+2025-11-03 17:00:06,802 [INFO]   Workers per node: 20
+2025-11-03 17:00:06,802 [INFO]   OMP threads: 2
+2025-11-03 17:00:06,802 [INFO]   Memory per worker: 2.86GB
+2025-11-03 17:00:06,802 [INFO]   Threads per worker: 1
+2025-11-03 17:00:10,976 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:00:11,008 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:00:11,033 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:00:11,044 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:00:11,132 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:00:11,134 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:00:11,144 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:00:11,149 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:00:11,179 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:00:11,186 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:00:11,200 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:00:11,254 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:00:11,254 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:00:11,267 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:00:11,274 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:00:11,296 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:00:11,303 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:00:11,312 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:00:11,315 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:00:11,341 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:00:11,487 [INFO] Worker logging configured successfully
+2025-11-03 17:00:11,487 [INFO] Worker logging configured successfully
+2025-11-03 17:00:11,487 [INFO] Worker logging configured successfully
+2025-11-03 17:00:11,488 [INFO] Worker logging configured successfully
+2025-11-03 17:00:11,488 [INFO] Worker logging configured successfully
+2025-11-03 17:00:11,488 [INFO] Worker logging configured successfully
+2025-11-03 17:00:11,489 [INFO] Worker logging configured successfully
+2025-11-03 17:00:11,490 [INFO] Worker logging configured successfully
+2025-11-03 17:00:11,491 [INFO] Worker logging configured successfully
+2025-11-03 17:00:11,491 [INFO] Worker logging configured successfully
+2025-11-03 17:00:11,491 [INFO] Worker logging configured successfully
+2025-11-03 17:00:11,491 [INFO] Worker logging configured successfully
+2025-11-03 17:00:11,492 [INFO] Worker logging configured successfully
+2025-11-03 17:00:11,493 [INFO] Worker logging configured successfully
+2025-11-03 17:00:11,493 [INFO] Worker logging configured successfully
+2025-11-03 17:00:11,493 [INFO] Worker logging configured successfully
+2025-11-03 17:00:11,494 [INFO] Worker logging configured successfully
+2025-11-03 17:00:11,494 [INFO] Worker logging configured successfully
+2025-11-03 17:00:11,494 [INFO] Worker logging configured successfully
+2025-11-03 17:00:11,494 [INFO] Worker logging configured successfully
+2025-11-03 17:00:11,497 [INFO] Dask cluster started successfully
+2025-11-03 17:00:11,498 [INFO] Dask Worker Info:
+2025-11-03 17:00:11,498 [INFO] Worker tcp://127.0.0.1:57411
+2025-11-03 17:00:11,498 [INFO]   pid: None
+2025-11-03 17:00:11,498 [INFO]   host: 127.0.0.1
+2025-11-03 17:00:11,498 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-clxut4zy
+2025-11-03 17:00:11,498 [INFO]   nanny: True
+2025-11-03 17:00:11,498 [INFO] Dask Worker Info:
+2025-11-03 17:00:11,498 [INFO] Worker tcp://127.0.0.1:57412
+2025-11-03 17:00:11,499 [INFO]   pid: None
+2025-11-03 17:00:11,499 [INFO]   host: 127.0.0.1
+2025-11-03 17:00:11,499 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-i1h9gnri
+2025-11-03 17:00:11,499 [INFO]   nanny: True
+2025-11-03 17:00:11,499 [INFO] Dask Worker Info:
+2025-11-03 17:00:11,499 [INFO] Worker tcp://127.0.0.1:57425
+2025-11-03 17:00:11,499 [INFO]   pid: None
+2025-11-03 17:00:11,499 [INFO]   host: 127.0.0.1
+2025-11-03 17:00:11,499 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-yrmrfwry
+2025-11-03 17:00:11,499 [INFO]   nanny: True
+2025-11-03 17:00:11,499 [INFO] Dask Worker Info:
+2025-11-03 17:00:11,500 [INFO] Worker tcp://127.0.0.1:57426
+2025-11-03 17:00:11,500 [INFO]   pid: None
+2025-11-03 17:00:11,500 [INFO]   host: 127.0.0.1
+2025-11-03 17:00:11,500 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-zxrih25z
+2025-11-03 17:00:11,500 [INFO]   nanny: True
+2025-11-03 17:00:11,500 [INFO] Dask Worker Info:
+2025-11-03 17:00:11,500 [INFO] Worker tcp://127.0.0.1:57429
+2025-11-03 17:00:11,500 [INFO]   pid: None
+2025-11-03 17:00:11,500 [INFO]   host: 127.0.0.1
+2025-11-03 17:00:11,500 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-ogn5dbde
+2025-11-03 17:00:11,500 [INFO]   nanny: True
+2025-11-03 17:00:11,500 [INFO] Processing camera: Cam1 (1/2 cameras)
+2025-11-03 17:00:11,500 [INFO] Loading images from set file in directory: C:\Users\mtt1e23\Downloads\ims\ims for camera: Cam1
+2025-11-03 17:00:11,741 [INFO] Auto-detected image shape: (2048, 2048)
+2025-11-03 17:00:11,756 [INFO] Pre-computing vector masks for Cam1
+2025-11-03 17:00:13,010 [INFO] Vector masks computed: 3 passes
+2025-11-03 17:00:13,016 [INFO] Successfully cached window padding for 3 passes
+2025-11-03 17:00:13,051 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-03 17:00:13,543 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-03 17:00:20,867 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\bailey\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat
+2025-11-03 17:00:41,042 [INFO] PIV and save completed: 100 frames saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\bailey\uncalibrated_piv\100\Cam1\instantaneous
+2025-11-03 17:00:41,042 [INFO] Overall progress: 100/200 frames (50%) - Camera 1 complete
+2025-11-03 17:00:41,045 [INFO] Coordinates saved to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\bailey\uncalibrated_piv\100\Cam1\instantaneous
+2025-11-03 17:00:41,045 [INFO] Processing camera: Cam2 (2/2 cameras)
+2025-11-03 17:00:41,045 [INFO] Loading images from set file in directory: C:\Users\mtt1e23\Downloads\ims\ims for camera: Cam2
+2025-11-03 17:00:41,058 [INFO] Pre-computing vector masks for Cam2
+2025-11-03 17:00:42,300 [INFO] Vector masks computed: 3 passes
+2025-11-03 17:00:42,310 [INFO] Successfully cached window padding for 3 passes
+2025-11-03 17:00:42,365 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-03 17:00:42,757 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-03 17:00:47,184 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\bailey\uncalibrated_piv\100\Cam2\instantaneous\coordinates.mat
+2025-11-03 17:00:55,746 - distributed.worker - ERROR - Failed to communicate with scheduler during heartbeat.
+Traceback (most recent call last):
+  File "c:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\tornado\iostream.py", line 861, in _read_to_buffer
+    bytes_read = self.read_from_fd(buf)
+  File "c:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\tornado\iostream.py", line 1113, in read_from_fd
+    return self.socket.recv_into(buf, len(buf))
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "c:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\distributed\worker.py", line 1267, in heartbeat
+    response = await retry_operation(
+               ^^^^^^^^^^^^^^^^^^^^^^
+    ...<14 lines>...
+    )
+    ^
+  File "c:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\distributed\utils_comm.py", line 416, in retry_operation
+    return await retry(
+           ^^^^^^^^^^^^
+    ...<5 lines>...
+    )
+    ^
+  File "c:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\distributed\utils_comm.py", line 395, in retry
+    return await coro()
+           ^^^^^^^^^^^^
+  File "c:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\distributed\core.py", line 1259, in send_recv_from_rpc
+    return await send_recv(comm=comm, op=key, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\distributed\core.py", line 1018, in send_recv
+    response = await comm.read(deserializers=deserializers)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\distributed\comm\tcp.py", line 237, in read
+    convert_stream_closed_error(self, e)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "c:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\distributed\comm\tcp.py", line 143, in convert_stream_closed_error
+    raise CommClosedError(f"in {obj}: {exc.__class__.__name__}: {exc}") from exc
+distributed.comm.core.CommClosedError: in <TCP (closed) ConnectionPool.heartbeat_worker local=tcp://127.0.0.1:50645 remote=tcp://127.0.0.1:61702>: ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+2025-11-03 17:00:55,750 - distributed.worker - ERROR - Failed to communicate with scheduler during heartbeat.
+Traceback (most recent call last):
+  File "c:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\tornado\iostream.py", line 861, in _read_to_buffer
+    bytes_read = self.read_from_fd(buf)
+  File "c:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\tornado\iostream.py", line 1113, in read_from_fd
+    return self.socket.recv_into(buf, len(buf))
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "c:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\distributed\worker.py", line 1267, in heartbeat
+    response = await retry_operation(
+               ^^^^^^^^^^^^^^^^^^^^^^
+    ...<14 lines>...
+    )
+    ^
+  File "c:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\distributed\utils_comm.py", line 416, in retry_operation
+    return await retry(
+           ^^^^^^^^^^^^
+    ...<5 lines>...
+    )
+    ^
+  File "c:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\distributed\utils_comm.py", line 395, in retry
+    return await coro()
+           ^^^^^^^^^^^^
+  File "c:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\distributed\core.py", line 1259, in send_recv_from_rpc
+    return await send_recv(comm=comm, op=key, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\distributed\core.py", line 1018, in send_recv
+    response = await comm.read(deserializers=deserializers)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\distributed\comm\tcp.py", line 237, in read
+    convert_stream_closed_error(self, e)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "c:\Users\mtt1e23\OneDrive - University of Southampton\Documents\python-PIVTOOLs\env\Lib\site-packages\distributed\comm\tcp.py", line 143, in convert_stream_closed_error
+    raise CommClosedError(f"in {obj}: {exc.__class__.__name__}: {exc}") from exc
+distributed.comm.core.CommClosedError: in <TCP (closed) ConnectionPool.heartbeat_worker local=tcp://127.0.0.1:59936 remote=tcp://127.0.0.1:61702>: ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host

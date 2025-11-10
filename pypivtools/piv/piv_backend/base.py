@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import sys
 from pathlib import Path
+from typing import List
 
 import cv2
 import dask.array as da
@@ -10,6 +11,12 @@ import scipy.sparse.linalg as spla
 from scipy.interpolate import griddata
 from skimage.restoration import inpaint_biharmonic
 
+# Try to import line_profiler for detailed profiling
+try:
+    from line_profiler import profile
+except ImportError:
+    profile = lambda f: f
+
 # Add src to path for unified imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))
 from config import Config
@@ -18,7 +25,7 @@ from config import Config
 class CrossCorrelator(ABC):
 
     @abstractmethod
-    def correlate_batch(self, images: np.ndarray, config: Config, mask: np.ndarray = None) -> da.Array:
+    def correlate_batch(self, images: np.ndarray, config: Config, vector_masks: List[np.ndarray] = None):
         pass
 
     def _window_weight_fun(
@@ -106,7 +113,8 @@ class CrossCorrelator(ABC):
             raise ValueError(f"Unrecognized window type '{window_type}'")
 
         return weight
-
+    
+    @profile
     def _inpaint_nans_biharm(self, A):
         mask = np.isnan(A)
         A_filled = np.copy(A)
@@ -121,6 +129,49 @@ class CrossCorrelator(ABC):
         )
 
         return inpaint_biharmonic(A_filled, mask)
+    @profile
+    def _inpaint_nans_griddata(self, A):
+        """
+        Fast NaN inpainting using scipy.interpolate.griddata.
+
+        This uses a two-pass approach:
+        1. 'linear' for smooth, fast interpolation.
+        2. 'nearest' to fill any remaining NaNs (e.g., extrapolation).
+        """
+        mask = np.isnan(A)
+        
+        # If there are no NaNs, return immediately
+        if not mask.any():
+            return A
+
+        y, x = np.indices(A.shape)
+        known_points = np.array([y[~mask], x[~mask]]).T
+        known_values = A[~mask]
+        nan_points = np.array([y[mask], x[mask]]).T
+
+        # If there are no known points, we can't interpolate.
+        # Return the array as-is (or return np.zeros_like(A))
+        if known_points.size == 0:
+            return A 
+
+        # Pass 1: Linear interpolation
+        interp_values = griddata(
+            known_points, known_values, nan_points, method="linear"
+        )
+        
+        # Pass 2: Find where linear failed (still NaN) and fill with nearest
+        nan_mask_pass1 = np.isnan(interp_values)
+        if nan_mask_pass1.any():
+            fallback_values = griddata(
+                known_points, known_values, nan_points[nan_mask_pass1], method="nearest"
+            )
+            interp_values[nan_mask_pass1] = fallback_values
+
+        # Fill the original array
+        A_filled = np.copy(A)
+        A_filled[mask] = interp_values
+        
+        return A_filled
 
     def _inpaint_nans_matlab(self, A):
 

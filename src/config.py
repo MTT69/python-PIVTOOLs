@@ -22,8 +22,19 @@ class Config:
             # img = tifffile.imread(file_path) # bye bye
             # self.image_dtype = img.dtype
         
+        # Cache for auto-detected image shape
+        self._detected_image_shape = None
+        
+        # Cache for auto-computed parameters
+        self._auto_compute_cache = None
+        
         # Setup logging only once globally
         self._setup_logging()
+
+    @property
+    def config_dict(self):
+        """Access to raw config dictionary for advanced usage."""
+        return self.data
 
     @property
     def time_resolved(self):
@@ -49,8 +60,18 @@ class Config:
         return [Path(s) for s in self.data["paths"]["source_paths"]]
 
     @property
+    def camera_count(self):
+        """Return the total number of cameras."""
+        return self.data["paths"].get("camera_count", 1)
+
+    @property
     def camera_numbers(self):
-        return self.data["paths"]["camera_numbers"]
+        """Return list of camera numbers to process."""
+        numbers = self.data["paths"]["camera_numbers"]
+        max_allowed = self.camera_count
+        if any(n > max_allowed or n < 1 for n in numbers):
+            raise ValueError(f"Camera numbers {numbers} must be between 1 and {max_allowed}")
+        return numbers
 
     @property
     def camera_folders(self):
@@ -62,12 +83,92 @@ class Config:
 
     @property
     def image_shape(self):
-        return tuple(self.data["images"]["shape"])
+        """
+        Return image shape (H, W).
+        
+        If shape is specified in config, use that.
+        Otherwise, auto-detect from first image and cache the result.
+        """
+        # First check if explicitly set in config
+        if "shape" in self.data.get("images", {}):
+            return tuple(self.data["images"]["shape"])
+        
+        # Otherwise, auto-detect and cache
+        if self._detected_image_shape is None:
+            self._detected_image_shape = self._detect_image_shape()
+            logging.info("Auto-detected image shape: %s", self._detected_image_shape)
+        
+        return self._detected_image_shape
+    
+    def _detect_image_shape(self) -> tuple:
+        """
+        Detect image shape by reading the first image.
+        
+        Returns
+        -------
+        tuple
+            (H, W) shape of images
+        """
+        from image_handling.load_images import read_image
+        
+        source_path = self.source_paths[0]
+        camera_num = self.camera_numbers[0]
+        image_format = self.image_format
+        
+        try:
+            # Handle different image format cases
+            if '.set' in str(image_format):
+                # For .set files, they're in the source directory
+                if isinstance(image_format, tuple):
+                    file_path = source_path / image_format[0]
+                else:
+                    file_path = source_path / image_format
+                img = read_image(str(file_path), camera_no=camera_num, im_no=1)
+            elif '.im7' in str(image_format):
+                # For .im7 files, they're in the source directory (all cameras in one file)
+                if isinstance(image_format, tuple):
+                    file_path = source_path / (image_format[0] % 1)
+                else:
+                    file_path = source_path / (image_format % 1)
+                img = read_image(str(file_path), camera_no=camera_num)
+            else:
+                # Regular files in camera subdirectories
+                camera_path = source_path / f"Cam{camera_num}"
+                
+                if isinstance(image_format, tuple):
+                    # Non-time-resolved: use first format (A frame)
+                    file_path = camera_path / (image_format[0] % 1)
+                else:
+                    # Time-resolved: single format
+                    file_path = camera_path / (image_format % 1)
+                
+                img = read_image(str(file_path))
+            
+            # Handle both single images and image pairs
+            if img.ndim == 3 and img.shape[0] == 2:
+                # Image pair returned (e.g., from .im7)
+                return tuple(img.shape[1:])
+            else:
+                # Single image
+                return tuple(img.shape)
+                
+        except Exception as e:
+            logging.error("Failed to auto-detect image shape: %s", e)
+            logging.error("Please specify 'shape' in config.yaml under 'images' section")
+            raise ValueError(
+                f"Could not auto-detect image shape. Please add 'shape: [H, W]' "
+                f"to the 'images' section of your config.yaml. Error: {e}"
+            )
 
     @property
     def piv_chunk_size(self):
         # Updated to use batches.size from config.yaml
         return self.data["batches"]["size"]
+
+    @property
+    def batch_size(self):
+        """Batch size for image processing."""
+        return self.data.get("batches", {}).get("size", 30)
 
     @property
     def filter_type(self):
@@ -95,6 +196,15 @@ class Config:
     @property
     def instantaneous_runs(self):
         return self.data.get("instantaneous_piv", {}).get("runs", [])
+
+    @property
+    def instantaneous_runs_0based(self):
+        runs = self.instantaneous_runs
+        if runs:
+            return [r - 1 for r in runs]
+        else:
+            # Default to last pass if runs is empty
+            return [self.num_passes - 1]
 
     @property
     def instantaneous_window_sizes(self):
@@ -270,23 +380,93 @@ class Config:
         return self.data.get("processing", {}).get("debug", False)
 
     @property
+    def auto_compute_params(self):
+        """Return True if compute parameters should be auto-detected."""
+        return self.data.get("processing", {}).get("auto_compute_params", False)
+
+    def _get_auto_compute_params(self):
+        """
+        Auto-detect optimal compute parameters based on system resources.
+        Results are cached to avoid repeated detection.
+        
+        Returns
+        -------
+        dict
+            Dictionary with keys: omp_threads, dask_workers_per_node, 
+            dask_threads_per_worker, dask_memory_limit
+        """
+        # Return cached result if available
+        if self._auto_compute_cache is not None:
+            return self._auto_compute_cache
+        
+        import psutil
+        import os
+        
+        # Get number of CPU cores
+        cpu_count = os.cpu_count() or 4
+        
+        # Get total system memory in GB
+        total_memory_gb = psutil.virtual_memory().total / (1024**3)
+        
+        # Workers per node = number of CPUs
+        workers_per_node = cpu_count
+        
+        # OMP threads = 2 (as requested)
+        omp_threads = 2
+        
+        # Dask memory = (total memory - 10%) / cpu_count
+        # Reserve 10% for system overhead
+        available_memory_gb = total_memory_gb * 0.9
+        memory_per_worker_gb = available_memory_gb / cpu_count
+        dask_memory_limit = f"{memory_per_worker_gb:.2f}GB"
+        
+        # Threads per worker = 1 (standard for CPU-bound tasks)
+        threads_per_worker = 1
+        
+        logging.info("Auto-detected compute parameters:")
+        logging.info("  CPU cores: %d", cpu_count)
+        logging.info("  Total memory: %.2f GB", total_memory_gb)
+        logging.info("  Workers per node: %d", workers_per_node)
+        logging.info("  OMP threads: %d", omp_threads)
+        logging.info("  Memory per worker: %s", dask_memory_limit)
+        logging.info("  Threads per worker: %d", threads_per_worker)
+        
+        # Cache the result
+        self._auto_compute_cache = {
+            "omp_threads": omp_threads,
+            "dask_workers_per_node": workers_per_node,
+            "dask_threads_per_worker": threads_per_worker,
+            "dask_memory_limit": dask_memory_limit,
+        }
+        
+        return self._auto_compute_cache
+
+    @property
     def omp_threads(self):
         """Return number of OMP threads as string."""
+        if self.auto_compute_params:
+            return str(self._get_auto_compute_params()["omp_threads"])
         return str(self.data.get("processing", {}).get("omp_threads", 1))
 
     @property
     def dask_workers_per_node(self):
         """Return number of Dask workers per node."""
+        if self.auto_compute_params:
+            return self._get_auto_compute_params()["dask_workers_per_node"]
         return self.data.get("processing", {}).get("dask_workers_per_node", 1)
 
     @property
     def dask_threads_per_worker(self):
         """Return number of threads per Dask worker."""
+        if self.auto_compute_params:
+            return self._get_auto_compute_params()["dask_threads_per_worker"]
         return self.data.get("processing", {}).get("dask_threads_per_worker", 1)
 
     @property
     def dask_memory_limit(self):
         """Return memory limit per Dask worker."""
+        if self.auto_compute_params:
+            return self._get_auto_compute_params()["dask_memory_limit"]
         return self.data.get("processing", {}).get("dask_memory_limit", "4GB")
 
     @property
@@ -310,6 +490,33 @@ class Config:
     def ensemble_piv(self):
         """Return True if ensemble PIV is enabled."""
         return self.data.get("processing", {}).get("ensemble", False)
+
+    @property
+    def outlier_detection_enabled(self):
+        """Return True if outlier detection is enabled."""
+        return self.data.get("outlier_detection", {}).get("enabled", True)
+    
+    @property
+    def outlier_detection_methods(self):
+        """Return list of outlier detection methods with their parameters."""
+        return self.data.get("outlier_detection", {}).get("methods", [])
+    
+    @property
+    def infilling_mid_pass(self):
+        """Return mid-pass infilling configuration."""
+        return self.data.get("infilling", {}).get("mid_pass", {
+            "method": "local_median",
+            "parameters": {"ksize": 3}
+        })
+    
+    @property
+    def infilling_final_pass(self):
+        """Return final-pass infilling configuration."""
+        return self.data.get("infilling", {}).get("final_pass", {
+            "enabled": True,
+            "method": "local_median",
+            "parameters": {"ksize": 3}
+        })
 
     @property
     def secondary_peak(self):

@@ -34,17 +34,17 @@ unsigned convolve(const float *fA, const float *fB, float *fC, const int *N)
 		return ERROR_NOMEM;
 	}
 
-	/* copy */
+	/* Copy input to zero-padded arrays (row-major) */
 	memset(fApad, 0, Nvox * sizeof(float));
 	memset(fBpad, 0, Nvox * sizeof(float));
-	for(j = 0; j < N[1]; ++j)
+	for(i = 0; i < N[0]; ++i)  /* rows */
 	{
-		for(i = 0; i < N[0]; ++i)
+		for(j = 0; j < N[1]; ++j)  /* columns */
 		{
-			fApad[SUB2IND_2D(i+N[0]/2, j+N[1]/2, Npad[0])] = 
-				fA[SUB2IND_2D(i, j, N[0])];
-			fBpad[SUB2IND_2D(i+N[0]/2, j+N[1]/2, Npad[0])] = 
-				fB[SUB2IND_2D(i, j, N[0])];
+			fApad[SUB2IND_2D(i+N[0]/2, j+N[1]/2, Npad[1])] = 
+				fA[SUB2IND_2D(i, j, N[1])];
+			fBpad[SUB2IND_2D(i+N[0]/2, j+N[1]/2, Npad[1])] = 
+				fB[SUB2IND_2D(i, j, N[1])];
 		}
 	}
 
@@ -52,12 +52,12 @@ unsigned convolve(const float *fA, const float *fB, float *fC, const int *N)
 	uError = xcorr(fApad, fBpad, fCpad, Npad);
 
 	/* copy centre of fCpad into fC */
-	for(j = 0; j < N[1]; ++j)
+	for(i = 0; i < N[0]; ++i)
 	{
-		for(i = 0; i < N[0]; ++i)
+		for(j = 0; j < N[1]; ++j)
 		{
-			fC[SUB2IND_2D(i, j, N[0])] = 
-				fCpad[SUB2IND_2D(i+N[0]/2, j+N[1]/2, Npad[0])];
+			fC[SUB2IND_2D(i, j, N[1])] = 
+				fCpad[SUB2IND_2D(i+N[0]/2, j+N[1]/2, Npad[1])];
 		}
 	}
 
@@ -242,21 +242,31 @@ unsigned xcorr_preplanned(const float *a, const float *b, float *c, sPlan *pPlan
 	fftwf_execute(plan_C_ifft);
 
 	/***
-	 * copy ifft result into c, after shifting data around with the permutation specified by fftshift
-	 * fftshift() swaps data along the half spaces
-	 * so D = fftshift(C) has
-	 * D(:,1:N[1]/2) = C(:,N[1]/2+1:N[1]), D(:,N[1]/2+1:N[1]) = C(:,1:N[1]/2)
-	 * etc.
+	 * Copy ifft result into c, after shifting data with fftshift
+	 * For row-major arrays with shape [N[0], N[1]]:
+	 * - N[0] = number of rows (height)
+	 * - N[1] = number of columns (width)
+	 * fftshift swaps quadrants: moves zero-frequency to center
 	 */
-	// renormalise first
+	// Renormalise first
 	mul = 1.0f / (float)numel;
 	for(j=0; j<(int)numel; ++j)	{	c_copy[j] = c_copy[j] * mul;	}
 
-	for(j = 0; j < N[1]; ++j)
+	/* Perform fftshift for row-major data
+	 * For each row, swap left/right halves
+	 * Also swap top/bottom halves
+	 */
+	for(int row = 0; row < N[0]; ++row)
 	{
-		jswap = (j + N[1]/2)%N[1];
-		memcpy(&c[SUB2IND_2D(0     , j, N[0])], &c_copy[SUB2IND_2D(N[0]/2, jswap, N[0])], N[0]/2*sizeof(float));
-		memcpy(&c[SUB2IND_2D(N[0]/2, j, N[0])], &c_copy[SUB2IND_2D(0     , jswap, N[0])], N[0]/2*sizeof(float));
+		int row_swap = (row + N[0]/2) % N[0];
+		/* Copy left half of swapped row to right half of output */
+		memcpy(&c[SUB2IND_2D(row, N[1]/2, N[1])], 
+		       &c_copy[SUB2IND_2D(row_swap, 0, N[1])], 
+		       N[1]/2 * sizeof(float));
+		/* Copy right half of swapped row to left half of output */
+		memcpy(&c[SUB2IND_2D(row, 0, N[1])], 
+		       &c_copy[SUB2IND_2D(row_swap, N[1]/2, N[1])], 
+		       N[1]/2 * sizeof(float));
 	}
 
 	return ERROR_NONE;
@@ -267,7 +277,8 @@ unsigned xcorr_preplanned(const float *a, const float *b, float *c, sPlan *pPlan
  *
  * calculates c = fftshift( IFFT(FFT(a) .* FFT(b)') )
  *
- * a, b, and c are 2D arrays of size N[0]xN[1] supplied in column major (matlab native) format
+ * a, b, and c are 2D arrays of size N[0]xN[1] supplied in row-major (C-contiguous) format
+ * where N[0] = number of rows (height), N[1] = number of columns (width)
  *
  * return value is the error code. return value of 0 means success.
  * NOTE: everything apart from fftwf_execute in fftwf_ library is NOT thread safe

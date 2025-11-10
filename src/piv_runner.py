@@ -105,10 +105,26 @@ class PIVRunner:
 
     def _get_python_executable(self) -> str:
         """Get the Python executable from the virtual environment."""
+        import platform
+        
         # Check for virtual environment
-        venv_python = self.project_root / "piv" / "bin" / "python"
+        if platform.system() == "Windows":
+            venv_python = self.project_root / "env" / "Scripts" / "python.exe"
+        else:
+            venv_python = self.project_root / "env" / "bin" / "python"
+        
         if venv_python.exists():
             return str(venv_python)
+        
+        # Also check for "piv" environment (legacy)
+        if platform.system() == "Windows":
+            venv_python = self.project_root / "piv" / "Scripts" / "python.exe"
+        else:
+            venv_python = self.project_root / "piv" / "bin" / "python"
+        
+        if venv_python.exists():
+            return str(venv_python)
+        
         # Fallback to current Python
         return sys.executable
 

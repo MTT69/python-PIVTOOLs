@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Tuple, Optional, List
-import logging
+from loguru import logger
 
 import dask
 import dask.array as da
@@ -13,6 +13,11 @@ from vector_loading import read_mask_from_mat
 
 # Import all readers to register them
 from .readers import get_reader
+
+try:
+    from line_profiler import profile
+except ImportError:
+    profile = lambda f: f
 
 
 def read_image(file_path: str, **kwargs) -> np.ndarray:
@@ -29,12 +34,29 @@ def read_image(file_path: str, **kwargs) -> np.ndarray:
     return reader_func(file_path, **kwargs)
 
 
-def read_pair(idx: int, camera_path: Path, config: Config) -> np.ndarray:
+def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.ndarray:
     """Read a pair of images (A and B frames).
+    
+    This function handles three main file organization strategies:
+    
+    1. Multi-camera container files (.set, .im7):
+       - All cameras stored in ONE file per time instance
+       - .set: source_dir/xxx.set contains all cameras and all time instances
+       - .im7: source_dir/B00001.im7 contains all cameras for time instance 1
+       - No camera subdirectories (Cam1/, Cam2/, etc.)
+       
+    2. Camera-specific directories with standard formats (.tif, .png, .jpg):
+       - Organized as: source_dir/Cam1/00001.tif, source_dir/Cam2/00001.tif
+       - Each camera has its own subdirectory
+       
+    3. Time-resolved formats (.cine):
+       - Camera-specific directories with video files
+       - Organized as: source_dir/Cam1/recording.cine
 
     Args:
-        idx (int): Index of the image pair to read
-        camera_path (Path): Path to camera directory
+        idx (int): Index of the image pair to read (1-based)
+        camera_path (Path): Path to camera directory or source directory (for .set/.im7)
+        camera (int): Camera number (1-based)
         config (Config): Configuration object
 
     Returns:
@@ -42,6 +64,24 @@ def read_pair(idx: int, camera_path: Path, config: Config) -> np.ndarray:
     """
     # Get image format - handle both time-resolved (single format) and non-time-resolved (A/B pair)
     image_format = config.image_format
+    
+    # Special handling for .set and .im7 files (all cameras in one file per time instance)
+    # Check if image_format (string or tuple) contains '.set' or '.im7'
+    if isinstance(image_format, tuple):
+        format_str = image_format[0]  # Check first element for tuple
+    else:
+        format_str = image_format  # Single string for time-resolved
+    
+    if '.set' in str(format_str):
+        # For .set files, camera_path is the source directory
+        set_file_path = camera_path / format_str
+        return read_image(str(set_file_path), camera_no=camera, im_no=idx)
+    
+    if '.im7' in str(format_str):
+        # For .im7 files, camera_path is the source directory
+        # Each .im7 file contains all cameras for one time instance
+        im7_file_path = camera_path / (format_str % idx)
+        return read_image(str(im7_file_path), camera_no=camera)
     
     if isinstance(image_format, tuple):
         # Non-time-resolved: separate A and B formats
@@ -51,43 +91,36 @@ def read_pair(idx: int, camera_path: Path, config: Config) -> np.ndarray:
             camera_path / (image_format_B % idx),
         ]
     else:
-        # Time-resolved: single format (shouldn't happen for PIV pairs, but handle it)
-        logging.warning("Time-resolved format detected for PIV pairs, this may not work correctly")
         file_paths = [
             camera_path / (image_format % idx),
-            camera_path / (image_format.replace("_A", "_B") % idx),
+            camera_path / (image_format % (idx + 1)),
         ]
 
     # Check if it's a proprietary format that reads pairs natively
     file_ext = Path(file_paths[0]).suffix.lower()
-    if file_ext == ".im7":
-        # LaVision files contain both frames, read once
-        # Extract camera number from path if needed
-        camera_no = (
-            int(str(camera_path).split("Cam")[-1]) if "Cam" in str(camera_path) else 1
-        )
-        return read_image(str(file_paths[0]), camera_no=camera_no)
-    elif file_ext == ".cine":
-        # For .cine, pass frame index (idx-1 for 0-based)
+    if file_ext == ".cine":
         return read_image(str(file_paths[0]), idx=idx - 1, frames=2)
     else:
-        # Read individual frames
+        # Read individual frames (e.g., .tif, .png, .jpg)
         frame_a = read_image(str(file_paths[0]))
         frame_b = read_image(str(file_paths[1]))
         return np.stack([frame_a, frame_b], axis=0)
 
 
-def delayed_image_pair(idx: int, camera_path: Path, config: Config) -> Delayed:
+def delayed_image_pair(idx: int, camera_path: Path, camera: int, config: Config) -> Delayed:
     """Create a delayed task to read a pair of images.
 
     Args:
         idx (int): Index of the image pair to read
+        camera_path (Path): Path to camera directory or set file
+        camera (int): Camera number
+        config (Config): Configuration object
 
     Returns:
         Delayed: A delayed task representing the image pair
     """
 
-    return dask.delayed(read_pair)(idx, camera_path, config)
+    return dask.delayed(read_pair)(idx, camera_path, camera, config)
 
 
 def to_dask_array(delayed_pair: Delayed, config: Config) -> da.Array:
@@ -102,14 +135,31 @@ def to_dask_array(delayed_pair: Delayed, config: Config) -> da.Array:
     """
     arr = dask.array.from_delayed(
         delayed_pair,
-        shape=(2, *config.image_shape),  # Always 2 for frame pairs
+        shape=(2, *config.image_shape), 
         dtype=config.image_dtype,
     )
     return arr
 
 
+@profile
 def load_images(camera: int, config: Config, source: Path = None) -> da.Array:
-    """Load images for a specific camera.
+    """Load images for a specific camera using pure lazy loading.
+    
+    This function creates one delayed task per image pair. Each task is
+    completely independent and only loads when computed on a worker.
+    
+    Memory Efficiency - True Lazy Loading:
+    - Creates N delayed objects (~1 KB each) for N images
+    - Main process memory: ~N KB (minimal, just task graph)
+    - Worker memory: Only 1 image pair at a time (~80 MB)
+    - Each worker: load → process → save → free → next
+    - Peak worker memory: ~280 MB (1 image + PIV overhead)
+    
+    This is the OPTIMAL Dask pattern:
+    - No pre-loading of batches
+    - No memory accumulation
+    - Workers process images one-by-one
+    - Dask scheduler handles distribution naturally
 
     Args:
         camera (int): The camera number.
@@ -119,21 +169,44 @@ def load_images(camera: int, config: Config, source: Path = None) -> da.Array:
 
     Returns:
         da.Array: A Dask array containing the loaded image pairs.
+            Shape: (num_images, 2, H, W)
+            Note: This is a lazy array - no actual image data loaded yet.
+            Each element is an independent delayed task.
     """
     if source is None:
         source = config.source_paths[0]
     
-    camera_path = source / f"Cam{camera}"
-    logging.info("Lazily loading images with Dask for camera: Cam%d from %s", camera, camera_path)
+    # For .set and .im7 files, there are no camera subdirectories
+    # All cameras are stored in a single file per time instance in the source directory
+    # File format: source_directory/B00001.im7 (contains all cameras for time instance 1)
+    if '.set' in str(config.image_format):
+        camera_path = source  # No camera subdirectory for set files
+    elif '.im7' in str(config.image_format):
+        camera_path = source  # No camera subdirectory for set files
+    else:
+        camera_path = source / f"Cam{camera}"
+    
+    num_images = config.num_images
+    
+    logger.info(f"Creating {num_images} delayed tasks for lazy loading (Cam{camera})")
+    
+    # Create one delayed task per image pair (pure lazy loading)
     delayed_image_pairs = [
-        delayed_image_pair(idx, camera_path, config)
-        for idx in range(1, config.num_images + 1)
+        delayed_image_pair(idx, camera_path, camera, config)
+        for idx in range(1, num_images + 1)
     ]
+    
+    # Convert each delayed task to a Dask array
     dask_pairs = [to_dask_array(pair, config) for pair in delayed_image_pairs]
+    
+    # Stack into single array - still lazy, no computation yet!
     pairs_stack = da.stack(dask_pairs, axis=0)
-    pairs_stack = pairs_stack.rechunk(
-        (config.piv_chunk_size, 2, *config.image_shape)
-    )  # Always 2 for frame pairs
+    
+    logger.info(
+        f"Lazy loading complete: {num_images} independent delayed tasks created "
+        f"(~{num_images} KB memory footprint)"
+    )
+    
     return pairs_stack
 
 
@@ -174,9 +247,9 @@ def create_rectangular_mask(config: Config) -> np.ndarray:
     total_pixels = mask.size
     mask_fraction = masked_pixels / total_pixels if total_pixels > 0 else 0
     
-    logging.debug(
-        "Created rectangular mask: top=%d, bottom=%d, left=%d, right=%d "
-        "(%d/%d pixels = %.1f%%)",
+    logger.debug(
+        "Created rectangular mask: top={}, bottom={}, left={}, right={} "
+        "({}/{:.0f} pixels = {:.1f}%)",
         top, bottom, left, right, masked_pixels, total_pixels, mask_fraction * 100
     )
     
@@ -212,14 +285,14 @@ def load_mask_for_camera(
         or None if masking is disabled or mask cannot be loaded
     """
     if not config.masking_enabled:
-        logging.debug("Masking is disabled in config")
+        logger.debug("Masking is disabled in config")
         return None
     
     mask_mode = config.mask_mode
     
     # Rectangular mode: create mask from edge specifications
     if mask_mode == "rectangular":
-        logging.debug("Using rectangular edge masking")
+        logger.debug("Using rectangular edge masking")
         return create_rectangular_mask(config)
     
     # File mode: load from .mat file
@@ -228,13 +301,13 @@ def load_mask_for_camera(
             mask_path = config.get_mask_path(camera_num, source_path_idx)
             
             if not mask_path.exists():
-                logging.warning(
-                    "Mask file not found for Cam%d at %s. Proceeding without mask.",
+                logger.warning(
+                    "Mask file not found for Cam{} at {}. Proceeding without mask.",
                     camera_num, mask_path
                 )
                 return None
             
-            logging.debug("Loading mask for Cam%d from %s", camera_num, mask_path)
+            logger.debug("Loading mask for Cam{} from {}", camera_num, mask_path)
             mask, polygons = read_mask_from_mat(str(mask_path))
             
             # Ensure mask is boolean
@@ -245,28 +318,28 @@ def load_mask_for_camera(
             total_pixels = mask.size
             mask_fraction = masked_pixels / total_pixels if total_pixels > 0 else 0
             
-            logging.debug(
-                "Mask loaded: %d/%d pixels masked (%.1f%%)",
+            logger.debug(
+                "Mask loaded: {}/{} pixels masked ({:.1f}%)",
                 masked_pixels, total_pixels, mask_fraction * 100
             )
             
             return mask
             
         except Exception as e:
-            logging.error(
-                "Failed to load mask for Cam%d: %s. Proceeding without mask.",
+            logger.error(
+                "Failed to load mask for Cam{}: {}. Proceeding without mask.",
                 camera_num, e
             )
             return None
     
     else:
-        logging.warning(
-            "Unknown mask mode '%s'. Must be 'file' or 'rectangular'. "
+        logger.warning(
+            "Unknown mask mode '{}'. Must be 'file' or 'rectangular'. "
             "Proceeding without mask.", mask_mode
         )
         return None
 
-
+@profile
 def compute_vector_mask(
     pixel_mask: np.ndarray,
     config: Config,
@@ -329,38 +402,34 @@ def compute_vector_mask(
         win_spacing_x = round((1 - overlap / 100) * win_x)
         win_spacing_y = round((1 - overlap / 100) * win_y)
         
-        # Calculate window center positions (matching PIV computation)
-        # Using 0-based indexing: centers start at half window size
-        start_x = win_x / 2 - 0.5
-        start_y = win_y / 2 - 0.5
+        # Calculate window center positions (matching PIV computation exactly)
+        # For a 128-pixel window (indices 0-127), center is at 63.5
+        # First window center in X (width dimension) - 0-based array indexing
+        first_ctr_x = (win_x - 1) / 2.0  # For 128: (127)/2 = 63.5
+        # Last possible window center in X
+        last_ctr_x = W - (win_x + 1) / 2.0  # For W=4872, win=128: 4872 - 64.5 = 4807.5
         
-        # Apply edge margin if needed (matching PIV's EDGE_MARGIN = 32)
-        EDGE_MARGIN = 32
-        min_x = EDGE_MARGIN
-        max_x = W - EDGE_MARGIN - 1
-        min_y = EDGE_MARGIN
-        max_y = H - EDGE_MARGIN - 1
-        
-        start_x = max(start_x, min_x)
-        start_y = max(start_y, min_y)
+        # First window center in Y (height dimension) - 0-based array indexing
+        first_ctr_y = (win_y - 1) / 2.0
+        # Last possible window center in Y
+        last_ctr_y = H - (win_y + 1) / 2.0
         
         # Calculate number of windows
-        n_win_x = int(np.floor((max_x - start_x) / win_spacing_x)) + 1
-        n_win_y = int(np.floor((max_y - start_y) / win_spacing_y)) + 1
+        n_win_x = int(np.floor((last_ctr_x - first_ctr_x) / win_spacing_x)) + 1
+        n_win_y = int(np.floor((last_ctr_y - first_ctr_y) / win_spacing_y)) + 1
         
+        # Ensure at least one window
         n_win_x = max(1, n_win_x)
         n_win_y = max(1, n_win_y)
         
-        # Window center positions
+        # Window center positions using linspace (matches MATLAB's colon operator)
         win_ctrs_x = np.linspace(
-            start_x, start_x + win_spacing_x * (n_win_x - 1), n_win_x
+            first_ctr_x, first_ctr_x + win_spacing_x * (n_win_x - 1), n_win_x
         )
         win_ctrs_y = np.linspace(
-            start_y, start_y + win_spacing_y * (n_win_y - 1), n_win_y
+            first_ctr_y, first_ctr_y + win_spacing_y * (n_win_y - 1), n_win_y
         )
         
-        # Perform 2D convolution with box filter (separable for efficiency)
-        # Convolve along y (rows) first
         box_filter_y = np.ones((win_y, 1), dtype=np.float32) / win_y
         f_mask = convolve(im_mask, box_filter_y, mode='constant', cval=0.0)
         
@@ -386,8 +455,8 @@ def compute_vector_mask(
         total_vectors = b_mask_pass.size
         mask_fraction = masked_vectors / total_vectors if total_vectors > 0 else 0
         
-        logging.debug(
-            "Pass %d: %d/%d vectors masked (%.1f%%), window size: (%d, %d)",
+        logger.debug(
+            "Pass {}: {}/{} vectors masked ({:.1f}%), window size: ({}, {})",
             pass_idx + 1, masked_vectors, total_vectors,
             mask_fraction * 100, win_y, win_x
         )

@@ -88,9 +88,8 @@ def make_scalar_settings(
         symmetric_around_zero=symmetric_around_zero,
     )
 
-
 # Function to plot a scalar field with masking and customizable settings
-def plot_scalar_field(variable, mask, settings):
+def plot_scalar_field(variable, mask, settings): # efe
     # Extract plot settings
     plt.rcParams.update({"font.size": settings._fontsize})
     plt.rcParams["axes.titlesize"] = settings._title_fontsize
@@ -128,7 +127,7 @@ def plot_scalar_field(variable, mask, settings):
         else:
             ny, nx = variable.shape
             x = np.arange(nx)
-            y = np.arange(ny)
+            y = np.arange(ny-1, -1, -1)
         X, Y = np.meshgrid(x, y)
 
     # Create the plot (object-oriented API)
@@ -139,7 +138,18 @@ def plot_scalar_field(variable, mask, settings):
     if settings.lower_limit is not None and settings.upper_limit is not None:
         vmin, vmax = settings.lower_limit, settings.upper_limit
     else:
-        vmin, vmax = float(masked_var.min()), float(masked_var.max())
+        # Use nanmin/nanmax to handle NaN values properly
+        valid_data = masked_var.compressed()  # Get unmasked data
+        if len(valid_data) > 0:
+            vmin = float(np.nanmin(valid_data))
+            vmax = float(np.nanmax(valid_data))
+            # Check if min/max are still NaN (all valid data is NaN)
+            if np.isnan(vmin) or np.isnan(vmax) or np.isinf(vmin) or np.isinf(vmax):
+                # Fallback to sensible defaults
+                vmin, vmax = 0.0, 1.0
+        else:
+            # No valid data at all - use defaults
+            vmin, vmax = 0.0, 1.0
 
     # Enforce symmetric scale around zero if data spans negative and positive
     use_two_slope = False

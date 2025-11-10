@@ -41,8 +41,13 @@ def list_supported_formats() -> List[str]:
     return list(_READERS.keys())
 
 
+# Import LaVision readers after functions are defined to avoid circular imports
+from .lavision_reader import read_lavision_pair, read_lavision_ims_pair
+
 # Register only lowercase variants for robustness
 register_reader([".tiff", ".tif"], read_tiff)
 register_reader([".png"], read_png_jpeg)
 register_reader([".jpg", ".jpeg"], read_png_jpeg)
 register_reader([".raw", ".cr2", ".nef", ".arw"], read_raw)
+register_reader([".im7"], read_lavision_pair)
+register_reader([".set"], read_lavision_ims_pair)

@@ -1,0 +1,28 @@
+2025-11-07 11:54:02,111 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-07 11:54:05,408 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-07 11:54:05,678 [INFO] Worker logging configured successfully
+2025-11-07 11:54:05,679 [INFO] Dask cluster started successfully
+2025-11-07 11:54:05,681 [INFO] Dask Worker Info:
+2025-11-07 11:54:05,681 [INFO] Worker tcp://127.0.0.1:59619
+2025-11-07 11:54:05,681 [INFO]   pid: None
+2025-11-07 11:54:05,681 [INFO]   host: 127.0.0.1
+2025-11-07 11:54:05,681 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-gq8wev_9
+2025-11-07 11:54:05,688 [INFO]   nanny: True
+2025-11-07 11:54:05,688 [INFO] Processing camera: Cam1
+2025-11-07 11:54:05.689 | INFO     | image_handling.load_images:load_images:191 - Creating 50 delayed tasks for lazy loading (Cam1)
+2025-11-07 11:54:06,327 [INFO] Auto-detected image shape: (3248, 4872)
+2025-11-07 11:54:06.330 | INFO     | image_handling.load_images:load_images:205 - Lazy loading complete: 50 independent delayed tasks created (~50 KB memory footprint)
+2025-11-07 11:54:06,330 [INFO] No filters configured, skipping preprocessing
+2025-11-07 11:54:06.330 | DEBUG    | image_handling.load_images:load_mask_for_camera:310 - Loading mask for Cam1 from D:\DAVIS_BFS\gF_Ramp_experiment\BFS_1500_1\mask_Cam1.mat
+2025-11-07 11:54:06.379 | DEBUG    | image_handling.load_images:load_mask_for_camera:321 - Mask loaded: 5209970/15824256 pixels masked (32.9%)
+2025-11-07 11:54:06,380 [INFO] Pre-computing vector masks for Cam1
+2025-11-07 11:54:08.335 | DEBUG    | image_handling.load_images:compute_vector_mask:458 - Pass 1: 1240/3675 vectors masked (33.7%), window size: (128, 128)
+2025-11-07 11:54:09.426 | DEBUG    | image_handling.load_images:compute_vector_mask:458 - Pass 2: 5083/15100 vectors masked (33.7%), window size: (64, 64)
+2025-11-07 11:54:10.044 | DEBUG    | image_handling.load_images:compute_vector_mask:458 - Pass 3: 20446/61206 vectors masked (33.4%), window size: (32, 32)
+2025-11-07 11:54:10,047 [INFO] Vector masks computed: 3 passes
+2025-11-07 11:54:10,135 [INFO] Successfully cached window padding for 3 passes
+2025-11-07 11:54:10,249 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-07 11:54:10,676 [INFO] Broadcast correlator cache to all workers
+2025-11-07 11:54:10,678 [INFO] Broadcast vector masks to all workers (78.1 KB)
+2025-11-07 11:54:10,680 [INFO] Submitting 50 independent tasks to cluster
+2025-11-07 11:54:10,684 [INFO] Tasks submitted. Dask scheduler managing distribution across workers. Each worker processes ONE image at a time.

@@ -2,9 +2,11 @@ import ctypes
 import logging
 import os
 import sys
+import time
 import traceback
 import warnings
 from pathlib import Path
+from typing import List, Optional
 import cv2
 import dask.array as da
 import numpy as np
@@ -12,87 +14,164 @@ from dask.distributed import get_worker
 from scipy.ndimage import gaussian_filter
 from scipy.signal import convolve2d
 
+# Try to import line_profiler for detailed profiling
+try:
+    from line_profiler import profile
+except ImportError:
+    profile = lambda f: f
+
 # Add src to path for unified imports
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))
 
 from config import Config
 from pypivtools.piv.piv_backend.base import CrossCorrelator
-
 from pypivtools.piv.piv_result import PIVPassResult, PIVResult
+from pypivtools.piv.piv_backend.outlier_detection import apply_outlier_detection
+from pypivtools.piv.piv_backend.infilling import apply_infilling
 
 
 class InstantaneousCorrelatorCPU(CrossCorrelator):
-
-    def __init__(self, config: Config) -> None:
+    @profile
+    def __init__(self, config: Config, precomputed_cache: Optional[dict] = None) -> None:
         super().__init__()
+        # Use platform-appropriate library extension
+        lib_extension = ".dll" if os.name == "nt" else ".so"
         lib_path = os.path.join(
-            os.path.dirname(__file__), "../..", "lib", "libbulkxcorr2d.so"
+            os.path.dirname(__file__), "../..", "lib", f"libbulkxcorr2d{lib_extension}"
         )
         lib_path = os.path.abspath(lib_path)
+        if not os.path.isfile(lib_path):
+            raise FileNotFoundError(f"Required library file not found: {lib_path}")
+        # Add vcpkg bin directory to DLL search path on Windows
+        if os.name == "nt":
+            vcpkg_bin = os.path.join(os.environ.get('FFTW_LIB_PATH', '').replace('lib', 'bin'))
+            if vcpkg_bin and os.path.isdir(vcpkg_bin):
+                os.add_dll_directory(vcpkg_bin)
         self.lib = ctypes.CDLL(lib_path)
         self.lib.bulkxcorr2d.restype = ctypes.c_ubyte
         self.delta_ab_pred = None
         self.delta_ab_old = None
         self.prev_win_size = None
         self.prev_win_spacing = None
+        # Updated to use C-contiguous (row-major) arrays
         self.lib.bulkxcorr2d.argtypes = [
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="F_CONTIGUOUS"),  # fImageA
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="F_CONTIGUOUS"),  # fImageB
-            np.ctypeslib.ndpointer(dtype=np.uint8, flags="F_CONTIGUOUS"),  # fMask
-            np.ctypeslib.ndpointer(dtype=np.int32, flags="F_CONTIGUOUS"),  # nImageSize
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="F_CONTIGUOUS"),  # fWinCtrsX
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="F_CONTIGUOUS"),  # fWinCtrsY
-            np.ctypeslib.ndpointer(dtype=np.int32, flags="F_CONTIGUOUS"),  # nWindows
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fImageA
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fImageB
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fMask
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),  # nImageSize
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWinCtrsX
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWinCtrsY
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),  # nWindows
             np.ctypeslib.ndpointer(
-                dtype=np.float32, flags="F_CONTIGUOUS"
+                dtype=np.float32, flags="C_CONTIGUOUS"
             ),  # fWindowWeightA
             ctypes.c_bool,  # bEnsemble
             np.ctypeslib.ndpointer(
-                dtype=np.float32, flags="F_CONTIGUOUS"
+                dtype=np.float32, flags="C_CONTIGUOUS"
             ),  # fWindowWeightB
-            np.ctypeslib.ndpointer(dtype=np.int32, flags="F_CONTIGUOUS"),  # nWindowSize
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),  # nWindowSize
             ctypes.c_int,  # nPeaks
             ctypes.c_int,  # iPeakFinder
             np.ctypeslib.ndpointer(
-                dtype=np.float32, flags="F_CONTIGUOUS"
+                dtype=np.float32, flags="C_CONTIGUOUS"
             ),  # fPkLocX (output)
             np.ctypeslib.ndpointer(
-                dtype=np.float32, flags="F_CONTIGUOUS"
+                dtype=np.float32, flags="C_CONTIGUOUS"
             ),  # fPkLocY (output)
             np.ctypeslib.ndpointer(
-                dtype=np.float32, flags="F_CONTIGUOUS"
+                dtype=np.float32, flags="C_CONTIGUOUS"
             ),  # fPkHeight (output)
             np.ctypeslib.ndpointer(
-                dtype=np.float32, flags="F_CONTIGUOUS"
+                dtype=np.float32, flags="C_CONTIGUOUS"
             ),  # fSx (output)
             np.ctypeslib.ndpointer(
-                dtype=np.float32, flags="F_CONTIGUOUS"
+                dtype=np.float32, flags="C_CONTIGUOUS"
             ),  # fSy (output)
             np.ctypeslib.ndpointer(
-                dtype=np.float32, flags="F_CONTIGUOUS"
+                dtype=np.float32, flags="C_CONTIGUOUS"
             ),  # fSxy (output)
             np.ctypeslib.ndpointer(
-                dtype=np.float32, flags="F_CONTIGUOUS"
+                dtype=np.float32, flags="C_CONTIGUOUS"
             ),  # fCorrelPlane_Out (output)
         ]
+        # Window weights should be C-contiguous with shape (win_height, win_width)
         self.win_weights = [
-            np.asfortranarray(self._window_weight_fun(win_size, config.window_type))
+            np.ascontiguousarray(self._window_weight_fun(win_size, config.window_type))
             for win_size in config.window_sizes
         ]
 
-        self._cache_window_padding(config=config)
-        self.H, self.W = config.image_shape
-        
-        # Cache interpolation grids for performance
-        self._cache_interpolation_grids(config=config)
-        
-        # Initialize vector mask cache (computed once when mask is provided)
-        self.vector_masks = []
-        self.mask_cached = False
+        # Use precomputed cache if provided, otherwise compute it
+        if precomputed_cache is not None:
+            self._load_precomputed_cache(precomputed_cache)
+        else:
+            self._cache_window_padding(config=config)
+            self.H, self.W = config.image_shape
+            # Cache interpolation grids for performance
+            self._cache_interpolation_grids(config=config)
 
+        # Initialize vector masks (will be set in correlate_batch)
+        self.vector_masks = []
+
+        # Store pass times for profiling
+        self.pass_times = []
+
+    def _load_precomputed_cache(self, cache: dict) -> None:
+        """Load precomputed cache data to avoid redundant computation.
+        
+        :param cache: Dictionary containing precomputed cache data
+        :type cache: dict
+        """
+        # Load window padding cache
+        self.win_ctrs_x = cache['win_ctrs_x']
+        self.win_ctrs_y = cache['win_ctrs_y']
+        self.win_spacing_x = cache['win_spacing_x']
+        self.win_spacing_y = cache['win_spacing_y']
+        self.win_ctrs_x_all = cache['win_ctrs_x_all']
+        self.win_ctrs_y_all = cache['win_ctrs_y_all']
+        self.n_pre_all = cache['n_pre_all']
+        self.n_post_all = cache['n_post_all']
+        self.ksize_filt = cache['ksize_filt']
+        self.sd = cache['sd']
+        self.G_smooth_predictor = cache['G_smooth_predictor']
+        
+        # Load image dimensions
+        self.H = cache['H']
+        self.W = cache['W']
+        
+        # Load interpolation grids cache
+        self.im_mesh = cache['im_mesh']
+        self.cached_dense_maps = cache['cached_dense_maps']
+        self.cached_predictor_maps = cache['cached_predictor_maps']
+
+    def get_cache_data(self) -> dict:
+        """Extract cache data for sharing across workers.
+        
+        :return: Dictionary containing all cached data
+        :rtype: dict
+        """
+        return {
+            'win_ctrs_x': self.win_ctrs_x,
+            'win_ctrs_y': self.win_ctrs_y,
+            'win_spacing_x': self.win_spacing_x,
+            'win_spacing_y': self.win_spacing_y,
+            'win_ctrs_x_all': self.win_ctrs_x_all,
+            'win_ctrs_y_all': self.win_ctrs_y_all,
+            'n_pre_all': self.n_pre_all,
+            'n_post_all': self.n_post_all,
+            'ksize_filt': self.ksize_filt,
+            'sd': self.sd,
+            'G_smooth_predictor': self.G_smooth_predictor,
+            'H': self.H,
+            'W': self.W,
+            'im_mesh': self.im_mesh,
+            'cached_dense_maps': self.cached_dense_maps,
+            'cached_predictor_maps': self.cached_predictor_maps,
+        }
+
+    @profile
     def correlate_batch(  # type: ignore[override]
-        self, images: np.ndarray, config: Config, mask: np.ndarray | None = None
+        self, images: np.ndarray, config: Config, vector_masks: List[np.ndarray] | None = None
     ) -> PIVResult:
         """Run PIV correlation on a batch of image pairs with MATLAB-style indexing."""
 
@@ -101,19 +180,12 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         piv_result_all = PIVResult()
         self.delta_ab_pred = None
         self.delta_ab_old = None
-        self.mask = mask
-        
-        # Compute vector masks once and cache them
-        # Only compute if masking is enabled and mask is provided
-        if config.masking_enabled and mask is not None and not self.mask_cached:
-            from image_handling.load_images import compute_vector_mask
-            logging.debug("Computing vector masks from pixel mask (will be cached for subsequent batches)")
-            self.vector_masks = compute_vector_mask(mask, config)
-            self.mask_cached = True
-        elif not config.masking_enabled:
-            # Masking disabled - clear any cached masks
-            self.vector_masks = []
-            self.mask_cached = False
+
+        # Clear pass times for this batch
+        self.pass_times = []
+
+        # Use pre-computed vector masks
+        self.vector_masks = vector_masks if vector_masks is not None else []
 
         y_coords = np.arange(self.H, dtype=np.float32)
         x_coords = np.arange(self.W, dtype=np.float32)
@@ -122,17 +194,20 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
 
         for n in range(N):
             try:
+                # Convert images to C-contiguous (row-major) format
                 image_a = np.asarray(images[n, 0], dtype=np.float32)
                 image_b = np.asarray(images[n, 1], dtype=np.float32)
 
-                if not image_a.flags["F_CONTIGUOUS"]:
-                    image_a = np.asfortranarray(image_a)
-                if not image_b.flags["F_CONTIGUOUS"]:
-                    image_b = np.asfortranarray(image_b)
+                if not image_a.flags["C_CONTIGUOUS"]:
+                    image_a = np.ascontiguousarray(image_a)
+                if not image_b.flags["C_CONTIGUOUS"]:
+                    image_b = np.ascontiguousarray(image_b)
 
-                image_size = np.asfortranarray(np.array([H, W], dtype=np.int32))
+                # Pass image_size as [H, W] in C-contiguous format
+                image_size = np.ascontiguousarray(np.array([H, W], dtype=np.int32))
 
                 for pass_idx, win_size in enumerate(config.window_sizes):
+                    pass_start = time.perf_counter()
                     image_a_prime, image_b_prime, self.delta_ab_pred = (
                         self._predictor_corrector(
                             pass_idx,
@@ -161,33 +236,52 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                         win_size=win_size,
                         pass_idx=pass_idx,
                     )
-
-                    error_code = self.lib.bulkxcorr2d(
-                        np.asfortranarray(image_a_prime),
-                        np.asfortranarray(image_b_prime),
-                        b_mask,
-                        image_size,
-                        self.win_ctrs_x[pass_idx].astype(np.float32),
-                        self.win_ctrs_y[pass_idx].astype(np.float32),
-                        n_windows,
-                        self.win_weights[pass_idx],
-                        b_ensemble,
-                        self.win_weights[pass_idx],
-                        win_size_arr,
-                        int(n_peaks),
-                        int(i_peak_finder),
-                        pk_loc_x,
-                        pk_loc_y,
-                        pk_height,
-                        sx,
-                        sy,
-                        sxy,
-                        correl_plane_out,
-                    )
+                    
+                    # Ensure images are C-contiguous before passing to C library
+                    image_a_prime_c = image_a_prime if image_a_prime.flags["C_CONTIGUOUS"] else np.ascontiguousarray(image_a_prime)
+                    image_b_prime_c = image_b_prime if image_b_prime.flags["C_CONTIGUOUS"] else np.ascontiguousarray(image_b_prime)
+                    
+                    try:
+                        error_code = self.lib.bulkxcorr2d(
+                            image_a_prime_c,
+                            image_b_prime_c,
+                            b_mask,
+                            image_size,
+                            self.win_ctrs_x[pass_idx].astype(np.float32),
+                            self.win_ctrs_y[pass_idx].astype(np.float32),
+                            n_windows,
+                            self.win_weights[pass_idx],
+                            b_ensemble,
+                            self.win_weights[pass_idx],
+                            win_size_arr,
+                            int(n_peaks),
+                            int(i_peak_finder),
+                            pk_loc_x,
+                            pk_loc_y,
+                            pk_height,
+                            sx,
+                            sy,
+                            sxy,
+                            correl_plane_out,
+                        )
+                    except Exception as e:
+                        logging.error(f"    Exception type: {type(e).__name__}")
+                        import traceback
+                        logging.error(traceback.format_exc())
+                        raise
 
                     if error_code != 0:
-                        raise RuntimeError(f"bulkxcorr2d failed with error {error_code}")
-
+                        error_names = {
+                            1: "ERROR_NOMEM (out of memory)",
+                            2: "ERROR_NOPLAN_FWD (FFT forward plan failed)",
+                            4: "ERROR_NOPLAN_BWD (FFT backward plan failed)",
+                            8: "ERROR_NOPLAN (general plan error)",
+                            9: "ERROR_OUT_OF_BOUNDS (array access out of bounds)"
+                        }
+                        error_msg = error_names.get(error_code, f"Unknown error code {error_code}")
+                        logging.error(f"    bulkxcorr2d returned error code {error_code}: {error_msg}")
+                        raise RuntimeError(f"bulkxcorr2d failed with error {error_code}: {error_msg}")
+                    
                     n_win_y = int(n_windows[0])
                     n_win_x = int(n_windows[1])
                     mask_bool = b_mask.astype(bool)
@@ -205,42 +299,64 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     pk_loc_y[large_disp_mask] = np.nan
                     pk_height[large_disp_mask] = np.nan
 
-                    pk_loc_x += self.delta_ab_pred[..., 0][np.newaxis, :, :]
-                    pk_loc_y += self.delta_ab_pred[..., 1][np.newaxis, :, :]
+                    # delta_ab_pred[..., 0] = Y-displacement, delta_ab_pred[..., 1] = X-displacement
+                    # pk_loc_x is X-displacement, pk_loc_y is Y-displacement
+                    pk_loc_x += self.delta_ab_pred[..., 1][np.newaxis, :, :]  # Add X-predictor to X
+                    pk_loc_y += self.delta_ab_pred[..., 0][np.newaxis, :, :]  # Add Y-predictor to Y
 
                     primary_idx = np.zeros((1, n_win_y, n_win_x), dtype=np.intp)
                     ux_mat = np.take_along_axis(pk_loc_x, primary_idx, axis=0)[0]
                     uy_mat = np.take_along_axis(pk_loc_y, primary_idx, axis=0)[0]
-                    primary_peak_mag = np.take_along_axis(
-                        pk_height, primary_idx, axis=0
-                    )[0]
+                    # Use direct indexing without meshgrid for outlier detection and peak selection
+                    n_win_y = int(n_windows[0])
+                    n_win_x = int(n_windows[1])
+                    peak_choice = np.ones((n_win_y, n_win_x), dtype=np.int32)
 
-                    nan_mask = (
-                        np.isnan(ux_mat)
-                        | np.isnan(uy_mat)
-                        | np.isnan(primary_peak_mag)
-                        | mask_bool
-                    )
+                    # Initial peak selection
+                    ux_mat = pk_loc_x[0]
+                    uy_mat = pk_loc_y[0]
 
-                    win_y_grid, win_x_grid = np.meshgrid(
-                        self.win_ctrs_y[pass_idx],
-                        self.win_ctrs_x[pass_idx],
-                        indexing="ij",
-                    )
-                    EDGE_MARGIN = 64
-                    edge_mask = (
-                        (win_x_grid < EDGE_MARGIN)
-                        | (win_x_grid > self.W - EDGE_MARGIN - 1)
-                        | (win_y_grid < EDGE_MARGIN)
-                        | (win_y_grid > self.H - EDGE_MARGIN - 1)
-                    )
-                    nan_mask |= edge_mask
+                    nan_mask = np.isnan(ux_mat) | np.isnan(uy_mat)
+                    
+                    # Apply outlier detection if enabled
+                    if config.outlier_detection_enabled:
+                        outlier_methods = config.outlier_detection_methods
+                        if outlier_methods:
+                            # Get primary peak magnitude for peak_mag detection
+                            primary_peak_mag_temp = pk_height[0]
+                            outlier_mask = apply_outlier_detection(
+                                ux_mat, uy_mat, outlier_methods, peak_mag=primary_peak_mag_temp
+                            )
+                            nan_mask |= outlier_mask
 
-                    # Note: User-defined mask is already applied via b_mask (precomputed vector mask)
-                    # No need to call _apply_mask_to_vectors here as it would be redundant
+                    if config.secondary_peak:
+                        for pk in range(1, n_peaks):
+                            # Increment peak_choice for nan_mask locations
+                            peak_choice[nan_mask] += 1
+                            # Clamp peak_choice to valid range
+                            peak_choice = np.clip(peak_choice, 1, n_peaks)
+                            # Select new peak for nan_mask locations
+                            ux_mat = np.choose(peak_choice - 1, pk_loc_x)
+                            uy_mat = np.choose(peak_choice - 1, pk_loc_y)
+                            if config.outlier_detection_enabled:
+                                outlier_methods = config.outlier_detection_methods
+                                if outlier_methods:
+                                    primary_peak_mag_temp = np.choose(peak_choice - 1, pk_height)
+                                    outlier_mask = apply_outlier_detection(
+                                        ux_mat, uy_mat, outlier_methods, peak_mag=primary_peak_mag_temp
+                                    )
+                                    nan_mask |= outlier_mask
+                            if not nan_mask.any():
+                                break
 
+                    # Select primary peak magnitude
+                    primary_peak_mag = np.choose(peak_choice - 1, pk_height)
+                    nan_mask |= np.isnan(primary_peak_mag)
+
+                    nan_mask |= mask_bool
                     nan_mask |= primary_peak_mag < 0.2
 
+                    # Q calculation (peak ratio)
                     shifted_pk_height = np.roll(pk_height, shift=-1, axis=0)
                     shifted_pk_height[-1, :, :] = pk_height[-1, :, :]
                     with warnings.catch_warnings():
@@ -252,7 +368,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                             where=shifted_pk_height > 0,
                         )
 
-                    Q = np.take_along_axis(Q_mat, primary_idx, axis=0)[0]
+                    Q = np.choose(peak_choice - 1, Q_mat)
 
                     if nan_mask.any():
                         ux_mat[nan_mask] = np.nan
@@ -263,15 +379,28 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     ux_mat[mask_bool] = 0.0
                     uy_mat[mask_bool] = 0.0
 
-                    if np.isnan(ux_mat).any():
-                        ux_mat = self._inpaint_nans_opencv(ux_mat)
-                    if np.isnan(uy_mat).any():
-                        uy_mat = self._inpaint_nans_opencv(uy_mat)
+                    # Apply infilling for mid-passes or final pass
+                    is_final_pass = (pass_idx == len(config.window_sizes) - 1)
+                    
+                    if is_final_pass:
+                        # Final pass infilling (optional)
+                        final_infill_cfg = config.infilling_final_pass
+                        if final_infill_cfg.get('enabled', True) and np.isnan(ux_mat).any():
+                            infill_mask = np.isnan(ux_mat) | np.isnan(uy_mat)
+                            ux_mat, uy_mat = apply_infilling(
+                                ux_mat, uy_mat, infill_mask, final_infill_cfg
+                            )
+                    else:
+                        # Mid-pass infilling (required for predictor)
+                        if np.isnan(ux_mat).any() or np.isnan(uy_mat).any():
+                            infill_mask = np.isnan(ux_mat) | np.isnan(uy_mat)
+                            mid_infill_cfg = config.infilling_mid_pass
+                            ux_mat, uy_mat = apply_infilling(
+                                ux_mat, uy_mat, infill_mask, mid_infill_cfg
+                            )
 
                     ux_mat[mask_bool] = 0.0
                     uy_mat[mask_bool] = 0.0
-
-                    peak_choice = np.ones((n_win_y, n_win_x), dtype=np.int32)
                     peak_choice[nan_mask] = 0
 
                     ux_mat = np.ascontiguousarray(ux_mat.astype(np.float32))
@@ -281,10 +410,11 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     primary_peak_mag = np.ascontiguousarray(
                         np.where(nan_mask, 0.0, primary_peak_mag.astype(np.float32))
                     )
-                    pk_height = np.asfortranarray(pk_height.astype(np.float32))
-                    Q_mat = np.asfortranarray(Q_mat.astype(np.float32))
+                    pk_height = np.ascontiguousarray(pk_height.astype(np.float32))
 
-                    self.delta_ab_old = np.stack([ux_mat, uy_mat], axis=2)
+                    # Stack as [Y, X] to match im_mesh structure where [..., 0] = Y and [..., 1] = X
+                    # This ensures correct image warping: im_mesh + delta_ab aligns Y with Y and X with X
+                    self.delta_ab_old = np.stack([uy_mat, ux_mat], axis=2)
                     pre_y, pre_x = self.n_pre_all[pass_idx]
                     post_y, post_x = self.n_post_all[pass_idx]
                     self.delta_ab_old = np.pad(
@@ -304,15 +434,28 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                         ux_mat=np.copy(ux_mat),
                         uy_mat=np.copy(uy_mat),
                         nan_mask=np.copy(nan_mask),
-                        Q=np.copy(Q),
                         peak_mag=np.copy(pk_height),
                         peak_choice=np.copy(peak_choice),
                         predictor_field=np.copy(self.delta_ab_old),
+                        b_mask=b_mask.reshape((n_win_y, n_win_x)).astype(bool),
+                        window_size=win_size,
+                        win_ctrs_x=self.win_ctrs_x[pass_idx],
+                        win_ctrs_y=self.win_ctrs_y[pass_idx],
+
                     )
-                    pass_result.primary_peak_mag = np.copy(primary_peak_mag)
-                    pass_result.Q_mat = np.copy(Q_mat)
-                    pass_result.edge_mask = np.copy(edge_mask)
+                    pass_time = time.perf_counter() - pass_start
+                    self.pass_times.append((n, pass_idx, pass_time))
                     piv_result_all.add_pass(pass_result)
+                    
+                    # Explicit memory cleanup to prevent accumulation
+                    # These large intermediate arrays can consume 500+ MB per pass
+                    del pk_loc_x, pk_loc_y, pk_height, correl_plane_out
+                    del image_a_prime, image_b_prime
+                    del sx, sy, sxy, Q_mat
+                    # Force garbage collection after last pass to release memory
+                    if pass_idx == len(config.window_sizes) - 1:
+                        import gc
+                        gc.collect()
 
             except Exception as exc:
                 logging.error("Error in correlate_batch for image %d: %s", n, exc)
@@ -327,9 +470,11 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         """
         Compute window centers and spacing for a given pass.
         
-        Window centers are constrained to be at least EDGE_MARGIN pixels away
-        from image boundaries to avoid unreliable edge vectors where particles
-        move out of frame.
+        Matches MATLAB logic exactly:
+        - win_ctrs_x spans the width dimension (Nx = W = columns)
+        - win_ctrs_y spans the height dimension (Ny = H = rows)
+        - Window centers are in pixel coordinates (0-based)
+        - X corresponds to horizontal (width), Y to vertical (height)
 
         :param pass_idx: Index of the current pass.
         :type pass_idx: int
@@ -338,58 +483,78 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         :return: Tuple containing window spacing in x and y, and arrays of window center coordinates in x and y.
         :rtype: tuple[int, int, np.ndarray, np.ndarray]
         """
-        # CRITICAL FIX: config.window_sizes is in (H, W) = (Y-size, X-size) format
-        # because C library uses column-major order where first dimension is vertical (Y)
-        win_y, win_x = config.window_sizes[pass_idx]
+        # Image dimensions: config.image_shape = (H, W) = (rows, cols)
+        H, W = config.image_shape
+        Ny = H  # Number of rows (height)
+        Nx = W  # Number of columns (width)
+        
+        logging.debug(f"_compute_window_centres pass {pass_idx}:")
+        logging.debug(f"  Image shape (H, W) = ({H}, {W})")
+        logging.debug(f"  Ny (height/rows) = {Ny}, Nx (width/cols) = {Nx}")
+        
+        # Window size: config.window_sizes[pass_idx] = (win_height, win_width)
+        # This matches MATLAB where wsize(1)=height, wsize(2)=width
+        win_height, win_width = config.window_sizes[pass_idx]
         overlap = config.overlap[pass_idx]
+        
+        logging.debug(f"  Window size (H, W) = ({win_height}, {win_width})")
+        logging.debug(f"  Overlap = {overlap}%")
 
-        w_spacing_x = round((1 - overlap / 100) * win_x)
-        w_spacing_y = round((1 - overlap / 100) * win_y)
+        # Window spacing in pixels
+        win_spacing_x = round((1 - overlap / 100) * win_width)
+        win_spacing_y = round((1 - overlap / 100) * win_height)
+        
+        logging.debug(f"  Window spacing (X, Y) = ({win_spacing_x}, {win_spacing_y})")
 
-        Nx, Ny = config.image_shape[1], config.image_shape[0]
+        # MATLAB: win_ctrs_x = 0.5 + wsize(1)/2 : win_spacing_x : Nx - wsize(1)/2 + 0.5
+        # But MATLAB then subtracts 1 before passing to C (1-based to 0-based conversion)
+        # So in 0-based indexing: win_ctrs_x = -0.5 + wsize(1)/2 : win_spacing_x : Nx - wsize(1)/2 - 0.5
+        # For a 128-pixel window (indices 0-127), center is at 63.5
+        # For window starting at pixel 0: center = (0 + 127) / 2 = 63.5
         
-        # Exclude windows within EDGE_MARGIN pixels of image boundaries
-        # This prevents unreliable edge vectors from propagating errors
-        EDGE_MARGIN = 32  # pixels from edge to exclude
+        # First window center in X (width dimension) - 0-based array indexing
+        first_ctr_x = (win_width - 1) / 2.0  # For 128: (127)/2 = 63.5
+        # Last possible window center in X
+        last_ctr_x = Nx - (win_width + 1) / 2.0  # For W=4872, win=128: 4872 - 64.5 = 4807.5
         
-        # Calculate valid region for window centers
-        min_x = EDGE_MARGIN
-        max_x = Nx - EDGE_MARGIN - 1
-        min_y = EDGE_MARGIN
-        max_y = Ny - EDGE_MARGIN - 1
-
-        # Original window center range
-        first_ctr_x = -0.5 + win_x / 2
-        first_ctr_y = -0.5 + win_y / 2
+        # First window center in Y (height dimension) - 0-based array indexing
+        first_ctr_y = (win_height - 1) / 2.0
+        # Last possible window center in Y
+        last_ctr_y = Ny - (win_height + 1) / 2.0
         
-        # Adjust starting positions to respect edge margin
-        start_ctr_x = max(first_ctr_x, min_x)
-        start_ctr_y = max(first_ctr_y, min_y)
+        logging.debug(f"  X range: [{first_ctr_x:.2f}, {last_ctr_x:.2f}]")
+        logging.debug(f"  Y range: [{first_ctr_y:.2f}, {last_ctr_y:.2f}]")
         
-        # Calculate number of windows that fit in the valid region
-        n_win_x = int(np.floor((max_x - start_ctr_x) / w_spacing_x)) + 1
-        n_win_y = int(np.floor((max_y - start_ctr_y) / w_spacing_y)) + 1
+        # Number of windows that fit
+        n_win_x = int(np.floor((last_ctr_x - first_ctr_x) / win_spacing_x)) + 1
+        n_win_y = int(np.floor((last_ctr_y - first_ctr_y) / win_spacing_y)) + 1
         
         # Ensure at least one window
         n_win_x = max(1, n_win_x)
         n_win_y = max(1, n_win_y)
+        
+        logging.debug(f"  Number of windows (X, Y) = ({n_win_x}, {n_win_y})")
 
+        # Generate window center arrays using linspace (matches MATLAB's colon operator)
         win_ctrs_x = np.linspace(
-            start_ctr_x,
-            start_ctr_x + w_spacing_x * (n_win_x - 1),
+            first_ctr_x,
+            first_ctr_x + win_spacing_x * (n_win_x - 1),
             n_win_x,
             dtype=np.float32,
         )
         win_ctrs_y = np.linspace(
-            start_ctr_y,
-            start_ctr_y + w_spacing_y * (n_win_y - 1),
+            first_ctr_y,
+            first_ctr_y + win_spacing_y * (n_win_y - 1),
             n_win_y,
             dtype=np.float32,
         )
+        
+        logging.debug(f"  win_ctrs_x: min={win_ctrs_x.min():.2f}, max={win_ctrs_x.max():.2f}, len={len(win_ctrs_x)}")
+        logging.debug(f"  win_ctrs_y: min={win_ctrs_y.min():.2f}, max={win_ctrs_y.max():.2f}, len={len(win_ctrs_y)}")
 
         return (
-            w_spacing_x,
-            w_spacing_y,
+            win_spacing_x,
+            win_spacing_y,
             np.ascontiguousarray(win_ctrs_x),
             np.ascontiguousarray(win_ctrs_y),
         )
@@ -410,7 +575,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
 
         for name, arr in args:
             logging.info(f"{name}: {_describe(arr)}")
-
+    @profile
     def _predictor_corrector(
         self,
         pass_idx: int,
@@ -458,6 +623,11 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         map_x_2d, map_y_2d = self.cached_dense_maps[pass_idx]
         if map_x_2d is None or map_y_2d is None:
             raise ValueError(f"Dense interpolation maps missing for pass {pass_idx}")
+        
+        # Verify cached dense maps have correct shape
+        assert map_x_2d.shape == (self.H, self.W), f"Cached dense map X shape mismatch for pass {pass_idx}: {map_x_2d.shape} vs {(self.H, self.W)}"
+        assert map_y_2d.shape == (self.H, self.W), f"Cached dense map Y shape mismatch for pass {pass_idx}: {map_y_2d.shape} vs {(self.H, self.W)}"
+        logging.debug(f"Using cached dense interpolation maps for pass {pass_idx}")
 
         for d in range(2):
             self.delta_ab_dense[..., d] = cv2.remap(
@@ -470,13 +640,19 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             )
 
         delta_0b = self.delta_ab_dense / 2
-        delta_0a = -self.delta_ab_dense / 2
+        delta_0a = -delta_0b
         im_mesh_A = self.im_mesh + delta_0a
         im_mesh_B = self.im_mesh + delta_0b
 
         map_x, map_y = self.cached_predictor_maps[pass_idx]
         if map_x is None or map_y is None:
             raise ValueError(f"Predictor interpolation maps missing for pass {pass_idx}")
+        
+        # Verify cached predictor maps have correct shape
+        expected_pred_shape = (len(self.win_ctrs_y[pass_idx]), len(self.win_ctrs_x[pass_idx]))
+        assert map_x.shape == expected_pred_shape, f"Cached predictor map X shape mismatch for pass {pass_idx}: {map_x.shape} vs {expected_pred_shape}"
+        assert map_y.shape == expected_pred_shape, f"Cached predictor map Y shape mismatch for pass {pass_idx}: {map_y.shape} vs {expected_pred_shape}"
+        logging.debug(f"Using cached predictor interpolation maps for pass {pass_idx}")
 
         for d in range(2):
             remapped = cv2.remap(
@@ -507,81 +683,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         )
 
         return image_a_prime, image_b_prime, self.delta_ab_pred
-
-    def _piv_2d_outlier(
-        self,
-        ux: np.ndarray,
-        uy: np.ndarray,
-        epsilon: float = 0.2,
-        threshold: float = 2.0,
-    ):
-        """Check for outliers in 2D PIV data.
-
-        :param ux: Horizontal velocity component.
-        :type ux: np.ndarray
-        :param uy: Vertical velocity component.
-        :type uy: np.ndarray
-        :param epsilon: Regularization parameter, defaults to 0.2.
-        :type epsilon: float, optional
-        :param threshold: Outlier threshold, defaults to 2.0.
-        :type threshold: float, optional
-        :return: Boolean array indicating outliers.
-        :rtype: np.ndarray
-        """
-        n_wx, n_wy = ux.shape
-
-        ui = np.stack([ux, uy], axis=-1)
-
-        r_0p = np.zeros((n_wx, n_wy, 2))
-        n_neighbours = np.zeros((n_wx, n_wy, 2))
-
-        for c in range(2):
-            U = ui[..., c]
-            U_pad = np.pad(U, 1, mode="constant", constant_values=np.nan)
-
-            U_nn = np.zeros((n_wx, n_wy, 8))
-            U_nn[..., 0] = U_pad[0:-2, 0:-2]
-            U_nn[..., 1] = U_pad[0:-2, 1:-1]
-            U_nn[..., 2] = U_pad[0:-2, 2:]
-            U_nn[..., 3] = U_pad[1:-1, 0:-2]
-            U_nn[..., 4] = U_pad[1:-1, 2:]
-            U_nn[..., 5] = U_pad[2:, 2:]
-            U_nn[..., 6] = U_pad[2:, 1:-1]
-            U_nn[..., 7] = U_pad[2:, 0:-2]
-
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", category=RuntimeWarning)
-                U_med = np.nanmedian(U_nn, axis=2)
-
-            r_0 = np.abs(U_med - U)
-            r_i = np.abs(U_nn - U_med[..., None])
-
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", category=RuntimeWarning)
-                r_m = np.nanmedian(r_i, axis=2)
-
-            r_0p[..., c] = r_0 / (r_m + epsilon)
-
-            # Count valid neighbors using convolution with explicit boundaries
-            # boundary='fill' with fillvalue=0 prevents circular wrap-around
-            n_neigh = convolve2d(
-                np.logical_not(np.isnan(U)).astype(float),
-                np.ones((3, 3)),
-                mode="same",
-                boundary="fill",
-                fillvalue=0,
-            )
-            n_neighbours[..., c] = n_neigh
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", category=RuntimeWarning)
-            r_0_combined = np.nanmax(r_0p, axis=2)
-        b_filter = (
-            (r_0_combined > threshold)
-            | np.isnan(r_0p).any(axis=2)
-            | (n_neighbours < 6).any(axis=2)
-        )
-        return b_filter
-
+    @profile
     def _set_lib_arguments(
         self,
         config: Config,
@@ -599,39 +701,42 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         :return: Tuple of library arguments.
         :rtype: tuple
         """
-        win_size = np.asfortranarray(np.array(win_size, dtype=np.int32))
+        # Window size: [win_height, win_width] in C-contiguous format
+        win_size = np.ascontiguousarray(np.array(win_size, dtype=np.int32))
 
         n_win_y = len(self.win_ctrs_y[pass_idx])
         n_win_x = len(self.win_ctrs_x[pass_idx])
-        n_windows = np.asfortranarray(
+        # nWindows: [n_win_y, n_win_x] where n_win_y = rows, n_win_x = cols
+        n_windows = np.ascontiguousarray(
             np.array([n_win_y, n_win_x], dtype=np.int32)
         )
 
         total_windows = n_win_y * n_win_x
 
         # Use precomputed vector mask for this pass if available
+        # Mask shape: (n_win_y, n_win_x) in C-contiguous format
         if hasattr(self, 'vector_masks') and self.vector_masks and pass_idx < len(self.vector_masks):
-            # Convert boolean mask to uint8 (True = 1 = masked)
-            b_mask = np.asfortranarray(self.vector_masks[pass_idx].astype(np.uint8))
+            cached_mask = self.vector_masks[pass_idx]
+            b_mask = np.ascontiguousarray(cached_mask.astype(np.float32))
         else:
-            # No mask - create zeros
-            b_mask = np.asfortranarray(np.zeros((n_win_y, n_win_x), dtype=np.uint8))
+            b_mask = np.ascontiguousarray(np.zeros((n_win_y, n_win_x), dtype=np.float32))
+            logging.debug("No vector mask applied for pass %d", pass_idx)
 
         n_peaks = np.int32(config.num_peaks)
         i_peak_finder = np.int32(config.peak_finder)
         b_ensemble = bool(config.ensemble_piv)
 
+        # Output arrays shape: (n_peaks, n_win_y, n_win_x) in C-contiguous format
         out_shape = (n_peaks, n_win_y, n_win_x)
-        pk_loc_x = np.asfortranarray(np.zeros(out_shape, dtype=np.float32))
-        pk_loc_y = np.asfortranarray(np.zeros(out_shape, dtype=np.float32))
-        pk_height = np.asfortranarray(np.zeros(out_shape, dtype=np.float32))
-        sx = np.asfortranarray(np.zeros(out_shape, dtype=np.float32))
-        sy = np.asfortranarray(np.zeros(out_shape, dtype=np.float32))
-        sxy = np.asfortranarray(np.zeros(out_shape, dtype=np.float32))
+        pk_loc_x = np.zeros(out_shape, dtype=np.float32)
+        pk_loc_y = np.zeros(out_shape, dtype=np.float32)
+        pk_height = np.zeros(out_shape, dtype=np.float32)
+        sx = np.zeros(out_shape, dtype=np.float32)
+        sy = np.zeros(out_shape, dtype=np.float32)
+        sxy = np.zeros(out_shape, dtype=np.float32)
 
-        correl_plane_out = np.asfortranarray(
-            np.zeros(total_windows * win_size[0] * win_size[1], dtype=np.float32)
-        )
+        # Correlation plane output: flattened array (not used, so use empty to save memory)
+        correl_plane_out = np.empty(total_windows * win_size[0] * win_size[1], dtype=np.float32)
 
         if config.debug:
             args = [
@@ -671,6 +776,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             correl_plane_out,
         )
 
+    @profile
     def _cache_window_padding(self, config: Config) -> None:
         """Cache window padding information.
 
@@ -765,6 +871,23 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 g_kernel /= max(np.sum(g_kernel), 1e-12)
                 self.G_smooth_predictor.append(g_kernel)
 
+        # # Verify window padding cache integrity
+        # assert len(self.win_ctrs_x) == len(config.window_sizes), f"Window centers X cache length mismatch: {len(self.win_ctrs_x)} vs {len(config.window_sizes)}"
+        # assert len(self.win_ctrs_y) == len(config.window_sizes), f"Window centers Y cache length mismatch: {len(self.win_ctrs_y)} vs {len(config.window_sizes)}"
+        # assert len(self.win_spacing_x) == len(config.window_sizes), f"Window spacing X cache length mismatch: {len(self.win_spacing_x)} vs {len(config.window_sizes)}"
+        # assert len(self.win_spacing_y) == len(config.window_sizes), f"Window spacing Y cache length mismatch: {len(self.win_spacing_y)} vs {len(config.window_sizes)}"
+        
+        # # Check that cached values are reasonable
+        # for pass_idx in range(len(config.window_sizes)):
+        #     assert len(self.win_ctrs_x[pass_idx]) > 0, f"No X window centers cached for pass {pass_idx}"
+        #     assert len(self.win_ctrs_y[pass_idx]) > 0, f"No Y window centers cached for pass {pass_idx}"
+        #     assert self.win_spacing_x[pass_idx] > 0, f"Invalid X spacing for pass {pass_idx}: {self.win_spacing_x[pass_idx]}"
+        #     assert self.win_spacing_y[pass_idx] > 0, f"Invalid Y spacing for pass {pass_idx}: {self.win_spacing_y[pass_idx]}"
+        
+        logging.info(f"Successfully cached window padding for {len(config.window_sizes)} passes")
+
+    @profile
+    @profile
     def _cache_interpolation_grids(self, config: Config) -> None:
         """Cache interpolation grid coordinates for reuse across passes.
 
@@ -821,46 +944,63 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 map_y = iy.reshape(win_x.shape).astype(np.float32)
                 self.cached_predictor_maps.append((map_x, map_y))
 
-    def _apply_mask_to_vectors(
-        self,
-        win_ctrs_x: np.ndarray,
-        win_ctrs_y: np.ndarray,
-        mask: np.ndarray
-    ) -> np.ndarray:
-        """
-        Apply user-defined mask to invalidate vectors in masked regions.
+        # Verify caching integrity
+        assert len(self.cached_dense_maps) == len(config.window_sizes), f"Dense maps cache length mismatch: {len(self.cached_dense_maps)} vs {len(config.window_sizes)}"
+        assert len(self.cached_predictor_maps) == len(config.window_sizes), f"Predictor maps cache length mismatch: {len(self.cached_predictor_maps)} vs {len(config.window_sizes)}"
         
-        A vector is invalidated if its window center falls within a masked region
-        (where mask == True).
+        # Check that non-zero passes have cached maps
+        for pass_idx in range(1, len(config.window_sizes)):
+            assert self.cached_dense_maps[pass_idx] is not None, f"Dense map for pass {pass_idx} is None"
+            assert self.cached_predictor_maps[pass_idx] is not None, f"Predictor map for pass {pass_idx} is None"
+            dense_x, dense_y = self.cached_dense_maps[pass_idx]
+            pred_x, pred_y = self.cached_predictor_maps[pass_idx]
+            assert dense_x.shape == (self.H, self.W), f"Dense map X shape incorrect for pass {pass_idx}: {dense_x.shape} vs {(self.H, self.W)}"
+            assert dense_y.shape == (self.H, self.W), f"Dense map Y shape incorrect for pass {pass_idx}: {dense_y.shape} vs {(self.H, self.W)}"
+            expected_pred_shape = (len(self.win_ctrs_y[pass_idx]), len(self.win_ctrs_x[pass_idx]))
+            assert pred_x.shape == expected_pred_shape, f"Predictor map X shape incorrect for pass {pass_idx}: {pred_x.shape} vs {expected_pred_shape}"
+            assert pred_y.shape == expected_pred_shape, f"Predictor map Y shape incorrect for pass {pass_idx}: {pred_y.shape} vs {expected_pred_shape}"
         
-        Parameters
-        ----------
-        win_ctrs_x : np.ndarray
-            1D array of window center x-coordinates
-        win_ctrs_y : np.ndarray
-            1D array of window center y-coordinates
-        mask : np.ndarray
-            Boolean mask array of shape (H, W) where True indicates masked regions
+        logging.info(f"Successfully cached interpolation grids for {len(config.window_sizes)} passes")
+
+    # def _apply_mask_to_vectors(
+    #     self,
+    #     win_ctrs_x: np.ndarray,
+    #     win_ctrs_y: np.ndarray,
+    #     mask: np.ndarray
+    # ) -> np.ndarray:
+    #     """
+    #     Apply user-defined mask to invalidate vectors in masked regions.
+        
+    #     A vector is invalidated if its window center falls within a masked region
+    #     (where mask == True).
+        
+    #     Parameters
+    #     ----------
+    #     win_ctrs_x : np.ndarray
+    #         1D array of window center x-coordinates
+    #     win_ctrs_y : np.ndarray
+    #         1D array of window center y-coordinates
+    #     mask : np.ndarray
+    #         Boolean mask array of shape (H, W) where True indicates masked regions
             
-        Returns
-        -------
-        np.ndarray
-            Boolean mask of shape (len(win_ctrs_y), len(win_ctrs_x)) where
-            True indicates vectors to invalidate
-        """
-        # Create meshgrid of window centers using MATLAB-style indexing (rows=y, cols=x)
-        grid_y, grid_x = np.meshgrid(win_ctrs_y, win_ctrs_x, indexing="ij")
+    #     Returns
+    #     -------
+    #     np.ndarray
+    #         Boolean mask of shape (len(win_ctrs_y), len(win_ctrs_x)) where
+    #         True indicates vectors to invalidate
+    #     """
+    #     grid_y, grid_x = np.meshgrid(win_ctrs_y, win_ctrs_x, indexing="ij")
 
-        # Round to nearest pixel indices
-        x_idx = np.round(grid_x).astype(int)
-        y_idx = np.round(grid_y).astype(int)
+    #     # Round to nearest pixel indices
+    #     x_idx = np.round(grid_x).astype(int)
+    #     y_idx = np.round(grid_y).astype(int)
 
-        # Clip to valid image bounds
-        x_idx = np.clip(x_idx, 0, mask.shape[1] - 1)
-        y_idx = np.clip(y_idx, 0, mask.shape[0] - 1)
+    #     # Clip to valid image bounds
+    #     x_idx = np.clip(x_idx, 0, mask.shape[1] - 1)
+    #     y_idx = np.clip(y_idx, 0, mask.shape[0] - 1)
 
-        # Sample mask at window center locations
-        # mask[y, x] where True = masked region
-        vector_mask = mask[y_idx, x_idx]
+    #     # Sample mask at window center locations
+    #     # mask[y, x] where True = masked region
+    #     vector_mask = mask[y_idx, x_idx]
 
-        return vector_mask
+    #     return vector_mask

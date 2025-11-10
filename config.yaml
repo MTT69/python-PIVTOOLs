@@ -1,24 +1,22 @@
 paths:
   base_paths:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB
+  - C:\Users\mtt1e23\Downloads\calibrated_piv_morgan
   source_paths:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall
+  - D:\DAVIS_BFS\gF_Ramp_experiment\BFS_1500_1
   camera_numbers:
   - 1
+  - 2
+  camera_count: 2
 images:
-  num_images: 1000
+  num_images: 50
   image_format:
-  - B%05d_A.tif
-  - B%05d_B.tif
+  - B%05d.im7
   vector_format:
   - '%05d.mat'
-  shape:
-  - 1152 # height
-  - 1024 # width
   time_resolved: false
-  dtype: uint8
+  dtype: float32
 batches:
-  size: 50
+  size: 25
 logging:
   file: pypiv.log
   level: INFO
@@ -29,18 +27,29 @@ processing:
   stereo: false
   backend: cpu
   debug: false
-  omp_threads: 5
-  dask_workers_per_node: 2
+  auto_compute_params: false
+  omp_threads: 4
+  dask_workers_per_node: 1
   dask_threads_per_worker: 1
-  dask_memory_limit: 3GB
-post_processing:
-- type: POD
-  settings:
-    k_modes: 15
-    randomised: false
-    stack_u_y: true
-    normalise: false
-    camera: 1
+  dask_memory_limit: 50GB
+outlier_detection:
+  enabled: true
+  methods:
+  - threshold: 0.25
+    type: peak_mag
+  - epsilon: 0.2
+    threshold: 2
+    type: median_2d
+infilling:
+  mid_pass:
+    method: biharmonic
+    parameters:
+      ksize: 3
+  final_pass:
+    enabled: true
+    method: biharmonic
+    parameters:
+      ksize: 3
 plots:
   save_extension: .png
   save_pickle: true
@@ -66,46 +75,27 @@ instantaneous_piv:
     - 64
   - - 32
     - 32
-  - - 16
-    - 16
-  - - 16
-    - 16
-  - - 16
-    - 16
   overlap:
   - 50
   - 50
   - 50
-  - 50
-  - 50
-  - 50
-  
   runs:
-  - 6
+  - 3
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
-  peak_finder: gauss6
+  peak_finder: gauss3
   secondary_peak: false
-ensemble_piv:
-  runs:
-  - 5
-  filters:
-  - type: time
-  batch_size: 50
 calibration_format:
   image_format: calib%05d.tif
 calibration:
-  active: stereo
+  active: pinhole
   scale_factor:
-    dt: 1
+    dt: 0.56
     px_per_mm: 3.41
-    x_offset:
-    - 0
-    y_offset:
-    - 0
+    source_path_idx: 0
   pinhole:
-    source_path_idx: 1
+    source_path_idx: 0
     camera: 1
     image_index: 0
     file_pattern: calib%05d.tif
@@ -117,7 +107,7 @@ calibration:
     dot_distance_mm: 28.9
     grid_tolerance: 0.5
     ransac_threshold: 3
-    dt: 1
+    dt: 0.0275
   stereo:
     source_path_idx: 0
     camera_pair:
@@ -131,21 +121,15 @@ calibration:
     asymmetric: false
     dt: 2
   image_format: calib%05d.tiff
-filters: []
+filters:
+- type: pod
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat
-  # Threshold for determining masked vectors based on overlap with pixel mask
-  # 0.0 = mask if any pixel is masked, 0.5 = mask if >50% masked, 1.0 = mask only if fully masked
   mask_threshold: 0.01
-  # Mask mode: 'file' to load from .mat file, 'rectangular' for edge masking
-  mode: rectangular
-  # Rectangular edge masking settings (used when mode: rectangular)
-  # Specify number of pixels to mask from each edge
+  mode: file
   rectangular:
-    top: 64      # pixels from top edge
-    bottom: 64   # pixels from bottom edge
-    left: 0      # pixels from left edge
-    right: 0     # pixels from right edge
-  
-  # Threshold for determining masked vectors based on overlap with pixel mask
+    top: 64
+    bottom: 64
+    left: 0
+    right: 0

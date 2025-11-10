@@ -20,4 +20,4 @@ coordinates = co_ords_struct
 dst_path = os.path.join(os.path.dirname(src_path), "coordinates.mat")
 
 # Save the new variable
-scipy.io.savemat(dst_path, {"coordinates": coordinates})
+scipy.io.savemat(dst_path, {"coordinates": coordinates}, do_compression=True)

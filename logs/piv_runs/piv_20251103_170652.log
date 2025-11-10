@@ -1,0 +1,88 @@
+2025-11-03 17:06:55,454 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:06:55,457 [INFO] Auto-detected compute parameters:
+2025-11-03 17:06:55,457 [INFO]   CPU cores: 20
+2025-11-03 17:06:55,457 [INFO]   Total memory: 63.46 GB
+2025-11-03 17:06:55,457 [INFO]   Workers per node: 20
+2025-11-03 17:06:55,457 [INFO]   OMP threads: 2
+2025-11-03 17:06:55,457 [INFO]   Memory per worker: 2.86GB
+2025-11-03 17:06:55,458 [INFO]   Threads per worker: 1
+2025-11-03 17:07:00,027 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:07:00,134 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:07:00,200 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:07:00,207 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:07:00,228 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:07:00,235 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:07:00,274 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:07:00,300 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:07:00,303 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:07:00,317 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:07:00,356 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:07:00,385 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:07:00,389 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:07:00,396 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:07:00,397 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:07:00,398 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:07:00,401 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:07:00,404 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:07:00,407 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:07:00,417 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 17:07:00,616 [INFO] Worker logging configured successfully
+2025-11-03 17:07:00,617 [INFO] Worker logging configured successfully
+2025-11-03 17:07:00,617 [INFO] Worker logging configured successfully
+2025-11-03 17:07:00,617 [INFO] Worker logging configured successfully
+2025-11-03 17:07:00,618 [INFO] Worker logging configured successfully
+2025-11-03 17:07:00,618 [INFO] Worker logging configured successfully
+2025-11-03 17:07:00,618 [INFO] Worker logging configured successfully
+2025-11-03 17:07:00,618 [INFO] Worker logging configured successfully
+2025-11-03 17:07:00,619 [INFO] Worker logging configured successfully
+2025-11-03 17:07:00,619 [INFO] Worker logging configured successfully
+2025-11-03 17:07:00,620 [INFO] Worker logging configured successfully
+2025-11-03 17:07:00,622 [INFO] Worker logging configured successfully
+2025-11-03 17:07:00,622 [INFO] Worker logging configured successfully
+2025-11-03 17:07:00,622 [INFO] Worker logging configured successfully
+2025-11-03 17:07:00,622 [INFO] Worker logging configured successfully
+2025-11-03 17:07:00,622 [INFO] Worker logging configured successfully
+2025-11-03 17:07:00,622 [INFO] Worker logging configured successfully
+2025-11-03 17:07:00,623 [INFO] Worker logging configured successfully
+2025-11-03 17:07:00,622 [INFO] Worker logging configured successfully
+2025-11-03 17:07:00,623 [INFO] Worker logging configured successfully
+2025-11-03 17:07:00,625 [INFO] Dask cluster started successfully
+2025-11-03 17:07:00,626 [INFO] Dask Worker Info:
+2025-11-03 17:07:00,626 [INFO] Worker tcp://127.0.0.1:50809
+2025-11-03 17:07:00,626 [INFO]   pid: None
+2025-11-03 17:07:00,627 [INFO]   host: 127.0.0.1
+2025-11-03 17:07:00,627 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-0gbxdesx
+2025-11-03 17:07:00,627 [INFO]   nanny: True
+2025-11-03 17:07:00,627 [INFO] Dask Worker Info:
+2025-11-03 17:07:00,627 [INFO] Worker tcp://127.0.0.1:60881
+2025-11-03 17:07:00,627 [INFO]   pid: None
+2025-11-03 17:07:00,627 [INFO]   host: 127.0.0.1
+2025-11-03 17:07:00,627 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-gq8eknkh
+2025-11-03 17:07:00,628 [INFO]   nanny: True
+2025-11-03 17:07:00,628 [INFO] Dask Worker Info:
+2025-11-03 17:07:00,628 [INFO] Worker tcp://127.0.0.1:60886
+2025-11-03 17:07:00,628 [INFO]   pid: None
+2025-11-03 17:07:00,628 [INFO]   host: 127.0.0.1
+2025-11-03 17:07:00,628 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-wyq0bu6c
+2025-11-03 17:07:00,628 [INFO]   nanny: True
+2025-11-03 17:07:00,628 [INFO] Dask Worker Info:
+2025-11-03 17:07:00,628 [INFO] Worker tcp://127.0.0.1:60895
+2025-11-03 17:07:00,628 [INFO]   pid: None
+2025-11-03 17:07:00,629 [INFO]   host: 127.0.0.1
+2025-11-03 17:07:00,629 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-emqez26l
+2025-11-03 17:07:00,629 [INFO]   nanny: True
+2025-11-03 17:07:00,629 [INFO] Dask Worker Info:
+2025-11-03 17:07:00,629 [INFO] Worker tcp://127.0.0.1:60900
+2025-11-03 17:07:00,629 [INFO]   pid: None
+2025-11-03 17:07:00,629 [INFO]   host: 127.0.0.1
+2025-11-03 17:07:00,629 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-5t74da5s
+2025-11-03 17:07:00,629 [INFO]   nanny: True
+2025-11-03 17:07:00,629 [INFO] Processing camera: Cam1 (1/2 cameras)
+2025-11-03 17:07:00,630 [INFO] Loading images from set file in directory: C:\Users\mtt1e23\Downloads\ims\ims for camera: Cam1
+2025-11-03 17:07:01,577 [INFO] Auto-detected image shape: (2048, 2048)
+2025-11-03 17:07:01,588 [INFO] Pre-computing vector masks for Cam1
+2025-11-03 17:07:02,807 [INFO] Vector masks computed: 3 passes
+2025-11-03 17:07:02,912 [INFO] Successfully cached window padding for 3 passes
+2025-11-03 17:07:02,957 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-03 17:07:03,325 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-03 17:07:15,124 [INFO] Worker saved coordinates to C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\bailey\uncalibrated_piv\100\Cam1\instantaneous\coordinates.mat

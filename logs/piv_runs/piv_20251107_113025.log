@@ -1,0 +1,67 @@
+2025-11-07 11:30:35,381 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-07 11:30:39,906 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-07 11:30:39,908 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-07 11:30:39,909 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-07 11:30:39,932 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-07 11:30:39,985 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-07 11:30:39,989 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-07 11:30:39,989 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-07 11:30:39,989 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-07 11:30:39,999 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-07 11:30:40,001 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-07 11:30:40,306 [INFO] Worker logging configured successfully
+2025-11-07 11:30:40,307 [INFO] Worker logging configured successfully
+2025-11-07 11:30:40,308 [INFO] Worker logging configured successfully
+2025-11-07 11:30:40,308 [INFO] Worker logging configured successfully
+2025-11-07 11:30:40,308 [INFO] Worker logging configured successfully
+2025-11-07 11:30:40,308 [INFO] Worker logging configured successfully
+2025-11-07 11:30:40,309 [INFO] Worker logging configured successfully
+2025-11-07 11:30:40,309 [INFO] Worker logging configured successfully
+2025-11-07 11:30:40,309 [INFO] Worker logging configured successfully
+2025-11-07 11:30:40,310 [INFO] Worker logging configured successfully
+2025-11-07 11:30:40,311 [INFO] Dask cluster started successfully
+2025-11-07 11:30:40,312 [INFO] Dask Worker Info:
+2025-11-07 11:30:40,312 [INFO] Worker tcp://127.0.0.1:56298
+2025-11-07 11:30:40,312 [INFO]   pid: None
+2025-11-07 11:30:40,312 [INFO]   host: 127.0.0.1
+2025-11-07 11:30:40,313 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-ad_0g9y8
+2025-11-07 11:30:40,313 [INFO]   nanny: True
+2025-11-07 11:30:40,313 [INFO] Dask Worker Info:
+2025-11-07 11:30:40,313 [INFO] Worker tcp://127.0.0.1:56299
+2025-11-07 11:30:40,313 [INFO]   pid: None
+2025-11-07 11:30:40,313 [INFO]   host: 127.0.0.1
+2025-11-07 11:30:40,314 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-w7pah8hz
+2025-11-07 11:30:40,314 [INFO]   nanny: True
+2025-11-07 11:30:40,314 [INFO] Dask Worker Info:
+2025-11-07 11:30:40,314 [INFO] Worker tcp://127.0.0.1:56300
+2025-11-07 11:30:40,314 [INFO]   pid: None
+2025-11-07 11:30:40,314 [INFO]   host: 127.0.0.1
+2025-11-07 11:30:40,315 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-f1two49g
+2025-11-07 11:30:40,315 [INFO]   nanny: True
+2025-11-07 11:30:40,315 [INFO] Dask Worker Info:
+2025-11-07 11:30:40,315 [INFO] Worker tcp://127.0.0.1:56307
+2025-11-07 11:30:40,315 [INFO]   pid: None
+2025-11-07 11:30:40,315 [INFO]   host: 127.0.0.1
+2025-11-07 11:30:40,316 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-gl7s0ooz
+2025-11-07 11:30:40,316 [INFO]   nanny: True
+2025-11-07 11:30:40,316 [INFO] Dask Worker Info:
+2025-11-07 11:30:40,316 [INFO] Worker tcp://127.0.0.1:56320
+2025-11-07 11:30:40,316 [INFO]   pid: None
+2025-11-07 11:30:40,316 [INFO]   host: 127.0.0.1
+2025-11-07 11:30:40,316 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-1gvgkac8
+2025-11-07 11:30:40,316 [INFO]   nanny: True
+2025-11-07 11:30:40,317 [INFO] Processing camera: Cam1
+2025-11-07 11:30:40.317 | INFO     | image_handling.load_images:load_images:191 - Creating 300 delayed tasks for lazy loading (Cam1)
+2025-11-07 11:30:41,433 [INFO] Auto-detected image shape: (3248, 4872)
+2025-11-07 11:30:41.447 | INFO     | image_handling.load_images:load_images:205 - Lazy loading complete: 300 independent delayed tasks created (~300 KB memory footprint)
+2025-11-07 11:30:41,448 [INFO] Applying filter: {'type': 'gaussian'}
+2025-11-07 11:30:41.450 | DEBUG    | image_handling.load_images:load_mask_for_camera:310 - Loading mask for Cam1 from D:\DAVIS_BFS\gF_Ramp_experiment\BFS_1500_1\mask_Cam1.mat
+2025-11-07 11:30:41.527 | DEBUG    | image_handling.load_images:load_mask_for_camera:321 - Mask loaded: 5209970/15824256 pixels masked (32.9%)
+2025-11-07 11:30:41,527 [INFO] Pre-computing vector masks for Cam1
+2025-11-07 11:30:43.471 | DEBUG    | image_handling.load_images:compute_vector_mask:458 - Pass 1: 1240/3675 vectors masked (33.7%), window size: (128, 128)
+2025-11-07 11:30:44.691 | DEBUG    | image_handling.load_images:compute_vector_mask:458 - Pass 2: 5083/15100 vectors masked (33.7%), window size: (64, 64)
+2025-11-07 11:30:45.295 | DEBUG    | image_handling.load_images:compute_vector_mask:458 - Pass 3: 20446/61206 vectors masked (33.4%), window size: (32, 32)
+2025-11-07 11:30:45.698 | DEBUG    | image_handling.load_images:compute_vector_mask:458 - Pass 4: 81760/246240 vectors masked (33.2%), window size: (16, 16)
+2025-11-07 11:30:45,702 [INFO] Vector masks computed: 4 passes
+2025-11-07 11:30:45,852 [INFO] Successfully cached window padding for 4 passes
+2025-11-07 11:30:45,986 [INFO] Successfully cached interpolation grids for 4 passes

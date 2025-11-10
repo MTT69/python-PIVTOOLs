@@ -1,0 +1,89 @@
+2025-11-03 16:43:49,233 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:43:49,237 [INFO] Auto-detected compute parameters:
+2025-11-03 16:43:49,237 [INFO]   CPU cores: 20
+2025-11-03 16:43:49,237 [INFO]   Total memory: 63.46 GB
+2025-11-03 16:43:49,238 [INFO]   Workers per node: 20
+2025-11-03 16:43:49,238 [INFO]   OMP threads: 2
+2025-11-03 16:43:49,238 [INFO]   Memory per worker: 2.86GB
+2025-11-03 16:43:49,238 [INFO]   Threads per worker: 1
+2025-11-03 16:43:53,445 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:43:53,461 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:43:53,462 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:43:53,535 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:43:53,544 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:43:53,583 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:43:53,588 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:43:53,591 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:43:53,646 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:43:53,682 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:43:53,698 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:43:53,719 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:43:53,753 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:43:53,788 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:43:53,793 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:43:53,793 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:43:53,793 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:43:53,802 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:43:53,824 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:43:53,825 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-03 16:43:53,961 [INFO] Worker logging configured successfully
+2025-11-03 16:43:53,961 [INFO] Worker logging configured successfully
+2025-11-03 16:43:53,961 [INFO] Worker logging configured successfully
+2025-11-03 16:43:53,962 [INFO] Worker logging configured successfully
+2025-11-03 16:43:53,962 [INFO] Worker logging configured successfully
+2025-11-03 16:43:53,962 [INFO] Worker logging configured successfully
+2025-11-03 16:43:53,964 [INFO] Worker logging configured successfully
+2025-11-03 16:43:53,964 [INFO] Worker logging configured successfully
+2025-11-03 16:43:53,964 [INFO] Worker logging configured successfully
+2025-11-03 16:43:53,964 [INFO] Worker logging configured successfully
+2025-11-03 16:43:53,965 [INFO] Worker logging configured successfully
+2025-11-03 16:43:53,965 [INFO] Worker logging configured successfully
+2025-11-03 16:43:53,965 [INFO] Worker logging configured successfully
+2025-11-03 16:43:53,965 [INFO] Worker logging configured successfully
+2025-11-03 16:43:53,965 [INFO] Worker logging configured successfully
+2025-11-03 16:43:53,966 [INFO] Worker logging configured successfully
+2025-11-03 16:43:53,966 [INFO] Worker logging configured successfully
+2025-11-03 16:43:53,966 [INFO] Worker logging configured successfully
+2025-11-03 16:43:53,967 [INFO] Worker logging configured successfully
+2025-11-03 16:43:53,967 [INFO] Worker logging configured successfully
+2025-11-03 16:43:53,968 [INFO] Dask cluster started successfully
+2025-11-03 16:43:53,969 [INFO] Dask Worker Info:
+2025-11-03 16:43:53,970 [INFO] Worker tcp://127.0.0.1:63575
+2025-11-03 16:43:53,970 [INFO]   pid: None
+2025-11-03 16:43:53,970 [INFO]   host: 127.0.0.1
+2025-11-03 16:43:53,970 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-kizrglou
+2025-11-03 16:43:53,970 [INFO]   nanny: True
+2025-11-03 16:43:53,970 [INFO] Dask Worker Info:
+2025-11-03 16:43:53,971 [INFO] Worker tcp://127.0.0.1:63576
+2025-11-03 16:43:53,971 [INFO]   pid: None
+2025-11-03 16:43:53,971 [INFO]   host: 127.0.0.1
+2025-11-03 16:43:53,971 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-k5kitdda
+2025-11-03 16:43:53,971 [INFO]   nanny: True
+2025-11-03 16:43:53,971 [INFO] Dask Worker Info:
+2025-11-03 16:43:53,971 [INFO] Worker tcp://127.0.0.1:63581
+2025-11-03 16:43:53,972 [INFO]   pid: None
+2025-11-03 16:43:53,972 [INFO]   host: 127.0.0.1
+2025-11-03 16:43:53,972 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-2ehhicgh
+2025-11-03 16:43:53,972 [INFO]   nanny: True
+2025-11-03 16:43:53,972 [INFO] Dask Worker Info:
+2025-11-03 16:43:53,972 [INFO] Worker tcp://127.0.0.1:63588
+2025-11-03 16:43:53,972 [INFO]   pid: None
+2025-11-03 16:43:53,972 [INFO]   host: 127.0.0.1
+2025-11-03 16:43:53,972 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-wb0roxk1
+2025-11-03 16:43:53,972 [INFO]   nanny: True
+2025-11-03 16:43:53,972 [INFO] Dask Worker Info:
+2025-11-03 16:43:53,973 [INFO] Worker tcp://127.0.0.1:63589
+2025-11-03 16:43:53,973 [INFO]   pid: None
+2025-11-03 16:43:53,973 [INFO]   host: 127.0.0.1
+2025-11-03 16:43:53,973 [INFO]   local_dir: C:\Users\mtt1e23\AppData\Local\Temp\dask-scratch-space\worker-igd05j5g
+2025-11-03 16:43:53,973 [INFO]   nanny: True
+2025-11-03 16:43:53,973 [INFO] Processing camera: Cam1 (1/2 cameras)
+2025-11-03 16:43:53,973 [INFO] Loading images from set file in directory: C:\Users\mtt1e23\Downloads\ims\ims for camera: Cam1
+2025-11-03 16:43:54,229 [INFO] Auto-detected image shape: (2048, 2048)
+2025-11-03 16:43:54,263 [INFO] Pre-computing vector masks for Cam1
+2025-11-03 16:43:55,486 [INFO] Vector masks computed: 3 passes
+2025-11-03 16:43:55,494 [INFO] Successfully cached window padding for 3 passes
+2025-11-03 16:43:55,532 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-03 16:43:55,988 [INFO] Pre-computed and broadcast correlator cache for distributed workers
+2025-11-03 16:44:36,572 [ERROR] PIV processing failed: finalize-hlgfinalizecompute-a5f7219e162c4c17a74ecb8684376e9a cancelled for reason: scheduler-connection-lost.
+Client lost the connection to the scheduler. Please check your connection and re-run your work.

@@ -10,13 +10,14 @@ class PIVPassResult:
     ux_mat: Optional[np.ndarray] = None
     uy_mat: Optional[np.ndarray] = None
     nan_mask: Optional[np.ndarray] = None
-    Q: Optional[np.ndarray] = None
     peak_mag: Optional[np.ndarray] = None
     peak_choice: Optional[np.ndarray] = None
     predictor_field: Optional[np.ndarray] = None
     primary_peak_mag: Optional[np.ndarray] = None
-    Q_mat: Optional[np.ndarray] = None
-    edge_mask: Optional[np.ndarray] = None
+    b_mask: Optional[np.ndarray] = None
+    window_size: Optional[tuple[int, int]] = None
+    win_ctrs_x: Optional[np.ndarray] = None
+    win_ctrs_y: Optional[np.ndarray] = None
 
 
 @dataclass
@@ -34,7 +35,6 @@ class PIVResult:
                 f"{None if p.ux_mat is None else p.ux_mat.shape}, "
             )
             s += (
-                f"uy.shape={None if p.uy_mat is None else p.uy_mat.shape}, "
+                f"uy.shape={None if p.uy_mat is None else p.uy_mat.shape}\n"
             )
-            s += f"Q.shape={None if p.Q is None else p.Q.shape}\n"
         return s
