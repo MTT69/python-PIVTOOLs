@@ -1,4 +1,5 @@
 include README.md
 include LICENSE
+include dummy_marker.c
 recursive-include lib *.c
 recursive-include lib *.h

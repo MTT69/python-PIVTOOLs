@@ -184,7 +184,7 @@ class BuildCLib(build_ext):
 # The actual compilation is done in BuildCLib
 dummy_extension = Extension(
     name="pivtools_cli._build_marker",
-    sources=[]
+    sources=["dummy_marker.c"]
 )
 
 # This setup.py is minimal since we use pyproject.toml
