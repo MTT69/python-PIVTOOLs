@@ -121,7 +121,7 @@ class BuildCLib(build_ext):
 
     def _build_macos(self, build_dir, lib_src_dir):
         """Build libraries for macOS"""
-        compiler = os.environ.get('CC', '/opt/homebrew/bin/gcc-15')
+        compiler = os.environ.get('CC', '/opt/homebrew/bin/gcc-14')
 
         # Check compiler
         if not self._find_executable(compiler):
