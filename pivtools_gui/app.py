@@ -458,7 +458,7 @@ def update_config():
             valid_numbers = list(range(1, new_camera_count + 1))
         cfg.data["paths"]["camera_numbers"] = valid_numbers
     
-    with open("config.yaml", "w", encoding="utf-8") as f:
+    with open(cfg.config_path, "w", encoding="utf-8") as f:
         yaml.dump(cfg.data, f, default_flow_style=False, sort_keys=False)
     reload_config()
     return jsonify({"status": "success", "updated": data})

@@ -1,7 +1,6 @@
 include README.md
 include LICENSE
 include requirements.txt
-include config.yaml
 
 # Include C library source files
 recursive-include pivtools_cli/lib *.c *.h

@@ -1,5 +1,7 @@
 from pathlib import Path
 import logging
+import os
+import shutil
 
 import yaml
 
@@ -10,7 +12,7 @@ _LOGGING_INITIALIZED = False  # Track if logging has been set up
 class Config:
     def __init__(self, path=None):
         if path is None:
-            path = Path(__file__).parent.parent / "config.yaml"
+            path = self._get_config_path()
         with open(path, "r") as f:
             self.data = yaml.safe_load(f)
             # Use the first base_path, first camera, and image_format for dtype detection
@@ -32,6 +34,33 @@ class Config:
         
         # Setup logging only once globally
         self._setup_logging()
+
+        # Store the config path for saving
+        self._config_path = path if path is not None else self._get_config_path()
+
+    def _get_config_path(self):
+        """Get the path to the config file, preferring user config over package default."""
+        # Determine user config directory
+        if os.name == 'nt':  # Windows
+            user_config_dir = Path(os.environ.get('APPDATA', '')) / 'pivtools'
+        else:  # Unix-like (macOS, Linux)
+            user_config_dir = Path.home() / '.config' / 'pivtools'
+        
+        user_config_dir.mkdir(parents=True, exist_ok=True)
+        user_config_path = user_config_dir / 'config.yaml'
+        
+        # If user config doesn't exist, copy from package default
+        if not user_config_path.exists():
+            package_default = Path(__file__).parent.parent / 'pivtools_core' / 'config.yaml'
+            if package_default.exists():
+                shutil.copy2(package_default, user_config_path)
+        
+        return user_config_path
+
+    @property
+    def config_path(self):
+        """Get the path to the config file."""
+        return self._config_path
 
     @property
     def config_dict(self):
