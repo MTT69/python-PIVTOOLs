@@ -28,7 +28,7 @@ This guide explains how to build and release the unified `pivtools` package to P
   - Ensures shared libraries are included via package data
   - Tests all module imports (core, CLI, GUI)
   - **PyArrow protection**: Uses `--no-deps` and pinned versions to prevent indirect PyArrow installation
-  - **Wheel repair tools**: Installs `auditwheel`, `delvewheel`, and `delocate-wheel` for proper library bundling
+    - **Wheel repair tools**: Installs `auditwheel` (Linux), `delvewheel` (Windows), and `delocate` (macOS) for proper library bundling
 
 ## Critical Setup Changes
 
@@ -225,7 +225,7 @@ The GitHub Actions workflow will automatically:
 - If PyArrow still appears, check that pip cache is cleared
 
 ### Wheel repair tool not found
-- The workflow installs `auditwheel` (Linux), `delvewheel` (Windows), and `delocate-wheel` (macOS)
+- The workflow installs `auditwheel` (Linux), `delvewheel` (Windows), and `delocate` (macOS)
 - If repair fails, check that the tools are installed in the CI environment
 - Repair is needed to bundle shared libraries (FFTW) into the wheel
 
