@@ -85,15 +85,23 @@ jobs:
           
           # Windows: Download FFTW, extract, and generate .lib file from .def
           CIBW_BEFORE_BUILD_WINDOWS: |
-            curl -L -o C:\fftw.zip https://fftw.org/pub/fftw/fftw-3.3.10-dll64.zip
-            python -m zipfile -e C:\fftw.zip C:\
+            curl -L -o C:\fftw.zip https://fftw.org/pub/fftw/fftw-3.3.10-dll64.zip || exit /b 1
+            python -m zipfile -e C:\fftw.zip C:\ || exit /b 1
             if exist C:\fftw rmdir /s /q C:\fftw
-            ren C:\fftw-3.3.10-dll64 fftw
+            ren C:\fftw-3.3.10-dll64 fftw || exit /b 1
+            echo Contents of C:\fftw:
             dir C:\fftw
-            cd C:\fftw
-            lib /def:libfftw3f-3.def /out:libfftw3f-3.lib /machine:x64
+            cd C:\fftw || exit /b 1
+            echo Running lib.exe to generate .lib file...
+            lib /def:libfftw3f-3.def /out:libfftw3f-3.lib /machine:x64 || exit /b 1
+            echo Generated files:
             dir *.lib
             dir *.dll
+            if not exist libfftw3f-3.lib (
+              echo ERROR: libfftw3f-3.lib was not created!
+              exit /b 1
+            )
+            echo SUCCESS: FFTW setup complete
           
           # Set environment variables for FFTW paths on Linux
           CIBW_ENVIRONMENT_LINUX: FFTW_INC_PATH=/usr/include FFTW_LIB_PATH=/usr/lib64
