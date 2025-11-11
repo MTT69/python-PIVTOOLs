@@ -106,7 +106,6 @@ jobs:
           
           # Install minimal dependencies needed for basic imports (prevent PyArrow issues)
           CIBW_BEFORE_TEST: |
-            pip install --upgrade pip
             pip cache purge
             pip install --no-deps \
               numpy==2.2.6 \

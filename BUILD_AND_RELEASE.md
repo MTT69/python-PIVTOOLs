@@ -243,6 +243,7 @@ The GitHub Actions workflow installs minimal dependencies during the **test phas
 - Your code uses `dask` directly for distributed processing, not `dask-image`
 - This eliminates the PyArrow build bottleneck during installation
 - Uses `--no-deps` and pinned versions for additional safety
+- **Removed pip upgrade** to avoid virtual environment conflicts
 
 ### 3. **Minimal & Fast**
 - Only installs what's needed for import testing
