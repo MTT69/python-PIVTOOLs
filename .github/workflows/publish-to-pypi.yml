@@ -44,6 +44,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Activate MSVC on Windows
+      - name: Set up MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -79,10 +84,10 @@ jobs:
             brew install fftw gcc
             export CC=gcc-14
           
-          # Windows: Download and extract FFTW
+          # Windows: Download and extract FFTW using PowerShell
           CIBW_BEFORE_BUILD_WINDOWS: |
             curl -L -o fftw.zip https://fftw.org/pub/fftw/fftw-3.3.10-dll64.zip
-            tar -xf fftw.zip -C C:\
+            powershell Expand-Archive -Path fftw.zip -DestinationPath C:\
           
           # Set environment variables for FFTW paths on Linux
           CIBW_ENVIRONMENT_LINUX: FFTW_INC_PATH=/usr/include FFTW_LIB_PATH=/usr/lib64
@@ -90,8 +95,13 @@ jobs:
           # Set environment variables for FFTW paths on macOS
           CIBW_ENVIRONMENT_MACOS: FFTW_INC_PATH=/opt/homebrew/include FFTW_LIB_PATH=/opt/homebrew/lib CC=gcc-14
           
-          # Set environment variables for FFTW paths on Windows
-          CIBW_ENVIRONMENT_WINDOWS: FFTW_INC_PATH=C:\\fftw FFTW_LIB_PATH=C:\\fftw
+          # Set environment variables for FFTW paths on Windows (corrected path)
+          CIBW_ENVIRONMENT_WINDOWS: FFTW_INC_PATH=C:\\fftw-3.3.10-dll64 FFTW_LIB_PATH=C:\\fftw-3.3.10-dll64
+          
+          # Repair wheels to bundle dependencies (important for shared libraries)
+          CIBW_REPAIR_WHEEL_COMMAND_LINUX: "auditwheel repair -w {dest_dir} {wheel}"
+          CIBW_REPAIR_WHEEL_COMMAND_MACOS: "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}"
+          CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: "delvewheel repair -w {dest_dir} {wheel}"
           
           # Test the built wheels by importing all submodules
           CIBW_TEST_COMMAND: python -c "import pivtools_cli; import pivtools_gui; import pivtools_core; print('All imports successful')"
@@ -129,5 +139,5 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.PYPI_API_TOKEN }}
-          skip-existing: false
+          skip-existing: true
           verbose: true

@@ -3,8 +3,16 @@ import pathlib
 import platform
 import subprocess
 import sys
-from setuptools import setup
+from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext
+
+# Dummy extension to force platform-specific wheel generation
+# The actual C libraries are built by the custom BuildCLib command
+dummy_ext = Extension(
+    name="pivtools_cli.dummy_marker",
+    sources=["pivtools_cli/dummy_marker.c"],
+    py_limited_api=False
+)
 
 class BuildCLib(build_ext):
     """Custom build_ext command to compile C libraries for ctypes"""
@@ -183,4 +191,5 @@ class BuildCLib(build_ext):
 # This setup.py is minimal since we use pyproject.toml
 setup(
     cmdclass={"build_ext": BuildCLib},
+    ext_modules=[dummy_ext],
 )

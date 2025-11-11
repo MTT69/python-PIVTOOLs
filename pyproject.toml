@@ -71,5 +71,5 @@ include = ["pivtools_core*", "pivtools_cli*", "pivtools_gui*"]
 exclude = ["tests*", "manual_tools*", "logs*", "env*"]
 
 [tool.setuptools.package-data]
-pivtools_cli = ["lib/*"]
+pivtools_cli = ["lib/*.so", "lib/*.dll", "lib/*.dylib"]
 pivtools_gui = ["static/**/*", "templates/**/*"]
