@@ -163,7 +163,7 @@ class PIVRunner:
 
         # Build command - runs example.py which uses config.yaml
         python_exe = self._get_python_executable()
-        script_path = self.project_root / "pypivtools" / "example.py"
+        script_path = self.project_root / "pivtools_core" / "example.py"
         cmd = [python_exe, str(script_path)]
 
         # Open log file

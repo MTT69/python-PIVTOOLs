@@ -18,8 +18,8 @@ from pivtools_cli.piv.save_results import (
 from pivtools_cli.piv_cluster.cluster import start_cluster
 from pivtools_cli.preprocessing.preprocess import preprocess_images
 
-if __name__ == "__main__":
-    
+def main():
+    """Main PIV processing function"""
     start_time = time.time()  # Start timer
 
     config = Config()
@@ -137,3 +137,6 @@ if __name__ == "__main__":
         end_time = time.time()  # End timer
         elapsed = end_time - start_time
         print(f"Total elapsed time: {elapsed:.2f} seconds", flush=True)
+
+if __name__ == "__main__":
+    main()

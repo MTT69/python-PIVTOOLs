@@ -179,7 +179,7 @@ masking:
 def run_command(args):
     """Run PIV analysis using the current config"""
     try:
-        from pivtools_cli.example import main as run_piv
+        from pivtools_core.example import main as run_piv
         run_piv()
     except ImportError as e:
         print(f"Error importing PIVTOOLs: {e}")
