@@ -55,7 +55,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: python -m pip install --upgrade pip cibuildwheel auditwheel delvewheel delocate
+        run: python -m pip install --upgrade pip cibuildwheel
 
       - name: Build wheels
         run: python -m cibuildwheel --output-dir dist
@@ -82,27 +82,34 @@ jobs:
           # macOS: Install FFTW via Homebrew and use GCC
           CIBW_BEFORE_BUILD_MACOS: |
             brew install fftw gcc
-            PREFIX=$(brew --prefix)
-            export CC=gcc-14
-            export FFTW_INC_PATH=$PREFIX/include
-            export FFTW_LIB_PATH=$PREFIX/lib
           
-          # Windows: Download and extract FFTW using PowerShell, then rename directory
-          CIBW_BEFORE_BUILD_WINDOWS: |
-            curl -L -o fftw.zip https://fftw.org/pub/fftw/fftw-3.3.10-dll64.zip
-            powershell Expand-Archive -Path fftw.zip -DestinationPath C:\
-            powershell Rename-Item -Path C:\fftw-3.3.10-dll64* -NewName fftw
+          # Windows: Download FFTW, extract, and generate .lib file from .def
+          CIBW_BEFORE_BUILD_WINDOWS: >
+            curl -L -o fftw.zip https://fftw.org/pub/fftw/fftw-3.3.10-dll64.zip &&
+            powershell Expand-Archive -Path fftw.zip -DestinationPath C:\ &&
+            powershell Rename-Item -Path C:\fftw-3.3.10-dll64* -NewName fftw &&
+            lib /def:C:\fftw\libfftw3f-3.def /out:C:\fftw\libfftw3f-3.lib /machine:x64
           
           # Set environment variables for FFTW paths on Linux
           CIBW_ENVIRONMENT_LINUX: FFTW_INC_PATH=/usr/include FFTW_LIB_PATH=/usr/lib64
           
-          # Set environment variables for FFTW paths on Windows (corrected path)
-          CIBW_ENVIRONMENT_WINDOWS: FFTW_INC_PATH=C:\\fftw FFTW_LIB_PATH=C:\\fftw
+          # Set environment variables for FFTW paths and compiler on macOS
+          CIBW_ENVIRONMENT_MACOS: >
+            CC=/opt/homebrew/bin/gcc-14
+            FFTW_INC_PATH=/opt/homebrew/include
+            FFTW_LIB_PATH=/opt/homebrew/lib
+          
+          # Set environment variables for FFTW paths and compiler on Windows
+          CIBW_ENVIRONMENT_WINDOWS: >
+            FFTW_INC_PATH=C:\\fftw
+            FFTW_LIB_PATH=C:\\fftw
+            CC=cl
+            CXX=cl
           
           # Repair wheels to bundle dependencies (important for shared libraries)
           CIBW_REPAIR_WHEEL_COMMAND_LINUX: "auditwheel repair -w {dest_dir} {wheel}"
           CIBW_REPAIR_WHEEL_COMMAND_MACOS: "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}"
-          CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: "delvewheel repair -w {dest_dir} {wheel}"
+          CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: "delvewheel repair --add-path C:\\fftw -w {dest_dir} {wheel}"
           
           # Install minimal dependencies needed for basic imports (prevent PyArrow issues)
           CIBW_BEFORE_TEST: |

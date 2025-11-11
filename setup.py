@@ -3,6 +3,7 @@ import pathlib
 import platform
 import subprocess
 import sys
+import shutil
 from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext
 
@@ -23,9 +24,7 @@ class BuildCLib(build_ext):
             try:
                 self.build_c_libraries()
             except Exception as e:
-                print(f"Warning: Failed to build C libraries: {e}")
-                print("This is expected if FFTW dependencies are not available.")
-                print("Pre-built wheels should be used for distribution.")
+                raise RuntimeError(f"Failed to build C libraries: {e}. Ensure FFTW is installed and environment variables are set.") from e
         super().run()
 
     def build_c_libraries(self):
@@ -65,7 +64,7 @@ class BuildCLib(build_ext):
         # Find FFTW lib
         fftw_lib_file = self._find_fftw_lib(fftw_lib)
         if not fftw_lib_file:
-            raise RuntimeError(f"No FFTW library found in {fftw_lib}")
+            raise RuntimeError(f"No FFTW library found in {fftw_lib}. Expected libfftw3f-3.lib or fftw3f.lib")
 
         builds = [
             {
@@ -96,12 +95,25 @@ class BuildCLib(build_ext):
         if not self._find_executable(compiler):
             raise RuntimeError(f"Compiler {compiler} not found")
 
-        # Check FFTW
-        fftw_inc = os.environ.get('FFTW_INC_PATH', '/usr/include')
-        fftw_lib = os.environ.get('FFTW_LIB_PATH', '/usr/lib/x86_64-linux-gnu')
-
-        if not (pathlib.Path(fftw_inc) / "fftw3.h").exists():
-            raise RuntimeError(f"FFTW header not found at {fftw_inc}/fftw3.h")
+        # Check FFTW - try multiple common locations
+        fftw_inc = os.environ.get('FFTW_INC_PATH')
+        fftw_lib = os.environ.get('FFTW_LIB_PATH')
+        
+        # If not set, try to find FFTW in common locations
+        if not fftw_inc:
+            for inc_path in ['/usr/include', '/usr/local/include']:
+                if (pathlib.Path(inc_path) / "fftw3.h").exists():
+                    fftw_inc = inc_path
+                    break
+        
+        if not fftw_lib:
+            for lib_path in ['/usr/lib64', '/usr/lib/x86_64-linux-gnu', '/usr/lib', '/usr/local/lib']:
+                if pathlib.Path(lib_path).exists():
+                    fftw_lib = lib_path
+                    break
+        
+        if not fftw_inc or not (pathlib.Path(fftw_inc) / "fftw3.h").exists():
+            raise RuntimeError(f"FFTW header not found. Searched: {fftw_inc}")
 
         compile_args = ['-O3', '-fPIC', '-fopenmp', '-shared']
         include_dirs = [f'-I{lib_src_dir}', f'-I{fftw_inc}']
@@ -129,15 +141,32 @@ class BuildCLib(build_ext):
 
     def _build_macos(self, build_dir, lib_src_dir):
         """Build libraries for macOS"""
-        compiler = os.environ.get('CC', '/opt/homebrew/bin/gcc-14')
-
+        # Use environment variable if set, otherwise try to find GCC
+        compiler = os.environ.get('CC')
+        
+        if not compiler:
+            # Try to find GCC in common locations
+            gcc_versions = ['gcc-15', 'gcc-14', 'gcc-13', 'gcc-12']
+            for gcc_ver in gcc_versions:
+                gcc_path = f'/opt/homebrew/bin/{gcc_ver}'
+                if self._find_executable(gcc_path):
+                    compiler = gcc_path
+                    break
+            
+            # Fallback to system gcc (though it's usually clang on macOS)
+            if not compiler:
+                compiler = 'gcc'
+        
         # Check compiler
         if not self._find_executable(compiler):
-            raise RuntimeError(f"Compiler {compiler} not found")
+            raise RuntimeError(f"GCC compiler not found. Tried: {compiler}")
 
         # Check FFTW
         fftw_inc = os.environ.get('FFTW_INC_PATH', '/opt/homebrew/include')
         fftw_lib = os.environ.get('FFTW_LIB_PATH', '/opt/homebrew/lib')
+        
+        if not (pathlib.Path(fftw_inc) / "fftw3.h").exists():
+            raise RuntimeError(f"FFTW header not found at {fftw_inc}/fftw3.h")
 
         compile_args = ['-O3', '-fPIC', '-fopenmp', '-shared']
         include_dirs = [f'-I{lib_src_dir}', f'-I{fftw_inc}']
@@ -160,16 +189,12 @@ class BuildCLib(build_ext):
 
             cmd = [compiler] + compile_args + include_dirs + sources + link_args + ['-o', output]
 
-            print(f"Building {build['name']}...")
+            print(f"Building {build['name']} with {compiler}...")
             self._run_command(cmd)
 
     def _find_executable(self, name):
         """Check if executable exists"""
-        try:
-            subprocess.run([name, '--version'], capture_output=True, check=True)
-            return True
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            return False
+        return shutil.which(name) is not None
 
     def _find_fftw_lib(self, fftw_lib_path):
         """Find FFTW library file on Windows"""

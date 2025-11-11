@@ -1,6 +1,5 @@
 MANIFEST.in
 README.md
-config.yaml
 pyproject.toml
 requirements.txt
 setup.py
@@ -11,8 +10,8 @@ pivtools.egg-info/entry_points.txt
 pivtools.egg-info/requires.txt
 pivtools.egg-info/top_level.txt
 pivtools_cli/__init__.py
+pivtools_cli/_build_marker.c
 pivtools_cli/cli.py
-pivtools_cli/example.py
 pivtools_cli/lib/PIV_2d_cross_correlate.c
 pivtools_cli/lib/PIV_2d_cross_correlate.h
 pivtools_cli/lib/common.h
@@ -47,6 +46,8 @@ pivtools_cli/tests/instantaneous_piv/test_piv_integration_multi.py
 pivtools_cli/tests/preprocessing/test_filters.py
 pivtools_core/__init__.py
 pivtools_core/config.py
+pivtools_core/config.yaml
+pivtools_core/example.py
 pivtools_core/paths.py
 pivtools_core/vector_loading.py
 pivtools_core/image_handling/__init__.py

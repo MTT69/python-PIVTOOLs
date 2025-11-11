@@ -44,10 +44,6 @@ unsigned char bulkxcorr2d(const float *fImageA, const float *fImageB, const floa
 	
 
 	nWindowsTotal = nWindows[0] * nWindows[1];
-
-	/* Initialize FFTW threading and wisdom cache */
-	fftwf_init_threads();
-	fftwf_plan_with_nthreads(1);
 	
 	/* Load FFTW wisdom for optimized plans */
 	char wisdom_path[512];
@@ -97,7 +93,6 @@ unsigned char bulkxcorr2d(const float *fImageA, const float *fImageB, const floa
 		memset(&sCCPlan, 0, sizeof(sCCPlan));
 		#pragma omp critical
 		{
-			fftwf_plan_with_nthreads(1);
 			uError			= xcorr_create_plan(nWindowSize, &sCCPlan);
 		}
 		if(uError)
