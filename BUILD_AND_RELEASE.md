@@ -14,6 +14,7 @@ This guide explains how to build and release the unified `pivtools` package to P
 ### 2. `setup.py`
 - Custom build command `BuildCLib` to compile C libraries
 - **Includes dummy extension** to force platform-specific wheels
+- **Fixed**: Extension name matches C code (`pivtools_cli._build_marker`)
 - Handles platform-specific compilation (Linux, macOS, Windows)
 
 ### 3. `.github/workflows/publish-to-pypi.yml`
@@ -26,6 +27,7 @@ This guide explains how to build and release the unified `pivtools` package to P
   - Added MSVC activation with `ilammy/msvc-dev-cmd@v1`
   - Ensures shared libraries are included via package data
   - Tests all module imports (core, CLI, GUI)
+  - **PyArrow protection**: Uses `--no-deps` and pinned versions to prevent indirect PyArrow installation
 
 ## Critical Setup Changes
 
@@ -201,6 +203,7 @@ The GitHub Actions workflow will automatically:
 ### Wheel is not platform-specific
 - Verify `dummy_ext` is in `setup.py`
 - Check that `ext_modules=[dummy_ext]` is in the `setup()` call
+- Ensure extension name matches C init function (`PyInit__build_marker`)
 - The wheel filename should include platform tags (e.g., `cp311-cp311-win_amd64.whl`)
 
 ### Shared libraries not included in wheel
@@ -214,10 +217,11 @@ The GitHub Actions workflow will automatically:
 - Check that environment variables point to the correct path
 - Wildcard rename ensures robustness even if zip structure changes
 
-### macOS build fails
-- Homebrew paths are dynamically resolved for both Intel and ARM runners
-- GCC 14 is used for compilation
-- FFTW should install automatically via Homebrew
+### PyArrow build failures
+- The workflow uses `--no-deps` and pinned versions to prevent PyArrow installation
+- If PyArrow still appears, check that pip cache is cleared
+- PyArrow may be pulled in by scipy or opencv-python optional dependencies
+- The test phase only validates imports, not full functionality
 
 ## Package Structure
 
@@ -245,3 +249,23 @@ Command-line tools:
 - Wheel repair ensures FFTW libraries are bundled (no separate installation needed)
 - The dummy extension forces platform-specific wheels without affecting functionality
 - All three components (CLI, GUI, Core) are installed as one package
+
+## Why Install Dependencies in CI?
+
+The GitHub Actions workflow installs minimal dependencies during the **test phase** (not build phase) for these reasons:
+
+### 1. **Import Testing**
+- `cibuildwheel` installs the built wheel in a fresh environment
+- To test that `import pivtools_core, pivtools_cli, pivtools_gui` works
+- Some dependencies are needed for successful imports
+
+### 2. **PyArrow Prevention**
+- Uses `--no-deps` to prevent pip from installing additional packages
+- Pins exact versions to avoid pulling in optional dependencies
+- Clears pip cache to prevent cached source builds
+- **Result**: No PyArrow build failures during testing
+
+### 3. **Minimal & Fast**
+- Only installs what's needed for import testing
+- Full dependency installation happens when users `pip install pivtools`
+- Keeps CI fast and reliable

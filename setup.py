@@ -9,8 +9,8 @@ from setuptools.command.build_ext import build_ext
 # Dummy extension to force platform-specific wheel generation
 # The actual C libraries are built by the custom BuildCLib command
 dummy_ext = Extension(
-    name="pivtools_cli.dummy_marker",
-    sources=["pivtools_cli/dummy_marker.c"],
+    name="pivtools_cli._build_marker",
+    sources=["pivtools_cli/_build_marker.c"],
     py_limited_api=False
 )
 
