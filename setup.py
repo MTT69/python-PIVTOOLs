@@ -79,13 +79,20 @@ class BuildCLib(build_ext):
 
         for build in builds:
             sources = [str(lib_src_dir / src) for src in build["sources"]]
-            output = str(build_dir / f"{build['name']}.dll")
+            output_dll = build_dir / f"{build['name']}.dll"
+            
+            # Ensure output directory exists
+            output_dll.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Convert to absolute path for Windows
+            output = str(output_dll.absolute())
 
             cmd = ['cl'] + compile_args + sources + include_dirs
             cmd += link_args + [fftw_lib_file, f'/OUT:{output}']
 
             print(f"Building {build['name']}...")
-            self._run_command(cmd, cwd=str(build_dir))
+            print(f"Output: {output}")
+            self._run_command(cmd, cwd=str(lib_src_dir))
 
     def _build_linux(self, build_dir, lib_src_dir):
         """Build libraries for Linux"""
