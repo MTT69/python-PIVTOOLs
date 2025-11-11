@@ -1,0 +1,27 @@
+include README.md
+include LICENSE
+include requirements.txt
+include config.yaml
+
+# Include C library source files
+recursive-include pivtools_cli/lib *.c *.h
+
+# Include GUI static files and templates
+recursive-include pivtools_gui/static *
+recursive-include pivtools_gui/templates *
+
+# Exclude unnecessary files
+global-exclude __pycache__
+global-exclude *.py[co]
+global-exclude .DS_Store
+global-exclude *.so
+global-exclude *.dll
+global-exclude *.dylib
+
+# Exclude test and development files
+prune tests
+prune manual_tools
+prune logs
+prune env
+prune .git
+prune .github

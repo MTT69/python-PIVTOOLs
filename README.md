@@ -4,29 +4,18 @@ Particle Image Velocimetry Tools - A comprehensive toolkit for PIV analysis with
 
 ## Installation
 
-PIVTOOLs is split into three packages for modularity:
+Install PIVTOOLs with a single command:
 
-### Core Package (required for all installations)
 ```bash
-pip install pivtools-core
+pip install pivtools
 ```
 
-### Command-Line Interface
-```bash
-pip install pivtools-cli
-```
+This installs the complete toolkit including:
+- **Core utilities** for image handling and vector processing
+- **Command-line interface** (`pivtools-cli`) for automated workflows
+- **Web-based GUI** (`pivtools-gui`) for interactive analysis
 
-### Web GUI
-```bash
-pip install pivtools-gui
-```
-
-### Full Installation (includes all components)
-```bash
-pip install pivtools-cli pivtools-gui
-```
-
-All packages include pre-compiled C extensions for optimal performance on Windows, macOS, and Linux.
+The package includes pre-compiled C extensions for optimal performance on Windows, macOS, and Linux.
 
 ## Quick Start
 

@@ -24,10 +24,10 @@ class BuildCLib(build_ext):
         """Build the C shared libraries"""
         system = platform.system().lower()
 
-        build_dir = pathlib.Path(self.build_lib) / "pypivtools" / "lib"
+        build_dir = pathlib.Path(self.build_lib) / "pivtools_cli" / "lib"
         build_dir.mkdir(parents=True, exist_ok=True)
 
-        lib_src_dir = pathlib.Path(__file__).parent / "pypivtools" / "lib"
+        lib_src_dir = pathlib.Path(__file__).parent / "pivtools_cli" / "lib"
 
         if system == 'windows':
             self._build_windows(build_dir, lib_src_dir)
