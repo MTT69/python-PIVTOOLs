@@ -21,10 +21,11 @@ This guide explains how to build and release the unified `pivtools` package to P
 - Builds wheels for Linux, Windows, and macOS
 - Builds for Python 3.11 and 3.12
 - **Fixed issues:**
-  - Corrected Windows FFTW extraction path (`C:\fftw-3.3.10-dll64`)
-  - Uses PowerShell `Expand-Archive` instead of unreliable `tar`
+  - Corrected Windows FFTW extraction with wildcard rename for robustness
+  - Fixed macOS Homebrew paths using proper shell evaluation (not YAML substitution)
   - Added MSVC activation with `ilammy/msvc-dev-cmd@v1`
   - Ensures shared libraries are included via package data
+  - Tests all module imports (core, CLI, GUI)
 
 ## Critical Setup Changes
 
@@ -187,9 +188,10 @@ The GitHub Actions workflow will automatically:
 - Test locally on that platform if possible
 
 ### Import test fails
-- Check that all C libraries are being compiled
+- The workflow tests all module imports (core, CLI, GUI) with minimal dependencies
+- Check that C libraries are being compiled and included in wheels
 - Verify that wheel repair commands are bundling dependencies
-- Test the wheel locally before releasing
+- If full testing is needed, install dependencies manually in test environment
 
 ### PyPI upload fails
 - Verify `PYPI_API_TOKEN` is correctly set in GitHub secrets
@@ -208,8 +210,14 @@ The GitHub Actions workflow will automatically:
 
 ### Windows build fails
 - MSVC should be automatically activated by the workflow
-- FFTW should extract to `C:\fftw-3.3.10-dll64`
+- FFTW should extract to `C:\fftw` after rename operation
 - Check that environment variables point to the correct path
+- Wildcard rename ensures robustness even if zip structure changes
+
+### macOS build fails
+- Homebrew paths are dynamically resolved for both Intel and ARM runners
+- GCC 14 is used for compilation
+- FFTW should install automatically via Homebrew
 
 ## Package Structure
 
