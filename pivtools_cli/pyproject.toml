@@ -20,7 +20,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Image Processing",
 ]
 dependencies = [
-    "pivtools-core>=0.1.0",
+    "pivtools-core>=0.1.1",
     "dask-image==2024.5.3",
     "numba==0.61.2",
     "psutil==6.1.1",

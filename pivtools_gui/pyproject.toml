@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pivtools-gui"
-version = "0.1.1"
+version = "0.1.2"
 description = "Web GUI for PIVTOOLs - Particle Image Velocimetry Tools"
 readme = "README.md"
 license = {text = "MIT"}
@@ -21,8 +21,8 @@ classifiers = [
     "Framework :: Flask",
 ]
 dependencies = [
-    "pivtools-core>=0.1.0",
-    "pivtools-cli>=0.1.0",
+    "pivtools-core>=0.1.1",
+    "pivtools-cli>=0.1.1",
     "Flask==3.1.1",
     "flask-cors==6.0.1",
 ]
