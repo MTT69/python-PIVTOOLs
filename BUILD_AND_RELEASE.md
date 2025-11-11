@@ -28,6 +28,7 @@ This guide explains how to build and release the unified `pivtools` package to P
   - Ensures shared libraries are included via package data
   - Tests all module imports (core, CLI, GUI)
   - **PyArrow protection**: Uses `--no-deps` and pinned versions to prevent indirect PyArrow installation
+  - **Wheel repair tools**: Installs `auditwheel`, `delvewheel`, and `delocate-wheel` for proper library bundling
 
 ## Critical Setup Changes
 
@@ -218,10 +219,35 @@ The GitHub Actions workflow will automatically:
 - Wildcard rename ensures robustness even if zip structure changes
 
 ### PyArrow build failures
+- **Fixed**: Removed `dask-image` dependency which was pulling in PyArrow
+- Your code uses `dask` directly, not `dask-image`, so this dependency was unnecessary
 - The workflow uses `--no-deps` and pinned versions to prevent PyArrow installation
 - If PyArrow still appears, check that pip cache is cleared
-- PyArrow may be pulled in by scipy or opencv-python optional dependencies
-- The test phase only validates imports, not full functionality
+
+### Wheel repair tool not found
+- The workflow installs `auditwheel` (Linux), `delvewheel` (Windows), and `delocate-wheel` (macOS)
+- If repair fails, check that the tools are installed in the CI environment
+- Repair is needed to bundle shared libraries (FFTW) into the wheel
+
+## Why Install Dependencies in CI?
+
+The GitHub Actions workflow installs minimal dependencies during the **test phase** (not build phase) for these reasons:
+
+### 1. **Import Testing**
+- `cibuildwheel` installs the built wheel in a fresh environment
+- To test that `import pivtools_core, pivtools_cli, pivtools_gui` works
+- Some dependencies are needed for successful imports
+
+### 2. **PyArrow Prevention**
+- **Removed `dask-image`** from dependencies as it pulls in PyArrow via `dask[array,dataframe]`
+- Your code uses `dask` directly for distributed processing, not `dask-image`
+- This eliminates the PyArrow build bottleneck during installation
+- Uses `--no-deps` and pinned versions for additional safety
+
+### 3. **Minimal & Fast**
+- Only installs what's needed for import testing
+- Full dependency installation happens when users `pip install pivtools`
+- Keeps CI fast and reliable
 
 ## Package Structure
 

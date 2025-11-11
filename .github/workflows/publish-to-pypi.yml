@@ -55,7 +55,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: python -m pip install --upgrade pip cibuildwheel
+        run: python -m pip install --upgrade pip cibuildwheel auditwheel delvewheel delocate-wheel
 
       - name: Build wheels
         run: python -m cibuildwheel --output-dir dist
