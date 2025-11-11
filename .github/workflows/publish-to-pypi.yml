@@ -87,8 +87,13 @@ jobs:
           CIBW_BEFORE_BUILD_WINDOWS: |
             curl -L -o C:\fftw.zip https://fftw.org/pub/fftw/fftw-3.3.10-dll64.zip
             python -m zipfile -e C:\fftw.zip C:\
-            move C:\fftw-3.3.10-dll64 C:\fftw
-            lib /def:C:\fftw\libfftw3f-3.def /out:C:\fftw\libfftw3f-3.lib /machine:x64
+            if exist C:\fftw rmdir /s /q C:\fftw
+            ren C:\fftw-3.3.10-dll64 fftw
+            dir C:\fftw
+            cd C:\fftw
+            lib /def:libfftw3f-3.def /out:libfftw3f-3.lib /machine:x64
+            dir *.lib
+            dir *.dll
           
           # Set environment variables for FFTW paths on Linux
           CIBW_ENVIRONMENT_LINUX: FFTW_INC_PATH=/usr/include FFTW_LIB_PATH=/usr/lib64
