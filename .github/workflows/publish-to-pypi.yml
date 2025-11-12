@@ -72,6 +72,10 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --upgrade pip cibuildwheel
 
+      - name: Install Windows repair tool
+        if: runner.os == 'Windows'
+        run: python -m pip install delvewheel
+
       - name: Build wheels
         run: python -m cibuildwheel --output-dir dist
         env:
@@ -96,8 +100,6 @@ jobs:
           CIBW_ENVIRONMENT_MACOS: CC=/opt/homebrew/bin/gcc-14 FFTW_INC_PATH=/opt/homebrew/include FFTW_LIB_PATH=/opt/homebrew/lib MACOSX_DEPLOYMENT_TARGET=15.0
           
           CIBW_ENVIRONMENT_WINDOWS: FFTW_INC_PATH=C:\\fftw FFTW_LIB_PATH=C:\\fftw CC=cl CXX=cl
-          
-          CIBW_BEFORE_REPAIR_WINDOWS: "pip install delvewheel"
           
           CIBW_REPAIR_WHEEL_COMMAND_LINUX: "auditwheel repair -w {dest_dir} {wheel}"
           CIBW_REPAIR_WHEEL_COMMAND_MACOS: "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}"
