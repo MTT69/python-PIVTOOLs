@@ -6,9 +6,9 @@ import time
 from pathlib import Path
 
 # Add src to path for unified imports
-from .config import Config
-from .image_handling.load_images import load_images, load_mask_for_camera
-from .image_handling.load_images import compute_vector_mask
+from pivtools_core.config import Config
+from pivtools_core.image_handling.load_images import load_images, load_mask_for_camera
+from pivtools_core.image_handling.load_images import compute_vector_mask
 
 from pivtools_cli.piv.piv import perform_piv_and_save
 from pivtools_cli.piv.save_results import (
