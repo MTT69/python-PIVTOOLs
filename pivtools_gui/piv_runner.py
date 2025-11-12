@@ -13,7 +13,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
-
+import os
 from loguru import logger
 
 
@@ -169,6 +169,11 @@ class PIVRunner:
         # Open log file
         log_handle = open(log_file, "w", buffering=1)  # Line buffered
 
+        # Set up environment with PYTHONPATH to allow imports
+
+        env = os.environ.copy()
+        env['PYTHONPATH'] = str(self.project_root)
+
         try:
             # Start subprocess
             process = subprocess.Popen(
@@ -176,7 +181,7 @@ class PIVRunner:
                 stdout=log_handle,
                 stderr=subprocess.STDOUT,
                 cwd=str(self.project_root),
-                env=None,  # Inherit environment
+                env=env,  # Use modified environment
             )
 
             piv_process = PIVProcess(process, job_id, log_file)
