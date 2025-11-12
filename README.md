@@ -58,14 +58,9 @@ This starts the React-based GUI where you can interactively configure and run PI
 
 ## Configuration
 
-The `pivtools-cli` application places `config.yaml` in the current working directory.
+Both `pivtools-cli` and `pivtools-gui` applications use `config.yaml` in the current working directory.
 
-The `pivtools-gui` application uses a different config location. Instead of placing `config.yaml` in the current working directory, the GUI stores it in the user's application data directory:
-
-- Windows: `%APPDATA%\pivtools\config.yaml` (typically `C:\Users\<username>\AppData\Roaming\pivtools\config.yaml`)
-- macOS/Linux: `~/.config/pivtools/config.yaml`
-
-When the GUI starts, if no config exists in this location, it automatically copies the default config from the package to this user config directory.
+When you run either `pivtools-cli init` or start `pivtools-gui` for the first time, if no `config.yaml` exists in the current directory, it automatically copies the default config from the package to `config.yaml` in your current working directory.
 
 For detailed configuration options, see [piv.tools/manual](https://piv.tools/manual).
 
