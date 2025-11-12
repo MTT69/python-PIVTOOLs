@@ -23,7 +23,7 @@ from pivtools_core.paths import get_data_paths
 from ..plot_maker import make_scalar_settings, plot_scalar_field
 from ...utils import camera_number
 
-vector_plot_bp = Blueprint("vector_plot", __name__, url_prefix="/plot")
+vector_plot_bp = Blueprint("vector_plot", __name__)
 
 # Global job tracking for transformation jobs
 transformation_jobs = {}
@@ -442,7 +442,7 @@ def plot_vector():
         return jsonify({"success": False, "error": str(e)}), 400
     except FileNotFoundError as e:
         logger.warning(f"plot_vector: file not found: {e}")
-        return jsonify({"success": False, "error": "File not found"}), 404
+        return jsonify({"success": False, "error": f"File not found: {data_path}"}), 404
     except Exception:
         logger.exception("plot_vector: unexpected error")
         return jsonify({"success": False, "error": "Internal server error"}), 500
