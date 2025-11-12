@@ -91,8 +91,9 @@ class PIVProcess:
 class PIVRunner:
     """Manages PIV subprocess execution and tracking."""
 
-    def __init__(self, project_root: Path):
+    def __init__(self, project_root: Path, config_dir: Optional[Path] = None):
         self.project_root = project_root
+        self.config_dir = config_dir or Path.cwd()  # Directory containing config.yaml
         self.log_dir = project_root / "logs" / "piv_runs"
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.active_jobs: dict[str, PIVProcess] = {}
@@ -180,7 +181,7 @@ class PIVRunner:
                 cmd,
                 stdout=log_handle,
                 stderr=subprocess.STDOUT,
-                cwd=str(self.project_root),
+                cwd=str(self.config_dir),  # Use the config directory
                 env=env,  # Use modified environment
             )
 
@@ -255,12 +256,14 @@ class PIVRunner:
 _runner: Optional[PIVRunner] = None
 
 
-def get_runner(project_root: Optional[Path] = None) -> PIVRunner:
+def get_runner(project_root: Optional[Path] = None, config_dir: Optional[Path] = None) -> PIVRunner:
     """Get or create the global PIV runner instance."""
     global _runner
     if _runner is None:
         if project_root is None:
             # Try to infer from current file location
             project_root = Path(__file__).parent.parent
-        _runner = PIVRunner(project_root)
+        if config_dir is None:
+            config_dir = Path.cwd()  # Capture the directory where the GUI is running
+        _runner = PIVRunner(project_root, config_dir)
     return _runner
