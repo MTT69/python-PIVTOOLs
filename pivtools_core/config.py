@@ -53,16 +53,17 @@ class Config:
                 default_config = """
 paths:
   base_paths:
-  - ./data
+  - ./copy_here
   source_paths:
-  - ./images
+  - ./copy_here
   camera_numbers:
   - 1
   camera_count: 1
 images:
   num_images: 100
   image_format: B%05d.tif
-  vector_format: '%05d.mat'
+  vector_format:
+  - B%05d.mat
   time_resolved: false
   dtype: float32
 batches:
