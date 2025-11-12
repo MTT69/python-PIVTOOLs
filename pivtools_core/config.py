@@ -274,16 +274,16 @@ masking:
         
         try:
             # Handle different image format cases
-            if '.set' in str(image_format):
+            if any('.set' in str(fmt) for fmt in (image_format if isinstance(image_format, (list, tuple)) else [image_format])):
                 # For .set files, they're in the source directory
-                if isinstance(image_format, tuple):
+                if isinstance(image_format, (list, tuple)):
                     file_path = source_path / image_format[0]
                 else:
                     file_path = source_path / image_format
                 img = read_image(str(file_path), camera_no=camera_num, im_no=1)
-            elif '.im7' in str(image_format):
+            elif any('.im7' in str(fmt) for fmt in (image_format if isinstance(image_format, (list, tuple)) else [image_format])):
                 # For .im7 files, they're in the source directory (all cameras in one file)
-                if isinstance(image_format, tuple):
+                if isinstance(image_format, (list, tuple)):
                     file_path = source_path / (image_format[0] % 1)
                 else:
                     file_path = source_path / (image_format % 1)
