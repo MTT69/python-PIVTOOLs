@@ -2,15 +2,14 @@ paths:
   base_paths:
   - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB
   source_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall
   camera_numbers:
   - 1
   camera_count: 1
 images:
   num_images: 100
   image_format:
-  - B%05d_A.tif
-  - B%05d_B.tif
+  - B%05d_A.set
   vector_format:
   - B%05d.mat
   time_resolved: false

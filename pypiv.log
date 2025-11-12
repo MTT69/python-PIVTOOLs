@@ -42437,3 +42437,89 @@ distributed.client.AllExit
 2025-11-12 11:56:23,100 [INFO] 127.0.0.1 - - [12/Nov/2025 11:56:23] "POST /backend/update_config HTTP/1.1" 200 -
 2025-11-12 11:56:23,738 [INFO] 127.0.0.1 - - [12/Nov/2025 11:56:23] "POST /backend/update_config HTTP/1.1" 200 -
 2025-11-12 14:25:42,009 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-12 17:31:41,753 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-12 17:31:41,755 [INFO] 127.0.0.1 - - [12/Nov/2025 17:31:41] "GET /backend/config HTTP/1.1" 200 -
+2025-11-12 17:31:41,764 [INFO] 127.0.0.1 - - [12/Nov/2025 17:31:41] "[36mGET /grid.svg HTTP/1.1[0m" 304 -
+2025-11-12 17:32:09,572 [INFO] 127.0.0.1 - - [12/Nov/2025 17:32:09] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 17:32:14,972 [INFO] 127.0.0.1 - - [12/Nov/2025 17:32:14] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 17:32:23,605 [INFO] 127.0.0.1 - - [12/Nov/2025 17:32:23] "[31m[1mPOST /backend/preload_images HTTP/1.1[0m" 405 -
+2025-11-12 17:32:23,920 [INFO] 127.0.0.1 - - [12/Nov/2025 17:32:23] "[33mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-12 17:32:23,923 [INFO] 127.0.0.1 - - [12/Nov/2025 17:32:23] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 17:32:23,944 [INFO] 127.0.0.1 - - [12/Nov/2025 17:32:23] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-12 17:32:23,949 [INFO] 127.0.0.1 - - [12/Nov/2025 17:32:23] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 17:35:15,205 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-12 17:35:15,206 [INFO] 127.0.0.1 - - [12/Nov/2025 17:35:15] "GET /backend/config HTTP/1.1" 200 -
+2025-11-12 17:35:15,228 [INFO] 127.0.0.1 - - [12/Nov/2025 17:35:15] "[36mGET /grid.svg HTTP/1.1[0m" 304 -
+2025-11-12 17:35:25,497 [INFO] 127.0.0.1 - - [12/Nov/2025 17:35:25] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 17:35:27,760 [INFO] 127.0.0.1 - - [12/Nov/2025 17:35:27] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 17:37:32,683 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-12 17:37:32,684 [INFO] 127.0.0.1 - - [12/Nov/2025 17:37:32] "GET /backend/config HTTP/1.1" 200 -
+2025-11-12 17:37:37,375 [INFO] 127.0.0.1 - - [12/Nov/2025 17:37:37] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 17:37:44,366 [INFO] 127.0.0.1 - - [12/Nov/2025 17:37:44] "[36mGET / HTTP/1.1[0m" 304 -
+2025-11-12 17:37:44,373 [INFO] 127.0.0.1 - - [12/Nov/2025 17:37:44] "[36mGET /_next/static/css/7d3f2337d7ea12a5.css HTTP/1.1[0m" 304 -
+2025-11-12 17:37:44,618 [INFO] 127.0.0.1 - - [12/Nov/2025 17:37:44] "[36mGET /_next/static/chunks/webpack-4a8ca7c99e9bb3d8.js HTTP/1.1[0m" 304 -
+2025-11-12 17:37:44,684 [INFO] 127.0.0.1 - - [12/Nov/2025 17:37:44] "[36mGET /_next/static/chunks/fd9d1056-ad15f396ddf9b7e5.js HTTP/1.1[0m" 304 -
+2025-11-12 17:37:44,684 [INFO] 127.0.0.1 - - [12/Nov/2025 17:37:44] "[36mGET /_next/static/chunks/117-d5793c8e79de5511.js HTTP/1.1[0m" 304 -
+2025-11-12 17:37:44,685 [INFO] 127.0.0.1 - - [12/Nov/2025 17:37:44] "[36mGET /_next/static/chunks/main-app-8a63c6f5e7baee11.js HTTP/1.1[0m" 304 -
+2025-11-12 17:37:44,686 [INFO] 127.0.0.1 - - [12/Nov/2025 17:37:44] "[36mGET /_next/static/chunks/869-320a6b9bdafbb6d3.js HTTP/1.1[0m" 304 -
+2025-11-12 17:37:44,687 [INFO] 127.0.0.1 - - [12/Nov/2025 17:37:44] "[36mGET /_next/static/chunks/484-cfa8b9348ce4f00e.js HTTP/1.1[0m" 304 -
+2025-11-12 17:37:44,932 [INFO] 127.0.0.1 - - [12/Nov/2025 17:37:44] "[36mGET /_next/static/chunks/app/page-2b9b54b041d381f8.js HTTP/1.1[0m" 304 -
+2025-11-12 17:37:44,998 [INFO] 127.0.0.1 - - [12/Nov/2025 17:37:44] "[36mGET /_next/static/chunks/app/layout-b907d5f31ac82e9d.js HTTP/1.1[0m" 304 -
+2025-11-12 17:37:45,318 [INFO] 127.0.0.1 - - [12/Nov/2025 17:37:45] "GET /backend/config HTTP/1.1" 200 -
+2025-11-12 17:37:45,319 [INFO] 127.0.0.1 - - [12/Nov/2025 17:37:45] "[36mGET /grid.svg HTTP/1.1[0m" 304 -
+2025-11-12 17:37:54,934 [INFO] 127.0.0.1 - - [12/Nov/2025 17:37:54] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 17:40:13,189 [INFO] 127.0.0.1 - - [12/Nov/2025 17:40:13] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 17:40:25,958 [INFO] 127.0.0.1 - - [12/Nov/2025 17:40:25] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 17:40:29,986 [INFO] 127.0.0.1 - - [12/Nov/2025 17:40:29] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 17:42:22,802 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-12 17:42:22,802 [INFO] 127.0.0.1 - - [12/Nov/2025 17:42:22] "[36mGET /grid.svg HTTP/1.1[0m" 304 -
+2025-11-12 17:42:22,803 [INFO] 127.0.0.1 - - [12/Nov/2025 17:42:22] "GET /backend/config HTTP/1.1" 200 -
+2025-11-12 17:42:30,696 [INFO] 127.0.0.1 - - [12/Nov/2025 17:42:30] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 17:42:32,839 [INFO] 127.0.0.1 - - [12/Nov/2025 17:42:32] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 17:42:33,414 [INFO] 127.0.0.1 - - [12/Nov/2025 17:42:33] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 17:42:39,297 [INFO] 127.0.0.1 - - [12/Nov/2025 17:42:39] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 17:42:41,566 [INFO] 127.0.0.1 - - [12/Nov/2025 17:42:41] "[31m[1mPOST /backend/preload_images HTTP/1.1[0m" 405 -
+2025-11-12 17:42:41,886 [INFO] 127.0.0.1 - - [12/Nov/2025 17:42:41] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-12 17:42:41,890 [INFO] 127.0.0.1 - - [12/Nov/2025 17:42:41] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 17:42:41,893 [INFO] 127.0.0.1 - - [12/Nov/2025 17:42:41] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 17:42:41,903 [INFO] 127.0.0.1 - - [12/Nov/2025 17:42:41] "[33mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-12 17:44:50,218 [INFO] 127.0.0.1 - - [12/Nov/2025 17:44:50] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 17:44:52,154 [INFO] 127.0.0.1 - - [12/Nov/2025 17:44:52] "[31m[1mPOST /backend/preload_images HTTP/1.1[0m" 405 -
+2025-11-12 17:44:52,465 [INFO] 127.0.0.1 - - [12/Nov/2025 17:44:52] "[33mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-12 17:44:52,472 [INFO] 127.0.0.1 - - [12/Nov/2025 17:44:52] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 17:44:52,473 [INFO] 127.0.0.1 - - [12/Nov/2025 17:44:52] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-12 17:44:52,476 [INFO] 127.0.0.1 - - [12/Nov/2025 17:44:52] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 17:48:12,391 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-12 17:48:20,283 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-12 17:48:23,080 [INFO] _detect_image_shape: image_format = ('B%05d.tif',), type = <class 'tuple'>
+2025-11-12 17:48:23,081 [INFO] Source path: C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB, Camera: 1
+2025-11-12 17:48:23,081 [INFO] Camera path: C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Cam1
+2025-11-12 17:48:23,081 [INFO] Trying to read regular file: C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Cam1\B00001.tif
+2025-11-12 17:50:57,475 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-12 17:50:58,191 [INFO] _detect_image_shape: image_format = ('B%05d.tif',), type = <class 'tuple'>
+2025-11-12 17:50:58,191 [INFO] Source path: C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall, Camera: 1
+2025-11-12 17:50:58,192 [INFO] Camera path: C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1
+2025-11-12 17:50:58,192 [INFO] Trying to read regular file: C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\Planar_Images_with_wall\Cam1\B00001.tif
+2025-11-12 17:50:58,200 [INFO] Detected image shape: (1152, 1024)
+2025-11-12 17:50:58,201 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-12 17:51:13,691 [INFO] 127.0.0.1 - - [12/Nov/2025 17:51:13] "[36mGET / HTTP/1.1[0m" 304 -
+2025-11-12 17:51:13,699 [INFO] 127.0.0.1 - - [12/Nov/2025 17:51:13] "[36mGET /_next/static/css/7d3f2337d7ea12a5.css HTTP/1.1[0m" 304 -
+2025-11-12 17:51:13,954 [INFO] 127.0.0.1 - - [12/Nov/2025 17:51:13] "[36mGET /_next/static/chunks/webpack-4a8ca7c99e9bb3d8.js HTTP/1.1[0m" 304 -
+2025-11-12 17:51:14,018 [INFO] 127.0.0.1 - - [12/Nov/2025 17:51:14] "[36mGET /_next/static/chunks/fd9d1056-ad15f396ddf9b7e5.js HTTP/1.1[0m" 304 -
+2025-11-12 17:51:14,018 [INFO] 127.0.0.1 - - [12/Nov/2025 17:51:14] "[36mGET /_next/static/chunks/117-d5793c8e79de5511.js HTTP/1.1[0m" 304 -
+2025-11-12 17:51:14,019 [INFO] 127.0.0.1 - - [12/Nov/2025 17:51:14] "[36mGET /_next/static/chunks/main-app-8a63c6f5e7baee11.js HTTP/1.1[0m" 304 -
+2025-11-12 17:51:14,019 [INFO] 127.0.0.1 - - [12/Nov/2025 17:51:14] "[36mGET /_next/static/chunks/869-320a6b9bdafbb6d3.js HTTP/1.1[0m" 304 -
+2025-11-12 17:51:14,020 [INFO] 127.0.0.1 - - [12/Nov/2025 17:51:14] "[36mGET /_next/static/chunks/484-cfa8b9348ce4f00e.js HTTP/1.1[0m" 304 -
+2025-11-12 17:51:14,305 [INFO] 127.0.0.1 - - [12/Nov/2025 17:51:14] "[36mGET /_next/static/chunks/app/page-b49f9dd48ae48830.js HTTP/1.1[0m" 304 -
+2025-11-12 17:51:14,326 [INFO] 127.0.0.1 - - [12/Nov/2025 17:51:14] "[36mGET /_next/static/chunks/app/layout-b907d5f31ac82e9d.js HTTP/1.1[0m" 304 -
+2025-11-12 17:51:14,641 [INFO] 127.0.0.1 - - [12/Nov/2025 17:51:14] "GET /backend/config HTTP/1.1" 200 -
+2025-11-12 17:51:14,644 [INFO] 127.0.0.1 - - [12/Nov/2025 17:51:14] "[36mGET /grid.svg HTTP/1.1[0m" 304 -
+2025-11-12 17:51:32,594 [INFO] 127.0.0.1 - - [12/Nov/2025 17:51:32] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 17:51:36,609 [INFO] 127.0.0.1 - - [12/Nov/2025 17:51:36] "[31m[1mPOST /backend/preload_images HTTP/1.1[0m" 405 -
+2025-11-12 17:51:36,621 [INFO] 127.0.0.1 - - [12/Nov/2025 17:51:36] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-12 17:51:36,622 [INFO] 127.0.0.1 - - [12/Nov/2025 17:51:36] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 17:51:36,626 [INFO] 127.0.0.1 - - [12/Nov/2025 17:51:36] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 17:51:36,692 [INFO] 127.0.0.1 - - [12/Nov/2025 17:51:36] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-12 17:51:53,508 [INFO] 127.0.0.1 - - [12/Nov/2025 17:51:53] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 17:51:59,434 [INFO] 127.0.0.1 - - [12/Nov/2025 17:51:59] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 17:52:00,003 [INFO] 127.0.0.1 - - [12/Nov/2025 17:52:00] "POST /backend/update_config HTTP/1.1" 200 -

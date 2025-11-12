@@ -62,16 +62,10 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
     Returns:
         np.ndarray: Stacked array of shape (2, H, W) containing frame A and B
     """
-    # Get image format - handle both time-resolved (single format) and non-time-resolved (A/B pair)
-    image_format = config.image_format
+    # Get image format - now always a tuple
+    format_str = config.image_format[0]
     
     # Special handling for .set and .im7 files (all cameras in one file per time instance)
-    # Check if image_format (string or tuple) contains '.set' or '.im7'
-    if isinstance(image_format, tuple):
-        format_str = image_format[0]  # Check first element for tuple
-    else:
-        format_str = image_format  # Single string for time-resolved
-    
     if '.set' in str(format_str):
         # For .set files, camera_path is the source directory
         set_file_path = camera_path / format_str
@@ -83,17 +77,19 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
         im7_file_path = camera_path / (format_str % idx)
         return read_image(str(im7_file_path), camera_no=camera)
     
-    if isinstance(image_format, tuple):
+    # Check if we have A/B pair (len > 1) or single format
+    if len(config.image_format) == 2:
         # Non-time-resolved: separate A and B formats
-        image_format_A, image_format_B = image_format
+        image_format_A, image_format_B = config.image_format
         file_paths = [
             camera_path / (image_format_A % idx),
             camera_path / (image_format_B % idx),
         ]
     else:
+        # Single format - assume time-resolved style
         file_paths = [
-            camera_path / (image_format % idx),
-            camera_path / (image_format % (idx + 1)),
+            camera_path / (format_str % idx),
+            camera_path / (format_str % (idx + 1)),
         ]
 
     # Check if it's a proprietary format that reads pairs natively
@@ -179,10 +175,11 @@ def load_images(camera: int, config: Config, source: Path = None) -> da.Array:
     # For .set and .im7 files, there are no camera subdirectories
     # All cameras are stored in a single file per time instance in the source directory
     # File format: source_directory/B00001.im7 (contains all cameras for time instance 1)
-    if '.set' in str(config.image_format):
+    format_str = config.image_format[0]
+    if '.set' in format_str:
         camera_path = source  # No camera subdirectory for set files
-    elif '.im7' in str(config.image_format):
-        camera_path = source  # No camera subdirectory for set files
+    elif '.im7' in format_str:
+        camera_path = source  # No camera subdirectory for im7 files
     else:
         camera_path = source / f"Cam{camera}"
     
