@@ -61,9 +61,11 @@ paths:
   camera_count: 1
 images:
   num_images: 100
-  image_format: B%05d.tif
+  image_format: 
+    - B%05d_A.tif
+    - B%05d_B.tif
   vector_format:
-  - B%05d.mat
+    - B%05d.mat
   time_resolved: false
   dtype: float32
 batches:
@@ -201,12 +203,25 @@ masking:
     @property
     def image_format(self):
         if self.time_resolved:
-            return self.data["images"].get("image_format", "B%05d.tiff")
+            fmt = self.data["images"].get("image_format", "B%05d.tiff")
+            logging.info(f"time_resolved image_format: {fmt}, type: {type(fmt)}")
+            return fmt
         else:
             # Expect a list of two formats in the config for A and B images
             fmts = self.data["images"].get(
                 "image_format", ["B%05d_A.tiff", "B%05d_B.tiff"]
             )
+            if isinstance(fmts, str):
+                raise ValueError(
+                    "image_format must be a list of two strings when time_resolved is false. "
+                    f"Got string: {fmts}"
+                )
+            if not isinstance(fmts, (list, tuple)) or len(fmts) != 2:
+                raise ValueError(
+                    "image_format must be a list or tuple of exactly two strings when time_resolved is false. "
+                    f"Got: {fmts}, type: {type(fmts)}"
+                )
+            logging.info(f"non-time_resolved fmts: {fmts}, type: {type(fmts)}")
             return tuple(fmts)
 
     @property
@@ -273,49 +288,53 @@ masking:
         camera_num = self.camera_numbers[0]
         image_format = self.image_format
         
-        try:
-            # Handle different image format cases
-            if any('.set' in str(fmt) for fmt in (image_format if isinstance(image_format, (list, tuple)) else [image_format])):
-                # For .set files, they're in the source directory
-                if isinstance(image_format, (list, tuple)):
-                    file_path = source_path / image_format[0]
-                else:
-                    file_path = source_path / image_format
-                img = read_image(str(file_path), camera_no=camera_num, im_no=1)
-            elif any('.im7' in str(fmt) for fmt in (image_format if isinstance(image_format, (list, tuple)) else [image_format])):
-                # For .im7 files, they're in the source directory (all cameras in one file)
-                if isinstance(image_format, (list, tuple)):
-                    file_path = source_path / (image_format[0] % 1)
-                else:
-                    file_path = source_path / (image_format % 1)
-                img = read_image(str(file_path), camera_no=camera_num)
+        logging.info(f"_detect_image_shape: image_format = {image_format}, type = {type(image_format)}")
+        logging.info(f"Source path: {source_path}, Camera: {camera_num}")
+        
+        # Use same logic as GUI for determining source path
+        if isinstance(image_format, tuple):
+            format_str = image_format[0]
+        else:
+            format_str = image_format
+        
+        if '.set' in str(format_str) or '.im7' in str(format_str):
+            # For .set/.im7 files: all cameras in source directory
+            if isinstance(image_format, tuple):
+                file_path = source_path / (image_format[0] % 1)
             else:
-                # Regular files in camera subdirectories
-                camera_path = source_path / f"Cam{camera_num}"
-                
-                if isinstance(image_format, tuple):
-                    # Non-time-resolved: use first format (A frame)
-                    file_path = camera_path / (image_format[0] % 1)
-                else:
-                    # Time-resolved: single format
-                    file_path = camera_path / (image_format % 1)
-                
-                img = read_image(str(file_path))
+                file_path = source_path / (image_format % 1)
+            logging.info(f"Trying to read .set/.im7 file: {file_path}")
+        else:
+            # For regular files: in camera subdirectories
+            camera_path = source_path / f"Cam{camera_num}"
+            if isinstance(image_format, tuple):
+                file_path = camera_path / (image_format[0] % 1)
+            else:
+                file_path = camera_path / (image_format % 1)
+            logging.info(f"Trying to read regular file: {file_path}")
+        
+        if not file_path.exists():
+            raise FileNotFoundError(f"Image file not found: {file_path}. Check your source_path and image_format in config.yaml")
+        
+        try:
+            img = read_image(str(file_path))
             
             # Handle both single images and image pairs
             if img.ndim == 3 and img.shape[0] == 2:
                 # Image pair returned (e.g., from .im7)
-                return tuple(img.shape[1:])
+                shape = tuple(img.shape[1:])
             else:
                 # Single image
-                return tuple(img.shape)
-                
+                shape = tuple(img.shape)
+            
+            logging.info(f"Detected image shape: {shape}")
+            return shape
+            
         except Exception as e:
-            logging.error("Failed to auto-detect image shape: %s", e)
-            logging.error("Please specify 'shape' in config.yaml under 'images' section")
+            logging.error("Failed to read image: %s", e)
             raise ValueError(
-                f"Could not auto-detect image shape. Please add 'shape: [H, W]' "
-                f"to the 'images' section of your config.yaml. Error: {e}"
+                f"Could not read image file {file_path}. Error: {e}. "
+                "Check that the file exists and is a valid image format."
             )
 
     @property

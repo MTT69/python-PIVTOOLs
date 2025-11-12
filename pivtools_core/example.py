@@ -5,6 +5,8 @@ import tracemalloc
 import time
 from pathlib import Path
 
+import yaml
+
 # Add src to path for unified imports
 from pivtools_core.config import Config
 from pivtools_core.image_handling.load_images import load_images, load_mask_for_camera
@@ -23,6 +25,7 @@ def main():
     start_time = time.time()  # Start timer
 
     config = Config()
+    logging.info("Config YAML:\n" + yaml.dump(config.data))
     os.environ["OMP_NUM_THREADS"] = config.omp_threads
     os.environ["MALLOC_TRIM_THRESHOLD_"] = "0"
     if config.debug:
