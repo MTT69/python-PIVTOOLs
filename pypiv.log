@@ -42402,3 +42402,36 @@ distributed.client.AllExit
 2025-11-12 10:40:57,739 [INFO] 127.0.0.1 - - [12/Nov/2025 10:40:57] "POST /backend/update_config HTTP/1.1" 200 -
 2025-11-12 10:42:02,509 [INFO] Logging initialized. Level: INFO, File: pypiv.log
 2025-11-12 10:42:02,509 [INFO] 127.0.0.1 - - [12/Nov/2025 10:42:02] "GET /backend/config HTTP/1.1" 200 -
+2025-11-12 11:04:40,508 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-12 11:07:19,467 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-12 11:47:24,249 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-12 11:47:24,250 [INFO] 127.0.0.1 - - [12/Nov/2025 11:47:24] "GET /backend/config HTTP/1.1" 200 -
+2025-11-12 11:47:24,255 [INFO] 127.0.0.1 - - [12/Nov/2025 11:47:24] "GET /grid.svg HTTP/1.1" 200 -
+2025-11-12 11:47:31,990 [INFO] 127.0.0.1 - - [12/Nov/2025 11:47:31] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 11:47:35,746 [INFO] 127.0.0.1 - - [12/Nov/2025 11:47:35] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 11:47:54,853 [INFO] 127.0.0.1 - - [12/Nov/2025 11:47:54] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 11:47:57,117 [INFO] 127.0.0.1 - - [12/Nov/2025 11:47:57] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 11:48:40,771 [INFO] 127.0.0.1 - - [12/Nov/2025 11:48:40] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 11:49:03,355 [INFO] 127.0.0.1 - - [12/Nov/2025 11:49:03] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 11:51:45,040 [INFO] 127.0.0.1 - - [12/Nov/2025 11:51:45] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 11:51:45,305 [INFO] 127.0.0.1 - - [12/Nov/2025 11:51:45] "[33mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-12 11:51:50,231 [INFO] 127.0.0.1 - - [12/Nov/2025 11:51:50] "[31m[1mPOST /backend/preload_images HTTP/1.1[0m" 405 -
+2025-11-12 11:51:50,533 [INFO] 127.0.0.1 - - [12/Nov/2025 11:51:50] "[33mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-12 11:51:50,552 [INFO] 127.0.0.1 - - [12/Nov/2025 11:51:50] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-12 11:51:50,555 [INFO] 127.0.0.1 - - [12/Nov/2025 11:51:50] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 11:51:50,562 [INFO] 127.0.0.1 - - [12/Nov/2025 11:51:50] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 11:54:16,887 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-12 11:54:16,888 [INFO] 127.0.0.1 - - [12/Nov/2025 11:54:16] "GET /backend/config HTTP/1.1" 200 -
+2025-11-12 11:54:16,890 [INFO] 127.0.0.1 - - [12/Nov/2025 11:54:16] "[36mGET /grid.svg HTTP/1.1[0m" 304 -
+2025-11-12 11:54:26,735 [INFO] 127.0.0.1 - - [12/Nov/2025 11:54:26] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 11:54:34,189 [INFO] 127.0.0.1 - - [12/Nov/2025 11:54:34] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 11:54:37,772 [INFO] 127.0.0.1 - - [12/Nov/2025 11:54:37] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 11:54:41,140 [INFO] 127.0.0.1 - - [12/Nov/2025 11:54:41] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 11:54:44,010 [INFO] 127.0.0.1 - - [12/Nov/2025 11:54:44] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 11:54:45,739 [INFO] 127.0.0.1 - - [12/Nov/2025 11:54:45] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 11:54:48,211 [INFO] 127.0.0.1 - - [12/Nov/2025 11:54:48] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 11:54:51,155 [INFO] 127.0.0.1 - - [12/Nov/2025 11:54:51] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 11:56:18,318 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-12 11:56:18,319 [INFO] 127.0.0.1 - - [12/Nov/2025 11:56:18] "GET /backend/config HTTP/1.1" 200 -
+2025-11-12 11:56:18,332 [INFO] 127.0.0.1 - - [12/Nov/2025 11:56:18] "[36mGET /grid.svg HTTP/1.1[0m" 304 -
+2025-11-12 11:56:23,100 [INFO] 127.0.0.1 - - [12/Nov/2025 11:56:23] "POST /backend/update_config HTTP/1.1" 200 -
