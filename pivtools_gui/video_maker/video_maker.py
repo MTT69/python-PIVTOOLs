@@ -18,7 +18,7 @@ from scipy.io import loadmat
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from ..vector_loading import read_mat_contents
+from pivtools_core.vector_loading import read_mat_contents
 
 # Constants for optimization
 DEFAULT_BATCH_SIZE = 10  # Files to preload for processing

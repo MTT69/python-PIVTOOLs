@@ -8,7 +8,7 @@ from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize, TwoSlopeNorm
 from matplotlib.ticker import FixedFormatter, FixedLocator
 
-from ..config import Config
+from pivtools_core.config import Config
 
 mpl.use("Agg")
 mpl.rcParams["xtick.direction"] = "in"

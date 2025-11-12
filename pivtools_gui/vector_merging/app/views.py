@@ -17,12 +17,11 @@ from flask import Blueprint, jsonify, request
 from loguru import logger
 from scipy.interpolate import interpn
 
-sys.path.append(str(Path(__file__).parent.parent.parent))
 
-from ...config import get_config
-from ...paths import get_data_paths
+from pivtools_core.config import get_config
+from pivtools_core.paths import get_data_paths
 from ...utils import camera_number
-from ...vector_loading import load_coords_from_directory, load_vectors_from_directory
+from pivtools_core.vector_loading import load_coords_from_directory, load_vectors_from_directory
 
 merging_bp = Blueprint("merging", __name__)
 

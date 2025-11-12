@@ -11,18 +11,18 @@ from flask_cors import CORS
 from loguru import logger
 import os
 from .calibration.app.views import calibration_bp
-from .config import get_config, reload_config
-from .image_handling.load_images import read_pair
+from pivtools_core.config import get_config, reload_config
+from pivtools_core.image_handling.load_images import read_pair
 from .masking.app.views import masking_bp
-from .paths import get_data_paths
+from pivtools_core.paths import get_data_paths
 from .piv_runner import get_runner
 from .plotting.app.views import vector_plot_bp
 from .post_processing.POD.app.views import POD_bp
 from pivtools_cli.preprocessing.preprocess import preprocess_images
 from .stereo_reconstruction.app.views import stereo_bp
 from .utils import camera_folder, camera_number, numpy_to_png_base64
-from .vector_statistics.app.views import statistics_bp
-from .vector_merging.app.views import merging_bp
+from pivtools_gui.vector_statistics.app.views import statistics_bp
+from pivtools_gui.vector_merging.app.views import merging_bp
 from .video_maker.app.views import video_maker_bp
 
 app = Flask(__name__, static_folder='static', static_url_path='')
@@ -678,9 +678,24 @@ def serve_react_app(path):
 
 def main():
     """Run the PIVTOOLs GUI"""
+    # Suppress Flask development server warning by setting production environment
+    import os
+    os.environ['FLASK_ENV'] = 'production'
+    
     print("Starting PIVTOOLs GUI...")
     print("Open your browser to http://localhost:5000")
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    
+    # Automatically open browser after a short delay
+    def open_browser():
+        import time
+        import webbrowser
+        time.sleep(2)  # Wait for server to start
+        webbrowser.open('http://localhost:5000')
+    
+    import threading
+    threading.Thread(target=open_browser, daemon=True).start()
+    
+    app.run(host='0.0.0', port=5000, debug=False)
 
 
 if __name__ == "__main__":

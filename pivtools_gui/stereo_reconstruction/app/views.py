@@ -29,7 +29,7 @@ from flask import Blueprint, jsonify, request
 from loguru import logger
 from scipy.io.matlab.mio5_params import mat_struct
 
-from ...config import get_config
+from pivtools_core.config import get_config
 
 # Import production calibration and reconstruction classes
 from ..stereo_calibration_production import StereoCalibrator

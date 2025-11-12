@@ -2,6 +2,19 @@
 
 Particle Image Velocimetry Tools - A comprehensive toolkit for PIV analysis with both command-line and GUI interfaces.
 
+We present **PIVTOOLS**, an open-source Python framework built for community expansion with a React-based GUI, which integrates planar, stereoscopic, and ensemble PIV pipelines into a single end-to-end environment. Computationally intensive routines are implemented in optimised C and parallelised with Dask, enabling datasets of terabyte scale to be processed efficiently on both workstations and distributed HPC clusters.
+
+The framework provides a complete pipeline from raw image import to image preprocessing, parallel vector computation, calibration, and interactive visualisation. Ensemble extensions allow direct estimation of Reynolds stresses from correlation maps, offering statistical fidelity beyond what is achievable with instantaneous methods. Validation against synthetic channel flow demonstrates mean velocity profiles accurate to within 1% of DNS reference down to \( y^+ \approx 40-50 \) with instantaneous PIV, and to \( y^+ \approx 15 \) with ensemble methods. Instantaneous Reynolds stresses agree with windowed DNS data, while ensemble processing recovers a higher fraction of turbulent energy due to reduced windowing effects.
+
+## Features
+
+- Planar, stereoscopic, and ensemble PIV pipelines
+- React-based GUI for interactive analysis
+- Optimized C extensions for performance
+- Parallel processing with Dask
+- Support for terabyte-scale datasets
+- Complete pipeline from image import to visualization
+
 ## Installation
 
 Install PIVTOOLs with a single command:
@@ -13,7 +26,7 @@ pip install pivtools
 This installs the complete toolkit including:
 - **Core utilities** for image handling and vector processing
 - **Command-line interface** (`pivtools-cli`) for automated workflows
-- **Web-based GUI** (`pivtools-gui`) for interactive analysis
+- **React-based GUI** (`pivtools-gui`) for interactive analysis
 
 The package includes pre-compiled C extensions for optimal performance on Windows, macOS, and Linux.
 
@@ -41,134 +54,24 @@ This runs the PIV analysis using the `config.yaml` in your current directory.
 pivtools-gui
 ```
 
-This starts the web-based GUI at http://localhost:5000 where you can interactively configure and run PIV analysis.
+This starts the React-based GUI where you can interactively configure and run PIV analysis.
 
 ## Configuration
 
-Edit the `config.yaml` file to configure:
+The `pivtools-cli` application places `config.yaml` in the current working directory.
 
-- Input/output paths
-- Image formats and processing parameters
-- PIV algorithm settings
-- Filtering and post-processing options
-- Calibration parameters
+The `pivtools-gui` application uses a different config location. Instead of placing `config.yaml` in the current working directory, the GUI stores it in the user's application data directory:
 
-See the example `config.yaml` for all available options.
+- Windows: `%APPDATA%\pivtools\config.yaml` (typically `C:\Users\<username>\AppData\Roaming\pivtools\config.yaml`)
+- macOS/Linux: `~/.config/pivtools/config.yaml`
 
-## Requirements
+When the GUI starts, if no config exists in this location, it automatically copies the default config from the package to this user config directory.
 
-- Python 3.8+
-- FFTW library (automatically handled during installation)
-- Camera calibration images (for accurate scaling)
-
-## Development
-
-For development installation with local C compilation:
-
-```bash
-# Install FFTW first (platform-specific)
-# Windows: vcpkg install fftw3[threads]:x64-windows-static
-# macOS: brew install fftw gcc
-# Linux: apt-get install libfftw3-dev
-
-# Set environment variables
-export FFTW_INC_PATH=/path/to/fftw/include
-export FFTW_LIB_PATH=/path/to/fftw/lib
-
-# Install in development mode
-pip install -e .
-```
-
-## License
-
-MIT License
-
-Particle Image Velocimetry Tools - A comprehensive toolkit for PIV analysis with both command-line and GUI interfaces.
-
-## Installation
-
-Install PIVTOOLs from PyPI:
-
-```bash
-pip install PIVTOOLs
-```
-
-This will install the package with pre-compiled C extensions for your platform.
-
-## Quick Start
-
-### Initialize a new PIV workspace
-
-```bash
-pivtools-cli init
-```
-
-This creates a `config.yaml` file in your current directory with default settings.
-
-### Run PIV analysis (command line)
-
-```bash
-pivtools-cli run
-```
-
-### Launch the GUI
-
-```bash
-pivtools-gui
-```
-
-Then open http://localhost:5000 in your browser.
-
-## Configuration
-
-Edit the `config.yaml` file to configure:
-
-- Input/output paths
-- Image formats and processing parameters
-- PIV algorithm settings
-- Filtering and post-processing options
+For detailed configuration options, see [piv.tools/manual](https://piv.tools/manual).
 
 ## Requirements
 
-- Python 3.8+
-- FFTW library (automatically handled during installation)
-- See `requirements.txt` for full dependencies
-
-## Development
-
-For development installation:
-
-```bash
-git clone https://github.com/MTT69/python-PIVTOOLs.git
-cd python-PIVTOOLs
-pip install -e .
-```
-
-## Building from Source
-
-If building from source, ensure FFTW is installed:
-
-### Linux (Ubuntu/Debian)
-```bash
-sudo apt-get install libfftw3-dev
-```
-
-### macOS
-```bash
-brew install fftw
-```
-
-### Windows
-Install FFTW via vcpkg:
-```bash
-vcpkg install fftw3[threads]:x64-windows-static
-```
-
-Set environment variables:
-```bash
-set FFTW_INC_PATH=C:\path\to\fftw\include
-set FFTW_LIB_PATH=C:\path\to\fftw\lib
-```
+- Python 3.10+
 
 ## License
 

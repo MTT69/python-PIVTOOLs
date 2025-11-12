@@ -20,11 +20,11 @@ from scipy.io import savemat
 
 matplotlib.use("Agg")
 
-from ...config import get_config
-from ...paths import get_data_paths
+from pivtools_core.config import get_config
+from pivtools_core.paths import get_data_paths
 from ...plotting.plot_maker import make_scalar_settings, plot_scalar_field
 from ...utils import camera_number
-from ...vector_loading import load_coords_from_directory, load_vectors_from_directory
+from pivtools_core.vector_loading import load_coords_from_directory, load_vectors_from_directory
 
 statistics_bp = Blueprint("statistics", __name__)
 

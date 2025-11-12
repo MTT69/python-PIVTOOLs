@@ -7,7 +7,7 @@ import dask.array as da
 import numpy as np
 import scipy.io
 
-from .config import Config
+from pivtools_core.config import Config
 
 
 def read_mat_contents(

@@ -25,7 +25,8 @@ def init_command(args):
 
     # Get the default config from package
     try:
-        default_config =  "config.yaml"
+        import pivtools_core
+        default_config = Path(pivtools_core.__file__).parent / "config.yaml"
 
         if not default_config.exists():
             # Fallback: create a basic config

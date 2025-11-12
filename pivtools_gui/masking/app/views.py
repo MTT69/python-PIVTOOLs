@@ -3,9 +3,9 @@ from pathlib import Path
 import numpy as np
 from flask import Blueprint, jsonify, request
 
-from ...config import get_config
+from pivtools_core.config import get_config
 from ...utils import camera_folder, camera_number
-from ...vector_loading import read_mask_from_mat, save_mask_to_mat
+from pivtools_core.vector_loading import read_mask_from_mat, save_mask_to_mat
 
 masking_bp = Blueprint("masking", __name__)
 

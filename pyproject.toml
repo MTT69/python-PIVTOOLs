@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pivtools"
-version = "0.1.5"
+version = "0.1.6"
 description = "PIVTOOLs - Particle Image Velocimetry Tools with CLI and GUI"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.11"
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "Morgan Taylor", email = "m.t.taylor@soton.ac.uk"}
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -20,6 +20,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Image Processing",
     "Framework :: Flask",
 ]

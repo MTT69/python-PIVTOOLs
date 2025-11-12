@@ -15,8 +15,8 @@ import numpy as np
 from scipy.io import loadmat, savemat
 
 sys.path.append(str(Path(__file__).parent.parent))
-from ..paths import get_data_paths
-from ..vector_loading import load_coords_from_directory, read_mat_contents
+from pivtools_core.paths import get_data_paths
+from pivtools_core.vector_loading import load_coords_from_directory, read_mat_contents
 
 # ===================== CONFIGURATION VARIABLES =====================
 # Set these variables for your calibration setup

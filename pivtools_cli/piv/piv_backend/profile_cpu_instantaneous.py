@@ -9,10 +9,10 @@ import numpy as np
 # Add src to path for unified imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))
 
-from config import Config
-from image_handling.load_images import load_images, load_mask_for_camera
+from pivtools_core.config import Config
+from pivtools_core.image_handling.load_images import load_images, load_mask_for_camera
 from pivtools_cli.piv.piv_backend.cpu_instantaneous import InstantaneousCorrelatorCPU
-
+from pivtools_core.image_handling.load_images import compute_vector_mask
 
 def profile_cpu_instantaneous():
     """
@@ -68,7 +68,6 @@ def profile_cpu_instantaneous():
     if config.masking_enabled:
         mask = load_mask_for_camera(camera_num, config, source_path_idx=0)
         if mask is not None:
-            from image_handling.load_images import compute_vector_mask
             vector_masks = compute_vector_mask(mask, config)
             print("Loaded mask and computed vector masks")
         else:

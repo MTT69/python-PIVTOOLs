@@ -1,8 +1,8 @@
 import numpy as np
 
-from ..config import Config
-from ..paths import get_data_paths
-from ..vector_loading import load_vectors_from_directory
+from pivtools_core.config import Config
+from pivtools_core.paths import get_data_paths
+from pivtools_core.vector_loading import load_vectors_from_directory
 
 
 def ensemble_statistics(cam_num: int, config: Config, base):

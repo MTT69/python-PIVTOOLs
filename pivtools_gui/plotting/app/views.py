@@ -18,8 +18,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from flask import Blueprint, jsonify, request
 
-from ...config import get_config
-from ...paths import get_data_paths
+from pivtools_core.config import get_config
+from pivtools_core.paths import get_data_paths
 from ..plot_maker import make_scalar_settings, plot_scalar_field
 from ...utils import camera_number
 

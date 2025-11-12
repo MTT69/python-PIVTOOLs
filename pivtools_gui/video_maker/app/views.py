@@ -7,8 +7,8 @@ from typing import Any, Dict, List, Optional
 from flask import Blueprint, jsonify, request, send_file
 from loguru import logger
 
-from ...config import get_config
-from ...paths import get_data_paths
+from pivtools_core.config import get_config
+from pivtools_core.paths import get_data_paths
 from ..video_maker import PlotSettings, make_video_from_scalar
 
 video_maker_bp = Blueprint("video_maker", __name__, url_prefix="/video")

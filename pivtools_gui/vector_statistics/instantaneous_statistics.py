@@ -3,10 +3,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.io import savemat
 
-from ..config import Config
-from ..paths import get_data_paths
+from pivtools_core.config import Config
+from pivtools_core.paths import get_data_paths
 from ..plotting.plot_maker import make_scalar_settings, plot_scalar_field
-from ..vector_loading import (
+from pivtools_core.vector_loading import (
     load_coords_from_directory,
     load_vectors_from_directory,
 )

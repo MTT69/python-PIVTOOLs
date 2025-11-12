@@ -13,8 +13,8 @@ from loguru import logger
 from matplotlib.colors import Normalize
 from scipy.io import loadmat
 
-from ...config import get_config
-from ...paths import get_data_paths
+from pivtools_core.config import get_config
+from pivtools_core.paths import get_data_paths
 from .pod_decompose import pod_decompose
 
 POD_bp = Blueprint("POD", __name__)

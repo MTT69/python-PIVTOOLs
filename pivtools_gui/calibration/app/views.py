@@ -16,8 +16,8 @@ from ..calibration_planar.planar_calibration_production import (
     PlanarCalibrator,
 )
 from ..vector_calibration_production import VectorCalibrator
-from ...config import get_config
-from ...paths import get_data_paths
+from pivtools_core.config import get_config
+from pivtools_core.paths import get_data_paths
 from ...plotting.app.views import extract_coordinates
 from ...utils import camera_number, numpy_to_png_base64
 
