@@ -39,7 +39,7 @@ dask_config.set(scheduler="threads")
 api_bp = Blueprint('api', __name__, url_prefix='/backend')
 
 # Register existing blueprints with /backend prefix
-app.register_blueprint(vector_plot_bp, url_prefix='/backend')
+app.register_blueprint(vector_plot_bp, url_prefix='/backend/plot')
 app.register_blueprint(masking_bp, url_prefix='/backend')
 app.register_blueprint(POD_bp, url_prefix='/backend')
 app.register_blueprint(calibration_bp, url_prefix='/backend')
