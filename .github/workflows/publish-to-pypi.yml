@@ -1,4 +1,7 @@
-# This workflow builds and publishes the unified PIVTOOLs package to PyPI.
+- name: Install dependencies
+        run: python -m pip install --upgrade pip cibuildwheel
+
+      - name: Build wheels# This workflow builds and publishes the unified PIVTOOLs package to PyPI.
 # It builds wheels for multiple platforms and uploads to PyPI on release.
 
 name: Build and Publish to PyPI
@@ -127,6 +130,9 @@ jobs:
             FFTW_LIB_PATH=C:\\fftw
             CC=cl
             CXX=cl
+          
+          # Install delvewheel before repairing Windows wheels
+          CIBW_BEFORE_REPAIR_WINDOWS: "pip install delvewheel"
           
           # Repair wheels to bundle dependencies (important for shared libraries)
           CIBW_REPAIR_WHEEL_COMMAND_LINUX: "auditwheel repair -w {dest_dir} {wheel}"
