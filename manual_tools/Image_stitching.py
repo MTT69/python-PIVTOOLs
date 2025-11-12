@@ -7,7 +7,9 @@ import numpy as np
 from scipy.interpolate import interpn
 
 # Add src to path to import modules
-sys.path.append(str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "pivtools_gui"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "pivtools_core"))
 
 from paths import get_data_paths
 from vector_loading import (
@@ -85,18 +87,36 @@ def plot_scalar_field(ax, field, x, y, title):
     plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
 
 
-def create_distance_weights(x, y, x_bounds, y_bounds):
+def create_distance_weights(x, y, x_bounds, y_bounds, blend_width_fraction=0.2):
     """
-    Create distance-based weights for blending.
-    Higher weights near center, lower weights near edges.
+    Create distance-based weights for blending with smooth falloff.
+    Uses cosine taper for smoother transitions to avoid grid artifacts.
+    
+    Args:
+        blend_width_fraction: Fraction of domain to use for blending (0.2 = 20% on each edge)
     """
     x_norm = (x - x_bounds[0]) / (x_bounds[1] - x_bounds[0])
     y_norm = (y - y_bounds[0]) / (y_bounds[1] - y_bounds[0])
     
-    x_dist = np.minimum(x_norm, 1 - x_norm)
-    y_dist = np.minimum(y_norm, 1 - y_norm)
+    # Use cosine taper instead of sine for smoother falloff
+    # This reduces artifacts at blend boundaries
+    def smooth_taper(dist_norm, width):
+        """Smooth cosine taper from 1 (center) to 0 (edge)"""
+        taper = np.ones_like(dist_norm)
+        # Left/bottom edge
+        mask_low = dist_norm < width
+        taper[mask_low] = 0.5 * (1 + np.cos(np.pi * (width - dist_norm[mask_low]) / width))
+        # Right/top edge
+        mask_high = dist_norm > (1 - width)
+        taper[mask_high] = 0.5 * (1 + np.cos(np.pi * (dist_norm[mask_high] - (1 - width)) / width))
+        return taper
     
-    weights = np.sin(np.pi * x_dist) * np.sin(np.pi * y_dist)
+    x_weight = smooth_taper(x_norm, blend_width_fraction)
+    y_weight = smooth_taper(y_norm, blend_width_fraction)
+    
+    # Combine x and y weights
+    weights = x_weight * y_weight
+    
     return weights
 
 
@@ -105,10 +125,8 @@ def merge_vector_fields(
 ):
     """
     Merge two vector fields with smart overlap handling.
-    OPTIMIZED VERSION: Build interpolators once, reuse for both components.
-    Uses data from whichever camera is available, with weighted blending in overlap regions.
-    Respects original masks to prevent interpolation into masked regions.
-    Fills unknown regions with NaN (keeps full extent from both cameras).
+    ARTIFACT-FREE VERSION: Uses cubic interpolation and improved weighting
+    to eliminate grid patterns in RMS calculations.
     
     Args:
         x1, y1, ux1, uy1, mask1: Camera 1 coordinates, vectors, and mask (True = masked/invalid)
@@ -118,7 +136,7 @@ def merge_vector_fields(
     Returns:
         x_merged, y_merged, ux_merged, uy_merged: Merged field
     """
-    print("[DEBUG] Starting optimized vector field merging...")
+    print("[DEBUG] Starting artifact-free vector field merging...")
     
     # Get full extent of both cameras (no cropping)
     y1_min, y1_max = np.nanmin(y1), np.nanmax(y1)
@@ -148,6 +166,7 @@ def merge_vector_fields(
         dy1 = np.median(np.diff(np.unique(y1)))
         dx2 = np.median(np.diff(np.unique(x2)))
         dy2 = np.median(np.diff(np.unique(y2)))
+        # Use the finer grid spacing to preserve detail
         grid_spacing = min(dx1, dy1, dx2, dy2)
         print(f"[DEBUG] Auto grid spacing: {grid_spacing:.3f}")
     
@@ -161,9 +180,9 @@ def merge_vector_fields(
     # Flatten query points once for all interpolations
     query_points = np.column_stack([X_merged.ravel(), Y_merged.ravel()])
     
-    # Initialize merged arrays
-    ux_merged = np.zeros(X_merged.size)
-    uy_merged = np.zeros(X_merged.size)
+    # Initialize merged arrays with NaN (not zeros!)
+    ux_merged = np.full(X_merged.size, np.nan)
+    uy_merged = np.full(X_merged.size, np.nan)
     weight_sum = np.zeros(X_merged.size)
     
     # Process each camera
@@ -172,7 +191,7 @@ def merge_vector_fields(
     ):
         print(f"[DEBUG] Processing camera {cam_idx + 1}...")
         
-        # Apply mask: set masked values to NaN (will propagate through interpn)
+        # Apply mask: set masked values to NaN
         ux_cam_masked = np.where(mask_cam, np.nan, ux_cam)
         uy_cam_masked = np.where(mask_cam, np.nan, uy_cam)
         
@@ -181,17 +200,34 @@ def merge_vector_fields(
             print(f"[DEBUG] No valid data for camera {cam_idx + 1}")
             continue
 
-        # Extract unique x and y coordinates (assumes structured grid)
-        # For structured grids from meshgrid: rows have constant y, columns have constant x
-        x_coords_1d = x_cam[0, :]  # First row (all x values)
-        y_coords_1d = y_cam[:, 0]  # First column (all y values)
+        # Extract unique x and y coordinates
+        x_coords_1d = x_cam[0, :]
+        y_coords_1d = y_cam[:, 0]
         
         print(f"[DEBUG] Camera {cam_idx + 1}: grid shape {x_cam.shape}, x range [{x_coords_1d[0]:.2f}, {x_coords_1d[-1]:.2f}], y range [{y_coords_1d[0]:.2f}, {y_coords_1d[-1]:.2f}]")
 
-        # Use interpn for FAST structured grid interpolation
-        # interpn expects points as (y, x) for 2D arrays
-        # bounds_error=False allows extrapolation, fill_value=np.nan for out-of-bounds
+        # Use cubic interpolation for smoother results (reduces grid artifacts)
         try:
+            ux_interp = interpn(
+                (y_coords_1d, x_coords_1d),
+                ux_cam_masked,
+                (Y_merged, X_merged),
+                method='cubic',  # Changed from 'linear' to 'cubic'
+                bounds_error=False,
+                fill_value=np.nan
+            )
+            
+            uy_interp = interpn(
+                (y_coords_1d, x_coords_1d),
+                uy_cam_masked,
+                (Y_merged, X_merged),
+                method='cubic',  # Changed from 'linear' to 'cubic'
+                bounds_error=False,
+                fill_value=np.nan
+            )
+        except Exception as e:
+            print(f"[DEBUG] Cubic interpolation failed for camera {cam_idx + 1}, falling back to linear: {e}")
+            # Fallback to linear if cubic fails
             ux_interp = interpn(
                 (y_coords_1d, x_coords_1d),
                 ux_cam_masked,
@@ -209,37 +245,40 @@ def merge_vector_fields(
                 bounds_error=False,
                 fill_value=np.nan
             )
-        except Exception as e:
-            print(f"[DEBUG] Interpolation failed for camera {cam_idx + 1}: {e}")
-            continue
         
-        # interpn automatically propagates NaN from masked regions
         ux_interp_flat = ux_interp.ravel()
         uy_interp_flat = uy_interp.ravel()
         
-        # Create weights based on distance from edges
+        # Create weights based on distance from edges (with improved taper)
         x_bounds = [np.nanmin(x_cam), np.nanmax(x_cam)]
         y_bounds = [np.nanmin(y_cam), np.nanmax(y_cam)]
         weights = create_distance_weights(X_merged, Y_merged, x_bounds, y_bounds)
         
-        # Flatten weights and filter by valid data (interpn already handled masking via NaN)
+        # Flatten weights and identify valid interpolated data
         weights_flat = weights.ravel()
         valid_interp = ~(np.isnan(ux_interp_flat) | np.isnan(uy_interp_flat))
+        
+        # Apply weights only where we have valid data
         weights_flat = np.where(valid_interp, weights_flat, 0)
         
-        # Accumulate weighted values (vectorized)
-        ux_interp_flat = np.where(np.isnan(ux_interp_flat), 0, ux_interp_flat)
-        uy_interp_flat = np.where(np.isnan(uy_interp_flat), 0, uy_interp_flat)
+        # Accumulate weighted values (proper NaN handling)
+        # Use np.nansum behavior: only accumulate valid values
+        ux_contribution = np.where(valid_interp, ux_interp_flat * weights_flat, 0)
+        uy_contribution = np.where(valid_interp, uy_interp_flat * weights_flat, 0)
         
-        ux_merged += ux_interp_flat * weights_flat
-        uy_merged += uy_interp_flat * weights_flat
+        # Track first contribution to initialize output arrays
+        first_contribution = np.isnan(ux_merged) & valid_interp
+        ux_merged = np.where(first_contribution, 0, ux_merged)
+        uy_merged = np.where(first_contribution, 0, uy_merged)
+        
+        ux_merged = np.where(valid_interp, ux_merged + ux_contribution, ux_merged)
+        uy_merged = np.where(valid_interp, uy_merged + uy_contribution, uy_merged)
         weight_sum += weights_flat
     
-    # Normalize by total weights (safe division)
-    # Set unknown regions (no data from either camera) to NaN
-    valid_weights = weight_sum > 0
-    ux_merged = np.where(valid_weights, ux_merged / np.maximum(weight_sum, 1e-10), np.nan)
-    uy_merged = np.where(valid_weights, uy_merged / np.maximum(weight_sum, 1e-10), np.nan)
+    # Normalize by total weights (avoid division by zero)
+    valid_weights = weight_sum > 1e-10
+    ux_merged = np.where(valid_weights, ux_merged / weight_sum, np.nan)
+    uy_merged = np.where(valid_weights, uy_merged / weight_sum, np.nan)
     
     # Reshape back to 2D
     ux_merged = ux_merged.reshape(X_merged.shape)
@@ -502,7 +541,7 @@ def main():
     print("This script loads and displays vector fields from both cameras side by side.\n")
     
     # --- Paste your values below ---
-    base_path = r"C:\Users\mtt1e23\Downloads\calibrated_piv_morgan"
+    base_path = r"D://Processed_Wake_PIV//Grid_Case_A_Run_2//"
     type_name = "instantaneous"
     endpoint = ""
     num_images = 30

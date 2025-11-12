@@ -1,3 +1,9 @@
+import sys
+from pathlib import Path
+
+# Add parent directory to path so pivtools_gui can be imported
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import threading
 from pathlib import Path
 
@@ -10,20 +16,20 @@ from flask import Blueprint, Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from loguru import logger
 import os
-from .calibration.app.views import calibration_bp
+from pivtools_gui.calibration.app.views import calibration_bp
 from pivtools_core.config import get_config, reload_config
 from pivtools_core.image_handling.load_images import read_pair
-from .masking.app.views import masking_bp
+from pivtools_gui.masking.app.views import masking_bp
 from pivtools_core.paths import get_data_paths
-from .piv_runner import get_runner
-from .plotting.app.views import vector_plot_bp
-from .post_processing.POD.app.views import POD_bp
+from pivtools_gui.piv_runner import get_runner
+from pivtools_gui.plotting.app.views import vector_plot_bp
+from pivtools_gui.post_processing.POD.app.views import POD_bp
 from pivtools_cli.preprocessing.preprocess import preprocess_images
-from .stereo_reconstruction.app.views import stereo_bp
-from .utils import camera_folder, camera_number, numpy_to_png_base64
+from pivtools_gui.stereo_reconstruction.app.views import stereo_bp
+from pivtools_gui.utils import camera_folder, camera_number, numpy_to_png_base64
 from pivtools_gui.vector_statistics.app.views import statistics_bp
 from pivtools_gui.vector_merging.app.views import merging_bp
-from .video_maker.app.views import video_maker_bp
+from pivtools_gui.video_maker.app.views import video_maker_bp
 
 app = Flask(__name__, static_folder='static', static_url_path='')
 CORS(app)
@@ -695,7 +701,7 @@ def main():
     import threading
     threading.Thread(target=open_browser, daemon=True).start()
     
-    app.run(host='0.0.0', port=5000, debug=False)
+    app.run(host='0.0.0.0', port=5000, debug=False)
 
 
 if __name__ == "__main__":

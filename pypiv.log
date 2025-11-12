@@ -42395,3 +42395,10 @@ distributed.client.AllExit
 2025-11-10 15:09:04,433 [INFO] 127.0.0.1 - - [10/Nov/2025 15:09:04] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
 2025-11-11 14:19:16,020 [INFO] Logging initialized. Level: INFO, File: pypiv.log
 2025-11-11 14:20:13,181 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-12 10:40:02,015 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-12 10:40:02,015 [INFO] 127.0.0.1 - - [12/Nov/2025 10:40:02] "GET /backend/config HTTP/1.1" 200 -
+2025-11-12 10:40:02,258 [INFO] 127.0.0.1 - - [12/Nov/2025 10:40:02] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2025-11-12 10:40:11,472 [INFO] 127.0.0.1 - - [12/Nov/2025 10:40:11] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 10:40:57,739 [INFO] 127.0.0.1 - - [12/Nov/2025 10:40:57] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-12 10:42:02,509 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-12 10:42:02,509 [INFO] 127.0.0.1 - - [12/Nov/2025 10:42:02] "GET /backend/config HTTP/1.1" 200 -
