@@ -1,0 +1,12 @@
+2025-11-15 18:43:00,841 - __main__ - INFO - Merging 2 cameras: [1, 2] for 30 images
+2025-11-15 18:43:00,841 - __main__ - INFO - Output path: /Users/morgan/Downloads/merged/30/Cam1/instantaneous
+2025-11-15 18:43:00,841 - __main__ - INFO - Using 8 worker threads
+2025-11-15 18:43:00,841 - __main__ - INFO - Processing frame 1 to generate coordinates...
+2025-11-15 18:43:00,847 - __main__ - INFO - Found 1 valid runs in /Users/morgan/Downloads/calibrated_piv/30/Cam1/instantaneous
+2025-11-15 18:43:00,847 - __main__ - INFO - Using run 4 for coordinate generation
+2025-11-15 18:43:00,973 - __main__ - INFO - Successfully loaded Camera 1 data with shape (574, 663)
+2025-11-15 18:43:00,990 - __main__ - INFO - Successfully loaded Camera 2 data with shape (574, 663)
+2025-11-15 18:43:00,990 - __main__ - INFO - Merging 2 cameras
+2025-11-15 18:43:00,990 - __main__ - WARNING - Adjusted coordinates to be strictly ascending
+2025-11-15 18:43:00,990 - __main__ - INFO - Using reference spacing from camera 0: dx=0.5625, dy=0.0000
+2025-11-15 18:43:00,991 - __main__ - INFO - Combined domain: x=[0.61, 758.22], y=[-89.34, 330.50]

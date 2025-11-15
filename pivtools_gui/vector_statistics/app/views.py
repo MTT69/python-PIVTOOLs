@@ -32,6 +32,174 @@ statistics_bp = Blueprint("statistics", __name__)
 statistics_jobs = {}
 
 
+def create_disk_structuring_element(radius: int):
+    """
+    Create a disk structuring element and return neighbor offsets.
+    Returns I, J offset arrays similar to MATLAB's strel('disk', radius).
+    """
+    y, x = np.ogrid[-radius:radius+1, -radius:radius+1]
+    mask = x**2 + y**2 <= radius**2
+    I, J = np.where(mask)
+    I = I - radius
+    J = J - radius
+    return I, J
+
+
+def nansurround(arr, d):
+    """Pad array with NaN values of width d on all sides."""
+    if arr.ndim == 2:
+        padded = np.pad(arr, d, mode='constant', constant_values=np.nan)
+    else:
+        # For 3D arrays, pad only first two dimensions
+        pad_width = [(d, d), (d, d)] + [(0, 0)] * (arr.ndim - 2)
+        padded = np.pad(arr, pad_width, mode='constant', constant_values=np.nan)
+    return padded
+
+
+def unsurround(arr, d):
+    """Remove padding of width d from all sides."""
+    if arr.ndim == 2:
+        return arr[d:-d, d:-d]
+    else:
+        return arr[d:-d, d:-d, ...]
+
+
+def localvel(u, v, d):
+    """
+    Compute local mean velocity within disk of radius d.
+    Returns Vp with shape (H, W, 2) where last dimension is [u_local, v_local].
+    """
+    s = u.shape
+    I, J = create_disk_structuring_element(d)
+
+    local_u = []
+    local_v = []
+    for i_offset, j_offset in zip(I, J):
+        local_u.append(np.roll(u, (i_offset, j_offset), axis=(0, 1)))
+        local_v.append(np.roll(v, (i_offset, j_offset), axis=(0, 1)))
+
+    local_u = np.stack(local_u, axis=-1)
+    local_v = np.stack(local_v, axis=-1)
+
+    u_mean = np.nanmean(local_u, axis=-1)
+    v_mean = np.nanmean(local_v, axis=-1)
+
+    # Create ROI mask
+    roi = np.ones(s)
+    ind = np.isnan(u) & np.isnan(v)
+    roi[ind] = np.nan
+    roi[:d, :] = np.nan
+    roi[-d:, :] = np.nan
+    roi[:, :d] = np.nan
+    roi[:, -d:] = np.nan
+
+    u_mean = u_mean * roi
+    v_mean = v_mean * roi
+
+    return np.stack([u_mean, v_mean], axis=-1)
+
+
+def gamma1(x, y, u, v, d=10):
+    """
+    Compute gamma1 vortex detection criterion.
+    Based on Graftieaux et al. (2001).
+
+    Parameters:
+    - x, y: coordinate grids (H, W)
+    - u, v: velocity components (H, W)
+    - d: disk radius in grid points
+
+    Returns:
+    - G1: gamma1 field (H, W)
+    """
+    s = u.shape
+    I, J = create_disk_structuring_element(d)
+
+    # Get center point
+    i0, j0 = s[0] // 2, s[1] // 2
+    ind0 = np.ravel_multi_index((i0, j0), s)
+
+    # Get neighbor indices
+    IN = np.ravel_multi_index((I + i0, J + j0), s)
+
+    # Compute angles from center to neighbors
+    x_flat = x.ravel()
+    y_flat = y.ravel()
+    A = np.arctan2(y_flat[IN] - y_flat[ind0], x_flat[IN] - x_flat[ind0])
+
+    # Pad arrays
+    U = nansurround(u, d)
+    V = nansurround(v, d)
+    S = U.shape
+
+    local_s = []
+    for k, (i_offset, j_offset) in enumerate(zip(I, J)):
+        angle_grid = np.ones(S) * A[k]
+        u_shifted = np.roll(U, (i_offset, j_offset), axis=(0, 1))
+        v_shifted = np.roll(V, (i_offset, j_offset), axis=(0, 1))
+        T = np.arctan2(v_shifted, u_shifted)
+        local_s.append(np.sin(angle_grid - T))
+
+    local_s = np.stack(local_s, axis=-1)
+    G1 = -np.nansum(local_s, axis=-1) / len(I)
+    G1 = unsurround(G1, d)
+
+    return G1
+
+
+def gamma2(x, y, u, v, d=10):
+    """
+    Compute gamma2 vortex detection criterion.
+    Based on Graftieaux et al. (2001).
+
+    Parameters:
+    - x, y: coordinate grids (H, W)
+    - u, v: velocity components (H, W)
+    - d: disk radius in grid points
+
+    Returns:
+    - G2: gamma2 field (H, W)
+    """
+    s = u.shape
+    I, J = create_disk_structuring_element(d)
+
+    # Get center point
+    i0, j0 = s[0] // 2, s[1] // 2
+    ind0 = np.ravel_multi_index((i0, j0), s)
+
+    # Get neighbor indices
+    IN = np.ravel_multi_index((I + i0, J + j0), s)
+
+    # Compute angles from center to neighbors
+    x_flat = x.ravel()
+    y_flat = y.ravel()
+    A = np.arctan2(y_flat[IN] - y_flat[ind0], x_flat[IN] - x_flat[ind0])
+
+    # Pad arrays
+    U = nansurround(u, d)
+    V = nansurround(v, d)
+    S = U.shape
+
+    # Compute local velocity
+    Vp = localvel(U, V, d)
+
+    local_s = []
+    for k, (i_offset, j_offset) in enumerate(zip(I, J)):
+        angle_grid = np.ones(S) * A[k]
+        u_shifted = np.roll(U, (i_offset, j_offset), axis=(0, 1))
+        v_shifted = np.roll(V, (i_offset, j_offset), axis=(0, 1))
+        u_rel = u_shifted - Vp[..., 0]
+        v_rel = v_shifted - Vp[..., 1]
+        T = np.arctan2(v_rel, u_rel)
+        local_s.append(np.sin(angle_grid - T))
+
+    local_s = np.stack(local_s, axis=-1)
+    G2 = -np.nansum(local_s, axis=-1) / len(I)
+    G2 = unsurround(G2, d)
+
+    return G2
+
+
 def find_non_empty_runs_in_file(data_dir: Path, vector_format: str) -> list:
     """
     Find which runs have non-empty vector data by checking the first vector file.
@@ -155,7 +323,20 @@ def compute_statistics_for_camera(
         uw_all = [] if False else None
         vw_all = [] if False else None
         ww_all = [] if False else None
-        
+
+        # Additional statistics
+        urms_all = []
+        vrms_all = []
+        wrms_all = [] if False else None
+        tke_all = []
+        Iu_all = []
+        Iv_all = []
+        Iw_all = [] if False else None
+        divergence_all = []
+        vorticity_all = []
+        gamma1_all = []
+        gamma2_all = []
+
         stereo = None  # Will be determined from first run
         
         for run_idx, run_num in enumerate(valid_runs):
@@ -175,6 +356,8 @@ def compute_statistics_for_camera(
                     uw_all = []
                     vw_all = []
                     ww_all = []
+                    wrms_all = []
+                    Iw_all = []
             
             # Extract components
             ux = arr_run[:, 0, :, :]  # (N, H, W)
@@ -211,22 +394,152 @@ def compute_statistics_for_camera(
                 uw = E_uxuz_c - (mean_ux_c * mean_uz_c)
                 vw = E_uyuz_c - (mean_uy_c * mean_uz_c)
                 ww = E_uz2_c - mean_uz_c**2
-                
+
+                # Compute RMS velocities
+                urms = np.sqrt(np.abs(uu))
+                vrms = np.sqrt(np.abs(vv))
+                wrms = np.sqrt(np.abs(ww))
+
+                # Compute TKE (turbulent kinetic energy)
+                tke = 0.5 * (uu + vv + ww)
+
+                # Compute turbulent intensities (normalized by mean velocity)
+                # Avoid division by zero
+                mean_vel_mag = np.sqrt(mean_ux_c**2 + mean_uy_c**2 + mean_uz_c**2)
+                mean_vel_mag = np.where(np.abs(mean_vel_mag) < 1e-10, np.nan, mean_vel_mag)
+                Iu = urms / mean_vel_mag
+                Iv = vrms / mean_vel_mag
+                Iw = wrms / mean_vel_mag
+
+                # Get coordinates for this run
+                cx = coords_x_list[run_idx] if run_idx < len(coords_x_list) else None
+                cy = coords_y_list[run_idx] if run_idx < len(coords_y_list) else None
+
+                # Compute divergence: ∂u/∂x + ∂v/∂y + ∂w/∂z
+                # For 2D measurements, we assume ∂w/∂z ≈ 0
+                if cx is not None and cy is not None:
+                    dx = np.gradient(cx, axis=1)
+                    dy = np.gradient(cy, axis=0)
+                    dudx = np.gradient(mean_ux_c, axis=1) / dx
+                    dvdy = np.gradient(mean_uy_c, axis=0) / dy
+                    divergence = dudx + dvdy
+                else:
+                    # Assume uniform grid spacing = 1
+                    dudx = np.gradient(mean_ux_c, axis=1)
+                    dvdy = np.gradient(mean_uy_c, axis=0)
+                    divergence = dudx + dvdy
+
+                # Compute vorticity (z-component): ∂v/∂x - ∂u/∂y
+                if cx is not None and cy is not None:
+                    dx_vort = np.gradient(cx, axis=1)
+                    dy_vort = np.gradient(cy, axis=0)
+                    dvdx = np.gradient(mean_uy_c, axis=1) / dx_vort
+                    dudy = np.gradient(mean_ux_c, axis=0) / dy_vort
+                    vorticity = dvdx - dudy
+                else:
+                    dvdx = np.gradient(mean_uy_c, axis=1)
+                    dudy = np.gradient(mean_ux_c, axis=0)
+                    vorticity = dvdx - dudy
+
+                # Compute gamma1 and gamma2
+                if cx is not None and cy is not None:
+                    g1 = gamma1(cx, cy, mean_ux_c, mean_uy_c, d=10)
+                    g2 = gamma2(cx, cy, mean_ux_c, mean_uy_c, d=10)
+                else:
+                    # Create simple meshgrid if coordinates not available
+                    y_grid, x_grid = np.meshgrid(np.arange(mean_ux_c.shape[1]), np.arange(mean_ux_c.shape[0]))
+                    g1 = gamma1(x_grid, y_grid, mean_ux_c, mean_uy_c, d=10)
+                    g2 = gamma2(x_grid, y_grid, mean_ux_c, mean_uy_c, d=10)
+
                 mean_uz_all.append(mean_uz_c)
                 uw_all.append(uw)
                 vw_all.append(vw)
                 ww_all.append(ww)
+                urms_all.append(urms)
+                vrms_all.append(vrms)
+                wrms_all.append(wrms)
+                tke_all.append(tke)
+                Iu_all.append(Iu)
+                Iv_all.append(Iv)
+                Iw_all.append(Iw)
+                divergence_all.append(divergence)
+                vorticity_all.append(vorticity)
+                gamma1_all.append(g1)
+                gamma2_all.append(g2)
             else:
                 # Compute all at once
                 mean_ux_c, mean_uy_c, b_mask_c, E_ux2_c, E_uy2_c, E_uxuy_c = dask.compute(
                     mean_ux, mean_uy, b_mask, E_ux2, E_uy2, E_uxuy
                 )
-                
+
                 # Compute Reynolds stresses
                 uu = E_ux2_c - mean_ux_c**2
                 uv = E_uxuy_c - (mean_ux_c * mean_uy_c)
                 vv = E_uy2_c - mean_uy_c**2
-            
+
+                # Compute RMS velocities
+                urms = np.sqrt(np.abs(uu))
+                vrms = np.sqrt(np.abs(vv))
+
+                # Compute TKE (turbulent kinetic energy) - 2D case
+                tke = 0.5 * (uu + vv)
+
+                # Compute turbulent intensities (normalized by mean velocity)
+                # Avoid division by zero
+                mean_vel_mag = np.sqrt(mean_ux_c**2 + mean_uy_c**2)
+                mean_vel_mag = np.where(np.abs(mean_vel_mag) < 1e-10, np.nan, mean_vel_mag)
+                Iu = urms / mean_vel_mag
+                Iv = vrms / mean_vel_mag
+
+                # Get coordinates for this run
+                cx = coords_x_list[run_idx] if run_idx < len(coords_x_list) else None
+                cy = coords_y_list[run_idx] if run_idx < len(coords_y_list) else None
+
+                # Compute divergence: ∂u/∂x + ∂v/∂y
+                if cx is not None and cy is not None:
+                    dx = np.gradient(cx, axis=1)
+                    dy = np.gradient(cy, axis=0)
+                    dudx = np.gradient(mean_ux_c, axis=1) / dx
+                    dvdy = np.gradient(mean_uy_c, axis=0) / dy
+                    divergence = dudx + dvdy
+                else:
+                    # Assume uniform grid spacing = 1
+                    dudx = np.gradient(mean_ux_c, axis=1)
+                    dvdy = np.gradient(mean_uy_c, axis=0)
+                    divergence = dudx + dvdy
+
+                # Compute vorticity (z-component): ∂v/∂x - ∂u/∂y
+                if cx is not None and cy is not None:
+                    dx_vort = np.gradient(cx, axis=1)
+                    dy_vort = np.gradient(cy, axis=0)
+                    dvdx = np.gradient(mean_uy_c, axis=1) / dx_vort
+                    dudy = np.gradient(mean_ux_c, axis=0) / dy_vort
+                    vorticity = dvdx - dudy
+                else:
+                    dvdx = np.gradient(mean_uy_c, axis=1)
+                    dudy = np.gradient(mean_ux_c, axis=0)
+                    vorticity = dvdx - dudy
+
+                # Compute gamma1 and gamma2
+                if cx is not None and cy is not None:
+                    g1 = gamma1(cx, cy, mean_ux_c, mean_uy_c, d=10)
+                    g2 = gamma2(cx, cy, mean_ux_c, mean_uy_c, d=10)
+                else:
+                    # Create simple meshgrid if coordinates not available
+                    y_grid, x_grid = np.meshgrid(np.arange(mean_ux_c.shape[1]), np.arange(mean_ux_c.shape[0]))
+                    g1 = gamma1(x_grid, y_grid, mean_ux_c, mean_uy_c, d=10)
+                    g2 = gamma2(x_grid, y_grid, mean_ux_c, mean_uy_c, d=10)
+
+                urms_all.append(urms)
+                vrms_all.append(vrms)
+                tke_all.append(tke)
+                Iu_all.append(Iu)
+                Iv_all.append(Iv)
+                divergence_all.append(divergence)
+                vorticity_all.append(vorticity)
+                gamma1_all.append(g1)
+                gamma2_all.append(g2)
+
             # Store results
             mean_ux_all.append(mean_ux_c)
             mean_uy_all.append(mean_uy_c)
@@ -440,6 +753,15 @@ def compute_statistics_for_camera(
             ("uu", object),
             ("uv", object),
             ("vv", object),
+            ("urms", object),
+            ("vrms", object),
+            ("tke", object),
+            ("Iu", object),
+            ("Iv", object),
+            ("divergence", object),
+            ("vorticity", object),
+            ("gamma1", object),
+            ("gamma2", object),
         ]
         if stereo:
             dt_fields.extend([
@@ -447,6 +769,8 @@ def compute_statistics_for_camera(
                 ("uw", object),
                 ("vw", object),
                 ("ww", object),
+                ("wrms", object),
+                ("Iw", object),
             ])
 
         dt = np.dtype(dt_fields)
@@ -462,11 +786,22 @@ def compute_statistics_for_camera(
             piv_result["uu"][i] = np.array([])
             piv_result["uv"][i] = np.array([])
             piv_result["vv"][i] = np.array([])
+            piv_result["urms"][i] = np.array([])
+            piv_result["vrms"][i] = np.array([])
+            piv_result["tke"][i] = np.array([])
+            piv_result["Iu"][i] = np.array([])
+            piv_result["Iv"][i] = np.array([])
+            piv_result["divergence"][i] = np.array([])
+            piv_result["vorticity"][i] = np.array([])
+            piv_result["gamma1"][i] = np.array([])
+            piv_result["gamma2"][i] = np.array([])
             if stereo:
                 piv_result["uz"][i] = np.array([])
                 piv_result["uw"][i] = np.array([])
                 piv_result["vw"][i] = np.array([])
                 piv_result["ww"][i] = np.array([])
+                piv_result["wrms"][i] = np.array([])
+                piv_result["Iw"][i] = np.array([])
 
         # Fill piv_result only at positions corresponding to valid runs
         # This preserves run positions (e.g., if valid_runs=[3,4], indices 0,1 stay empty, 2,3 get data)
@@ -478,11 +813,22 @@ def compute_statistics_for_camera(
             piv_result["uu"][piv_idx] = uu_all[list_idx]
             piv_result["uv"][piv_idx] = uv_all[list_idx]
             piv_result["vv"][piv_idx] = vv_all[list_idx]
+            piv_result["urms"][piv_idx] = urms_all[list_idx]
+            piv_result["vrms"][piv_idx] = vrms_all[list_idx]
+            piv_result["tke"][piv_idx] = tke_all[list_idx]
+            piv_result["Iu"][piv_idx] = Iu_all[list_idx]
+            piv_result["Iv"][piv_idx] = Iv_all[list_idx]
+            piv_result["divergence"][piv_idx] = divergence_all[list_idx]
+            piv_result["vorticity"][piv_idx] = vorticity_all[list_idx]
+            piv_result["gamma1"][piv_idx] = gamma1_all[list_idx]
+            piv_result["gamma2"][piv_idx] = gamma2_all[list_idx]
             if stereo:
                 piv_result["uz"][piv_idx] = mean_uz_all[list_idx]
                 piv_result["uw"][piv_idx] = uw_all[list_idx]
                 piv_result["vw"][piv_idx] = vw_all[list_idx]
                 piv_result["ww"][piv_idx] = ww_all[list_idx]
+                piv_result["wrms"][piv_idx] = wrms_all[list_idx]
+                piv_result["Iw"][piv_idx] = Iw_all[list_idx]
 
         # Build coordinates structure (also preserving run positions)
         dt_coords = np.dtype([("x", object), ("y", object)])
@@ -512,8 +858,17 @@ def compute_statistics_for_camera(
             "selected_passes": valid_runs,
             "n_passes": int(n_passes),
             "stereo": stereo,
-            "definitions": "ux=<u>, uy=<v>, uu=<u'^2>, uv=<u'v'>, vv=<v'^2>"
-            + (", uz=<w>, uw=<u'w'>, vw=<v'w'>, ww=<w'^2>" if stereo else ""),
+            "definitions": (
+                "ux=<u>, uy=<v>, uu=<u'^2>, uv=<u'v'>, vv=<v'^2>, "
+                "urms=sqrt(<u'^2>), vrms=sqrt(<v'^2>), "
+                "tke=0.5*(uu+vv+ww), "
+                "Iu=urms/|U|, Iv=vrms/|U|, "
+                "divergence=du/dx+dv/dy, "
+                "vorticity=dv/dx-du/dy, "
+                "gamma1=vortex criterion (Graftieaux), "
+                "gamma2=vortex criterion with local velocity"
+                + (", uz=<w>, uw=<u'w'>, vw=<v'w'>, ww=<w'^2>, wrms=sqrt(<w'^2>), Iw=wrms/|U|" if stereo else "")
+            ),
         }
 
         # Save in the same file with both piv_result, coordinates, and meta

@@ -42523,3 +42523,839 @@ distributed.client.AllExit
 2025-11-12 17:51:53,508 [INFO] 127.0.0.1 - - [12/Nov/2025 17:51:53] "POST /backend/update_config HTTP/1.1" 200 -
 2025-11-12 17:51:59,434 [INFO] 127.0.0.1 - - [12/Nov/2025 17:51:59] "POST /backend/update_config HTTP/1.1" 200 -
 2025-11-12 17:52:00,003 [INFO] 127.0.0.1 - - [12/Nov/2025 17:52:00] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-15 19:07:38,973 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-15 19:07:38,973 [INFO] Output path: /Users/morgan/Downloads/merged/30/Cam1/instantaneous
+2025-11-15 19:07:38,973 [INFO] Using 8 worker threads
+2025-11-15 19:07:38,978 [INFO] Found 1 valid runs in /Users/morgan/Downloads/calibrated_piv/30/Cam1/instantaneous
+2025-11-15 19:07:38,978 [INFO] Using run 4 for coordinate generation
+2025-11-15 19:07:39,070 [INFO] Successfully loaded Camera 1 data with shape (574, 663)
+2025-11-15 19:07:39,086 [INFO] Successfully loaded Camera 2 data with shape (574, 663)
+2025-11-15 19:07:39,086 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,086 [INFO] Using reference spacing from camera 0: dx=0.5625, dy=0.5625
+2025-11-15 19:07:39,087 [INFO] Combined domain: x=[0.61, 758.22], y=[-89.34, 330.50]
+2025-11-15 19:07:39,087 [INFO] Created grid: 1348 x 747 points
+2025-11-15 19:07:39,088 [INFO] Interpolating camera 0
+2025-11-15 19:07:39,174 [INFO] Interpolating camera 1
+2025-11-15 19:07:39,260 [INFO] Camera 0: 323905 exclusive points
+2025-11-15 19:07:39,261 [INFO] Camera 1: 263445 exclusive points
+2025-11-15 19:07:39,262 [INFO] Processing 520 overlapping points
+2025-11-15 19:07:39,267 [INFO] Merging complete
+2025-11-15 19:07:39,319 [INFO] Saved merged coordinates to /Users/morgan/Downloads/merged/30/Cam1/instantaneous/coordinates.mat
+2025-11-15 19:07:39,319 [INFO] Saved coordinates to /Users/morgan/Downloads/merged/30/Cam1/instantaneous/coordinates.mat
+2025-11-15 19:07:39,320 [INFO] Using reference spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,326 [INFO] Frame 4: Found 4 runs from coordinates
+2025-11-15 19:07:39,327 [INFO] Frame 4: Merging run 1
+2025-11-15 19:07:39,327 [INFO] Frame 1: Found 4 runs from coordinates
+2025-11-15 19:07:39,327 [INFO] Frame 1: Merging run 1
+2025-11-15 19:07:39,327 [INFO] Frame 6: Found 4 runs from coordinates
+2025-11-15 19:07:39,327 [INFO] Frame 6: Merging run 1
+2025-11-15 19:07:39,328 [INFO] Frame 7: Found 4 runs from coordinates
+2025-11-15 19:07:39,328 [INFO] Frame 7: Merging run 1
+2025-11-15 19:07:39,328 [INFO] Frame 8: Found 4 runs from coordinates
+2025-11-15 19:07:39,328 [INFO] Frame 8: Merging run 1
+2025-11-15 19:07:39,331 [INFO] Frame 5: Found 4 runs from coordinates
+2025-11-15 19:07:39,331 [INFO] Frame 5: Merging run 1
+2025-11-15 19:07:39,332 [INFO] Frame 3: Found 4 runs from coordinates
+2025-11-15 19:07:39,332 [INFO] Frame 3: Merging run 1
+2025-11-15 19:07:39,332 [INFO] Frame 2: Found 4 runs from coordinates
+2025-11-15 19:07:39,333 [INFO] Frame 2: Merging run 1
+2025-11-15 19:07:39,427 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,428 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,428 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,428 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,428 [ERROR] Frame 1: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,429 [ERROR] Frame 4: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,429 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,430 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,430 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,430 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,431 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,432 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,432 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,432 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,433 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,433 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,433 [ERROR] Frame 6: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,433 [ERROR] Frame 8: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,433 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,434 [ERROR] Frame 3: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,434 [ERROR] Frame 5: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,434 [ERROR] Frame 7: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,435 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,436 [ERROR] Frame 2: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,441 [INFO] Frame 10: Found 4 runs from coordinates
+2025-11-15 19:07:39,441 [INFO] Frame 10: Merging run 1
+2025-11-15 19:07:39,442 [INFO] Frame 9: Found 4 runs from coordinates
+2025-11-15 19:07:39,443 [INFO] Frame 9: Merging run 1
+2025-11-15 19:07:39,444 [INFO] Frame 16: Found 4 runs from coordinates
+2025-11-15 19:07:39,444 [INFO] Frame 16: Merging run 1
+2025-11-15 19:07:39,444 [INFO] Frame 12: Found 4 runs from coordinates
+2025-11-15 19:07:39,445 [INFO] Frame 12: Merging run 1
+2025-11-15 19:07:39,445 [INFO] Frame 14: Found 4 runs from coordinates
+2025-11-15 19:07:39,445 [INFO] Frame 14: Merging run 1
+2025-11-15 19:07:39,445 [INFO] Frame 13: Found 4 runs from coordinates
+2025-11-15 19:07:39,445 [INFO] Frame 11: Found 4 runs from coordinates
+2025-11-15 19:07:39,445 [INFO] Frame 13: Merging run 1
+2025-11-15 19:07:39,445 [INFO] Frame 11: Merging run 1
+2025-11-15 19:07:39,450 [INFO] Frame 15: Found 4 runs from coordinates
+2025-11-15 19:07:39,450 [INFO] Frame 15: Merging run 1
+2025-11-15 19:07:39,535 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,535 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,535 [ERROR] Frame 10: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,537 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,537 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,537 [ERROR] Frame 9: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,538 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,538 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,538 [ERROR] Frame 13: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,539 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,540 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,540 [ERROR] Frame 11: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,541 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,541 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,541 [ERROR] Frame 14: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,543 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,543 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,543 [ERROR] Frame 16: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,545 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,545 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,545 [ERROR] Frame 15: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,546 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,546 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,546 [ERROR] Frame 12: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,548 [INFO] Frame 18: Found 4 runs from coordinates
+2025-11-15 19:07:39,548 [INFO] Frame 18: Merging run 1
+2025-11-15 19:07:39,550 [INFO] Frame 17: Found 4 runs from coordinates
+2025-11-15 19:07:39,550 [INFO] Frame 17: Merging run 1
+2025-11-15 19:07:39,551 [INFO] Frame 20: Found 4 runs from coordinates
+2025-11-15 19:07:39,551 [INFO] Frame 20: Merging run 1
+2025-11-15 19:07:39,552 [INFO] Frame 19: Found 4 runs from coordinates
+2025-11-15 19:07:39,552 [INFO] Frame 19: Merging run 1
+2025-11-15 19:07:39,554 [INFO] Frame 21: Found 4 runs from coordinates
+2025-11-15 19:07:39,554 [INFO] Frame 21: Merging run 1
+2025-11-15 19:07:39,556 [INFO] Frame 22: Found 4 runs from coordinates
+2025-11-15 19:07:39,556 [INFO] Frame 24: Found 4 runs from coordinates
+2025-11-15 19:07:39,556 [INFO] Frame 22: Merging run 1
+2025-11-15 19:07:39,556 [INFO] Frame 24: Merging run 1
+2025-11-15 19:07:39,557 [INFO] Frame 23: Found 4 runs from coordinates
+2025-11-15 19:07:39,558 [INFO] Frame 23: Merging run 1
+2025-11-15 19:07:39,638 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,638 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,638 [ERROR] Frame 18: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,640 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,641 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,641 [ERROR] Frame 17: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,642 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,642 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,642 [ERROR] Frame 19: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,644 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,644 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,644 [ERROR] Frame 20: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,646 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,646 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,646 [ERROR] Frame 21: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,647 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,647 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,647 [ERROR] Frame 22: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,650 [INFO] Frame 25: Found 4 runs from coordinates
+2025-11-15 19:07:39,650 [INFO] Frame 25: Merging run 1
+2025-11-15 19:07:39,651 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,652 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,652 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,652 [ERROR] Frame 23: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,652 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,653 [ERROR] Frame 24: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,654 [INFO] Frame 26: Found 4 runs from coordinates
+2025-11-15 19:07:39,654 [INFO] Frame 26: Merging run 1
+2025-11-15 19:07:39,654 [INFO] Frame 27: Found 4 runs from coordinates
+2025-11-15 19:07:39,654 [INFO] Frame 27: Merging run 1
+2025-11-15 19:07:39,656 [INFO] Frame 29: Found 4 runs from coordinates
+2025-11-15 19:07:39,656 [INFO] Frame 29: Merging run 1
+2025-11-15 19:07:39,657 [INFO] Frame 28: Found 4 runs from coordinates
+2025-11-15 19:07:39,657 [INFO] Frame 28: Merging run 1
+2025-11-15 19:07:39,658 [INFO] Frame 30: Found 4 runs from coordinates
+2025-11-15 19:07:39,658 [INFO] Frame 30: Merging run 1
+2025-11-15 19:07:39,723 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,723 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,723 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,724 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,724 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,724 [ERROR] Frame 27: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,724 [ERROR] Frame 25: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,725 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,725 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,725 [ERROR] Frame 26: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,726 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,726 [ERROR] Frame 29: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,727 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,727 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,727 [ERROR] Frame 28: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,727 [INFO] Merging 2 cameras
+2025-11-15 19:07:39,727 [INFO] Using provided spacing: dx=0.5624, dy=0.5628
+2025-11-15 19:07:39,727 [ERROR] Frame 30: Error processing: zero-size array to reduction operation minimum which has no identity
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 889, in process_single_frame
+    merged_data = merge_multiple_cameras(camera_data_list, reference_spacing)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/manual_tools/merging.py", line 425, in merge_multiple_cameras
+    x_mins.append(x_arr.min())
+                  ~~~~~~~~~^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+2025-11-15 19:07:39,728 [INFO] Completed: 0 successful, 30 failed
+2025-11-15 20:00:37,486 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-15 20:00:37,488 [INFO] 127.0.0.1 - - [15/Nov/2025 20:00:37] "GET /backend/config HTTP/1.1" 200 -
+2025-11-15 20:00:37,554 [INFO] 127.0.0.1 - - [15/Nov/2025 20:00:37] "[33mGET /apple-touch-icon.png HTTP/1.1[0m" 404 -
+2025-11-15 20:00:45,105 [INFO] 127.0.0.1 - - [15/Nov/2025 20:00:45] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-15 20:01:08,508 [INFO] 127.0.0.1 - - [15/Nov/2025 20:01:08] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-15 20:01:11,478 [INFO] 127.0.0.1 - - [15/Nov/2025 20:01:11] "GET /backend/config HTTP/1.1" 200 -
+2025-11-15 20:01:11,479 [INFO] 127.0.0.1 - - [15/Nov/2025 20:01:11] "[33mGET /backend/plot/check_runs?base_path=/Users/morgan/Downloads&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-15 20:01:20,109 [INFO] 127.0.0.1 - - [15/Nov/2025 20:01:20] "[33mGET /backend/plot/check_vars?base_path=/Users/morgan/Downloads&frame=1&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-15 20:01:20,111 [INFO] 127.0.0.1 - - [15/Nov/2025 20:01:20] "[33mGET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=1&var=ux&cmap=default&run=1&camera=1&merged=0&x_offset=0&y_offset=0 HTTP/1.1[0m" 404 -
+2025-11-15 20:01:20,115 [INFO] 127.0.0.1 - - [15/Nov/2025 20:01:20] "[33mGET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=1&var=ux&cmap=default&run=1&camera=1&merged=0&x_offset=0&y_offset=0 HTTP/1.1[0m" 404 -
+2025-11-15 20:31:53,416 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-15 20:31:53,417 [INFO] 127.0.0.1 - - [15/Nov/2025 20:31:53] "GET /backend/config HTTP/1.1" 200 -
+2025-11-15 20:31:53,430 [INFO] 127.0.0.1 - - [15/Nov/2025 20:31:53] "[36mGET /grid.svg HTTP/1.1[0m" 304 -
+2025-11-15 20:32:18,343 [INFO] 127.0.0.1 - - [15/Nov/2025 20:32:18] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-15 20:32:20,304 [INFO] 127.0.0.1 - - [15/Nov/2025 20:32:20] "GET /backend/config HTTP/1.1" 200 -
+2025-11-15 20:32:20,331 [INFO] 127.0.0.1 - - [15/Nov/2025 20:32:20] "GET /backend/plot/check_runs?base_path=/Users/morgan/Downloads&camera=1&merged=0 HTTP/1.1" 200 -
+2025-11-15 20:32:20,871 [INFO] 127.0.0.1 - - [15/Nov/2025 20:32:20] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=1&var=ux&cmap=default&run=4&camera=1&merged=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 20:32:24,169 [INFO] 127.0.0.1 - - [15/Nov/2025 20:32:24] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=0&x_percent=0.6644213312891045&y_percent=0.6208842746613051 HTTP/1.1" 200 -
+2025-11-15 20:32:33,412 [INFO] 127.0.0.1 - - [15/Nov/2025 20:32:33] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-15 20:32:34,960 [ERROR] Exception on /backend/get_frame_pair [GET]
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_gui/app.py", line 134, in get_frame_pair
+    pair = read_pair(idx, source_path, camera, cfg)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_core/image_handling/load_images.py", line 67, in read_pair
+    return read_image(str(set_file_path), camera_no=camera, im_no=idx)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_core/image_handling/load_images.py", line 29, in read_image
+    return reader_func(file_path, **kwargs)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_core/image_handling/readers/lavision_reader.py", line 186, in read_lavision_ims_pair
+    return read_lavision_ims(file_path, **kwargs)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_core/image_handling/readers/lavision_reader.py", line 111, in read_lavision_ims
+    raise ImportError(
+        "LaVision libraries are not supported on macOS (darwin). Please use a supported platform."
+    )
+ImportError: LaVision libraries are not supported on macOS (darwin). Please use a supported platform.
+2025-11-15 20:32:34,962 [INFO] 127.0.0.1 - - [15/Nov/2025 20:32:34] "[31m[1mPOST /backend/preload_images HTTP/1.1[0m" 405 -
+2025-11-15 20:32:34,975 [INFO] 127.0.0.1 - - [15/Nov/2025 20:32:34] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-15 20:32:34,976 [INFO] 127.0.0.1 - - [15/Nov/2025 20:32:34] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-15 20:32:34,984 [INFO] 127.0.0.1 - - [15/Nov/2025 20:32:34] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-15 20:32:34,987 [INFO] 127.0.0.1 - - [15/Nov/2025 20:32:34] "[35m[1mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 500 -
+2025-11-15 20:32:36,087 [INFO] 127.0.0.1 - - [15/Nov/2025 20:32:36] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-15 20:32:36,096 [INFO] 127.0.0.1 - - [15/Nov/2025 20:32:36] "[31m[1mPOST /backend/preload_images HTTP/1.1[0m" 405 -
+2025-11-15 20:32:36,099 [INFO] 127.0.0.1 - - [15/Nov/2025 20:32:36] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-15 20:32:36,107 [INFO] 127.0.0.1 - - [15/Nov/2025 20:32:36] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-15 20:35:17,373 [INFO] 127.0.0.1 - - [15/Nov/2025 20:35:17] "GET /backend/config HTTP/1.1" 200 -
+2025-11-15 20:35:17,400 [INFO] 127.0.0.1 - - [15/Nov/2025 20:35:17] "GET /backend/plot/check_runs?base_path=/Users/morgan/Downloads&camera=1&merged=0 HTTP/1.1" 200 -
+2025-11-15 20:35:17,899 [INFO] 127.0.0.1 - - [15/Nov/2025 20:35:17] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=1&var=ux&cmap=default&run=4&camera=1&merged=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 20:35:22,716 [INFO] 127.0.0.1 - - [15/Nov/2025 20:35:22] "[35m[1mPOST /backend/merge_vectors/merge_one HTTP/1.1[0m" 500 -
+2025-11-15 20:35:24,917 [INFO] 127.0.0.1 - - [15/Nov/2025 20:35:24] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=0&x_percent=0.4773245456760745&y_percent=0.5374856904800669 HTTP/1.1" 200 -
+2025-11-15 21:05:14,450 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-15 21:05:14,453 [INFO] 127.0.0.1 - - [15/Nov/2025 21:05:14] "GET /backend/config HTTP/1.1" 200 -
+2025-11-15 21:05:14,494 [INFO] 127.0.0.1 - - [15/Nov/2025 21:05:14] "[36mGET /grid.svg HTTP/1.1[0m" 304 -
+2025-11-15 21:05:30,308 [INFO] 127.0.0.1 - - [15/Nov/2025 21:05:30] "GET /backend/config HTTP/1.1" 200 -
+2025-11-15 21:05:30,333 [INFO] 127.0.0.1 - - [15/Nov/2025 21:05:30] "GET /backend/plot/check_runs?base_path=/Users/morgan/Downloads&camera=1&merged=0 HTTP/1.1" 200 -
+2025-11-15 21:05:30,848 [INFO] 127.0.0.1 - - [15/Nov/2025 21:05:30] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=1&var=ux&cmap=default&run=4&camera=1&merged=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:05:36,720 [INFO] 127.0.0.1 - - [15/Nov/2025 21:05:36] "POST /backend/merge_vectors/merge_one HTTP/1.1" 200 -
+2025-11-15 21:05:39,511 [INFO] 127.0.0.1 - - [15/Nov/2025 21:05:39] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=0&x_percent=0.7450664975016172&y_percent=0.028628176578782392 HTTP/1.1" 200 -
+2025-11-15 21:05:53,018 [INFO] 127.0.0.1 - - [15/Nov/2025 21:05:53] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=0&x_percent=0.2999051800085461&y_percent=0.16264143599061565 HTTP/1.1" 200 -
+2025-11-15 21:06:09,901 [INFO] 127.0.0.1 - - [15/Nov/2025 21:06:09] "GET /backend/plot/check_runs?base_path=/Users/morgan/Downloads&camera=1&merged=1 HTTP/1.1" 200 -
+2025-11-15 21:06:10,708 [INFO] 127.0.0.1 - - [15/Nov/2025 21:06:10] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=1&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:06:12,356 [INFO] 127.0.0.1 - - [15/Nov/2025 21:06:12] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=0.5192600321065812&y_percent=0.3259412850693505 HTTP/1.1" 200 -
+2025-11-15 21:06:13,083 [INFO] 127.0.0.1 - - [15/Nov/2025 21:06:13] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=0.5724858418068398&y_percent=0.8927186389068236 HTTP/1.1" 200 -
+2025-11-15 21:08:00,241 [INFO] 127.0.0.1 - - [15/Nov/2025 21:08:00] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=uy&run=4&merged=1&x_percent=0.5160342254580806&y_percent=0.0028716002975380283 HTTP/1.1" 200 -
+2025-11-15 21:08:00,247 [INFO] 127.0.0.1 - - [15/Nov/2025 21:08:00] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=1&var=uy&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:08:00,533 [INFO] 127.0.0.1 - - [15/Nov/2025 21:08:00] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=uy&run=4&merged=1&x_percent=0.930550379790397&y_percent=0.05399269495738856 HTTP/1.1" 200 -
+2025-11-15 21:08:06,522 [INFO] 127.0.0.1 - - [15/Nov/2025 21:08:06] "POST /backend/plot/transform_frame HTTP/1.1" 200 -
+2025-11-15 21:08:06,558 [INFO] 127.0.0.1 - - [15/Nov/2025 21:08:06] "GET /backend/plot/check_vars?base_path=/Users/morgan/Downloads&frame=1&camera=1&merged=1 HTTP/1.1" 200 -
+2025-11-15 21:08:07,513 [INFO] 127.0.0.1 - - [15/Nov/2025 21:08:07] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=1&var=uy&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:08:15,442 [INFO] 127.0.0.1 - - [15/Nov/2025 21:08:15] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=uy&run=4&merged=1&x_percent=0.10796968442276537&y_percent=0.7919144474307092 HTTP/1.1" 200 -
+2025-11-15 21:08:17,468 [INFO] 127.0.0.1 - - [15/Nov/2025 21:08:17] "POST /backend/plot/clear_transform HTTP/1.1" 200 -
+2025-11-15 21:08:17,486 [INFO] 127.0.0.1 - - [15/Nov/2025 21:08:17] "GET /backend/plot/check_vars?base_path=/Users/morgan/Downloads&frame=1&camera=1&merged=1 HTTP/1.1" 200 -
+2025-11-15 21:08:18,403 [INFO] 127.0.0.1 - - [15/Nov/2025 21:08:18] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=1&var=uy&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:08:53,993 [INFO] 127.0.0.1 - - [15/Nov/2025 21:08:53] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=uy&run=4&merged=1&x_percent=0.6499052013708521&y_percent=0.011958254407091997 HTTP/1.1" 200 -
+2025-11-15 21:08:55,748 [INFO] 127.0.0.1 - - [15/Nov/2025 21:08:55] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=uy&run=4&merged=1&x_percent=1&y_percent=1 HTTP/1.1" 200 -
+2025-11-15 21:08:55,756 [INFO] 127.0.0.1 - - [15/Nov/2025 21:08:55] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=uy&run=4&merged=1&x_percent=1&y_percent=0 HTTP/1.1" 200 -
+2025-11-15 21:08:55,757 [INFO] 127.0.0.1 - - [15/Nov/2025 21:08:55] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=uy&run=4&merged=1&x_percent=0&y_percent=1 HTTP/1.1" 200 -
+2025-11-15 21:08:55,759 [INFO] 127.0.0.1 - - [15/Nov/2025 21:08:55] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=uy&run=4&merged=1&x_percent=0&y_percent=0 HTTP/1.1" 200 -
+2025-11-15 21:08:59,615 [INFO] 127.0.0.1 - - [15/Nov/2025 21:08:59] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=uy&run=4&merged=1&x_percent=0.8386148903081323&y_percent=0.0948585587695101 HTTP/1.1" 200 -
+2025-11-15 21:09:00,779 [INFO] 127.0.0.1 - - [15/Nov/2025 21:09:00] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=uy&run=4&merged=1&x_percent=0.8821632800628894&y_percent=0.5371671603916951 HTTP/1.1" 200 -
+2025-11-15 21:14:02,470 [INFO] 127.0.0.1 - - [15/Nov/2025 21:14:02] "GET /backend/plot/check_runs?base_path=/Users/morgan/Downloads&camera=1&merged=0 HTTP/1.1" 200 -
+2025-11-15 21:14:03,071 [INFO] 127.0.0.1 - - [15/Nov/2025 21:14:03] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=1&var=uy&cmap=default&run=4&camera=1&merged=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:16:03,888 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-15 21:16:03,889 [INFO] 127.0.0.1 - - [15/Nov/2025 21:16:03] "GET /backend/config HTTP/1.1" 200 -
+2025-11-15 21:16:03,898 [INFO] 127.0.0.1 - - [15/Nov/2025 21:16:03] "[36mGET /grid.svg HTTP/1.1[0m" 304 -
+2025-11-15 21:16:21,937 [INFO] 127.0.0.1 - - [15/Nov/2025 21:16:21] "GET /backend/config HTTP/1.1" 200 -
+2025-11-15 21:16:21,954 [INFO] 127.0.0.1 - - [15/Nov/2025 21:16:21] "GET /backend/plot/check_runs?base_path=/Users/morgan/Downloads&camera=1&merged=0 HTTP/1.1" 200 -
+2025-11-15 21:16:22,446 [INFO] 127.0.0.1 - - [15/Nov/2025 21:16:22] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=1&var=ux&cmap=default&run=4&camera=1&merged=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:16:24,477 [INFO] 127.0.0.1 - - [15/Nov/2025 21:16:24] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=0&x_percent=0.5837761650765916&y_percent=0.40994450664576465 HTTP/1.1" 200 -
+2025-11-15 21:16:27,982 [INFO] 127.0.0.1 - - [15/Nov/2025 21:16:27] "POST /backend/merge_vectors/merge_one HTTP/1.1" 200 -
+2025-11-15 21:16:29,693 [INFO] 127.0.0.1 - - [15/Nov/2025 21:16:29] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=0&x_percent=0.4611955124335719&y_percent=0.4991776992472684 HTTP/1.1" 200 -
+2025-11-15 21:16:36,271 [INFO] 127.0.0.1 - - [15/Nov/2025 21:16:36] "GET /backend/plot/check_runs?base_path=/Users/morgan/Downloads&camera=1&merged=1 HTTP/1.1" 200 -
+2025-11-15 21:16:37,050 [INFO] 127.0.0.1 - - [15/Nov/2025 21:16:37] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=1&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:16:38,633 [INFO] 127.0.0.1 - - [15/Nov/2025 21:16:38] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=0.5482922919430859&y_percent=0.05007035234874528 HTTP/1.1" 200 -
+2025-11-15 21:16:44,809 [INFO] 127.0.0.1 - - [15/Nov/2025 21:16:44] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=1&y_percent=0 HTTP/1.1" 200 -
+2025-11-15 21:16:44,810 [INFO] 127.0.0.1 - - [15/Nov/2025 21:16:44] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=0&y_percent=1 HTTP/1.1" 200 -
+2025-11-15 21:16:44,812 [INFO] 127.0.0.1 - - [15/Nov/2025 21:16:44] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=0&y_percent=0 HTTP/1.1" 200 -
+2025-11-15 21:16:44,814 [INFO] 127.0.0.1 - - [15/Nov/2025 21:16:44] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=1&y_percent=1 HTTP/1.1" 200 -
+2025-11-15 21:18:13,659 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-15 21:18:13,660 [INFO] 127.0.0.1 - - [15/Nov/2025 21:18:13] "GET /backend/config HTTP/1.1" 200 -
+2025-11-15 21:18:13,662 [INFO] 127.0.0.1 - - [15/Nov/2025 21:18:13] "[36mGET /grid.svg HTTP/1.1[0m" 304 -
+2025-11-15 21:18:16,023 [INFO] 127.0.0.1 - - [15/Nov/2025 21:18:16] "GET /backend/config HTTP/1.1" 200 -
+2025-11-15 21:18:16,040 [INFO] 127.0.0.1 - - [15/Nov/2025 21:18:16] "GET /backend/plot/check_runs?base_path=/Users/morgan/Downloads&camera=1&merged=0 HTTP/1.1" 200 -
+2025-11-15 21:18:16,533 [INFO] 127.0.0.1 - - [15/Nov/2025 21:18:16] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=1&var=ux&cmap=default&run=4&camera=1&merged=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:18:20,570 [INFO] 127.0.0.1 - - [15/Nov/2025 21:18:20] "POST /backend/merge_vectors/merge_one HTTP/1.1" 200 -
+2025-11-15 21:18:21,956 [INFO] 127.0.0.1 - - [15/Nov/2025 21:18:21] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=0&x_percent=0.6918406878013588&y_percent=0.19362784763677568 HTTP/1.1" 200 -
+2025-11-15 21:18:25,458 [INFO] 127.0.0.1 - - [15/Nov/2025 21:18:25] "GET /backend/plot/check_runs?base_path=/Users/morgan/Downloads&camera=1&merged=1 HTTP/1.1" 200 -
+2025-11-15 21:18:26,247 [INFO] 127.0.0.1 - - [15/Nov/2025 21:18:26] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=1&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:18:27,681 [INFO] 127.0.0.1 - - [15/Nov/2025 21:18:27] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=0.6111955215888458&y_percent=0.08602504654449693 HTTP/1.1" 200 -
+2025-11-15 21:18:28,480 [INFO] 127.0.0.1 - - [15/Nov/2025 21:18:28] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=0.6257116515070983&y_percent=0.5438922421935929 HTTP/1.1" 200 -
+2025-11-15 21:18:29,004 [INFO] 127.0.0.1 - - [15/Nov/2025 21:18:29] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=0.6547439113436029&y_percent=0.9439703743141624 HTTP/1.1" 200 -
+2025-11-15 21:18:30,877 [INFO] 127.0.0.1 - - [15/Nov/2025 21:18:30] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=0.680550364531607&y_percent=0.8061656843615217 HTTP/1.1" 200 -
+2025-11-15 21:18:31,204 [INFO] 127.0.0.1 - - [15/Nov/2025 21:18:31] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=0.680550364531607&y_percent=0.8083883406510805 HTTP/1.1" 200 -
+2025-11-15 21:18:31,526 [INFO] 127.0.0.1 - - [15/Nov/2025 21:18:31] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=0.680550364531607&y_percent=0.8772906856274008 HTTP/1.1" 200 -
+2025-11-15 21:18:31,748 [INFO] 127.0.0.1 - - [15/Nov/2025 21:18:31] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=0.680550364531607&y_percent=0.8706227167587246 HTTP/1.1" 200 -
+2025-11-15 21:18:32,644 [INFO] 127.0.0.1 - - [15/Nov/2025 21:18:32] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=0.7079697210438614&y_percent=0.788384434045052 HTTP/1.1" 200 -
+2025-11-15 21:18:33,145 [INFO] 127.0.0.1 - - [15/Nov/2025 21:18:33] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=0.7079697210438614&y_percent=0.7972750592032868 HTTP/1.1" 200 -
+2025-11-15 21:18:33,640 [INFO] 127.0.0.1 - - [15/Nov/2025 21:18:33] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=0.7047439143953609&y_percent=0.7683805274390235 HTTP/1.1" 200 -
+2025-11-15 21:18:33,839 [INFO] 127.0.0.1 - - [15/Nov/2025 21:18:33] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=0.7047439143953609&y_percent=0.7661578711494649 HTTP/1.1" 200 -
+2025-11-15 21:18:34,602 [INFO] 127.0.0.1 - - [15/Nov/2025 21:18:34] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=0.7047439143953609&y_percent=0.7283727142269666 HTTP/1.1" 200 -
+2025-11-15 21:35:01,329 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:01] "POST /backend/merge_vectors/merge_all HTTP/1.1" 200 -
+2025-11-15 21:35:02,348 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:02] "GET /backend/merge_vectors/status/191467ab-d81b-4c1f-b30b-450e7ce7a8bc HTTP/1.1" 200 -
+2025-11-15 21:35:03,344 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:03] "GET /backend/merge_vectors/status/191467ab-d81b-4c1f-b30b-450e7ce7a8bc HTTP/1.1" 200 -
+2025-11-15 21:35:04,400 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:04] "GET /backend/merge_vectors/status/191467ab-d81b-4c1f-b30b-450e7ce7a8bc HTTP/1.1" 200 -
+2025-11-15 21:35:05,348 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:05] "GET /backend/merge_vectors/status/191467ab-d81b-4c1f-b30b-450e7ce7a8bc HTTP/1.1" 200 -
+2025-11-15 21:35:06,371 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:06] "GET /backend/merge_vectors/status/191467ab-d81b-4c1f-b30b-450e7ce7a8bc HTTP/1.1" 200 -
+2025-11-15 21:35:07,351 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:07] "GET /backend/merge_vectors/status/191467ab-d81b-4c1f-b30b-450e7ce7a8bc HTTP/1.1" 200 -
+2025-11-15 21:35:08,358 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:08] "GET /backend/merge_vectors/status/191467ab-d81b-4c1f-b30b-450e7ce7a8bc HTTP/1.1" 200 -
+2025-11-15 21:35:09,352 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:09] "GET /backend/merge_vectors/status/191467ab-d81b-4c1f-b30b-450e7ce7a8bc HTTP/1.1" 200 -
+2025-11-15 21:35:10,351 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:10] "GET /backend/merge_vectors/status/191467ab-d81b-4c1f-b30b-450e7ce7a8bc HTTP/1.1" 200 -
+2025-11-15 21:35:11,352 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:11] "GET /backend/merge_vectors/status/191467ab-d81b-4c1f-b30b-450e7ce7a8bc HTTP/1.1" 200 -
+2025-11-15 21:35:13,470 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:13] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=0.8950665066568914&y_percent=0.7707666542381597 HTTP/1.1" 200 -
+2025-11-15 21:35:19,815 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:19] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=2&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:23,094 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:23] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=3&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:24,501 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:24] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=4&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:24,636 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:24] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=5&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:24,875 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:24] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=6&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:24,994 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:24] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=7&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:25,112 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:25] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=8&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:28,678 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:28] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=9&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:28,991 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:28] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=10&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:29,138 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:29] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=11&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:29,303 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:29] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=13&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:29,909 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:29] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=12&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:31,410 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:31] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=14&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:33,360 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:33] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=15&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:33,522 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:33] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=16&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:33,845 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:33] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=17&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:33,969 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:33] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=18&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:34,730 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:34] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=19&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:35,932 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:35] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=20&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:38,335 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:38] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=21&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:38,461 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:38] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=22&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:38,798 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:38] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=23&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:39,085 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:39] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=24&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:40,164 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:40] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=25&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:41,154 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:41] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=26&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:43,104 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:43] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=25&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:43,394 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:43] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=24&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:43,724 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:43] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=23&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:44,254 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:44] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=22&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:44,860 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:44] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=21&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:45,306 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:45] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=20&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:47,806 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:47] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=19&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:48,267 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:48] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=18&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:48,369 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:48] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=15&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:49,036 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:49] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=13&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:49,102 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:49] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=11&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:50,169 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:50] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=9&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:52,619 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:52] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=8&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:52,909 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:52] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=7&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:53,041 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:53] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=6&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:53,145 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:53] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=5&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:53,429 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:53] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=4&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:53,836 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:53] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=3&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:35:54,086 [INFO] 127.0.0.1 - - [15/Nov/2025 21:35:54] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=2&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:37:04,168 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-15 21:37:04,169 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:04] "GET /backend/config HTTP/1.1" 200 -
+2025-11-15 21:37:04,184 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:04] "[36mGET /grid.svg HTTP/1.1[0m" 304 -
+2025-11-15 21:37:07,307 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:07] "GET /backend/config HTTP/1.1" 200 -
+2025-11-15 21:37:07,326 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:07] "GET /backend/plot/check_runs?base_path=/Users/morgan/Downloads&camera=1&merged=0 HTTP/1.1" 200 -
+2025-11-15 21:37:07,819 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:07] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=1&var=ux&cmap=default&run=4&camera=1&merged=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:37:15,716 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:15] "POST /backend/statistics/calculate HTTP/1.1" 200 -
+2025-11-15 21:37:15,726 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:15] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:16,731 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:16] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:17,732 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:17] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:18,733 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:18] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:18,993 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:18] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=0&x_percent=0.6870019778286081&y_percent=0.417266221892577 HTTP/1.1" 200 -
+2025-11-15 21:37:19,737 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:19] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:20,748 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:20] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:21,748 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:21] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:22,755 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:22] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:23,746 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:23] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:24,741 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:24] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:25,737 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:25] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:26,812 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:26] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:26,896 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:26] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=0&x_percent=0.7966794038776256&y_percent=0.06213963104217611 HTTP/1.1" 200 -
+2025-11-15 21:37:27,741 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:27] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:28,748 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:28] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:29,747 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:29] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:30,755 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:30] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:31,745 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:31] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:32,764 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:32] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:33,761 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:33] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:34,752 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:34] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:35,756 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:35] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:36,749 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:36] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:37,749 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:37] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:38,750 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:38] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:39,749 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:39] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:40,750 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:40] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:41,749 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:41] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:42,750 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:42] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:43,750 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:43] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:44,751 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:44] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:45,753 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:45] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:46,755 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:46] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:47,756 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:47] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:48,759 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:48] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:49,757 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:49] "GET /backend/statistics/status/e529c166-f5dd-41d1-b33d-613dfe5b50b9 HTTP/1.1" 200 -
+2025-11-15 21:37:57,577 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:57] "[33mGET /backend/plot/check_stat_vars?base_path=/Users/morgan/Downloads&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-15 21:37:57,596 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:57] "[35m[1mGET /backend/plot/plot_stats?base_path=/Users/morgan/Downloads&frame=1&var=ux&cmap=default&run=4&camera=1&merged=0 HTTP/1.1[0m" 500 -
+2025-11-15 21:37:57,597 [INFO] 127.0.0.1 - - [15/Nov/2025 21:37:57] "[35m[1mGET /backend/plot/plot_stats?base_path=/Users/morgan/Downloads&frame=1&var=ux&cmap=default&run=4&camera=1&merged=0 HTTP/1.1[0m" 500 -
+2025-11-15 21:38:17,316 [INFO] 127.0.0.1 - - [15/Nov/2025 21:38:17] "GET /backend/plot/plot_stats?base_path=/Users/morgan/Downloads&frame=1&var=ux&cmap=default&run=4&camera=1&merged=1 HTTP/1.1" 200 -
+2025-11-15 21:38:19,054 [INFO] 127.0.0.1 - - [15/Nov/2025 21:38:19] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=0.7337761742318655&y_percent=0.5942042595761651 HTTP/1.1" 200 -
+2025-11-15 21:38:19,176 [INFO] 127.0.0.1 - - [15/Nov/2025 21:38:19] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=0.7337761742318655&y_percent=0.5915894097237943 HTTP/1.1" 200 -
+2025-11-15 21:38:19,537 [INFO] 127.0.0.1 - - [15/Nov/2025 21:38:19] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=0.7337761742318655&y_percent=0.34056002541132113 HTTP/1.1" 200 -
+2025-11-15 21:38:35,662 [INFO] 127.0.0.1 - - [15/Nov/2025 21:38:35] "[36mGET / HTTP/1.1[0m" 304 -
+2025-11-15 21:38:35,671 [INFO] 127.0.0.1 - - [15/Nov/2025 21:38:35] "[36mGET /_next/static/chunks/484-cfa8b9348ce4f00e.js HTTP/1.1[0m" 304 -
+2025-11-15 21:38:35,671 [INFO] 127.0.0.1 - - [15/Nov/2025 21:38:35] "[36mGET /_next/static/css/7d3f2337d7ea12a5.css HTTP/1.1[0m" 304 -
+2025-11-15 21:38:35,671 [INFO] 127.0.0.1 - - [15/Nov/2025 21:38:35] "[36mGET /_next/static/chunks/main-app-8a63c6f5e7baee11.js HTTP/1.1[0m" 304 -
+2025-11-15 21:38:35,672 [INFO] 127.0.0.1 - - [15/Nov/2025 21:38:35] "[36mGET /_next/static/chunks/app/page-b49f9dd48ae48830.js HTTP/1.1[0m" 304 -
+2025-11-15 21:38:35,673 [INFO] 127.0.0.1 - - [15/Nov/2025 21:38:35] "[36mGET /_next/static/chunks/117-d5793c8e79de5511.js HTTP/1.1[0m" 304 -
+2025-11-15 21:38:35,673 [INFO] 127.0.0.1 - - [15/Nov/2025 21:38:35] "[36mGET /_next/static/chunks/869-320a6b9bdafbb6d3.js HTTP/1.1[0m" 304 -
+2025-11-15 21:38:35,677 [INFO] 127.0.0.1 - - [15/Nov/2025 21:38:35] "[36mGET /_next/static/chunks/fd9d1056-ad15f396ddf9b7e5.js HTTP/1.1[0m" 304 -
+2025-11-15 21:38:35,678 [INFO] 127.0.0.1 - - [15/Nov/2025 21:38:35] "[36mGET /_next/static/chunks/app/layout-b907d5f31ac82e9d.js HTTP/1.1[0m" 304 -
+2025-11-15 21:38:35,688 [INFO] 127.0.0.1 - - [15/Nov/2025 21:38:35] "GET /backend/config HTTP/1.1" 200 -
+2025-11-15 21:38:35,704 [INFO] 127.0.0.1 - - [15/Nov/2025 21:38:35] "[36mGET /grid.svg HTTP/1.1[0m" 304 -
+2025-11-15 21:38:39,069 [INFO] 127.0.0.1 - - [15/Nov/2025 21:38:39] "GET /backend/config HTTP/1.1" 200 -
+2025-11-15 21:38:39,087 [INFO] 127.0.0.1 - - [15/Nov/2025 21:38:39] "GET /backend/plot/check_runs?base_path=/Users/morgan/Downloads&camera=1&merged=0 HTTP/1.1" 200 -
+2025-11-15 21:38:39,563 [INFO] 127.0.0.1 - - [15/Nov/2025 21:38:39] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=1&var=ux&cmap=default&run=4&camera=1&merged=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:38:40,418 [INFO] 127.0.0.1 - - [15/Nov/2025 21:38:40] "GET /backend/plot/check_runs?base_path=/Users/morgan/Downloads&camera=1&merged=1 HTTP/1.1" 200 -
+2025-11-15 21:38:41,192 [INFO] 127.0.0.1 - - [15/Nov/2025 21:38:41] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=1&var=ux&cmap=default&run=4&camera=1&merged=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-15 21:38:42,506 [INFO] 127.0.0.1 - - [15/Nov/2025 21:38:42] "GET /backend/plot/check_stat_vars?base_path=/Users/morgan/Downloads&camera=1&merged=1 HTTP/1.1" 200 -
+2025-11-15 21:38:43,118 [INFO] 127.0.0.1 - - [15/Nov/2025 21:38:43] "GET /backend/plot/plot_stats?base_path=/Users/morgan/Downloads&frame=1&var=ux&cmap=default&run=4&camera=1&merged=1 HTTP/1.1" 200 -
+2025-11-15 21:38:43,910 [INFO] 127.0.0.1 - - [15/Nov/2025 21:38:43] "GET /backend/plot/plot_stats?base_path=/Users/morgan/Downloads&frame=1&var=ux&cmap=default&run=4&camera=1&merged=1 HTTP/1.1" 200 -
+2025-11-15 21:38:44,192 [INFO] 127.0.0.1 - - [15/Nov/2025 21:38:44] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=0.5047439021883289&y_percent=0.1944449288643155 HTTP/1.1" 200 -
+2025-11-15 21:38:44,681 [INFO] 127.0.0.1 - - [15/Nov/2025 21:38:44] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=0.5047439021883289&y_percent=0.014017575847247131 HTTP/1.1" 200 -
+2025-11-15 21:38:45,194 [INFO] 127.0.0.1 - - [15/Nov/2025 21:38:45] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=0.524098742079332&y_percent=0.6163574303176599 HTTP/1.1" 200 -
+2025-11-15 21:39:02,369 [INFO] 127.0.0.1 - - [15/Nov/2025 21:39:02] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=0.8337761803353816&y_percent=0.9736821229661393 HTTP/1.1" 200 -
+2025-11-15 21:39:03,033 [INFO] 127.0.0.1 - - [15/Nov/2025 21:39:03] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=ux&run=4&merged=1&x_percent=0.8337761803353816&y_percent=0.6363613369236883 HTTP/1.1" 200 -
+2025-11-15 21:39:08,594 [INFO] 127.0.0.1 - - [15/Nov/2025 21:39:08] "GET /backend/plot/plot_stats?base_path=/Users/morgan/Downloads&frame=1&var=tke&cmap=default&run=4&camera=1&merged=1 HTTP/1.1" 200 -
+2025-11-15 21:39:09,781 [INFO] 127.0.0.1 - - [15/Nov/2025 21:39:09] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=tke&run=4&merged=1&x_percent=0.22893743374153477&y_percent=0.9331512041234343 HTTP/1.1" 200 -
+2025-11-15 21:39:09,930 [INFO] 127.0.0.1 - - [15/Nov/2025 21:39:09] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=tke&run=4&merged=1&x_percent=0.22893743374153477&y_percent=0.9305363542710635 HTTP/1.1" 200 -
+2025-11-15 21:39:10,060 [INFO] 127.0.0.1 - - [15/Nov/2025 21:39:10] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=tke&run=4&merged=1&x_percent=0.22893743374153477&y_percent=0.9279215044186925 HTTP/1.1" 200 -
+2025-11-15 21:39:10,963 [INFO] 127.0.0.1 - - [15/Nov/2025 21:39:10] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=tke&run=4&merged=1&x_percent=0.4450664791910693&y_percent=0.5656285292206215 HTTP/1.1" 200 -
+2025-11-15 21:39:11,732 [INFO] 127.0.0.1 - - [15/Nov/2025 21:39:11] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=tke&run=4&merged=1&x_percent=0.4450664791910693&y_percent=0.4662627425686154 HTTP/1.1" 200 -
+2025-11-15 21:39:12,348 [INFO] 127.0.0.1 - - [15/Nov/2025 21:39:12] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=tke&run=4&merged=1&x_percent=0.4450664791910693&y_percent=0.19431415245665346 HTTP/1.1" 200 -
+2025-11-15 21:39:13,080 [INFO] 127.0.0.1 - - [15/Nov/2025 21:39:13] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=tke&run=4&merged=1&x_percent=0.4450664791910693&y_percent=0.06356976059567512 HTTP/1.1" 200 -
+2025-11-15 21:39:25,919 [INFO] 127.0.0.1 - - [15/Nov/2025 21:39:25] "GET /backend/plot/plot_stats?base_path=/Users/morgan/Downloads&frame=1&var=tke&cmap=default&run=4&upper_limit=2&camera=1&merged=1 HTTP/1.1" 200 -
+2025-11-15 21:39:26,333 [INFO] 127.0.0.1 - - [15/Nov/2025 21:39:26] "GET /backend/plot/plot_stats?base_path=/Users/morgan/Downloads&frame=1&var=tke&cmap=default&run=4&upper_limit=20&camera=1&merged=1 HTTP/1.1" 200 -
+2025-11-15 21:39:30,303 [INFO] 127.0.0.1 - - [15/Nov/2025 21:39:30] "GET /backend/plot/plot_stats?base_path=/Users/morgan/Downloads&frame=1&var=tke&cmap=default&run=4&upper_limit=20&camera=1&merged=1 HTTP/1.1" 200 -
+2025-11-15 21:39:39,166 [INFO] 127.0.0.1 - - [15/Nov/2025 21:39:39] "GET /backend/plot/plot_stats?base_path=/Users/morgan/Downloads&frame=1&var=tke&cmap=default&run=4&lower_limit=0&upper_limit=20&camera=1&merged=1 HTTP/1.1" 200 -
+2025-11-15 21:39:41,099 [INFO] 127.0.0.1 - - [15/Nov/2025 21:39:41] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=tke&run=4&merged=1&x_percent=0.7192600443136132&y_percent=0.2931569691381854 HTTP/1.1" 200 -
+2025-11-15 21:39:41,684 [INFO] 127.0.0.1 - - [15/Nov/2025 21:39:41] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=tke&run=4&merged=1&x_percent=0.7192600443136132&y_percent=0.18856148278143756 HTTP/1.1" 200 -
+2025-11-15 21:39:52,704 [INFO] 127.0.0.1 - - [15/Nov/2025 21:39:52] "GET /backend/plot/plot_stats?base_path=/Users/morgan/Downloads&frame=1&var=tke&cmap=default&run=4&lower_limit=0&upper_limit=2&camera=1&merged=1 HTTP/1.1" 200 -
+2025-11-15 21:39:53,527 [INFO] 127.0.0.1 - - [15/Nov/2025 21:39:53] "GET /backend/plot/plot_stats?base_path=/Users/morgan/Downloads&frame=1&var=tke&cmap=default&run=4&lower_limit=0&camera=1&merged=1 HTTP/1.1" 200 -
+2025-11-15 21:39:53,553 [INFO] 127.0.0.1 - - [15/Nov/2025 21:39:53] "GET /backend/plot/plot_stats?base_path=/Users/morgan/Downloads&frame=1&var=tke&cmap=default&run=4&lower_limit=0&upper_limit=1&camera=1&merged=1 HTTP/1.1" 200 -
+2025-11-15 21:39:54,008 [INFO] 127.0.0.1 - - [15/Nov/2025 21:39:54] "GET /backend/plot/plot_stats?base_path=/Users/morgan/Downloads&frame=1&var=tke&cmap=default&run=4&lower_limit=0&upper_limit=10&camera=1&merged=1 HTTP/1.1" 200 -
+2025-11-15 21:39:57,072 [INFO] 127.0.0.1 - - [15/Nov/2025 21:39:57] "GET /backend/plot/plot_stats?base_path=/Users/morgan/Downloads&frame=1&var=tke&cmap=default&run=4&lower_limit=0&upper_limit=1&camera=1&merged=1 HTTP/1.1" 200 -
+2025-11-15 21:41:30,799 [INFO] 127.0.0.1 - - [15/Nov/2025 21:41:30] "GET /backend/plot/plot_stats?base_path=/Users/morgan/Downloads&frame=1&var=gamma1&cmap=default&run=4&lower_limit=0&upper_limit=1&camera=1&merged=1 HTTP/1.1" 200 -
+2025-11-15 21:41:33,974 [INFO] 127.0.0.1 - - [15/Nov/2025 21:41:33] "[33mGET /backend/plot/check_limits?base_path=/Users/morgan/Downloads&camera=1&merged=1&var=gamma1 HTTP/1.1[0m" 404 -
+2025-11-15 21:41:36,802 [INFO] 127.0.0.1 - - [15/Nov/2025 21:41:36] "[33mGET /backend/plot/check_limits?base_path=/Users/morgan/Downloads&camera=1&merged=1&var=gamma1 HTTP/1.1[0m" 404 -
+2025-11-15 21:41:38,830 [INFO] 127.0.0.1 - - [15/Nov/2025 21:41:38] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=gamma1&run=4&merged=1&x_percent=0.48861486894582634&y_percent=0.29890977447357525 HTTP/1.1" 200 -
+2025-11-15 21:41:39,530 [INFO] 127.0.0.1 - - [15/Nov/2025 21:41:39] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=gamma1&run=4&merged=1&x_percent=0.3579696996815554&y_percent=0.9460949482979745 HTTP/1.1" 200 -
+2025-11-15 21:41:39,731 [INFO] 127.0.0.1 - - [15/Nov/2025 21:41:39] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=gamma1&run=4&merged=1&x_percent=0.3579696996815554&y_percent=0.9434800984456037 HTTP/1.1" 200 -
+2025-11-15 21:41:40,458 [INFO] 127.0.0.1 - - [15/Nov/2025 21:41:40] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=gamma1&run=4&merged=1&x_percent=0.3918406694908108&y_percent=0.5304582221504942 HTTP/1.1" 200 -
+2025-11-15 21:41:41,511 [INFO] 127.0.0.1 - - [15/Nov/2025 21:41:41] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=gamma1&run=4&merged=1&x_percent=0.2595825969022897&y_percent=0.452665252015939 HTTP/1.1" 200 -
+2025-11-15 21:41:42,062 [INFO] 127.0.0.1 - - [15/Nov/2025 21:41:42] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=gamma1&run=4&merged=1&x_percent=0.1450664608805213&y_percent=0.12371212116124863 HTTP/1.1" 200 -
+2025-11-15 21:41:47,253 [INFO] 127.0.0.1 - - [15/Nov/2025 21:41:47] "GET /backend/plot/plot_stats?base_path=/Users/morgan/Downloads&frame=1&var=gamma2&cmap=default&run=4&lower_limit=0&upper_limit=1&camera=1&merged=1 HTTP/1.1" 200 -
+2025-11-15 21:41:49,483 [INFO] 127.0.0.1 - - [15/Nov/2025 21:41:49] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=gamma2&run=4&merged=1&x_percent=0.7821632739593732&y_percent=0.27380680891029313 HTTP/1.1" 200 -
+2025-11-15 21:41:52,702 [INFO] 127.0.0.1 - - [15/Nov/2025 21:41:52] "GET /backend/plot/plot_stats?base_path=/Users/morgan/Downloads&frame=1&var=gamma1&cmap=default&run=4&lower_limit=0&upper_limit=1&camera=1&merged=1 HTTP/1.1" 200 -
+2025-11-15 21:41:54,907 [INFO] 127.0.0.1 - - [15/Nov/2025 21:41:54] "GET /backend/plot/plot_stats?base_path=/Users/morgan/Downloads&frame=1&var=gamma1&cmap=default&run=4&lower_limit=0&upper_limit=1&camera=1&merged=1 HTTP/1.1" 200 -
+2025-11-15 21:41:55,865 [INFO] 127.0.0.1 - - [15/Nov/2025 21:41:55] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=gamma1&run=4&merged=1&x_percent=0.7757116606623722&y_percent=0.406381663498018 HTTP/1.1" 200 -
+2025-11-15 21:41:59,494 [INFO] 127.0.0.1 - - [15/Nov/2025 21:41:59] "GET /backend/plot/plot_stats?base_path=/Users/morgan/Downloads&frame=1&var=urms&cmap=default&run=4&lower_limit=0&upper_limit=1&camera=1&merged=1 HTTP/1.1" 200 -
+2025-11-15 21:42:00,512 [INFO] 127.0.0.1 - - [15/Nov/2025 21:42:00] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=urms&run=4&merged=1&x_percent=0.25313098360528863&y_percent=0.24321259082694527 HTTP/1.1" 200 -
+2025-11-15 21:42:03,864 [INFO] 127.0.0.1 - - [15/Nov/2025 21:42:03] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=urms&run=4&merged=1&x_percent=0.25313098360528863&y_percent=0.2902807021306644 HTTP/1.1" 200 -
+2025-11-15 21:42:12,645 [INFO] 127.0.0.1 - - [15/Nov/2025 21:42:12] "GET /backend/plot/plot_stats?base_path=/Users/morgan/Downloads&frame=1&var=vorticity&cmap=default&run=4&lower_limit=0&upper_limit=1&camera=1&merged=1 HTTP/1.1" 200 -
+2025-11-15 21:42:17,264 [INFO] 127.0.0.1 - - [15/Nov/2025 21:42:17] "GET /backend/plot/get_stats_value_at_position?base_path=/Users/morgan/Downloads&camera=1&frame=1&var=vorticity&run=4&merged=1&x_percent=0.06280839134375817&y_percent=0.34336290026474964 HTTP/1.1" 200 -
+2025-11-15 21:43:07,810 [INFO] 127.0.0.1 - - [15/Nov/2025 21:43:07] "[35m[1mGET /backend/plot/plot_stats?base_path=/Users/morgan/Downloads&frame=1&var=vorticity&cmap=default&run=4&lower_limit=0&upper_limit=1&camera=1&merged=0 HTTP/1.1[0m" 500 -
+2025-11-15 21:43:08,435 [INFO] 127.0.0.1 - - [15/Nov/2025 21:43:08] "[31m[1mGET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads&frame=1&var=vorticity&cmap=default&run=4&lower_limit=0&upper_limit=1&camera=1&merged=0&x_offset=0&y_offset=0 HTTP/1.1[0m" 400 -
+2025-11-15 21:43:08,436 [INFO] 127.0.0.1 - - [15/Nov/2025 21:43:08] "GET /backend/plot/check_runs?base_path=/Users/morgan/Downloads&camera=1&merged=0 HTTP/1.1" 200 -
+2025-11-15 21:43:18,326 [INFO] 127.0.0.1 - - [15/Nov/2025 21:43:18] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-15 21:43:19,911 [ERROR] Exception on /backend/get_frame_pair [GET]
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_gui/app.py", line 134, in get_frame_pair
+    pair = read_pair(idx, source_path, camera, cfg)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_core/image_handling/load_images.py", line 67, in read_pair
+    return read_image(str(set_file_path), camera_no=camera, im_no=idx)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_core/image_handling/load_images.py", line 29, in read_image
+    return reader_func(file_path, **kwargs)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_core/image_handling/readers/lavision_reader.py", line 186, in read_lavision_ims_pair
+    return read_lavision_ims(file_path, **kwargs)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_core/image_handling/readers/lavision_reader.py", line 111, in read_lavision_ims
+    raise ImportError(
+        "LaVision libraries are not supported on macOS (darwin). Please use a supported platform."
+    )
+ImportError: LaVision libraries are not supported on macOS (darwin). Please use a supported platform.
+2025-11-15 21:43:19,912 [INFO] 127.0.0.1 - - [15/Nov/2025 21:43:19] "[31m[1mPOST /backend/preload_images HTTP/1.1[0m" 405 -
+2025-11-15 21:43:19,924 [INFO] 127.0.0.1 - - [15/Nov/2025 21:43:19] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-15 21:43:19,928 [INFO] 127.0.0.1 - - [15/Nov/2025 21:43:19] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-15 21:43:19,930 [INFO] 127.0.0.1 - - [15/Nov/2025 21:43:19] "[35m[1mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 500 -
+2025-11-15 21:43:19,939 [INFO] 127.0.0.1 - - [15/Nov/2025 21:43:19] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-15 21:43:24,761 [ERROR] Exception on /backend/get_frame_pair [GET]
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_gui/app.py", line 134, in get_frame_pair
+    pair = read_pair(idx, source_path, camera, cfg)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_core/image_handling/load_images.py", line 67, in read_pair
+    return read_image(str(set_file_path), camera_no=camera, im_no=idx)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_core/image_handling/load_images.py", line 29, in read_image
+    return reader_func(file_path, **kwargs)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_core/image_handling/readers/lavision_reader.py", line 186, in read_lavision_ims_pair
+    return read_lavision_ims(file_path, **kwargs)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_core/image_handling/readers/lavision_reader.py", line 111, in read_lavision_ims
+    raise ImportError(
+        "LaVision libraries are not supported on macOS (darwin). Please use a supported platform."
+    )
+ImportError: LaVision libraries are not supported on macOS (darwin). Please use a supported platform.
+2025-11-15 21:43:24,764 [INFO] 127.0.0.1 - - [15/Nov/2025 21:43:24] "[35m[1mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 500 -
+2025-11-15 21:43:44,634 [ERROR] Exception on /backend/get_frame_pair [GET]
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_gui/app.py", line 134, in get_frame_pair
+    pair = read_pair(idx, source_path, camera, cfg)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_core/image_handling/load_images.py", line 67, in read_pair
+    return read_image(str(set_file_path), camera_no=camera, im_no=idx)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_core/image_handling/load_images.py", line 29, in read_image
+    return reader_func(file_path, **kwargs)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_core/image_handling/readers/lavision_reader.py", line 186, in read_lavision_ims_pair
+    return read_lavision_ims(file_path, **kwargs)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_core/image_handling/readers/lavision_reader.py", line 111, in read_lavision_ims
+    raise ImportError(
+        "LaVision libraries are not supported on macOS (darwin). Please use a supported platform."
+    )
+ImportError: LaVision libraries are not supported on macOS (darwin). Please use a supported platform.
+2025-11-15 21:43:44,635 [INFO] 127.0.0.1 - - [15/Nov/2025 21:43:44] "[31m[1mPOST /backend/preload_images HTTP/1.1[0m" 405 -
+2025-11-15 21:43:44,642 [INFO] 127.0.0.1 - - [15/Nov/2025 21:43:44] "[35m[1mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 500 -
+2025-11-15 21:43:44,651 [INFO] 127.0.0.1 - - [15/Nov/2025 21:43:44] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-15 21:43:44,654 [INFO] 127.0.0.1 - - [15/Nov/2025 21:43:44] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-15 21:43:44,659 [INFO] 127.0.0.1 - - [15/Nov/2025 21:43:44] "POST /backend/update_config HTTP/1.1" 200 -

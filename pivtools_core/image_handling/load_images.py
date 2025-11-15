@@ -14,11 +14,6 @@ from ..vector_loading import read_mask_from_mat
 # Import all readers to register them
 from .readers import get_reader
 
-try:
-    from line_profiler import profile
-except ImportError:
-    profile = lambda f: f
-
 
 def read_image(file_path: str, **kwargs) -> np.ndarray:
     """Read an image file using appropriate reader based on file extension.
@@ -137,7 +132,6 @@ def to_dask_array(delayed_pair: Delayed, config: Config) -> da.Array:
     return arr
 
 
-@profile
 def load_images(camera: int, config: Config, source: Path = None) -> da.Array:
     """Load images for a specific camera using pure lazy loading.
     
@@ -336,7 +330,7 @@ def load_mask_for_camera(
         )
         return None
 
-@profile
+
 def compute_vector_mask(
     pixel_mask: np.ndarray,
     config: Config,

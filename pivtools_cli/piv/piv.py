@@ -188,35 +188,6 @@ def perform_piv_and_save(
     return all_saved_paths, scattered_cache
 
 
-# def perform_piv(images: da.Array, config: Config, client: Client) -> List:
-#     """
-#     Perform PIV on a batch of image pairs.
-    
-#     Parameters
-#     ----------
-#     images : da.Array
-#         Dask array of shape (N, 2, H, W) containing image pairs.
-#     config : Config
-#         Configuration object.
-#     client : Client
-#         Dask distributed client.
-        
-#     Returns
-#     -------
-#     List
-#         List of Future objects that will resolve to PIVResult objects.
-#         Use client.gather() to collect results or simply iterate and
-#         call .result() on each future.
-#     """
-#     # Submit tasks to the cluster and return futures
-#     futures = []
-#     for i in range(images.shape[0]):
-#         block = images[i]  # Get each block
-#         future = client.submit(_piv_single_pass, block, config)
-#         futures.append(future)
-#     return futures
-
-
 def _piv_single_pass(
     image_block: da.Array,
     config: Config,

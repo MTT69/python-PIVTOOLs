@@ -15,13 +15,12 @@ import numpy as np
 import scipy.io
 from flask import Blueprint, jsonify, request
 from loguru import logger
-from scipy.interpolate import interpn
-
 
 from pivtools_core.config import get_config
 from pivtools_core.paths import get_data_paths
 from ...utils import camera_number
 from pivtools_core.vector_loading import load_coords_from_directory, load_vectors_from_directory
+from scipy.interpolate import RegularGridInterpolator
 
 merging_bp = Blueprint("merging", __name__)
 
@@ -29,185 +28,16 @@ merging_bp = Blueprint("merging", __name__)
 merging_jobs = {}
 
 
-def create_distance_weights(x, y, x_bounds, y_bounds):
+def _convert_to_half_precision(arr: np.ndarray) -> np.ndarray:
     """
-    Create distance-based weights for blending.
-    Higher weights near center, lower weights near edges.
+    Convert float arrays to half precision (float16) for space saving.
     """
-    # Normalize coordinates to [0, 1] within bounds
-    x_norm = (x - x_bounds[0]) / (x_bounds[1] - x_bounds[0])
-    y_norm = (y - y_bounds[0]) / (y_bounds[1] - y_bounds[0])
+    if arr is None or arr.size == 0:
+        return arr
+    if arr.dtype.kind == 'f':
+        return arr.astype(np.float16)
+    return arr
 
-    # Distance from edges (0 at edge, 0.5 at center)
-    x_dist = np.minimum(x_norm, 1 - x_norm)
-    y_dist = np.minimum(y_norm, 1 - y_norm)
-
-    # Combined distance weight (Hanning-like)
-    weights = np.sin(np.pi * x_dist) * np.sin(np.pi * y_dist)
-    return weights
-
-
-def merge_two_vector_fields(x1, y1, ux1, uy1, mask1, x2, y2, ux2, uy2, mask2, grid_spacing=None):
-    """
-    Merge two vector fields with smart overlap handling.
-    OPTIMIZED VERSION: Build interpolators once, reuse for both components.
-    Uses data from whichever camera is available, with weighted blending in overlap regions.
-    Respects original masks to prevent interpolation into masked regions.
-    Fills unknown regions with NaN (keeps full extent from both cameras).
-
-    Args:
-        x1, y1, ux1, uy1, mask1: Camera 1 coordinates, vectors, and mask (True = masked/invalid)
-        x2, y2, ux2, uy2, mask2: Camera 2 coordinates, vectors, and mask (True = masked/invalid)
-        grid_spacing: Target grid spacing for merged field
-
-    Returns:
-        X_merged, Y_merged, ux_merged, uy_merged, uz_merged: Merged field
-    """
-    logger.debug("Starting optimized vector field merging...")
-
-    # Check for empty arrays
-    if x1.size == 0 or x2.size == 0:
-        raise ValueError("Cannot merge: one or both coordinate arrays are empty")
-
-    # Get full extent of both cameras (no cropping)
-    y1_min, y1_max = np.nanmin(y1), np.nanmax(y1)
-    y2_min, y2_max = np.nanmin(y2), np.nanmax(y2)
-    
-    # Find overlapping y-range (for info only)
-    y_overlap_min = max(y1_min, y2_min)
-    y_overlap_max = min(y1_max, y2_max)
-    
-    logger.debug(f"Camera 1 y-range: [{y1_min:.2f}, {y1_max:.2f}]")
-    logger.debug(f"Camera 2 y-range: [{y2_min:.2f}, {y2_max:.2f}]")
-    logger.debug(f"Overlapping y-range: [{y_overlap_min:.2f}, {y_overlap_max:.2f}]")
-    
-    # Use FULL y-range from both cameras (no cropping)
-    y_min = min(y1_min, y2_min)
-    y_max = max(y1_max, y2_max)
-    
-    # Full x-range from both cameras
-    x_min = min(np.nanmin(x1), np.nanmin(x2))
-    x_max = max(np.nanmax(x1), np.nanmax(x2))
-    
-    logger.debug(f"Merged bounds (FULL extent): x=[{x_min:.2f}, {x_max:.2f}], y=[{y_min:.2f}, {y_max:.2f}]")
-
-    # Auto-determine grid spacing if not provided
-    if grid_spacing is None:
-        dx1 = np.median(np.diff(np.unique(x1)))
-        dy1 = np.median(np.diff(np.unique(y1)))
-        dx2 = np.median(np.diff(np.unique(x2)))
-        dy2 = np.median(np.diff(np.unique(y2)))
-        grid_spacing = min(dx1, dy1, dx2, dy2)
-        logger.debug(f"Auto grid spacing: {grid_spacing:.3f}")
-
-    # Create merged grid
-    x_merged = np.arange(x_min, x_max + grid_spacing, grid_spacing)
-    y_merged = np.arange(y_min, y_max + grid_spacing, grid_spacing)
-    X_merged, Y_merged = np.meshgrid(x_merged, y_merged)
-
-    logger.debug(f"Merged grid shape: {X_merged.shape}")
-
-    # Flatten query points once for all interpolations
-    query_points = np.column_stack([X_merged.ravel(), Y_merged.ravel()])
-
-    # Initialize merged arrays
-    ux_merged = np.zeros(X_merged.size)
-    uy_merged = np.zeros(X_merged.size)
-    weight_sum = np.zeros(X_merged.size)
-
-    # Process each camera
-    for cam_idx, (x_cam, y_cam, ux_cam, uy_cam, mask_cam) in enumerate(
-        [(x1, y1, ux1, uy1, mask1), (x2, y2, ux2, uy2, mask2)]
-    ):
-        logger.debug(f"Processing camera {cam_idx + 1}...")
-
-        # Apply mask: set masked values to NaN (will propagate through interpn)
-        ux_cam_masked = np.where(mask_cam, np.nan, ux_cam)
-        uy_cam_masked = np.where(mask_cam, np.nan, uy_cam)
-        
-        # Check if we have any valid data
-        if np.all(np.isnan(ux_cam_masked)) or np.all(np.isnan(uy_cam_masked)):
-            logger.warning(f"No valid data for camera {cam_idx + 1}")
-            continue
-
-        # Extract unique x and y coordinates (assumes structured grid)
-        # For structured grids from meshgrid: rows have constant y, columns have constant x
-        x_coords_1d = x_cam[0, :]  # First row (all x values)
-        y_coords_1d = y_cam[:, 0]  # First column (all y values)
-        
-        logger.debug(f"Camera {cam_idx + 1}: grid shape {x_cam.shape}, x range [{x_coords_1d[0]:.2f}, {x_coords_1d[-1]:.2f}], y range [{y_coords_1d[0]:.2f}, {y_coords_1d[-1]:.2f}]")
-
-        # Use interpn for FAST structured grid interpolation
-        # interpn expects points as (y, x) for 2D arrays
-        # bounds_error=False allows extrapolation, fill_value=np.nan for out-of-bounds
-        try:
-            ux_interp = interpn(
-                (y_coords_1d, x_coords_1d),
-                ux_cam_masked,
-                (Y_merged, X_merged),
-                method='linear',
-                bounds_error=False,
-                fill_value=np.nan
-            )
-            
-            uy_interp = interpn(
-                (y_coords_1d, x_coords_1d),
-                uy_cam_masked,
-                (Y_merged, X_merged),
-                method='linear',
-                bounds_error=False,
-                fill_value=np.nan
-            )
-        except Exception as e:
-            logger.error(f"Interpolation failed for camera {cam_idx + 1}: {e}")
-            continue
-        
-        # interpn automatically propagates NaN from masked regions
-        ux_interp_flat = ux_interp.ravel()
-        uy_interp_flat = uy_interp.ravel()
-
-        # Create weights based on distance from edges
-        x_bounds = [np.nanmin(x_cam), np.nanmax(x_cam)]
-        y_bounds = [np.nanmin(y_cam), np.nanmax(y_cam)]
-        weights = create_distance_weights(X_merged, Y_merged, x_bounds, y_bounds)
-
-        # Flatten weights and filter by valid data (interpn already handled masking via NaN)
-        weights_flat = weights.ravel()
-        valid_interp = ~(np.isnan(ux_interp_flat) | np.isnan(uy_interp_flat))
-        weights_flat = np.where(valid_interp, weights_flat, 0)
-
-        # Accumulate weighted values (vectorized)
-        ux_interp_flat = np.where(np.isnan(ux_interp_flat), 0, ux_interp_flat)
-        uy_interp_flat = np.where(np.isnan(uy_interp_flat), 0, uy_interp_flat)
-
-        ux_merged += ux_interp_flat * weights_flat
-        uy_merged += uy_interp_flat * weights_flat
-        weight_sum += weights_flat
-
-    # Normalize by total weights (safe division)
-    # Set unknown regions (no data from either camera) to NaN
-    valid_weights = weight_sum > 0
-    ux_merged = np.where(valid_weights, ux_merged / np.maximum(weight_sum, 1e-10), np.nan)
-    uy_merged = np.where(valid_weights, uy_merged / np.maximum(weight_sum, 1e-10), np.nan)
-
-    # Reshape back to 2D
-    ux_merged = ux_merged.reshape(X_merged.shape)
-    uy_merged = uy_merged.reshape(X_merged.shape)
-
-    logger.debug(f"Merged field has {np.sum(valid_weights)} valid points")
-    logger.debug(f"Merged field has {np.sum(~valid_weights.reshape(X_merged.shape))} NaN points (unknown regions)")
-    
-    uz_merged = np.zeros_like(ux_merged)  # For 2D PIV
-    
-    # MATLAB convention: lowest y-coordinate at bottom (first row)
-    # NumPy meshgrid creates arrays where row 0 is at top, so flip vertically
-    X_merged = np.flipud(X_merged)
-    Y_merged = np.flipud(Y_merged)
-    ux_merged = np.flipud(ux_merged)
-    uy_merged = np.flipud(uy_merged)
-    uz_merged = np.flipud(uz_merged)
-    
-    return X_merged, Y_merged, ux_merged, uy_merged, uz_merged
 
 
 def find_non_empty_runs_in_file(data_dir: Path, vector_format: str) -> tuple:
@@ -243,15 +73,249 @@ def find_non_empty_runs_in_file(data_dir: Path, vector_format: str) -> tuple:
             total_runs = 1
             if hasattr(piv_result, "ux") and np.asarray(piv_result.ux).size > 0:
                 valid_runs.append(1)
-
-        # TEMPORARY: Hardcode to only use run 4
-        logger.warning("TEMPORARY: Hardcoded to only process run 4")
-        valid_runs = [4] if 4 in valid_runs else []
-        
+        valid_runs = [4] if 4 in valid_runs else []  # --- TEMPORARY OVERRIDE FOR TESTING ---
         return valid_runs, total_runs
     except Exception as e:
         logger.error(f"Error checking runs in {first_file}: {e}")
         return [], 0
+
+
+def merge_n_camera_fields(camera_data_dict):
+    """
+    Merge n cameras using unified grid with distance-based Hanning blend.
+    Based on production merging logic from simple_merge.py.
+
+    Args:
+        camera_data_dict: Dict mapping camera_idx -> {
+            'x': x coordinates (1D or 2D),
+            'y': y coordinates (1D or 2D),
+            'ux': x velocity (masked with NaN),
+            'uy': y velocity (masked with NaN),
+            'mask': boolean mask
+        }
+
+    Returns:
+        Tuple of (X_merged, Y_merged, ux_merged, uy_merged, uz_merged)
+    """
+    if len(camera_data_dict) < 2:
+        raise ValueError(f"Need at least 2 cameras, got {len(camera_data_dict)}")
+
+    # Get first camera for reference
+    first_cam_idx = min(camera_data_dict.keys())
+    first_cam = camera_data_dict[first_cam_idx]
+
+    # Compute grid spacing from first camera
+    x_first = np.asarray(first_cam['x'])
+    y_first = np.asarray(first_cam['y'])
+
+    if x_first.ndim == 1:
+        x_first_vec = x_first
+        y_first_vec = y_first
+    else:
+        x_first_vec = x_first[0, :]
+        y_first_vec = y_first[:, 0]
+
+    dx = abs(np.median(np.diff(x_first_vec)))
+    dy = abs(np.median(np.diff(y_first_vec)))
+
+    # Combined bounds from all cameras
+    x_min = min(cam_data['x'].min() for cam_data in camera_data_dict.values())
+    x_max = max(cam_data['x'].max() for cam_data in camera_data_dict.values())
+    y_min = min(cam_data['y'].min() for cam_data in camera_data_dict.values())
+    y_max = max(cam_data['y'].max() for cam_data in camera_data_dict.values())
+
+    # Create unified grid
+    nx = int(np.round((x_max - x_min) / dx)) + 1
+    ny = int(np.round((y_max - y_min) / dy)) + 1
+    x_grid = np.linspace(x_min, x_max, nx)
+    y_grid = np.linspace(y_min, y_max, ny)
+    xg, yg = np.meshgrid(x_grid, y_grid, indexing='xy')
+
+    logger.debug(f"Unified grid: {nx} x {ny}, X:[{x_min:.2f}, {x_max:.2f}], Y:[{y_min:.2f}, {y_max:.2f}]")
+
+    # Interpolate all cameras to unified grid
+    points = np.stack([yg.ravel(), xg.ravel()], axis=-1)
+    camera_interp = {}
+
+    for cam_idx, cam_data in camera_data_dict.items():
+        logger.debug(f"Interpolating camera {cam_idx}...")
+
+        # Get camera coordinates and data
+        x_cam = np.asarray(cam_data['x'])
+        y_cam = np.asarray(cam_data['y'])
+        ux_cam = np.asarray(cam_data['ux'])
+        uy_cam = np.asarray(cam_data['uy'])
+        mask_cam = np.asarray(cam_data['mask'])
+
+        # Extract vectors for 1D coords
+        if x_cam.ndim == 1:
+            x_vec, y_vec = x_cam, y_cam
+        else:
+            x_vec = x_cam[0, :]
+            y_vec = y_cam[:, 0]
+
+        # Reshape data if needed
+        if ux_cam.ndim == 1:
+            ny_cam, nx_cam = len(y_vec), len(x_vec)
+            ux_cam = ux_cam.reshape(ny_cam, nx_cam)
+            uy_cam = uy_cam.reshape(ny_cam, nx_cam)
+            mask_cam = mask_cam.reshape(ny_cam, nx_cam)
+
+        # Ensure y_vec is ascending for RegularGridInterpolator
+        if y_vec[1] < y_vec[0]:
+            y_vec = y_vec[::-1]
+            ux_cam = np.flipud(ux_cam)
+            uy_cam = np.flipud(uy_cam)
+            mask_cam = np.flipud(mask_cam)
+
+        # Create interpolators (replace NaN with 0 for interpolation)
+        valid_ux = np.where(np.isnan(ux_cam), 0, ux_cam)
+        valid_uy = np.where(np.isnan(uy_cam), 0, uy_cam)
+        interp_ux = RegularGridInterpolator(
+            (y_vec, x_vec), valid_ux, method='nearest',
+            bounds_error=False, fill_value=np.nan
+        )
+        interp_uy = RegularGridInterpolator(
+            (y_vec, x_vec), valid_uy, method='nearest',
+            bounds_error=False, fill_value=np.nan
+        )
+        interp_mask = RegularGridInterpolator(
+            (y_vec, x_vec), mask_cam.astype(float), method='nearest',
+            bounds_error=False, fill_value=1.0
+        )
+
+        # Interpolate to unified grid
+        ux_interp = interp_ux(points).reshape(yg.shape)
+        uy_interp = interp_uy(points).reshape(yg.shape)
+        mask_interp = interp_mask(points).reshape(yg.shape) > 0.5
+
+        # Store interpolated data and valid region
+        camera_interp[cam_idx] = {
+            'ux': ux_interp,
+            'uy': uy_interp,
+            'mask': mask_interp,
+            'valid': ~np.isnan(ux_interp) & ~mask_interp,
+            'x_center': np.mean(x_cam),
+            'y_center': np.mean(y_cam)
+        }
+
+    # Determine stacking direction (horizontal or vertical)
+    cam_centers = [(camera_interp[idx]['x_center'], camera_interp[idx]['y_center'])
+                   for idx in sorted(camera_data_dict.keys())]
+    x_spread = max(c[0] for c in cam_centers) - min(c[0] for c in cam_centers)
+    y_spread = max(c[1] for c in cam_centers) - min(c[1] for c in cam_centers)
+
+    if x_spread >= y_spread:
+        stack_direction = 'horizontal'
+        logger.debug(f"Detected horizontal stacking (x_spread={x_spread:.2f} mm)")
+    else:
+        stack_direction = 'vertical'
+        logger.debug(f"Detected vertical stacking (y_spread={y_spread:.2f} mm)")
+
+    # Create weight maps for each camera using distance-based Hanning blend
+    logger.debug("Computing blend weights...")
+    camera_weights = {}
+
+    for cam_idx in camera_data_dict.keys():
+        # Initialize weight to 1 where this camera is valid
+        weight = np.where(camera_interp[cam_idx]['valid'], 1.0, 0.0)
+
+        # For overlap regions, use distance-based weighting
+        if stack_direction == 'horizontal':
+            # Weight based on distance from camera center in x-direction
+            cam_x_center = camera_interp[cam_idx]['x_center']
+            for other_idx in camera_data_dict.keys():
+                if other_idx == cam_idx:
+                    continue
+
+                # Find overlap region
+                valid_this = camera_interp[cam_idx]['valid']
+                valid_other = camera_interp[other_idx]['valid']
+                overlap = valid_this & valid_other
+
+                if np.any(overlap):
+                    # Get x-coordinates of overlap
+                    x_overlap = xg[overlap]
+                    x_min_overlap = x_overlap.min()
+                    x_max_overlap = x_overlap.max()
+
+                    # Determine which camera is left/right
+                    other_x_center = camera_interp[other_idx]['x_center']
+                    if cam_x_center < other_x_center:
+                        # This camera is on the left - high on left, low on right
+                        x_norm = (x_overlap - x_min_overlap) / (x_max_overlap - x_min_overlap)
+                        overlap_weight = 0.5 * (1 + np.cos(np.pi * x_norm))
+                    else:
+                        # This camera is on the right - low on left, high on right
+                        x_norm = (x_overlap - x_min_overlap) / (x_max_overlap - x_min_overlap)
+                        overlap_weight = 0.5 * (1 - np.cos(np.pi * x_norm))
+
+                    weight[overlap] = overlap_weight
+        else:  # vertical
+            # Weight based on distance from camera center in y-direction
+            cam_y_center = camera_interp[cam_idx]['y_center']
+            for other_idx in camera_data_dict.keys():
+                if other_idx == cam_idx:
+                    continue
+
+                # Find overlap region
+                valid_this = camera_interp[cam_idx]['valid']
+                valid_other = camera_interp[other_idx]['valid']
+                overlap = valid_this & valid_other
+
+                if np.any(overlap):
+                    # Get y-coordinates of overlap
+                    y_overlap = yg[overlap]
+                    y_min_overlap = y_overlap.min()
+                    y_max_overlap = y_overlap.max()
+
+                    # Determine which camera is top/bottom
+                    other_y_center = camera_interp[other_idx]['y_center']
+                    if cam_y_center < other_y_center:
+                        # This camera is on the bottom - high on bottom, low on top
+                        y_norm = (y_overlap - y_min_overlap) / (y_max_overlap - y_min_overlap)
+                        overlap_weight = 0.5 * (1 + np.cos(np.pi * y_norm))
+                    else:
+                        # This camera is on the top - low on bottom, high on top
+                        y_norm = (y_overlap - y_min_overlap) / (y_max_overlap - y_min_overlap)
+                        overlap_weight = 0.5 * (1 - np.cos(np.pi * y_norm))
+
+                    weight[overlap] = overlap_weight
+
+        camera_weights[cam_idx] = weight
+
+    # Normalize weights so they sum to 1 at each point
+    total_weight = np.zeros_like(xg)
+    for cam_idx in camera_data_dict.keys():
+        total_weight += camera_weights[cam_idx]
+
+    for cam_idx in camera_data_dict.keys():
+        # Avoid division by zero
+        valid_total = total_weight > 0
+        camera_weights[cam_idx] = np.where(
+            valid_total,
+            camera_weights[cam_idx] / total_weight,
+            0
+        )
+
+    # Create merged fields by weighted sum
+    logger.debug("Blending cameras...")
+    ux_merged = np.zeros_like(xg)
+    uy_merged = np.zeros_like(yg)
+
+    for cam_idx in camera_data_dict.keys():
+        ux_merged += camera_weights[cam_idx] * np.nan_to_num(camera_interp[cam_idx]['ux'], nan=0.0)
+        uy_merged += camera_weights[cam_idx] * np.nan_to_num(camera_interp[cam_idx]['uy'], nan=0.0)
+
+    # Set to NaN where no camera has valid data
+    no_data = total_weight == 0
+    ux_merged[no_data] = np.nan
+    uy_merged[no_data] = np.nan
+
+    # uz is not used in 2D PIV
+    uz_merged = np.zeros_like(ux_merged)
+
+    return xg, yg, ux_merged, uy_merged, uz_merged
 
 
 def _process_single_frame_merge(args):
@@ -454,30 +518,16 @@ def merge_vectors_for_frame(
         if len(run_data) < 2:
             logger.warning(f"Could not merge run {run_num}: insufficient cameras with valid data (got {len(run_data)}), skipping")
             continue
-            
-        cameras_list = list(run_data.keys())
-        cam1_data = run_data[cameras_list[0]]
-        cam2_data = run_data[cameras_list[1]]
 
         # Verify coordinates are not empty
-        if cam1_data["x"].size == 0 or cam2_data["x"].size == 0:
-            logger.warning(f"Empty coordinates for run {run_num}, skipping")
-            continue
+        for camera, data in run_data.items():
+            if data["x"].size == 0:
+                logger.warning(f"Empty coordinates for run {run_num}, camera {camera}, skipping")
+                continue
 
-        X_merged, Y_merged, ux_merged, uy_merged, uz_merged = (
-            merge_two_vector_fields(
-                cam1_data["x"],
-                cam1_data["y"],
-                cam1_data["ux"],
-                cam1_data["uy"],
-                cam1_data["mask"],
-                cam2_data["x"],
-                cam2_data["y"],
-                cam2_data["ux"],
-                cam2_data["uy"],
-                cam2_data["mask"],
-            )
-        )
+        # Use n-camera merge with production Hanning blend algorithm
+        logger.debug(f"Merging {len(run_data)} cameras for run {run_num}")
+        X_merged, Y_merged, ux_merged, uy_merged, uz_merged = merge_n_camera_fields(run_data)
 
         # Create b_mask (True where data is invalid/NaN)
         b_mask_merged = np.isnan(ux_merged) | np.isnan(uy_merged)
@@ -486,6 +536,13 @@ def merge_vectors_for_frame(
         ux_merged_save = np.nan_to_num(ux_merged, nan=0.0)
         uy_merged_save = np.nan_to_num(uy_merged, nan=0.0)
         uz_merged_save = np.nan_to_num(uz_merged if uz_merged is not None else np.zeros_like(ux_merged), nan=0.0)
+
+        # Flip arrays vertically to match Cartesian coordinates (smallest y at bottom)
+        ux_merged_save = ux_merged_save[::-1, :]
+        uy_merged_save = uy_merged_save[::-1, :]
+        uz_merged_save = uz_merged_save[::-1, :]
+        b_mask_merged = b_mask_merged[::-1, :]
+        Y_merged = Y_merged[::-1, :]
 
         # Store with run_num as key to preserve run indices
         merged_runs[run_num] = {
@@ -565,12 +622,20 @@ def merge_one_frame():
             for run_idx in range(total_runs):
                 run_num = run_idx + 1
                 if run_num in merged_runs:
-                    coordinates[run_idx]["x"] = merged_runs[run_num]["x"]
-                    coordinates[run_idx]["y"] = merged_runs[run_num]["y"]
+                    # Get merged coordinates (already in Cartesian format with smallest y at bottom)
+                    x_coords = merged_runs[run_num]["x"]
+                    y_coords = merged_runs[run_num]["y"]
+                    
+                    # Convert to half precision for space saving
+                    x_coords = _convert_to_half_precision(x_coords)
+                    y_coords = _convert_to_half_precision(y_coords)
+                    
+                    coordinates[run_idx]["x"] = x_coords
+                    coordinates[run_idx]["y"] = y_coords
                 else:
                     # Empty run
-                    coordinates[run_idx]["x"] = np.array([])
-                    coordinates[run_idx]["y"] = np.array([])
+                    coordinates[run_idx]["x"] = np.array([], dtype=np.float16)
+                    coordinates[run_idx]["y"] = np.array([], dtype=np.float16)
 
             scipy.io.savemat(
                 str(coords_file), {"coordinates": coordinates}, do_compression=True
@@ -597,7 +662,7 @@ def merge_all_frames():
     type_name = data.get("type_name", "instantaneous")
     endpoint = data.get("endpoint", "")
     num_images = int(data.get("image_count", 1000))
-    max_workers = min(os.cpu_count(), num_images, 8)
+    max_workers = min(os.cpu_count() or 4, num_images, 8)
     job_id = str(uuid.uuid4())
 
     def run_merge_all():
@@ -696,12 +761,20 @@ def merge_all_frames():
                 for run_idx in range(total_runs):
                     run_num = run_idx + 1
                     if run_num in last_merged_runs:
-                        coordinates[run_idx]["x"] = last_merged_runs[run_num]["x"]
-                        coordinates[run_idx]["y"] = last_merged_runs[run_num]["y"]
+                        # Get merged coordinates (already in Cartesian format with smallest y at bottom)
+                        x_coords = last_merged_runs[run_num]["x"]
+                        y_coords = last_merged_runs[run_num]["y"]
+                        
+                        # Convert to half precision for space saving
+                        x_coords = _convert_to_half_precision(x_coords)
+                        y_coords = _convert_to_half_precision(y_coords)
+                        
+                        coordinates[run_idx]["x"] = x_coords
+                        coordinates[run_idx]["y"] = y_coords
                     else:
                         # Empty run
-                        coordinates[run_idx]["x"] = np.array([])
-                        coordinates[run_idx]["y"] = np.array([])
+                        coordinates[run_idx]["x"] = np.array([], dtype=np.float16)
+                        coordinates[run_idx]["y"] = np.array([], dtype=np.float16)
 
                 scipy.io.savemat(
                     str(coords_file), {"coordinates": coordinates}, do_compression=True

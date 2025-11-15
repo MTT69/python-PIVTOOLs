@@ -457,14 +457,6 @@ def plot_stats():
         mean_stats_dir = Path(paths["stats_dir"]) / "mean_stats"
         out_file = mean_stats_dir / "mean_stats.mat"
         coords_file = Path(paths["data_dir"]) / "coordinates.mat"
-        if not out_file.exists():
-            from vector_statistics.instantaneous_statistics import (
-                instantaneous_statistics,
-            )
-
-            instantaneous_statistics(
-                cam_num=params["camera"], config=get_config(), base=params["base_path"]
-            )
         b64_img, W, H, extra, _ = load_and_plot_data(
             mat_path=out_file,
             coords_path=coords_file if coords_file.exists() else None,

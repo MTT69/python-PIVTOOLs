@@ -78,7 +78,7 @@ def save_coordinates_from_config_distributed(
 ) -> str:
     """
     Generate and save coordinate grids. Designed for Dask workers.
-    
+
     Parameters
     ----------
     config : Config
@@ -90,7 +90,7 @@ def save_coordinates_from_config_distributed(
     runs_to_save : Optional[List[int]]
         List of pass indices (0-based) to save with data. If None, save all passes.
         For passes not in this list, empty coordinate grids will be saved.
-        
+
     Returns
     -------
     str
@@ -99,19 +99,18 @@ def save_coordinates_from_config_distributed(
     from pivtools_cli.piv.piv_backend.cpu_instantaneous import (
         InstantaneousCorrelatorCPU
     )
-    
+
     # Create a temporary correlator with optional precomputed cache
     correlator = InstantaneousCorrelatorCPU(config, precomputed_cache=correlator_cache)
-    
+
     # Extract the cached window centers
     win_ctrs_x_list = correlator.win_ctrs_x
     win_ctrs_y_list = correlator.win_ctrs_y
-    
+
     num_passes = len(config.window_sizes)
-    
+
     if runs_to_save is None:
         runs_to_save = list(range(num_passes))
-    
 
     # Create MATLAB-style struct array with fields 'x' and 'y', shape (num_passes,)
     dtype = [('x', object), ('y', object)]
@@ -123,7 +122,7 @@ def save_coordinates_from_config_distributed(
             y_centers = win_ctrs_y_list[i]
 
             # Create 2D coordinate grids with smallest y at the bottom
-            x_grid, y_grid = np.meshgrid(x_centers+1, y_centers[::-1]+1, indexing='xy')
+            x_grid, y_grid = np.meshgrid(x_centers + 1, y_centers[::-1] + 1, indexing='xy')
 
             # Convert to half precision for space saving
             x_grid = _convert_to_half_precision(x_grid)
