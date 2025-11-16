@@ -1,0 +1,11 @@
+prefix=/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/fftw-build/fftw-3.3.10/../../static_fftw/macos_arm64
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: FFTW
+Description: fast Fourier transform library
+Version: 3.3.10
+Libs: -L${libdir} -lfftw3f 
+Libs.private: -lm
+Cflags: -I${includedir}

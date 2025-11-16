@@ -13,9 +13,7 @@ recursive-include pivtools_gui/templates *
 global-exclude __pycache__
 global-exclude *.py[co]
 global-exclude .DS_Store
-global-exclude *.so
-global-exclude *.dll
-global-exclude *.dylib
+# Note: .so, .dll, .dylib files are included via package_data in pyproject.toml
 
 # Exclude test and development files
 prune tests
