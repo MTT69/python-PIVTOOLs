@@ -1,3 +1,0 @@
-pivtools_cli
-pivtools_core
-pivtools_gui
