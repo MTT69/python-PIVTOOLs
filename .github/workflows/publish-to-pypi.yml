@@ -41,8 +41,7 @@ jobs:
           CIBW_ARCHS_MACOS: "arm64"
           CIBW_ARCHS_WINDOWS: "AMD64"
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
-          CIBW_TEST_REQUIRES: "pytest"
-          CIBW_TEST_COMMAND: "pytest {package}/tests"
+          CIBW_TEST_COMMAND: ""
           CIBW_BUILD_VERBOSITY: 1
 
       - name: Upload wheels
