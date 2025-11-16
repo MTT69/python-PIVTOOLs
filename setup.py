@@ -69,7 +69,7 @@ class BuildCLib(build_ext):
             compiler = "cl"
             shared_flag = "/LD"  # Create DLL
             extra_compile = ["/O2", "/openmp:experimental", "/MT"]
-            extra_link = ["/link", f"/LIBPATH:{fftw_lib}", "libfftw3f-3.lib"]
+            extra_link = [str(fftw_lib_file)]
             lib_ext = ".pyd"
             use_msvc = True
 
@@ -154,4 +154,5 @@ dummy_ext = Extension("pivtools_cli._build_marker", sources=["pivtools_cli/_buil
 setup(
     ext_modules=[dummy_ext],
     cmdclass={"build_ext": BuildCLib},
+    include_package_data=True,
 )
