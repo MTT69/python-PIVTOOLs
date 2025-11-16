@@ -9,6 +9,7 @@ jobs:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -21,6 +22,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
 
       - name: Install cibuildwheel
         run: python -m pip install --upgrade cibuildwheel
@@ -28,10 +30,10 @@ jobs:
       - name: Install GCC 15 (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew update
+          brew update || brew update
           brew install gcc@15
-          echo "GCC 15 installed:"
-          /opt/homebrew/bin/gcc-15 --version || /usr/local/bin/gcc-15 --version
+          echo "GCC 15 installed at:"
+          /opt/homebrew/bin/gcc-15 --version
 
       - name: Build wheels
         run: python -m cibuildwheel --output-dir dist
@@ -42,6 +44,7 @@ jobs:
           CIBW_ARCHS_WINDOWS: "AMD64"
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
           CIBW_TEST_COMMAND: ""
+          MACOSX_DEPLOYMENT_TARGET: "15.0"
           CIBW_BUILD_VERBOSITY: 1
 
       - name: Upload wheels
@@ -49,32 +52,49 @@ jobs:
         with:
           name: wheels-${{ matrix.os }}
           path: dist/*.whl
+          if-no-files-found: error
 
   build-sdist:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - run: python -m pip install build
+
       - run: python -m build --sdist --outdir dist
+
       - uses: actions/upload-artifact@v4
         with:
           name: sdist
           path: dist/*.tar.gz
+          if-no-files-found: error
 
   publish:
     needs: [build-wheels, build-sdist]
     runs-on: ubuntu-latest
     if: github.event_name == 'release' && github.event.action == 'published'
+
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: dist
-          pattern: wheels-* sdist
+          pattern: '{wheels-*,sdist}'
           merge-multiple: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - run: ls -R dist
+
       - run: python -m pip install twine
+
       - run: twine check dist/*
+
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.PYPI_API_TOKEN }}
