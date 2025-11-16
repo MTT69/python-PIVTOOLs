@@ -22,50 +22,69 @@ class BuildCLib(build_ext):
         # --- Detect static FFTW ---
         static_root = pkg_dir / "static_fftw"
         sys_name = platform.system().lower()
+
+        # === macOS ===
         if sys_name == "darwin":
             sys_name = "macos"
             arch = platform.machine().lower()
-            fftw_dir = static_root / ("macos_arm64" if arch == "arm64" else "macos_x86_64")
+            if arch == "arm64":
+                fftw_dir = static_root / "macos_arm64"
+            elif arch in ["x86_64", "amd64"]:
+                fftw_dir = static_root / "macos_x86_64"
+            else:
+                raise RuntimeError(f"Unsupported macOS architecture: {arch}")
+
+            if not fftw_dir.exists():
+                raise RuntimeError(f"Static FFTW not found for macOS {arch}: {fftw_dir}")
+
+            fftw_inc = fftw_dir / "include"
+            fftw_lib_file = fftw_dir / "lib" / "libfftw3f.a"
+            if not fftw_lib_file.exists():
+                raise RuntimeError(f"FFTW static lib not found: {fftw_lib_file}")
+
+            # --- Use gcc-15 ---
+            gcc_path = "/opt/homebrew/bin/gcc-15"
+            if not os.path.exists(gcc_path):
+                gcc_path = "/usr/local/bin/gcc-15"
+            if not os.path.exists(gcc_path):
+                raise RuntimeError("gcc-15 not found. Run: brew install gcc@15")
+
+            compiler = gcc_path
+            extra_compile = ["-O3", "-fPIC", "-fopenmp"]
+            extra_link = [str(fftw_lib_file), "-lm", "-fopenmp"]
+            shared_flag = "-shared"
+            lib_ext = ".so"
+
+        # === Windows ===
         elif sys_name == "windows":
             fftw_dir = static_root / "windows"
-        elif sys_name == "linux":
-            fftw_dir = static_root / "linux"
-        else:
-            raise RuntimeError(f"Unsupported OS: {sys_name}")
+            if not fftw_dir.exists():
+                raise RuntimeError(f"Static FFTW not found: {fftw_dir}")
 
-        if not fftw_dir.exists():
-            raise RuntimeError(f"Static FFTW not found: {fftw_dir}")
+            fftw_inc = fftw_dir / "include"
+            fftw_lib = fftw_dir / "lib"
+            fftw_lib_file = fftw_lib / "libfftw3f-3.lib"
+            if not fftw_lib_file.exists():
+                raise RuntimeError(f"FFTW static lib not found: {fftw_lib_file}")
 
-        fftw_inc = fftw_dir / "include"
-        fftw_lib = fftw_dir / "lib"
-        fftw_lib_file = fftw_lib / ("libfftw3f.a" if sys_name != "windows" else "libfftw3f-3.lib")
-
-        if not fftw_lib_file.exists():
-            raise RuntimeError(f"FFTW static lib not found: {fftw_lib_file}")
-
-        # --- Compiler Selection ---
-        if sys_name == "windows":
             compiler = "cl"
             shared_flag = "/DLL"
             extra_compile = ["/O2", "/openmp:experimental", "/MT"]
             extra_link = ["/link", f"/LIBPATH:{fftw_lib}", str(fftw_lib_file)]
             lib_ext = ".pyd"
 
-        elif sys_name == "macos":
-            # Use Homebrew gcc-15
-            gcc_path = "/opt/homebrew/bin/gcc-15"  # Apple Silicon
-            if not os.path.exists(gcc_path):
-                gcc_path = "/usr/local/bin/gcc-15"  # Intel
-            if not os.path.exists(gcc_path):
-                raise RuntimeError("gcc-15 not found. Run: brew install gcc@15")
+        # === Linux ===
+        else:
+            fftw_dir = static_root / "linux"
+            if not fftw_dir.exists():
+                raise RuntimeError(f"Static FFTW not found: {fftw_dir}")
 
-            compiler = gcc_path
-            shared_flag = "-shared"
-            extra_compile = ["-O3", "-fPIC", "-fopenmp"]
-            extra_link = [str(fftw_lib_file), "-lm", "-fopenmp"]
-            lib_ext = ".so"
+            fftw_inc = fftw_dir / "include"
+            fftw_lib = fftw_dir / "lib"
+            fftw_lib_file = fftw_lib / "libfftw3f.a"
+            if not fftw_lib_file.exists():
+                raise RuntimeError(f"FFTW static lib not found: {fftw_lib_file}")
 
-        else:  # Linux
             compiler = os.environ.get("CC", "gcc")
             shared_flag = "-shared"
             extra_compile = ["-O3", "-fPIC", "-fopenmp"]
