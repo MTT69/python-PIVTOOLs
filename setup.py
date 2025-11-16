@@ -69,7 +69,7 @@ class BuildCLib(build_ext):
             compiler = "cl"
             shared_flag = "/LD"  # Create DLL
             extra_compile = ["/O2", "/openmp:experimental", "/MT"]
-            extra_link = ["/link", str(fftw_lib_file)]
+            extra_link = ["/link", f"/LIBPATH:{fftw_lib}", "libfftw3f-3.lib"]
             lib_ext = ".pyd"
             use_msvc = True
 
