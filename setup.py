@@ -39,7 +39,7 @@ class BuildCLib(build_ext):
 
         fftw_inc = fftw_dir / "include"
         fftw_lib = fftw_dir / "lib"
-        fftw_lib_file = fftw_lib / ("libfftw3f.a" if sys_name != "windows" else "libfftw3f-3.lib")
+        fftw_lib_file = fftw_lib / ("libfftw3f.a" if sys_name != "windows" else "fftw3f.lib")
 
         # --- Compiler ---
         if sys_name == "windows":

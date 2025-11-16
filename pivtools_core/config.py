@@ -53,9 +53,9 @@ class Config:
                 default_config = """
 paths:
   base_paths:
-  - ./copy_here
+  - /base
   source_paths:
-  - ./copy_here
+  - /source
   camera_numbers:
   - 1
   camera_count: 1
@@ -81,10 +81,10 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 4
+  omp_threads: 2
   dask_workers_per_node: 5
   dask_threads_per_worker: 1
-  dask_memory_limit: 12GB
+  dask_memory_limit: 2.5GB
 outlier_detection:
   enabled: true
   methods:
@@ -168,8 +168,7 @@ calibration:
     enhance_dots: true
     asymmetric: false
     dt: 2
-filters:
-- type: pod
+filters: []
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat

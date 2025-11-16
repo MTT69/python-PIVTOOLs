@@ -121,19 +121,33 @@ def get_frame_pair():
     camera = request.args.get("camera", type=int)
     idx = request.args.get("idx", type=int)
     source_path_idx = request.args.get("source_path_idx", default=0, type=int)
-    
+
     # For .set and .im7 files, don't append camera folder - all cameras are in the source directory
     format_str = cfg.image_format[0]
-    
+
     if '.set' in str(format_str) or '.im7' in str(format_str):
         source_path = cfg.source_paths[source_path_idx]
     else:
         source_path = cfg.source_paths[source_path_idx] / camera_folder(camera)
-    
+
     try:
         pair = read_pair(idx, source_path, camera, cfg)
     except FileNotFoundError as e:
-        return jsonify({"error": "File not found", "file": str(e)}), 404
+        # Provide detailed error with search path and patterns
+        image_format = cfg.image_format
+        patterns_info = f"patterns: {image_format}" if isinstance(image_format, list) else f"pattern: {image_format}"
+        return jsonify({
+            "error": f"File not found in {source_path}",
+            "file": str(e),
+            "source_path": str(source_path),
+            "patterns": image_format,
+            "detail": f"Searched in {source_path} using {patterns_info}"
+        }), 404
+    except Exception as e:
+        return jsonify({
+            "error": f"Error reading image: {str(e)}",
+            "source_path": str(source_path)
+        }), 500
 
     return jsonify(
         {"A": numpy_to_png_base64(pair[0]), "B": numpy_to_png_base64(pair[1])}
