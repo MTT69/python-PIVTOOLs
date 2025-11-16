@@ -3,7 +3,6 @@ import os
 import platform
 import pathlib
 import subprocess
-import sys
 from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext
 
@@ -39,21 +38,39 @@ class BuildCLib(build_ext):
 
         fftw_inc = fftw_dir / "include"
         fftw_lib = fftw_dir / "lib"
-        fftw_lib_file = fftw_lib / ("libfftw3f.a" if sys_name != "windows" else "fftw3f.lib")
+        fftw_lib_file = fftw_lib / ("libfftw3f.a" if sys_name != "windows" else "libfftw3f-3.lib")
 
-        # --- Compiler ---
+        if not fftw_lib_file.exists():
+            raise RuntimeError(f"FFTW static lib not found: {fftw_lib_file}")
+
+        # --- Compiler Selection ---
         if sys_name == "windows":
             compiler = "cl"
             shared_flag = "/DLL"
             extra_compile = ["/O2", "/openmp:experimental", "/MT"]
             extra_link = ["/link", f"/LIBPATH:{fftw_lib}", str(fftw_lib_file)]
-        else:
+            lib_ext = ".pyd"
+
+        elif sys_name == "macos":
+            # Use Homebrew gcc-15
+            gcc_path = "/opt/homebrew/bin/gcc-15"  # Apple Silicon
+            if not os.path.exists(gcc_path):
+                gcc_path = "/usr/local/bin/gcc-15"  # Intel
+            if not os.path.exists(gcc_path):
+                raise RuntimeError("gcc-15 not found. Run: brew install gcc@15")
+
+            compiler = gcc_path
+            shared_flag = "-shared"
+            extra_compile = ["-O3", "-fPIC", "-fopenmp"]
+            extra_link = [str(fftw_lib_file), "-lm", "-fopenmp"]
+            lib_ext = ".so"
+
+        else:  # Linux
             compiler = os.environ.get("CC", "gcc")
             shared_flag = "-shared"
             extra_compile = ["-O3", "-fPIC", "-fopenmp"]
             extra_link = [str(fftw_lib_file), "-lm", "-fopenmp"]
-
-        lib_ext = ".pyd" if sys_name == "windows" else ".so"
+            lib_ext = ".so"
 
         # --- Build libbulkxcorr2d ---
         sources1 = [
