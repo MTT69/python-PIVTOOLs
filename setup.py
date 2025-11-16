@@ -29,10 +29,8 @@ class BuildCLib(build_ext):
             arch = platform.machine().lower()
             if arch == "arm64":
                 fftw_dir = static_root / "macos_arm64"
-            elif arch in ["x86_64", "amd64"]:
-                fftw_dir = static_root / "macos_x86_64"
             else:
-                raise RuntimeError(f"Unsupported macOS architecture: {arch}")
+                raise RuntimeError(f"Unsupported macOS architecture: {arch}. Only Apple Silicon (arm64) is supported.")
 
             if not fftw_dir.exists():
                 raise RuntimeError(f"Static FFTW not found for macOS {arch}: {fftw_dir}")
