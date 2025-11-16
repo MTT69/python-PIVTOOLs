@@ -52,6 +52,7 @@ class BuildCLib(build_ext):
             extra_link = [str(fftw_lib_file), "-lm", "-fopenmp"]
             shared_flag = "-shared"
             lib_ext = ".so"
+            use_msvc = False
 
         # === Windows ===
         elif sys_name == "windows":
@@ -66,10 +67,11 @@ class BuildCLib(build_ext):
                 raise RuntimeError(f"FFTW static lib not found: {fftw_lib_file}")
 
             compiler = "cl"
-            shared_flag = "/DLL"
+            shared_flag = "/LD"  # Create DLL
             extra_compile = ["/O2", "/openmp:experimental", "/MT"]
+            extra_link = ["/link", str(fftw_lib_file)]
             lib_ext = ".pyd"
-            extra_link = ["/link", f"/LIBPATH:{fftw_lib}", str(fftw_lib_file), f"/out:{build_dir / f'libbulkxcorr2d{lib_ext}'}"]
+            use_msvc = True
 
         # === Linux ===
         else:
@@ -88,6 +90,7 @@ class BuildCLib(build_ext):
             extra_compile = ["-O3", "-fPIC", "-fopenmp"]
             extra_link = [str(fftw_lib_file), "-lm", "-fopenmp"]
             lib_ext = ".so"
+            use_msvc = False
 
         # --- Build libbulkxcorr2d ---
         sources1 = [
@@ -96,20 +99,44 @@ class BuildCLib(build_ext):
             "xcorr.c",
             "xcorr_cache.c",
         ]
-        cmd1 = [
-            compiler, *extra_compile, shared_flag,
-            *[str(src_dir / s) for s in sources1],
-            f"/I{src_dir}", f"/I{fftw_inc}"
-        ] + extra_link
+
+        if use_msvc:
+            # MSVC command structure: cl [flags] [sources] /I[include] /Fe[output] /link [libs]
+            output_file = build_dir / f"libbulkxcorr2d{lib_ext}"
+            cmd1 = [
+                compiler, *extra_compile, shared_flag,
+                *[str(src_dir / s) for s in sources1],
+                f"/I{src_dir}", f"/I{fftw_inc}",
+                f"/Fe{output_file}"
+            ] + extra_link
+        else:
+            # GCC command structure: gcc [flags] [sources] -I[include] -o [output] [libs]
+            cmd1 = [
+                compiler, *extra_compile, shared_flag,
+                *[str(src_dir / s) for s in sources1],
+                f"-I{src_dir}", f"-I{fftw_inc}",
+                "-o", str(build_dir / f"libbulkxcorr2d{lib_ext}")
+            ] + extra_link
         self._run(cmd1)
 
         # --- Build libinterp2custom ---
-        cmd2 = [
-            compiler, *extra_compile, shared_flag,
-            str(src_dir / "interp2custom.c"),
-            f"/I{src_dir}",
-            "/link", f"/out:{build_dir / f'libinterp2custom{lib_ext}'}"
-        ]
+        if use_msvc:
+            # MSVC command structure
+            output_file = build_dir / f"libinterp2custom{lib_ext}"
+            cmd2 = [
+                compiler, *extra_compile, shared_flag,
+                str(src_dir / "interp2custom.c"),
+                f"/I{src_dir}",
+                f"/Fe{output_file}"
+            ]
+        else:
+            # GCC command structure
+            cmd2 = [
+                compiler, *extra_compile, shared_flag,
+                str(src_dir / "interp2custom.c"),
+                f"-I{src_dir}",
+                "-o", str(build_dir / f"libinterp2custom{lib_ext}")
+            ]
         self._run(cmd2)
 
     def _run(self, cmd):
