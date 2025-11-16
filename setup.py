@@ -68,8 +68,8 @@ class BuildCLib(build_ext):
             compiler = "cl"
             shared_flag = "/DLL"
             extra_compile = ["/O2", "/openmp:experimental", "/MT"]
-            extra_link = ["/link", f"/LIBPATH:{fftw_lib}", str(fftw_lib_file)]
             lib_ext = ".pyd"
+            extra_link = ["/link", f"/LIBPATH:{fftw_lib}", str(fftw_lib_file), f"/out:{build_dir / f'libbulkxcorr2d{lib_ext}'}"]
 
         # === Linux ===
         else:
@@ -99,8 +99,7 @@ class BuildCLib(build_ext):
         cmd1 = [
             compiler, *extra_compile, shared_flag,
             *[str(src_dir / s) for s in sources1],
-            f"-I{src_dir}", f"-I{fftw_inc}",
-            "-o", str(build_dir / f"libbulkxcorr2d{lib_ext}")
+            f"/I{src_dir}", f"/I{fftw_inc}"
         ] + extra_link
         self._run(cmd1)
 
@@ -108,8 +107,8 @@ class BuildCLib(build_ext):
         cmd2 = [
             compiler, *extra_compile, shared_flag,
             str(src_dir / "interp2custom.c"),
-            f"-I{src_dir}",
-            "-o", str(build_dir / f"libinterp2custom{lib_ext}")
+            f"/I{src_dir}",
+            "/link", f"/out:{build_dir / f'libinterp2custom{lib_ext}'}"
         ]
         self._run(cmd2)
 

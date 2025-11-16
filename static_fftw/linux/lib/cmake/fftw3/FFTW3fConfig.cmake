@@ -7,8 +7,8 @@ endif ()
 set (FFTW3_CONFIG_FILE "${CMAKE_CURRENT_LIST_FILE}")
 
 set (FFTW3f_LIBRARIES fftw3f)
-set (FFTW3f_LIBRARY_DIRS /Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/fftw-build/fftw-3.3.10/../../static_fftw/macos_arm64/lib)
-set (FFTW3f_INCLUDE_DIRS /Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/fftw-build/fftw-3.3.10/../../static_fftw/macos_arm64/include)
+set (FFTW3f_LIBRARY_DIRS /io/static_fftw/linux/lib)
+set (FFTW3f_INCLUDE_DIRS /io/static_fftw/linux/include)
 
 include ("${CMAKE_CURRENT_LIST_DIR}/FFTW3LibraryDepends.cmake")
 
