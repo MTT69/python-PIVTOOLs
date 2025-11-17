@@ -17012,3 +17012,92 @@ videos:
 2025-11-17 21:27:38,544 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:38] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
 2025-11-17 21:27:39,232 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:39] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
 2025-11-17 21:27:39,544 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:39] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:27:40,543 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:40] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:27:40,544 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:40] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:27:41,234 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:41] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:27:41,546 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:41] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:27:41,618 [INFO] [Batch 1] Loaded 30 images (5592.8 MB)
+2025-11-17 21:27:42,544 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:42] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:27:42,554 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:42] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:27:43,235 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:43] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:27:43,542 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:43] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:27:44,556 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:44] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:27:44,557 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:44] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:27:45,231 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:45] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:27:45,548 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:45] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:27:45,840 [INFO] [Batch 1] Applying filters: time
+2025-11-17 21:27:45,840 [INFO] [Batch 1] Using 20 threads for filtering
+2025-11-17 21:27:45,840 [INFO] Applying filter: {'type': 'time'}
+2025-11-17 21:27:45,840 [INFO] Empty chunk detected, skipping
+2025-11-17 21:27:46,546 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:46] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:27:46,564 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:46] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:27:47,233 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:47] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:27:47,540 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:47] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:27:48,543 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:48] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:27:48,544 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:48] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:27:48,979 [INFO] [Batch 1] Filtering complete
+2025-11-17 21:27:49,246 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:49] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:27:49,305 [INFO] [Batch 1] Splitting batch into 30 individual pairs for low-memory distribution
+2025-11-17 21:27:49,575 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:49] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:27:50,542 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:50] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:27:50,543 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:50] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:27:51,235 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:51] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:27:51,546 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:51] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:27:52,560 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:52] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:27:52,561 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:52] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:27:53,234 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:53] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:27:53,543 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:53] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:27:54,547 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:54] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:27:54,549 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:54] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:27:55,238 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:55] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:27:55,542 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:55] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:27:56,537 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:56] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:27:56,539 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:56] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:27:57,237 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:57] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:27:57,545 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:57] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:27:57,677 [INFO] [Batch 1] 30 pairs scattered individually (~186.4 MB each)
+2025-11-17 21:27:57,679 [INFO] [Batch 1] Starting parallel PIV processing on 5 workers...
+2025-11-17 21:27:57,680 [INFO] Submitting 30 independent tasks to cluster
+2025-11-17 21:27:57,682 [INFO] Tasks submitted. Dask scheduler managing distribution across workers. Each worker processes ONE image at a time.
+2025-11-17 21:27:58,563 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:58] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:27:58,575 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:58] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:27:59,361 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:59] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:27:59,668 [INFO] 127.0.0.1 - - [17/Nov/2025 21:27:59] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:28:00,573 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:00] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:28:00,581 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:00] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:28:01,252 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:01] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:28:01,569 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:01] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:28:02,547 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:02] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:28:02,549 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:02] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:28:03,410 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:03] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:28:03,721 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:03] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:28:04,605 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:04] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:28:04,607 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:04] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:28:05,269 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:05] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:28:05,581 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:05] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:28:06,592 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:06] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:28:06,594 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:06] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:28:07,268 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:07] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:28:07,614 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:07] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:28:08,550 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:08] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:28:08,552 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:08] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:28:09,261 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:09] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:28:09,576 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:09] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:28:10,234 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:10] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:28:10,564 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:10] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:28:11,545 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:11] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:28:11,546 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:11] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:28:12,249 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:12] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:28:12,605 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:12] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:28:13,561 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:13] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:28:13,562 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:13] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:28:37,466 [INFO] All 30 images processed successfully
+2025-11-17 21:28:37,468 [INFO] [Batch 1] 30 images processed and saved
+2025-11-17 21:28:37,752 [INFO] 
+2025-11-17 21:28:37,752 [INFO] >>> BATCH 2/5 <<<
+2025-11-17 21:28:37,752 [INFO] [Batch 2] Loading into main process memory...
+2025-11-17 21:28:50,233 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:50] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-17 21:28:50,554 [INFO] 127.0.0.1 - - [17/Nov/2025 21:28:50] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:29:07,107 [INFO] 127.0.0.1 - - [17/Nov/2025 21:29:07] "POST /backend/cancel_run HTTP/1.1" 200 -
+2025-11-17 21:29:07,121 [INFO] 127.0.0.1 - - [17/Nov/2025 21:29:07] "GET /backend/piv_logs?job_id=piv_20251117_212705 HTTP/1.1" 200 -
+2025-11-17 21:29:07,122 [INFO] 127.0.0.1 - - [17/Nov/2025 21:29:07] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
