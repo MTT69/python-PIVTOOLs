@@ -4,9 +4,10 @@ from pathlib import Path
 # Add parent directory to path so pivtools_gui can be imported
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import threading
 from pathlib import Path
-
+import time
+import threading
+import webbrowser
 import dask
 import dask.array as da
 import numpy as np
@@ -52,8 +53,21 @@ app.register_blueprint(merging_bp, url_prefix='/backend')
 processed_store = {"processed": {}}
 processing = False
 
+# Raw image cache: {(source_path_idx, camera, frame_idx): (pair_array, base64_A, base64_B)}
+raw_image_cache = {}
+RAW_CACHE_MAX_SIZE = 100  # Maximum number of frame pairs to cache
+
 # --- Utility Functions ---
 
+def manage_cache_size():
+    """Remove oldest entries if cache exceeds max size (simple LRU)."""
+    global raw_image_cache
+    if len(raw_image_cache) > RAW_CACHE_MAX_SIZE:
+        # Remove 20% of oldest entries
+        to_remove = len(raw_image_cache) - int(RAW_CACHE_MAX_SIZE * 0.8)
+        keys_to_remove = list(raw_image_cache.keys())[:to_remove]
+        for key in keys_to_remove:
+            del raw_image_cache[key]
 
 def cam_folder_key(camera):  # backward compat helper
     return camera_folder(camera)
@@ -112,15 +126,77 @@ def get_calibration_method_params(cfg, method: str):
     return cal.get(method, {})
 
 
+def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: int, cfg, window: int = 10):
+    """
+    Background task to preload frames surrounding the current frame.
+    Loads 'window' frames before and after current_idx.
+    """
+    try:
+        format_str = cfg.image_format[0]
+        if '.set' in str(format_str) or '.im7' in str(format_str):
+            source_path = cfg.source_paths[source_path_idx]
+        else:
+            source_path = cfg.source_paths[source_path_idx] / camera_folder(camera)
+
+        num_images = cfg.num_images
+
+        # Calculate range to preload (avoid duplicates with current frame)
+        start_idx = max(1, current_idx - window)
+        end_idx = min(num_images, current_idx + window)
+
+        preloaded = 0
+        for idx in range(start_idx, end_idx + 1):
+            if idx == current_idx:
+                continue  # Skip current frame (already loaded)
+
+            cache_key_tuple = (source_path_idx, camera, idx)
+            if cache_key_tuple in raw_image_cache:
+                continue  # Already cached
+
+            try:
+                pair = read_pair(idx, source_path, camera, cfg)
+                b64_a = numpy_to_png_base64(pair[0])
+                b64_b = numpy_to_png_base64(pair[1])
+                raw_image_cache[cache_key_tuple] = (pair, b64_a, b64_b)
+                preloaded += 1
+            except Exception as e:
+                logger.debug(f"Failed to preload frame {idx}: {e}")
+                continue
+
+        manage_cache_size()
+        if preloaded > 0:
+            logger.debug(f"Preloaded {preloaded} frames around frame {current_idx}")
+    except Exception as e:
+        logger.debug(f"Error in background preload: {e}")
+
+
 # --- Endpoints ---
 
 
 @api_bp.route("/get_frame_pair", methods=["GET"])
 def get_frame_pair():
+    start_time = time.perf_counter()
     cfg = get_config()
     camera = request.args.get("camera", type=int)
     idx = request.args.get("idx", type=int)
     source_path_idx = request.args.get("source_path_idx", default=0, type=int)
+
+    # Check cache first
+    cache_key_tuple = (source_path_idx, camera, idx)
+    if cache_key_tuple in raw_image_cache:
+        logger.debug(f"Cache HIT for frame {idx}, camera {camera}, source_path_idx {source_path_idx}")
+        _, b64_a, b64_b = raw_image_cache[cache_key_tuple]
+
+        # Trigger background preload of surrounding frames
+        threading.Thread(
+            target=_preload_surrounding_frames,
+            args=(source_path_idx, camera, idx, cfg),
+            daemon=True
+        ).start()
+
+        return jsonify({"A": b64_a, "B": b64_b})
+
+    logger.debug(f"Cache MISS for frame {idx}, camera {camera}, source_path_idx {source_path_idx}")
 
     # For .set and .im7 files, don't append camera folder - all cameras are in the source directory
     format_str = cfg.image_format[0]
@@ -131,7 +207,10 @@ def get_frame_pair():
         source_path = cfg.source_paths[source_path_idx] / camera_folder(camera)
 
     try:
+        read_start = time.perf_counter()
         pair = read_pair(idx, source_path, camera, cfg)
+        read_end = time.perf_counter()
+        logger.debug(f"read_pair took {read_end - read_start:.4f} seconds")
     except FileNotFoundError as e:
         # Provide detailed error with search path and patterns
         image_format = cfg.image_format
@@ -149,10 +228,65 @@ def get_frame_pair():
             "source_path": str(source_path)
         }), 500
 
-    return jsonify(
-        {"A": numpy_to_png_base64(pair[0]), "B": numpy_to_png_base64(pair[1])}
-    )
+    convert_start = time.perf_counter()
+    b64_a = numpy_to_png_base64(pair[0])
+    b64_b = numpy_to_png_base64(pair[1])
+    convert_end = time.perf_counter()
+    logger.debug(f"Conversion to base64 took {convert_end - convert_start:.4f} seconds")
 
+    # Store in cache
+    raw_image_cache[cache_key_tuple] = (pair, b64_a, b64_b)
+    manage_cache_size()
+
+    # Trigger background preload of surrounding frames
+    threading.Thread(
+        target=_preload_surrounding_frames,
+        args=(source_path_idx, camera, idx, cfg),
+        daemon=True
+    ).start()
+
+    end_time = time.perf_counter()
+    logger.debug(f"Total /get_frame_pair took {end_time - start_time:.4f} seconds")
+
+    return jsonify({"A": b64_a, "B": b64_b})
+
+
+@api_bp.route("/preload_images", methods=["POST"])
+def preload_images():
+    """
+    Preload a range of images into the cache.
+    This endpoint triggers background loading and returns immediately.
+
+    Request body:
+    {
+        "camera": 1,
+        "start_idx": 1,
+        "count": 30,
+        "source_path_idx": 0
+    }
+    """
+    data = request.get_json() or {}
+    camera = data.get("camera", 1)
+    start_idx = data.get("start_idx", 1)
+    count = data.get("count", 30)
+    source_path_idx = data.get("source_path_idx", 0)
+
+    cfg = get_config()
+
+    # Start background preload
+    threading.Thread(
+        target=_preload_surrounding_frames,
+        args=(source_path_idx, camera, start_idx, cfg, count // 2),
+        daemon=True
+    ).start()
+
+    return jsonify({
+        "status": "preloading",
+        "camera": camera,
+        "start_idx": start_idx,
+        "count": count,
+        "source_path_idx": source_path_idx
+    })
 
 
 @api_bp.route("/filter", methods=["POST"])
@@ -709,12 +843,8 @@ def main():
     
     # Automatically open browser after a short delay
     def open_browser():
-        import time
-        import webbrowser
-        time.sleep(2)  # Wait for server to start
         webbrowser.open('http://localhost:5000')
     
-    import threading
     threading.Thread(target=open_browser, daemon=True).start()
     
     app.run(host='0.0.0.0', port=5000, debug=False)

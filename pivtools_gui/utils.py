@@ -40,8 +40,14 @@ def camera_folder(camera: Union[str, int]) -> str:
     return f"Cam{camera_number(camera)}"
 
 
-def numpy_to_png_base64(arr: np.ndarray) -> str:
-    """Convert a numpy array (uint8 or convertible) to a base64 PNG string."""
+def numpy_to_png_base64(arr: np.ndarray, compress_level: int = 1) -> str:
+    """Convert a numpy array (uint8 or convertible) to a base64 PNG string.
+
+    Args:
+        arr: Input numpy array
+        compress_level: PNG compression level (0-9). Lower = faster, higher = smaller.
+                       Default is 1 for speed. Use 6 for better compression.
+    """
     if arr.dtype != np.uint8:
         a = arr.astype(np.float32, copy=False)
         if a.size:
@@ -59,5 +65,7 @@ def numpy_to_png_base64(arr: np.ndarray) -> str:
         arr = a
     img = Image.fromarray(arr)
     buf = BytesIO()
-    img.save(buf, format="PNG")
+    # Use compress_level to control speed vs size tradeoff
+    # compress_level 1 is ~3-4x faster than default (6) with ~10-20% larger files
+    img.save(buf, format="PNG", compress_level=compress_level, optimize=False)
     return base64.b64encode(buf.getvalue()).decode("utf-8")

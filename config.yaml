@@ -1,15 +1,16 @@
 paths:
   base_paths:
-  - D:\ALK_PIV_06082025\PIVProcessed\testetstste
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/hehe
   source_paths:
-  - D:\ALK_PIV_06082025\emptytunnel_02
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall
   camera_numbers:
-  - 3
-  camera_count: 5
+  - 1
+  camera_count: 1
 images:
-  num_images: 150
+  num_images: 100
   image_format:
-  - loop=1.set
+  - B%05d_A.tif
+  - B%05d_B.tif
   vector_format:
   - B%05d.mat
   time_resolved: false
@@ -123,7 +124,7 @@ masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
-  mode: file
+  mode: rectangular
   rectangular:
     top: 64
     bottom: 64
