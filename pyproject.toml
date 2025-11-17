@@ -72,6 +72,20 @@ include = ["pivtools_core*", "pivtools_cli*", "pivtools_gui*"]
 exclude = ["tests*", "manual_tools*", "logs*", "env*"]
 
 [tool.setuptools.package-data]
-"pivtools_cli" = ["lib/*"]
+"pivtools_cli" = [
+    "lib/interp2custom.c",
+    "lib/interp2custom.h",
+    "lib/peak_locate_lm.c",
+    "lib/peak_locate_lm.h",
+    "lib/PIV_2d_cross_correlate.c",
+    "lib/PIV_2d_cross_correlate.h",
+    "lib/xcorr.c",
+    "lib/xcorr.h",
+    "lib/xcorr_cache.c",
+    "lib/xcorr_cache.h",
+    "lib/common.h",
+    "lib/libbulkxcorr2d.*",
+    "lib/libinterp2custom.*"
+]
 pivtools_core = ["config.yaml"]
 pivtools_gui = ["static/**/*", "templates/**/*"]
