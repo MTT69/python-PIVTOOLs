@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Tuple, Optional, List
-from loguru import logger
+import logging
 
 import dask
 import dask.array as da
@@ -178,9 +178,7 @@ def load_images(camera: int, config: Config, source: Path = None) -> da.Array:
         camera_path = source / f"Cam{camera}"
     
     num_images = config.num_images
-    
-    logger.info(f"Creating {num_images} delayed tasks for lazy loading (Cam{camera})")
-    
+        
     # Create one delayed task per image pair (pure lazy loading)
     delayed_image_pairs = [
         delayed_image_pair(idx, camera_path, camera, config)
@@ -193,7 +191,7 @@ def load_images(camera: int, config: Config, source: Path = None) -> da.Array:
     # Stack into single array - still lazy, no computation yet!
     pairs_stack = da.stack(dask_pairs, axis=0)
     
-    logger.info(
+    logging.info(
         f"Lazy loading complete: {num_images} independent delayed tasks created "
         f"(~{num_images} KB memory footprint)"
     )
@@ -238,7 +236,7 @@ def create_rectangular_mask(config: Config) -> np.ndarray:
     total_pixels = mask.size
     mask_fraction = masked_pixels / total_pixels if total_pixels > 0 else 0
     
-    logger.debug(
+    logging.debug(
         "Created rectangular mask: top={}, bottom={}, left={}, right={} "
         "({}/{:.0f} pixels = {:.1f}%)",
         top, bottom, left, right, masked_pixels, total_pixels, mask_fraction * 100
@@ -276,14 +274,14 @@ def load_mask_for_camera(
         or None if masking is disabled or mask cannot be loaded
     """
     if not config.masking_enabled:
-        logger.debug("Masking is disabled in config")
+        logging.debug("Masking is disabled in config")
         return None
     
     mask_mode = config.mask_mode
     
     # Rectangular mode: create mask from edge specifications
     if mask_mode == "rectangular":
-        logger.debug("Using rectangular edge masking")
+        logging.debug("Using rectangular edge masking")
         return create_rectangular_mask(config)
     
     # File mode: load from .mat file
@@ -292,13 +290,13 @@ def load_mask_for_camera(
             mask_path = config.get_mask_path(camera_num, source_path_idx)
             
             if not mask_path.exists():
-                logger.warning(
+                logging.warning(
                     "Mask file not found for Cam{} at {}. Proceeding without mask.",
                     camera_num, mask_path
                 )
                 return None
             
-            logger.debug("Loading mask for Cam{} from {}", camera_num, mask_path)
+            logging.debug("Loading mask for Cam{} from {}", camera_num, mask_path)
             mask, polygons = read_mask_from_mat(str(mask_path))
             
             # Ensure mask is boolean
@@ -309,7 +307,7 @@ def load_mask_for_camera(
             total_pixels = mask.size
             mask_fraction = masked_pixels / total_pixels if total_pixels > 0 else 0
             
-            logger.debug(
+            logging.debug(
                 "Mask loaded: {}/{} pixels masked ({:.1f}%)",
                 masked_pixels, total_pixels, mask_fraction * 100
             )
@@ -317,14 +315,14 @@ def load_mask_for_camera(
             return mask
             
         except Exception as e:
-            logger.error(
+            logging.error(
                 "Failed to load mask for Cam{}: {}. Proceeding without mask.",
                 camera_num, e
             )
             return None
     
     else:
-        logger.warning(
+        logging.warning(
             "Unknown mask mode '{}'. Must be 'file' or 'rectangular'. "
             "Proceeding without mask.", mask_mode
         )
@@ -446,7 +444,7 @@ def compute_vector_mask(
         total_vectors = b_mask_pass.size
         mask_fraction = masked_vectors / total_vectors if total_vectors > 0 else 0
         
-        logger.debug(
+        logging.debug(
             "Pass {}: {}/{} vectors masked ({:.1f}%), window size: ({}, {})",
             pass_idx + 1, masked_vectors, total_vectors,
             mask_fraction * 100, win_y, win_x

@@ -101,7 +101,7 @@ def apply_filters_to_single_batch(
 
     config.data['filters'] = original_filters
 
-    logging.info(f"[Batch {batch_num}] ✓ Filtering complete")
+    logging.info(f"[Batch {batch_num}] Filtering complete")
 
     return batch_filtered_computed
 

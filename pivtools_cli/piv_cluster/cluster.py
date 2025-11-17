@@ -46,6 +46,7 @@ def start_cluster(
     threads_per_worker: int = None,
     memory_limit: str = "auto",
     config: Config = Config(),
+    worker_omp_threads: str = None,
 ) -> tuple[LocalCluster, Client]:
     """
     Start a local Dask cluster.
@@ -69,6 +70,9 @@ def start_cluster(
             log_file=config.log_file if hasattr(config, "log_file") else None,
             log_console=True,
         )
+        
+        if worker_omp_threads is not None:
+            client.run(set_worker_omp_threads, omp_threads=worker_omp_threads)
 
         return cluster, client
 
@@ -106,3 +110,12 @@ def setup_worker_logging(log_level=logging.INFO, log_file=None, log_console=True
         logger.addHandler(console_handler)
 
     logger.info("Worker logging configured successfully")
+
+
+def set_worker_omp_threads(omp_threads: str):
+    """
+    Set OMP_NUM_THREADS in worker processes.
+    """
+    import os
+    os.environ["OMP_NUM_THREADS"] = omp_threads
+    logging.info(f"Set OMP_NUM_THREADS to {omp_threads} in worker process")
