@@ -119,6 +119,8 @@ class BuildCLib(build_ext):
                 "-o", str(build_dir / f"libbulkxcorr2d{lib_ext}")
             ] + extra_link
         self._run(cmd1)
+        if not (build_dir / f"libbulkxcorr2d{lib_ext}").exists():
+            raise RuntimeError(f"Build failed: {build_dir / f'libbulkxcorr2d{lib_ext}'} not created")
 
         # --- Build libinterp2custom ---
         if use_msvc:
@@ -140,6 +142,8 @@ class BuildCLib(build_ext):
                 "-o", str(build_dir / f"libinterp2custom{lib_ext}")
             ]
         self._run(cmd2)
+        if not (build_dir / f"libinterp2custom{lib_ext}").exists():
+            raise RuntimeError(f"Build failed: {build_dir / f'libinterp2custom{lib_ext}'} not created")
 
     def _run(self, cmd):
         print("RUN:", " ".join(cmd))

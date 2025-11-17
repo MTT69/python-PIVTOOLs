@@ -66,7 +66,7 @@ For detailed configuration options, see [piv.tools/manual](https://piv.tools/man
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.12+
 
 ## License
 
