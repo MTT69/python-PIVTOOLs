@@ -1,22 +1,21 @@
 paths:
   base_paths:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/temporal
+  - D:\ALK_PIV_06082025\PIVProcessed\testetstste
   source_paths:
-  - /Users/morgan/Library/Cloudstorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall
+  - D:\ALK_PIV_06082025\emptytunnel_02
   camera_numbers:
   - 3
   camera_count: 5
 images:
-  num_images: 100
+  num_images: 150
   image_format:
-  - B%05d_A.tif
-  - B%05d_B.tif
+  - loop=1.set
   vector_format:
   - B%05d.mat
   time_resolved: false
   dtype: float32
 batches:
-  size: 25
+  size: 15
 logging:
   file: pypiv.log
   level: INFO
@@ -29,13 +28,13 @@ processing:
   debug: false
   auto_compute_params: false
   omp_threads: 2
-  dask_workers_per_node: 5
+  dask_workers_per_node: 2
   dask_threads_per_worker: 1
-  dask_memory_limit: 2GB
+  dask_memory_limit: 25GB
 outlier_detection:
   enabled: true
   methods:
-  - threshold: 0.25
+  - threshold: 0.3
     type: peak_mag
   - epsilon: 0.2
     threshold: 2
@@ -70,16 +69,19 @@ instantaneous_piv:
     - 64
   - - 32
     - 32
+  - - 16
+    - 16
   overlap:
   - 50
   - 50
   - 50
+  - 50
   runs:
-  - 3
+  - 4
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
-  peak_finder: gauss3
+  peak_finder: gauss6
   secondary_peak: false
 calibration_format:
   image_format: calib%05d.tif
@@ -120,7 +122,7 @@ masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
-  mode: rectangular
+  mode: file
   rectangular:
     top: 64
     bottom: 64

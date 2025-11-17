@@ -70,7 +70,7 @@ class BuildCLib(build_ext):
             shared_flag = "/LD"  # Create DLL
             extra_compile = ["/O2", "/openmp:experimental", "/MT"]
             extra_link = [str(fftw_lib_file)]
-            lib_ext = ".pyd"
+            lib_ext = ".dll"
             use_msvc = True
 
         # === Linux ===
@@ -122,6 +122,11 @@ class BuildCLib(build_ext):
         if not (build_dir / f"libbulkxcorr2d{lib_ext}").exists():
             raise RuntimeError(f"Build failed: {build_dir / f'libbulkxcorr2d{lib_ext}'} not created")
 
+        # Clean up intermediate build files
+        for pattern in ['*.obj', '*.exp', '*.lib']:
+            for file in build_dir.glob(pattern):
+                file.unlink()
+
         # --- Build libinterp2custom ---
         if use_msvc:
             # MSVC command structure
@@ -144,6 +149,11 @@ class BuildCLib(build_ext):
         self._run(cmd2)
         if not (build_dir / f"libinterp2custom{lib_ext}").exists():
             raise RuntimeError(f"Build failed: {build_dir / f'libinterp2custom{lib_ext}'} not created")
+
+        # Clean up intermediate build files
+        for pattern in ['*.obj', '*.exp', '*.lib']:
+            for file in build_dir.glob(pattern):
+                file.unlink()
 
     def _run(self, cmd):
         print("RUN:", " ".join(cmd))

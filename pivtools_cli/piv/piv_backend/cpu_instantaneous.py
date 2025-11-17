@@ -14,14 +14,6 @@ from dask.distributed import get_worker
 from scipy.ndimage import gaussian_filter
 from scipy.signal import convolve2d
 
-# Try to import line_profiler for detailed profiling
-try:
-    from line_profiler import profile
-except ImportError:
-    profile = lambda f: f
-
-# Add src to path for unified imports
-
 
 from pivtools_core.config import Config
 from pivtools_cli.piv.piv_backend.base import CrossCorrelator
@@ -31,7 +23,6 @@ from pivtools_cli.piv.piv_backend.infilling import apply_infilling
 
 
 class InstantaneousCorrelatorCPU(CrossCorrelator):
-    @profile
     def __init__(self, config: Config, precomputed_cache: Optional[dict] = None) -> None:
         super().__init__()
         # Use platform-appropriate library extension
@@ -168,7 +159,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             'cached_predictor_maps': self.cached_predictor_maps,
         }
 
-    @profile
+    
     def correlate_batch(  # type: ignore[override]
         self, images: np.ndarray, config: Config, vector_masks: List[np.ndarray] | None = None
     ) -> PIVResult:
@@ -574,7 +565,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
 
         for name, arr in args:
             logging.info(f"{name}: {_describe(arr)}")
-    @profile
+    
     def _predictor_corrector(
         self,
         pass_idx: int,
@@ -682,7 +673,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         )
 
         return image_a_prime, image_b_prime, self.delta_ab_pred
-    @profile
+    
     def _set_lib_arguments(
         self,
         config: Config,
@@ -775,7 +766,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             correl_plane_out,
         )
 
-    @profile
+    
     def _cache_window_padding(self, config: Config) -> None:
         """Cache window padding information.
 
@@ -885,8 +876,8 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         
         logging.info(f"Successfully cached window padding for {len(config.window_sizes)} passes")
 
-    @profile
-    @profile
+    
+    
     def _cache_interpolation_grids(self, config: Config) -> None:
         """Cache interpolation grid coordinates for reuse across passes.
 
