@@ -12,12 +12,15 @@ __pycache__/
 *.egg-info/
 *.egg
 build/
-dist/
-*.so
-*.dylib
-*.dll
-*.o
-*.exp
+
+pivtools_cli/lib/*.exp
+pivtools_cli/lib/*.o
+pivtools_cli/lib/*.so
+pivtools_cli/lib/*.dylib
+pivtools_cli/lib/*.dll
+pivtools_cli/lib/*.pdb
+pivtools_cli/lib/*.lib
+pivtools_cli/lib/*.obj
 
 # IDE
 .vscode/

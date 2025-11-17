@@ -105,6 +105,7 @@ class BuildCLib(build_ext):
             output_file = build_dir / f"libbulkxcorr2d{lib_ext}"
             cmd1 = [
                 compiler, *extra_compile, shared_flag,
+                f"/Fo{build_dir}/",
                 *[str(src_dir / s) for s in sources1],
                 f"/I{src_dir}", f"/I{fftw_inc}",
                 f"/Fe{output_file}"
@@ -125,6 +126,7 @@ class BuildCLib(build_ext):
             output_file = build_dir / f"libinterp2custom{lib_ext}"
             cmd2 = [
                 compiler, *extra_compile, shared_flag,
+                f"/Fo{build_dir}/",
                 str(src_dir / "interp2custom.c"),
                 f"/I{src_dir}",
                 f"/Fe{output_file}"

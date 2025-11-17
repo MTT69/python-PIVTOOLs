@@ -7,6 +7,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 unsigned char bulkxcorr2d(const float *fImageA, const float *fImageB, const float *fMask, const int *nImageSize,
                           const float *fWinCtrsX, const float *fWinCtrsY, const int *nWindows, float *fWindowWeightA, bool bEnsemble,
