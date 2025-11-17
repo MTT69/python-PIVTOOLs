@@ -82,6 +82,8 @@ def perform_piv_and_save(
     runs_to_save: Optional[List[int]] = None,
     vector_masks: Optional[List[np.ndarray]] = None,
     batch_size: int = None,  # Deprecated, kept for compatibility
+    scattered_cache=None,  # Pre-scattered correlator cache (optional)
+    scattered_masks=None,  # Pre-scattered vector masks (optional)
 ) -> List:
     """
     Perform PIV and save results in parallel using TRUE lazy loading.
@@ -131,20 +133,19 @@ def perform_piv_and_save(
         - all_saved_paths: List of paths to saved files
         - scattered_cache: Scattered correlator cache (for coordinate saving)
     """
-    # Pre-compute correlator cache once to avoid redundant caching on workers
-    temp_correlator = make_correlator_backend(config)
-    correlator_cache = temp_correlator.get_cache_data()
-    
-    # Broadcast cache to all workers once (efficient, happens once)
-    scattered_cache = client.scatter(correlator_cache, broadcast=True)
-    logging.info("Broadcast correlator cache to all workers")
-    
-    scattered_masks = None
-    if vector_masks is not None:
+    # Use pre-scattered cache if provided, otherwise create and scatter
+    if scattered_cache is None:
+        temp_correlator = make_correlator_backend(config)
+        correlator_cache = temp_correlator.get_cache_data()
+        scattered_cache = client.scatter(correlator_cache, broadcast=True)
+        logging.info("Broadcast correlator cache to all workers")
+
+    # Use pre-scattered masks if provided, otherwise scatter if needed
+    if scattered_masks is None and vector_masks is not None:
         scattered_masks = client.scatter(vector_masks, broadcast=True)
         total_mask_size = sum(m.nbytes for m in vector_masks) / 1024
         logging.info(f"Broadcast vector masks to all workers ({total_mask_size:.1f} KB)")
-    
+
     num_images = int(images.shape[0])
     
     # Convert Dask array to delayed objects (still lazy!)

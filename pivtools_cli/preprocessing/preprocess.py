@@ -1,8 +1,9 @@
-import sys
-from pathlib import Path
 import logging
 
+import dask
 import dask.array as da
+from dask import config as dask_config
+import numpy as np
 
 from pivtools_core.config import Config
 
@@ -40,40 +41,118 @@ def get_batch_size_for_filters(config: Config) -> int:
     return 1
 
 
+def apply_filters_to_single_batch(
+    batch_images: da.Array,
+    batch_filter_specs: list,
+    config: Config,
+    batch_num: int,
+    total_batches: int,
+) -> np.ndarray:
+    """
+    Apply batch filters to a single batch in main process with multi-threading.
+
+    This function:
+    1. Loads the batch into main process memory
+    2. Applies batch filters using multi-threading (utilizes all CPU cores)
+    3. Returns processed batch as numpy array
+
+    Args:
+        batch_images (da.Array): Lazy Dask array slice for one batch (B, 2, H, W)
+        batch_filter_specs (list): List of batch filter configurations
+        config (Config): Configuration object
+        batch_num (int): Current batch number (for logging)
+        total_batches (int): Total number of batches (for logging)
+
+    Returns:
+        np.ndarray: Filtered batch as numpy array (B, 2, H, W)
+    """
+    import os
+    import multiprocessing as mp
+
+    # Get number of threads that will be used
+    num_threads = os.cpu_count() or 1
+
+    logging.info("")
+    logging.info(f">>> BATCH {batch_num}/{total_batches} <<<")
+
+    # Load batch in main process using threading scheduler
+    logging.info(f"[Batch {batch_num}] Loading into main process memory...")
+    with dask_config.set(scheduler='threads', num_workers=num_threads):
+        batch_computed = batch_images.compute()
+
+    mem_mb = batch_computed.nbytes / (1024 ** 2)
+    num_images = batch_computed.shape[0]
+    logging.info(f"[Batch {batch_num}] Loaded {num_images} images ({mem_mb:.1f} MB)")
+
+    # Convert to Dask array for filter application
+    batch_da = da.from_array(batch_computed, chunks=batch_computed.shape)
+
+    # Apply batch filters with multi-threading
+    filter_names = ', '.join(f.get('type') for f in batch_filter_specs)
+    logging.info(f"[Batch {batch_num}] Applying filters: {filter_names}")
+    logging.info(f"[Batch {batch_num}] Using {num_threads} threads for filtering")
+
+    original_filters = config.data['filters']
+    config.data['filters'] = batch_filter_specs
+
+    with dask_config.set(scheduler='threads', num_workers=num_threads):
+        batch_filtered = filter_images(batch_da, config)
+        batch_filtered_computed = batch_filtered.compute()
+
+    config.data['filters'] = original_filters
+
+    logging.info(f"[Batch {batch_num}] ✓ Filtering complete")
+
+    return batch_filtered_computed
+
+
+def has_batch_filters(config: Config) -> bool:
+    """Check if config contains batch filters (time, POD)."""
+    if not config.filters:
+        return False
+    return any(requires_batch(f.get("type")) for f in config.filters)
+
+
+def get_batch_filter_specs(config: Config) -> list:
+    """Get list of batch filter specifications from config."""
+    return [f for f in config.filters if requires_batch(f.get("type"))]
+
+
+def get_spatial_filter_specs(config: Config) -> list:
+    """Get list of spatial filter specifications from config."""
+    return [f for f in config.filters if not requires_batch(f.get("type"))]
+
+
 def preprocess_images(images: da.Array, config: Config) -> da.Array:
     """
-    Preprocess images based on the provided configuration.
-    
-    This function intelligently handles batching:
-    - For batch filters (time, pod): rechunks to batch size along first axis
-    - For single-image filters: preserves single-image chunks for efficiency
-    
+    Apply spatial filters to images (lazy evaluation).
+
+    NOTE: This function should NOT be used when batch filters are present.
+    For batch filters, use the batch-by-batch processing in example.py.
+
     Args:
         images (da.Array): Dask array containing the images (N, 2, H, W)
         config (Config): Configuration object with filters defined
-    
+
     Returns:
-        da.Array: Filtered Dask array of images
+        da.Array: Filtered Dask array of images (lazy)
     """
     if not config.filters:
         logging.info("No filters configured, skipping preprocessing")
         return images
-    
-    # Determine if batching is needed
-    batch_size = get_batch_size_for_filters(config)
-    
-    if batch_size > 1:
-        # Rechunk for batch processing along first dimension
-        logging.info(f"Rechunking images for batch processing (batch_size={batch_size})")
-        images = images.rechunk((batch_size, 2, -1, -1))
-    
-    # Apply filters
-    images = filter_images(images, config)
-    
-    if batch_size > 1:
-        # Rechunk back to single images for PIV processing
-        logging.info("Rechunking back to single images for PIV processing")
-        images = images.rechunk((1, 2, -1, -1))
-    
+
+    # Only apply spatial filters (lazy)
+    spatial_filter_specs = get_spatial_filter_specs(config)
+
+    if spatial_filter_specs:
+        logging.info(
+            f"Applying {len(spatial_filter_specs)} spatial filter(s) "
+            "(lazy evaluation on workers)"
+        )
+        original_filters = config.data['filters']
+        config.data['filters'] = spatial_filter_specs
+        images = filter_images(images, config)
+        config.data['filters'] = original_filters
+
     return images
 
