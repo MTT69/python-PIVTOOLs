@@ -451,15 +451,29 @@ def update_config():
     # Store old camera_count to detect changes
     old_camera_count = cfg.data["paths"].get("camera_count", 1)
 
+    # Check if camera_numbers was explicitly provided in the update
+    camera_numbers_provided = "camera_numbers" in data.get("paths", {})
+
     recursive_update(cfg.data, data)
-    
+
     # Handle camera_numbers based on camera_count changes
     new_camera_count = cfg.data["paths"].get("camera_count", 1)
+
     if new_camera_count != old_camera_count:
-        # Reset camera_numbers to default range when camera_count changes
-        cfg.data["paths"]["camera_numbers"] = list(range(1, new_camera_count + 1))
+        # Camera count changed
+        if not camera_numbers_provided:
+            # Only reset to default if user didn't explicitly provide camera_numbers
+            cfg.data["paths"]["camera_numbers"] = list(range(1, new_camera_count + 1))
+        else:
+            # User provided camera_numbers with new camera_count, just validate them
+            camera_numbers = cfg.data["paths"].get("camera_numbers", [])
+            valid_numbers = [n for n in camera_numbers if 1 <= n <= new_camera_count]
+            if not valid_numbers:
+                # If none are valid, use full range
+                valid_numbers = list(range(1, new_camera_count + 1))
+            cfg.data["paths"]["camera_numbers"] = valid_numbers
     else:
-        # Fix camera_numbers if camera_count was not updated
+        # Camera count unchanged - validate existing camera_numbers
         camera_numbers = cfg.data["paths"].get("camera_numbers", [])
         valid_numbers = [n for n in camera_numbers if 1 <= n <= new_camera_count]
         if not valid_numbers:

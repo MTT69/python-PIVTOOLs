@@ -406,3 +406,6 @@ ValueError: No reader registered for file type: .ti
 2025-11-16 19:32:24,054 [INFO] 127.0.0.1 - - [16/Nov/2025 19:32:24] "POST /backend/update_config HTTP/1.1" 200 -
 2025-11-16 19:32:24,098 [INFO] 127.0.0.1 - - [16/Nov/2025 19:32:24] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
 2025-11-16 19:32:24,195 [INFO] 127.0.0.1 - - [16/Nov/2025 19:32:24] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-17 13:48:47,764 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-17 13:48:47,764 [INFO] 127.0.0.1 - - [17/Nov/2025 13:48:47] "GET /backend/config HTTP/1.1" 200 -
+2025-11-17 13:48:50,335 [INFO] 127.0.0.1 - - [17/Nov/2025 13:48:50] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -

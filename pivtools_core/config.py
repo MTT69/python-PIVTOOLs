@@ -275,61 +275,75 @@ masking:
     def _detect_image_shape(self) -> tuple:
         """
         Detect image shape by reading the first image.
-        
+
+        Handles all image formats including .set, .im7, and standard formats.
+        For .set and .im7 files, passes the required camera and image parameters.
+
         Returns
         -------
         tuple
             (H, W) shape of images
         """
         from .image_handling.load_images import read_image
-        
+
         source_path = self.source_paths[0]
         camera_num = self.camera_numbers[0]
         image_format = self.image_format
-        
+
         logging.info(f"_detect_image_shape: image_format = {image_format}, type = {type(image_format)}")
         logging.info(f"Source path: {source_path}, Camera: {camera_num}")
-        
+
         # Use same logic as load_images.py read_pair
         format_str = image_format[0]  # Always tuple now
-        
+
         # Determine camera_path based on format (same as load_images)
         if '.set' in str(format_str) or '.im7' in str(format_str):
             camera_path = source_path  # No camera subdir for .set/.im7
         else:
             camera_path = source_path / f"Cam{camera_num}"
-        
+
         logging.info(f"Camera path: {camera_path}")
-        
-        # Construct file path
+
+        # Construct file path based on format type
         if '.set' in str(format_str):
             file_path = camera_path / format_str
-            logging.info(f"Trying to read .set file: {file_path}")
         elif '.im7' in str(format_str):
             file_path = camera_path / (format_str % 1)
-            logging.info(f"Trying to read .im7 file: {file_path}")
         else:
-            # Regular files - always use first format for shape detection
+            # Regular files - use first format for shape detection
             file_path = camera_path / (format_str % 1)
-            logging.info(f"Trying to read regular file: {file_path}")
-        
+
+        logging.info(f"Trying to read file: {file_path}")
+
         if not file_path.exists():
-            raise FileNotFoundError(f"Image file not found: {file_path}. Check your source_path and image_format in config.yaml")
-        
+            raise FileNotFoundError(
+                f"Image file not found: {file_path}. "
+                "Check your source_path and image_format in config.yaml"
+            )
+
         try:
-            img = read_image(str(file_path))
-            
+            # Read with appropriate parameters for each format
+            if '.set' in str(format_str):
+                # For .set files, must provide camera_no and im_no
+                img = read_image(str(file_path), camera_no=camera_num, im_no=1)
+            elif '.im7' in str(format_str):
+                # For .im7 files, must provide camera_no
+                img = read_image(str(file_path), camera_no=camera_num)
+            else:
+                # Regular files don't need extra parameters
+                img = read_image(str(file_path))
+
             # Handle both single images and image pairs
             if img.ndim == 3 and img.shape[0] == 2:
-                # Image pair returned (e.g., from .im7)
+                # Image pair returned (e.g., from .im7 or .set)
                 shape = tuple(img.shape[1:])
             else:
                 # Single image
                 shape = tuple(img.shape)
-            
+
             logging.info(f"Detected image shape: {shape}")
             return shape
-            
+
         except Exception as e:
             logging.error("Failed to read image: %s", e)
             raise ValueError(
