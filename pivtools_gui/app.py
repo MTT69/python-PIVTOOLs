@@ -53,7 +53,8 @@ app.register_blueprint(merging_bp, url_prefix='/backend')
 processed_store = {"processed": {}}
 processing = False
 
-# Raw image cache: {(source_path_idx, camera, frame_idx): (pair_array, base64_A, base64_B)}
+# Raw image cache: {(source_path_str, camera, frame_idx): (pair_array, base64_A, base64_B)}
+# Using source path string instead of index ensures cache invalidation when paths change
 raw_image_cache = {}
 RAW_CACHE_MAX_SIZE = 100  # Maximum number of frame pairs to cache
 
@@ -73,13 +74,19 @@ def cam_folder_key(camera):  # backward compat helper
     return camera_folder(camera)
 
 
-def cache_key(source_path_idx, camera):
-    return (int(source_path_idx), str(camera))
+def cache_key(source_path_idx, camera, cfg):
+    """Generate cache key using actual source path for proper invalidation when paths change."""
+    format_str = cfg.image_format[0]
+    if '.set' in str(format_str) or '.im7' in str(format_str):
+        source_path = cfg.source_paths[source_path_idx]
+    else:
+        source_path = cfg.source_paths[source_path_idx] / camera_folder(camera)
+    return (str(source_path), str(camera))
 
 
-def get_cached_pair(frame, typ, camera, source_path_idx):
+def get_cached_pair(frame, typ, camera, source_path_idx, cfg):
     """Fetch a cached pair (A, B) for given frame/type/camera/source_path_idx."""
-    k = cache_key(source_path_idx, camera)
+    k = cache_key(source_path_idx, camera, cfg)
     bucket = processed_store.get(typ, {}).get(k, {})
     pair = bucket.get(frame)
     if pair is None:
@@ -149,7 +156,8 @@ def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: 
             if idx == current_idx:
                 continue  # Skip current frame (already loaded)
 
-            cache_key_tuple = (source_path_idx, camera, idx)
+            # Use actual path string for cache key to support path changes
+            cache_key_tuple = (str(source_path), camera, idx)
             if cache_key_tuple in raw_image_cache:
                 continue  # Already cached
 
@@ -181,8 +189,15 @@ def get_frame_pair():
     idx = request.args.get("idx", type=int)
     source_path_idx = request.args.get("source_path_idx", default=0, type=int)
 
-    # Check cache first
-    cache_key_tuple = (source_path_idx, camera, idx)
+    # Determine source path early for cache key
+    format_str = cfg.image_format[0]
+    if '.set' in str(format_str) or '.im7' in str(format_str):
+        source_path = cfg.source_paths[source_path_idx]
+    else:
+        source_path = cfg.source_paths[source_path_idx] / camera_folder(camera)
+
+    # Check cache first - use actual path string for proper invalidation
+    cache_key_tuple = (str(source_path), camera, idx)
     if cache_key_tuple in raw_image_cache:
         logger.debug(f"Cache HIT for frame {idx}, camera {camera}, source_path_idx {source_path_idx}")
         _, b64_a, b64_b = raw_image_cache[cache_key_tuple]
@@ -196,15 +211,7 @@ def get_frame_pair():
 
         return jsonify({"A": b64_a, "B": b64_b})
 
-    logger.debug(f"Cache MISS for frame {idx}, camera {camera}, source_path_idx {source_path_idx}")
-
-    # For .set and .im7 files, don't append camera folder - all cameras are in the source directory
-    format_str = cfg.image_format[0]
-
-    if '.set' in str(format_str) or '.im7' in str(format_str):
-        source_path = cfg.source_paths[source_path_idx]
-    else:
-        source_path = cfg.source_paths[source_path_idx] / camera_folder(camera)
+    logger.debug(f"Cache MISS for frame {idx}, camera {camera}, path {source_path}")
 
     try:
         read_start = time.perf_counter()
@@ -300,13 +307,8 @@ def filter_images_endpoint():
     source_path_idx = data.get("source_path_idx")
     
     if filters is not None:
-        # Remove batch_size from filters before storing (it's configured in batches.size)
-        cleaned_filters = []
-        for f in filters:
-            cleaned = {k: v for k, v in f.items() if k != 'batch_size'}
-            cleaned_filters.append(cleaned)
-        cfg.data["filters"] = cleaned_filters
-    
+        cfg.data["filters"] = filters
+
     # Use batch size from config
     batch_length = cfg.data.get("batches", {}).get("size", 30)
     batch_len_reason = "config.batches.size"
@@ -363,7 +365,7 @@ def filter_images_endpoint():
             processed_all = dask.compute(processed_darr, scheduler='threads')[0]
             
             # Store results
-            k = cache_key(source_path_idx, camera)
+            k = cache_key(source_path_idx, camera, cfg)
             processed_store["processed"].setdefault(k, {})
             
             # Batch update dictionary (faster than individual updates)
@@ -395,13 +397,14 @@ def filter_images_endpoint():
 
 @api_bp.route("/get_processed_pair", methods=["GET"])
 def get_processed_pair():
+    cfg = get_config()
     frame = request.args.get("frame", type=int)
     typ = request.args.get("type", "processed")
     camera = camera_number(request.args.get("camera"))
     source_path_idx = request.args.get("source_path_idx", default=0, type=int)
-    
+
     logger.debug(f"Checking cache for processed frame {frame}, type {typ}, camera {camera}, source_path_idx {source_path_idx}")
-    b64_a, b64_b = get_cached_pair(frame, typ, camera, source_path_idx)
+    b64_a, b64_b = get_cached_pair(frame, typ, camera, source_path_idx, cfg)
     
     if b64_a is not None and b64_b is not None:
         logger.debug(f"Cache hit for processed frame {frame}, type {typ}, camera {camera}")
@@ -527,18 +530,25 @@ def config_endpoint():
 
 
 @api_bp.route("/update_config", methods=["POST"])
-def update_config(): 
+def update_config():
+    global raw_image_cache, processed_store
     data = request.get_json() or {}
     cfg = get_config()
-    
-    # Special handling for filters: remove batch_size before saving
-    if "filters" in data:
-        cleaned_filters = []
-        for f in data["filters"]:
-            if isinstance(f, dict):
-                cleaned = {k: v for k, v in f.items() if k != 'batch_size'}
-                cleaned_filters.append(cleaned)
-        data["filters"] = cleaned_filters
+
+    # Check if paths or image format are changing (these affect cache validity)
+    paths_changing = "paths" in data and (
+        "source_paths" in data.get("paths", {}) or
+        "base_paths" in data.get("paths", {})
+    )
+    format_changing = "images" in data and "image_format" in data.get("images", {})
+
+    # Clear caches if critical config is changing
+    if paths_changing or format_changing:
+        logger.info("Clearing image caches due to config change (paths or format)")
+        raw_image_cache.clear()
+        processed_store["processed"] = {}
+
+    # No special handling needed for filters - save them as-is including batch_size
 
     # Special handling: merge post_processing entries by type and deep-merge their settings
     incoming_pp = data.get("post_processing", None)

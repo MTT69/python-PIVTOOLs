@@ -31,6 +31,8 @@ transformation_jobs = {}
 
 def load_piv_result(mat_path: Path) -> np.ndarray:
     """Helper: load a .mat and return its piv_result or raise ValueError with good message."""
+    if not mat_path.exists():
+        raise FileNotFoundError(f"PIV result file not found: {mat_path}")
     mat = loadmat(str(mat_path), struct_as_record=False, squeeze_me=True)
     if "piv_result" not in mat:
         raise ValueError(f"Variable 'piv_result' not found in mat: {mat_path}")

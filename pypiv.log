@@ -17401,3 +17401,1329 @@ videos:
 2025-11-17 23:33:44,386 [INFO] 127.0.0.1 - - [17/Nov/2025 23:33:44] "POST /backend/preload_images HTTP/1.1" 200 -
 2025-11-17 23:33:44,414 [INFO] 127.0.0.1 - - [17/Nov/2025 23:33:44] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
 2025-11-17 23:33:44,909 [INFO] 127.0.0.1 - - [17/Nov/2025 23:33:44] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:12:17,477 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-18 10:12:17,478 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:17] "GET /backend/config HTTP/1.1" 200 -
+2025-11-18 10:12:17,483 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:17] "[36mGET /grid.svg HTTP/1.1[0m" 304 -
+2025-11-18 10:12:23,978 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:23] "[36mGET / HTTP/1.1[0m" 304 -
+2025-11-18 10:12:23,995 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:23] "[36mGET /_next/static/chunks/main-app-c97e6e5923995974.js HTTP/1.1[0m" 304 -
+2025-11-18 10:12:23,995 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:23] "[36mGET /_next/static/chunks/117-d5793c8e79de5511.js HTTP/1.1[0m" 304 -
+2025-11-18 10:12:23,995 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:23] "[36mGET /_next/static/chunks/869-0c5d478d12709b12.js HTTP/1.1[0m" 304 -
+2025-11-18 10:12:23,996 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:23] "[36mGET /_next/static/chunks/fd9d1056-ad15f396ddf9b7e5.js HTTP/1.1[0m" 304 -
+2025-11-18 10:12:23,996 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:23] "[36mGET /_next/static/css/9c5f9c853c976ee1.css HTTP/1.1[0m" 304 -
+2025-11-18 10:12:23,996 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:23] "[36mGET /_next/static/chunks/865-c042f6478fb8b3cd.js HTTP/1.1[0m" 304 -
+2025-11-18 10:12:23,999 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:23] "[36mGET /_next/static/chunks/app/page-3a371f8419ffab22.js HTTP/1.1[0m" 304 -
+2025-11-18 10:12:23,999 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:23] "[36mGET /_next/static/chunks/app/layout-60f93ed379d51172.js HTTP/1.1[0m" 304 -
+2025-11-18 10:12:24,008 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:24] "GET /backend/config HTTP/1.1" 200 -
+2025-11-18 10:12:24,017 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:24] "[36mGET /grid.svg HTTP/1.1[0m" 304 -
+2025-11-18 10:12:26,724 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:26] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 10:12:26,732 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:26] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:12:26,772 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:26] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:12:27,250 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:27] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:12:30,580 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:30] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:12:30,589 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:30] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:12:30,711 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:30] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:12:30,721 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:30] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:12:31,241 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:31] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:12:33,404 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:33] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:12:33,416 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:33] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:12:33,457 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:33] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:12:33,465 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:33] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:12:33,984 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:33] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:12:38,501 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:38] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:12:38,511 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:38] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:12:39,031 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:39] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:12:40,584 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:40] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:12:40,593 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:40] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:12:41,108 [INFO] 127.0.0.1 - - [18/Nov/2025 10:12:41] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:31:24,821 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-18 10:31:24,822 [INFO] 127.0.0.1 - - [18/Nov/2025 10:31:24] "GET /backend/config HTTP/1.1" 200 -
+2025-11-18 10:31:24,830 [INFO] 127.0.0.1 - - [18/Nov/2025 10:31:24] "GET /grid.svg HTTP/1.1" 200 -
+2025-11-18 10:31:31,284 [INFO] 127.0.0.1 - - [18/Nov/2025 10:31:31] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 10:31:31,296 [INFO] 127.0.0.1 - - [18/Nov/2025 10:31:31] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:31:31,324 [INFO] 127.0.0.1 - - [18/Nov/2025 10:31:31] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:31:31,818 [INFO] 127.0.0.1 - - [18/Nov/2025 10:31:31] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:31:40,183 [INFO] 127.0.0.1 - - [18/Nov/2025 10:31:40] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:31:40,702 [INFO] 127.0.0.1 - - [18/Nov/2025 10:31:40] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:32:44,396 [INFO] 127.0.0.1 - - [18/Nov/2025 10:32:44] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:32:44,522 [INFO] 127.0.0.1 - - [18/Nov/2025 10:32:44] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:32:45,037 [INFO] 127.0.0.1 - - [18/Nov/2025 10:32:45] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:32:45,935 [INFO] 127.0.0.1 - - [18/Nov/2025 10:32:45] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:32:45,985 [INFO] 127.0.0.1 - - [18/Nov/2025 10:32:45] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:32:46,506 [INFO] 127.0.0.1 - - [18/Nov/2025 10:32:46] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:33:48,122 [INFO] 127.0.0.1 - - [18/Nov/2025 10:33:48] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:33:48,636 [INFO] 127.0.0.1 - - [18/Nov/2025 10:33:48] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:33:52,601 [INFO] 127.0.0.1 - - [18/Nov/2025 10:33:52] "GET /backend/get_frame_pair?camera=1&idx=9&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:33:52,603 [INFO] 127.0.0.1 - - [18/Nov/2025 10:33:52] "GET /backend/get_processed_pair?type=processed&frame=9&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:33:52,751 [INFO] 127.0.0.1 - - [18/Nov/2025 10:33:52] "GET /backend/get_processed_pair?type=processed&frame=90&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:33:52,771 [INFO] 127.0.0.1 - - [18/Nov/2025 10:33:52] "GET /backend/get_frame_pair?camera=1&idx=90&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:33:58,698 [INFO] 127.0.0.1 - - [18/Nov/2025 10:33:58] "GET /backend/get_frame_pair?camera=1&idx=91&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:33:58,699 [INFO] 127.0.0.1 - - [18/Nov/2025 10:33:58] "GET /backend/get_processed_pair?type=processed&frame=91&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:33:59,697 [INFO] 127.0.0.1 - - [18/Nov/2025 10:33:59] "GET /backend/get_frame_pair?camera=1&idx=92&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:33:59,697 [INFO] 127.0.0.1 - - [18/Nov/2025 10:33:59] "GET /backend/get_processed_pair?type=processed&frame=92&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:00,698 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:00] "GET /backend/get_frame_pair?camera=1&idx=93&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:00,699 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:00] "GET /backend/get_processed_pair?type=processed&frame=93&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:01,700 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:01] "GET /backend/get_frame_pair?camera=1&idx=94&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:01,701 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:01] "GET /backend/get_processed_pair?type=processed&frame=94&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:05,493 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:05] "GET /backend/get_processed_pair?type=processed&frame=95&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:05,497 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:05] "GET /backend/get_frame_pair?camera=1&idx=95&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:05,646 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:05] "GET /backend/get_frame_pair?camera=1&idx=96&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:05,646 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:05] "GET /backend/get_processed_pair?type=processed&frame=96&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:05,776 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:05] "GET /backend/get_frame_pair?camera=1&idx=97&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:05,776 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:05] "GET /backend/get_processed_pair?type=processed&frame=97&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:05,900 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:05] "GET /backend/get_frame_pair?camera=1&idx=98&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:05,901 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:05] "GET /backend/get_processed_pair?type=processed&frame=98&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:06,028 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:06] "GET /backend/get_frame_pair?camera=1&idx=99&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:06,028 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:06] "GET /backend/get_processed_pair?type=processed&frame=99&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:06,153 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:06] "GET /backend/get_frame_pair?camera=1&idx=100&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:06,154 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:06] "GET /backend/get_processed_pair?type=processed&frame=100&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:06,286 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:06] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:06,286 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:06] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:06,397 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:06] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:06,397 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:06] "GET /backend/get_processed_pair?type=processed&frame=2&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:06,534 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:06] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:06,534 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:06] "GET /backend/get_processed_pair?type=processed&frame=3&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:06,662 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:06] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:06,662 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:06] "GET /backend/get_processed_pair?type=processed&frame=4&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:06,790 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:06] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:06,790 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:06] "GET /backend/get_processed_pair?type=processed&frame=5&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:06,916 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:06] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:06,917 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:06] "GET /backend/get_processed_pair?type=processed&frame=6&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:07,043 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:07] "GET /backend/get_frame_pair?camera=1&idx=7&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:07,044 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:07] "GET /backend/get_processed_pair?type=processed&frame=7&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:07,169 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:07] "GET /backend/get_frame_pair?camera=1&idx=8&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:07,169 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:07] "GET /backend/get_processed_pair?type=processed&frame=8&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:07,296 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:07] "GET /backend/get_frame_pair?camera=1&idx=9&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:07,297 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:07] "GET /backend/get_processed_pair?type=processed&frame=9&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:07,412 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:07] "GET /backend/get_frame_pair?camera=1&idx=10&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:07,413 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:07] "GET /backend/get_processed_pair?type=processed&frame=10&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:07,547 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:07] "GET /backend/get_frame_pair?camera=1&idx=11&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:07,548 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:07] "GET /backend/get_processed_pair?type=processed&frame=11&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:07,676 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:07] "GET /backend/get_frame_pair?camera=1&idx=12&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:07,677 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:07] "GET /backend/get_processed_pair?type=processed&frame=12&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:07,804 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:07] "GET /backend/get_frame_pair?camera=1&idx=13&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:07,804 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:07] "GET /backend/get_processed_pair?type=processed&frame=13&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:07,932 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:07] "GET /backend/get_frame_pair?camera=1&idx=14&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:07,932 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:07] "GET /backend/get_processed_pair?type=processed&frame=14&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:08,059 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:08] "GET /backend/get_frame_pair?camera=1&idx=15&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:08,060 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:08] "GET /backend/get_processed_pair?type=processed&frame=15&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:08,183 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:08] "GET /backend/get_processed_pair?type=processed&frame=16&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:08,187 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:08] "GET /backend/get_frame_pair?camera=1&idx=16&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:08,320 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:08] "GET /backend/get_frame_pair?camera=1&idx=17&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:08,320 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:08] "GET /backend/get_processed_pair?type=processed&frame=17&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:08,445 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:08] "GET /backend/get_processed_pair?type=processed&frame=18&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:08,449 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:08] "GET /backend/get_frame_pair?camera=1&idx=18&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:08,578 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:08] "GET /backend/get_frame_pair?camera=1&idx=19&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:08,579 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:08] "GET /backend/get_processed_pair?type=processed&frame=19&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:08,705 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:08] "GET /backend/get_frame_pair?camera=1&idx=20&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:08,706 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:08] "GET /backend/get_processed_pair?type=processed&frame=20&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:08,835 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:08] "GET /backend/get_frame_pair?camera=1&idx=21&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:08,836 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:08] "GET /backend/get_processed_pair?type=processed&frame=21&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:08,962 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:08] "GET /backend/get_frame_pair?camera=1&idx=22&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:08,964 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:08] "GET /backend/get_processed_pair?type=processed&frame=22&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:09,092 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:09] "GET /backend/get_frame_pair?camera=1&idx=23&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:09,093 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:09] "GET /backend/get_processed_pair?type=processed&frame=23&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:09,218 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:09] "GET /backend/get_frame_pair?camera=1&idx=24&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:09,219 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:09] "GET /backend/get_processed_pair?type=processed&frame=24&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:09,348 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:09] "GET /backend/get_frame_pair?camera=1&idx=25&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:09,349 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:09] "GET /backend/get_processed_pair?type=processed&frame=25&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:09,476 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:09] "GET /backend/get_frame_pair?camera=1&idx=26&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:09,477 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:09] "GET /backend/get_processed_pair?type=processed&frame=26&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:09,608 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:09] "GET /backend/get_frame_pair?camera=1&idx=27&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:09,609 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:09] "GET /backend/get_processed_pair?type=processed&frame=27&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:15,160 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:15] "GET /backend/get_frame_pair?camera=1&idx=28&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:15,161 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:15] "GET /backend/get_processed_pair?type=processed&frame=28&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:17,162 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:17] "GET /backend/get_frame_pair?camera=1&idx=29&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:17,162 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:17] "GET /backend/get_processed_pair?type=processed&frame=29&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:22,883 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:22] "GET /backend/get_frame_pair?camera=1&idx=30&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:22,883 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:22] "GET /backend/get_processed_pair?type=processed&frame=30&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:23,381 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:23] "GET /backend/get_frame_pair?camera=1&idx=31&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:23,382 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:23] "GET /backend/get_processed_pair?type=processed&frame=31&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:23,882 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:23] "GET /backend/get_frame_pair?camera=1&idx=32&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:23,883 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:23] "GET /backend/get_processed_pair?type=processed&frame=32&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:24,384 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:24] "GET /backend/get_frame_pair?camera=1&idx=33&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:24,386 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:24] "GET /backend/get_processed_pair?type=processed&frame=33&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:24,883 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:24] "GET /backend/get_frame_pair?camera=1&idx=34&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:24,883 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:24] "GET /backend/get_processed_pair?type=processed&frame=34&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:43,908 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:43] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:34:48,217 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:48] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:34:48,230 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:48] "GET /backend/get_processed_pair?type=processed&frame=34&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:48,750 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:48] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:34:49,035 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:49] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:34:49,047 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:49] "GET /backend/get_processed_pair?type=processed&frame=34&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:34:49,566 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:49] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:34:54,643 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:54] "POST /backend/run_piv HTTP/1.1" 200 -
+2025-11-18 10:34:54,648 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:54] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:34:54,649 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:54] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:34:55,151 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:55] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:34:55,151 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:55] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:34:55,652 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:55] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:34:55,652 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:55] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:34:56,153 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:56] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:34:56,153 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:56] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:34:56,563 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-18 10:34:56,571 [INFO] Config YAML:
+batches:
+  size: 30
+calibration:
+  active: pinhole
+  pinhole:
+    asymmetric: false
+    camera: 1
+    dot_distance_mm: 28.9
+    dot_spacing_mm: 28.89
+    dt: 0.0275
+    enhance_dots: true
+    file_pattern: calib%05d.tif
+    grid_tolerance: 0.5
+    image_index: 0
+    pattern_cols: 10
+    pattern_rows: 10
+    ransac_threshold: 3
+    source_path_idx: 0
+  scale_factor:
+    dt: 0.56
+    px_per_mm: 3.41
+    source_path_idx: 0
+  stereo:
+    asymmetric: false
+    camera_pair:
+    - 1
+    - 2
+    dot_spacing_mm: 28.89
+    dt: 2
+    enhance_dots: true
+    file_pattern: planar_calibration_plate_*.tif
+    pattern_cols: 10
+    pattern_rows: 10
+    source_path_idx: 0
+calibration_format:
+  image_format: calib%05d.tif
+filters:
+- type: time
+images:
+  dtype: float32
+  image_format:
+  - B%05d_A.tif
+  - B%05d_B.tif
+  num_images: 100
+  time_resolved: false
+  vector_format:
+  - B%05d.mat
+infilling:
+  final_pass:
+    enabled: true
+    method: biharmonic
+    parameters:
+      ksize: 3
+  mid_pass:
+    method: biharmonic
+    parameters:
+      ksize: 3
+instantaneous_piv:
+  num_peaks: 1
+  overlap:
+  - 50
+  - 50
+  - 50
+  - 50
+  peak_finder: gauss6
+  runs:
+  - 4
+  secondary_peak: false
+  time_resolved: false
+  window_size:
+  - - 128
+    - 128
+  - - 64
+    - 64
+  - - 32
+    - 32
+  - - 16
+    - 16
+  window_type: gaussian
+logging:
+  console: true
+  file: pypiv.log
+  level: INFO
+masking:
+  enabled: true
+  mask_file_pattern: mask_Cam%d.mat
+  mask_threshold: 0.01
+  mode: rectangular
+  rectangular:
+    bottom: 64
+    left: 0
+    right: 0
+    top: 64
+outlier_detection:
+  enabled: true
+  methods:
+  - threshold: 0.3
+    type: peak_mag
+  - epsilon: 0.2
+    threshold: 2
+    type: median_2d
+paths:
+  base_paths:
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/hehe
+  camera_count: 1
+  camera_numbers:
+  - 1
+  source_paths:
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall
+plots:
+  fontsize: 14
+  save_extension: .png
+  save_pickle: true
+  title_fontsize: 16
+processing:
+  auto_compute_params: false
+  backend: cpu
+  dask_memory_limit: 2GB
+  dask_threads_per_worker: 1
+  dask_workers_per_node: 5
+  debug: false
+  ensemble: false
+  instantaneous: true
+  omp_threads: 3
+  stereo: false
+statistics_extraction: null
+videos:
+- endpoint: ''
+  type: instantaneous
+  use_merged: false
+  variable: ux
+  video_length: 100
+
+2025-11-18 10:34:56,571 [INFO] Set OMP_NUM_THREADS to 10 for main process batch filtering
+2025-11-18 10:34:56,653 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:56] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:34:56,654 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:56] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:34:57,153 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:57] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:34:57,154 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:57] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:34:57,654 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:57] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:34:57,655 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:57] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:34:58,154 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:58] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:34:58,155 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:58] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:34:58,173 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-18 10:34:58,174 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-18 10:34:58,195 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-18 10:34:58,199 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-18 10:34:58,203 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-18 10:34:58,261 [INFO] Worker logging configured successfully
+2025-11-18 10:34:58,261 [INFO] Worker logging configured successfully
+2025-11-18 10:34:58,261 [INFO] Worker logging configured successfully
+2025-11-18 10:34:58,261 [INFO] Worker logging configured successfully
+2025-11-18 10:34:58,261 [INFO] Worker logging configured successfully
+2025-11-18 10:34:58,262 [INFO] Set OMP_NUM_THREADS to 3 in worker process
+2025-11-18 10:34:58,262 [INFO] Set OMP_NUM_THREADS to 3 in worker process
+2025-11-18 10:34:58,262 [INFO] Set OMP_NUM_THREADS to 3 in worker process
+2025-11-18 10:34:58,262 [INFO] Set OMP_NUM_THREADS to 3 in worker process
+2025-11-18 10:34:58,262 [INFO] Set OMP_NUM_THREADS to 3 in worker process
+2025-11-18 10:34:58,263 [INFO] Dask cluster started successfully
+2025-11-18 10:34:58,263 [INFO] Dask Worker Info:
+2025-11-18 10:34:58,263 [INFO] Worker tcp://127.0.0.1:57518
+2025-11-18 10:34:58,263 [INFO]   pid: None
+2025-11-18 10:34:58,263 [INFO]   host: 127.0.0.1
+2025-11-18 10:34:58,263 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-yuu9njjb
+2025-11-18 10:34:58,263 [INFO]   nanny: True
+2025-11-18 10:34:58,263 [INFO] Dask Worker Info:
+2025-11-18 10:34:58,263 [INFO] Worker tcp://127.0.0.1:57519
+2025-11-18 10:34:58,263 [INFO]   pid: None
+2025-11-18 10:34:58,264 [INFO]   host: 127.0.0.1
+2025-11-18 10:34:58,264 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-u393phn0
+2025-11-18 10:34:58,264 [INFO]   nanny: True
+2025-11-18 10:34:58,264 [INFO] Dask Worker Info:
+2025-11-18 10:34:58,264 [INFO] Worker tcp://127.0.0.1:57524
+2025-11-18 10:34:58,264 [INFO]   pid: None
+2025-11-18 10:34:58,264 [INFO]   host: 127.0.0.1
+2025-11-18 10:34:58,264 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-wjvjs4n4
+2025-11-18 10:34:58,264 [INFO]   nanny: True
+2025-11-18 10:34:58,264 [INFO] Dask Worker Info:
+2025-11-18 10:34:58,264 [INFO] Worker tcp://127.0.0.1:57527
+2025-11-18 10:34:58,264 [INFO]   pid: None
+2025-11-18 10:34:58,264 [INFO]   host: 127.0.0.1
+2025-11-18 10:34:58,264 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-n_v6u78b
+2025-11-18 10:34:58,264 [INFO]   nanny: True
+2025-11-18 10:34:58,264 [INFO] Dask Worker Info:
+2025-11-18 10:34:58,264 [INFO] Worker tcp://127.0.0.1:57530
+2025-11-18 10:34:58,264 [INFO]   pid: None
+2025-11-18 10:34:58,264 [INFO]   host: 127.0.0.1
+2025-11-18 10:34:58,264 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-gf8vqvfb
+2025-11-18 10:34:58,264 [INFO]   nanny: True
+2025-11-18 10:34:58,264 [INFO] Processing camera: Cam1
+2025-11-18 10:34:58,266 [INFO] _detect_image_shape: image_format = ('B%05d_A.tif', 'B%05d_B.tif'), type = <class 'tuple'>
+2025-11-18 10:34:58,266 [INFO] Source path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall, Camera: 1
+2025-11-18 10:34:58,266 [INFO] Camera path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
+2025-11-18 10:34:58,266 [INFO] Trying to read file: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1/B00001_A.tif
+2025-11-18 10:34:58,273 [INFO] Detected image shape: (1152, 1024)
+2025-11-18 10:34:58,273 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-18 10:34:58,276 [INFO] Lazy loading complete: 100 independent delayed tasks created (~100 KB memory footprint)
+2025-11-18 10:34:58,277 [INFO] Pre-computing vector masks for Cam1
+2025-11-18 10:34:58,647 [INFO] Vector masks computed: 4 passes
+2025-11-18 10:34:58,647 [INFO] ================================================================================
+2025-11-18 10:34:58,647 [INFO] BATCH FILTER MODE DETECTED
+2025-11-18 10:34:58,647 [INFO] ================================================================================
+2025-11-18 10:34:58,647 [INFO] Total images: 100
+2025-11-18 10:34:58,647 [INFO] Batch size: 30
+2025-11-18 10:34:58,647 [INFO] Total batches: 4
+2025-11-18 10:34:58,647 [INFO] Batch filters: ['time']
+2025-11-18 10:34:58,647 [INFO] Workers configured: 5
+2025-11-18 10:34:58,647 [INFO] ================================================================================
+2025-11-18 10:34:58,656 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:58] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:34:58,657 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:58] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:34:58,668 [INFO] Successfully cached window padding for 4 passes
+2025-11-18 10:34:58,673 [INFO] Successfully cached interpolation grids for 4 passes
+2025-11-18 10:34:58,735 [INFO] Broadcast correlator cache to all workers (ONCE)
+2025-11-18 10:34:58,740 [INFO] Broadcast vector masks to all workers (ONCE, 23.4 KB)
+2025-11-18 10:34:58,741 [INFO] 
+2025-11-18 10:34:58,741 [INFO] >>> BATCH 1/4 <<<
+2025-11-18 10:34:58,741 [INFO] [Batch 1] Loading into main process memory...
+2025-11-18 10:34:58,793 [INFO] [Batch 1] Loaded 30 images (67.5 MB)
+2025-11-18 10:34:58,828 [INFO] [Batch 1] Applying filters: time
+2025-11-18 10:34:58,828 [INFO] [Batch 1] Using 10 threads for filtering
+2025-11-18 10:34:58,828 [INFO] Applying filter: {'type': 'time'}
+2025-11-18 10:34:58,828 [INFO] Empty chunk detected, skipping
+2025-11-18 10:34:58,856 [INFO] [Batch 1] Filtering complete
+2025-11-18 10:34:58,859 [INFO] [Batch 1] Splitting batch into 30 individual pairs for low-memory distribution
+2025-11-18 10:34:58,955 [INFO] [Batch 1] 30 pairs scattered individually (~2.2 MB each)
+2025-11-18 10:34:58,956 [INFO] [Batch 1] Starting parallel PIV processing on 5 workers...
+2025-11-18 10:34:58,957 [INFO] Submitting 30 independent tasks to cluster
+2025-11-18 10:34:58,959 [INFO] Tasks submitted. Dask scheduler managing distribution across workers. Each worker processes ONE image at a time.
+2025-11-18 10:34:59,168 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:59] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:34:59,169 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:59] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:34:59,656 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:59] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:34:59,656 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:59] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:34:59,668 [INFO] 127.0.0.1 - - [18/Nov/2025 10:34:59] "[35m[1mGET /backend/plot/get_uncalibrated_image?basepath_idx=0&var=ux&is_uncalibrated=1&index=17 HTTP/1.1[0m" 500 -
+2025-11-18 10:35:00,155 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:00] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:00,156 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:00] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:35:00,330 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:00] "GET /backend/plot/get_uncalibrated_image?basepath_idx=0&var=ux&is_uncalibrated=1&index=12 HTTP/1.1" 200 -
+2025-11-18 10:35:00,655 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:00] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:35:00,656 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:00] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:01,157 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:01] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:01,158 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:01] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:35:01,659 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:01] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:35:01,659 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:01] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:02,148 [INFO] All 30 images processed successfully
+2025-11-18 10:35:02,149 [INFO] [Batch 1] 30 images processed and saved
+2025-11-18 10:35:02,157 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:02] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:35:02,159 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:02] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:02,202 [INFO] 
+2025-11-18 10:35:02,202 [INFO] >>> BATCH 2/4 <<<
+2025-11-18 10:35:02,202 [INFO] [Batch 2] Loading into main process memory...
+2025-11-18 10:35:02,273 [INFO] [Batch 2] Loaded 30 images (67.5 MB)
+2025-11-18 10:35:02,294 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:02] "GET /backend/plot/get_uncalibrated_image?basepath_idx=0&var=ux&is_uncalibrated=1&index=2 HTTP/1.1" 200 -
+2025-11-18 10:35:02,308 [INFO] [Batch 2] Applying filters: time
+2025-11-18 10:35:02,308 [INFO] [Batch 2] Using 10 threads for filtering
+2025-11-18 10:35:02,308 [INFO] Applying filter: {'type': 'time'}
+2025-11-18 10:35:02,309 [INFO] Empty chunk detected, skipping
+2025-11-18 10:35:02,337 [INFO] [Batch 2] Filtering complete
+2025-11-18 10:35:02,340 [INFO] [Batch 2] Splitting batch into 30 individual pairs for low-memory distribution
+2025-11-18 10:35:02,438 [INFO] [Batch 2] 30 pairs scattered individually (~2.2 MB each)
+2025-11-18 10:35:02,440 [INFO] [Batch 2] Starting parallel PIV processing on 5 workers...
+2025-11-18 10:35:02,441 [INFO] Submitting 30 independent tasks to cluster
+2025-11-18 10:35:02,442 [INFO] Tasks submitted. Dask scheduler managing distribution across workers. Each worker processes ONE image at a time.
+2025-11-18 10:35:02,659 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:02] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:02,660 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:02] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:35:03,159 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:03] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:35:03,160 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:03] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:03,660 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:03] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:03,662 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:03] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:35:04,160 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:04] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:35:04,161 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:04] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:04,290 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:04] "GET /backend/plot/get_uncalibrated_image?basepath_idx=0&var=ux&is_uncalibrated=1&index=3 HTTP/1.1" 200 -
+2025-11-18 10:35:04,662 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:04] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:35:04,663 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:04] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:05,162 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:05] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:35:05,163 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:05] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:05,315 [INFO] All 30 images processed successfully
+2025-11-18 10:35:05,315 [INFO] [Batch 2] 30 images processed and saved
+2025-11-18 10:35:05,362 [INFO] 
+2025-11-18 10:35:05,363 [INFO] >>> BATCH 3/4 <<<
+2025-11-18 10:35:05,363 [INFO] [Batch 3] Loading into main process memory...
+2025-11-18 10:35:05,404 [INFO] [Batch 3] Loaded 30 images (67.5 MB)
+2025-11-18 10:35:05,436 [INFO] [Batch 3] Applying filters: time
+2025-11-18 10:35:05,436 [INFO] [Batch 3] Using 10 threads for filtering
+2025-11-18 10:35:05,436 [INFO] Applying filter: {'type': 'time'}
+2025-11-18 10:35:05,436 [INFO] Empty chunk detected, skipping
+2025-11-18 10:35:05,465 [INFO] [Batch 3] Filtering complete
+2025-11-18 10:35:05,468 [INFO] [Batch 3] Splitting batch into 30 individual pairs for low-memory distribution
+2025-11-18 10:35:05,567 [INFO] [Batch 3] 30 pairs scattered individually (~2.2 MB each)
+2025-11-18 10:35:05,569 [INFO] [Batch 3] Starting parallel PIV processing on 5 workers...
+2025-11-18 10:35:05,570 [INFO] Submitting 30 independent tasks to cluster
+2025-11-18 10:35:05,571 [INFO] Tasks submitted. Dask scheduler managing distribution across workers. Each worker processes ONE image at a time.
+2025-11-18 10:35:05,669 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:05] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:35:05,671 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:05] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:06,163 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:06] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:35:06,164 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:06] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:06,300 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:06] "GET /backend/plot/get_uncalibrated_image?basepath_idx=0&var=ux&is_uncalibrated=1&index=4 HTTP/1.1" 200 -
+2025-11-18 10:35:06,666 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:06] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:35:06,668 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:06] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:07,170 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:07] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:35:07,173 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:07] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:07,666 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:07] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:35:07,667 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:07] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:08,167 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:08] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:08,169 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:08] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:35:08,308 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:08] "GET /backend/plot/get_uncalibrated_image?basepath_idx=0&var=ux&is_uncalibrated=1&index=5 HTTP/1.1" 200 -
+2025-11-18 10:35:08,536 [INFO] All 30 images processed successfully
+2025-11-18 10:35:08,536 [INFO] [Batch 3] 30 images processed and saved
+2025-11-18 10:35:08,617 [INFO] 
+2025-11-18 10:35:08,618 [INFO] >>> BATCH 4/4 <<<
+2025-11-18 10:35:08,618 [INFO] [Batch 4] Loading into main process memory...
+2025-11-18 10:35:08,635 [INFO] [Batch 4] Loaded 10 images (22.5 MB)
+2025-11-18 10:35:08,647 [INFO] [Batch 4] Applying filters: time
+2025-11-18 10:35:08,647 [INFO] [Batch 4] Using 10 threads for filtering
+2025-11-18 10:35:08,648 [INFO] Applying filter: {'type': 'time'}
+2025-11-18 10:35:08,648 [INFO] Empty chunk detected, skipping
+2025-11-18 10:35:08,658 [INFO] [Batch 4] Filtering complete
+2025-11-18 10:35:08,659 [INFO] [Batch 4] Splitting batch into 10 individual pairs for low-memory distribution
+2025-11-18 10:35:08,671 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:08] "GET /backend/piv_logs?job_id=piv_20251118_103454 HTTP/1.1" 200 -
+2025-11-18 10:35:08,673 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:08] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:08,708 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:08] "POST /backend/cancel_run HTTP/1.1" 200 -
+2025-11-18 10:35:23,433 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:23] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:35:35,123 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:35] "[36mGET / HTTP/1.1[0m" 304 -
+2025-11-18 10:35:35,132 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:35] "[36mGET /_next/static/css/c0020405cb4aec84.css HTTP/1.1[0m" 304 -
+2025-11-18 10:35:35,133 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:35] "[36mGET /_next/static/chunks/main-app-c97e6e5923995974.js HTTP/1.1[0m" 304 -
+2025-11-18 10:35:35,134 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:35] "[36mGET /_next/static/chunks/865-9b0a1e0ccec89a5b.js HTTP/1.1[0m" 304 -
+2025-11-18 10:35:35,134 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:35] "[36mGET /_next/static/chunks/117-32d6e5822ea0ad97.js HTTP/1.1[0m" 304 -
+2025-11-18 10:35:35,135 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:35] "[36mGET /_next/static/chunks/869-4931b8aa51010b21.js HTTP/1.1[0m" 304 -
+2025-11-18 10:35:35,136 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:35] "[36mGET /_next/static/chunks/app/page-08faa6aec29a90e1.js HTTP/1.1[0m" 304 -
+2025-11-18 10:35:35,137 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:35] "[36mGET /_next/static/chunks/app/layout-6908711637e25b2c.js HTTP/1.1[0m" 304 -
+2025-11-18 10:35:35,137 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:35] "[36mGET /_next/static/chunks/fd9d1056-31cd4e5e32ed9a2a.js HTTP/1.1[0m" 304 -
+2025-11-18 10:35:35,169 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:35] "GET /backend/config HTTP/1.1" 200 -
+2025-11-18 10:35:35,185 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:35] "[36mGET /grid.svg HTTP/1.1[0m" 304 -
+2025-11-18 10:35:40,020 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:40] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:35:40,021 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:40] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 10:35:40,537 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:40] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:35:44,499 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:44] "POST /backend/run_piv HTTP/1.1" 200 -
+2025-11-18 10:35:44,505 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:44] "GET /backend/piv_logs?job_id=piv_20251118_103544 HTTP/1.1" 200 -
+2025-11-18 10:35:44,508 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:44] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:44,641 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:44] "GET /backend/plot/get_uncalibrated_image?basepath_idx=0&var=ux&is_uncalibrated=1&index=1 HTTP/1.1" 200 -
+2025-11-18 10:35:45,006 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:45] "GET /backend/piv_logs?job_id=piv_20251118_103544 HTTP/1.1" 200 -
+2025-11-18 10:35:45,009 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:45] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:45,505 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:45] "GET /backend/piv_logs?job_id=piv_20251118_103544 HTTP/1.1" 200 -
+2025-11-18 10:35:45,505 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:45] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:45,514 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:45] "GET /backend/plot/check_vars?basepath_idx=0&frame=1&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:45,856 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-18 10:35:45,864 [INFO] Config YAML:
+batches:
+  size: 30
+calibration:
+  active: pinhole
+  pinhole:
+    asymmetric: false
+    camera: 1
+    dot_distance_mm: 28.9
+    dot_spacing_mm: 28.89
+    dt: 0.0275
+    enhance_dots: true
+    file_pattern: calib%05d.tif
+    grid_tolerance: 0.5
+    image_index: 0
+    pattern_cols: 10
+    pattern_rows: 10
+    ransac_threshold: 3
+    source_path_idx: 0
+  scale_factor:
+    dt: 0.56
+    px_per_mm: 3.41
+    source_path_idx: 0
+  stereo:
+    asymmetric: false
+    camera_pair:
+    - 1
+    - 2
+    dot_spacing_mm: 28.89
+    dt: 2
+    enhance_dots: true
+    file_pattern: planar_calibration_plate_*.tif
+    pattern_cols: 10
+    pattern_rows: 10
+    source_path_idx: 0
+calibration_format:
+  image_format: calib%05d.tif
+filters: []
+images:
+  dtype: float32
+  image_format:
+  - B%05d_A.tif
+  - B%05d_B.tif
+  num_images: 100
+  time_resolved: false
+  vector_format:
+  - B%05d.mat
+infilling:
+  final_pass:
+    enabled: true
+    method: biharmonic
+    parameters:
+      ksize: 3
+  mid_pass:
+    method: biharmonic
+    parameters:
+      ksize: 3
+instantaneous_piv:
+  num_peaks: 1
+  overlap:
+  - 50
+  - 50
+  - 50
+  - 50
+  peak_finder: gauss6
+  runs:
+  - 4
+  secondary_peak: false
+  time_resolved: false
+  window_size:
+  - - 128
+    - 128
+  - - 64
+    - 64
+  - - 32
+    - 32
+  - - 16
+    - 16
+  window_type: gaussian
+logging:
+  console: true
+  file: pypiv.log
+  level: INFO
+masking:
+  enabled: true
+  mask_file_pattern: mask_Cam%d.mat
+  mask_threshold: 0.01
+  mode: rectangular
+  rectangular:
+    bottom: 64
+    left: 0
+    right: 0
+    top: 64
+outlier_detection:
+  enabled: true
+  methods:
+  - threshold: 0.3
+    type: peak_mag
+  - epsilon: 0.2
+    threshold: 2
+    type: median_2d
+paths:
+  base_paths:
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/hehe
+  camera_count: 1
+  camera_numbers:
+  - 1
+  source_paths:
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall
+plots:
+  fontsize: 14
+  save_extension: .png
+  save_pickle: true
+  title_fontsize: 16
+processing:
+  auto_compute_params: false
+  backend: cpu
+  dask_memory_limit: 2GB
+  dask_threads_per_worker: 1
+  dask_workers_per_node: 5
+  debug: false
+  ensemble: false
+  instantaneous: true
+  omp_threads: 3
+  stereo: false
+statistics_extraction: null
+videos:
+- endpoint: ''
+  type: instantaneous
+  use_merged: false
+  variable: ux
+  video_length: 100
+
+2025-11-18 10:35:45,864 [INFO] Set OMP_NUM_THREADS to 10 for main process batch filtering
+2025-11-18 10:35:46,006 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:46] "GET /backend/piv_logs?job_id=piv_20251118_103544 HTTP/1.1" 200 -
+2025-11-18 10:35:46,007 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:46] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:46,507 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:46] "GET /backend/piv_logs?job_id=piv_20251118_103544 HTTP/1.1" 200 -
+2025-11-18 10:35:46,509 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:46] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:46,695 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:46] "GET /backend/plot/get_uncalibrated_image?basepath_idx=0&var=ux&is_uncalibrated=1&index=2 HTTP/1.1" 200 -
+2025-11-18 10:35:47,008 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:47] "GET /backend/piv_logs?job_id=piv_20251118_103544 HTTP/1.1" 200 -
+2025-11-18 10:35:47,010 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:47] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:47,437 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-18 10:35:47,455 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-18 10:35:47,456 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-18 10:35:47,460 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-18 10:35:47,493 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-18 10:35:47,507 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:47] "GET /backend/piv_logs?job_id=piv_20251118_103544 HTTP/1.1" 200 -
+2025-11-18 10:35:47,508 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:47] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:47,564 [INFO] Worker logging configured successfully
+2025-11-18 10:35:47,564 [INFO] Worker logging configured successfully
+2025-11-18 10:35:47,564 [INFO] Worker logging configured successfully
+2025-11-18 10:35:47,564 [INFO] Worker logging configured successfully
+2025-11-18 10:35:47,564 [INFO] Worker logging configured successfully
+2025-11-18 10:35:47,565 [INFO] Set OMP_NUM_THREADS to 3 in worker process
+2025-11-18 10:35:47,565 [INFO] Set OMP_NUM_THREADS to 3 in worker process
+2025-11-18 10:35:47,565 [INFO] Set OMP_NUM_THREADS to 3 in worker process
+2025-11-18 10:35:47,565 [INFO] Set OMP_NUM_THREADS to 3 in worker process
+2025-11-18 10:35:47,566 [INFO] Set OMP_NUM_THREADS to 3 in worker process
+2025-11-18 10:35:47,566 [INFO] Dask cluster started successfully
+2025-11-18 10:35:47,566 [INFO] Dask Worker Info:
+2025-11-18 10:35:47,566 [INFO] Worker tcp://127.0.0.1:57819
+2025-11-18 10:35:47,566 [INFO]   pid: None
+2025-11-18 10:35:47,567 [INFO]   host: 127.0.0.1
+2025-11-18 10:35:47,567 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-ffk5qihr
+2025-11-18 10:35:47,567 [INFO]   nanny: True
+2025-11-18 10:35:47,567 [INFO] Dask Worker Info:
+2025-11-18 10:35:47,567 [INFO] Worker tcp://127.0.0.1:57822
+2025-11-18 10:35:47,567 [INFO]   pid: None
+2025-11-18 10:35:47,567 [INFO]   host: 127.0.0.1
+2025-11-18 10:35:47,567 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-rafizkah
+2025-11-18 10:35:47,567 [INFO]   nanny: True
+2025-11-18 10:35:47,567 [INFO] Dask Worker Info:
+2025-11-18 10:35:47,567 [INFO] Worker tcp://127.0.0.1:57825
+2025-11-18 10:35:47,567 [INFO]   pid: None
+2025-11-18 10:35:47,567 [INFO]   host: 127.0.0.1
+2025-11-18 10:35:47,567 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-jx651q39
+2025-11-18 10:35:47,567 [INFO]   nanny: True
+2025-11-18 10:35:47,567 [INFO] Dask Worker Info:
+2025-11-18 10:35:47,567 [INFO] Worker tcp://127.0.0.1:57828
+2025-11-18 10:35:47,567 [INFO]   pid: None
+2025-11-18 10:35:47,567 [INFO]   host: 127.0.0.1
+2025-11-18 10:35:47,567 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-2t7ko6vn
+2025-11-18 10:35:47,567 [INFO]   nanny: True
+2025-11-18 10:35:47,567 [INFO] Dask Worker Info:
+2025-11-18 10:35:47,567 [INFO] Worker tcp://127.0.0.1:57831
+2025-11-18 10:35:47,567 [INFO]   pid: None
+2025-11-18 10:35:47,567 [INFO]   host: 127.0.0.1
+2025-11-18 10:35:47,567 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-gfdbat0x
+2025-11-18 10:35:47,567 [INFO]   nanny: True
+2025-11-18 10:35:47,567 [INFO] Processing camera: Cam1
+2025-11-18 10:35:47,570 [INFO] _detect_image_shape: image_format = ('B%05d_A.tif', 'B%05d_B.tif'), type = <class 'tuple'>
+2025-11-18 10:35:47,570 [INFO] Source path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall, Camera: 1
+2025-11-18 10:35:47,570 [INFO] Camera path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
+2025-11-18 10:35:47,570 [INFO] Trying to read file: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1/B00001_A.tif
+2025-11-18 10:35:47,579 [INFO] Detected image shape: (1152, 1024)
+2025-11-18 10:35:47,579 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-18 10:35:47,582 [INFO] Lazy loading complete: 100 independent delayed tasks created (~100 KB memory footprint)
+2025-11-18 10:35:47,582 [INFO] Pre-computing vector masks for Cam1
+2025-11-18 10:35:47,958 [INFO] Vector masks computed: 4 passes
+2025-11-18 10:35:47,958 [INFO] No filters configured, skipping preprocessing
+2025-11-18 10:35:47,967 [INFO] Successfully cached window padding for 4 passes
+2025-11-18 10:35:47,971 [INFO] Successfully cached interpolation grids for 4 passes
+2025-11-18 10:35:48,010 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:48] "GET /backend/piv_logs?job_id=piv_20251118_103544 HTTP/1.1" 200 -
+2025-11-18 10:35:48,011 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:48] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:48,078 [INFO] Broadcast correlator cache to all workers
+2025-11-18 10:35:48,083 [INFO] Broadcast vector masks to all workers (23.4 KB)
+2025-11-18 10:35:48,087 [INFO] Submitting 100 independent tasks to cluster
+2025-11-18 10:35:48,090 [INFO] Tasks submitted. Dask scheduler managing distribution across workers. Each worker processes ONE image at a time.
+2025-11-18 10:35:48,522 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:48] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:48,526 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:48] "GET /backend/piv_logs?job_id=piv_20251118_103544 HTTP/1.1" 200 -
+2025-11-18 10:35:48,752 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:48] "GET /backend/plot/get_uncalibrated_image?basepath_idx=0&var=ux&is_uncalibrated=1&index=3 HTTP/1.1" 200 -
+2025-11-18 10:35:49,013 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:49] "GET /backend/piv_logs?job_id=piv_20251118_103544 HTTP/1.1" 200 -
+2025-11-18 10:35:49,015 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:49] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:49,513 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:49] "GET /backend/piv_logs?job_id=piv_20251118_103544 HTTP/1.1" 200 -
+2025-11-18 10:35:49,516 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:49] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:50,012 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:50] "GET /backend/piv_logs?job_id=piv_20251118_103544 HTTP/1.1" 200 -
+2025-11-18 10:35:50,014 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:50] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:50,517 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:50] "GET /backend/piv_logs?job_id=piv_20251118_103544 HTTP/1.1" 200 -
+2025-11-18 10:35:50,518 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:50] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:51,014 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:51] "GET /backend/piv_logs?job_id=piv_20251118_103544 HTTP/1.1" 200 -
+2025-11-18 10:35:51,015 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:51] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:51,181 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:51] "GET /backend/plot/get_uncalibrated_image?basepath_idx=0&var=ux&is_uncalibrated=1&index=4 HTTP/1.1" 200 -
+2025-11-18 10:35:51,517 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:51] "GET /backend/piv_logs?job_id=piv_20251118_103544 HTTP/1.1" 200 -
+2025-11-18 10:35:51,521 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:51] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:52,020 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:52] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:52,024 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:52] "GET /backend/piv_logs?job_id=piv_20251118_103544 HTTP/1.1" 200 -
+2025-11-18 10:35:52,514 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:52] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:52,517 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:52] "GET /backend/piv_logs?job_id=piv_20251118_103544 HTTP/1.1" 200 -
+2025-11-18 10:35:53,023 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:53] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:53,026 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:53] "GET /backend/piv_logs?job_id=piv_20251118_103544 HTTP/1.1" 200 -
+2025-11-18 10:35:53,280 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:53] "GET /backend/plot/get_uncalibrated_image?basepath_idx=0&var=ux&is_uncalibrated=1&index=5 HTTP/1.1" 200 -
+2025-11-18 10:35:53,518 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:53] "GET /backend/piv_logs?job_id=piv_20251118_103544 HTTP/1.1" 200 -
+2025-11-18 10:35:53,520 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:53] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:54,018 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:54] "GET /backend/piv_logs?job_id=piv_20251118_103544 HTTP/1.1" 200 -
+2025-11-18 10:35:54,020 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:54] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:54,520 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:54] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:54,523 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:54] "GET /backend/piv_logs?job_id=piv_20251118_103544 HTTP/1.1" 200 -
+2025-11-18 10:35:55,019 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:55] "GET /backend/piv_logs?job_id=piv_20251118_103544 HTTP/1.1" 200 -
+2025-11-18 10:35:55,021 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:55] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:55,519 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:55] "GET /backend/piv_logs?job_id=piv_20251118_103544 HTTP/1.1" 200 -
+2025-11-18 10:35:55,521 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:55] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:55,814 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:55] "GET /backend/plot/get_uncalibrated_image?basepath_idx=0&var=ux&is_uncalibrated=1&index=6 HTTP/1.1" 200 -
+2025-11-18 10:35:56,016 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:56] "GET /backend/piv_logs?job_id=piv_20251118_103544 HTTP/1.1" 200 -
+2025-11-18 10:35:56,017 [INFO] 127.0.0.1 - - [18/Nov/2025 10:35:56] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:35:56,916 [INFO] All 100 images processed successfully
+2025-11-18 10:35:56,921 [INFO] PIV and save completed: 100 frames saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/hehe/uncalibrated_piv/100/Cam1/instantaneous
+2025-11-18 10:35:56,941 [INFO] Worker saved coordinates to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/hehe/uncalibrated_piv/100/Cam1/instantaneous/coordinates.mat
+2025-11-18 10:35:56,942 [INFO] Coordinates saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/hehe/uncalibrated_piv/100/Cam1/instantaneous
+2025-11-18 10:36:15,332 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:15] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:36:15,339 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:15] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:36:15,861 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:15] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:36:16,362 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:16] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:36:16,531 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:16] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:36:17,055 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:17] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:36:17,359 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:17] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:36:17,885 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:17] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:36:28,557 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:28] "[36mGET / HTTP/1.1[0m" 304 -
+2025-11-18 10:36:28,563 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:28] "[36mGET /_next/static/chunks/main-app-c97e6e5923995974.js HTTP/1.1[0m" 304 -
+2025-11-18 10:36:28,565 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:28] "[36mGET /_next/static/chunks/117-32d6e5822ea0ad97.js HTTP/1.1[0m" 304 -
+2025-11-18 10:36:28,566 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:28] "[36mGET /_next/static/chunks/fd9d1056-31cd4e5e32ed9a2a.js HTTP/1.1[0m" 304 -
+2025-11-18 10:36:28,567 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:28] "[36mGET /_next/static/css/c0020405cb4aec84.css HTTP/1.1[0m" 304 -
+2025-11-18 10:36:28,567 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:28] "[36mGET /_next/static/chunks/869-4931b8aa51010b21.js HTTP/1.1[0m" 304 -
+2025-11-18 10:36:28,568 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:28] "[36mGET /_next/static/chunks/865-9b0a1e0ccec89a5b.js HTTP/1.1[0m" 304 -
+2025-11-18 10:36:28,569 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:28] "[36mGET /_next/static/chunks/app/page-08faa6aec29a90e1.js HTTP/1.1[0m" 304 -
+2025-11-18 10:36:28,569 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:28] "[36mGET /_next/static/chunks/app/layout-6908711637e25b2c.js HTTP/1.1[0m" 304 -
+2025-11-18 10:36:28,597 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:28] "GET /backend/config HTTP/1.1" 200 -
+2025-11-18 10:36:28,611 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:28] "[36mGET /grid.svg HTTP/1.1[0m" 304 -
+2025-11-18 10:36:32,164 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:32] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:36:32,165 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:32] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 10:36:32,684 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:32] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:36:37,712 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:37] "POST /backend/run_piv HTTP/1.1" 200 -
+2025-11-18 10:36:37,721 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:37] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:37,722 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:37] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:38,220 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:38] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:38,221 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:38] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:38,720 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:38] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:38,721 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:38] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:39,043 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-18 10:36:39,049 [INFO] Config YAML:
+batches:
+  size: 30
+calibration:
+  active: pinhole
+  pinhole:
+    asymmetric: false
+    camera: 1
+    dot_distance_mm: 28.9
+    dot_spacing_mm: 28.89
+    dt: 0.0275
+    enhance_dots: true
+    file_pattern: calib%05d.tif
+    grid_tolerance: 0.5
+    image_index: 0
+    pattern_cols: 10
+    pattern_rows: 10
+    ransac_threshold: 3
+    source_path_idx: 0
+  scale_factor:
+    dt: 0.56
+    px_per_mm: 3.41
+    source_path_idx: 0
+  stereo:
+    asymmetric: false
+    camera_pair:
+    - 1
+    - 2
+    dot_spacing_mm: 28.89
+    dt: 2
+    enhance_dots: true
+    file_pattern: planar_calibration_plate_*.tif
+    pattern_cols: 10
+    pattern_rows: 10
+    source_path_idx: 0
+calibration_format:
+  image_format: calib%05d.tif
+filters: []
+images:
+  dtype: float32
+  image_format:
+  - B%05d_A.tif
+  - B%05d_B.tif
+  num_images: 100
+  time_resolved: false
+  vector_format:
+  - B%05d.mat
+infilling:
+  final_pass:
+    enabled: true
+    method: biharmonic
+    parameters:
+      ksize: 3
+  mid_pass:
+    method: biharmonic
+    parameters:
+      ksize: 3
+instantaneous_piv:
+  num_peaks: 1
+  overlap:
+  - 50
+  - 50
+  - 50
+  - 50
+  peak_finder: gauss6
+  runs:
+  - 4
+  secondary_peak: false
+  time_resolved: false
+  window_size:
+  - - 128
+    - 128
+  - - 64
+    - 64
+  - - 32
+    - 32
+  - - 16
+    - 16
+  window_type: gaussian
+logging:
+  console: true
+  file: pypiv.log
+  level: INFO
+masking:
+  enabled: true
+  mask_file_pattern: mask_Cam%d.mat
+  mask_threshold: 0.01
+  mode: rectangular
+  rectangular:
+    bottom: 64
+    left: 0
+    right: 0
+    top: 64
+outlier_detection:
+  enabled: true
+  methods:
+  - threshold: 0.3
+    type: peak_mag
+  - epsilon: 0.2
+    threshold: 2
+    type: median_2d
+paths:
+  base_paths:
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/hehe
+  camera_count: 1
+  camera_numbers:
+  - 1
+  source_paths:
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall
+plots:
+  fontsize: 14
+  save_extension: .png
+  save_pickle: true
+  title_fontsize: 16
+processing:
+  auto_compute_params: false
+  backend: cpu
+  dask_memory_limit: 2GB
+  dask_threads_per_worker: 1
+  dask_workers_per_node: 3
+  debug: false
+  ensemble: false
+  instantaneous: true
+  omp_threads: 3
+  stereo: false
+statistics_extraction: null
+videos:
+- endpoint: ''
+  type: instantaneous
+  use_merged: false
+  variable: ux
+  video_length: 100
+
+2025-11-18 10:36:39,049 [INFO] Set OMP_NUM_THREADS to 10 for main process batch filtering
+2025-11-18 10:36:39,222 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:39] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:39,222 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:39] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:39,722 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:39] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:39,723 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:39] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:40,223 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:40] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:40,224 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:40] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:40,426 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-18 10:36:40,429 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-18 10:36:40,429 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-18 10:36:40,521 [INFO] Worker logging configured successfully
+2025-11-18 10:36:40,522 [INFO] Worker logging configured successfully
+2025-11-18 10:36:40,522 [INFO] Worker logging configured successfully
+2025-11-18 10:36:40,523 [INFO] Set OMP_NUM_THREADS to 3 in worker process
+2025-11-18 10:36:40,523 [INFO] Set OMP_NUM_THREADS to 3 in worker process
+2025-11-18 10:36:40,523 [INFO] Set OMP_NUM_THREADS to 3 in worker process
+2025-11-18 10:36:40,523 [INFO] Dask cluster started successfully
+2025-11-18 10:36:40,523 [INFO] Dask Worker Info:
+2025-11-18 10:36:40,523 [INFO] Worker tcp://127.0.0.1:58128
+2025-11-18 10:36:40,523 [INFO]   pid: None
+2025-11-18 10:36:40,524 [INFO]   host: 127.0.0.1
+2025-11-18 10:36:40,524 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-ffr372kj
+2025-11-18 10:36:40,524 [INFO]   nanny: True
+2025-11-18 10:36:40,524 [INFO] Dask Worker Info:
+2025-11-18 10:36:40,524 [INFO] Worker tcp://127.0.0.1:58131
+2025-11-18 10:36:40,524 [INFO]   pid: None
+2025-11-18 10:36:40,524 [INFO]   host: 127.0.0.1
+2025-11-18 10:36:40,524 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-bhm1fpu4
+2025-11-18 10:36:40,524 [INFO]   nanny: True
+2025-11-18 10:36:40,524 [INFO] Dask Worker Info:
+2025-11-18 10:36:40,524 [INFO] Worker tcp://127.0.0.1:58132
+2025-11-18 10:36:40,524 [INFO]   pid: None
+2025-11-18 10:36:40,524 [INFO]   host: 127.0.0.1
+2025-11-18 10:36:40,524 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-xb5wjq8j
+2025-11-18 10:36:40,524 [INFO]   nanny: True
+2025-11-18 10:36:40,524 [INFO] Processing camera: Cam1
+2025-11-18 10:36:40,526 [INFO] _detect_image_shape: image_format = ('B%05d_A.tif', 'B%05d_B.tif'), type = <class 'tuple'>
+2025-11-18 10:36:40,526 [INFO] Source path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall, Camera: 1
+2025-11-18 10:36:40,526 [INFO] Camera path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
+2025-11-18 10:36:40,526 [INFO] Trying to read file: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1/B00001_A.tif
+2025-11-18 10:36:40,533 [INFO] Detected image shape: (1152, 1024)
+2025-11-18 10:36:40,533 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-18 10:36:40,536 [INFO] Lazy loading complete: 100 independent delayed tasks created (~100 KB memory footprint)
+2025-11-18 10:36:40,536 [INFO] Pre-computing vector masks for Cam1
+2025-11-18 10:36:40,723 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:40] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:40,724 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:40] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:40,917 [INFO] Vector masks computed: 4 passes
+2025-11-18 10:36:40,917 [INFO] No filters configured, skipping preprocessing
+2025-11-18 10:36:40,924 [INFO] Successfully cached window padding for 4 passes
+2025-11-18 10:36:40,929 [INFO] Successfully cached interpolation grids for 4 passes
+2025-11-18 10:36:40,964 [INFO] Broadcast correlator cache to all workers
+2025-11-18 10:36:40,966 [INFO] Broadcast vector masks to all workers (23.4 KB)
+2025-11-18 10:36:40,970 [INFO] Submitting 100 independent tasks to cluster
+2025-11-18 10:36:40,974 [INFO] Tasks submitted. Dask scheduler managing distribution across workers. Each worker processes ONE image at a time.
+2025-11-18 10:36:41,241 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:41] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:41,249 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:41] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:41,724 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:41] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:41,725 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:41] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:41,878 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:41] "GET /backend/plot/get_uncalibrated_image?basepath_idx=0&var=ux&is_uncalibrated=1&index=1 HTTP/1.1" 200 -
+2025-11-18 10:36:42,229 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:42] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:42,230 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:42] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:42,727 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:42] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:42,729 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:42] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:43,227 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:43] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:43,228 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:43] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:43,729 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:43] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:43,736 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:43] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:43,878 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:43] "GET /backend/plot/get_uncalibrated_image?basepath_idx=0&var=ux&is_uncalibrated=1&index=2 HTTP/1.1" 200 -
+2025-11-18 10:36:44,228 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:44] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:44,229 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:44] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:44,729 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:44] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:44,729 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:44] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:45,231 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:45] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:45,231 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:45] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:45,731 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:45] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:45,733 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:45] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:46,232 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:46] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:46,232 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:46] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:46,394 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:46] "GET /backend/plot/get_uncalibrated_image?basepath_idx=0&var=ux&is_uncalibrated=1&index=3 HTTP/1.1" 200 -
+2025-11-18 10:36:46,734 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:46] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:46,735 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:46] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:47,237 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:47] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:47,239 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:47] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:47,735 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:47] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:47,743 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:47] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:48,236 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:48] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:48,237 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:48] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:48,403 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:48] "GET /backend/plot/get_uncalibrated_image?basepath_idx=0&var=ux&is_uncalibrated=1&index=4 HTTP/1.1" 200 -
+2025-11-18 10:36:48,735 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:48] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:48,736 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:48] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:49,237 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:49] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:49,237 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:49] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:49,738 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:49] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:49,740 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:49] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:50,238 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:50] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:50,239 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:50] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:50,366 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:50] "GET /backend/plot/get_uncalibrated_image?basepath_idx=0&var=ux&is_uncalibrated=1&index=5 HTTP/1.1" 200 -
+2025-11-18 10:36:50,738 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:50] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:50,739 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:50] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:51,242 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:51] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:51,243 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:51] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:51,739 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:51] "GET /backend/piv_logs?job_id=piv_20251118_103637 HTTP/1.1" 200 -
+2025-11-18 10:36:51,740 [INFO] 127.0.0.1 - - [18/Nov/2025 10:36:51] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-18 10:36:51,755 [INFO] All 100 images processed successfully
+2025-11-18 10:36:51,757 [INFO] PIV and save completed: 100 frames saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/hehe/uncalibrated_piv/100/Cam1/instantaneous
+2025-11-18 10:36:51,778 [INFO] Worker saved coordinates to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/hehe/uncalibrated_piv/100/Cam1/instantaneous/coordinates.mat
+2025-11-18 10:36:51,779 [INFO] Coordinates saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/hehe/uncalibrated_piv/100/Cam1/instantaneous
+2025-11-18 10:42:46,894 [INFO] 127.0.0.1 - - [18/Nov/2025 10:42:46] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:42:47,393 [INFO] 127.0.0.1 - - [18/Nov/2025 10:42:47] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:42:51,550 [INFO] 127.0.0.1 - - [18/Nov/2025 10:42:51] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:42:51,551 [INFO] 127.0.0.1 - - [18/Nov/2025 10:42:51] "GET /backend/get_processed_pair?type=processed&frame=2&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:42:52,550 [INFO] 127.0.0.1 - - [18/Nov/2025 10:42:52] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:42:52,553 [INFO] 127.0.0.1 - - [18/Nov/2025 10:42:52] "GET /backend/get_processed_pair?type=processed&frame=3&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:42:53,555 [INFO] 127.0.0.1 - - [18/Nov/2025 10:42:53] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:42:53,557 [INFO] 127.0.0.1 - - [18/Nov/2025 10:42:53] "GET /backend/get_processed_pair?type=processed&frame=4&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:42:54,553 [INFO] 127.0.0.1 - - [18/Nov/2025 10:42:54] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:42:54,554 [INFO] 127.0.0.1 - - [18/Nov/2025 10:42:54] "GET /backend/get_processed_pair?type=processed&frame=5&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:42:55,552 [INFO] 127.0.0.1 - - [18/Nov/2025 10:42:55] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:42:55,552 [INFO] 127.0.0.1 - - [18/Nov/2025 10:42:55] "GET /backend/get_processed_pair?type=processed&frame=6&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:42:59,413 [INFO] 127.0.0.1 - - [18/Nov/2025 10:42:59] "GET /backend/get_frame_pair?camera=1&idx=7&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:42:59,414 [INFO] 127.0.0.1 - - [18/Nov/2025 10:42:59] "GET /backend/get_processed_pair?type=processed&frame=7&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:42:59,914 [INFO] 127.0.0.1 - - [18/Nov/2025 10:42:59] "GET /backend/get_frame_pair?camera=1&idx=8&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:42:59,915 [INFO] 127.0.0.1 - - [18/Nov/2025 10:42:59] "GET /backend/get_processed_pair?type=processed&frame=8&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:43:00,413 [INFO] 127.0.0.1 - - [18/Nov/2025 10:43:00] "GET /backend/get_frame_pair?camera=1&idx=9&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:43:00,415 [INFO] 127.0.0.1 - - [18/Nov/2025 10:43:00] "GET /backend/get_processed_pair?type=processed&frame=9&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:43:00,916 [INFO] 127.0.0.1 - - [18/Nov/2025 10:43:00] "GET /backend/get_frame_pair?camera=1&idx=10&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:43:00,918 [INFO] 127.0.0.1 - - [18/Nov/2025 10:43:00] "GET /backend/get_processed_pair?type=processed&frame=10&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:43:03,134 [INFO] 127.0.0.1 - - [18/Nov/2025 10:43:03] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:43:03,135 [INFO] 127.0.0.1 - - [18/Nov/2025 10:43:03] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:43:04,599 [INFO] 127.0.0.1 - - [18/Nov/2025 10:43:04] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:43:04,600 [INFO] 127.0.0.1 - - [18/Nov/2025 10:43:04] "GET /backend/get_processed_pair?type=processed&frame=5&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:43:04,761 [INFO] 127.0.0.1 - - [18/Nov/2025 10:43:04] "GET /backend/get_processed_pair?type=processed&frame=50&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:43:04,798 [INFO] 127.0.0.1 - - [18/Nov/2025 10:43:04] "GET /backend/get_frame_pair?camera=1&idx=50&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:43:58,689 [INFO] 127.0.0.1 - - [18/Nov/2025 10:43:58] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:44:00,713 [INFO] 127.0.0.1 - - [18/Nov/2025 10:44:00] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 10:44:00,715 [INFO] 127.0.0.1 - - [18/Nov/2025 10:44:00] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 10:44:01,236 [INFO] 127.0.0.1 - - [18/Nov/2025 10:44:01] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:44:07,528 [INFO] 127.0.0.1 - - [18/Nov/2025 10:44:07] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 10:44:08,552 [INFO] 127.0.0.1 - - [18/Nov/2025 10:44:08] "GET /backend/config HTTP/1.1" 200 -
+2025-11-18 10:44:08,554 [INFO] 127.0.0.1 - - [18/Nov/2025 10:44:08] "[33mGET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/hehe&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-18 10:44:36,492 [INFO] 127.0.0.1 - - [18/Nov/2025 10:44:36] "GET /backend/config HTTP/1.1" 200 -
+2025-11-18 10:44:36,493 [INFO] 127.0.0.1 - - [18/Nov/2025 10:44:36] "[33mGET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/hehe&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-18 10:46:50,284 [INFO] 127.0.0.1 - - [18/Nov/2025 10:46:50] "[33mGET /backend/plot/check_stat_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/hehe&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-18 10:46:50,298 [INFO] 127.0.0.1 - - [18/Nov/2025 10:46:50] "[35m[1mGET /backend/plot/plot_stats?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/hehe&frame=1&var=ux&cmap=default&run=1&camera=1&merged=0 HTTP/1.1[0m" 500 -
+2025-11-18 10:46:51,957 [INFO] 127.0.0.1 - - [18/Nov/2025 10:46:51] "[33mGET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/hehe&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-18 12:17:28,761 [INFO] 127.0.0.1 - - [18/Nov/2025 12:17:28] "GET / HTTP/1.1" 200 -
+2025-11-18 12:17:28,800 [INFO] 127.0.0.1 - - [18/Nov/2025 12:17:28] "[36mGET /_next/static/css/c0020405cb4aec84.css HTTP/1.1[0m" 304 -
+2025-11-18 12:17:28,819 [INFO] 127.0.0.1 - - [18/Nov/2025 12:17:28] "[36mGET /_next/static/chunks/869-4931b8aa51010b21.js HTTP/1.1[0m" 304 -
+2025-11-18 12:17:28,822 [INFO] 127.0.0.1 - - [18/Nov/2025 12:17:28] "[36mGET /_next/static/chunks/865-9b0a1e0ccec89a5b.js HTTP/1.1[0m" 304 -
+2025-11-18 12:17:28,822 [INFO] 127.0.0.1 - - [18/Nov/2025 12:17:28] "[36mGET /_next/static/chunks/117-32d6e5822ea0ad97.js HTTP/1.1[0m" 304 -
+2025-11-18 12:17:28,831 [INFO] 127.0.0.1 - - [18/Nov/2025 12:17:28] "[36mGET /_next/static/chunks/app/layout-6908711637e25b2c.js HTTP/1.1[0m" 304 -
+2025-11-18 12:17:28,831 [INFO] 127.0.0.1 - - [18/Nov/2025 12:17:28] "[36mGET /_next/static/chunks/main-app-c97e6e5923995974.js HTTP/1.1[0m" 304 -
+2025-11-18 12:17:28,837 [INFO] 127.0.0.1 - - [18/Nov/2025 12:17:28] "[36mGET /_next/static/chunks/app/page-08faa6aec29a90e1.js HTTP/1.1[0m" 304 -
+2025-11-18 12:17:28,839 [INFO] 127.0.0.1 - - [18/Nov/2025 12:17:28] "[36mGET /_next/static/chunks/fd9d1056-31cd4e5e32ed9a2a.js HTTP/1.1[0m" 304 -
+2025-11-18 12:17:28,936 [INFO] 127.0.0.1 - - [18/Nov/2025 12:17:28] "GET /backend/config HTTP/1.1" 200 -
+2025-11-18 12:17:28,959 [INFO] 127.0.0.1 - - [18/Nov/2025 12:17:28] "[36mGET /grid.svg HTTP/1.1[0m" 304 -
+2025-11-18 12:17:36,627 [INFO] 127.0.0.1 - - [18/Nov/2025 12:17:36] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:17:42,262 [INFO] 127.0.0.1 - - [18/Nov/2025 12:17:42] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:17:44,146 [INFO] 127.0.0.1 - - [18/Nov/2025 12:17:44] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:18:20,920 [INFO] 127.0.0.1 - - [18/Nov/2025 12:18:20] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:18:35,176 [INFO] 127.0.0.1 - - [18/Nov/2025 12:18:35] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:18:35,191 [INFO] 127.0.0.1 - - [18/Nov/2025 12:18:35] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:18:44,168 [INFO] 127.0.0.1 - - [18/Nov/2025 12:18:44] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:18:44,169 [INFO] 127.0.0.1 - - [18/Nov/2025 12:18:44] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 12:18:44,696 [INFO] 127.0.0.1 - - [18/Nov/2025 12:18:44] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:18:48,163 [INFO] 127.0.0.1 - - [18/Nov/2025 12:18:48] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:18:49,876 [INFO] 127.0.0.1 - - [18/Nov/2025 12:18:49] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:18:50,759 [INFO] 127.0.0.1 - - [18/Nov/2025 12:18:50] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:18:51,664 [INFO] 127.0.0.1 - - [18/Nov/2025 12:18:51] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:18:58,080 [INFO] 127.0.0.1 - - [18/Nov/2025 12:18:58] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:19:11,818 [INFO] 127.0.0.1 - - [18/Nov/2025 12:19:11] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:20:03,236 [INFO] 127.0.0.1 - - [18/Nov/2025 12:20:03] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:20:03,237 [INFO] 127.0.0.1 - - [18/Nov/2025 12:20:03] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 12:20:03,747 [INFO] 127.0.0.1 - - [18/Nov/2025 12:20:03] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:20:07,368 [INFO] 127.0.0.1 - - [18/Nov/2025 12:20:07] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:20:07,466 [INFO] 127.0.0.1 - - [18/Nov/2025 12:20:07] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:20:07,982 [INFO] 127.0.0.1 - - [18/Nov/2025 12:20:07] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:20:10,635 [INFO] 127.0.0.1 - - [18/Nov/2025 12:20:10] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:20:11,148 [INFO] 127.0.0.1 - - [18/Nov/2025 12:20:11] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:20:15,707 [INFO] 127.0.0.1 - - [18/Nov/2025 12:20:15] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:20:15,861 [INFO] 127.0.0.1 - - [18/Nov/2025 12:20:15] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:20:16,377 [INFO] 127.0.0.1 - - [18/Nov/2025 12:20:16] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:20:16,549 [INFO] 127.0.0.1 - - [18/Nov/2025 12:20:16] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:20:16,603 [INFO] 127.0.0.1 - - [18/Nov/2025 12:20:16] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:20:17,116 [INFO] 127.0.0.1 - - [18/Nov/2025 12:20:17] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:35:14,749 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-18 12:35:14,749 [INFO] 127.0.0.1 - - [18/Nov/2025 12:35:14] "GET /grid.svg HTTP/1.1" 200 -
+2025-11-18 12:35:14,749 [INFO] 127.0.0.1 - - [18/Nov/2025 12:35:14] "GET /backend/config HTTP/1.1" 200 -
+2025-11-18 12:35:21,625 [INFO] 127.0.0.1 - - [18/Nov/2025 12:35:21] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:35:21,676 [INFO] 127.0.0.1 - - [18/Nov/2025 12:35:21] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:35:25,115 [INFO] 127.0.0.1 - - [18/Nov/2025 12:35:25] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:35:26,687 [INFO] 127.0.0.1 - - [18/Nov/2025 12:35:26] "[33mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-18 12:35:39,837 [INFO] 127.0.0.1 - - [18/Nov/2025 12:35:39] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:35:43,186 [INFO] 127.0.0.1 - - [18/Nov/2025 12:35:43] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:35:47,923 [INFO] 127.0.0.1 - - [18/Nov/2025 12:35:47] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:35:47,924 [INFO] 127.0.0.1 - - [18/Nov/2025 12:35:47] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 12:35:47,926 [INFO] 127.0.0.1 - - [18/Nov/2025 12:35:47] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:35:48,447 [INFO] 127.0.0.1 - - [18/Nov/2025 12:35:48] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:35:54,171 [INFO] 127.0.0.1 - - [18/Nov/2025 12:35:54] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:35:54,172 [INFO] 127.0.0.1 - - [18/Nov/2025 12:35:54] "GET /backend/get_processed_pair?type=processed&frame=2&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:35:55,069 [INFO] 127.0.0.1 - - [18/Nov/2025 12:35:55] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:35:55,070 [INFO] 127.0.0.1 - - [18/Nov/2025 12:35:55] "GET /backend/get_processed_pair?type=processed&frame=3&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:35:55,640 [INFO] 127.0.0.1 - - [18/Nov/2025 12:35:55] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:35:55,640 [INFO] 127.0.0.1 - - [18/Nov/2025 12:35:55] "GET /backend/get_processed_pair?type=processed&frame=4&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:35:56,215 [INFO] 127.0.0.1 - - [18/Nov/2025 12:35:56] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:35:56,217 [INFO] 127.0.0.1 - - [18/Nov/2025 12:35:56] "GET /backend/get_processed_pair?type=processed&frame=5&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:35:56,763 [INFO] 127.0.0.1 - - [18/Nov/2025 12:35:56] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:35:56,763 [INFO] 127.0.0.1 - - [18/Nov/2025 12:35:56] "GET /backend/get_processed_pair?type=processed&frame=6&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:35:58,102 [INFO] 127.0.0.1 - - [18/Nov/2025 12:35:58] "GET /backend/get_frame_pair?camera=1&idx=7&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:35:58,103 [INFO] 127.0.0.1 - - [18/Nov/2025 12:35:58] "GET /backend/get_processed_pair?type=processed&frame=7&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:36:04,970 [INFO] 127.0.0.1 - - [18/Nov/2025 12:36:04] "GET /backend/get_frame_pair?camera=1&idx=8&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:36:04,970 [INFO] 127.0.0.1 - - [18/Nov/2025 12:36:04] "GET /backend/get_processed_pair?type=processed&frame=8&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:36:05,918 [INFO] 127.0.0.1 - - [18/Nov/2025 12:36:05] "GET /backend/get_frame_pair?camera=1&idx=9&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:36:05,920 [INFO] 127.0.0.1 - - [18/Nov/2025 12:36:05] "GET /backend/get_processed_pair?type=processed&frame=9&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:36:06,566 [INFO] 127.0.0.1 - - [18/Nov/2025 12:36:06] "GET /backend/get_frame_pair?camera=1&idx=10&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:36:06,568 [INFO] 127.0.0.1 - - [18/Nov/2025 12:36:06] "GET /backend/get_processed_pair?type=processed&frame=10&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:36:08,771 [INFO] 127.0.0.1 - - [18/Nov/2025 12:36:08] "GET /backend/get_frame_pair?camera=1&idx=11&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:36:08,773 [INFO] 127.0.0.1 - - [18/Nov/2025 12:36:08] "GET /backend/get_processed_pair?type=processed&frame=11&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:36:09,767 [INFO] 127.0.0.1 - - [18/Nov/2025 12:36:09] "GET /backend/get_frame_pair?camera=1&idx=12&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:36:09,768 [INFO] 127.0.0.1 - - [18/Nov/2025 12:36:09] "GET /backend/get_processed_pair?type=processed&frame=12&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:36:10,429 [INFO] 127.0.0.1 - - [18/Nov/2025 12:36:10] "GET /backend/get_frame_pair?camera=1&idx=13&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:36:10,431 [INFO] 127.0.0.1 - - [18/Nov/2025 12:36:10] "GET /backend/get_processed_pair?type=processed&frame=13&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:36:13,180 [INFO] 127.0.0.1 - - [18/Nov/2025 12:36:13] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:36:13,181 [INFO] 127.0.0.1 - - [18/Nov/2025 12:36:13] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:36:13,973 [INFO] 127.0.0.1 - - [18/Nov/2025 12:36:13] "GET /backend/get_frame_pair?camera=1&idx=11&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:36:13,973 [INFO] 127.0.0.1 - - [18/Nov/2025 12:36:13] "GET /backend/get_processed_pair?type=processed&frame=11&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:36:46,052 [INFO] 127.0.0.1 - - [18/Nov/2025 12:36:46] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:36:48,396 [INFO] 127.0.0.1 - - [18/Nov/2025 12:36:48] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 12:36:48,397 [INFO] 127.0.0.1 - - [18/Nov/2025 12:36:48] "[33mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-18 12:36:48,402 [INFO] 127.0.0.1 - - [18/Nov/2025 12:36:48] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:36:48,921 [INFO] 127.0.0.1 - - [18/Nov/2025 12:36:48] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:36:58,331 [INFO] 127.0.0.1 - - [18/Nov/2025 12:36:58] "[33mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-18 12:36:58,331 [INFO] 127.0.0.1 - - [18/Nov/2025 12:36:58] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 12:36:58,334 [INFO] 127.0.0.1 - - [18/Nov/2025 12:36:58] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:36:58,855 [INFO] 127.0.0.1 - - [18/Nov/2025 12:36:58] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:38:40,004 [INFO] 127.0.0.1 - - [18/Nov/2025 12:38:40] "[33mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-18 12:38:40,005 [INFO] 127.0.0.1 - - [18/Nov/2025 12:38:40] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 12:38:40,006 [INFO] 127.0.0.1 - - [18/Nov/2025 12:38:40] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:38:40,516 [INFO] 127.0.0.1 - - [18/Nov/2025 12:38:40] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:46:29,885 [INFO] 127.0.0.1 - - [18/Nov/2025 12:46:29] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:46:32,693 [INFO] 127.0.0.1 - - [18/Nov/2025 12:46:32] "GET /backend/config HTTP/1.1" 200 -
+2025-11-18 12:46:32,695 [INFO] 127.0.0.1 - - [18/Nov/2025 12:46:32] "[33mGET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/hehe&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-18 12:46:38,753 [INFO] 127.0.0.1 - - [18/Nov/2025 12:46:38] "[33mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-18 12:46:41,299 [INFO] 127.0.0.1 - - [18/Nov/2025 12:46:41] "[33mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-18 12:46:41,300 [INFO] 127.0.0.1 - - [18/Nov/2025 12:46:41] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 12:46:41,304 [INFO] 127.0.0.1 - - [18/Nov/2025 12:46:41] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:46:41,822 [INFO] 127.0.0.1 - - [18/Nov/2025 12:46:41] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:46:47,327 [INFO] 127.0.0.1 - - [18/Nov/2025 12:46:47] "[33mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-18 12:46:48,415 [INFO] 127.0.0.1 - - [18/Nov/2025 12:46:48] "[33mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-18 12:46:48,416 [INFO] 127.0.0.1 - - [18/Nov/2025 12:46:48] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 12:46:48,421 [INFO] 127.0.0.1 - - [18/Nov/2025 12:46:48] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:46:48,939 [INFO] 127.0.0.1 - - [18/Nov/2025 12:46:48] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:46:53,373 [INFO] 127.0.0.1 - - [18/Nov/2025 12:46:53] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:46:53,427 [INFO] 127.0.0.1 - - [18/Nov/2025 12:46:53] "GET /backend/config HTTP/1.1" 200 -
+2025-11-18 12:46:53,428 [INFO] 127.0.0.1 - - [18/Nov/2025 12:46:53] "[33mGET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/hehe&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-18 12:48:29,168 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-18 12:48:29,168 [INFO] 127.0.0.1 - - [18/Nov/2025 12:48:29] "GET /backend/config HTTP/1.1" 200 -
+2025-11-18 12:48:29,169 [INFO] 127.0.0.1 - - [18/Nov/2025 12:48:29] "GET /grid.svg HTTP/1.1" 200 -
+2025-11-18 12:48:36,956 [INFO] 127.0.0.1 - - [18/Nov/2025 12:48:36] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:48:42,750 [INFO] 127.0.0.1 - - [18/Nov/2025 12:48:42] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:48:42,755 [INFO] 127.0.0.1 - - [18/Nov/2025 12:48:42] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 12:48:47,915 [INFO] 127.0.0.1 - - [18/Nov/2025 12:48:47] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:48:53,864 [INFO] 127.0.0.1 - - [18/Nov/2025 12:48:53] "[33mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-18 12:49:02,573 [INFO] 127.0.0.1 - - [18/Nov/2025 12:49:02] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:49:11,064 [INFO] 127.0.0.1 - - [18/Nov/2025 12:49:11] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:49:12,658 [INFO] 127.0.0.1 - - [18/Nov/2025 12:49:12] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:49:12,658 [INFO] 127.0.0.1 - - [18/Nov/2025 12:49:12] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 12:49:12,659 [INFO] 127.0.0.1 - - [18/Nov/2025 12:49:12] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:49:13,178 [INFO] 127.0.0.1 - - [18/Nov/2025 12:49:13] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:49:18,282 [INFO] 127.0.0.1 - - [18/Nov/2025 12:49:18] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:49:18,799 [INFO] 127.0.0.1 - - [18/Nov/2025 12:49:18] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:49:23,484 [INFO] 127.0.0.1 - - [18/Nov/2025 12:49:23] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:49:23,996 [INFO] 127.0.0.1 - - [18/Nov/2025 12:49:23] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:49:29,320 [INFO] 127.0.0.1 - - [18/Nov/2025 12:49:29] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:49:33,430 [INFO] 127.0.0.1 - - [18/Nov/2025 12:49:33] "POST /backend/filter HTTP/1.1" 200 -
+2025-11-18 12:49:33,466 [INFO] _detect_image_shape: image_format = ('B%05d_A.tif', 'B%05d_B.tif'), type = <class 'tuple'>
+2025-11-18 12:49:33,466 [INFO] Source path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall, Camera: 1
+2025-11-18 12:49:33,466 [INFO] Camera path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
+2025-11-18 12:49:33,466 [INFO] Trying to read file: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1/B00001_A.tif
+2025-11-18 12:49:33,473 [INFO] Detected image shape: (1152, 1024)
+2025-11-18 12:49:33,473 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-18 12:49:34,441 [INFO] 127.0.0.1 - - [18/Nov/2025 12:49:34] "GET /backend/status HTTP/1.1" 200 -
+2025-11-18 12:49:34,480 [INFO] 127.0.0.1 - - [18/Nov/2025 12:49:34] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:49:47,529 [INFO] 127.0.0.1 - - [18/Nov/2025 12:49:47] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:49:47,556 [INFO] 127.0.0.1 - - [18/Nov/2025 12:49:47] "GET /backend/get_processed_pair?type=processed&frame=6&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:49:59,238 [INFO] 127.0.0.1 - - [18/Nov/2025 12:49:59] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:49:59,239 [INFO] 127.0.0.1 - - [18/Nov/2025 12:49:59] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 12:49:59,262 [INFO] 127.0.0.1 - - [18/Nov/2025 12:49:59] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:49:59,758 [INFO] 127.0.0.1 - - [18/Nov/2025 12:49:59] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:55:50,195 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-18 12:55:50,195 [INFO] 127.0.0.1 - - [18/Nov/2025 12:55:50] "GET /backend/config HTTP/1.1" 200 -
+2025-11-18 12:55:50,197 [INFO] 127.0.0.1 - - [18/Nov/2025 12:55:50] "GET /grid.svg HTTP/1.1" 200 -
+2025-11-18 12:56:02,226 [INFO] 127.0.0.1 - - [18/Nov/2025 12:56:02] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:56:09,542 [INFO] 127.0.0.1 - - [18/Nov/2025 12:56:09] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:56:16,482 [INFO] 127.0.0.1 - - [18/Nov/2025 12:56:16] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:56:22,366 [INFO] 127.0.0.1 - - [18/Nov/2025 12:56:22] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:56:23,131 [INFO] 127.0.0.1 - - [18/Nov/2025 12:56:23] "[33mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-18 12:56:27,732 [INFO] 127.0.0.1 - - [18/Nov/2025 12:56:27] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:56:34,611 [INFO] 127.0.0.1 - - [18/Nov/2025 12:56:34] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 12:56:34,619 [INFO] 127.0.0.1 - - [18/Nov/2025 12:56:34] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 12:56:34,621 [INFO] 127.0.0.1 - - [18/Nov/2025 12:56:34] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 13:06:58,827 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-18 13:06:58,828 [INFO] 127.0.0.1 - - [18/Nov/2025 13:06:58] "GET /backend/config HTTP/1.1" 200 -
+2025-11-18 13:06:58,829 [INFO] 127.0.0.1 - - [18/Nov/2025 13:06:58] "GET /grid.svg HTTP/1.1" 200 -
+2025-11-18 13:07:09,287 [INFO] 127.0.0.1 - - [18/Nov/2025 13:07:09] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 13:07:16,350 [INFO] 127.0.0.1 - - [18/Nov/2025 13:07:16] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 13:07:19,951 [INFO] 127.0.0.1 - - [18/Nov/2025 13:07:19] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 13:07:19,998 [INFO] 127.0.0.1 - - [18/Nov/2025 13:07:19] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:07:20,002 [INFO] 127.0.0.1 - - [18/Nov/2025 13:07:20] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 13:07:29,379 [INFO] 127.0.0.1 - - [18/Nov/2025 13:07:29] "[35m[1mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 500 -
+2025-11-18 13:07:29,402 [INFO] 127.0.0.1 - - [18/Nov/2025 13:07:29] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 13:07:34,117 [INFO] 127.0.0.1 - - [18/Nov/2025 13:07:34] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 13:07:34,145 [INFO] 127.0.0.1 - - [18/Nov/2025 13:07:34] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:07:34,150 [INFO] 127.0.0.1 - - [18/Nov/2025 13:07:34] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 13:07:37,661 [INFO] 127.0.0.1 - - [18/Nov/2025 13:07:37] "[35m[1mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 500 -
+2025-11-18 13:07:37,670 [INFO] 127.0.0.1 - - [18/Nov/2025 13:07:37] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 13:07:42,550 [INFO] 127.0.0.1 - - [18/Nov/2025 13:07:42] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 13:07:42,577 [INFO] 127.0.0.1 - - [18/Nov/2025 13:07:42] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:07:42,580 [INFO] 127.0.0.1 - - [18/Nov/2025 13:07:42] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 13:07:46,087 [INFO] 127.0.0.1 - - [18/Nov/2025 13:07:46] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 13:13:26,218 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-18 13:13:26,219 [INFO] 127.0.0.1 - - [18/Nov/2025 13:13:26] "GET /backend/config HTTP/1.1" 200 -
+2025-11-18 13:13:26,229 [INFO] 127.0.0.1 - - [18/Nov/2025 13:13:26] "GET /grid.svg HTTP/1.1" 200 -
+2025-11-18 13:18:16,873 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-18 13:18:16,873 [INFO] 127.0.0.1 - - [18/Nov/2025 13:18:16] "GET /backend/config HTTP/1.1" 200 -
+2025-11-18 13:18:16,882 [INFO] 127.0.0.1 - - [18/Nov/2025 13:18:16] "GET /grid.svg HTTP/1.1" 200 -
+2025-11-18 13:18:31,823 [INFO] 127.0.0.1 - - [18/Nov/2025 13:18:31] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 13:29:55,382 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-18 13:29:55,383 [INFO] 127.0.0.1 - - [18/Nov/2025 13:29:55] "GET /backend/config HTTP/1.1" 200 -
+2025-11-18 13:29:55,393 [INFO] 127.0.0.1 - - [18/Nov/2025 13:29:55] "GET /grid.svg HTTP/1.1" 200 -
+2025-11-18 13:29:55,971 [INFO] 127.0.0.1 - - [18/Nov/2025 13:29:55] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:29:55,978 [INFO] 127.0.0.1 - - [18/Nov/2025 13:29:55] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 13:30:07,612 [INFO] 127.0.0.1 - - [18/Nov/2025 13:30:07] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 13:30:08,134 [INFO] 127.0.0.1 - - [18/Nov/2025 13:30:08] "[33mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-18 13:30:12,358 [INFO] 127.0.0.1 - - [18/Nov/2025 13:30:12] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 13:30:12,912 [INFO] 127.0.0.1 - - [18/Nov/2025 13:30:12] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:30:12,922 [INFO] 127.0.0.1 - - [18/Nov/2025 13:30:12] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 13:30:21,031 [INFO] 127.0.0.1 - - [18/Nov/2025 13:30:21] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 13:30:21,552 [INFO] 127.0.0.1 - - [18/Nov/2025 13:30:21] "[35m[1mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 500 -
+2025-11-18 13:30:25,956 [INFO] 127.0.0.1 - - [18/Nov/2025 13:30:25] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 13:30:26,509 [INFO] 127.0.0.1 - - [18/Nov/2025 13:30:26] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:30:26,520 [INFO] 127.0.0.1 - - [18/Nov/2025 13:30:26] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 13:30:31,711 [INFO] 127.0.0.1 - - [18/Nov/2025 13:30:31] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 13:30:32,229 [INFO] 127.0.0.1 - - [18/Nov/2025 13:30:32] "[35m[1mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 500 -
+2025-11-18 13:30:42,459 [INFO] 127.0.0.1 - - [18/Nov/2025 13:30:42] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 13:30:43,013 [INFO] 127.0.0.1 - - [18/Nov/2025 13:30:43] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:30:43,020 [INFO] 127.0.0.1 - - [18/Nov/2025 13:30:43] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 13:30:47,554 [INFO] 127.0.0.1 - - [18/Nov/2025 13:30:47] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:30:47,554 [INFO] 127.0.0.1 - - [18/Nov/2025 13:30:47] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 13:30:47,562 [INFO] 127.0.0.1 - - [18/Nov/2025 13:30:47] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:30:48,080 [INFO] 127.0.0.1 - - [18/Nov/2025 13:30:48] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 13:30:54,095 [INFO] 127.0.0.1 - - [18/Nov/2025 13:30:54] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:30:57,138 [INFO] 127.0.0.1 - - [18/Nov/2025 13:30:57] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:30:57,139 [INFO] 127.0.0.1 - - [18/Nov/2025 13:30:57] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 13:30:57,140 [INFO] 127.0.0.1 - - [18/Nov/2025 13:30:57] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:30:57,660 [INFO] 127.0.0.1 - - [18/Nov/2025 13:30:57] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 13:53:50,451 [INFO] 127.0.0.1 - - [18/Nov/2025 13:53:50] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 13:53:50,987 [INFO] 127.0.0.1 - - [18/Nov/2025 13:53:50] "[33mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-18 13:53:53,714 [INFO] 127.0.0.1 - - [18/Nov/2025 13:53:53] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 13:53:54,275 [INFO] 127.0.0.1 - - [18/Nov/2025 13:53:54] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:53:54,281 [INFO] 127.0.0.1 - - [18/Nov/2025 13:53:54] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 13:53:57,930 [INFO] 127.0.0.1 - - [18/Nov/2025 13:53:57] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:00,882 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:00] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:00,884 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:00] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-18 13:54:00,885 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:00] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:01,402 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:01] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-18 13:54:03,734 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:03] "POST /backend/filter HTTP/1.1" 200 -
+2025-11-18 13:54:03,783 [INFO] _detect_image_shape: image_format = ('B%05d_A.tif', 'B%05d_B.tif'), type = <class 'tuple'>
+2025-11-18 13:54:03,783 [INFO] Source path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall, Camera: 1
+2025-11-18 13:54:03,783 [INFO] Camera path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
+2025-11-18 13:54:03,783 [INFO] Trying to read file: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1/B00001_A.tif
+2025-11-18 13:54:03,785 [INFO] Detected image shape: (1152, 1024)
+2025-11-18 13:54:03,785 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-18 13:54:04,746 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:04] "GET /backend/status HTTP/1.1" 200 -
+2025-11-18 13:54:04,788 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:04] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:08,009 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:08] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:08,036 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:08] "GET /backend/get_processed_pair?type=processed&frame=2&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:08,809 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:08] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:08,838 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:08] "GET /backend/get_processed_pair?type=processed&frame=3&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:09,477 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:09] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:09,504 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:09] "GET /backend/get_processed_pair?type=processed&frame=4&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:10,125 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:10] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:10,154 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:10] "GET /backend/get_processed_pair?type=processed&frame=5&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:20,450 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:20] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:20,459 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:20] "GET /backend/get_frame_pair?camera=1&idx=7&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:20,481 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:20] "GET /backend/get_processed_pair?type=processed&frame=6&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:20,486 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:20] "GET /backend/get_processed_pair?type=processed&frame=7&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:21,128 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:21] "GET /backend/get_frame_pair?camera=1&idx=8&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:21,157 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:21] "GET /backend/get_processed_pair?type=processed&frame=8&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:21,724 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:21] "GET /backend/get_frame_pair?camera=1&idx=9&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:21,750 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:21] "GET /backend/get_processed_pair?type=processed&frame=9&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:22,356 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:22] "GET /backend/get_frame_pair?camera=1&idx=10&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:22,388 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:22] "GET /backend/get_processed_pair?type=processed&frame=10&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:22,878 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:22] "GET /backend/get_frame_pair?camera=1&idx=11&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:22,909 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:22] "GET /backend/get_processed_pair?type=processed&frame=11&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:25,647 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:25] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:25,672 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:25] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:26,250 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:26] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:26,279 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:26] "GET /backend/get_processed_pair?type=processed&frame=6&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:26,395 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:26] "GET /backend/get_processed_pair?type=processed&frame=60&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:26,421 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:26] "GET /backend/get_frame_pair?camera=1&idx=60&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:28,446 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:28] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:28,471 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:28] "GET /backend/get_processed_pair?type=processed&frame=6&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:28,984 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:28] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:29,013 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:29] "GET /backend/get_processed_pair?type=processed&frame=3&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:29,122 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:29] "GET /backend/get_processed_pair?type=processed&frame=30&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:29,147 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:29] "GET /backend/get_frame_pair?camera=1&idx=30&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:30,066 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:30] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:30,092 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:30] "GET /backend/get_processed_pair?type=processed&frame=3&camera=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:31,449 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:31] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-18 13:54:31,476 [INFO] 127.0.0.1 - - [18/Nov/2025 13:54:31] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0 HTTP/1.1" 200 -
