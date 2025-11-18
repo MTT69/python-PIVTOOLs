@@ -1,18 +1,18 @@
 paths:
   base_paths:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/hehe
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test
   source_paths:
   - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall
   camera_numbers:
   - 1
   camera_count: 1
 images:
-  num_images: 100
+  num_images: 1000
   image_format:
   - B%05d_A.tif
   - B%05d_B.tif
   vector_format:
-  - B%05d.mat
+  - '%05d.mat'
   time_resolved: false
   dtype: float32
 batches:
