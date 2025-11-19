@@ -19,7 +19,10 @@ from pivtools_core.image_handling.load_images import compute_vector_mask
 from pivtools_cli.piv.piv import perform_piv_and_save
 from pivtools_cli.piv.save_results import (
     save_coordinates_from_config_distributed,
+    save_ensemble_result_distributed,
+    save_ensemble_coordinates_from_config_distributed,
     get_output_path,
+    get_ensemble_output_path,
 )
 from pivtools_cli.piv_cluster.cluster import start_cluster
 from pivtools_cli.preprocessing.filters import filter_images
@@ -218,6 +221,71 @@ def main():
                 logging.info(f"Total images processed: {len(all_saved_paths)}")
                 logging.info("=" * 80)
 
+            elif config.data.get("processing", {}).get("ensemble", False):
+                # ENSEMBLE PIV PIPELINE: Process all images together for ensemble averaging
+                logging.info("=" * 80)
+                logging.info("ENSEMBLE PIV MODE DETECTED")
+                logging.info("=" * 80)
+
+                from pivtools_cli.piv.piv_backend.cpu_ensemble import perform_ensemble_piv
+                from pivtools_cli.piv.piv_backend.factory import make_correlator_backend
+
+                # Get ensemble output path
+                ensemble_output_path = get_ensemble_output_path(
+                    config,
+                    camera_num,
+                    use_uncalibrated=True
+                )
+
+                logging.info(f"Number of images: {config.num_images}")
+                logging.info(f"Ensemble passes: {config.ensemble_num_passes}")
+                logging.info(f"Ensemble window sizes: {config.ensemble_window_sizes}")
+                logging.info(f"Ensemble types: {config.ensemble_type}")
+                logging.info(f"Runs to save: {config.ensemble_runs_0based}")
+                logging.info(f"Output path: {ensemble_output_path}")
+                logging.info("=" * 80)
+
+                # Preprocess images (apply spatial filters, stays lazy)
+                processed_images = preprocess_images(images, config)
+
+                # Pre-compute and broadcast correlator cache ONCE
+                temp_correlator = make_correlator_backend(config)
+                correlator_cache = temp_correlator.get_cache_data()
+                scattered_cache = client.scatter(correlator_cache, broadcast=True)
+                logging.info("Broadcast correlator cache to all workers")
+
+                # Run ensemble PIV processing
+                logging.info("Starting ensemble PIV processing...")
+                ensemble_result = perform_ensemble_piv(
+                    processed_images,
+                    config,
+                    client,
+                    scattered_cache,
+                    vector_masks=vector_masks,
+                )
+
+                # Save ensemble result
+                saved_path = save_ensemble_result_distributed(
+                    ensemble_result,
+                    ensemble_output_path,
+                    runs_to_save=config.ensemble_runs_0based,
+                )
+                logging.info(f"Ensemble result saved to {saved_path}")
+
+                # Save coordinates for ensemble
+                coords_path = save_ensemble_coordinates_from_config_distributed(
+                    config,
+                    ensemble_output_path,
+                    correlator_cache=correlator_cache,
+                    runs_to_save=config.ensemble_runs_0based,
+                )
+                logging.info(f"Ensemble coordinates saved to {coords_path}")
+
+                logging.info("")
+                logging.info("=" * 80)
+                logging.info("Ensemble PIV processing complete!")
+                logging.info("=" * 80)
+
             else:
                 # SPATIAL FILTER PIPELINE: Standard lazy processing
                 # Preprocess images (spatial filters only, stays lazy)
@@ -240,17 +308,19 @@ def main():
                 )
 
             # Submit coordinate saving task (runs once per camera)
-            coords_future = client.submit(
-                save_coordinates_from_config_distributed,
-                config,
-                output_path,
-                scattered_cache,
-                config.instantaneous_runs_0based,
-            )
+            # Skip for ensemble mode since coordinates are saved inside that block
+            if not config.data.get("processing", {}).get("ensemble", False):
+                coords_future = client.submit(
+                    save_coordinates_from_config_distributed,
+                    config,
+                    output_path,
+                    scattered_cache,
+                    config.instantaneous_runs_0based,
+                )
 
-            # Wait for coordinates to be saved
-            coords_future.result()
-            logging.info("Coordinates saved to %s", output_path)
+                # Wait for coordinates to be saved
+                coords_future.result()
+                logging.info("Coordinates saved to %s", output_path)
 
         if config.debug:
             current, peak = tracemalloc.get_traced_memory()

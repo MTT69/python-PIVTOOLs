@@ -155,6 +155,58 @@ class BuildCLib(build_ext):
             for file in build_dir.glob(pattern):
                 file.unlink()
 
+        # --- Build libmarquadt (for ensemble PIV) ---
+        # Requires GSL (GNU Scientific Library)
+        marquadt_src = src_dir / "marquadt_gaussian.c"
+        if marquadt_src.exists():
+            if use_msvc:
+                # Windows: TODO - needs GSL for Windows
+                print("WARNING: libmarquadt build not yet supported on Windows (requires GSL)")
+            else:
+                # macOS/Linux: Link against GSL
+                # On macOS with Homebrew: brew install gsl
+                # On Linux: apt-get install libgsl-dev
+                gsl_compile_flags = []
+                gsl_link_flags = ["-lgsl", "-lgslcblas", "-lm"]
+
+                # Check for GSL on macOS via Homebrew
+                if sys_name == "macos":
+                    homebrew_gsl = pathlib.Path("/opt/homebrew/include/gsl")
+                    homebrew_gsl_lib = pathlib.Path("/opt/homebrew/lib")
+                    if homebrew_gsl.exists():
+                        gsl_compile_flags = [f"-I/opt/homebrew/include"]
+                        gsl_link_flags = [f"-L/opt/homebrew/lib", "-lgsl", "-lgslcblas", "-lm"]
+                    else:
+                        # Try standard location
+                        usr_local_gsl = pathlib.Path("/usr/local/include/gsl")
+                        if usr_local_gsl.exists():
+                            gsl_compile_flags = [f"-I/usr/local/include"]
+                            gsl_link_flags = [f"-L/usr/local/lib", "-lgsl", "-lgslcblas", "-lm"]
+
+                cmd_marquadt = [
+                    compiler, *extra_compile, shared_flag,
+                    *gsl_compile_flags,
+                    str(marquadt_src),
+                    f"-I{src_dir}",
+                    "-o", str(build_dir / f"libmarquadt{lib_ext}"),
+                    *gsl_link_flags
+                ]
+
+                try:
+                    self._run(cmd_marquadt)
+                    if (build_dir / f"libmarquadt{lib_ext}").exists():
+                        print(f"Successfully built libmarquadt{lib_ext}")
+                    else:
+                        print(f"WARNING: libmarquadt{lib_ext} build may have failed")
+                except RuntimeError as e:
+                    print(f"WARNING: Failed to build libmarquadt: {e}")
+                    print("Ensemble PIV will not be available. Install GSL: brew install gsl (macOS) or apt-get install libgsl-dev (Linux)")
+
+        # Clean up intermediate build files
+        for pattern in ['*.obj', '*.exp', '*.lib']:
+            for file in build_dir.glob(pattern):
+                file.unlink()
+
     def _run(self, cmd):
         print("RUN:", " ".join(cmd))
         result = subprocess.run(cmd, capture_output=True, text=True)

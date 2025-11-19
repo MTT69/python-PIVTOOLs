@@ -18921,3 +18921,20 @@ videos:
 2025-11-18 15:28:53,495 [INFO] 127.0.0.1 - - [18/Nov/2025 15:28:53] "POST /backend/plot/clear_transform HTTP/1.1" 200 -
 2025-11-18 15:28:53,499 [INFO] 127.0.0.1 - - [18/Nov/2025 15:28:53] "GET /backend/plot/check_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/test&frame=1&camera=1&merged=0 HTTP/1.1" 200 -
 2025-11-18 15:28:53,626 [INFO] 127.0.0.1 - - [18/Nov/2025 15:28:53] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/test&frame=1&var=ux&cmap=default&run=6&camera=1&merged=0&is_uncalibrated=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-19 11:47:52,127 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-19 11:47:52,128 [INFO] 127.0.0.1 - - [19/Nov/2025 11:47:52] "GET /backend/config HTTP/1.1" 200 -
+2025-11-19 11:47:52,742 [INFO] 127.0.0.1 - - [19/Nov/2025 11:47:52] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-19 11:47:52,750 [INFO] 127.0.0.1 - - [19/Nov/2025 11:47:52] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-19 11:47:55,652 [INFO] 127.0.0.1 - - [19/Nov/2025 11:47:55] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-19 11:47:57,369 [INFO] 127.0.0.1 - - [19/Nov/2025 11:47:57] "GET /backend/calibration/planar/get_image?source_path_idx=0&camera=1&image_index=0&file_pattern=calib%2505d.tif HTTP/1.1" 200 -
+2025-11-19 11:47:57,373 [INFO] 127.0.0.1 - - [19/Nov/2025 11:47:57] "POST /backend/calibration/planar/calibrate_all HTTP/1.1" 200 -
+2025-11-19 11:47:59,383 [INFO] 127.0.0.1 - - [19/Nov/2025 11:47:59] "GET /backend/calibration/planar/calibrate_all/status/99fc7340-4d4c-468e-9a0d-c8d3266d6e55 HTTP/1.1" 200 -
+2025-11-19 11:48:00,394 [INFO] Processing Camera 1
+2025-11-19 11:48:00,394 [INFO] Processing calibration image 1: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/calibration/Cam1/calib00001.tif
+2025-11-19 11:48:00,462 [INFO] Grid detected (Inverted image)
+2025-11-19 11:48:00,915 [INFO] Saved grid visualization: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test/calibration/Cam1/indices/indexes_1.png
+2025-11-19 11:48:00,916 [INFO] Saved results for image 1
+2025-11-19 11:48:00,916 [INFO] Calibrating camera from image 1...
+2025-11-19 11:48:00,918 [INFO] Calibration reprojection RMS: 0.15655
+2025-11-19 11:48:00,918 [INFO] Saved camera model: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test/calibration/Cam1/model/camera_model.mat
+2025-11-19 11:48:00,921 [INFO] 127.0.0.1 - - [19/Nov/2025 11:48:00] "POST /backend/calibration/planar/compute HTTP/1.1" 200 -
