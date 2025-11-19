@@ -1,16 +1,16 @@
 paths:
   base_paths:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test
+  - D:\Processed_Wake_PIV\Case_A_Phase_093_Run_1
   source_paths:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall
+  - D:\Wake_PIV_16_8
   camera_numbers:
   - 1
-  camera_count: 1
+  - 2
+  camera_count: 2
 images:
-  num_images: 1000
+  num_images: 1200
   image_format:
-  - B%05d_A.tif
-  - B%05d_B.tif
+  - Case_A_Phase_093_Run_1.set
   vector_format:
   - '%05d.mat'
   time_resolved: false
@@ -87,7 +87,7 @@ instantaneous_piv:
 calibration_format:
   image_format: calib%05d.tif
 calibration:
-  active: pinhole
+  active: polynomial
   scale_factor:
     dt: 0.56
     px_per_mm: 3.41
@@ -124,7 +124,7 @@ masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
-  mode: rectangular
+  mode: file
   rectangular:
     top: 64
     bottom: 64

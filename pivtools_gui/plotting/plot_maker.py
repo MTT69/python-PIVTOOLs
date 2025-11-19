@@ -131,8 +131,9 @@ def plot_scalar_field(variable, mask, settings): # efe
         X, Y = np.meshgrid(x, y)
 
     # Create the plot (object-oriented API)
-    fig, ax = plt.subplots(figsize=(12, 7))
+    fig, ax = plt.subplots(figsize=(13, 8))
     ax.set_facecolor("gray")  # <-- gray shows through masked holes
+    ax.set_aspect('equal')
 
     # Determine limits
     if settings.lower_limit is not None and settings.upper_limit is not None:
