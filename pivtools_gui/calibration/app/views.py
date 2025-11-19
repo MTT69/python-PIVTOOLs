@@ -2,6 +2,7 @@ import glob
 import threading
 import time
 import uuid
+import xml.etree.ElementTree as ET
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 import os
@@ -1184,3 +1185,91 @@ def calibration_status():
             "type": cal_type,
         }
     )
+
+
+# ============================================================================
+# POLYNOMIAL CALIBRATION ROUTES
+# ============================================================================
+
+
+@calibration_bp.route("/calibration/polynomial/read_xml", methods=["POST"])
+def read_polynomial_calibration_xml():
+    """Read Calibration.xml and extract polynomial coefficients for all cameras"""
+    data = request.get_json() or {}
+    source_path_idx = int(data.get("source_path_idx", 0))
+
+    try:
+        cfg = get_config()
+        # Ensure source_paths exists and has the index
+        if not hasattr(cfg, "source_paths") or source_path_idx >= len(cfg.source_paths):
+            return jsonify({"error": "Invalid source_path_idx"}), 400
+
+        source_root = Path(cfg.source_paths[source_path_idx])
+        xml_path = source_root / "Properties" / "Calibration" / "Calibration.xml"
+
+        if not xml_path.exists():
+            return jsonify({"error": f"Calibration.xml not found at {xml_path}"}), 404
+
+        logger.info(f"Reading Calibration.xml from: {xml_path}")
+        tree = ET.parse(xml_path)
+        root = tree.getroot()
+
+        cameras_data = {}
+
+        # Find all CoordinateMapper elements
+        mappers = root.findall(".//CoordinateMapper")
+
+        for mapper in mappers:
+            cam_id = mapper.get("CameraIdentifier")
+            if not cam_id:
+                continue
+
+            # Initialize camera entry
+            cam_data = {}
+
+            # Get PolynomialParameters -> PolynomialMapping
+            poly_params = mapper.find("PolynomialParameters")
+            if poly_params is None:
+                continue
+
+            mapping = poly_params.find("PolynomialMapping")
+            if mapping is None:
+                continue
+
+            # Extract Origin
+            origin = mapping.find("Origin")
+            if origin is not None:
+                cam_data["origin"] = {k: float(v) for k, v in origin.attrib.items()}
+
+            # Extract NormalisationFactor
+            norm = mapping.find("NormalisationFactor")
+            if norm is not None:
+                cam_data["normalisation"] = {
+                    k: float(v) for k, v in norm.attrib.items()
+                }
+
+            # Extract Polynomial3rdOrder Coefficients
+            poly3 = mapping.find("Polynomial3rdOrder")
+            if poly3 is not None:
+                coeffs_a = poly3.find("CoefficientsA")
+                if coeffs_a is not None:
+                    cam_data["coefficients_a"] = {
+                        k: float(v) for k, v in coeffs_a.attrib.items()
+                    }
+
+                coeffs_b = poly3.find("CoefficientsB")
+                if coeffs_b is not None:
+                    cam_data["coefficients_b"] = {
+                        k: float(v) for k, v in coeffs_b.attrib.items()
+                    }
+
+            cameras_data[cam_id] = cam_data
+
+        return jsonify(
+            {"status": "success", "file": str(xml_path), "cameras": cameras_data}
+        )
+
+    except Exception as e:
+        logger.error(f"Error reading Calibration.xml: {e}")
+        return jsonify({"error": str(e)}), 500
+
