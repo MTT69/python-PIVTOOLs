@@ -21,8 +21,9 @@ pivtools_cli/lib/*.dll
 pivtools_cli/lib/*.pdb
 pivtools_cli/lib/*.lib
 pivtools_cli/lib/*.obj
-
+pivtools_gui/static/*
 logs/*
+
 
 # IDE
 .vscode/

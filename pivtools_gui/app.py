@@ -27,7 +27,7 @@ from pivtools_gui.plotting.app.views import vector_plot_bp
 from pivtools_gui.post_processing.POD.app.views import POD_bp
 from pivtools_cli.preprocessing.preprocess import preprocess_images
 from pivtools_gui.stereo_reconstruction.app.views import stereo_bp
-from pivtools_gui.utils import camera_folder, camera_number, numpy_to_png_base64
+from pivtools_gui.utils import camera_folder, camera_number, numpy_to_png_base64, numpy_to_base64
 from pivtools_gui.vector_statistics.app.views import statistics_bp
 from pivtools_gui.vector_merging.app.views import merging_bp
 from pivtools_gui.video_maker.app.views import video_maker_bp
@@ -56,7 +56,7 @@ processing = False
 # Raw image cache: {(source_path_str, camera, frame_idx): (pair_array, base64_A, base64_B)}
 # Using source path string instead of index ensures cache invalidation when paths change
 raw_image_cache = {}
-RAW_CACHE_MAX_SIZE = 100  # Maximum number of frame pairs to cache
+RAW_CACHE_MAX_SIZE = 15  # Maximum number of frame pairs to cache
 
 # --- Utility Functions ---
 
@@ -133,7 +133,7 @@ def get_calibration_method_params(cfg, method: str):
     return cal.get(method, {})
 
 
-def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: int, cfg, window: int = 10):
+def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: int, cfg, window: int = 10, img_format: str = "jpeg"):
     """
     Background task to preload frames surrounding the current frame.
     Loads 'window' frames before and after current_idx.
@@ -156,15 +156,15 @@ def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: 
             if idx == current_idx:
                 continue  # Skip current frame (already loaded)
 
-            # Use actual path string for cache key to support path changes
-            cache_key_tuple = (str(source_path), camera, idx)
+            # Use actual path string for cache key to support path changes (include format)
+            cache_key_tuple = (str(source_path), camera, idx, img_format)
             if cache_key_tuple in raw_image_cache:
                 continue  # Already cached
 
             try:
                 pair = read_pair(idx, source_path, camera, cfg)
-                b64_a = numpy_to_png_base64(pair[0])
-                b64_b = numpy_to_png_base64(pair[1])
+                b64_a = numpy_to_base64(pair[0], format=img_format)
+                b64_b = numpy_to_base64(pair[1], format=img_format)
                 raw_image_cache[cache_key_tuple] = (pair, b64_a, b64_b)
                 preloaded += 1
             except Exception as e:
@@ -173,7 +173,7 @@ def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: 
 
         manage_cache_size()
         if preloaded > 0:
-            logger.debug(f"Preloaded {preloaded} frames around frame {current_idx}")
+            logger.debug(f"Preloaded {preloaded} {img_format} frames around frame {current_idx}")
     except Exception as e:
         logger.debug(f"Error in background preload: {e}")
 
@@ -188,6 +188,11 @@ def get_frame_pair():
     camera = request.args.get("camera", type=int)
     idx = request.args.get("idx", type=int)
     source_path_idx = request.args.get("source_path_idx", default=0, type=int)
+    img_format = request.args.get("format", default="jpeg", type=str).lower()
+
+    # Validate format
+    if img_format not in ("png", "jpeg"):
+        img_format = "png"
 
     # Determine source path early for cache key
     format_str = cfg.image_format[0]
@@ -196,22 +201,22 @@ def get_frame_pair():
     else:
         source_path = cfg.source_paths[source_path_idx] / camera_folder(camera)
 
-    # Check cache first - use actual path string for proper invalidation
-    cache_key_tuple = (str(source_path), camera, idx)
+    # Check cache first - include format in cache key for proper separation
+    cache_key_tuple = (str(source_path), camera, idx, img_format)
     if cache_key_tuple in raw_image_cache:
-        logger.debug(f"Cache HIT for frame {idx}, camera {camera}, source_path_idx {source_path_idx}")
+        logger.debug(f"Cache HIT for frame {idx}, camera {camera}, format {img_format}")
         _, b64_a, b64_b = raw_image_cache[cache_key_tuple]
 
         # Trigger background preload of surrounding frames
         threading.Thread(
             target=_preload_surrounding_frames,
-            args=(source_path_idx, camera, idx, cfg),
+            args=(source_path_idx, camera, idx, cfg, 10, img_format),
             daemon=True
         ).start()
 
         return jsonify({"A": b64_a, "B": b64_b})
 
-    logger.debug(f"Cache MISS for frame {idx}, camera {camera}, path {source_path}")
+    logger.debug(f"Cache MISS for frame {idx}, camera {camera}, format {img_format}, path {source_path}")
 
     try:
         read_start = time.perf_counter()
@@ -236,19 +241,19 @@ def get_frame_pair():
         }), 500
 
     convert_start = time.perf_counter()
-    b64_a = numpy_to_png_base64(pair[0])
-    b64_b = numpy_to_png_base64(pair[1])
+    b64_a = numpy_to_base64(pair[0], format=img_format)
+    b64_b = numpy_to_base64(pair[1], format=img_format)
     convert_end = time.perf_counter()
-    logger.debug(f"Conversion to base64 took {convert_end - convert_start:.4f} seconds")
+    logger.debug(f"Conversion to {img_format} base64 took {convert_end - convert_start:.4f} seconds")
 
-    # Store in cache
+    # Store in cache with format-aware key
     raw_image_cache[cache_key_tuple] = (pair, b64_a, b64_b)
     manage_cache_size()
 
     # Trigger background preload of surrounding frames
     threading.Thread(
         target=_preload_surrounding_frames,
-        args=(source_path_idx, camera, idx, cfg),
+        args=(source_path_idx, camera, idx, cfg, 10, img_format),
         daemon=True
     ).start()
 
@@ -269,7 +274,8 @@ def preload_images():
         "camera": 1,
         "start_idx": 1,
         "count": 30,
-        "source_path_idx": 0
+        "source_path_idx": 0,
+        "format": "png"
     }
     """
     data = request.get_json() or {}
@@ -277,13 +283,18 @@ def preload_images():
     start_idx = data.get("start_idx", 1)
     count = data.get("count", 30)
     source_path_idx = data.get("source_path_idx", 0)
+    img_format = data.get("format", "jpeg").lower()
+
+    # Validate format
+    if img_format not in ("png", "jpeg"):
+        img_format = "png"
 
     cfg = get_config()
 
     # Start background preload
     threading.Thread(
         target=_preload_surrounding_frames,
-        args=(source_path_idx, camera, start_idx, cfg, count // 2),
+        args=(source_path_idx, camera, start_idx, cfg, count // 2, img_format),
         daemon=True
     ).start()
 
@@ -292,7 +303,8 @@ def preload_images():
         "camera": camera,
         "start_idx": start_idx,
         "count": count,
-        "source_path_idx": source_path_idx
+        "source_path_idx": source_path_idx,
+        "format": img_format
     })
 
 

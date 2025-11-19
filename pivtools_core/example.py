@@ -39,7 +39,6 @@ def main():
     start_time = time.time()  # Start timer
 
     config = Config()
-    logging.info("Config YAML:\n" + yaml.dump(config.data))
     
     # Store original OMP_NUM_THREADS for workers
     original_omp_threads = os.environ.get("OMP_NUM_THREADS", "1")
@@ -249,7 +248,7 @@ def main():
                 processed_images = preprocess_images(images, config)
 
                 # Pre-compute and broadcast correlator cache ONCE
-                temp_correlator = make_correlator_backend(config)
+                temp_correlator = make_correlator_backend(config, ensemble=True)
                 correlator_cache = temp_correlator.get_cache_data()
                 scattered_cache = client.scatter(correlator_cache, broadcast=True)
                 logging.info("Broadcast correlator cache to all workers")

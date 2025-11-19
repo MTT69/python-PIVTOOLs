@@ -48,6 +48,18 @@ def numpy_to_png_base64(arr: np.ndarray, compress_level: int = 1) -> str:
         compress_level: PNG compression level (0-9). Lower = faster, higher = smaller.
                        Default is 1 for speed. Use 6 for better compression.
     """
+    return numpy_to_base64(arr, format="png", compress_level=compress_level)
+
+
+def numpy_to_base64(arr: np.ndarray, format: str = "png", compress_level: int = 1, jpeg_quality: int = 85) -> str:
+    """Convert a numpy array to a base64 encoded image string.
+
+    Args:
+        arr: Input numpy array
+        format: Image format - "png" or "jpeg"
+        compress_level: PNG compression level (0-9). Lower = faster, higher = smaller.
+        jpeg_quality: JPEG quality (1-95). Higher = better quality, larger files.
+    """
     if arr.dtype != np.uint8:
         a = arr.astype(np.float32, copy=False)
         if a.size:
@@ -63,9 +75,17 @@ def numpy_to_png_base64(arr: np.ndarray, compress_level: int = 1) -> str:
             logger.debug("Empty array; substituting 1x1 black pixel")
             a = np.zeros((1, 1), dtype=np.uint8)
         arr = a
+
     img = Image.fromarray(arr)
     buf = BytesIO()
-    # Use compress_level to control speed vs size tradeoff
-    # compress_level 1 is ~3-4x faster than default (6) with ~10-20% larger files
-    img.save(buf, format="PNG", compress_level=compress_level, optimize=False)
+
+    if format.lower() == "jpeg":
+        # Convert grayscale to RGB for JPEG (JPEG doesn't support all grayscale modes well)
+        if img.mode == "L":
+            img = img.convert("RGB")
+        img.save(buf, format="JPEG", quality=jpeg_quality, optimize=False)
+    else:
+        # Default to PNG
+        img.save(buf, format="PNG", compress_level=compress_level, optimize=False)
+
     return base64.b64encode(buf.getvalue()).decode("utf-8")

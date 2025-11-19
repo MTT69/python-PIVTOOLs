@@ -84,7 +84,8 @@ exclude = ["tests*", "manual_tools*", "logs*", "env*"]
     "lib/xcorr_cache.h",
     "lib/common.h",
     "lib/libbulkxcorr2d.*",
-    "lib/libinterp2custom.*"
+    "lib/libinterp2custom.*",
+    "lib/libmarquadt.*"
 ]
 pivtools_core = ["config.yaml"]
 pivtools_gui = ["static/**/*", "templates/**/*"]

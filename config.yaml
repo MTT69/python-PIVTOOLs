@@ -7,7 +7,7 @@ paths:
   - 1
   camera_count: 1
 images:
-  num_images: 1000
+  num_images: 100
   image_format:
   - B%05d_A.tif
   - B%05d_B.tif
@@ -85,10 +85,19 @@ instantaneous_piv:
   peak_finder: gauss6
   secondary_peak: false
 ensemble_piv:
-  window_size: [[64, 64], [32, 32]]
-  overlap: [0.5, 0.5]
-  type: ["std", "std"]  # or "single"
-  runs: [2]
+  window_size:
+  - - 64
+    - 64
+  - - 32
+    - 32
+  overlap:
+  - 0.5
+  - 0.5
+  type:
+  - std
+  - std
+  runs:
+  - 2
 calibration_format:
   image_format: calib%05d.tif
 calibration:
@@ -124,7 +133,6 @@ calibration:
     asymmetric: false
     dt: 2
 filters:
-- type: time
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat

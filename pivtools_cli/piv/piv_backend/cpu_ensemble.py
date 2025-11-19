@@ -28,12 +28,14 @@ from scipy.ndimage import gaussian_filter
 from scipy.io import savemat
 
 from pivtools_core.config import Config
-from pivtools_cli.piv.piv_backend.base import CrossCorrelator, inpaint_nans_opencv
+from pivtools_cli.piv.piv_backend.base import CrossCorrelator
 from pivtools_cli.piv.piv_result import (
     PIVEnsembleBlockResult,
     PIVEnsemblePassResult,
     PIVEnsembleResult,
 )
+from pivtools_cli.piv.piv_backend.outlier_detection import apply_outlier_detection
+from pivtools_cli.piv.piv_backend.infilling import apply_infilling
 
 
 class EnsembleCorrelatorCPU(CrossCorrelator):
@@ -81,6 +83,43 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         ]
         self.marquadt_lib.fit_stacked_gaussian_export.restype = ctypes.c_int
 
+        # Load cross-correlation library
+        lib_path = os.path.join(
+            os.path.dirname(__file__), "..", "..", "lib", f"libbulkxcorr2d{lib_extension}"
+        )
+        lib_path = os.path.abspath(lib_path)
+
+        if not os.path.isfile(lib_path):
+            raise FileNotFoundError(
+                f"Cross-correlation library not found: {lib_path}. "
+                "Ensure the library is built and available."
+            )
+
+        self.lib = ctypes.CDLL(lib_path)
+        self.lib.bulkxcorr2d.restype = ctypes.c_ubyte
+        self.lib.bulkxcorr2d.argtypes = [
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fImageA
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fImageB
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fMask
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),  # nImageSize
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWinCtrsX
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWinCtrsY
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),  # nWindows
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWindowWeightA
+            ctypes.c_bool,  # bEnsemble
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWindowWeightB
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),  # nWindowSize
+            ctypes.c_int,  # nPeaks
+            ctypes.c_int,  # iPeakFinder
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fPkLocX (output)
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fPkLocY (output)
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fPkHeight (output)
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fSx (output)
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fSy (output)
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fSxy (output)
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fCorrelPlane_Out (output)
+        ]
+
         # Use ensemble window sizes from config
         self.win_weights = [
             np.ascontiguousarray(self._window_weight_fun(win_size, config.ensemble_window_type))
@@ -99,7 +138,11 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         self.vector_masks = vector_masks if vector_masks is not None else []
 
     def _cache_window_padding_ensemble(self, config: Config) -> None:
-        """Cache window padding information for ensemble PIV."""
+        """Cache window padding information for ensemble PIV.
+
+        :param config: Configuration object.
+        :type config: Config
+        """
         self.win_ctrs_x: list[np.ndarray] = []
         self.win_ctrs_y: list[np.ndarray] = []
         self.win_spacing_x: list[int] = []
@@ -114,53 +157,75 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
 
         H, W = config.image_shape
 
-        for pass_idx in range(len(config.ensemble_window_sizes)):
+        for pass_idx, _ in enumerate(config.ensemble_window_sizes):
             spacing_x, spacing_y, win_ctrs_x, win_ctrs_y = self._compute_window_centres_ensemble(
                 pass_idx, config
             )
-            self.win_ctrs_x.append(win_ctrs_x)
-            self.win_ctrs_y.append(win_ctrs_y)
-            self.win_spacing_x.append(spacing_x)
-            self.win_spacing_y.append(spacing_y)
 
-            # Compute pre/post padding
             win_ctrs_x_pre = np.arange(1, win_ctrs_x[0] - spacing_x / 2, spacing_x)
             if win_ctrs_x_pre.size == 0:
                 win_ctrs_x_pre = np.array([1])
-
+            win_ctrs_x_pre -= 1
             win_ctrs_x_post = np.arange(W, win_ctrs_x[-1] + spacing_x / 2, -spacing_x)
             if win_ctrs_x_post.size == 0:
                 win_ctrs_x_post = np.array([W])
+            win_ctrs_x_post -= 1
+            win_ctrs_x_all = np.concatenate(
+                [win_ctrs_x_pre, win_ctrs_x, win_ctrs_x_post[::-1]]
+            )
 
             win_ctrs_y_pre = np.arange(1, win_ctrs_y[0] - spacing_y / 2, spacing_y)
             if win_ctrs_y_pre.size == 0:
                 win_ctrs_y_pre = np.array([1])
-
+            win_ctrs_y_pre -= 1
             win_ctrs_y_post = np.arange(H, win_ctrs_y[-1] + spacing_y / 2, -spacing_y)
             if win_ctrs_y_post.size == 0:
                 win_ctrs_y_post = np.array([H])
-
-            win_ctrs_x_all = np.concatenate(
-                [win_ctrs_x_pre[::-1], win_ctrs_x, win_ctrs_x_post[::-1]]
-            )
+            win_ctrs_y_post -= 1
             win_ctrs_y_all = np.concatenate(
-                [win_ctrs_y_pre[::-1], win_ctrs_y, win_ctrs_y_post[::-1]]
+                [win_ctrs_y_pre, win_ctrs_y, win_ctrs_y_post[::-1]]
             )
-            self.win_ctrs_x_all.append(win_ctrs_x_all)
-            self.win_ctrs_y_all.append(win_ctrs_y_all)
 
             n_pre = (len(win_ctrs_y_pre), len(win_ctrs_x_pre))
             n_post = (len(win_ctrs_y_post), len(win_ctrs_x_post))
+
+            self.win_ctrs_x.append(win_ctrs_x.astype(np.float32))
+            self.win_ctrs_y.append(win_ctrs_y.astype(np.float32))
+            self.win_spacing_x.append(spacing_x)
+            self.win_spacing_y.append(spacing_y)
+            self.win_ctrs_x_all.append(win_ctrs_x_all.astype(np.float32))
+            self.win_ctrs_y_all.append(win_ctrs_y_all.astype(np.float32))
             self.n_pre_all.append(n_pre)
             self.n_post_all.append(n_post)
 
-            # Gaussian smoothing for predictor
-            ksize = max(3, int(np.ceil(spacing_x / 4) * 2 + 1))
-            sd = ksize / 4
-            self.ksize_filt.append((ksize, ksize))
-            self.sd.append(sd)
-            G = cv2.getGaussianKernel(ksize, sd)
-            self.G_smooth_predictor.append(G @ G.T)
+            if pass_idx == 0:
+                self.ksize_filt.append((1, 1))
+                self.sd.append(np.sqrt(np.prod((1, 1))) / 3 * 0.65)
+                self.G_smooth_predictor.append(np.ones((1, 1), dtype=np.float32))
+            else:
+                prev_counts = (
+                    len(self.win_ctrs_y[pass_idx - 1]),
+                    len(self.win_ctrs_x[pass_idx - 1]),
+                )
+                prev_spacing = (
+                    self.win_spacing_y[pass_idx - 1],
+                    self.win_spacing_x[pass_idx - 1],
+                )
+                k_filt = (
+                    np.round(np.array(prev_counts) / np.array(prev_spacing)).astype(int)
+                    + 1
+                )
+                k_filt_list = [int(k) for k in k_filt.tolist()]
+                k_filt_tuple = (
+                    k_filt_list[0] + (k_filt_list[0] % 2 == 0),
+                    k_filt_list[1] + (k_filt_list[1] % 2 == 0),
+                )
+                self.ksize_filt.append(k_filt_tuple)
+                self.sd.append(np.sqrt(np.prod(k_filt_tuple)) / 3 * 0.65)
+                g_kernel = self._window_weight_fun(k_filt_tuple, config.ensemble_window_type)
+                g_kernel = g_kernel.astype(np.float32)
+                g_kernel /= max(np.sum(g_kernel), 1e-12)
+                self.G_smooth_predictor.append(g_kernel)
 
     def _compute_window_centres_ensemble(
         self, pass_idx: int, config: Config
@@ -174,11 +239,10 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
 
         Nx, Ny = config.image_shape[1], config.image_shape[0]
 
-        EDGE_MARGIN = 32
-        min_x = EDGE_MARGIN
-        max_x = Nx - EDGE_MARGIN - 1
-        min_y = EDGE_MARGIN
-        max_y = Ny - EDGE_MARGIN - 1
+        min_x = 0
+        max_x = Nx - 1
+        min_y = 0
+        max_y = Ny - 1
 
         first_ctr_x = -0.5 + win_x / 2
         first_ctr_y = -0.5 + win_y / 2
@@ -213,7 +277,11 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         )
 
     def _cache_interpolation_grids_ensemble(self, config: Config) -> None:
-        """Cache interpolation grids for predictor correction in ensemble PIV."""
+        """Cache interpolation grids for predictor correction in ensemble PIV.
+
+        For pass_idx > 0, interpolation maps are based on the PREVIOUS pass's
+        padded window centers, since the predictor field comes from the previous pass.
+        """
         H, W = config.image_shape
 
         y_coords = np.arange(H, dtype=np.float32)
@@ -225,42 +293,35 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         self.cached_predictor_maps = []
 
         for pass_idx in range(len(config.ensemble_window_sizes)):
-            win_ctrs_x_all = self.win_ctrs_x_all[pass_idx]
-            win_ctrs_y_all = self.win_ctrs_y_all[pass_idx]
+            if pass_idx == 0:
+                # First pass: use current pass coordinates
+                points_y = self.win_ctrs_y_all[pass_idx]
+                points_x = self.win_ctrs_x_all[pass_idx]
+            else:
+                # Subsequent passes: use PREVIOUS pass coordinates
+                # because predictor field comes from previous pass
+                points_y = self.win_ctrs_y_all[pass_idx - 1]
+                points_x = self.win_ctrs_x_all[pass_idx - 1]
 
-            # Dense interpolation maps
-            map_x_2d = np.broadcast_to(
-                np.interp(x_coords, win_ctrs_x_all, np.arange(len(win_ctrs_x_all))).astype(
-                    np.float32
-                )[np.newaxis, :],
-                (H, W),
-            ).copy()
-            map_y_2d = np.broadcast_to(
-                np.interp(y_coords, win_ctrs_y_all, np.arange(len(win_ctrs_y_all))).astype(
-                    np.float32
-                )[:, np.newaxis],
-                (H, W),
-            ).copy()
+            # Dense interpolation maps (for image warping)
+            map_x_1d = np.interp(x_coords, points_x, np.arange(len(points_x)))
+            map_y_1d = np.interp(y_coords, points_y, np.arange(len(points_y)))
+            map_y_2d, map_x_2d = np.meshgrid(
+                map_y_1d.astype(np.float32), map_x_1d.astype(np.float32),
+                indexing="ij"
+            )
             self.cached_dense_maps.append((map_x_2d, map_y_2d))
 
-            # Predictor interpolation maps
+            # Predictor interpolation maps (from prev pass grid to current pass grid)
             win_ctrs_x = self.win_ctrs_x[pass_idx]
             win_ctrs_y = self.win_ctrs_y[pass_idx]
-            n_win_x = len(win_ctrs_x)
-            n_win_y = len(win_ctrs_y)
 
-            map_x = np.broadcast_to(
-                np.interp(win_ctrs_x, win_ctrs_x_all, np.arange(len(win_ctrs_x_all))).astype(
-                    np.float32
-                )[np.newaxis, :],
-                (n_win_y, n_win_x),
-            ).copy()
-            map_y = np.broadcast_to(
-                np.interp(win_ctrs_y, win_ctrs_y_all, np.arange(len(win_ctrs_y_all))).astype(
-                    np.float32
-                )[:, np.newaxis],
-                (n_win_y, n_win_x),
-            ).copy()
+            win_y, win_x = np.meshgrid(win_ctrs_y, win_ctrs_x, indexing="ij")
+            ix = np.interp(win_x.ravel(), points_x, np.arange(len(points_x)))
+            iy = np.interp(win_y.ravel(), points_y, np.arange(len(points_y)))
+            map_x = ix.reshape(win_x.shape).astype(np.float32)
+            map_y = iy.reshape(win_y.shape).astype(np.float32)
+
             self.cached_predictor_maps.append((map_x, map_y))
 
     def _load_precomputed_cache(self, cache: dict) -> None:
@@ -317,10 +378,6 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         win_size = config.ensemble_window_sizes[pass_idx]
         n_win_y = len(self.win_ctrs_y[pass_idx])
         n_win_x = len(self.win_ctrs_x[pass_idx])
-
-        if pass_idx not in self.printed_passes:
-            logging.info(f"Pass {pass_idx} window centers: x={n_win_x}, y={n_win_y}")
-            self.printed_passes.add(pass_idx)
 
         total_windows = n_win_y * n_win_x
         correl_plane_mean = np.ascontiguousarray(
@@ -715,11 +772,10 @@ class EnsembleExecutor:
 
         Nx, Ny = config.image_shape[1], config.image_shape[0]
 
-        EDGE_MARGIN = 32
-        min_x = EDGE_MARGIN
-        max_x = Nx - EDGE_MARGIN - 1
-        min_y = EDGE_MARGIN
-        max_y = Ny - EDGE_MARGIN - 1
+        min_x = 0
+        max_x = Nx - 1
+        min_y = 0
+        max_y = Ny - 1
 
         first_ctr_x = -0.5 + win_x / 2
         first_ctr_y = -0.5 + win_y / 2
@@ -793,21 +849,97 @@ class EnsembleExecutor:
                 scattered_cache=scattered_cache,
             )
 
+            # Save correlation planes and point spreads if debug enabled
+            if hasattr(self.config, 'debug') and self.config.debug:
+                try:
+                    from pathlib import Path
+                    outdir = Path(os.path.join(os.getcwd(), "debug_outputs"))
+                    outdir.mkdir(parents=True, exist_ok=True)
+
+                    win_size = self.config.ensemble_window_sizes[pass_idx]
+                    n_win_y = piv_block_result.n_win_y
+                    n_win_x = piv_block_result.n_win_x
+
+                    # Reshape correlation planes: (y, x, win_h, win_w)
+                    corr_reshaped = piv_block_result.correlation_plane_mean.reshape(
+                        (n_win_y, n_win_x, win_size[0], win_size[1]), order='C'
+                    )
+                    psa_reshaped = piv_block_result.point_spread_a_mean.reshape(
+                        (n_win_y, n_win_x, win_size[0], win_size[1]), order='C'
+                    )
+                    psb_reshaped = piv_block_result.point_spread_b_mean.reshape(
+                        (n_win_y, n_win_x, win_size[0], win_size[1]), order='C'
+                    )
+
+                    savemat(
+                        outdir / f"corr_ps_pass_{pass_idx}.mat",
+                        {
+                            "correlation_plane_mean": corr_reshaped,
+                            "point_spread_a_mean": psa_reshaped,
+                            "point_spread_b_mean": psb_reshaped,
+                        },
+                        do_compression=True,
+                    )
+                    logging.info(f"Saved correlation planes for pass {pass_idx}")
+                except Exception as e:
+                    logging.warning(
+                        f"Failed to save correlation/pointspread mats for pass {pass_idx}: {e}"
+                    )
+
             # Fit Gaussians to correlation planes
             gauss_results, statuses = self._evaluate_correlation_planes(
                 piv_block_result, pass_idx, piv_results, scattered_cache
             )
 
             # Extract velocities from fitted parameters
+            # Use the interpolated predictor field from the worker, not the padded one
             piv_pass_result = self._process_correlation_planes(
                 piv_result=piv_block_result,
                 gauss_results=gauss_results,
                 statuses=statuses,
                 pass_idx=pass_idx,
-                predictor_field=predictor_field,
+                predictor_field=piv_block_result.predictor_field,
             )
 
             piv_results.add_pass(piv_pass_result)
+
+            # Save PIV pass result if debug enabled
+            if hasattr(self.config, 'debug') and self.config.debug:
+                try:
+                    from pathlib import Path
+                    outdir = Path(os.path.join(os.getcwd(), "debug_outputs"))
+                    outdir.mkdir(parents=True, exist_ok=True)
+
+                    # Save all PIV result fields
+                    mat_dict = {}
+                    result_fields = [
+                        'ux_mat', 'uy_mat', 'UU_stress', 'VV_stress', 'UV_stress',
+                        'peakheights_A', 'peakheights_B', 'peakheights_AB',
+                        'nan_reason', 'sig_AB_x', 'sig_AB_y', 'sig_AB_xy',
+                        'sig_A_x', 'sig_A_y', 'sig_A_xy',
+                        'sig_PD_x', 'sig_PD_y', 'sig_PD_xy',
+                        'win_ctrs_x', 'win_ctrs_y'
+                    ]
+                    for name in result_fields:
+                        if hasattr(piv_pass_result, name):
+                            val = getattr(piv_pass_result, name)
+                            if val is not None:
+                                mat_dict[name] = val
+
+                    # Add predictor field if present
+                    if piv_block_result.predictor_field is not None:
+                        mat_dict["predictor_field_block"] = piv_block_result.predictor_field
+
+                    if mat_dict:
+                        savemat(
+                            outdir / f"piv_pass_result_{pass_idx}.mat",
+                            mat_dict, do_compression=True
+                        )
+                        logging.info(f"Saved PIV pass result for pass {pass_idx}")
+                except Exception as e:
+                    logging.warning(
+                        f"Failed to save processed pass result mats for pass {pass_idx}: {e}"
+                    )
 
         return piv_results
 
@@ -824,8 +956,11 @@ class EnsembleExecutor:
         ux = prev_pass.ux_mat.copy()
         uy = prev_pass.uy_mat.copy()
 
-        ux = inpaint_nans_opencv(ux)
-        uy = inpaint_nans_opencv(uy)
+        # Infill any NaN values using mid-pass infilling
+        nan_mask = np.isnan(ux) | np.isnan(uy)
+        if nan_mask.any():
+            mid_infill_cfg = self.config.infilling_mid_pass
+            ux, uy = apply_infilling(ux, uy, nan_mask, mid_infill_cfg)
 
         predictor_field = np.stack([uy, ux], axis=-1)
 
@@ -1028,19 +1163,70 @@ class EnsembleExecutor:
                 sig_AB_xy[iy, ix] = params[5] + params[8]
 
         # Add predictor field back
+        # predictor_field is already interpolated to current pass grid size by _get_im_mesh
         if predictor_field is not None and pass_idx > 0:
-            pre_y, pre_x = self.n_pre_all[pass_idx - 1]
-            pred_uy = predictor_field[pre_y:pre_y + n_win_y, pre_x:pre_x + n_win_x, 0]
-            pred_ux = predictor_field[pre_y:pre_y + n_win_y, pre_x:pre_x + n_win_x, 1]
-            ux_mat += pred_ux
-            uy_mat += pred_uy
+            # predictor_field format: [:, :, 0] is uy, [:, :, 1] is ux
+            ux_mat += predictor_field[:, :, 1]
+            uy_mat += predictor_field[:, :, 0]
 
-        # Inpaint NaN values
-        ux_mat = inpaint_nans_opencv(ux_mat.astype(np.float32))
-        uy_mat = inpaint_nans_opencv(uy_mat.astype(np.float32))
-        UU_stress = inpaint_nans_opencv(UU_stress.astype(np.float32))
-        VV_stress = inpaint_nans_opencv(VV_stress.astype(np.float32))
-        UV_stress = inpaint_nans_opencv(UV_stress.astype(np.float32))
+        # Track NaN mask from fitting failures
+        nan_mask = np.isnan(ux_mat) | np.isnan(uy_mat)
+
+        # Apply outlier detection if enabled (matching instantaneous pipeline)
+        if self.config.outlier_detection_enabled:
+            outlier_methods = self.config.outlier_detection_methods
+            if outlier_methods:
+                # Get peak magnitude for peak_mag detection
+                primary_peak_mag = peakheights_AB
+                outlier_mask = apply_outlier_detection(
+                    ux_mat, uy_mat, outlier_methods, peak_mag=primary_peak_mag
+                )
+                nan_mask |= outlier_mask
+                logging.debug(f"Pass {pass_idx}: Detected {np.sum(outlier_mask)} outliers")
+
+        # Mark outliers as NaN for infilling
+        if nan_mask.any():
+            ux_mat[nan_mask] = np.nan
+            uy_mat[nan_mask] = np.nan
+
+        # Apply infilling for mid-passes or final pass (matching instantaneous pipeline)
+        is_final_pass = (pass_idx == len(self.config.ensemble_window_sizes) - 1)
+
+        # Get infilling configs
+        final_infill_cfg = self.config.infilling_final_pass
+        mid_infill_cfg = self.config.infilling_mid_pass
+
+        if is_final_pass:
+            # Final pass infilling (optional)
+            if final_infill_cfg.get('enabled', True) and np.isnan(ux_mat).any():
+                infill_mask = np.isnan(ux_mat) | np.isnan(uy_mat)
+                ux_mat, uy_mat = apply_infilling(
+                    ux_mat, uy_mat, infill_mask, final_infill_cfg
+                )
+                logging.debug(f"Pass {pass_idx} (final): Infilled {np.sum(infill_mask)} vectors")
+        else:
+            # Mid-pass infilling (required for predictor)
+            if np.isnan(ux_mat).any() or np.isnan(uy_mat).any():
+                infill_mask = np.isnan(ux_mat) | np.isnan(uy_mat)
+                ux_mat, uy_mat = apply_infilling(
+                    ux_mat, uy_mat, infill_mask, mid_infill_cfg
+                )
+                logging.debug(f"Pass {pass_idx} (mid): Infilled {np.sum(infill_mask)} vectors")
+
+        # Infill stress fields with same method as velocity
+        stress_nan_mask = np.isnan(UU_stress) | np.isnan(VV_stress) | np.isnan(UV_stress)
+        if stress_nan_mask.any():
+            infill_cfg = final_infill_cfg if is_final_pass else mid_infill_cfg
+            UU_stress, VV_stress = apply_infilling(
+                UU_stress.astype(np.float32), VV_stress.astype(np.float32),
+                stress_nan_mask, infill_cfg
+            )
+            # UV_stress needs separate call since apply_infilling takes pairs
+            UV_stress_temp = UV_stress.astype(np.float32)
+            UV_stress, _ = apply_infilling(
+                UV_stress_temp, UV_stress_temp,
+                stress_nan_mask, infill_cfg
+            )
 
         # Apply masking
         if self.vector_masks and pass_idx < len(self.vector_masks):
@@ -1169,12 +1355,16 @@ def _get_pd_guess(pass_idx, n_windows, config, piv_results, n_win_x, n_win_y):
     if pass_idx == 0:
         return np.full(n_windows, 0.01), np.full(n_windows, 0.01)
 
-    old_pd_x = inpaint_nans_opencv(
-        piv_results.passes[pass_idx - 1].sig_PD_x.copy().astype(np.float32)
-    )
-    old_pd_y = inpaint_nans_opencv(
-        piv_results.passes[pass_idx - 1].sig_PD_y.copy().astype(np.float32)
-    )
+    old_pd_x = piv_results.passes[pass_idx - 1].sig_PD_x.copy().astype(np.float32)
+    old_pd_y = piv_results.passes[pass_idx - 1].sig_PD_y.copy().astype(np.float32)
+
+    # Infill any NaN values using mid-pass infilling
+    nan_mask = np.isnan(old_pd_x) | np.isnan(old_pd_y)
+    if nan_mask.any():
+        mid_infill_cfg = config.infilling_mid_pass
+        old_pd_x, old_pd_y = apply_infilling(
+            old_pd_x, old_pd_y, nan_mask, mid_infill_cfg
+        )
 
     old_h, old_w = old_pd_x.shape
     new_h, new_w = n_win_y, n_win_x
