@@ -133,7 +133,7 @@ def get_calibration_method_params(cfg, method: str):
     return cal.get(method, {})
 
 
-def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: int, cfg, window: int = 10, img_format: str = "jpeg"):
+def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: int, cfg, window: int = 10, img_format: str = "jpeg", auto_limits: bool = False):
     """
     Background task to preload frames surrounding the current frame.
     Loads 'window' frames before and after current_idx.
@@ -165,7 +165,15 @@ def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: 
                 pair = read_pair(idx, source_path, camera, cfg)
                 b64_a = numpy_to_base64(pair[0], format=img_format)
                 b64_b = numpy_to_base64(pair[1], format=img_format)
-                raw_image_cache[cache_key_tuple] = (pair, b64_a, b64_b)
+                
+                stats = None
+                if auto_limits:
+                    stats = {
+                        "A": {"vmin": float(np.percentile(pair[0], 1)), "vmax": float(np.percentile(pair[0], 99))},
+                        "B": {"vmin": float(np.percentile(pair[1], 1)), "vmax": float(np.percentile(pair[1], 99))}
+                    }
+                
+                raw_image_cache[cache_key_tuple] = (pair, b64_a, b64_b, stats)
                 preloaded += 1
             except Exception as e:
                 logger.debug(f"Failed to preload frame {idx}: {e}")
@@ -189,6 +197,7 @@ def get_frame_pair():
     idx = request.args.get("idx", type=int)
     source_path_idx = request.args.get("source_path_idx", default=0, type=int)
     img_format = request.args.get("format", default="jpeg", type=str).lower()
+    auto_limits = request.args.get("auto_limits", default="false").lower() == "true"
 
     # Validate format
     if img_format not in ("png", "jpeg"):
@@ -205,16 +214,35 @@ def get_frame_pair():
     cache_key_tuple = (str(source_path), camera, idx, img_format)
     if cache_key_tuple in raw_image_cache:
         logger.debug(f"Cache HIT for frame {idx}, camera {camera}, format {img_format}")
-        _, b64_a, b64_b = raw_image_cache[cache_key_tuple]
+        cached_data = raw_image_cache[cache_key_tuple]
+        
+        # Handle variable cache structure (backward compatibility during runtime update)
+        if len(cached_data) == 4:
+            pair, b64_a, b64_b, stats = cached_data
+        else:
+            pair, b64_a, b64_b = cached_data
+            stats = None
+            
+        # Calculate stats if requested but missing
+        if auto_limits and stats is None:
+            stats = {
+                "A": {"vmin": float(np.percentile(pair[0], 1)), "vmax": float(np.percentile(pair[0], 99))},
+                "B": {"vmin": float(np.percentile(pair[1], 1)), "vmax": float(np.percentile(pair[1], 99))}
+            }
+            # Update cache
+            raw_image_cache[cache_key_tuple] = (pair, b64_a, b64_b, stats)
 
         # Trigger background preload of surrounding frames
         threading.Thread(
             target=_preload_surrounding_frames,
-            args=(source_path_idx, camera, idx, cfg, 10, img_format),
+            args=(source_path_idx, camera, idx, cfg, 10, img_format, auto_limits),
             daemon=True
         ).start()
 
-        return jsonify({"A": b64_a, "B": b64_b})
+        response = {"A": b64_a, "B": b64_b}
+        if stats:
+            response["stats"] = stats
+        return jsonify(response)
 
     logger.debug(f"Cache MISS for frame {idx}, camera {camera}, format {img_format}, path {source_path}")
 
@@ -246,21 +274,31 @@ def get_frame_pair():
     convert_end = time.perf_counter()
     logger.debug(f"Conversion to {img_format} base64 took {convert_end - convert_start:.4f} seconds")
 
+    stats = None
+    if auto_limits:
+        stats = {
+            "A": {"vmin": float(np.percentile(pair[0], 1)), "vmax": float(np.percentile(pair[0], 99))},
+            "B": {"vmin": float(np.percentile(pair[1], 1)), "vmax": float(np.percentile(pair[1], 99))}
+        }
+
     # Store in cache with format-aware key
-    raw_image_cache[cache_key_tuple] = (pair, b64_a, b64_b)
+    raw_image_cache[cache_key_tuple] = (pair, b64_a, b64_b, stats)
     manage_cache_size()
 
     # Trigger background preload of surrounding frames
     threading.Thread(
         target=_preload_surrounding_frames,
-        args=(source_path_idx, camera, idx, cfg, 10, img_format),
+        args=(source_path_idx, camera, idx, cfg, 10, img_format, auto_limits),
         daemon=True
     ).start()
 
     end_time = time.perf_counter()
     logger.debug(f"Total /get_frame_pair took {end_time - start_time:.4f} seconds")
 
-    return jsonify({"A": b64_a, "B": b64_b})
+    response = {"A": b64_a, "B": b64_b}
+    if stats:
+        response["stats"] = stats
+    return jsonify(response)
 
 
 @api_bp.route("/preload_images", methods=["POST"])
@@ -284,6 +322,7 @@ def preload_images():
     count = data.get("count", 30)
     source_path_idx = data.get("source_path_idx", 0)
     img_format = data.get("format", "jpeg").lower()
+    auto_limits = data.get("auto_limits", False)
 
     # Validate format
     if img_format not in ("png", "jpeg"):
@@ -294,7 +333,7 @@ def preload_images():
     # Start background preload
     threading.Thread(
         target=_preload_surrounding_frames,
-        args=(source_path_idx, camera, start_idx, cfg, count // 2, img_format),
+        args=(source_path_idx, camera, start_idx, cfg, count // 2, img_format, auto_limits),
         daemon=True
     ).start()
 
@@ -304,7 +343,8 @@ def preload_images():
         "start_idx": start_idx,
         "count": count,
         "source_path_idx": source_path_idx,
-        "format": img_format
+        "format": img_format,
+        "auto_limits": auto_limits
     })
 
 

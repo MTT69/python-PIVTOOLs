@@ -21677,3 +21677,275 @@ videos:
 2025-11-20 09:51:11,024 [INFO] 127.0.0.1 - - [20/Nov/2025 09:51:11] "GET /grid.svg HTTP/1.1" 200 -
 2025-11-20 09:51:11,532 [INFO] 127.0.0.1 - - [20/Nov/2025 09:51:11] "[35m[1mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 500 -
 2025-11-20 09:51:51,835 [INFO] 127.0.0.1 - - [20/Nov/2025 09:51:51] "[33mPOST /backend/calibration/polynomial/read_xml HTTP/1.1[0m" 404 -
+2025-11-20 10:09:54,930 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-20 10:09:54,930 [INFO] 127.0.0.1 - - [20/Nov/2025 10:09:54] "GET /backend/config HTTP/1.1" 200 -
+2025-11-20 10:09:55,145 [INFO] 127.0.0.1 - - [20/Nov/2025 10:09:55] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2025-11-20 10:09:55,186 [INFO] 127.0.0.1 - - [20/Nov/2025 10:09:55] "[36mGET /grid.svg HTTP/1.1[0m" 304 -
+2025-11-20 10:09:59,023 [INFO] 127.0.0.1 - - [20/Nov/2025 10:09:59] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-20 10:09:59,340 [INFO] 127.0.0.1 - - [20/Nov/2025 10:09:59] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-20 10:10:02,338 [INFO] 127.0.0.1 - - [20/Nov/2025 10:10:02] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-20 10:10:09,012 [INFO] 127.0.0.1 - - [20/Nov/2025 10:10:09] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-20 10:10:12,838 [INFO] 127.0.0.1 - - [20/Nov/2025 10:10:12] "POST /backend/calibration/polynomial/read_xml HTTP/1.1" 200 -
+2025-11-20 10:11:33,605 [INFO] 127.0.0.1 - - [20/Nov/2025 10:11:33] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:11:43,072 [INFO] 127.0.0.1 - - [20/Nov/2025 10:11:43] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:11:43,699 [INFO] 127.0.0.1 - - [20/Nov/2025 10:11:43] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:11:45,288 [INFO] 127.0.0.1 - - [20/Nov/2025 10:11:45] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:11:46,589 [INFO] 127.0.0.1 - - [20/Nov/2025 10:11:46] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:11:49,319 [INFO] 127.0.0.1 - - [20/Nov/2025 10:11:49] "GET /backend/get_frame_pair?camera=1&idx=7&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:11:49,981 [INFO] 127.0.0.1 - - [20/Nov/2025 10:11:49] "[33mGET /backend/load_mask?basepath_idx=0&camera=Cam1 HTTP/1.1[0m" 404 -
+2025-11-20 10:11:51,058 [INFO] 127.0.0.1 - - [20/Nov/2025 10:11:51] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:11:58,555 [INFO] 127.0.0.1 - - [20/Nov/2025 10:11:58] "GET /backend/get_frame_pair?camera=1&idx=8&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:12:00,703 [INFO] 127.0.0.1 - - [20/Nov/2025 10:12:00] "GET /backend/get_frame_pair?camera=1&idx=10&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:12:01,656 [INFO] 127.0.0.1 - - [20/Nov/2025 10:12:01] "GET /backend/get_frame_pair?camera=1&idx=9&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:12:04,575 [INFO] 127.0.0.1 - - [20/Nov/2025 10:12:04] "GET /backend/get_frame_pair?camera=1&idx=11&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:12:05,286 [INFO] 127.0.0.1 - - [20/Nov/2025 10:12:05] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-20 10:12:06,582 [INFO] 127.0.0.1 - - [20/Nov/2025 10:12:06] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-20 10:12:11,680 [INFO] 127.0.0.1 - - [20/Nov/2025 10:12:11] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0&format=jpeg HTTP/1.1" 200 -
+2025-11-20 10:12:11,857 [INFO] 127.0.0.1 - - [20/Nov/2025 10:12:11] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0&format=jpeg HTTP/1.1" 200 -
+2025-11-20 10:12:27,661 [INFO] 127.0.0.1 - - [20/Nov/2025 10:12:27] "GET /backend/get_frame_pair?camera=1&idx=8&source_path_idx=0&format=jpeg HTTP/1.1" 200 -
+2025-11-20 10:12:31,523 [ERROR] Exception on /backend/get_frame_pair [GET]
+Traceback (most recent call last):
+  File "C:\Users\ees1u24\Desktop\PyPIVPOV_FULL_STACK\python-PIVTOOLs\env\Lib\site-packages\flask\app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ees1u24\Desktop\PyPIVPOV_FULL_STACK\python-PIVTOOLs\env\Lib\site-packages\flask\app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ees1u24\Desktop\PyPIVPOV_FULL_STACK\python-PIVTOOLs\env\Lib\site-packages\flask_cors\extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ees1u24\Desktop\PyPIVPOV_FULL_STACK\python-PIVTOOLs\env\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ees1u24\Desktop\PyPIVPOV_FULL_STACK\python-PIVTOOLs\env\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\ees1u24\Desktop\PyPIVPOV_FULL_STACK\python-PIVTOOLs\pivtools_gui\app.py", line 251, in get_frame_pair
+    manage_cache_size()
+  File "c:\Users\ees1u24\Desktop\PyPIVPOV_FULL_STACK\python-PIVTOOLs\pivtools_gui\app.py", line 71, in manage_cache_size
+    del raw_image_cache[key]
+        ~~~~~~~~~~~~~~~^^^^^
+KeyError: ('D:\\Wake_PIV_16_8', 1, 3, 'png')
+2025-11-20 10:12:32,266 [INFO] 127.0.0.1 - - [20/Nov/2025 10:12:32] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0&format=jpeg HTTP/1.1" 200 -
+2025-11-20 10:12:34,067 [INFO] 127.0.0.1 - - [20/Nov/2025 10:12:34] "GET /backend/get_frame_pair?camera=1&idx=7&source_path_idx=0&format=jpeg HTTP/1.1" 200 -
+2025-11-20 10:12:34,573 [INFO] 127.0.0.1 - - [20/Nov/2025 10:12:34] "[35m[1mGET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0&format=jpeg HTTP/1.1[0m" 500 -
+2025-11-20 10:12:34,652 [INFO] 127.0.0.1 - - [20/Nov/2025 10:12:34] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=jpeg HTTP/1.1" 200 -
+2025-11-20 10:12:39,653 [INFO] 127.0.0.1 - - [20/Nov/2025 10:12:39] "POST /backend/calibration/polynomial/read_xml HTTP/1.1" 200 -
+2025-11-20 10:12:39,745 [INFO] 127.0.0.1 - - [20/Nov/2025 10:12:39] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0&format=jpeg HTTP/1.1" 200 -
+2025-11-20 10:12:40,365 [INFO] 127.0.0.1 - - [20/Nov/2025 10:12:40] "POST /backend/calibration/polynomial/read_xml HTTP/1.1" 200 -
+2025-11-20 10:12:40,493 [INFO] 127.0.0.1 - - [20/Nov/2025 10:12:40] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-20 10:12:48,540 [INFO] 127.0.0.1 - - [20/Nov/2025 10:12:48] "GET /backend/get_frame_pair?camera=1&idx=9&source_path_idx=0&format=jpeg HTTP/1.1" 200 -
+2025-11-20 10:12:56,907 [INFO] 127.0.0.1 - - [20/Nov/2025 10:12:56] "GET /backend/get_frame_pair?camera=1&idx=10&source_path_idx=0&format=jpeg HTTP/1.1" 200 -
+2025-11-20 10:12:59,591 [INFO] 127.0.0.1 - - [20/Nov/2025 10:12:59] "GET /backend/get_frame_pair?camera=1&idx=11&source_path_idx=0&format=jpeg HTTP/1.1" 200 -
+2025-11-20 10:13:58,711 [INFO] 127.0.0.1 - - [20/Nov/2025 10:13:58] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-20 10:24:32,281 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-20 10:24:32,281 [INFO] 127.0.0.1 - - [20/Nov/2025 10:24:32] "GET /backend/config HTTP/1.1" 200 -
+2025-11-20 10:24:32,307 [INFO] 127.0.0.1 - - [20/Nov/2025 10:24:32] "[36mGET /grid.svg HTTP/1.1[0m" 304 -
+2025-11-20 10:24:36,512 [INFO] 127.0.0.1 - - [20/Nov/2025 10:24:36] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-20 10:24:36,531 [INFO] 127.0.0.1 - - [20/Nov/2025 10:24:36] "POST /backend/calibration/polynomial/read_xml HTTP/1.1" 200 -
+2025-11-20 10:24:36,828 [INFO] 127.0.0.1 - - [20/Nov/2025 10:24:36] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-20 10:30:52,952 [INFO] 127.0.0.1 - - [20/Nov/2025 10:30:52] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:31:01,474 [INFO] 127.0.0.1 - - [20/Nov/2025 10:31:01] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:31:02,393 [INFO] 127.0.0.1 - - [20/Nov/2025 10:31:02] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:31:03,584 [INFO] 127.0.0.1 - - [20/Nov/2025 10:31:03] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:31:05,939 [INFO] 127.0.0.1 - - [20/Nov/2025 10:31:05] "GET /backend/get_frame_pair?camera=1&idx=7&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:31:07,440 [INFO] 127.0.0.1 - - [20/Nov/2025 10:31:07] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:31:08,925 [INFO] 127.0.0.1 - - [20/Nov/2025 10:31:08] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:31:09,062 [INFO] 127.0.0.1 - - [20/Nov/2025 10:31:09] "[33mGET /backend/load_mask?basepath_idx=0&camera=Cam1 HTTP/1.1[0m" 404 -
+2025-11-20 10:31:14,380 [INFO] 127.0.0.1 - - [20/Nov/2025 10:31:14] "GET /backend/get_frame_pair?camera=1&idx=8&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:31:15,399 [INFO] 127.0.0.1 - - [20/Nov/2025 10:31:15] "GET /backend/get_frame_pair?camera=1&idx=9&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:31:16,006 [INFO] 127.0.0.1 - - [20/Nov/2025 10:31:16] "GET /backend/get_frame_pair?camera=1&idx=10&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:31:20,370 [INFO] 127.0.0.1 - - [20/Nov/2025 10:31:20] "GET /backend/get_frame_pair?camera=1&idx=11&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:32:54,036 [INFO] 127.0.0.1 - - [20/Nov/2025 10:32:54] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:33:03,063 [INFO] 127.0.0.1 - - [20/Nov/2025 10:33:03] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:33:03,689 [INFO] 127.0.0.1 - - [20/Nov/2025 10:33:03] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:33:04,741 [INFO] 127.0.0.1 - - [20/Nov/2025 10:33:04] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:33:07,110 [INFO] 127.0.0.1 - - [20/Nov/2025 10:33:07] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:33:08,885 [INFO] 127.0.0.1 - - [20/Nov/2025 10:33:08] "GET /backend/get_frame_pair?camera=1&idx=7&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:33:09,036 [INFO] 127.0.0.1 - - [20/Nov/2025 10:33:09] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:33:09,603 [INFO] 127.0.0.1 - - [20/Nov/2025 10:33:09] "[33mGET /backend/load_mask?basepath_idx=0&camera=Cam1 HTTP/1.1[0m" 404 -
+2025-11-20 10:33:10,110 [INFO] 127.0.0.1 - - [20/Nov/2025 10:33:10] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-20 10:33:11,146 [INFO] 127.0.0.1 - - [20/Nov/2025 10:33:11] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-20 10:33:20,368 [INFO] 127.0.0.1 - - [20/Nov/2025 10:33:20] "GET /backend/get_frame_pair?camera=1&idx=8&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:33:22,373 [INFO] 127.0.0.1 - - [20/Nov/2025 10:33:22] "GET /backend/get_frame_pair?camera=1&idx=9&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:33:22,944 [INFO] 127.0.0.1 - - [20/Nov/2025 10:33:22] "GET /backend/get_frame_pair?camera=1&idx=10&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:33:25,883 [INFO] 127.0.0.1 - - [20/Nov/2025 10:33:25] "GET /backend/get_frame_pair?camera=1&idx=11&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:33:56,798 [INFO] 127.0.0.1 - - [20/Nov/2025 10:33:56] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-20 10:33:57,574 [INFO] 127.0.0.1 - - [20/Nov/2025 10:33:57] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-20 10:34:01,398 [INFO] 127.0.0.1 - - [20/Nov/2025 10:34:01] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0&format=jpeg HTTP/1.1" 200 -
+2025-11-20 10:34:01,817 [INFO] 127.0.0.1 - - [20/Nov/2025 10:34:01] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0&format=jpeg HTTP/1.1" 200 -
+2025-11-20 10:34:03,000 [INFO] 127.0.0.1 - - [20/Nov/2025 10:34:03] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0&format=jpeg HTTP/1.1" 200 -
+2025-11-20 10:34:03,938 [INFO] 127.0.0.1 - - [20/Nov/2025 10:34:03] "GET /backend/get_frame_pair?camera=1&idx=7&source_path_idx=0&format=jpeg HTTP/1.1" 200 -
+2025-11-20 10:34:04,594 [INFO] 127.0.0.1 - - [20/Nov/2025 10:34:04] "GET /backend/get_frame_pair?camera=1&idx=8&source_path_idx=0&format=jpeg HTTP/1.1" 200 -
+2025-11-20 10:34:04,873 [INFO] 127.0.0.1 - - [20/Nov/2025 10:34:04] "GET /backend/get_frame_pair?camera=1&idx=9&source_path_idx=0&format=jpeg HTTP/1.1" 200 -
+2025-11-20 10:34:05,412 [INFO] 127.0.0.1 - - [20/Nov/2025 10:34:05] "GET /backend/get_frame_pair?camera=1&idx=10&source_path_idx=0&format=jpeg HTTP/1.1" 200 -
+2025-11-20 10:34:07,871 [INFO] 127.0.0.1 - - [20/Nov/2025 10:34:07] "GET /backend/get_frame_pair?camera=1&idx=11&source_path_idx=0&format=jpeg HTTP/1.1" 200 -
+2025-11-20 10:34:12,941 [INFO] 127.0.0.1 - - [20/Nov/2025 10:34:12] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0&format=jpeg HTTP/1.1" 200 -
+2025-11-20 10:34:14,569 [INFO] 127.0.0.1 - - [20/Nov/2025 10:34:14] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=jpeg HTTP/1.1" 200 -
+2025-11-20 10:34:15,473 [INFO] 127.0.0.1 - - [20/Nov/2025 10:34:15] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0&format=jpeg HTTP/1.1" 200 -
+2025-11-20 10:35:41,829 [INFO] 127.0.0.1 - - [20/Nov/2025 10:35:41] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:35:43,095 [INFO] 127.0.0.1 - - [20/Nov/2025 10:35:43] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:35:55,071 [INFO] 127.0.0.1 - - [20/Nov/2025 10:35:55] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:35:56,520 [INFO] 127.0.0.1 - - [20/Nov/2025 10:35:56] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:35:57,352 [INFO] 127.0.0.1 - - [20/Nov/2025 10:35:57] "GET /backend/get_frame_pair?camera=1&idx=8&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:36:01,111 [INFO] 127.0.0.1 - - [20/Nov/2025 10:36:01] "GET /backend/get_frame_pair?camera=1&idx=7&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:36:01,362 [INFO] 127.0.0.1 - - [20/Nov/2025 10:36:01] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:36:02,636 [INFO] 127.0.0.1 - - [20/Nov/2025 10:36:02] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:36:02,641 [INFO] 127.0.0.1 - - [20/Nov/2025 10:36:02] "[33mGET /backend/load_mask?basepath_idx=0&camera=Cam1 HTTP/1.1[0m" 404 -
+2025-11-20 10:36:10,988 [INFO] 127.0.0.1 - - [20/Nov/2025 10:36:10] "GET /backend/get_frame_pair?camera=1&idx=9&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:36:12,841 [INFO] 127.0.0.1 - - [20/Nov/2025 10:36:12] "GET /backend/get_frame_pair?camera=1&idx=10&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:36:15,305 [INFO] 127.0.0.1 - - [20/Nov/2025 10:36:15] "GET /backend/get_frame_pair?camera=1&idx=11&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:36:39,186 [INFO] 127.0.0.1 - - [20/Nov/2025 10:36:39] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:36:41,326 [INFO] 127.0.0.1 - - [20/Nov/2025 10:36:41] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:36:41,579 [INFO] 127.0.0.1 - - [20/Nov/2025 10:36:41] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:36:42,108 [INFO] 127.0.0.1 - - [20/Nov/2025 10:36:42] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:36:44,066 [INFO] 127.0.0.1 - - [20/Nov/2025 10:36:44] "GET /backend/get_frame_pair?camera=1&idx=7&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:36:45,810 [INFO] 127.0.0.1 - - [20/Nov/2025 10:36:45] "GET /backend/get_frame_pair?camera=1&idx=8&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:36:45,953 [INFO] 127.0.0.1 - - [20/Nov/2025 10:36:45] "GET /backend/get_frame_pair?camera=1&idx=9&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:36:47,350 [INFO] 127.0.0.1 - - [20/Nov/2025 10:36:47] "[33mGET /backend/load_mask?basepath_idx=0&camera=Cam1 HTTP/1.1[0m" 404 -
+2025-11-20 10:36:47,622 [INFO] 127.0.0.1 - - [20/Nov/2025 10:36:47] "GET /backend/get_frame_pair?camera=1&idx=10&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:36:48,136 [INFO] 127.0.0.1 - - [20/Nov/2025 10:36:48] "GET /backend/get_frame_pair?camera=1&idx=11&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:37:10,869 [INFO] 127.0.0.1 - - [20/Nov/2025 10:37:10] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:37:15,258 [INFO] 127.0.0.1 - - [20/Nov/2025 10:37:15] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:37:33,767 [INFO] 127.0.0.1 - - [20/Nov/2025 10:37:33] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-20 10:37:36,132 [INFO] 127.0.0.1 - - [20/Nov/2025 10:37:36] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-20 10:37:38,257 [INFO] 127.0.0.1 - - [20/Nov/2025 10:37:38] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-20 10:37:38,971 [INFO] 127.0.0.1 - - [20/Nov/2025 10:37:38] "[35m[1mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 500 -
+2025-11-20 10:37:40,651 [INFO] 127.0.0.1 - - [20/Nov/2025 10:37:40] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-20 10:37:41,433 [INFO] 127.0.0.1 - - [20/Nov/2025 10:37:41] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-20 10:37:48,760 [INFO] 127.0.0.1 - - [20/Nov/2025 10:37:48] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-20 10:37:49,683 [INFO] 127.0.0.1 - - [20/Nov/2025 10:37:49] "[35m[1mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 500 -
+2025-11-20 10:37:57,694 [INFO] 127.0.0.1 - - [20/Nov/2025 10:37:57] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-20 10:37:59,114 [INFO] 127.0.0.1 - - [20/Nov/2025 10:37:59] "[35m[1mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 500 -
+2025-11-20 10:38:05,958 [INFO] 127.0.0.1 - - [20/Nov/2025 10:38:05] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-20 10:38:11,778 [INFO] 127.0.0.1 - - [20/Nov/2025 10:38:11] "[33mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-20 10:38:12,542 [INFO] 127.0.0.1 - - [20/Nov/2025 10:38:12] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-20 10:38:17,168 [INFO] 127.0.0.1 - - [20/Nov/2025 10:38:17] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-20 10:38:17,751 [INFO] 127.0.0.1 - - [20/Nov/2025 10:38:17] "[33mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-20 10:38:32,565 [INFO] 127.0.0.1 - - [20/Nov/2025 10:38:32] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-20 10:38:33,210 [INFO] 127.0.0.1 - - [20/Nov/2025 10:38:33] "[33mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 404 -
+2025-11-20 10:38:36,192 [INFO] 127.0.0.1 - - [20/Nov/2025 10:38:36] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-20 10:38:38,466 [INFO] 127.0.0.1 - - [20/Nov/2025 10:38:38] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-20 10:38:43,830 [INFO] 127.0.0.1 - - [20/Nov/2025 10:38:43] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-20 10:38:44,368 [INFO] 127.0.0.1 - - [20/Nov/2025 10:38:44] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-20 10:38:46,818 [INFO] 127.0.0.1 - - [20/Nov/2025 10:38:46] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-20 10:38:48,291 [INFO] 127.0.0.1 - - [20/Nov/2025 10:38:48] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-20 10:38:48,834 [INFO] 127.0.0.1 - - [20/Nov/2025 10:38:48] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-20 10:38:52,205 [INFO] 127.0.0.1 - - [20/Nov/2025 10:38:52] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-20 10:38:58,237 [INFO] 127.0.0.1 - - [20/Nov/2025 10:38:58] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-20 10:38:58,940 [INFO] 127.0.0.1 - - [20/Nov/2025 10:38:58] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-20 10:38:59,324 [INFO] 127.0.0.1 - - [20/Nov/2025 10:38:59] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-20 10:39:00,957 [INFO] 127.0.0.1 - - [20/Nov/2025 10:39:00] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:39:01,641 [INFO] 127.0.0.1 - - [20/Nov/2025 10:39:01] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:39:01,735 [INFO] 127.0.0.1 - - [20/Nov/2025 10:39:01] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:39:01,739 [INFO] 127.0.0.1 - - [20/Nov/2025 10:39:01] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:39:02,510 [INFO] 127.0.0.1 - - [20/Nov/2025 10:39:02] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:39:02,552 [INFO] 127.0.0.1 - - [20/Nov/2025 10:39:02] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:39:02,803 [INFO] 127.0.0.1 - - [20/Nov/2025 10:39:02] "GET /backend/get_frame_pair?camera=1&idx=9&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:39:03,435 [INFO] 127.0.0.1 - - [20/Nov/2025 10:39:03] "GET /backend/get_frame_pair?camera=1&idx=7&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:39:03,474 [INFO] 127.0.0.1 - - [20/Nov/2025 10:39:03] "GET /backend/get_frame_pair?camera=1&idx=8&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:39:03,485 [INFO] 127.0.0.1 - - [20/Nov/2025 10:39:03] "[33mGET /backend/load_mask?basepath_idx=0&camera=Cam1 HTTP/1.1[0m" 404 -
+2025-11-20 10:39:03,541 [INFO] 127.0.0.1 - - [20/Nov/2025 10:39:03] "GET /backend/get_frame_pair?camera=1&idx=10&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:39:03,847 [INFO] 127.0.0.1 - - [20/Nov/2025 10:39:03] "GET /backend/get_frame_pair?camera=1&idx=11&source_path_idx=0&format=png HTTP/1.1" 200 -
+2025-11-20 10:56:04,532 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-20 10:56:04,532 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:04] "GET /backend/config HTTP/1.1" 200 -
+2025-11-20 10:56:04,543 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:04] "[36mGET /grid.svg HTTP/1.1[0m" 304 -
+2025-11-20 10:56:05,105 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:05] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1" 200 -
+2025-11-20 10:56:05,424 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:05] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-20 10:56:10,722 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:10] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:11,038 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:11] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:11,038 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:11] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:11,038 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:11] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:11,038 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:11] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:11,038 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:11] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:11,048 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:11] "GET /backend/get_frame_pair?camera=1&idx=7&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:11,348 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:11] "GET /backend/get_frame_pair?camera=1&idx=8&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:11,349 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:11] "GET /backend/get_frame_pair?camera=1&idx=9&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:11,353 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:11] "GET /backend/get_frame_pair?camera=1&idx=10&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:11,357 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:11] "[33mGET /backend/load_mask?basepath_idx=0&camera=Cam1 HTTP/1.1[0m" 404 -
+2025-11-20 10:56:11,357 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:11] "GET /backend/get_frame_pair?camera=1&idx=11&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:13,923 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:13] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-20 10:56:13,940 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:13] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:14,191 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:14] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:14,244 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:14] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:14,244 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:14] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:14,244 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:14] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:14,244 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:14] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:14,254 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:14] "GET /backend/get_frame_pair?camera=1&idx=7&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:14,497 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:14] "GET /backend/get_frame_pair?camera=1&idx=8&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:14,569 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:14] "GET /backend/get_frame_pair?camera=1&idx=10&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:14,577 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:14] "GET /backend/get_frame_pair?camera=1&idx=11&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:14,581 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:14] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-20 10:56:14,591 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:14] "GET /backend/get_frame_pair?camera=1&idx=9&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:19,474 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:19] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-20 10:56:19,487 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:19] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:19,735 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:19] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:19,808 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:19] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:19,808 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:19] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:19,808 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:19] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:19,808 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:19] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:19,816 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:19] "GET /backend/get_frame_pair?camera=1&idx=7&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:20,058 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:20] "GET /backend/get_frame_pair?camera=1&idx=8&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:20,119 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:20] "GET /backend/get_frame_pair?camera=1&idx=10&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:20,119 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:20] "GET /backend/get_frame_pair?camera=1&idx=11&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:20,134 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:20] "GET /backend/get_frame_pair?camera=1&idx=9&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:20,994 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:20] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-20 10:56:21,008 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:21] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:21,257 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:21] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:21,317 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:21] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:21,318 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:21] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:21,320 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:21] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:21,320 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:21] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:21,323 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:21] "GET /backend/get_frame_pair?camera=1&idx=7&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:21,570 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:21] "GET /backend/get_frame_pair?camera=1&idx=8&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:21,627 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:21] "GET /backend/get_frame_pair?camera=1&idx=10&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:21,630 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:21] "GET /backend/get_frame_pair?camera=1&idx=11&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:21,641 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:21] "GET /backend/get_frame_pair?camera=1&idx=9&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:22,849 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:22] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-20 10:56:22,863 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:22] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:23,102 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:23] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:23,175 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:23] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:23,175 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:23] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:23,175 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:23] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:23,175 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:23] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:23,175 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:23] "GET /backend/get_frame_pair?camera=1&idx=7&source_path_idx=0&format=png&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:23,415 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:23] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-20 10:56:23,495 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:23] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:23,499 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:23] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:23,499 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:23] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:23,656 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:23] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:23,657 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:23] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:23,804 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:23] "GET /backend/get_frame_pair?camera=1&idx=7&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:23,806 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:23] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:23,806 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:23] "GET /backend/get_frame_pair?camera=1&idx=8&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:23,808 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:23] "GET /backend/get_frame_pair?camera=1&idx=9&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:23,972 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:23] "GET /backend/get_frame_pair?camera=1&idx=10&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:23,974 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:23] "GET /backend/get_frame_pair?camera=1&idx=11&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-20 10:56:28,038 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:28] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-20 10:56:28,049 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:28] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1" 200 -
+2025-11-20 10:56:28,301 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:28] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1" 200 -
+2025-11-20 10:56:28,359 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:28] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1" 200 -
+2025-11-20 10:56:28,359 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:28] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1" 200 -
+2025-11-20 10:56:28,361 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:28] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1" 200 -
+2025-11-20 10:56:28,363 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:28] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1" 200 -
+2025-11-20 10:56:28,364 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:28] "GET /backend/get_frame_pair?camera=1&idx=7&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1" 200 -
+2025-11-20 10:56:28,618 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:28] "GET /backend/get_frame_pair?camera=1&idx=8&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1" 200 -
+2025-11-20 10:56:28,682 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:28] "GET /backend/get_frame_pair?camera=1&idx=9&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1" 200 -
+2025-11-20 10:56:28,684 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:28] "GET /backend/get_frame_pair?camera=1&idx=10&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1" 200 -
+2025-11-20 10:56:28,684 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:28] "GET /backend/get_frame_pair?camera=1&idx=11&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1" 200 -
+2025-11-20 10:56:32,038 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:32] "[33mGET /backend/get_frame_pair?camera=1&idx=495&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1[0m" 404 -
+2025-11-20 10:56:33,615 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:33] "[33mGET /backend/get_frame_pair?camera=1&idx=81&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1[0m" 404 -
+2025-11-20 10:56:34,695 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:34] "GET /backend/get_frame_pair?camera=1&idx=24&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1" 200 -
+2025-11-20 10:56:35,016 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:35] "GET /backend/get_frame_pair?camera=1&idx=25&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1" 200 -
+2025-11-20 10:56:35,017 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:35] "GET /backend/get_frame_pair?camera=1&idx=26&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1" 200 -
+2025-11-20 10:56:35,019 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:35] "GET /backend/get_frame_pair?camera=1&idx=27&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1" 200 -
+2025-11-20 10:56:35,021 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:35] "GET /backend/get_frame_pair?camera=1&idx=28&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1" 200 -
+2025-11-20 10:56:35,022 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:35] "GET /backend/get_frame_pair?camera=1&idx=29&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1" 200 -
+2025-11-20 10:56:35,025 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:35] "GET /backend/get_frame_pair?camera=1&idx=30&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1" 200 -
+2025-11-20 10:56:35,365 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:35] "GET /backend/get_frame_pair?camera=1&idx=31&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1" 200 -
+2025-11-20 10:56:35,368 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:35] "GET /backend/get_frame_pair?camera=1&idx=32&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1" 200 -
+2025-11-20 10:56:35,377 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:35] "GET /backend/get_frame_pair?camera=1&idx=33&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1" 200 -
+2025-11-20 10:56:35,381 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:35] "GET /backend/get_frame_pair?camera=1&idx=34&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1" 200 -
+2025-11-20 10:56:35,382 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:35] "GET /backend/get_frame_pair?camera=1&idx=23&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1" 200 -
+2025-11-20 10:56:35,383 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:35] "GET /backend/get_frame_pair?camera=1&idx=22&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1" 200 -
+2025-11-20 10:56:35,684 [INFO] 127.0.0.1 - - [20/Nov/2025 10:56:35] "GET /backend/get_frame_pair?camera=1&idx=21&source_path_idx=0&format=jpeg&auto_limits=false HTTP/1.1" 200 -
