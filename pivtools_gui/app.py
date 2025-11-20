@@ -84,14 +84,25 @@ def cache_key(source_path_idx, camera, cfg):
     return (str(source_path), str(camera))
 
 
-def get_cached_pair(frame, typ, camera, source_path_idx, cfg):
+def get_cached_pair(frame, typ, camera, source_path_idx, cfg, auto_limits=False):
     """Fetch a cached pair (A, B) for given frame/type/camera/source_path_idx."""
     k = cache_key(source_path_idx, camera, cfg)
     bucket = processed_store.get(typ, {}).get(k, {})
     pair = bucket.get(frame)
     if pair is None:
-        return None, None
-    return numpy_to_png_base64(pair[0]), numpy_to_png_base64(pair[1])
+        return None, None, None
+    
+    b64_a = numpy_to_png_base64(pair[0])
+    b64_b = numpy_to_png_base64(pair[1])
+    
+    stats = None
+    if auto_limits:
+        stats = {
+            "A": {"vmin": float(np.percentile(pair[0], 1)), "vmax": float(np.percentile(pair[0], 99))},
+            "B": {"vmin": float(np.percentile(pair[1], 1)), "vmax": float(np.percentile(pair[1], 99))}
+        }
+        
+    return b64_a, b64_b, stats
 
 
 def compute_batch_window(target_idx: int, batch_size: int, total: int):
@@ -454,16 +465,20 @@ def get_processed_pair():
     typ = request.args.get("type", "processed")
     camera = camera_number(request.args.get("camera"))
     source_path_idx = request.args.get("source_path_idx", default=0, type=int)
+    auto_limits = request.args.get("auto_limits", default="false").lower() == "true"
 
     logger.debug(f"Checking cache for processed frame {frame}, type {typ}, camera {camera}, source_path_idx {source_path_idx}")
-    b64_a, b64_b = get_cached_pair(frame, typ, camera, source_path_idx, cfg)
+    b64_a, b64_b, stats = get_cached_pair(frame, typ, camera, source_path_idx, cfg, auto_limits)
     
     if b64_a is not None and b64_b is not None:
         logger.debug(f"Cache hit for processed frame {frame}, type {typ}, camera {camera}")
     else:
         logger.debug(f"Cache miss for processed frame {frame}, type {typ}, camera {camera}")
     
-    return jsonify({"status": "ok", "A": b64_a, "B": b64_b})
+    response = {"status": "ok", "A": b64_a, "B": b64_b}
+    if stats:
+        response["stats"] = stats
+    return jsonify(response)
 
 
 @api_bp.route("/filter_single_frame", methods=["POST"])
@@ -478,6 +493,7 @@ def filter_single_frame():
     frame_idx = int(data.get("frame_idx", 1))
     filters = data.get("filters", [])
     source_path_idx = data.get("source_path_idx", 0)
+    auto_limits = data.get("auto_limits", False)
     
     # Check if any batch filters are present (should use /filter endpoint instead)
     batch_filters = [f for f in filters if f.get("type") in ("time", "pod")]
@@ -520,11 +536,19 @@ def filter_single_frame():
         # Extract the single processed pair
         processed_pair = result[0]  # Shape: (2, H, W)
         
-        return jsonify({
+        response = {
             "status": "ok",
             "A": numpy_to_png_base64(processed_pair[0]),
             "B": numpy_to_png_base64(processed_pair[1])
-        })
+        }
+        
+        if auto_limits:
+            response["stats"] = {
+                "A": {"vmin": float(np.percentile(processed_pair[0], 1)), "vmax": float(np.percentile(processed_pair[0], 99))},
+                "B": {"vmin": float(np.percentile(processed_pair[1], 1)), "vmax": float(np.percentile(processed_pair[1], 99))}
+            }
+            
+        return jsonify(response)
         
     except Exception as e:
         logger.error(f"Error processing single frame: {e}")

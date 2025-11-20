@@ -272,7 +272,7 @@ masking:
 
     @property
     def camera_folders(self):
-        return [f"Cam{n}" for n in self.camera_numbers]
+        return [self.get_camera_folder(n) for n in self.camera_numbers]
 
     @property
     def num_images(self):
@@ -325,18 +325,22 @@ masking:
         if '.set' in str(format_str) or '.im7' in str(format_str):
             camera_path = source_path  # No camera subdir for .set/.im7
         else:
-            camera_path = source_path / f"Cam{camera_num}"
+            folder = self.get_camera_folder(camera_num)
+            camera_path = source_path / folder if folder else source_path
 
         logging.info(f"Camera path: {camera_path}")
+
+        # Determine start index
+        start_idx = 0 if self.zero_based_indexing else 1
 
         # Construct file path based on format type
         if '.set' in str(format_str):
             file_path = camera_path / format_str
         elif '.im7' in str(format_str):
-            file_path = camera_path / (format_str % 1)
+            file_path = camera_path / (format_str % start_idx)
         else:
             # Regular files - use first format for shape detection
-            file_path = camera_path / (format_str % 1)
+            file_path = camera_path / (format_str % start_idx)
 
         logging.info(f"Trying to read file: {file_path}")
 
@@ -976,6 +980,33 @@ masking:
         """
         mask_filename = self.mask_file_pattern % camera_num
         return self.source_paths[source_path_idx] / mask_filename
+
+    @property
+    def zero_based_indexing(self):
+        return self.data.get("images", {}).get("zero_based_indexing", False)
+
+    @property
+    def camera_subfolders(self):
+        return self.data.get("paths", {}).get("camera_subfolders", [])
+
+    def get_camera_folder(self, camera_num: int) -> str:
+        """Get the subfolder name for a specific camera."""
+        # Check for container formats
+        fmt = self.image_format[0]
+        if '.set' in str(fmt) or '.im7' in str(fmt):
+             return ""
+
+        subfolders = self.camera_subfolders
+        # camera_num is 1-based
+        idx = camera_num - 1
+        
+        if subfolders and idx < len(subfolders) and subfolders[idx]:
+            return subfolders[idx]
+            
+        if self.camera_count == 1:
+            return ""
+            
+        return f"Cam{camera_num}"
 
 
 def get_config(refresh: bool = False) -> Config:

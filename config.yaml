@@ -5,23 +5,28 @@ paths:
   - C:\Users\ees1u24\Desktop\PIV_POV\Colored
   camera_numbers:
   - 1
-  camera_count: 1
+  - 2
+  camera_count: 2
+  camera_subfolders:
+  - Cam6
+  - Cam7
 images:
-  num_images: 10
+  num_images: 11
   image_format: IMG%05d.tif
   vector_format:
   - '%05d.mat'
   time_resolved: true
   dtype: float32
+  zero_based_indexing: true
 batches:
-  size: 20
+  size: 9
 logging:
   file: pypiv.log
   level: INFO
   console: true
 processing:
-  instantaneous: false
-  ensemble: true
+  instantaneous: true
+  ensemble: false
   stereo: false
   backend: cpu
   debug: false
@@ -68,15 +73,12 @@ instantaneous_piv:
     - 64
   - - 32
     - 32
-  - - 16
-    - 16
   overlap:
   - 50
   - 50
   - 50
-  - 50
   runs:
-  - 4
+  - 3
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
@@ -130,7 +132,8 @@ calibration:
     enhance_dots: true
     asymmetric: false
     dt: 2
-filters: []
+filters:
+- type: time
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat

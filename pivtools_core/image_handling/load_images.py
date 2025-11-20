@@ -75,16 +75,22 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
     # Check if we have A/B pair (len > 1) or single format
     if len(config.image_format) == 2:
         # Non-time-resolved: separate A and B formats
+        # Apply zero-based indexing adjustment if enabled
+        file_idx = idx - 1 if config.zero_based_indexing else idx
+        
         image_format_A, image_format_B = config.image_format
         file_paths = [
-            camera_path / (image_format_A % idx),
-            camera_path / (image_format_B % idx),
+            camera_path / (image_format_A % file_idx),
+            camera_path / (image_format_B % file_idx),
         ]
     else:
         # Single format - assume time-resolved style
+        # Apply zero-based indexing adjustment if enabled
+        file_idx = idx - 1 if config.zero_based_indexing else idx
+        
         file_paths = [
-            camera_path / (format_str % idx),
-            camera_path / (format_str % (idx + 1)),
+            camera_path / (format_str % file_idx),
+            camera_path / (format_str % (file_idx + 1)),
         ]
 
     # Check if it's a proprietary format that reads pairs natively
@@ -175,7 +181,8 @@ def load_images(camera: int, config: Config, source: Path = None) -> da.Array:
     elif '.im7' in format_str:
         camera_path = source  # No camera subdirectory for im7 files
     else:
-        camera_path = source / f"Cam{camera}"
+        folder = config.get_camera_folder(camera)
+        camera_path = source / folder if folder else source
     
     num_images = config.num_images
         
