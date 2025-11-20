@@ -1,5 +1,6 @@
 import os
 
+import cv2
 import numpy as np
 
 
@@ -9,7 +10,15 @@ def read_tiff(file_path: str) -> np.ndarray:
 
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"Image file not found: {file_path}")
-    return tifffile.imread(file_path)
+    img = tifffile.imread(file_path)
+    if img.ndim > 2 and img.shape[-1] > 1:
+        if img.shape[-1] == 3:
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        elif img.shape[-1] == 4:
+            img = cv2.cvtColor(img, cv2.COLOR_RGBA2GRAY)
+        else:
+            img = np.mean(img, axis=-1).astype(img.dtype)
+    return img
 
 
 def read_png_jpeg(file_path: str) -> np.ndarray:
@@ -21,19 +30,22 @@ def read_png_jpeg(file_path: str) -> np.ndarray:
         from PIL import Image
 
         img = Image.open(file_path)
-        return np.array(img)
+        if img.mode in ("RGB", "RGBA", "P", "L") and img.mode != "L":
+            img = img.convert("L")
+        img_array = np.array(img)
+        return img_array
     except ImportError:
-        try:
-            import cv2
-
-            img = cv2.imread(file_path, cv2.IMREAD_UNCHANGED)
-            if img is None:
-                raise FileNotFoundError(f"Image file could not be read: {file_path}")
-            return img
-        except ImportError:
-            raise ImportError(
-                "Either PIL or opencv-python is required for PNG/JPEG support"
-            )
+        img = cv2.imread(file_path, cv2.IMREAD_UNCHANGED)
+        if img is None:
+            raise FileNotFoundError(f"Image file could not be read: {file_path}")
+        if img.ndim > 2 and img.shape[-1] > 1:
+            if img.shape[-1] == 3:
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            elif img.shape[-1] == 4:
+                img = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
+            else:
+                img = np.mean(img, axis=-1).astype(img.dtype)
+        return img
 
 
 def read_raw(file_path: str) -> np.ndarray:
@@ -45,6 +57,14 @@ def read_raw(file_path: str) -> np.ndarray:
         import rawpy
 
         with rawpy.imread(file_path) as raw:
-            return raw.postprocess()
+            img = raw.postprocess()
+            if img.ndim > 2 and img.shape[-1] > 1:
+                if img.shape[-1] == 3:
+                    img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+                elif img.shape[-1] == 4:
+                    img = cv2.cvtColor(img, cv2.COLOR_RGBA2GRAY)
+                else:
+                    img = np.mean(img, axis=-1).astype(img.dtype)
+            return img
     except ImportError:
         raise ImportError("rawpy is required for RAW image support")

@@ -1,19 +1,17 @@
 paths:
   base_paths:
-  - D:\Processed_Wake_PIV\Case_A_Phase_093_Run_1
+  - D:\Processed_Wake_PIV\hehehhehehe
   source_paths:
-  - D:\Wake_PIV_16_8
+  - C:\Users\ees1u24\Desktop\PIV_POV\Colored
   camera_numbers:
   - 1
-  - 2
-  camera_count: 2
+  camera_count: 1
 images:
-  num_images: 100
-  image_format:
-  - Case_A_Phase_093_Run_1.set
+  num_images: 10
+  image_format: IMG%05d.tif
   vector_format:
   - '%05d.mat'
-  time_resolved: false
+  time_resolved: true
   dtype: float32
 batches:
   size: 20
@@ -132,7 +130,7 @@ calibration:
     enhance_dots: true
     asymmetric: false
     dt: 2
-filters:
+filters: []
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat
