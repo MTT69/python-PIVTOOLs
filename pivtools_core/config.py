@@ -134,6 +134,31 @@ instantaneous_piv:
   num_peaks: 1
   peak_finder: gauss3
   secondary_peak: false
+ensemble_piv:
+  window_size:
+  - - 128
+    - 128
+  - - 64
+    - 64
+  - - 16
+    - 16
+  overlap:
+  - 50
+  - 50
+  - 50
+  runs:
+  - 3
+  window_type: gaussian
+  num_peaks: 3
+  peak_finder: gauss6
+  noisy: false
+  sum_window:
+  - 16
+  - 16
+  type:
+  - std
+  - std
+  - std
 calibration_format:
   image_format: calib%05d.tif
 calibration:
@@ -681,6 +706,109 @@ masking:
     def ensemble_piv(self):
         """Return True if ensemble PIV is enabled."""
         return self.data.get("processing", {}).get("ensemble", False)
+
+    # --- Ensemble PIV properties ---
+    @property
+    def ensemble_window_sizes(self):
+        """Return ensemble PIV window sizes."""
+        return self.data.get("ensemble_piv", {}).get("window_size", self.window_sizes)
+
+    @property
+    def ensemble_overlaps(self):
+        """Return ensemble PIV overlap percentages."""
+        overlaps = self.data.get("ensemble_piv", {}).get("overlap", self.overlap)
+        # Ensure we have as many overlaps as window sizes
+        if overlaps and len(overlaps) == 1 and len(self.ensemble_window_sizes) > 1:
+            overlaps = overlaps * len(self.ensemble_window_sizes)
+        return overlaps
+
+    @property
+    def ensemble_runs(self):
+        """Return list of 1-based passes to save for ensemble PIV."""
+        return self.data.get("ensemble_piv", {}).get("runs", [])
+
+    @property
+    def ensemble_runs_0based(self):
+        """Return list of 0-based passes to save for ensemble PIV."""
+        runs = self.ensemble_runs
+        if runs:
+            return [r - 1 for r in runs]
+        else:
+            # Default to last pass if runs is empty
+            return [self.ensemble_num_passes - 1]
+
+    @property
+    def ensemble_num_passes(self):
+        """Return number of ensemble PIV passes."""
+        return len(self.ensemble_window_sizes)
+
+    @property
+    def ensemble_window_type(self):
+        """Return ensemble PIV window type (e.g., 'gaussian')."""
+        return self.data.get("ensemble_piv", {}).get("window_type", self.window_type)
+
+    @property
+    def ensemble_num_peaks(self):
+        """Return number of peaks for ensemble PIV."""
+        return self.data.get("ensemble_piv", {}).get("num_peaks", self.num_peaks)
+
+    @property
+    def ensemble_peak_finder(self):
+        """Return peak finder method for ensemble PIV (converted to numeric code)."""
+        peak_finder = self.data.get("ensemble_piv", {}).get("peak_finder", "gauss6").lower()
+        if peak_finder == "gauss3":
+            return 3
+        elif peak_finder == "gauss4":
+            return 4
+        elif peak_finder == "gauss5":
+            return 5
+        elif peak_finder == "gauss6":
+            return 6
+        else:
+            raise ValueError(
+                f"Invalid ensemble peak_finder: {peak_finder}. Must be 'gauss3', 'gauss4', 'gauss5', or 'gauss6'."
+            )
+
+    @property
+    def ensemble_noisy(self):
+        """
+        Return True if Gaussian weighting should be applied for noisy ensemble data.
+
+        When enabled, applies Gaussian windowing to help with noisy images.
+        """
+        return self.data.get("ensemble_piv", {}).get("noisy", False)
+
+    @property
+    def ensemble_sum_window(self):
+        """
+        Return sum window size for 'single' ensemble mode.
+
+        Used when ensemble_type is 'single' for a pass, defines the correlation
+        summation window size.
+
+        Returns
+        -------
+        list
+            [height, width] of sum window
+        """
+        return self.data.get("ensemble_piv", {}).get("sum_window", [16, 16])
+
+    @property
+    def ensemble_type(self):
+        """
+        Return ensemble type for each pass.
+
+        Types:
+        - 'std': Standard ensemble averaging of correlation planes
+        - 'single': Single-pass mode with sum window
+
+        Returns
+        -------
+        list
+            List of type strings, one per pass
+        """
+        default_types = ["std"] * self.ensemble_num_passes
+        return self.data.get("ensemble_piv", {}).get("type", default_types)
 
     @property
     def outlier_detection_enabled(self):

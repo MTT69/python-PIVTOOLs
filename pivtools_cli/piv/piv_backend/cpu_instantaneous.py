@@ -33,11 +33,6 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         lib_path = os.path.abspath(lib_path)
         if not os.path.isfile(lib_path):
             raise FileNotFoundError(f"Required library file not found: {lib_path}")
-        # Add vcpkg bin directory to DLL search path on Windows
-        if os.name == "nt":
-            vcpkg_bin = os.path.join(os.environ.get('FFTW_LIB_PATH', '').replace('lib', 'bin'))
-            if vcpkg_bin and os.path.isdir(vcpkg_bin):
-                os.add_dll_directory(vcpkg_bin)
         self.lib = ctypes.CDLL(lib_path)
         self.lib.bulkxcorr2d.restype = ctypes.c_ubyte
         self.delta_ab_pred = None

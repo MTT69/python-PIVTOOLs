@@ -380,43 +380,52 @@ def compute_vector_mask(
     
     vector_masks = []
     threshold = config.mask_threshold
-    
-    for pass_idx in range(config.num_passes):
+
+    # Determine if we're in ensemble mode
+    is_ensemble = hasattr(config, 'ensemble_piv') and config.ensemble_piv
+    if is_ensemble:
+        num_passes = len(config.ensemble_window_sizes)
+    else:
+        num_passes = config.num_passes
+
+    for pass_idx in range(num_passes):
         # Get window size and overlap for this pass
-        # config.window_sizes is in (H, W) format = (win_y, win_x)
-        win_y, win_x = config.window_sizes[pass_idx]
-        overlap = config.overlap[pass_idx]
-        
+        if is_ensemble:
+            win_y, win_x = config.ensemble_window_sizes[pass_idx]
+            overlap = config.ensemble_overlaps[pass_idx]
+        else:
+            win_y, win_x = config.window_sizes[pass_idx]
+            overlap = config.overlap[pass_idx]
+
         # Calculate window spacing
         win_spacing_x = round((1 - overlap / 100) * win_x)
         win_spacing_y = round((1 - overlap / 100) * win_y)
-        
+
         # Calculate window center positions (matching PIV computation exactly)
-        # For a 128-pixel window (indices 0-127), center is at 63.5
-        # First window center in X (width dimension) - 0-based array indexing
-        first_ctr_x = (win_x - 1) / 2.0  # For 128: (127)/2 = 63.5
-        # Last possible window center in X
-        last_ctr_x = W - (win_x + 1) / 2.0  # For W=4872, win=128: 4872 - 64.5 = 4807.5
-        
-        # First window center in Y (height dimension) - 0-based array indexing
-        first_ctr_y = (win_y - 1) / 2.0
-        # Last possible window center in Y
+        # First window center (using same formula as correlators)
+        first_ctr_x = -0.5 + win_x / 2.0
+        first_ctr_y = -0.5 + win_y / 2.0
+
+        # Use full image bounds (same for both ensemble and instantaneous modes)
+        last_ctr_x = W - (win_x + 1) / 2.0
         last_ctr_y = H - (win_y + 1) / 2.0
-        
-        # Calculate number of windows
-        n_win_x = int(np.floor((last_ctr_x - first_ctr_x) / win_spacing_x)) + 1
-        n_win_y = int(np.floor((last_ctr_y - first_ctr_y) / win_spacing_y)) + 1
-        
+
+        start_ctr_x = first_ctr_x
+        start_ctr_y = first_ctr_y
+
+        n_win_x = int(np.floor((last_ctr_x - start_ctr_x) / win_spacing_x)) + 1
+        n_win_y = int(np.floor((last_ctr_y - start_ctr_y) / win_spacing_y)) + 1
+
         # Ensure at least one window
         n_win_x = max(1, n_win_x)
         n_win_y = max(1, n_win_y)
         
         # Window center positions using linspace (matches MATLAB's colon operator)
         win_ctrs_x = np.linspace(
-            first_ctr_x, first_ctr_x + win_spacing_x * (n_win_x - 1), n_win_x
+            start_ctr_x, start_ctr_x + win_spacing_x * (n_win_x - 1), n_win_x
         )
         win_ctrs_y = np.linspace(
-            first_ctr_y, first_ctr_y + win_spacing_y * (n_win_y - 1), n_win_y
+            start_ctr_y, start_ctr_y + win_spacing_y * (n_win_y - 1), n_win_y
         )
         
         box_filter_y = np.ones((win_y, 1), dtype=np.float32) / win_y
