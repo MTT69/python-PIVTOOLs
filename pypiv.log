@@ -21662,3 +21662,18 @@ videos:
 2025-11-19 21:27:11,211 [INFO] ================================================================================
 2025-11-19 21:27:11,211 [INFO] Ensemble PIV processing complete!
 2025-11-19 21:27:11,211 [INFO] ================================================================================
+2025-11-20 09:48:12,282 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-20 09:48:12,283 [INFO] 127.0.0.1 - - [20/Nov/2025 09:48:12] "GET /backend/config HTTP/1.1" 200 -
+2025-11-20 09:48:12,305 [INFO] 127.0.0.1 - - [20/Nov/2025 09:48:12] "GET /grid.svg HTTP/1.1" 200 -
+2025-11-20 09:48:12,377 [INFO] 127.0.0.1 - - [20/Nov/2025 09:48:12] "[33mGET /apple-touch-icon.png HTTP/1.1[0m" 404 -
+2025-11-20 09:48:12,834 [INFO] 127.0.0.1 - - [20/Nov/2025 09:48:12] "[35m[1mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 500 -
+2025-11-20 09:48:55,267 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-20 09:48:55,267 [INFO] 127.0.0.1 - - [20/Nov/2025 09:48:55] "GET /backend/config HTTP/1.1" 200 -
+2025-11-20 09:48:55,270 [INFO] 127.0.0.1 - - [20/Nov/2025 09:48:55] "[36mGET /grid.svg HTTP/1.1[0m" 304 -
+2025-11-20 09:48:55,778 [INFO] 127.0.0.1 - - [20/Nov/2025 09:48:55] "[35m[1mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 500 -
+2025-11-20 09:49:02,695 [INFO] 127.0.0.1 - - [20/Nov/2025 09:49:02] "[33mPOST /backend/calibration/polynomial/read_xml HTTP/1.1[0m" 404 -
+2025-11-20 09:51:11,022 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-20 09:51:11,022 [INFO] 127.0.0.1 - - [20/Nov/2025 09:51:11] "GET /backend/config HTTP/1.1" 200 -
+2025-11-20 09:51:11,024 [INFO] 127.0.0.1 - - [20/Nov/2025 09:51:11] "GET /grid.svg HTTP/1.1" 200 -
+2025-11-20 09:51:11,532 [INFO] 127.0.0.1 - - [20/Nov/2025 09:51:11] "[35m[1mGET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0 HTTP/1.1[0m" 500 -
+2025-11-20 09:51:51,835 [INFO] 127.0.0.1 - - [20/Nov/2025 09:51:51] "[33mPOST /backend/calibration/polynomial/read_xml HTTP/1.1[0m" 404 -

@@ -114,35 +114,6 @@ def recursive_update(d, u):
             d[k] = v
 
 
-def calculate_contrast_limits(image_array):
-    """Calculate 1st and 99th percentiles efficiently using NumPy."""
-    # Flatten array for percentile calculation
-    flat = image_array.ravel()
-    vmin = int(np.percentile(flat, 1))
-    vmax = int(np.percentile(flat, 99))
-    return vmin, vmax
-
-
-def numpy_to_jpeg_base64(arr: np.ndarray, quality: int = 85) -> str:
-    """Convert numpy array to JPEG base64 string for faster transfer."""
-    from PIL import Image
-    import base64
-    from io import BytesIO
-
-    # Normalize to 8-bit if needed
-    if arr.dtype != np.uint8:
-        arr_min, arr_max = arr.min(), arr.max()
-        if arr_max > arr_min:
-            arr = ((arr - arr_min) / (arr_max - arr_min) * 255).astype(np.uint8)
-        else:
-            arr = np.zeros_like(arr, dtype=np.uint8)
-
-    img = Image.fromarray(arr)
-    buffer = BytesIO()
-    img.save(buffer, format="JPEG", quality=quality)
-    return base64.b64encode(buffer.getvalue()).decode("utf-8")
-
-
 def get_active_calibration_params(cfg):
     """
     Returns (active_method, params_dict) from config['calibration'].
@@ -247,27 +218,27 @@ def get_frame_pair():
 
     logger.debug(f"Cache MISS for frame {idx}, camera {camera}, format {img_format}, path {source_path}")
 
-        try:
-            read_start = time.perf_counter()
-            pair = read_pair(idx, source_path, camera, cfg)
-            read_end = time.perf_counter()
-            logger.debug(f"read_pair took {read_end - read_start:.4f} seconds")
-        except FileNotFoundError as e:
-            # Provide detailed error with search path and patterns
-            image_format = cfg.image_format
-            patterns_info = f"patterns: {image_format}" if isinstance(image_format, list) else f"pattern: {image_format}"
-            return jsonify({
-                "error": f"File not found in {source_path}",
-                "file": str(e),
-                "source_path": str(source_path),
-                "patterns": image_format,
-                "detail": f"Searched in {source_path} using {patterns_info}"
-            }), 404
-        except Exception as e:
-            return jsonify({
-                "error": f"Error reading image: {str(e)}",
-                "source_path": str(source_path)
-            }), 500
+    try:
+        read_start = time.perf_counter()
+        pair = read_pair(idx, source_path, camera, cfg)
+        read_end = time.perf_counter()
+        logger.debug(f"read_pair took {read_end - read_start:.4f} seconds")
+    except FileNotFoundError as e:
+        # Provide detailed error with search path and patterns
+        image_format = cfg.image_format
+        patterns_info = f"patterns: {image_format}" if isinstance(image_format, list) else f"pattern: {image_format}"
+        return jsonify({
+            "error": f"File not found in {source_path}",
+            "file": str(e),
+            "source_path": str(source_path),
+            "patterns": image_format,
+            "detail": f"Searched in {source_path} using {patterns_info}"
+        }), 404
+    except Exception as e:
+        return jsonify({
+            "error": f"Error reading image: {str(e)}",
+            "source_path": str(source_path)
+        }), 500
 
     convert_start = time.perf_counter()
     b64_a = numpy_to_base64(pair[0], format=img_format)
@@ -289,15 +260,7 @@ def get_frame_pair():
     end_time = time.perf_counter()
     logger.debug(f"Total /get_frame_pair took {end_time - start_time:.4f} seconds")
 
-    return jsonify({
-        "A": b64_a,
-        "B": b64_b,
-        "format": img_format,
-        "stats": {
-            "A": {"vmin": vmin_a, "vmax": vmax_a},
-            "B": {"vmin": vmin_b, "vmax": vmax_b}
-        }
-    })
+    return jsonify({"A": b64_a, "B": b64_b})
 
 
 @api_bp.route("/preload_images", methods=["POST"])
@@ -343,79 +306,6 @@ def preload_images():
         "source_path_idx": source_path_idx,
         "format": img_format
     })
-
-
-@api_bp.route("/get_image_blob", methods=["GET"])
-def get_image_blob():
-    """
-    Serves image directly as binary for faster transfer (no Base64 overhead).
-
-    Query parameters:
-    - camera: int
-    - idx: int
-    - source_path_idx: int (default 0)
-    - side: 'A' or 'B' (default 'A')
-    - format: 'jpeg' or 'png' (default 'jpeg')
-    """
-    from flask import send_file
-    from io import BytesIO
-    from PIL import Image
-
-    cfg = get_config()
-    camera = request.args.get("camera", type=int)
-    idx = request.args.get("idx", type=int)
-    source_path_idx = request.args.get("source_path_idx", default=0, type=int)
-    side = request.args.get("side", default="A", type=str).upper()
-    img_format = request.args.get("format", default="jpeg", type=str).lower()
-
-    # Determine source path
-    format_str = cfg.image_format[0]
-    if '.set' in str(format_str) or '.im7' in str(format_str):
-        source_path = cfg.source_paths[source_path_idx]
-    else:
-        source_path = cfg.source_paths[source_path_idx] / camera_folder(camera)
-
-    # Check cache first
-    raw_cache_key = (str(source_path), camera, idx)
-
-    pair = None
-    if raw_cache_key in raw_image_cache:
-        pair, _, _ = raw_image_cache[raw_cache_key]
-    else:
-        try:
-            pair = read_pair(idx, source_path, camera, cfg)
-            # Cache raw data
-            raw_image_cache[raw_cache_key] = (pair, None, None)
-            manage_cache_size()
-        except FileNotFoundError as e:
-            return jsonify({"error": f"File not found: {e}"}), 404
-        except Exception as e:
-            return jsonify({"error": f"Error reading image: {str(e)}"}), 500
-
-    # Select A or B
-    img_arr = pair[0] if side == 'A' else pair[1]
-
-    # Normalize to 8-bit if needed
-    if img_arr.dtype != np.uint8:
-        arr_min, arr_max = img_arr.min(), img_arr.max()
-        if arr_max > arr_min:
-            img_arr = ((img_arr - arr_min) / (arr_max - arr_min) * 255).astype(np.uint8)
-        else:
-            img_arr = np.zeros_like(img_arr, dtype=np.uint8)
-
-    # Convert to PIL and send
-    img_pil = Image.fromarray(img_arr)
-    img_io = BytesIO()
-
-    if img_format == "png":
-        img_pil.save(img_io, 'PNG')
-        mimetype = 'image/png'
-    else:
-        img_pil.save(img_io, 'JPEG', quality=85)
-        mimetype = 'image/jpeg'
-
-    img_io.seek(0)
-    return send_file(img_io, mimetype=mimetype)
 
 
 @api_bp.route("/filter", methods=["POST"])
