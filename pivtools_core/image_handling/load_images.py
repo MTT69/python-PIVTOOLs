@@ -31,25 +31,33 @@ def read_image(file_path: str, **kwargs) -> np.ndarray:
 
 def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.ndarray:
     """Read a pair of images (A and B frames).
-    
+
     This function handles three main file organization strategies:
-    
+
     1. Multi-camera container files (.set, .im7):
        - All cameras stored in ONE file per time instance
        - .set: source_dir/xxx.set contains all cameras and all time instances
        - .im7: source_dir/B00001.im7 contains all cameras for time instance 1
        - No camera subdirectories (Cam1/, Cam2/, etc.)
-       
+
     2. Camera-specific directories with standard formats (.tif, .png, .jpg):
        - Organized as: source_dir/Cam1/00001.tif, source_dir/Cam2/00001.tif
        - Each camera has its own subdirectory
-       
+
     3. Time-resolved formats (.cine):
        - Camera-specific directories with video files
        - Organized as: source_dir/Cam1/recording.cine
 
+    Frame Pairing:
+        The idx parameter is ALWAYS 1-based internally (idx=1 means first pair).
+        The actual file indices to read are determined by config.get_frame_pair_indices(),
+        which handles:
+        - Zero-based vs 1-based file indexing
+        - Sequential vs skip pairing modes
+        - Non-time-resolved A/B pairs vs time-resolved sequences
+
     Args:
-        idx (int): Index of the image pair to read (1-based)
+        idx (int): Pair number (1-based, where 1 = first pair)
         camera_path (Path): Path to camera directory or source directory (for .set/.im7)
         camera (int): Camera number (1-based)
         config (Config): Configuration object
@@ -59,44 +67,47 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
     """
     # Get image format - now always a tuple
     format_str = config.image_format[0]
-    
+
     # Special handling for .set and .im7 files (all cameras in one file per time instance)
     if '.set' in str(format_str):
         # For .set files, camera_path is the source directory
         set_file_path = camera_path / format_str
         return read_image(str(set_file_path), camera_no=camera, im_no=idx)
-    
+
     if '.im7' in str(format_str):
         # For .im7 files, camera_path is the source directory
         # Each .im7 file contains all cameras for one time instance
-        im7_file_path = camera_path / (format_str % idx)
+        # Use frame pairing logic for im7 files
+        frame_a_idx, frame_b_idx = config.get_frame_pair_indices(idx)
+        # Read frame A (im7 returns pair from single file, so we read it once)
+        im7_file_path = camera_path / (format_str % frame_a_idx)
         return read_image(str(im7_file_path), camera_no=camera)
-    
+
+    # Get the file indices for this pair using new pairing logic
+    frame_a_idx, frame_b_idx = config.get_frame_pair_indices(idx)
+
     # Check if we have A/B pair (len > 1) or single format
     if len(config.image_format) == 2:
         # Non-time-resolved: separate A and B formats
-        # Apply zero-based indexing adjustment if enabled
-        file_idx = idx - 1 if config.zero_based_indexing else idx
-        
+        # Both use the same file index (pair 1 = file 1A + file 1B)
         image_format_A, image_format_B = config.image_format
         file_paths = [
-            camera_path / (image_format_A % file_idx),
-            camera_path / (image_format_B % file_idx),
+            camera_path / (image_format_A % frame_a_idx),
+            camera_path / (image_format_B % frame_b_idx),
         ]
     else:
-        # Single format - assume time-resolved style
-        # Apply zero-based indexing adjustment if enabled
-        file_idx = idx - 1 if config.zero_based_indexing else idx
-        
+        # Time-resolved: single format, read two consecutive (or skipped) frames
         file_paths = [
-            camera_path / (format_str % file_idx),
-            camera_path / (format_str % (file_idx + 1)),
+            camera_path / (format_str % frame_a_idx),
+            camera_path / (format_str % frame_b_idx),
         ]
 
     # Check if it's a proprietary format that reads pairs natively
     file_ext = Path(file_paths[0]).suffix.lower()
     if file_ext == ".cine":
-        return read_image(str(file_paths[0]), idx=idx - 1, frames=2)
+        # For .cine files, use the first frame index
+        # The frames parameter will read consecutive frames starting from that index
+        return read_image(str(file_paths[0]), idx=frame_a_idx - 1, frames=2)
     else:
         # Read individual frames (e.g., .tif, .png, .jpg)
         frame_a = read_image(str(file_paths[0]))
@@ -165,7 +176,7 @@ def load_images(camera: int, config: Config, source: Path = None) -> da.Array:
 
     Returns:
         da.Array: A Dask array containing the loaded image pairs.
-            Shape: (num_images, 2, H, W)
+            Shape: (num_frame_pairs, 2, H, W)
             Note: This is a lazy array - no actual image data loaded yet.
             Each element is an independent delayed task.
     """
@@ -184,23 +195,23 @@ def load_images(camera: int, config: Config, source: Path = None) -> da.Array:
         folder = config.get_camera_folder(camera)
         camera_path = source / folder if folder else source
     
-    num_images = config.num_images
-        
+    num_pairs = config.num_frame_pairs
+
     # Create one delayed task per image pair (pure lazy loading)
     delayed_image_pairs = [
         delayed_image_pair(idx, camera_path, camera, config)
-        for idx in range(1, num_images + 1)
+        for idx in range(1, num_pairs + 1)
     ]
-    
+
     # Convert each delayed task to a Dask array
     dask_pairs = [to_dask_array(pair, config) for pair in delayed_image_pairs]
-    
+
     # Stack into single array - still lazy, no computation yet!
     pairs_stack = da.stack(dask_pairs, axis=0)
-    
+
     logging.info(
-        f"Lazy loading complete: {num_images} independent delayed tasks created "
-        f"(~{num_images} KB memory footprint)"
+        f"Lazy loading complete: {num_pairs} independent delayed tasks created "
+        f"(~{num_pairs} KB memory footprint)"
     )
     
     return pairs_stack

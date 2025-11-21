@@ -3,7 +3,7 @@ from pathlib import Path
 
 def get_data_paths(
     base_dir,
-    num_images,
+    num_frame_pairs,
     cam,
     type_name,
     endpoint="",
@@ -27,21 +27,24 @@ def get_data_paths(
         return dict(calib_dir=calib_dir)
     # Uncalibrated data
     if use_uncalibrated:
-        data_dir = base_dir / "uncalibrated_piv" / str(num_images) / cam / type_name
+        num_str = str(num_frame_pairs)
+        data_dir = base_dir / "uncalibrated_piv" / num_str / cam / type_name
         stats_dir = (
-            base_dir / "statistics" / "uncalibrated" / str(num_images) / cam / type_name
+            base_dir / "statistics" / "uncalibrated" /
+            num_str / cam / type_name
         )
-        video_dir = base_dir / "videos" / "uncalibrated" / str(num_images) / cam
+        video_dir = base_dir / "videos" / "uncalibrated" / num_str / cam
     # Merged data
     elif use_merged:
-        data_dir = base_dir / "merged" / str(num_images) / cam / type_name
+        data_dir = base_dir / "merged" / str(num_frame_pairs) / cam / type_name
         stats_dir = base_dir / "statistics" / "merged" / cam / type_name
         video_dir = base_dir / "videos" / "merged" / cam / type_name
     # Regular calibrated data
     else:
-        data_dir = base_dir / "calibrated_piv" / str(num_images) / cam / type_name
-        stats_dir = base_dir / "statistics" / str(num_images) / cam / type_name
-        video_dir = base_dir / "videos" / str(num_images) / cam
+        num_str = str(num_frame_pairs)
+        data_dir = base_dir / "calibrated_piv" / num_str / cam / type_name
+        stats_dir = base_dir / "statistics" / num_str / cam / type_name
+        video_dir = base_dir / "videos" / num_str / cam
     if endpoint:
         data_dir = data_dir / endpoint
         stats_dir = stats_dir / endpoint

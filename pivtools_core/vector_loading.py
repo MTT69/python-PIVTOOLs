@@ -98,7 +98,9 @@ def load_vectors_from_directory(
     """
     data_dir = Path(data_dir)
     fmt = config.vector_format  # e.g. "B%05d.mat"
-    expected_paths = [data_dir / (fmt % i) for i in range(1, config.num_images + 1)]
+    expected_paths = [
+        data_dir / (fmt % i) for i in range(1, config.num_frame_pairs + 1)
+    ]
     existing_paths = [p for p in expected_paths if p.exists()]
 
     missing_count = len(expected_paths) - len(existing_paths)

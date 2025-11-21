@@ -240,7 +240,7 @@ def pod_energy():
     # Stats directory (same logic as in pod_decompose)
     paths = get_data_paths(
         base_dir=base,
-        num_images=cfg.num_images,
+        num_frame_pairs=cfg.num_frame_pairs,
         cam=cam,
         type_name=source_type,
         endpoint=endpoint,
@@ -393,7 +393,7 @@ def pod_energy_modes():
     # Stats directory (same logic as in pod_decompose)
     paths = get_data_paths(
         base_dir=base,
-        num_images=cfg.num_images,
+        num_frame_pairs=cfg.num_frame_pairs,
         cam=cam,
         type_name=source_type,
         endpoint=endpoint,
@@ -622,7 +622,7 @@ def pod_energy_png():
 
     paths = get_data_paths(
         base_dir=base,
-        num_images=cfg.num_images,
+        num_frame_pairs=cfg.num_frame_pairs,
         cam=cam,
         type_name=source_type,
         endpoint=endpoint,
@@ -712,7 +712,7 @@ def check_pod_available():
 
     paths = get_data_paths(
         base_dir=base,
-        num_images=cfg.num_images,
+        num_frame_pairs=cfg.num_frame_pairs,
         cam=cam,
         type_name=source_type,
         endpoint=endpoint,
@@ -762,7 +762,7 @@ def get_pod_energy():
 
     paths = get_data_paths(
         base_dir=base,
-        num_images=cfg.num_images,
+        num_frame_pairs=cfg.num_frame_pairs,
         cam=cam,
         type_name=source_type,
         endpoint=endpoint,
@@ -904,7 +904,7 @@ def plot_pod_mode():
 
     paths = get_data_paths(
         base_dir=base,
-        num_images=cfg.num_images,
+        num_frame_pairs=cfg.num_frame_pairs,
         cam=cam,
         type_name=source_type,
         endpoint=endpoint,
@@ -992,7 +992,7 @@ def list_pod_modes():
 
     paths = get_data_paths(
         base_dir=base,
-        num_images=cfg.num_images,
+        num_frame_pairs=cfg.num_frame_pairs,
         cam=cam,
         type_name=source_type,
         endpoint=endpoint,
@@ -1046,7 +1046,7 @@ def get_pod_mode_data():
 
     paths = get_data_paths(
         base_dir=base,
-        num_images=cfg.num_images,
+        num_frame_pairs=cfg.num_frame_pairs,
         cam=cam,
         type_name=source_type,
         endpoint=endpoint,

@@ -99,8 +99,9 @@ def _run_video_job(
             f"[VIDEO] Starting video job | base='{base}', cam={cam}, num_images={num_images}, run={run}, var={var}, test_mode={test_mode}"
         )
 
+        cfg = get_config()
         paths = get_data_paths(
-            base, num_images, cam, source_type, endpoint, merged_flag
+            base, cfg.num_frame_pairs, cam, source_type, endpoint, merged_flag
         )
 
         data_dir = Path(paths.get("data_dir"))

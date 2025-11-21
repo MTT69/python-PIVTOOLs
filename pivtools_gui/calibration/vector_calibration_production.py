@@ -90,7 +90,7 @@ class VectorCalibrator:
         """Load the specified calibration model"""
         calib_paths = get_data_paths(
             self.base_dir,
-            num_images=1,  # Not used for calibration paths
+            num_frame_pairs=1,  # Not used for calibration paths
             cam=self.camera_num,
             type_name="",  # Not used for calibration paths
             calibration=True,
@@ -290,7 +290,7 @@ class VectorCalibrator:
         # Get data paths for uncalibrated data - use configured type
         paths = get_data_paths(
             self.base_dir,
-            num_images=image_count,
+            num_frame_pairs=image_count - 1,  # Assuming time-resolved
             cam=self.camera_num,
             type_name=self.type_name,
             use_uncalibrated=True,
@@ -302,7 +302,7 @@ class VectorCalibrator:
         # Get output paths for calibrated data
         calib_paths = get_data_paths(
             self.base_dir,
-            num_images=image_count,
+            num_frame_pairs=image_count - 1,  # Assuming time-resolved
             cam=self.camera_num,
             type_name=self.type_name,
         )

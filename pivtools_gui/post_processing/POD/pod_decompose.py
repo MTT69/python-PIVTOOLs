@@ -228,7 +228,7 @@ def pod_decompose(cam_num: int, config: Config, base: Path, k_modes: int = 10):
         # Use new get_data_paths signature
         paths = get_data_paths(
             base_dir=base,
-            num_images=config.num_images,
+            num_frame_pairs=config.num_frame_pairs,
             cam=cam_num,
             type_name=source_type,
             endpoint=endpoint,
@@ -696,7 +696,7 @@ def pod_rebuild(cam_num: int, config: Config, base: Path):
         # Input data (original calibrated) and stats base
         in_paths = get_data_paths(
             base_dir=base,
-            num_images=config.num_images,
+            num_frame_pairs=config.num_frame_pairs,
             cam=cam_num,
             type_name=source_type,
             endpoint="",
@@ -708,7 +708,7 @@ def pod_rebuild(cam_num: int, config: Config, base: Path):
         # Output data dir (endpoint POD_rebuild)
         out_paths = get_data_paths(
             base_dir=base,
-            num_images=config.num_images,
+            num_frame_pairs=config.num_frame_pairs,
             cam=cam_num,
             type_name=source_type,
             endpoint=endpoint,

@@ -4,7 +4,7 @@ import numpy as np
 from flask import Blueprint, jsonify, request
 
 from pivtools_core.config import get_config
-from ...utils import camera_folder, camera_number
+from ...utils import camera_number
 from pivtools_core.vector_loading import read_mask_from_mat, save_mask_to_mat
 
 masking_bp = Blueprint("masking", __name__)
@@ -46,12 +46,11 @@ def upload_mask():
         basePathIdx = meta["basePathIdx"]
         camera = meta["camera"]
         cfg = _cfg()
-        source_paths = cfg.source_paths
         try:
             camera_num = camera_number(camera)
         except Exception:
             camera_num = camera
-        mask_path = source_paths[basePathIdx] / f"mask_{camera_folder(camera_num)}.mat"
+        mask_path = cfg.get_mask_path(camera_num, basePathIdx)
         save_mask_to_mat(mask_path, mask, np.asarray(polygons))
     except Exception:
         return jsonify({"error": "invalid or missing meta fields"}), 400
@@ -88,8 +87,7 @@ def load_mask():
             if basepath_idx < 0 or basepath_idx >= len(base_paths):
                 return jsonify({"error": "basepath_idx out of range"}), 400
             camera = camera_number(camera)
-            mask_filename = f"mask_{camera_folder(camera)}.mat"
-            path = str(base_paths[basepath_idx] / mask_filename)
+            path = str(cfg.get_mask_path(camera, basepath_idx))
         except Exception as e:
             return jsonify({"error": f"Could not resolve mask path: {e}"}), 400
 

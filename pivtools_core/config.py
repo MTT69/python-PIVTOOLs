@@ -61,12 +61,14 @@ paths:
   camera_count: 1
 images:
   num_images: 100
-  image_format: 
+  image_format:
     - B%05d_A.tif
     - B%05d_B.tif
   vector_format:
-    - B%05d.mat
+    - "%05d.mat"
   time_resolved: false
+  zero_based_indexing: false
+  pairing_mode: sequential
   dtype: float32
 batches:
   size: 25
@@ -276,7 +278,98 @@ masking:
 
     @property
     def num_images(self):
+        """Return the number of image files (not pairs)."""
         return self.data["images"]["num_images"]
+
+    @property
+    def num_frame_pairs(self):
+        """
+        Calculate the number of frame pairs from the number of image files.
+
+        The calculation depends on whether data is time-resolved:
+        - A/B format (len=2): num_pairs = num_images (e.g., 100 A/B sets → 100 pairs)
+        - Time-resolved (sequential): num_pairs = num_images - 1 (e.g., 100 files → 99 overlapping pairs)
+        - Non-time-resolved skip: num_pairs = num_images // 2 (e.g., 100 files → 50 non-overlapping pairs)
+
+        Examples:
+            100 A/B files → 100 pairs (1A+1B, 2A+2B, ..., 100A+100B)
+            100 time-resolved files → 99 pairs (1+2, 2+3, 3+4, ..., 99+100)
+            100 skip-frame files → 50 pairs (1+2, 3+4, 5+6, ..., 99+100)
+
+        Returns
+        -------
+        int
+            Number of frame pairs that can be formed from the image files
+        """
+        num_images = self.num_images
+
+        # A/B format (separate A and B files)
+        if len(self.image_format) == 2:
+            return num_images
+
+        # Single format with time-resolved = TRUE: sequential overlapping pairs
+        if self.time_resolved:
+            return max(0, num_images - 1)
+
+        # Single format with time-resolved = FALSE: skip frames (non-overlapping pairs)
+        # Non-overlapping pairs: (1+2), (3+4), (5+6), etc.
+        return num_images // 2
+
+    @property
+    def pairing_mode(self):
+        """
+        Return frame pairing mode.
+
+        Values:
+        - 'sequential': Standard (1+2, 2+3, 3+4, ...) for time-resolved or (1A+1B, 2A+2B) for non-time-resolved
+        - 'skip': Skip frames (1+2, 3+4, 5+6, ...) for time-resolved only
+        """
+        return self.data.get("images", {}).get("pairing_mode", "sequential")
+
+    def get_frame_pair_indices(self, pair_number: int) -> tuple:
+        """
+        Get the file indices (frame_a_idx, frame_b_idx) for a given pair number.
+
+        Args:
+            pair_number: 1-based pair number (pair 1, pair 2, etc.)
+
+        Returns:
+            tuple: (frame_a_idx, frame_b_idx) in file numbering (respects zero_based_indexing)
+
+        Examples:
+            A/B format:
+                pair 1 → (1, 1), pair 2 → (2, 2), pair 3 → (3, 3)
+            Time-resolved (sequential overlapping):
+                pair 1 → (1, 2), pair 2 → (2, 3), pair 3 → (3, 4)
+            Non-time-resolved skip (non-overlapping):
+                pair 1 → (1, 2), pair 2 → (3, 4), pair 3 → (5, 6)
+        """
+        # A/B format (separate A and B files) - always use same index for both
+        if len(self.image_format) == 2:
+            # Convert pair number to file index (respecting zero_based_indexing)
+            file_idx = (pair_number - 1) if self.zero_based_indexing else pair_number
+            return (file_idx, file_idx)
+
+        # Time-resolved = sequential overlapping pairs
+        if self.time_resolved:
+            # Sequential mode: pair 1=(0,1), pair 2=(1,2), pair 3=(2,3)
+            # Formula: pair n = (n-1, n)
+            frame_a_idx = pair_number - 1
+            frame_b_idx = pair_number
+        else:
+            # Non-time-resolved skip mode = non-overlapping pairs
+            # Pair 1=(0,1), pair 2=(2,3), pair 3=(4,5), etc.
+            # Formula: pair n starts at (n-1) * 2
+            start_idx = (pair_number - 1) * 2
+            frame_a_idx = start_idx
+            frame_b_idx = start_idx + 1
+
+        # Apply zero-based indexing adjustment (if files start at 0 instead of 1)
+        if not self.zero_based_indexing:
+            frame_a_idx += 1
+            frame_b_idx += 1
+
+        return (frame_a_idx, frame_b_idx)
 
     @property
     def image_shape(self):
@@ -387,8 +480,24 @@ masking:
 
     @property
     def batch_size(self):
-        """Batch size for image processing."""
-        return self.data.get("batches", {}).get("size", 30)
+        """
+        Batch size for image processing.
+
+        Automatically capped at num_frame_pairs to prevent batches larger than available data.
+        """
+        configured_size = self.data.get("batches", {}).get("size", 30)
+        max_size = self.num_frame_pairs
+
+        # Cap batch size at number of frame pairs
+        actual_size = min(configured_size, max_size)
+
+        if actual_size < configured_size:
+            logging.debug(
+                f"Batch size capped at {actual_size} (configured: {configured_size}, "
+                f"max allowed: {max_size} frame pairs)"
+            )
+
+        return actual_size
 
     @property
     def filter_type(self):

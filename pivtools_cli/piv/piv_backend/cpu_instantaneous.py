@@ -160,7 +160,22 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
     ) -> PIVResult:
         """Run PIV correlation on a batch of image pairs with MATLAB-style indexing."""
 
-        N, _, H, W = images.shape
+        # Validate input shape
+        if images.ndim != 4:
+            raise ValueError(f"Expected 4D images array (N, 2, H, W), got {images.ndim}D array with shape {images.shape}")
+
+        N, C, H, W = images.shape
+
+        # Validate channel dimension
+        if C != 2:
+            raise ValueError(f"Expected 2 channels (image pairs), got {C} channels")
+
+        # Validate non-zero dimensions
+        if H == 0 or W == 0:
+            raise ValueError(f"Invalid image dimensions: H={H}, W={W}. Images appear to be empty.")
+
+        # Log image batch info
+        logging.debug(f"Processing batch: N={N} pairs, shape=({H}, {W}), dtype={images.dtype}")
 
         piv_result_all = PIVResult()
         self.delta_ab_pred = None
@@ -251,7 +266,6 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                         )
                     except Exception as e:
                         logging.error(f"    Exception type: {type(e).__name__}")
-                        import traceback
                         logging.error(traceback.format_exc())
                         raise
 
@@ -534,8 +548,15 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             dtype=np.float32,
         )
         
-        logging.debug(f"  win_ctrs_x: min={win_ctrs_x.min():.2f}, max={win_ctrs_x.max():.2f}, len={len(win_ctrs_x)}")
-        logging.debug(f"  win_ctrs_y: min={win_ctrs_y.min():.2f}, max={win_ctrs_y.max():.2f}, len={len(win_ctrs_y)}")
+        if len(win_ctrs_x) > 0:
+            logging.debug(f"  win_ctrs_x: min={win_ctrs_x.min():.2f}, max={win_ctrs_x.max():.2f}, len={len(win_ctrs_x)}")
+        else:
+            logging.warning(f"  win_ctrs_x: EMPTY ARRAY (len=0)")
+
+        if len(win_ctrs_y) > 0:
+            logging.debug(f"  win_ctrs_y: min={win_ctrs_y.min():.2f}, max={win_ctrs_y.max():.2f}, len={len(win_ctrs_y)}")
+        else:
+            logging.warning(f"  win_ctrs_y: EMPTY ARRAY (len=0)")
 
         return (
             win_spacing_x,

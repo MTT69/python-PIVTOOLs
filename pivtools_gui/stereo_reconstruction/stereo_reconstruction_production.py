@@ -94,7 +94,7 @@ class StereoReconstructor:
     def load_uncalibrated_coordinates(self, cam_num):
         paths = get_data_paths(
             self.base_dir,
-            num_images=self.image_count,
+            num_frame_pairs=self.image_count - 1,  # time-resolved
             cam=cam_num,
             type_name=self.type_name,
             use_uncalibrated=True,
@@ -133,7 +133,7 @@ class StereoReconstructor:
     def load_uncalibrated_vectors(self, cam_num, frame_idx, run_idx):
         paths = get_data_paths(
             self.base_dir,
-            num_images=self.image_count,
+            num_frame_pairs=self.image_count - 1,  # time-resolved
             cam=cam_num,
             type_name=self.type_name,
             use_uncalibrated=True,

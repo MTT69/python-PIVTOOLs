@@ -38,8 +38,8 @@ def instantaneous_statistics(cam_num: int, config: Config, base):
         print(f"[instantaneous] cam_folder_eff: {cam_folder_eff}")
         paths = get_data_paths(
             base_dir=base,
-            num_images=config.num_images,
-            cam_folder=cam_folder_eff,
+            num_frame_pairs=config.num_frame_pairs,
+            cam=cam_folder_eff,
             type_name="instantaneous",  # renamed from type
             endpoint=endpoint,
             use_merged=use_merged,

@@ -166,7 +166,7 @@ def calibration_set_datum():
         )
         paths = get_data_paths(
             base_dir=source_root,
-            num_images=getattr(cfg, "num_images", 1),
+            num_frame_pairs=cfg.num_frame_pairs,
             cam=camera,
             type_name=type_name,
             calibration=False,
@@ -920,7 +920,7 @@ def scale_factor_calibrate_vectors():
             for cam_num in camera_numbers:
                 paths_uncal = get_data_paths(
                     base_dir=base_root,
-                    num_images=image_count,
+                    num_frame_pairs=cfg.num_frame_pairs,
                     cam=cam_num,
                     type_name=type_name,
                     use_uncalibrated=True,
@@ -966,14 +966,14 @@ def scale_factor_calibrate_vectors():
                 
                 paths_uncal = get_data_paths(
                     base_dir=base_root,
-                    num_images=image_count,
+                    num_frame_pairs=cfg.num_frame_pairs,
                     cam=cam_num,
                     type_name=type_name,
                     use_uncalibrated=True,
                 )
                 paths_calib = get_data_paths(
                     base_dir=base_root,
-                    num_images=image_count,
+                    num_frame_pairs=cfg.num_frame_pairs,
                     cam=cam_num,
                     type_name=type_name,
                     use_uncalibrated=False,

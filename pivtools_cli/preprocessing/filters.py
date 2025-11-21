@@ -35,13 +35,40 @@ def time_filter(images: da.Array) -> da.Array:
 def _subtract_local_min(chunk):
 
     if chunk.size == 0:
-        logging.info("Empty chunk detected, skipping")
+        logging.warning("Time filter: Empty chunk detected, skipping")
         return chunk
-    frame1_min = chunk[:, 0, :, :].min(axis=0)
-    frame2_min = chunk[:, 1, :, :].min(axis=0)
+
+    # Validate chunk shape
+    if chunk.ndim != 4:
+        logging.error(f"Time filter: Expected 4D chunk (N, 2, H, W), got {chunk.ndim}D with shape {chunk.shape}")
+        return chunk
+
+    N, C, H, W = chunk.shape
+
+    if C != 2:
+        logging.error(f"Time filter: Expected 2 channels, got {C}")
+        return chunk
+
+    if N == 0:
+        logging.warning(f"Time filter: Batch dimension is 0, cannot compute minimum across empty set")
+        return chunk
+
+    # Convert to float32 to avoid uint8 underflow during subtraction
+    chunk = chunk.astype(np.float32)
+
+    # Compute minimum across batch dimension (axis=0)
+    frame1_min = chunk[:, 0, :, :].min(axis=0)  # Shape: (H, W)
+    frame2_min = chunk[:, 1, :, :].min(axis=0)  # Shape: (H, W)
+
+    # Subtract minimum from each frame
     chunk[:, 0, :, :] -= frame1_min
     chunk[:, 1, :, :] -= frame2_min
-    return chunk
+
+    # Clip negative values to 0 (negative intensities don't make sense for images)
+    chunk = np.maximum(chunk, 0)
+
+    # Return as the input dtype (should be float32 from config)
+    return chunk.astype(chunk.dtype)
 
 
 def pod_filter(images: da.Array) -> da.Array:

@@ -251,7 +251,7 @@ def compute_statistics_for_camera(
     base_dir: Path,
     camera: int,
     use_merged: bool,
-    num_images: int,
+    num_frame_pairs: int,
     type_name: str,
     endpoint: str,
     vector_format: str,
@@ -270,10 +270,10 @@ def compute_statistics_for_camera(
         statistics_jobs[job_id]["camera"] = cam_folder
         statistics_jobs[job_id]["progress"] = 5
 
-        # Get paths - use cam (number) not cam_folder (string)
+        # Get paths - use num_frame_pairs for directory structure
         paths = get_data_paths(
             base_dir=base_dir,
-            num_images=num_images,
+            num_frame_pairs=num_frame_pairs,
             cam=camera,
             type_name=type_name,
             endpoint=endpoint,
@@ -297,12 +297,12 @@ def compute_statistics_for_camera(
 
         # Create a minimal config object for loading vectors
         class MinimalConfig:
-            def __init__(self, num_images, vector_format, piv_chunk_size=100):
-                self.num_images = num_images
+            def __init__(self, num_frame_pairs, vector_format, piv_chunk_size=100):
+                self.num_frame_pairs = num_frame_pairs
                 self.vector_format = vector_format
                 self.piv_chunk_size = piv_chunk_size
 
-        config = MinimalConfig(num_images, vector_format)
+        config = MinimalConfig(num_frame_pairs, vector_format)
 
         # Load and process each run separately (can't stack due to different grid sizes)
         logger.info(f"[Statistics] Loading vectors from {data_dir} for runs {valid_runs}")
@@ -904,7 +904,6 @@ def calculate_statistics():
     base_path_idx = int(data.get("base_path_idx", 0))
     cameras = data.get("cameras", [])  # List of camera numbers
     include_merged = bool(data.get("include_merged", False))
-    image_count = int(data.get("image_count", 1000))
     type_name = data.get("type_name", "instantaneous")
     endpoint = data.get("endpoint", "")
 
@@ -928,7 +927,7 @@ def calculate_statistics():
             first_cam = cameras[0] if cameras else 1
             merged_paths = get_data_paths(
                 base_dir=base_dir,
-                num_images=image_count,
+                num_frame_pairs=cfg.num_frame_pairs,
                 cam=first_cam,
                 type_name=type_name,
                 endpoint=endpoint,
@@ -952,7 +951,7 @@ def calculate_statistics():
                         base_dir,
                         first_cam,  # Use first camera number
                         True,  # use_merged
-                        image_count,
+                        cfg.num_frame_pairs,
                         type_name,
                         endpoint,
                         vector_format,
@@ -984,7 +983,7 @@ def calculate_statistics():
                     base_dir,
                     cam_num,
                     False,  # use_merged
-                    image_count,
+                    cfg.num_frame_pairs,
                     type_name,
                     endpoint,
                     vector_format,

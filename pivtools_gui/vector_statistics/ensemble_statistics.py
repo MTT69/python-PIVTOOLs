@@ -22,9 +22,9 @@ def ensemble_statistics(cam_num: int, config: Config, base):
         cam_folder_eff = "Merged" if use_merged else f"Cam{cam_num}"
         paths = get_data_paths(
             base_dir=base,
-            num_images=config.num_images,
-            cam_folder=cam_folder_eff,
-            type="ensemble",
+            num_frame_pairs=config.num_frame_pairs,
+            cam=cam_folder_eff,
+            type_name="ensemble",
             endpoint=endpoint,
             use_merged=use_merged,
         )

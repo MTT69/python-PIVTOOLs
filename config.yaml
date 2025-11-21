@@ -1,25 +1,26 @@
 paths:
   base_paths:
-  - D:\Processed_Wake_PIV\hehehhehehe
+  - /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset
   source_paths:
-  - C:\Users\ees1u24\Desktop\PIV_POV\Colored
+  - /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset
   camera_numbers:
   - 1
-  - 2
-  camera_count: 2
-  camera_subfolders:
-  - Cam6
-  - Cam7
+  camera_count: 1
+  camera_subfolders: []
 images:
-  num_images: 11
-  image_format: IMG%05d.tif
+  num_images: 10
+  image_format:
+  - IMG%05d.tif
   vector_format:
   - '%05d.mat'
-  time_resolved: true
+  time_resolved: false
   dtype: float32
   zero_based_indexing: true
+  pairing_mode: sequential
+  pairing_skip: 0
+  num_frame_pairs: 5
 batches:
-  size: 9
+  size: 5
 logging:
   file: pypiv.log
   level: INFO
@@ -135,7 +136,7 @@ calibration:
 filters:
 - type: time
 masking:
-  enabled: true
+  enabled: false
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
   mode: file

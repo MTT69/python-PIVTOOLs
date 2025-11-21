@@ -66,8 +66,14 @@ def load_camera_data(base_dir: Path, cam: int, run_number: int | None, config: P
                      type_name: str = "instantaneous", endpoint: str = ""):
     """Load coordinates (x,y) and vector fields (ux,uy) and mask for given camera and run."""
     try:
-        paths = get_data_paths(base_dir=base_dir, num_images=config.num_images, cam=cam, 
-                              type_name=type_name, endpoint=endpoint, use_merged=False)
+        paths = get_data_paths(
+            base_dir=base_dir,
+            num_frame_pairs=config.num_frame_pairs,
+            cam=cam,
+            type_name=type_name,
+            endpoint=endpoint,
+            use_merged=False,
+        )
         data_dir = paths["data_dir"]
         if not data_dir.exists():
             print(f"[DEBUG] Camera {cam} data_dir does not exist: {data_dir}")

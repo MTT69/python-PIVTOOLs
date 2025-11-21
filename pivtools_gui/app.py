@@ -70,8 +70,9 @@ def manage_cache_size():
         for key in keys_to_remove:
             del raw_image_cache[key]
 
-def cam_folder_key(camera):  # backward compat helper
-    return camera_folder(camera)
+def cam_folder_key(camera, cfg):
+    """Get camera folder using config to respect custom subfolders."""
+    return cfg.get_camera_folder(camera_number(camera))
 
 
 def cache_key(source_path_idx, camera, cfg):
@@ -80,7 +81,8 @@ def cache_key(source_path_idx, camera, cfg):
     if '.set' in str(format_str) or '.im7' in str(format_str):
         source_path = cfg.source_paths[source_path_idx]
     else:
-        source_path = cfg.source_paths[source_path_idx] / camera_folder(camera)
+        folder = cfg.get_camera_folder(camera_number(camera))
+        source_path = cfg.source_paths[source_path_idx] / folder if folder else cfg.source_paths[source_path_idx]
     return (str(source_path), str(camera))
 
 
@@ -154,13 +156,14 @@ def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: 
         if '.set' in str(format_str) or '.im7' in str(format_str):
             source_path = cfg.source_paths[source_path_idx]
         else:
-            source_path = cfg.source_paths[source_path_idx] / camera_folder(camera)
+            folder = cfg.get_camera_folder(camera)
+            source_path = cfg.source_paths[source_path_idx] / folder if folder else cfg.source_paths[source_path_idx]
 
-        num_images = cfg.num_images
+        num_pairs = cfg.num_frame_pairs
 
         # Calculate range to preload (avoid duplicates with current frame)
         start_idx = max(1, current_idx - window)
-        end_idx = min(num_images, current_idx + window)
+        end_idx = min(num_pairs, current_idx + window)
 
         preloaded = 0
         for idx in range(start_idx, end_idx + 1):
@@ -219,7 +222,8 @@ def get_frame_pair():
     if '.set' in str(format_str) or '.im7' in str(format_str):
         source_path = cfg.source_paths[source_path_idx]
     else:
-        source_path = cfg.source_paths[source_path_idx] / camera_folder(camera)
+        folder = cfg.get_camera_folder(camera)
+        source_path = cfg.source_paths[source_path_idx] / folder if folder else cfg.source_paths[source_path_idx]
 
     # Check cache first - include format in cache key for proper separation
     cache_key_tuple = (str(source_path), camera, idx, img_format)
@@ -380,17 +384,18 @@ def filter_images_endpoint():
         batch_length = 1
     
     batch_start, batch_end = compute_batch_window(
-        start_idx, batch_length, cfg.num_images
+        start_idx, batch_length, cfg.num_frame_pairs
     )
     indices = list(range(batch_start, batch_end + 1))
     
     # For .set and .im7 files, don't append camera folder - all cameras are in the source directory
     format_str = cfg.image_format[0]
-    
+
     if '.set' in str(format_str) or '.im7' in str(format_str):
         source_path = cfg.source_paths[source_path_idx]
     else:
-        source_path = cfg.source_paths[source_path_idx] / camera_folder(camera)
+        folder = cfg.get_camera_folder(camera_number(camera))
+        source_path = cfg.source_paths[source_path_idx] / folder if folder else cfg.source_paths[source_path_idx]
 
     def load_pairs_parallel():
         """Load pairs in parallel using ThreadPoolExecutor."""
@@ -504,11 +509,12 @@ def filter_single_frame():
     
     # For .set and .im7 files, don't append camera folder
     format_str = cfg.image_format[0]
-    
+
     if '.set' in str(format_str) or '.im7' in str(format_str):
         source_path = cfg.source_paths[source_path_idx]
     else:
-        source_path = cfg.source_paths[source_path_idx] / camera_folder(camera)
+        folder = cfg.get_camera_folder(camera_number(camera))
+        source_path = cfg.source_paths[source_path_idx] / folder if folder else cfg.source_paths[source_path_idx]
     
     try:
         # Read the single pair
@@ -598,11 +604,230 @@ def get_status():
     return jsonify({"processing": processing})
 
 
+@api_bp.route("/validate_files", methods=["POST"])
+def validate_files():
+    """
+    Smart validation: Check first frame, last frame, and count files.
+
+    Returns per-camera validation with:
+    - first_frame: "exists" or "missing"
+    - last_frame: "exists" or "missing"
+    - expected_count: number of expected files
+    - actual_count: number of matching files found
+    - status: "ok", "warning", or "error"
+    - color_detected: True if images are color (will be converted)
+    """
+    data = request.get_json() or {}
+    source_path_idx = data.get("source_path_idx", 0)
+
+    cfg = get_config()
+    camera_numbers = cfg.camera_numbers
+    results = {}
+    overall_valid = True
+
+    for camera_num in camera_numbers:
+        try:
+            # Determine camera path
+            format_str = cfg.image_format[0]
+            if '.set' in str(format_str) or '.im7' in str(format_str):
+                camera_path = cfg.source_paths[source_path_idx]
+            else:
+                folder = cfg.get_camera_folder(camera_num)
+                camera_path = cfg.source_paths[source_path_idx] / folder if folder else cfg.source_paths[source_path_idx]
+
+            # Check if path exists
+            if not camera_path.exists():
+                results[f"camera_{camera_num}"] = {
+                    "status": "error",
+                    "error": f"Camera path does not exist: {camera_path}"
+                }
+                overall_valid = False
+                continue
+
+            # Determine frame indices
+            start_idx = 0 if cfg.zero_based_indexing else 1
+            num_images = cfg.num_images  # Number of image files
+            num_pairs = cfg.num_frame_pairs  # Number of frame pairs
+            end_idx = start_idx + num_images - 1
+
+            # Test first frame
+            first_frame_status = "missing"
+            color_detected = False
+            try:
+                first_pair = read_pair(1, camera_path, camera_num, cfg)  # Always use 1 internally
+                first_frame_status = "exists"
+                # Check if color (ndim > 2 means we got a color image before conversion)
+                if first_pair.ndim > 2 and first_pair.shape[-1] > 1:
+                    color_detected = True
+            except Exception as e:
+                logger.debug(f"First frame check failed for camera {camera_num}: {e}")
+
+            # Test last frame
+            last_frame_status = "missing"
+            try:
+                read_pair(num_pairs, camera_path, camera_num, cfg)  # Read last pair
+                last_frame_status = "exists"
+            except Exception as e:
+                logger.debug(f"Last frame check failed for camera {camera_num}: {e}")
+
+            # Count files in directory
+            actual_count = 0
+            expected_count = num_images  # Expected number of image files
+            matching_files = []
+
+            try:
+                if '.set' in str(format_str):
+                    # Set files: single file contains all
+                    set_file = camera_path / format_str
+                    actual_count = 1 if set_file.exists() else 0
+                    expected_count = 1
+                    matching_files = [set_file] if set_file.exists() else []
+                elif '.im7' in str(format_str):
+                    # IM7 files: one file per time instance
+                    pattern = format_str.replace("%05d", "*").replace("%04d", "*").replace("%d", "*")
+                    matching_files = list(camera_path.glob(pattern))
+                    actual_count = len(matching_files)
+                else:
+                    # Standard files: count matching pattern(s)
+                    if len(cfg.image_format) == 2:
+                        # Non-time-resolved: count A files
+                        pattern_a = cfg.image_format[0].replace("%05d", "*").replace("%04d", "*").replace("%d", "*")
+                        matching_files = list(camera_path.glob(pattern_a))
+                        actual_count = len(matching_files)
+                    else:
+                        # Time-resolved: count all matching files
+                        pattern = format_str.replace("%05d", "*").replace("%04d", "*").replace("%d", "*")
+                        matching_files = list(camera_path.glob(pattern))
+                        actual_count = len(matching_files)
+            except Exception as e:
+                logger.error(f"Error counting files for camera {camera_num}: {e}")
+
+            # Check for indexing mismatch
+            indexing_warning = None
+            if not ('.set' in str(format_str) or '.im7' in str(format_str)):
+                try:
+                    if matching_files:
+                        indices = []
+                        for f in matching_files:
+                            try:
+                                import re
+                                match = re.search(r'(\d+)', f.name)
+                                if match:
+                                    idx = int(match.group(1))
+                                    indices.append(idx)
+                            except Exception:
+                                pass
+                        if indices:
+                            min_idx = min(indices)
+                            expected_min = 0 if cfg.zero_based_indexing else 1
+                            if min_idx != expected_min:
+                                indexing_warning = (
+                                    f"File indexing mismatch: found files starting at {min_idx}, "
+                                    f"but zero_based_indexing is "
+                                    f"{'enabled' if cfg.zero_based_indexing else 'disabled'} "
+                                    f"(expects {expected_min})"
+                                )
+                except Exception as e:
+                    logger.debug(f"Indexing check failed: {e}")
+
+            # Determine status with strict validation
+            error_msg = None
+
+            if first_frame_status == "missing":
+                status = "error"
+                overall_valid = False
+                error_msg = f"First frame not found. Looking for: {format_str % start_idx}"
+
+                # Help user: show what files ARE in the folder
+                if camera_path.exists() and camera_path.is_dir():
+                    all_files = sorted([f.name for f in camera_path.iterdir() if f.is_file()])[:10]
+                    if all_files:
+                        error_msg += f". Found {len(all_files)} files: {', '.join(all_files[:5])}"
+                        if len(all_files) > 5:
+                            error_msg += f" and {len(all_files) - 5} more..."
+                    else:
+                        error_msg += f". Folder is empty: {camera_path}"
+
+            elif last_frame_status == "missing":
+                status = "error"
+                overall_valid = False
+                error_msg = f"Last frame not found. Expected: {format_str % end_idx}"
+
+            elif actual_count < expected_count:
+                # ERROR: Not enough files (missing data)
+                status = "error"
+                overall_valid = False
+                error_msg = f"Missing files: found {actual_count} files, expected {expected_count}"
+
+                # Suggest what patterns the actual files match
+                if camera_path.exists() and camera_path.is_dir() and actual_count == 0:
+                    all_files = sorted([f.name for f in camera_path.iterdir() if f.is_file()])[:10]
+                    if all_files:
+                        # Try to detect pattern
+                        import re
+                        sample = all_files[0]
+                        # Look for common extensions
+                        ext = Path(sample).suffix
+                        suggested_pattern = None
+
+                        # Check if files have _A/_B suffix
+                        if "_A" in sample or "_B" in sample:
+                            base = re.sub(r'\d+', '%05d', sample.split('_')[0])
+                            if "_A" in sample:
+                                suggested_pattern = f"{base}_A{ext}"
+                            elif "_B" in sample:
+                                suggested_pattern = f"{base}_B{ext}"
+                        else:
+                            # Try to infer pattern from digits
+                            suggested_pattern = re.sub(r'\d+', '%05d', sample)
+
+                        error_msg += f". Found files: {', '.join(all_files[:3])}"
+                        if len(all_files) > 3:
+                            error_msg += f" (+{len(all_files) - 3} more)"
+                        if suggested_pattern:
+                            error_msg += f". Try pattern: {suggested_pattern}"
+
+            elif actual_count > expected_count:
+                # WARNING: More files than expected (user processing subset - this is fine!)
+                status = "ok"
+                error_msg = f"Processing subset: {expected_count} of {actual_count} files available"
+
+            else:
+                status = "ok"
+
+            results[f"camera_{camera_num}"] = {
+                "first_frame": first_frame_status,
+                "last_frame": last_frame_status,
+                "expected_count": expected_count,
+                "actual_count": actual_count,
+                "status": status,
+                "camera_path": str(camera_path),
+                "color_detected": color_detected,
+                "indexing_warning": indexing_warning,
+                "error": error_msg
+            }
+
+        except Exception as e:
+            logger.error(f"Validation error for camera {camera_num}: {e}")
+            results[f"camera_{camera_num}"] = {
+                "status": "error",
+                "error": str(e)
+            }
+            overall_valid = False
+
+    return jsonify({
+        "valid": overall_valid,
+        "details": results
+    })
+
+
 @api_bp.route("/config", methods=["GET"])
 def config_endpoint():
     cfg = get_config()
-    # Already returns full nested config as JSON
-    return jsonify(cfg.data)
+    # Return full nested config as JSON, including computed properties
+    config_data = cfg.data.copy()
+    config_data["images"]["num_frame_pairs"] = cfg.num_frame_pairs
+    return jsonify(config_data)
 
 
 @api_bp.route("/update_config", methods=["POST"])
@@ -851,24 +1076,30 @@ def get_uncalibrated_count():
     type_name = request.args.get("type", default="instantaneous")
     base_paths = cfg.base_paths
     base = base_paths[basepath_idx]
-    num_images = cfg.num_images
-    
+    num_pairs = cfg.num_frame_pairs  # Vector files correspond to frame pairs
+
     # Get all cameras that should be processed
     camera_numbers = cfg.camera_numbers
     total_cameras = len(camera_numbers)
-    
+
     # Calculate progress across all cameras
-    total_expected_files = num_images * total_cameras
+    total_expected_files = num_pairs * total_cameras
     total_found_files = 0
     camera_progress = {}
-    
+
     vector_fmt = cfg.vector_format
-    expected_names = set([vector_fmt % i for i in range(1, num_images + 1)])
+    expected_names = set([vector_fmt % i for i in range(1, num_pairs + 1)])
     
     # Count files for each camera and collect all available files
     all_files = []
     for camera_num in camera_numbers:
-        paths = get_data_paths(base, num_images, camera_num, type_name, use_uncalibrated=True)
+        paths = get_data_paths(
+            base,
+            cfg.num_frame_pairs,
+            camera_num,
+            type_name,
+            use_uncalibrated=True,
+        )
         folder_uncal = paths["data_dir"]
         
         found = (
@@ -887,7 +1118,7 @@ def get_uncalibrated_count():
         
         camera_progress[f"Cam{camera_num}"] = {
             "count": len(found),
-            "percent": int((len(found) / num_images) * 100) if num_images else 0
+            "percent": int((len(found) / num_pairs) * 100) if num_pairs else 0
         }
         total_found_files += len(found)
     

@@ -592,7 +592,7 @@ def get_output_path(
     # Use get_data_paths from src/paths.py (positional args: base_dir, num_images, cam, type_name)
     paths = get_data_paths(
         base_path,
-        config.num_images,
+        config.num_frame_pairs,
         camera_num,
         piv_type,
         endpoint="",

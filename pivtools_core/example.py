@@ -34,12 +34,156 @@ from pivtools_cli.preprocessing.preprocess import (
     apply_filters_to_single_batch,
 )
 
+
+def validate_config(config: Config) -> tuple[bool, str, list[str]]:
+    """
+    Validate configuration before starting PIV processing.
+
+    Returns:
+        tuple: (is_valid, error_message, warnings)
+    """
+    errors = []
+    warnings = []
+
+    # Check source paths exist
+    for i, source_path in enumerate(config.source_paths):
+        if not source_path.exists():
+            errors.append(f"Source path {i+1} does not exist: {source_path}")
+
+    # Check base paths exist (if used)
+    for i, base_path in enumerate(config.base_paths):
+        if not base_path.exists():
+            errors.append(f"Base path {i+1} does not exist: {base_path}")
+
+    if errors:
+        return False, "\n".join(errors)
+
+    # Check image files for each camera
+    camera_numbers = config.camera_numbers
+    source_path = config.source_paths[0]
+
+    for camera_num in camera_numbers:
+        # Determine camera path
+        format_str = config.image_format[0]
+        if '.set' in str(format_str) or '.im7' in str(format_str):
+            camera_path = source_path
+        else:
+            folder = config.get_camera_folder(camera_num)
+            camera_path = source_path / folder if folder else source_path
+
+        if not camera_path.exists():
+            errors.append(f"Camera {camera_num} path does not exist: {camera_path}")
+            continue
+
+        # Count files
+        if '.set' in str(format_str):
+            # Set files: single file
+            set_file = camera_path / format_str
+            if not set_file.exists():
+                errors.append(f"Camera {camera_num}: Set file not found: {set_file}")
+        elif '.im7' in str(format_str):
+            # IM7 files
+            pattern = format_str.replace("%05d", "*").replace("%04d", "*").replace("%d", "*")
+            matching_files = list(camera_path.glob(pattern))
+            expected = config.num_images
+            if len(matching_files) != expected:
+                errors.append(
+                    f"Camera {camera_num}: Found {len(matching_files)} IM7 files, expected {expected}. "
+                    f"Path: {camera_path}, Pattern: {pattern}"
+                )
+        else:
+            # Standard files
+            expected = config.num_images
+            if len(config.image_format) == 2:
+                # A/B format: count A files
+                pattern_a = config.image_format[0].replace("%05d", "*").replace("%04d", "*").replace("%d", "*")
+                matching_files = list(camera_path.glob(pattern_a))
+            else:
+                # Time-resolved: count all files
+                pattern = format_str.replace("%05d", "*").replace("%04d", "*").replace("%d", "*")
+                matching_files = list(camera_path.glob(pattern))
+
+            # Check for indexing mismatch
+            if not ('.set' in str(format_str) or '.im7' in str(format_str)) and matching_files:
+                indices = []
+                for f in matching_files:
+                    try:
+                        import re
+                        match = re.search(r'(\d+)', f.name)
+                        if match:
+                            idx = int(match.group(1))
+                            indices.append(idx)
+                    except Exception:
+                        pass
+                if indices:
+                    min_idx = min(indices)
+                    expected_min = 0 if config.zero_based_indexing else 1
+                    if min_idx != expected_min:
+                        warnings.append(
+                            f"Camera {camera_num}: File indexing mismatch - found files starting at {min_idx}, "
+                            f"but zero_based_indexing is {'enabled' if config.zero_based_indexing else 'disabled'} "
+                            f"(expects {expected_min})"
+                        )
+
+            if len(matching_files) < expected:
+                # ERROR: Not enough files
+                all_files = sorted([f.name for f in camera_path.iterdir() if f.is_file()])[:5]
+                file_list = ', '.join(all_files) if all_files else "(empty folder)"
+                errors.append(
+                    f"Camera {camera_num}: Missing files - found {len(matching_files)}, expected {expected}.\n"
+                    f"  Path: {camera_path}\n"
+                    f"  Pattern: {format_str}\n"
+                    f"  Found files: {file_list}"
+                )
+            elif len(matching_files) > expected:
+                # WARNING: Processing subset (this is fine!)
+                warnings.append(
+                    f"Camera {camera_num}: Processing subset - using {expected} of {len(matching_files)} available files"
+                )
+
+    if errors:
+        return False, "\n".join(errors), warnings
+
+    return True, "", warnings
+
+
 def main():
     """Main PIV processing function"""
     start_time = time.time()  # Start timer
 
     config = Config()
-    
+
+    # Validate configuration before starting
+    logging.info("=" * 80)
+    logging.info("VALIDATING CONFIGURATION")
+    logging.info("=" * 80)
+
+    is_valid, error_msg, warnings = validate_config(config)
+    if not is_valid:
+        logging.error("Configuration validation failed!")
+        logging.error("=" * 80)
+        logging.error("ERRORS:")
+        logging.error(error_msg)
+        logging.error("=" * 80)
+        logging.error("\nPlease fix the configuration errors in config.yaml and try again.")
+        sys.exit(1)
+
+    logging.info("✓ Configuration validated successfully")
+    logging.info(f"  Source paths: {config.source_paths}")
+    logging.info(f"  Cameras: {config.camera_numbers}")
+    logging.info(f"  Image files: {config.num_images}")
+    logging.info(f"  Frame pairs: {config.num_frame_pairs}")
+    logging.info(f"  Image format: {config.image_format}")
+
+    if warnings:
+        logging.info("")
+        logging.info("NOTES:")
+        for warning in warnings:
+            logging.info(f"  ℹ {warning}")
+
+    logging.info("=" * 80)
+    logging.info("")
+
     # Store original OMP_NUM_THREADS for workers
     original_omp_threads = os.environ.get("OMP_NUM_THREADS", "1")
     
@@ -114,12 +258,19 @@ def main():
                 logging.info("=" * 80)
 
                 batch_filter_specs = get_batch_filter_specs(config)
-                batch_size = config.batch_size
-                num_images = config.num_images
-                total_batches = (num_images + batch_size - 1) // batch_size
+                batch_size = config.batch_size  # Already capped in config.py
+                num_pairs = config.num_frame_pairs  # Number of frame pairs to process
+                total_batches = (num_pairs + batch_size - 1) // batch_size
 
-                logging.info(f"Total images: {num_images}")
-                logging.info(f"Batch size: {batch_size}")
+                # Validate batch size
+                if batch_size > num_pairs:
+                    logging.error(
+                        f"ERROR: Batch size ({batch_size}) cannot exceed number of frame pairs ({num_pairs})!"
+                    )
+                    sys.exit(1)
+
+                logging.info(f"Total frame pairs: {num_pairs}")
+                logging.info(f"Batch size: {batch_size} (max allowed: {num_pairs})")
                 logging.info(f"Total batches: {total_batches}")
                 logging.info(f"Batch filters: {[f.get('type') for f in batch_filter_specs]}")
                 logging.info(f"Workers configured: {config.dask_workers_per_node}")
@@ -144,7 +295,7 @@ def main():
                 # Process each batch: filter in main → distribute to workers for PIV
                 for batch_idx in range(total_batches):
                     batch_start = batch_idx * batch_size
-                    batch_end = min(batch_start + batch_size, num_images)
+                    batch_end = min(batch_start + batch_size, num_pairs)
                     batch_num = batch_idx + 1
 
                     # Extract batch slice (still lazy)
@@ -236,7 +387,8 @@ def main():
                     use_uncalibrated=True
                 )
 
-                logging.info(f"Number of images: {config.num_images}")
+                logging.info(f"Image files: {config.num_images}")
+                logging.info(f"Frame pairs: {config.num_frame_pairs}")
                 logging.info(f"Ensemble passes: {config.ensemble_num_passes}")
                 logging.info(f"Ensemble window sizes: {config.ensemble_window_sizes}")
                 logging.info(f"Ensemble types: {config.ensemble_type}")

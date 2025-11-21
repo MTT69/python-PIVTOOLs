@@ -297,6 +297,15 @@ def parse_plot_params(req) -> Dict: # efe
         "True",
         "TRUE",
     )
+    
+    # Validate frame number for calibrated data
+    if not use_uncalibrated and not use_merged:
+        if frame < 1 or frame > cfg.num_frame_pairs:
+            raise ValueError(
+                f"Frame {frame} out of range. "
+                f"Valid: 1-{cfg.num_frame_pairs}"
+            )
+    
     return {
         "base_path": base_path,
         "camera": camera,
@@ -319,7 +328,7 @@ def validate_and_get_paths(params: Dict) -> Dict[str, Path]:
     try:
         return get_data_paths(
             base_dir=params["base_path"],
-            num_images=get_config().num_images,
+            num_frame_pairs=get_config().num_frame_pairs,
             cam=params["camera"],
             type_name=params["type_name"],
             endpoint=params["endpoint"],
@@ -1138,7 +1147,7 @@ def transform_frame():
         cfg = get_config()
         paths = get_data_paths(
             base_dir=Path(base_path),
-            num_images=cfg.num_images,
+            num_frame_pairs=cfg.num_frame_pairs,
             cam=camera,
             type_name=type_name,
             use_merged=merged,
@@ -1253,7 +1262,7 @@ def reset_transform():
         cfg = get_config()
         paths = get_data_paths(
             base_dir=Path(base_path),
-            num_images=cfg.num_images,
+            num_frame_pairs=cfg.num_frame_pairs,
             cam=camera,
             type_name=type_name,
             use_merged=merged,
@@ -1328,7 +1337,7 @@ def check_transform_status():
         cfg = get_config()
         paths = get_data_paths(
             base_dir=Path(base_path),
-            num_images=cfg.num_images,
+            num_frame_pairs=cfg.num_frame_pairs,
             cam=camera,
             type_name=type_name,
             use_merged=merged,
@@ -1448,7 +1457,7 @@ def transform_all_frames():
         # Load source frame to get pending transformations
         source_paths = get_data_paths(
             base_dir=Path(base_path),
-            num_images=cfg.num_images,
+            num_frame_pairs=cfg.num_frame_pairs,
             cam=source_camera,
             type_name=type_name,
             use_merged=merged,
@@ -1534,7 +1543,7 @@ def transform_all_frames():
             for cam in all_cameras:
                 paths = get_data_paths(
                     base_dir=Path(base_path),
-                    num_images=cfg.num_images,
+                    num_frame_pairs=cfg.num_frame_pairs,
                     cam=cam,
                     type_name=type_name,
                     use_merged=merged,
@@ -1543,7 +1552,7 @@ def transform_all_frames():
                 
                 # Find all existing vector files
                 vector_files = []
-                for frame in range(1, cfg.num_images + 1):
+                for frame in range(1, cfg.num_frame_pairs + 1):
                     # Skip source frame for source camera (already transformed)
                     if cam == source_camera and frame == source_frame:
                         continue

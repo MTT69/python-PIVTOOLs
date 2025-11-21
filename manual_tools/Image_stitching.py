@@ -392,7 +392,7 @@ def load_and_plot_cameras(
         # Get data paths
         paths = get_data_paths(
             base_dir=base_dir,
-            num_images=num_images,
+            num_frame_pairs=num_images - 1,  # Assuming time-resolved
             cam=cam,
             type_name=type_name,
             endpoint=endpoint,

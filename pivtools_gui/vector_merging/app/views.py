@@ -323,7 +323,7 @@ def _process_single_frame_merge(args):
     Helper function for parallel processing of single frame merging.
     Must be a top-level function for multiprocessing.
     """
-    frame_idx, base_dir, cameras, type_name, endpoint, num_images, vector_format, valid_runs, total_runs = args
+    frame_idx, base_dir, cameras, type_name, endpoint, num_images_for_path, vector_format, valid_runs, total_runs = args
     try:
         merged_runs_dict = merge_vectors_for_frame(
             base_dir,
@@ -331,7 +331,7 @@ def _process_single_frame_merge(args):
             frame_idx,
             type_name,
             endpoint,
-            num_images,
+            num_images_for_path,
             vector_format,
             valid_runs,
         )
@@ -339,7 +339,7 @@ def _process_single_frame_merge(args):
         # Create output directory (use Merged in the path structure)
         output_paths = get_data_paths(
             base_dir=base_dir,
-            num_images=num_images,
+            num_frame_pairs=cfg.num_frame_pairs,
             cam=cameras[0],  # This gets overridden by use_merged
             type_name=type_name,
             endpoint=endpoint,
@@ -398,7 +398,7 @@ def merge_vectors_for_frame(
     frame_idx: int,
     type_name: str,
     endpoint: str,
-    num_images: int,
+    num_images_for_path: int,
     vector_format: str,
     valid_runs: list,
 ):
@@ -412,7 +412,7 @@ def merge_vectors_for_frame(
     for camera in cameras:
         paths = get_data_paths(
             base_dir=base_dir,
-            num_images=num_images,
+            num_frame_pairs=num_images_for_path,
             cam=camera,
             type_name=type_name,
             endpoint=endpoint,
@@ -566,7 +566,6 @@ def merge_one_frame():
     frame_idx = int(data.get("frame_idx", 1))
     type_name = data.get("type_name", "instantaneous")
     endpoint = data.get("endpoint", "")
-    num_images = int(data.get("image_count", 1000))
 
     try:
         cfg = get_config()
@@ -578,7 +577,7 @@ def merge_one_frame():
         # Find valid runs
         first_cam_paths = get_data_paths(
             base_dir=base_dir,
-            num_images=num_images,
+            num_frame_pairs=cfg.num_frame_pairs,
             cam=cameras[0],
             type_name=type_name,
             endpoint=endpoint,
@@ -595,7 +594,10 @@ def merge_one_frame():
 
         # Merge the frame
         _, success, merged_runs = _process_single_frame_merge(
-            (frame_idx, base_dir, cameras, type_name, endpoint, num_images, vector_format, valid_runs, total_runs)
+            (
+                frame_idx, base_dir, cameras, type_name, endpoint,
+                cfg.num_frame_pairs, vector_format, valid_runs, total_runs
+            )
         )
 
         if not success:
@@ -604,7 +606,7 @@ def merge_one_frame():
         # Save coordinates if this is the first frame
         output_paths = get_data_paths(
             base_dir=base_dir,
-            num_images=num_images,
+            num_frame_pairs=cfg.num_frame_pairs,
             cam=cameras[0],
             type_name=type_name,
             endpoint=endpoint,
@@ -661,8 +663,7 @@ def merge_all_frames():
     cameras = data.get("cameras", [1, 2])
     type_name = data.get("type_name", "instantaneous")
     endpoint = data.get("endpoint", "")
-    num_images = int(data.get("image_count", 1000))
-    max_workers = min(os.cpu_count() or 4, num_images, 8)
+    max_workers = min(os.cpu_count() or 4, 1000, 8)  # Use a reasonable default
     job_id = str(uuid.uuid4())
 
     def run_merge_all():
@@ -674,20 +675,21 @@ def merge_all_frames():
             merging_jobs[job_id] = {
                 "status": "starting",
                 "progress": 0,
-                "total_frames": num_images,
+                "total_frames": cfg.num_frame_pairs,
                 "processed_frames": 0,
                 "message": "Initializing merge operation...",
                 "start_time": time.time(),
             }
 
             logger.info(
-                f"Starting vector merge for cameras {cameras}, {num_images} frames with {max_workers} workers"
+                f"Starting vector merge for cameras {cameras}, "
+                f"{cfg.num_frame_pairs} frames with {max_workers} workers"
             )
 
             # Find valid runs from first camera
             first_cam_paths = get_data_paths(
                 base_dir=base_dir,
-                num_images=num_images,
+                num_frame_pairs=cfg.num_frame_pairs,
                 cam=cameras[0],
                 type_name=type_name,
                 endpoint=endpoint,
@@ -708,7 +710,7 @@ def merge_all_frames():
             # Create output directory
             output_paths = get_data_paths(
                 base_dir=base_dir,
-                num_images=num_images,
+                num_frame_pairs=cfg.num_frame_pairs,
                 cam=cameras[0],
                 type_name=type_name,
                 endpoint=endpoint,
@@ -726,8 +728,11 @@ def merge_all_frames():
 
             # Prepare arguments for all frames
             frame_args = [
-                (frame_idx, base_dir, cameras, type_name, endpoint, num_images, vector_format, valid_runs, total_runs)
-                for frame_idx in range(1, num_images + 1)
+                (
+                    frame_idx, base_dir, cameras, type_name, endpoint,
+                    cfg.num_frame_pairs, vector_format, valid_runs, total_runs
+                )
+                for frame_idx in range(1, cfg.num_frame_pairs + 1)
             ]
 
             # Process frames in parallel
@@ -745,10 +750,12 @@ def merge_all_frames():
                         last_merged_runs = merged_runs
                     
                     merging_jobs[job_id]["processed_frames"] = processed_count
-                    merging_jobs[job_id]["progress"] = int((processed_count / num_images) * 90) + 5
+                    merging_jobs[job_id]["progress"] = int((processed_count / cfg.num_frame_pairs) * 90) + 5
                     
                     if processed_count % 10 == 0:
-                        logger.info(f"Merged {processed_count}/{num_images} frames")
+                        logger.info(
+                            f"Merged {processed_count}/{cfg.num_frame_pairs} frames"
+                        )
 
             # Save coordinates for merged data
             coords_file = output_dir / "coordinates.mat"
@@ -782,7 +789,10 @@ def merge_all_frames():
 
             merging_jobs[job_id]["status"] = "completed"
             merging_jobs[job_id]["progress"] = 100
-            merging_jobs[job_id]["message"] = f"Successfully merged {num_images} frames with {len(valid_runs)} runs each"
+            merging_jobs[job_id]["message"] = (
+                f"Successfully merged {cfg.num_frame_pairs} frames "
+                f"with {len(valid_runs)} runs each"
+            )
             logger.info(f"Merge complete: {output_dir}")
 
         except Exception as e:
@@ -801,7 +811,7 @@ def merge_all_frames():
             "job_id": job_id,
             "status": "starting",
             "message": f"Vector merging job started for cameras {cameras}",
-            "image_count": num_images,
+            "image_count": 1000,  # Use a reasonable default
             "max_workers": max_workers,
         }
     )

@@ -101,7 +101,24 @@ def apply_filters_to_single_batch(
 
     config.data['filters'] = original_filters
 
-    logging.info(f"[Batch {batch_num}] Filtering complete")
+    # Validate filtered output
+    if batch_filtered_computed.shape != batch_computed.shape:
+        logging.error(
+            f"[Batch {batch_num}] Shape mismatch! "
+            f"Input: {batch_computed.shape}, Output: {batch_filtered_computed.shape}"
+        )
+        raise ValueError("Filtering changed image shape unexpectedly")
+
+    if batch_filtered_computed.size == 0:
+        logging.error(f"[Batch {batch_num}] Filtering produced empty array!")
+        raise ValueError("Filtering produced empty array")
+
+    logging.info(
+        f"[Batch {batch_num}] Filtering complete. "
+        f"Output shape: {batch_filtered_computed.shape}, "
+        f"dtype: {batch_filtered_computed.dtype}, "
+        f"range: [{batch_filtered_computed.min():.2f}, {batch_filtered_computed.max():.2f}]"
+    )
 
     return batch_filtered_computed
 
