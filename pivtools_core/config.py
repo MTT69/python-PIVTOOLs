@@ -904,7 +904,30 @@ masking:
         list
             [height, width] of sum window
         """
-        return self.data.get("ensemble_piv", {}).get("sum_window", [16, 16])
+        sum_window = self.data.get("ensemble_piv", {}).get("sum_window", [16, 16])
+
+        # Validate sum_window if single mode is used
+        ensemble_types = self.ensemble_type
+        if 'single' in ensemble_types:
+            if sum_window is None:
+                raise ValueError(
+                    "ensemble_sum_window must be defined when using 'single' mode in ensemble_type"
+                )
+            if not isinstance(sum_window, (list, tuple)) or len(sum_window) != 2:
+                raise ValueError(
+                    f"ensemble_sum_window must be a list/tuple of [height, width], got {sum_window}"
+                )
+            # Validate sum_window is larger than all window sizes for single-mode passes
+            for pass_idx, pass_type in enumerate(ensemble_types):
+                if pass_type == 'single':
+                    win_size = self.ensemble_window_sizes[pass_idx]
+                    if sum_window[0] < win_size[0] or sum_window[1] < win_size[1]:
+                        raise ValueError(
+                            f"Pass {pass_idx}: ensemble_sum_window {sum_window} must be >= "
+                            f"window_size {win_size} for single mode"
+                        )
+
+        return sum_window
 
     @property
     def ensemble_type(self):
@@ -921,7 +944,28 @@ masking:
             List of type strings, one per pass
         """
         default_types = ["std"] * self.ensemble_num_passes
-        return self.data.get("ensemble_piv", {}).get("type", default_types)
+        types = self.data.get("ensemble_piv", {}).get("type", default_types)
+
+        # Validate ensemble types
+        valid_types = {'std', 'standard', 'single'}
+        for pass_idx, pass_type in enumerate(types):
+            if pass_type not in valid_types:
+                raise ValueError(
+                    f"Pass {pass_idx}: Invalid ensemble_type '{pass_type}'. "
+                    f"Must be one of {valid_types}"
+                )
+
+        # Normalize 'standard' to 'std' for consistency
+        types = ['std' if t == 'standard' else t for t in types]
+
+        # Validate list length matches number of passes
+        if len(types) != self.ensemble_num_passes:
+            raise ValueError(
+                f"ensemble_type list length ({len(types)}) must match "
+                f"number of ensemble passes ({self.ensemble_num_passes})"
+            )
+
+        return types
 
     @property
     def outlier_detection_enabled(self):

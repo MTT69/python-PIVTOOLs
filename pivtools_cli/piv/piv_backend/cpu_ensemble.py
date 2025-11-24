@@ -28,6 +28,7 @@ from scipy.ndimage import gaussian_filter
 from scipy.io import savemat
 
 from pivtools_core.config import Config
+from pivtools_core.window_utils import compute_window_centers, compute_window_centers_single_mode
 from pivtools_cli.piv.piv_backend.base import CrossCorrelator
 from pivtools_cli.piv.piv_result import (
     PIVEnsembleBlockResult,
@@ -120,11 +121,37 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fCorrelPlane_Out (output)
         ]
 
-        # Use ensemble window sizes from config
-        self.win_weights = [
-            np.ascontiguousarray(self._window_weight_fun(win_size, config.ensemble_window_type))
-            for win_size in config.ensemble_window_sizes
-        ]
+        # Initialize window weights for each pass
+        # For single mode, Frame A and Frame B use different weights
+        self.win_weights_A = []
+        self.win_weights_B = []
+        self.window_sizes_for_corr = []  # Actual size passed to correlation (SumWindow for single mode)
+
+        for pass_idx, win_size in enumerate(config.ensemble_window_sizes):
+            runtype = config.ensemble_type[pass_idx]
+            sum_window = tuple(config.ensemble_sum_window)
+
+            if runtype == 'single':
+                # Single mode: Frame A uses small weighted window, Frame B uses full SumWindow
+                weight_A = np.ascontiguousarray(
+                    self._window_weight_fun(win_size, 'singlepix', sum_window)
+                )
+                weight_B = np.ascontiguousarray(
+                    self._window_weight_fun(sum_window, 'bsingle', sum_window)
+                )
+                corr_size = sum_window  # Correlation uses SumWindow size
+            else:
+                # Standard mode: both frames use same window
+                weight = np.ascontiguousarray(
+                    self._window_weight_fun(win_size, config.ensemble_window_type)
+                )
+                weight_A = weight
+                weight_B = weight
+                corr_size = win_size
+
+            self.win_weights_A.append(weight_A)
+            self.win_weights_B.append(weight_B)
+            self.window_sizes_for_corr.append(corr_size)
 
         # Use precomputed cache if provided, otherwise compute it
         if precomputed_cache is not None:
@@ -230,50 +257,41 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
     def _compute_window_centres_ensemble(
         self, pass_idx: int, config: Config
     ) -> tuple[int, int, np.ndarray, np.ndarray]:
-        """Compute window centers and spacing for ensemble PIV pass."""
+        """
+        Compute window centers and spacing for ensemble PIV pass.
+
+        Uses centralized window_utils for consistency with instantaneous mode.
+        Supports both standard and single mode ensemble PIV.
+        """
         win_y, win_x = config.ensemble_window_sizes[pass_idx]
         overlap = config.ensemble_overlaps[pass_idx]
 
-        w_spacing_x = round((1 - overlap / 100) * win_x)
-        w_spacing_y = round((1 - overlap / 100) * win_y)
+        # Check if this pass uses single mode
+        runtype = config.ensemble_type[pass_idx]
 
-        Nx, Ny = config.image_shape[1], config.image_shape[0]
-
-        min_x = 0
-        max_x = Nx - 1
-        min_y = 0
-        max_y = Ny - 1
-
-        first_ctr_x = -0.5 + win_x / 2
-        first_ctr_y = -0.5 + win_y / 2
-
-        start_ctr_x = max(first_ctr_x, min_x)
-        start_ctr_y = max(first_ctr_y, min_y)
-
-        n_win_x = int(np.floor((max_x - start_ctr_x) / w_spacing_x)) + 1
-        n_win_y = int(np.floor((max_y - start_ctr_y) / w_spacing_y)) + 1
-
-        n_win_x = max(1, n_win_x)
-        n_win_y = max(1, n_win_y)
-
-        win_ctrs_x = np.linspace(
-            start_ctr_x,
-            start_ctr_x + w_spacing_x * (n_win_x - 1),
-            n_win_x,
-            dtype=np.float32,
-        )
-        win_ctrs_y = np.linspace(
-            start_ctr_y,
-            start_ctr_y + w_spacing_y * (n_win_y - 1),
-            n_win_y,
-            dtype=np.float32,
-        )
+        if runtype == 'single':
+            # Single mode: use sum window for positioning
+            result = compute_window_centers_single_mode(
+                image_shape=config.image_shape,
+                window_size=(win_y, win_x),
+                sum_window=tuple(config.ensemble_sum_window),
+                overlap=overlap,
+                validate=True
+            )
+        else:
+            # Standard mode
+            result = compute_window_centers(
+                image_shape=config.image_shape,
+                window_size=(win_y, win_x),
+                overlap=overlap,
+                validate=True
+            )
 
         return (
-            w_spacing_x,
-            w_spacing_y,
-            np.ascontiguousarray(win_ctrs_x),
-            np.ascontiguousarray(win_ctrs_y),
+            result.win_spacing_x,
+            result.win_spacing_y,
+            np.ascontiguousarray(result.win_ctrs_x),
+            np.ascontiguousarray(result.win_ctrs_y),
         )
 
     def _cache_interpolation_grids_ensemble(self, config: Config) -> None:
@@ -342,6 +360,9 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         self.im_mesh = cache['im_mesh']
         self.cached_dense_maps = cache['cached_dense_maps']
         self.cached_predictor_maps = cache['cached_predictor_maps']
+        self.win_weights_A = cache.get('win_weights_A', [])
+        self.win_weights_B = cache.get('win_weights_B', [])
+        self.window_sizes_for_corr = cache.get('window_sizes_for_corr', [])
 
     def get_cache_data(self) -> dict:
         """Extract cache data for sharing across workers."""
@@ -362,6 +383,9 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             'im_mesh': self.im_mesh,
             'cached_dense_maps': self.cached_dense_maps,
             'cached_predictor_maps': self.cached_predictor_maps,
+            'win_weights_A': self.win_weights_A,
+            'win_weights_B': self.win_weights_B,
+            'window_sizes_for_corr': self.window_sizes_for_corr,
         }
 
     def correlate_batch(
@@ -375,13 +399,21 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         im_mesh_B: np.ndarray,
     ) -> PIVEnsembleBlockResult:
         """Run ensemble PIV correlation on a batch of image pairs."""
+        from pivtools_core.window_utils import apply_single_mode_padding
+
         win_size = config.ensemble_window_sizes[pass_idx]
+        corr_size = self.window_sizes_for_corr[pass_idx]  # Actual correlation size (may be SumWindow)
         n_win_y = len(self.win_ctrs_y[pass_idx])
         n_win_x = len(self.win_ctrs_x[pass_idx])
 
+        # Check if this pass uses single mode
+        runtype = config.ensemble_type[pass_idx]
+        is_single_mode = (runtype == 'single')
+
         total_windows = n_win_y * n_win_x
+        # Allocate correlation planes based on actual correlation size
         correl_plane_mean = np.ascontiguousarray(
-            np.zeros(total_windows * win_size[0] * win_size[1], dtype=np.float32)
+            np.zeros(total_windows * corr_size[0] * corr_size[1], dtype=np.float32)
         )
         point_spread_a_mean = np.zeros_like(correl_plane_mean)
         point_spread_b_mean = np.zeros_like(correl_plane_mean)
@@ -392,13 +424,27 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             try:
                 image_a = np.asarray(images[n, 0], dtype=np.float32)
                 image_b = np.asarray(images[n, 1], dtype=np.float32)
-                image_size = np.ascontiguousarray(np.array([H, W], dtype=np.int32))
 
                 image_a_prime, image_b_prime = self._get_image_prime(
                     image_a, image_b, im_mesh_A, im_mesh_B
                 )
                 image_a_prime = image_a_prime - warp_A_mean
                 image_b_prime = image_b_prime - warp_B_mean
+
+                # Apply padding for single mode
+                if is_single_mode:
+                    sum_window = tuple(config.ensemble_sum_window)
+                    image_a_prime, padding = apply_single_mode_padding(
+                        image_a_prime, win_size, sum_window, pad_value=0.0
+                    )
+                    image_b_prime, _ = apply_single_mode_padding(
+                        image_b_prime, win_size, sum_window, pad_value=0.0
+                    )
+                    # Update image size for padded images
+                    H_padded, W_padded = image_a_prime.shape
+                    image_size = np.ascontiguousarray(np.array([H_padded, W_padded], dtype=np.int32))
+                else:
+                    image_size = np.ascontiguousarray(np.array([H, W], dtype=np.int32))
 
             except Exception as e:
                 logging.error("Error in get image_prime: %s", e)
@@ -428,7 +474,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                     pass_idx=pass_idx,
                 )
 
-                # Cross-correlation AB
+                # Cross-correlation AB (uses asymmetric weights in single mode)
                 error_code_correl = self.lib.bulkxcorr2d(
                     np.ascontiguousarray(image_a_prime),
                     np.ascontiguousarray(image_b_prime),
@@ -437,10 +483,10 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                     self.win_ctrs_x[pass_idx].astype(np.float32),
                     self.win_ctrs_y[pass_idx].astype(np.float32),
                     n_windows,
-                    self.win_weights[pass_idx],
+                    self.win_weights_A[pass_idx],  # Frame A weight
                     b_ensemble,
-                    self.win_weights[pass_idx],
-                    win_size_arr,
+                    self.win_weights_B[pass_idx],  # Frame B weight
+                    win_size_arr,  # Correlation size (SumWindow for single mode)
                     int(n_peaks),
                     int(i_peak_finder),
                     pk_loc_x,
@@ -461,10 +507,10 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                     self.win_ctrs_x[pass_idx].astype(np.float32),
                     self.win_ctrs_y[pass_idx].astype(np.float32),
                     n_windows,
-                    self.win_weights[pass_idx],
+                    self.win_weights_A[pass_idx],  # Frame A weight
                     b_ensemble,
-                    self.win_weights[pass_idx],
-                    win_size_arr,
+                    self.win_weights_A[pass_idx],  # Frame A weight (both args)
+                    win_size_arr,  # Correlation size
                     int(n_peaks),
                     int(i_peak_finder),
                     pk_loc_x,
@@ -485,10 +531,10 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                     self.win_ctrs_x[pass_idx].astype(np.float32),
                     self.win_ctrs_y[pass_idx].astype(np.float32),
                     n_windows,
-                    self.win_weights[pass_idx],
+                    self.win_weights_B[pass_idx],  # Frame B weight
                     b_ensemble,
-                    self.win_weights[pass_idx],
-                    win_size_arr,
+                    self.win_weights_B[pass_idx],  # Frame B weight (both args)
+                    win_size_arr,  # Correlation size
                     int(n_peaks),
                     int(i_peak_finder),
                     pk_loc_x,
@@ -527,12 +573,19 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         win_size: list,
         pass_idx: int,
     ):
-        """Set up arguments for the cross-correlation library call."""
+        """
+        Set up arguments for the cross-correlation library call.
+
+        For single mode, win_size_arr should be SumWindow (the actual correlation size),
+        not the small window size.
+        """
         n_win_y = len(self.win_ctrs_y[pass_idx])
         n_win_x = len(self.win_ctrs_x[pass_idx])
         total_windows = n_win_y * n_win_x
 
-        win_size_arr = np.ascontiguousarray(np.array(win_size, dtype=np.int32))
+        # Use actual correlation size (SumWindow for single mode)
+        corr_size = self.window_sizes_for_corr[pass_idx]
+        win_size_arr = np.ascontiguousarray(np.array(corr_size, dtype=np.int32))
         n_windows = np.ascontiguousarray(np.array([n_win_y, n_win_x], dtype=np.int32))
 
         # Masking
@@ -554,14 +607,15 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         sx = np.ascontiguousarray(np.zeros((n_peaks, n_win_y, n_win_x), dtype=np.float32))
         sy = np.ascontiguousarray(np.zeros((n_peaks, n_win_y, n_win_x), dtype=np.float32))
         sxy = np.ascontiguousarray(np.zeros((n_peaks, n_win_y, n_win_x), dtype=np.float32))
+        # Use correlation size (SumWindow for single mode) for output arrays
         correl_plane_out = np.ascontiguousarray(
-            np.zeros(total_windows * win_size[0] * win_size[1], dtype=np.float32)
+            np.zeros(total_windows * corr_size[0] * corr_size[1], dtype=np.float32)
         )
         point_spread_a = np.ascontiguousarray(
-            np.zeros(total_windows * win_size[0] * win_size[1], dtype=np.float32)
+            np.zeros(total_windows * corr_size[0] * corr_size[1], dtype=np.float32)
         )
         point_spread_b = np.ascontiguousarray(
-            np.zeros(total_windows * win_size[0] * win_size[1], dtype=np.float32)
+            np.zeros(total_windows * corr_size[0] * corr_size[1], dtype=np.float32)
         )
 
         return (
@@ -763,40 +817,37 @@ class EnsembleExecutor:
             self.n_post_all.append(n_post)
 
     def _compute_window_centres(self, pass_idx: int, config: Config):
-        """Compute window centers and spacing for a given pass."""
+        """
+        Compute window centers and spacing for a given pass.
+
+        Uses centralized window_utils for consistency across all PIV modes.
+        Supports both standard and single mode ensemble PIV.
+        """
         win_y, win_x = config.ensemble_window_sizes[pass_idx]
         overlap = config.ensemble_overlaps[pass_idx]
 
-        w_spacing_x = round((1 - overlap / 100) * win_x)
-        w_spacing_y = round((1 - overlap / 100) * win_y)
+        # Check if this pass uses single mode
+        runtype = config.ensemble_type[pass_idx]
 
-        Nx, Ny = config.image_shape[1], config.image_shape[0]
+        if runtype == 'single':
+            # Single mode: use sum window for positioning
+            result = compute_window_centers_single_mode(
+                image_shape=config.image_shape,
+                window_size=(win_y, win_x),
+                sum_window=tuple(config.ensemble_sum_window),
+                overlap=overlap,
+                validate=True
+            )
+        else:
+            # Standard mode
+            result = compute_window_centers(
+                image_shape=config.image_shape,
+                window_size=(win_y, win_x),
+                overlap=overlap,
+                validate=True
+            )
 
-        min_x = 0
-        max_x = Nx - 1
-        min_y = 0
-        max_y = Ny - 1
-
-        first_ctr_x = -0.5 + win_x / 2
-        first_ctr_y = -0.5 + win_y / 2
-
-        start_ctr_x = max(first_ctr_x, min_x)
-        start_ctr_y = max(first_ctr_y, min_y)
-
-        n_win_x = int(np.floor((max_x - start_ctr_x) / w_spacing_x)) + 1
-        n_win_y = int(np.floor((max_y - start_ctr_y) / w_spacing_y)) + 1
-
-        n_win_x = max(1, n_win_x)
-        n_win_y = max(1, n_win_y)
-
-        win_ctrs_x = np.linspace(
-            start_ctr_x, start_ctr_x + w_spacing_x * (n_win_x - 1), n_win_x, dtype=np.float32
-        )
-        win_ctrs_y = np.linspace(
-            start_ctr_y, start_ctr_y + w_spacing_y * (n_win_y - 1), n_win_y, dtype=np.float32
-        )
-
-        return w_spacing_x, w_spacing_y, win_ctrs_x, win_ctrs_y
+        return result.win_spacing_x, result.win_spacing_y, result.win_ctrs_x, result.win_ctrs_y
 
     def run_ensemble_piv(self, images: da.Array, scattered_cache: dict) -> PIVEnsembleResult:
         """
@@ -1096,6 +1147,13 @@ class EnsembleExecutor:
         n_win_y, n_win_x, _ = gauss_results.shape
         win_size = self.config.ensemble_window_sizes[pass_idx]
 
+        # For single mode, correlation size (SumWindow) differs from window size
+        runtype = self.config.ensemble_type[pass_idx]
+        if runtype == 'single':
+            corr_size = tuple(self.config.ensemble_sum_window)
+        else:
+            corr_size = win_size
+
         # Get window centers
         _, _, win_ctrs_x, win_ctrs_y = self._compute_window_centres(pass_idx, self.config)
 
@@ -1121,8 +1179,9 @@ class EnsembleExecutor:
         sig_PD_y = np.zeros((n_win_y, n_win_x), dtype=np.float32)
         sig_PD_xy = np.zeros((n_win_y, n_win_x), dtype=np.float32)
 
-        x_offset = win_size[1] / 2 + 1
-        y_offset = win_size[0] / 2 + 1
+        # Use correlation size for offset (SumWindow for single mode)
+        x_offset = corr_size[1] / 2 + 1
+        y_offset = corr_size[0] / 2 + 1
 
         for iy in range(n_win_y):
             for ix in range(n_win_x):

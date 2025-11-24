@@ -16,6 +16,7 @@ from scipy.signal import convolve2d
 
 
 from pivtools_core.config import Config
+from pivtools_core.window_utils import compute_window_centers
 from pivtools_cli.piv.piv_backend.base import CrossCorrelator
 from pivtools_cli.piv.piv_result import PIVPassResult, PIVResult
 from pivtools_cli.piv.piv_backend.outlier_detection import apply_outlier_detection
@@ -467,13 +468,10 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         self, pass_idx: int, config: Config
     ) -> tuple[int, int, np.ndarray, np.ndarray]:
         """
-        Compute window centers and spacing for a given pass.
-        
-        Matches MATLAB logic exactly:
-        - win_ctrs_x spans the width dimension (Nx = W = columns)
-        - win_ctrs_y spans the height dimension (Ny = H = rows)
-        - Window centers are in pixel coordinates (0-based)
-        - X corresponds to horizontal (width), Y to vertical (height)
+        Compute window centers and spacing for a given pass using centralized utilities.
+
+        Uses pivtools_core.window_utils.compute_window_centers() for consistency
+        across all PIV modes (instantaneous, ensemble, masking).
 
         :param pass_idx: Index of the current pass.
         :type pass_idx: int
@@ -482,87 +480,46 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         :return: Tuple containing window spacing in x and y, and arrays of window center coordinates in x and y.
         :rtype: tuple[int, int, np.ndarray, np.ndarray]
         """
-        # Image dimensions: config.image_shape = (H, W) = (rows, cols)
-        H, W = config.image_shape
-        Ny = H  # Number of rows (height)
-        Nx = W  # Number of columns (width)
-        
-        logging.debug(f"_compute_window_centres pass {pass_idx}:")
-        logging.debug(f"  Image shape (H, W) = ({H}, {W})")
-        logging.debug(f"  Ny (height/rows) = {Ny}, Nx (width/cols) = {Nx}")
-        
-        # Window size: config.window_sizes[pass_idx] = (win_height, win_width)
-        # This matches MATLAB where wsize(1)=height, wsize(2)=width
         win_height, win_width = config.window_sizes[pass_idx]
         overlap = config.overlap[pass_idx]
-        
+
+        logging.debug(f"_compute_window_centres pass {pass_idx}:")
+        logging.debug(f"  Image shape (H, W) = {config.image_shape}")
         logging.debug(f"  Window size (H, W) = ({win_height}, {win_width})")
         logging.debug(f"  Overlap = {overlap}%")
 
-        # Window spacing in pixels
-        win_spacing_x = round((1 - overlap / 100) * win_width)
-        win_spacing_y = round((1 - overlap / 100) * win_height)
-        
-        logging.debug(f"  Window spacing (X, Y) = ({win_spacing_x}, {win_spacing_y})")
-
-        # MATLAB: win_ctrs_x = 0.5 + wsize(1)/2 : win_spacing_x : Nx - wsize(1)/2 + 0.5
-        # But MATLAB then subtracts 1 before passing to C (1-based to 0-based conversion)
-        # So in 0-based indexing: win_ctrs_x = -0.5 + wsize(1)/2 : win_spacing_x : Nx - wsize(1)/2 - 0.5
-        # For a 128-pixel window (indices 0-127), center is at 63.5
-        # For window starting at pixel 0: center = (0 + 127) / 2 = 63.5
-        
-        # First window center in X (width dimension) - 0-based array indexing
-        first_ctr_x = (win_width - 1) / 2.0  # For 128: (127)/2 = 63.5
-        # Last possible window center in X
-        last_ctr_x = Nx - (win_width + 1) / 2.0  # For W=4872, win=128: 4872 - 64.5 = 4807.5
-        
-        # First window center in Y (height dimension) - 0-based array indexing
-        first_ctr_y = (win_height - 1) / 2.0
-        # Last possible window center in Y
-        last_ctr_y = Ny - (win_height + 1) / 2.0
-        
-        logging.debug(f"  X range: [{first_ctr_x:.2f}, {last_ctr_x:.2f}]")
-        logging.debug(f"  Y range: [{first_ctr_y:.2f}, {last_ctr_y:.2f}]")
-        
-        # Number of windows that fit
-        n_win_x = int(np.floor((last_ctr_x - first_ctr_x) / win_spacing_x)) + 1
-        n_win_y = int(np.floor((last_ctr_y - first_ctr_y) / win_spacing_y)) + 1
-        
-        # Ensure at least one window
-        n_win_x = max(1, n_win_x)
-        n_win_y = max(1, n_win_y)
-        
-        logging.debug(f"  Number of windows (X, Y) = ({n_win_x}, {n_win_y})")
-
-        # Generate window center arrays using linspace (matches MATLAB's colon operator)
-        win_ctrs_x = np.linspace(
-            first_ctr_x,
-            first_ctr_x + win_spacing_x * (n_win_x - 1),
-            n_win_x,
-            dtype=np.float32,
+        # Use centralized window center computation
+        result = compute_window_centers(
+            image_shape=config.image_shape,
+            window_size=(win_height, win_width),
+            overlap=overlap,
+            validate=True
         )
-        win_ctrs_y = np.linspace(
-            first_ctr_y,
-            first_ctr_y + win_spacing_y * (n_win_y - 1),
-            n_win_y,
-            dtype=np.float32,
-        )
-        
-        if len(win_ctrs_x) > 0:
-            logging.debug(f"  win_ctrs_x: min={win_ctrs_x.min():.2f}, max={win_ctrs_x.max():.2f}, len={len(win_ctrs_x)}")
+
+        logging.debug(f"  Window spacing (X, Y) = ({result.win_spacing_x}, {result.win_spacing_y})")
+        logging.debug(f"  Number of windows (X, Y) = ({result.n_win_x}, {result.n_win_y})")
+
+        if len(result.win_ctrs_x) > 0:
+            logging.debug(
+                f"  win_ctrs_x: min={result.win_ctrs_x.min():.2f}, "
+                f"max={result.win_ctrs_x.max():.2f}, len={len(result.win_ctrs_x)}"
+            )
         else:
             logging.warning(f"  win_ctrs_x: EMPTY ARRAY (len=0)")
 
-        if len(win_ctrs_y) > 0:
-            logging.debug(f"  win_ctrs_y: min={win_ctrs_y.min():.2f}, max={win_ctrs_y.max():.2f}, len={len(win_ctrs_y)}")
+        if len(result.win_ctrs_y) > 0:
+            logging.debug(
+                f"  win_ctrs_y: min={result.win_ctrs_y.min():.2f}, "
+                f"max={result.win_ctrs_y.max():.2f}, len={len(result.win_ctrs_y)}"
+            )
         else:
             logging.warning(f"  win_ctrs_y: EMPTY ARRAY (len=0)")
 
         return (
-            win_spacing_x,
-            win_spacing_y,
-            np.ascontiguousarray(win_ctrs_x),
-            np.ascontiguousarray(win_ctrs_y),
+            result.win_spacing_x,
+            result.win_spacing_y,
+            np.ascontiguousarray(result.win_ctrs_x),
+            np.ascontiguousarray(result.win_ctrs_y),
         )
 
     def _check_args(self, *args):

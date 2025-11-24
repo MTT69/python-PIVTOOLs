@@ -10,6 +10,7 @@ from scipy.ndimage import convolve
 
 from ..config import Config
 from ..vector_loading import read_mask_from_mat
+from ..window_utils import compute_window_centers, compute_window_centers_single_mode
 
 # Import all readers to register them
 from .readers import get_reader
@@ -353,49 +354,52 @@ def compute_vector_mask(
 ) -> List[np.ndarray]:
     """
     Compute binary vector masks for each PIV pass based on pixel mask.
-    
+
     This function is analogous to MATLAB's compute_b_mask. It convolves the
     pixel mask with box filters matching the interrogation window size for
     each pass, then interpolates at window center positions and applies a
     threshold to determine which vectors should be masked.
-    
+
+    Uses centralized window_utils for consistency with PIV processing.
+    Supports both standard and single mode ensemble PIV.
+
     The process:
     1. For each pass, get the window size and overlap
-    2. Compute window center positions (same as PIV does)
+    2. Compute window center positions using centralized utilities
     3. Convolve pixel mask with box filter of window size
     4. Interpolate the filtered mask at window centers
     5. Apply threshold to create binary mask (True = masked)
-    
+
     Parameters
     ----------
     pixel_mask : np.ndarray
         Boolean pixel mask of shape (H, W) where True indicates masked regions
     config : Config
         Configuration object containing window sizes, overlap, and mask threshold
-        
+
     Returns
     -------
     List[np.ndarray]
         List of binary masks, one per pass. Each mask has shape (n_win_y, n_win_x)
         where True indicates this vector should be masked (set to 0/NaN)
-        
+
     Notes
     -----
     The mask threshold (config.mask_threshold) determines the sensitivity:
     - 0.0: mask vector if any pixel in window is masked
     - 0.5: mask vector if >50% of pixels in window are masked
     - 1.0: only mask vector if all pixels in window are masked
-    
+
     A typical value is 0.5, meaning vectors are masked if more than half
     of the interrogation window overlaps with masked regions.
     """
     if pixel_mask is None:
         return []
-    
+
     # Ensure mask is float for convolution
     im_mask = pixel_mask.astype(np.float32)
     H, W = im_mask.shape
-    
+
     vector_masks = []
     threshold = config.mask_threshold
 
@@ -411,40 +415,35 @@ def compute_vector_mask(
         if is_ensemble:
             win_y, win_x = config.ensemble_window_sizes[pass_idx]
             overlap = config.ensemble_overlaps[pass_idx]
+            runtype = config.ensemble_type[pass_idx]
         else:
             win_y, win_x = config.window_sizes[pass_idx]
             overlap = config.overlap[pass_idx]
+            runtype = 'standard'
 
-        # Calculate window spacing
-        win_spacing_x = round((1 - overlap / 100) * win_x)
-        win_spacing_y = round((1 - overlap / 100) * win_y)
+        # Use centralized window center computation
+        if runtype == 'single':
+            # Single mode: use sum window for positioning
+            result = compute_window_centers_single_mode(
+                image_shape=(H, W),
+                window_size=(win_y, win_x),
+                sum_window=tuple(config.ensemble_sum_window),
+                overlap=overlap,
+                validate=True
+            )
+        else:
+            # Standard mode
+            result = compute_window_centers(
+                image_shape=(H, W),
+                window_size=(win_y, win_x),
+                overlap=overlap,
+                validate=True
+            )
 
-        # Calculate window center positions (matching PIV computation exactly)
-        # First window center (using same formula as correlators)
-        first_ctr_x = -0.5 + win_x / 2.0
-        first_ctr_y = -0.5 + win_y / 2.0
-
-        # Use full image bounds (same for both ensemble and instantaneous modes)
-        last_ctr_x = W - (win_x + 1) / 2.0
-        last_ctr_y = H - (win_y + 1) / 2.0
-
-        start_ctr_x = first_ctr_x
-        start_ctr_y = first_ctr_y
-
-        n_win_x = int(np.floor((last_ctr_x - start_ctr_x) / win_spacing_x)) + 1
-        n_win_y = int(np.floor((last_ctr_y - start_ctr_y) / win_spacing_y)) + 1
-
-        # Ensure at least one window
-        n_win_x = max(1, n_win_x)
-        n_win_y = max(1, n_win_y)
-        
-        # Window center positions using linspace (matches MATLAB's colon operator)
-        win_ctrs_x = np.linspace(
-            start_ctr_x, start_ctr_x + win_spacing_x * (n_win_x - 1), n_win_x
-        )
-        win_ctrs_y = np.linspace(
-            start_ctr_y, start_ctr_y + win_spacing_y * (n_win_y - 1), n_win_y
-        )
+        win_ctrs_x = result.win_ctrs_x
+        win_ctrs_y = result.win_ctrs_y
+        n_win_x = result.n_win_x
+        n_win_y = result.n_win_y
         
         box_filter_y = np.ones((win_y, 1), dtype=np.float32) / win_y
         f_mask = convolve(im_mask, box_filter_y, mode='constant', cval=0.0)

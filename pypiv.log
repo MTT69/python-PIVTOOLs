@@ -2842,3 +2842,576 @@ ValueError: zero-size array to reduction operation minimum which has no identity
 2025-11-21 21:24:18,192 [INFO] 127.0.0.1 - - [21/Nov/2025 21:24:18] "[33mGET /backend/get_frame_pair?camera=1&idx=11&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1[0m" 404 -
 2025-11-21 21:24:18,193 [INFO] 127.0.0.1 - - [21/Nov/2025 21:24:18] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
 2025-11-21 21:24:18,234 [INFO] 127.0.0.1 - - [21/Nov/2025 21:24:18] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-22 13:54:05,022 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-22 13:54:05,023 [INFO] 127.0.0.1 - - [22/Nov/2025 13:54:05] "GET /backend/config HTTP/1.1" 200 -
+2025-11-22 13:54:06,121 [INFO] 127.0.0.1 - - [22/Nov/2025 13:54:06] "POST /backend/validate_files HTTP/1.1" 200 -
+2025-11-22 13:54:06,124 [INFO] 127.0.0.1 - - [22/Nov/2025 13:54:06] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-22 13:54:09,881 [INFO] 127.0.0.1 - - [22/Nov/2025 13:54:09] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-22 13:54:09,907 [INFO] 127.0.0.1 - - [22/Nov/2025 13:54:09] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0&auto_limits=true HTTP/1.1" 200 -
+2025-11-22 13:54:10,187 [INFO] 127.0.0.1 - - [22/Nov/2025 13:54:10] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-22 13:54:10,202 [INFO] 127.0.0.1 - - [22/Nov/2025 13:54:10] "[33mGET /backend/get_frame_pair?camera=1&idx=7&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1[0m" 404 -
+2025-11-22 13:54:10,204 [INFO] 127.0.0.1 - - [22/Nov/2025 13:54:10] "[33mGET /backend/get_frame_pair?camera=1&idx=8&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1[0m" 404 -
+2025-11-22 13:54:10,213 [INFO] 127.0.0.1 - - [22/Nov/2025 13:54:10] "[33mGET /backend/get_frame_pair?camera=1&idx=9&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1[0m" 404 -
+2025-11-22 13:54:10,243 [INFO] 127.0.0.1 - - [22/Nov/2025 13:54:10] "[33mGET /backend/get_frame_pair?camera=1&idx=10&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1[0m" 404 -
+2025-11-22 13:54:10,257 [INFO] 127.0.0.1 - - [22/Nov/2025 13:54:10] "[33mGET /backend/get_frame_pair?camera=1&idx=11&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1[0m" 404 -
+2025-11-22 13:54:10,343 [INFO] 127.0.0.1 - - [22/Nov/2025 13:54:10] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-22 13:54:10,357 [INFO] 127.0.0.1 - - [22/Nov/2025 13:54:10] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-22 13:54:10,358 [INFO] 127.0.0.1 - - [22/Nov/2025 13:54:10] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-22 13:54:10,362 [INFO] 127.0.0.1 - - [22/Nov/2025 13:54:10] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-22 13:54:10,362 [INFO] 127.0.0.1 - - [22/Nov/2025 13:54:10] "[33mGET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1[0m" 404 -
+2025-11-22 13:54:10,395 [INFO] 127.0.0.1 - - [22/Nov/2025 13:54:10] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-22 13:54:15,811 [INFO] 127.0.0.1 - - [22/Nov/2025 13:54:15] "POST /backend/filter HTTP/1.1" 200 -
+2025-11-22 13:54:16,835 [INFO] 127.0.0.1 - - [22/Nov/2025 13:54:16] "GET /backend/status HTTP/1.1" 200 -
+2025-11-22 13:54:17,005 [INFO] _detect_image_shape: image_format = ('IMG%05d.tif',), type = <class 'tuple'>
+2025-11-22 13:54:17,005 [INFO] Source path: /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset, Camera: 1
+2025-11-22 13:54:17,005 [INFO] Camera path: /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset
+2025-11-22 13:54:17,005 [INFO] Trying to read file: /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset/IMG00000.tif
+2025-11-22 13:54:17,125 [INFO] Detected image shape: (1216, 1936)
+2025-11-22 13:54:17,125 [INFO] Auto-detected image shape: (1216, 1936)
+2025-11-22 13:54:17,853 [INFO] 127.0.0.1 - - [22/Nov/2025 13:54:17] "GET /backend/status HTTP/1.1" 200 -
+2025-11-22 13:54:17,966 [INFO] 127.0.0.1 - - [22/Nov/2025 13:54:17] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0&auto_limits=true HTTP/1.1" 200 -
+2025-11-22 13:54:39,837 [INFO] 127.0.0.1 - - [22/Nov/2025 13:54:39] "POST /backend/run_piv HTTP/1.1" 200 -
+2025-11-22 13:54:39,845 [INFO] 127.0.0.1 - - [22/Nov/2025 13:54:39] "GET /backend/piv_logs?job_id=piv_20251122_135439 HTTP/1.1" 200 -
+2025-11-22 13:54:39,846 [INFO] 127.0.0.1 - - [22/Nov/2025 13:54:39] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-22 13:54:40,022 [INFO] 127.0.0.1 - - [22/Nov/2025 13:54:40] "GET /backend/plot/get_uncalibrated_image?basepath_idx=0&var=ux&is_uncalibrated=1&index=1 HTTP/1.1" 200 -
+2025-11-22 13:54:41,675 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-22 13:54:41,681 [INFO] ================================================================================
+2025-11-22 13:54:41,681 [INFO] VALIDATING CONFIGURATION
+2025-11-22 13:54:41,681 [INFO] ================================================================================
+2025-11-22 13:54:41,681 [INFO] ✓ Configuration validated successfully
+2025-11-22 13:54:41,681 [INFO]   Source paths: [PosixPath('/Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset')]
+2025-11-22 13:54:41,681 [INFO]   Cameras: [1]
+2025-11-22 13:54:41,681 [INFO]   Image files: 10
+2025-11-22 13:54:41,681 [INFO]   Frame pairs: 5
+2025-11-22 13:54:41,681 [INFO]   Image format: ('IMG%05d.tif',)
+2025-11-22 13:54:41,681 [INFO] 
+2025-11-22 13:54:41,681 [INFO] NOTES:
+2025-11-22 13:54:41,681 [INFO]   ℹ Camera 1: Processing subset - using 10 of 11 available files
+2025-11-22 13:54:41,681 [INFO] ================================================================================
+2025-11-22 13:54:41,681 [INFO] 
+2025-11-22 13:54:41,681 [INFO] Set OMP_NUM_THREADS to 10 for main process batch filtering
+2025-11-22 13:54:42,943 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-22 13:54:42,996 [INFO] Worker logging configured successfully
+2025-11-22 13:54:42,997 [INFO] Set OMP_NUM_THREADS to 10 in worker process
+2025-11-22 13:54:42,998 [INFO] Dask cluster started successfully
+2025-11-22 13:54:42,998 [INFO] Dask Worker Info:
+2025-11-22 13:54:42,998 [INFO] Worker tcp://127.0.0.1:56608
+2025-11-22 13:54:42,998 [INFO]   pid: None
+2025-11-22 13:54:42,998 [INFO]   host: 127.0.0.1
+2025-11-22 13:54:42,998 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-ptl63ooc
+2025-11-22 13:54:42,998 [INFO]   nanny: True
+2025-11-22 13:54:42,998 [INFO] Processing camera: Cam1
+2025-11-22 13:54:42,999 [INFO] _detect_image_shape: image_format = ('IMG%05d.tif',), type = <class 'tuple'>
+2025-11-22 13:54:42,999 [INFO] Source path: /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset, Camera: 1
+2025-11-22 13:54:42,999 [INFO] Camera path: /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset
+2025-11-22 13:54:42,999 [INFO] Trying to read file: /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset/IMG00000.tif
+2025-11-22 13:54:43,128 [INFO] Detected image shape: (1216, 1936)
+2025-11-22 13:54:43,128 [INFO] Auto-detected image shape: (1216, 1936)
+2025-11-22 13:54:43,129 [INFO] Lazy loading complete: 5 independent delayed tasks created (~5 KB memory footprint)
+2025-11-22 13:54:43,129 [INFO] ================================================================================
+2025-11-22 13:54:43,129 [INFO] BATCH FILTER MODE DETECTED
+2025-11-22 13:54:43,129 [INFO] ================================================================================
+2025-11-22 13:54:43,129 [INFO] Total frame pairs: 5
+2025-11-22 13:54:43,129 [INFO] Batch size: 5 (max allowed: 5)
+2025-11-22 13:54:43,129 [INFO] Total batches: 1
+2025-11-22 13:54:43,129 [INFO] Batch filters: ['time']
+2025-11-22 13:54:43,129 [INFO] Workers configured: 1
+2025-11-22 13:54:43,129 [INFO] ================================================================================
+2025-11-22 13:54:43,147 [INFO] Successfully cached window padding for 3 passes
+2025-11-22 13:54:43,156 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-22 13:54:43,188 [INFO] Broadcast correlator cache to all workers (ONCE)
+2025-11-22 13:54:43,189 [INFO] 
+2025-11-22 13:54:43,189 [INFO] >>> BATCH 1/1 <<<
+2025-11-22 13:54:43,189 [INFO] [Batch 1] Loading into main process memory...
+2025-11-22 13:54:44,391 [INFO] [Batch 1] Loaded 5 images (22.5 MB)
+2025-11-22 13:54:44,403 [INFO] [Batch 1] Applying filters: time
+2025-11-22 13:54:44,403 [INFO] [Batch 1] Using 10 threads for filtering
+2025-11-22 13:54:44,403 [INFO] Applying filter: {'type': 'time'}
+2025-11-22 13:54:44,403 [WARNING] Time filter: Empty chunk detected, skipping
+2025-11-22 13:54:44,479 [INFO] [Batch 1] Filtering complete. Output shape: (5, 2, 1216, 1936), dtype: float32, range: [0.00, 222.00]
+2025-11-22 13:54:44,480 [INFO] [Batch 1] Splitting batch into 5 individual pairs for low-memory distribution
+2025-11-22 13:54:44,580 [INFO] [Batch 1] 5 pairs scattered individually (~18.0 MB each)
+2025-11-22 13:54:44,581 [INFO] [Batch 1] Starting parallel PIV processing on 1 workers...
+2025-11-22 13:54:44,581 [INFO] Submitting 5 independent tasks to cluster
+2025-11-22 13:54:44,582 [INFO] Tasks submitted. Dask scheduler managing distribution across workers. Each worker processes ONE image at a time.
+2025-11-22 13:54:45,933 [INFO] All 5 images processed successfully
+2025-11-22 13:54:45,934 [INFO] [Batch 1] 5 images processed and saved
+2025-11-22 13:54:45,972 [INFO] 
+2025-11-22 13:54:45,972 [INFO] ================================================================================
+2025-11-22 13:54:45,973 [INFO] All 1 batches complete!
+2025-11-22 13:54:45,973 [INFO] Total images processed: 5
+2025-11-22 13:54:45,973 [INFO] ================================================================================
+2025-11-22 13:54:45,985 [INFO] Worker saved coordinates to /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset/uncalibrated_piv/5/Cam1/instantaneous/coordinates.mat
+2025-11-22 13:54:45,987 [INFO] Coordinates saved to /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset/uncalibrated_piv/5/Cam1/instantaneous
+2025-11-22 13:55:53,615 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:53] "[36mGET / HTTP/1.1[0m" 304 -
+2025-11-22 13:55:53,628 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:53] "[36mGET /_next/static/chunks/main-app-c97e6e5923995974.js HTTP/1.1[0m" 304 -
+2025-11-22 13:55:53,630 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:53] "[36mGET /_next/static/chunks/869-4931b8aa51010b21.js HTTP/1.1[0m" 304 -
+2025-11-22 13:55:53,630 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:53] "[36mGET /_next/static/chunks/app/layout-6908711637e25b2c.js HTTP/1.1[0m" 304 -
+2025-11-22 13:55:53,634 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:53] "[36mGET /_next/static/css/a1c49a65e0d89363.css HTTP/1.1[0m" 304 -
+2025-11-22 13:55:53,635 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:53] "[36mGET /_next/static/chunks/117-32d6e5822ea0ad97.js HTTP/1.1[0m" 304 -
+2025-11-22 13:55:53,636 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:53] "[36mGET /_next/static/chunks/686-5fd74635c30b8aae.js HTTP/1.1[0m" 304 -
+2025-11-22 13:55:53,636 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:53] "[36mGET /_next/static/chunks/fd9d1056-31cd4e5e32ed9a2a.js HTTP/1.1[0m" 304 -
+2025-11-22 13:55:53,637 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:53] "[36mGET /_next/static/chunks/app/page-1c5830a26fa77616.js HTTP/1.1[0m" 304 -
+2025-11-22 13:55:53,683 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:53] "GET /backend/config HTTP/1.1" 200 -
+2025-11-22 13:55:53,699 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:53] "[36mGET /grid.svg HTTP/1.1[0m" 304 -
+2025-11-22 13:55:54,749 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:54] "POST /backend/validate_files HTTP/1.1" 200 -
+2025-11-22 13:55:54,753 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:54] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-22 13:55:56,771 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:56] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-22 13:55:56,772 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:56] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-22 13:55:56,786 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:56] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-22 13:55:56,788 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:56] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-22 13:55:56,790 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:56] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-22 13:55:56,792 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:56] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-22 13:55:56,793 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:56] "[33mGET /backend/get_frame_pair?camera=1&idx=7&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1[0m" 404 -
+2025-11-22 13:55:56,794 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:56] "[33mGET /backend/get_frame_pair?camera=1&idx=8&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1[0m" 404 -
+2025-11-22 13:55:56,796 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:56] "[33mGET /backend/get_frame_pair?camera=1&idx=9&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1[0m" 404 -
+2025-11-22 13:55:56,797 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:56] "[33mGET /backend/get_frame_pair?camera=1&idx=10&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1[0m" 404 -
+2025-11-22 13:55:56,797 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:56] "[33mGET /backend/get_frame_pair?camera=1&idx=11&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1[0m" 404 -
+2025-11-22 13:55:56,934 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:56] "[33mGET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1[0m" 404 -
+2025-11-22 13:55:56,991 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:56] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0&auto_limits=true HTTP/1.1" 200 -
+2025-11-22 13:55:57,306 [INFO] 127.0.0.1 - - [22/Nov/2025 13:55:57] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-22 13:56:01,267 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:01] "POST /backend/run_piv HTTP/1.1" 200 -
+2025-11-22 13:56:01,277 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:01] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-22 13:56:01,278 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:01] "GET /backend/piv_logs?job_id=piv_20251122_135601 HTTP/1.1" 200 -
+2025-11-22 13:56:01,777 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:01] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-22 13:56:01,778 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:01] "GET /backend/piv_logs?job_id=piv_20251122_135601 HTTP/1.1" 200 -
+2025-11-22 13:56:02,277 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:02] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-22 13:56:02,278 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:02] "GET /backend/piv_logs?job_id=piv_20251122_135601 HTTP/1.1" 200 -
+2025-11-22 13:56:02,702 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-22 13:56:02,709 [INFO] ================================================================================
+2025-11-22 13:56:02,709 [INFO] VALIDATING CONFIGURATION
+2025-11-22 13:56:02,709 [INFO] ================================================================================
+2025-11-22 13:56:02,709 [INFO] ✓ Configuration validated successfully
+2025-11-22 13:56:02,709 [INFO]   Source paths: [PosixPath('/Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset')]
+2025-11-22 13:56:02,709 [INFO]   Cameras: [1]
+2025-11-22 13:56:02,709 [INFO]   Image files: 10
+2025-11-22 13:56:02,709 [INFO]   Frame pairs: 5
+2025-11-22 13:56:02,709 [INFO]   Image format: ('IMG%05d.tif',)
+2025-11-22 13:56:02,709 [INFO] 
+2025-11-22 13:56:02,709 [INFO] NOTES:
+2025-11-22 13:56:02,709 [INFO]   ℹ Camera 1: Processing subset - using 10 of 11 available files
+2025-11-22 13:56:02,710 [INFO] ================================================================================
+2025-11-22 13:56:02,710 [INFO] 
+2025-11-22 13:56:02,710 [INFO] Set OMP_NUM_THREADS to 10 for main process batch filtering
+2025-11-22 13:56:02,778 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:02] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-22 13:56:02,779 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:02] "GET /backend/piv_logs?job_id=piv_20251122_135601 HTTP/1.1" 200 -
+2025-11-22 13:56:03,278 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:03] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-22 13:56:03,278 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:03] "GET /backend/piv_logs?job_id=piv_20251122_135601 HTTP/1.1" 200 -
+2025-11-22 13:56:03,779 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:03] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-22 13:56:03,780 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:03] "GET /backend/piv_logs?job_id=piv_20251122_135601 HTTP/1.1" 200 -
+2025-11-22 13:56:03,952 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-22 13:56:04,009 [INFO] Worker logging configured successfully
+2025-11-22 13:56:04,010 [INFO] Set OMP_NUM_THREADS to 10 in worker process
+2025-11-22 13:56:04,010 [INFO] Dask cluster started successfully
+2025-11-22 13:56:04,011 [INFO] Dask Worker Info:
+2025-11-22 13:56:04,011 [INFO] Worker tcp://127.0.0.1:56757
+2025-11-22 13:56:04,011 [INFO]   pid: None
+2025-11-22 13:56:04,011 [INFO]   host: 127.0.0.1
+2025-11-22 13:56:04,011 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-gl2mdueh
+2025-11-22 13:56:04,011 [INFO]   nanny: True
+2025-11-22 13:56:04,011 [INFO] Processing camera: Cam1
+2025-11-22 13:56:04,011 [INFO] _detect_image_shape: image_format = ('IMG%05d.tif',), type = <class 'tuple'>
+2025-11-22 13:56:04,011 [INFO] Source path: /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset, Camera: 1
+2025-11-22 13:56:04,011 [INFO] Camera path: /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset
+2025-11-22 13:56:04,011 [INFO] Trying to read file: /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset/IMG00000.tif
+2025-11-22 13:56:04,133 [INFO] Detected image shape: (1216, 1936)
+2025-11-22 13:56:04,133 [INFO] Auto-detected image shape: (1216, 1936)
+2025-11-22 13:56:04,133 [INFO] Lazy loading complete: 5 independent delayed tasks created (~5 KB memory footprint)
+2025-11-22 13:56:04,133 [INFO] ================================================================================
+2025-11-22 13:56:04,134 [INFO] BATCH FILTER MODE DETECTED
+2025-11-22 13:56:04,134 [INFO] ================================================================================
+2025-11-22 13:56:04,134 [INFO] Total frame pairs: 5
+2025-11-22 13:56:04,134 [INFO] Batch size: 5 (max allowed: 5)
+2025-11-22 13:56:04,134 [INFO] Total batches: 1
+2025-11-22 13:56:04,134 [INFO] Batch filters: ['time']
+2025-11-22 13:56:04,134 [INFO] Workers configured: 1
+2025-11-22 13:56:04,134 [INFO] ================================================================================
+2025-11-22 13:56:04,142 [INFO] Successfully cached window padding for 3 passes
+2025-11-22 13:56:04,149 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-22 13:56:04,188 [INFO] Broadcast correlator cache to all workers (ONCE)
+2025-11-22 13:56:04,188 [INFO] 
+2025-11-22 13:56:04,188 [INFO] >>> BATCH 1/1 <<<
+2025-11-22 13:56:04,188 [INFO] [Batch 1] Loading into main process memory...
+2025-11-22 13:56:04,280 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:04] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-22 13:56:04,280 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:04] "GET /backend/piv_logs?job_id=piv_20251122_135601 HTTP/1.1" 200 -
+2025-11-22 13:56:04,782 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:04] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-22 13:56:04,782 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:04] "GET /backend/piv_logs?job_id=piv_20251122_135601 HTTP/1.1" 200 -
+2025-11-22 13:56:05,282 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:05] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-22 13:56:05,283 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:05] "GET /backend/piv_logs?job_id=piv_20251122_135601 HTTP/1.1" 200 -
+2025-11-22 13:56:05,402 [INFO] [Batch 1] Loaded 5 images (22.5 MB)
+2025-11-22 13:56:05,415 [INFO] [Batch 1] Applying filters: time
+2025-11-22 13:56:05,415 [INFO] [Batch 1] Using 10 threads for filtering
+2025-11-22 13:56:05,415 [INFO] Applying filter: {'type': 'time'}
+2025-11-22 13:56:05,415 [WARNING] Time filter: Empty chunk detected, skipping
+2025-11-22 13:56:05,491 [INFO] [Batch 1] Filtering complete. Output shape: (5, 2, 1216, 1936), dtype: float32, range: [0.00, 222.00]
+2025-11-22 13:56:05,492 [INFO] [Batch 1] Splitting batch into 5 individual pairs for low-memory distribution
+2025-11-22 13:56:05,588 [INFO] [Batch 1] 5 pairs scattered individually (~18.0 MB each)
+2025-11-22 13:56:05,588 [INFO] [Batch 1] Starting parallel PIV processing on 1 workers...
+2025-11-22 13:56:05,588 [INFO] Submitting 5 independent tasks to cluster
+2025-11-22 13:56:05,589 [INFO] Tasks submitted. Dask scheduler managing distribution across workers. Each worker processes ONE image at a time.
+2025-11-22 13:56:05,782 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:05] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-22 13:56:05,782 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:05] "GET /backend/piv_logs?job_id=piv_20251122_135601 HTTP/1.1" 200 -
+2025-11-22 13:56:06,284 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:06] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-22 13:56:06,284 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:06] "GET /backend/piv_logs?job_id=piv_20251122_135601 HTTP/1.1" 200 -
+2025-11-22 13:56:06,450 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:06] "GET /backend/plot/get_uncalibrated_image?basepath_idx=0&var=ux&is_uncalibrated=1&index=2 HTTP/1.1" 200 -
+2025-11-22 13:56:06,683 [INFO] All 5 images processed successfully
+2025-11-22 13:56:06,683 [INFO] [Batch 1] 5 images processed and saved
+2025-11-22 13:56:06,717 [INFO] 
+2025-11-22 13:56:06,718 [INFO] ================================================================================
+2025-11-22 13:56:06,718 [INFO] All 1 batches complete!
+2025-11-22 13:56:06,718 [INFO] Total images processed: 5
+2025-11-22 13:56:06,718 [INFO] ================================================================================
+2025-11-22 13:56:06,731 [INFO] Worker saved coordinates to /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset/uncalibrated_piv/5/Cam1/instantaneous/coordinates.mat
+2025-11-22 13:56:06,732 [INFO] Coordinates saved to /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset/uncalibrated_piv/5/Cam1/instantaneous
+2025-11-22 13:56:06,784 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:06] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-22 13:56:06,785 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:06] "GET /backend/piv_logs?job_id=piv_20251122_135601 HTTP/1.1" 200 -
+2025-11-22 13:56:17,152 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:17] "GET /backend/config HTTP/1.1" 200 -
+2025-11-22 13:56:17,155 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:17] "GET /backend/plot/check_runs?base_path=/Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset&camera=1&merged=0 HTTP/1.1" 200 -
+2025-11-22 13:56:17,319 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:17] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset&frame=1&var=ux&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-22 13:56:33,843 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:33] "[31m[1mGET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset&camera=1&frame=1&var=ux&run=3&merged=0&x_percent=0.46722382111143956&y_percent=0.3623819007708237 HTTP/1.1[0m" 400 -
+2025-11-22 13:56:36,257 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:36] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset&frame=1&var=ux&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-22 13:56:49,424 [INFO] 127.0.0.1 - - [22/Nov/2025 13:56:49] "[31m[1mGET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset&camera=1&frame=1&var=ux&run=3&merged=0&x_percent=0.1769012227463932&y_percent=0.7013948914057744 HTTP/1.1[0m" 400 -
+2025-11-22 13:58:12,347 [INFO] 127.0.0.1 - - [22/Nov/2025 13:58:12] "[31m[1mGET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset&camera=1&frame=1&var=ux&run=3&merged=0&x_percent=0.5769012471604571&y_percent=0.19873855073662353 HTTP/1.1[0m" 400 -
+2025-11-22 13:58:14,369 [INFO] 127.0.0.1 - - [22/Nov/2025 13:58:14] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-22 13:58:14,369 [INFO] 127.0.0.1 - - [22/Nov/2025 13:58:14] "POST /backend/preload_images HTTP/1.1" 200 -
+2025-11-22 13:58:14,391 [INFO] 127.0.0.1 - - [22/Nov/2025 13:58:14] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-22 13:58:14,392 [INFO] 127.0.0.1 - - [22/Nov/2025 13:58:14] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-22 13:58:14,395 [INFO] 127.0.0.1 - - [22/Nov/2025 13:58:14] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-22 13:58:14,397 [INFO] 127.0.0.1 - - [22/Nov/2025 13:58:14] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-22 13:58:14,404 [INFO] 127.0.0.1 - - [22/Nov/2025 13:58:14] "[33mGET /backend/get_frame_pair?camera=1&idx=7&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1[0m" 404 -
+2025-11-22 13:58:14,404 [INFO] 127.0.0.1 - - [22/Nov/2025 13:58:14] "[33mGET /backend/get_frame_pair?camera=1&idx=10&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1[0m" 404 -
+2025-11-22 13:58:14,427 [INFO] 127.0.0.1 - - [22/Nov/2025 13:58:14] "[33mGET /backend/get_frame_pair?camera=1&idx=8&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1[0m" 404 -
+2025-11-22 13:58:14,447 [INFO] 127.0.0.1 - - [22/Nov/2025 13:58:14] "[33mGET /backend/get_frame_pair?camera=1&idx=9&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1[0m" 404 -
+2025-11-22 13:58:14,484 [INFO] 127.0.0.1 - - [22/Nov/2025 13:58:14] "[33mGET /backend/get_frame_pair?camera=1&idx=11&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1[0m" 404 -
+2025-11-22 13:58:14,548 [INFO] 127.0.0.1 - - [22/Nov/2025 13:58:14] "[33mGET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1[0m" 404 -
+2025-11-22 13:58:14,608 [INFO] 127.0.0.1 - - [22/Nov/2025 13:58:14] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0&auto_limits=true HTTP/1.1" 200 -
+2025-11-22 13:58:14,900 [INFO] 127.0.0.1 - - [22/Nov/2025 13:58:14] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-22 13:58:17,519 [INFO] 127.0.0.1 - - [22/Nov/2025 13:58:17] "POST /backend/run_piv HTTP/1.1" 200 -
+2025-11-22 13:58:17,526 [INFO] 127.0.0.1 - - [22/Nov/2025 13:58:17] "GET /backend/piv_logs?job_id=piv_20251122_135817 HTTP/1.1" 200 -
+2025-11-22 13:58:17,527 [INFO] 127.0.0.1 - - [22/Nov/2025 13:58:17] "GET /backend/get_uncalibrated_count?basepath_idx=0&var=ux&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-22 13:58:17,684 [INFO] 127.0.0.1 - - [22/Nov/2025 13:58:17] "GET /backend/plot/get_uncalibrated_image?basepath_idx=0&var=ux&is_uncalibrated=1&index=1 HTTP/1.1" 200 -
+2025-11-22 13:58:18,969 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-22 13:58:18,976 [INFO] ================================================================================
+2025-11-22 13:58:18,976 [INFO] VALIDATING CONFIGURATION
+2025-11-22 13:58:18,976 [INFO] ================================================================================
+2025-11-22 13:58:18,976 [INFO] ✓ Configuration validated successfully
+2025-11-22 13:58:18,976 [INFO]   Source paths: [PosixPath('/Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset')]
+2025-11-22 13:58:18,976 [INFO]   Cameras: [1]
+2025-11-22 13:58:18,976 [INFO]   Image files: 10
+2025-11-22 13:58:18,976 [INFO]   Frame pairs: 5
+2025-11-22 13:58:18,976 [INFO]   Image format: ('IMG%05d.tif',)
+2025-11-22 13:58:18,976 [INFO] 
+2025-11-22 13:58:18,976 [INFO] NOTES:
+2025-11-22 13:58:18,976 [INFO]   ℹ Camera 1: Processing subset - using 10 of 11 available files
+2025-11-22 13:58:18,976 [INFO] ================================================================================
+2025-11-22 13:58:18,976 [INFO] 
+2025-11-22 13:58:18,976 [INFO] Set OMP_NUM_THREADS to 10 for main process batch filtering
+2025-11-22 13:58:20,166 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-22 13:58:20,217 [INFO] Worker logging configured successfully
+2025-11-22 13:58:20,218 [INFO] Set OMP_NUM_THREADS to 10 in worker process
+2025-11-22 13:58:20,218 [INFO] Dask cluster started successfully
+2025-11-22 13:58:20,218 [INFO] Dask Worker Info:
+2025-11-22 13:58:20,218 [INFO] Worker tcp://127.0.0.1:56906
+2025-11-22 13:58:20,218 [INFO]   pid: None
+2025-11-22 13:58:20,219 [INFO]   host: 127.0.0.1
+2025-11-22 13:58:20,219 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-i06x0l6v
+2025-11-22 13:58:20,219 [INFO]   nanny: True
+2025-11-22 13:58:20,219 [INFO] Processing camera: Cam1
+2025-11-22 13:58:20,219 [INFO] _detect_image_shape: image_format = ('IMG%05d.tif',), type = <class 'tuple'>
+2025-11-22 13:58:20,219 [INFO] Source path: /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset, Camera: 1
+2025-11-22 13:58:20,219 [INFO] Camera path: /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset
+2025-11-22 13:58:20,219 [INFO] Trying to read file: /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset/IMG00000.tif
+2025-11-22 13:58:20,347 [INFO] Detected image shape: (1216, 1936)
+2025-11-22 13:58:20,347 [INFO] Auto-detected image shape: (1216, 1936)
+2025-11-22 13:58:20,348 [INFO] Lazy loading complete: 5 independent delayed tasks created (~5 KB memory footprint)
+2025-11-22 13:58:20,348 [INFO] ================================================================================
+2025-11-22 13:58:20,348 [INFO] BATCH FILTER MODE DETECTED
+2025-11-22 13:58:20,348 [INFO] ================================================================================
+2025-11-22 13:58:20,348 [INFO] Total frame pairs: 5
+2025-11-22 13:58:20,348 [INFO] Batch size: 5 (max allowed: 5)
+2025-11-22 13:58:20,348 [INFO] Total batches: 1
+2025-11-22 13:58:20,348 [INFO] Batch filters: ['time']
+2025-11-22 13:58:20,348 [INFO] Workers configured: 1
+2025-11-22 13:58:20,348 [INFO] ================================================================================
+2025-11-22 13:58:20,355 [INFO] Successfully cached window padding for 3 passes
+2025-11-22 13:58:20,364 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-22 13:58:20,394 [INFO] Broadcast correlator cache to all workers (ONCE)
+2025-11-22 13:58:20,394 [INFO] 
+2025-11-22 13:58:20,394 [INFO] >>> BATCH 1/1 <<<
+2025-11-22 13:58:20,394 [INFO] [Batch 1] Loading into main process memory...
+2025-11-22 13:58:21,580 [INFO] [Batch 1] Loaded 5 images (22.5 MB)
+2025-11-22 13:58:21,591 [INFO] [Batch 1] Applying filters: time
+2025-11-22 13:58:21,591 [INFO] [Batch 1] Using 10 threads for filtering
+2025-11-22 13:58:21,591 [INFO] Applying filter: {'type': 'time'}
+2025-11-22 13:58:21,591 [WARNING] Time filter: Empty chunk detected, skipping
+2025-11-22 13:58:21,665 [INFO] [Batch 1] Filtering complete. Output shape: (5, 2, 1216, 1936), dtype: float32, range: [0.00, 222.00]
+2025-11-22 13:58:21,666 [INFO] [Batch 1] Splitting batch into 5 individual pairs for low-memory distribution
+2025-11-22 13:58:21,764 [INFO] [Batch 1] 5 pairs scattered individually (~18.0 MB each)
+2025-11-22 13:58:21,764 [INFO] [Batch 1] Starting parallel PIV processing on 1 workers...
+2025-11-22 13:58:21,765 [INFO] Submitting 5 independent tasks to cluster
+2025-11-22 13:58:21,765 [INFO] Tasks submitted. Dask scheduler managing distribution across workers. Each worker processes ONE image at a time.
+2025-11-22 13:58:23,020 [INFO] All 5 images processed successfully
+2025-11-22 13:58:23,020 [INFO] [Batch 1] 5 images processed and saved
+2025-11-22 13:58:23,058 [INFO] 
+2025-11-22 13:58:23,058 [INFO] ================================================================================
+2025-11-22 13:58:23,058 [INFO] All 1 batches complete!
+2025-11-22 13:58:23,058 [INFO] Total images processed: 5
+2025-11-22 13:58:23,058 [INFO] ================================================================================
+2025-11-22 13:58:23,071 [INFO] Worker saved coordinates to /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset/uncalibrated_piv/5/Cam1/instantaneous/coordinates.mat
+2025-11-22 13:58:23,072 [INFO] Coordinates saved to /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset/uncalibrated_piv/5/Cam1/instantaneous
+2025-11-22 13:59:27,333 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-22 13:59:27,339 [INFO] ================================================================================
+2025-11-22 13:59:27,339 [INFO] VALIDATING CONFIGURATION
+2025-11-22 13:59:27,339 [INFO] ================================================================================
+2025-11-22 13:59:27,340 [INFO] ✓ Configuration validated successfully
+2025-11-22 13:59:27,340 [INFO]   Source paths: [PosixPath('/Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset')]
+2025-11-22 13:59:27,340 [INFO]   Cameras: [1]
+2025-11-22 13:59:27,340 [INFO]   Image files: 10
+2025-11-22 13:59:27,340 [INFO]   Frame pairs: 5
+2025-11-22 13:59:27,340 [INFO]   Image format: ('IMG%05d.tif',)
+2025-11-22 13:59:27,340 [INFO] 
+2025-11-22 13:59:27,340 [INFO] NOTES:
+2025-11-22 13:59:27,340 [INFO]   ℹ Camera 1: Processing subset - using 10 of 11 available files
+2025-11-22 13:59:27,340 [INFO] ================================================================================
+2025-11-22 13:59:27,340 [INFO] 
+2025-11-22 13:59:27,340 [INFO] Set OMP_NUM_THREADS to 10 for main process batch filtering
+2025-11-22 13:59:28,621 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-22 13:59:28,714 [INFO] Worker logging configured successfully
+2025-11-22 13:59:28,715 [INFO] Set OMP_NUM_THREADS to 10 in worker process
+2025-11-22 13:59:28,715 [INFO] Dask cluster started successfully
+2025-11-22 13:59:28,716 [INFO] Dask Worker Info:
+2025-11-22 13:59:28,716 [INFO] Worker tcp://127.0.0.1:56959
+2025-11-22 13:59:28,716 [INFO]   pid: None
+2025-11-22 13:59:28,716 [INFO]   host: 127.0.0.1
+2025-11-22 13:59:28,716 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-2pie_sk5
+2025-11-22 13:59:28,716 [INFO]   nanny: True
+2025-11-22 13:59:28,716 [INFO] Processing camera: Cam1
+2025-11-22 13:59:28,716 [INFO] _detect_image_shape: image_format = ('IMG%05d.tif',), type = <class 'tuple'>
+2025-11-22 13:59:28,716 [INFO] Source path: /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset, Camera: 1
+2025-11-22 13:59:28,716 [INFO] Camera path: /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset
+2025-11-22 13:59:28,716 [INFO] Trying to read file: /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset/IMG00000.tif
+2025-11-22 13:59:28,843 [INFO] Detected image shape: (1216, 1936)
+2025-11-22 13:59:28,843 [INFO] Auto-detected image shape: (1216, 1936)
+2025-11-22 13:59:28,844 [INFO] Lazy loading complete: 5 independent delayed tasks created (~5 KB memory footprint)
+2025-11-22 13:59:28,844 [INFO] ================================================================================
+2025-11-22 13:59:28,844 [INFO] BATCH FILTER MODE DETECTED
+2025-11-22 13:59:28,844 [INFO] ================================================================================
+2025-11-22 13:59:28,844 [INFO] Total frame pairs: 5
+2025-11-22 13:59:28,844 [INFO] Batch size: 5 (max allowed: 5)
+2025-11-22 13:59:28,844 [INFO] Total batches: 1
+2025-11-22 13:59:28,844 [INFO] Batch filters: ['time']
+2025-11-22 13:59:28,844 [INFO] Workers configured: 1
+2025-11-22 13:59:28,844 [INFO] ================================================================================
+2025-11-22 13:59:28,851 [INFO] Successfully cached window padding for 3 passes
+2025-11-22 13:59:28,862 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-22 13:59:28,896 [INFO] Broadcast correlator cache to all workers (ONCE)
+2025-11-22 13:59:28,896 [INFO] 
+2025-11-22 13:59:28,896 [INFO] >>> BATCH 1/1 <<<
+2025-11-22 13:59:28,896 [INFO] [Batch 1] Loading into main process memory...
+2025-11-22 13:59:30,088 [INFO] [Batch 1] Loaded 5 images (22.5 MB)
+2025-11-22 13:59:30,099 [INFO] [Batch 1] Applying filters: time
+2025-11-22 13:59:30,099 [INFO] [Batch 1] Using 10 threads for filtering
+2025-11-22 13:59:30,099 [INFO] Applying filter: {'type': 'time'}
+2025-11-22 13:59:30,099 [WARNING] Time filter: Empty chunk detected, skipping
+2025-11-22 13:59:30,198 [INFO] [Batch 1] Filtering complete. Output shape: (5, 2, 1216, 1936), dtype: float32, range: [0.00, 222.00]
+2025-11-22 13:59:30,200 [INFO] [Batch 1] Splitting batch into 5 individual pairs for low-memory distribution
+2025-11-22 13:59:30,313 [INFO] [Batch 1] 5 pairs scattered individually (~18.0 MB each)
+2025-11-22 13:59:30,314 [INFO] [Batch 1] Starting parallel PIV processing on 1 workers...
+2025-11-22 13:59:30,314 [INFO] Submitting 5 independent tasks to cluster
+2025-11-22 13:59:30,315 [INFO] Tasks submitted. Dask scheduler managing distribution across workers. Each worker processes ONE image at a time.
+2025-11-22 13:59:31,377 [INFO] All 5 images processed successfully
+2025-11-22 13:59:31,377 [INFO] [Batch 1] 5 images processed and saved
+2025-11-22 13:59:31,417 [INFO] 
+2025-11-22 13:59:31,417 [INFO] ================================================================================
+2025-11-22 13:59:31,417 [INFO] All 1 batches complete!
+2025-11-22 13:59:31,417 [INFO] Total images processed: 5
+2025-11-22 13:59:31,417 [INFO] ================================================================================
+2025-11-22 13:59:31,430 [INFO] Worker saved coordinates to /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset/uncalibrated_piv/5/Cam1/instantaneous/coordinates.mat
+2025-11-22 13:59:31,431 [INFO] Coordinates saved to /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset/uncalibrated_piv/5/Cam1/instantaneous
+2025-11-22 13:59:51,996 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-22 13:59:52,001 [INFO] ================================================================================
+2025-11-22 13:59:52,001 [INFO] VALIDATING CONFIGURATION
+2025-11-22 13:59:52,001 [INFO] ================================================================================
+2025-11-22 13:59:52,001 [INFO] ✓ Configuration validated successfully
+2025-11-22 13:59:52,001 [INFO]   Source paths: [PosixPath('/Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset')]
+2025-11-22 13:59:52,001 [INFO]   Cameras: [1]
+2025-11-22 13:59:52,001 [INFO]   Image files: 10
+2025-11-22 13:59:52,001 [INFO]   Frame pairs: 5
+2025-11-22 13:59:52,001 [INFO]   Image format: ('IMG%05d.tif',)
+2025-11-22 13:59:52,001 [INFO] 
+2025-11-22 13:59:52,001 [INFO] NOTES:
+2025-11-22 13:59:52,001 [INFO]   ℹ Camera 1: Processing subset - using 10 of 11 available files
+2025-11-22 13:59:52,001 [INFO] ================================================================================
+2025-11-22 13:59:52,001 [INFO] 
+2025-11-22 13:59:52,001 [INFO] Set OMP_NUM_THREADS to 10 for main process batch filtering
+2025-11-22 13:59:53,157 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-22 13:59:53,212 [INFO] Worker logging configured successfully
+2025-11-22 13:59:53,213 [INFO] Set OMP_NUM_THREADS to 10 in worker process
+2025-11-22 13:59:53,213 [INFO] Dask cluster started successfully
+2025-11-22 13:59:53,214 [INFO] Dask Worker Info:
+2025-11-22 13:59:53,214 [INFO] Worker tcp://127.0.0.1:56993
+2025-11-22 13:59:53,214 [INFO]   pid: None
+2025-11-22 13:59:53,214 [INFO]   host: 127.0.0.1
+2025-11-22 13:59:53,214 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-pbfr2rbs
+2025-11-22 13:59:53,214 [INFO]   nanny: True
+2025-11-22 13:59:53,214 [INFO] Processing camera: Cam1
+2025-11-22 13:59:53,214 [INFO] _detect_image_shape: image_format = ('IMG%05d.tif',), type = <class 'tuple'>
+2025-11-22 13:59:53,214 [INFO] Source path: /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset, Camera: 1
+2025-11-22 13:59:53,214 [INFO] Camera path: /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset
+2025-11-22 13:59:53,215 [INFO] Trying to read file: /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset/IMG00000.tif
+2025-11-22 13:59:53,339 [INFO] Detected image shape: (1216, 1936)
+2025-11-22 13:59:53,339 [INFO] Auto-detected image shape: (1216, 1936)
+2025-11-22 13:59:53,339 [INFO] Lazy loading complete: 5 independent delayed tasks created (~5 KB memory footprint)
+2025-11-22 13:59:53,339 [INFO] ================================================================================
+2025-11-22 13:59:53,339 [INFO] BATCH FILTER MODE DETECTED
+2025-11-22 13:59:53,340 [INFO] ================================================================================
+2025-11-22 13:59:53,340 [INFO] Total frame pairs: 5
+2025-11-22 13:59:53,340 [INFO] Batch size: 5 (max allowed: 5)
+2025-11-22 13:59:53,340 [INFO] Total batches: 1
+2025-11-22 13:59:53,340 [INFO] Batch filters: ['time']
+2025-11-22 13:59:53,340 [INFO] Workers configured: 1
+2025-11-22 13:59:53,340 [INFO] ================================================================================
+2025-11-22 13:59:53,344 [INFO] Successfully cached window padding for 3 passes
+2025-11-22 13:59:53,353 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-22 13:59:53,386 [INFO] Broadcast correlator cache to all workers (ONCE)
+2025-11-22 13:59:53,387 [INFO] 
+2025-11-22 13:59:53,387 [INFO] >>> BATCH 1/1 <<<
+2025-11-22 13:59:53,387 [INFO] [Batch 1] Loading into main process memory...
+2025-11-22 13:59:54,583 [INFO] [Batch 1] Loaded 5 images (22.5 MB)
+2025-11-22 13:59:54,592 [INFO] [Batch 1] Applying filters: time
+2025-11-22 13:59:54,592 [INFO] [Batch 1] Using 10 threads for filtering
+2025-11-22 13:59:54,592 [INFO] Applying filter: {'type': 'time'}
+2025-11-22 13:59:54,592 [WARNING] Time filter: Empty chunk detected, skipping
+2025-11-22 13:59:54,685 [INFO] [Batch 1] Filtering complete. Output shape: (5, 2, 1216, 1936), dtype: float32, range: [0.00, 222.00]
+2025-11-22 13:59:54,686 [INFO] [Batch 1] Splitting batch into 5 individual pairs for low-memory distribution
+2025-11-22 13:59:54,800 [INFO] [Batch 1] 5 pairs scattered individually (~18.0 MB each)
+2025-11-22 13:59:54,801 [INFO] [Batch 1] Starting parallel PIV processing on 1 workers...
+2025-11-22 13:59:54,801 [INFO] Submitting 5 independent tasks to cluster
+2025-11-22 13:59:54,802 [INFO] Tasks submitted. Dask scheduler managing distribution across workers. Each worker processes ONE image at a time.
+2025-11-22 13:59:54,887 [ERROR] Error in correlate_batch for image 0: zero-size array to reduction operation minimum which has no identity
+2025-11-22 13:59:54,889 [ERROR] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/piv/piv_backend/cpu_instantaneous.py", line 398, in correlate_batch
+    ux_mat, uy_mat = apply_infilling(
+                     ~~~~~~~~~~~~~~~^
+        ux_mat, uy_mat, infill_mask, mid_infill_cfg
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/piv/piv_backend/infilling.py", line 430, in apply_infilling
+    return infill_biharmonic(ux, uy, mask)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/piv/piv_backend/infilling.py", line 131, in infill_biharmonic
+    ux_filled = inpaint_biharmonic(ux_temp, combined_mask)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/skimage/_shared/utils.py", line 445, in fixed_func
+    return func(*args, **kwargs)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/skimage/restoration/inpaint.py", line 285, in inpaint_biharmonic
+    limits = (known_points.min(axis=0), known_points.max(axis=0))
+              ~~~~~~~~~~~~~~~~^^^^^^^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+
+2025-11-22 13:59:54,889 [ERROR] PIV processing failed: zero-size array to reduction operation minimum which has no identity
+2025-11-22 13:59:54,889 [WARNING] PIVResult has no passes for frame 2. Skipping save.
+2025-11-22 13:59:54,925 [ERROR] Error in correlate_batch for image 0: zero-size array to reduction operation minimum which has no identity
+2025-11-22 13:59:54,925 [ERROR] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/piv/piv_backend/cpu_instantaneous.py", line 398, in correlate_batch
+    ux_mat, uy_mat = apply_infilling(
+                     ~~~~~~~~~~~~~~~^
+        ux_mat, uy_mat, infill_mask, mid_infill_cfg
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/piv/piv_backend/infilling.py", line 430, in apply_infilling
+    return infill_biharmonic(ux, uy, mask)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/piv/piv_backend/infilling.py", line 131, in infill_biharmonic
+    ux_filled = inpaint_biharmonic(ux_temp, combined_mask)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/skimage/_shared/utils.py", line 445, in fixed_func
+    return func(*args, **kwargs)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/skimage/restoration/inpaint.py", line 285, in inpaint_biharmonic
+    limits = (known_points.min(axis=0), known_points.max(axis=0))
+              ~~~~~~~~~~~~~~~~^^^^^^^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+
+2025-11-22 13:59:54,925 [ERROR] PIV processing failed: zero-size array to reduction operation minimum which has no identity
+2025-11-22 13:59:54,926 [WARNING] PIVResult has no passes for frame 4. Skipping save.
+2025-11-22 13:59:54,961 [ERROR] Error in correlate_batch for image 0: zero-size array to reduction operation minimum which has no identity
+2025-11-22 13:59:54,961 [ERROR] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/piv/piv_backend/cpu_instantaneous.py", line 398, in correlate_batch
+    ux_mat, uy_mat = apply_infilling(
+                     ~~~~~~~~~~~~~~~^
+        ux_mat, uy_mat, infill_mask, mid_infill_cfg
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/piv/piv_backend/infilling.py", line 430, in apply_infilling
+    return infill_biharmonic(ux, uy, mask)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/piv/piv_backend/infilling.py", line 131, in infill_biharmonic
+    ux_filled = inpaint_biharmonic(ux_temp, combined_mask)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/skimage/_shared/utils.py", line 445, in fixed_func
+    return func(*args, **kwargs)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/skimage/restoration/inpaint.py", line 285, in inpaint_biharmonic
+    limits = (known_points.min(axis=0), known_points.max(axis=0))
+              ~~~~~~~~~~~~~~~~^^^^^^^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+
+2025-11-22 13:59:54,961 [ERROR] PIV processing failed: zero-size array to reduction operation minimum which has no identity
+2025-11-22 13:59:54,962 [WARNING] PIVResult has no passes for frame 5. Skipping save.
+2025-11-22 13:59:54,996 [ERROR] Error in correlate_batch for image 0: zero-size array to reduction operation minimum which has no identity
+2025-11-22 13:59:54,997 [ERROR] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/piv/piv_backend/cpu_instantaneous.py", line 398, in correlate_batch
+    ux_mat, uy_mat = apply_infilling(
+                     ~~~~~~~~~~~~~~~^
+        ux_mat, uy_mat, infill_mask, mid_infill_cfg
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/piv/piv_backend/infilling.py", line 430, in apply_infilling
+    return infill_biharmonic(ux, uy, mask)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/piv/piv_backend/infilling.py", line 131, in infill_biharmonic
+    ux_filled = inpaint_biharmonic(ux_temp, combined_mask)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/skimage/_shared/utils.py", line 445, in fixed_func
+    return func(*args, **kwargs)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/skimage/restoration/inpaint.py", line 285, in inpaint_biharmonic
+    limits = (known_points.min(axis=0), known_points.max(axis=0))
+              ~~~~~~~~~~~~~~~~^^^^^^^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+
+2025-11-22 13:59:54,997 [ERROR] PIV processing failed: zero-size array to reduction operation minimum which has no identity
+2025-11-22 13:59:54,998 [WARNING] PIVResult has no passes for frame 3. Skipping save.
+2025-11-22 13:59:55,034 [ERROR] Error in correlate_batch for image 0: zero-size array to reduction operation minimum which has no identity
+2025-11-22 13:59:55,034 [ERROR] Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/piv/piv_backend/cpu_instantaneous.py", line 398, in correlate_batch
+    ux_mat, uy_mat = apply_infilling(
+                     ~~~~~~~~~~~~~~~^
+        ux_mat, uy_mat, infill_mask, mid_infill_cfg
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/piv/piv_backend/infilling.py", line 430, in apply_infilling
+    return infill_biharmonic(ux, uy, mask)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/piv/piv_backend/infilling.py", line 131, in infill_biharmonic
+    ux_filled = inpaint_biharmonic(ux_temp, combined_mask)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/skimage/_shared/utils.py", line 445, in fixed_func
+    return func(*args, **kwargs)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/skimage/restoration/inpaint.py", line 285, in inpaint_biharmonic
+    limits = (known_points.min(axis=0), known_points.max(axis=0))
+              ~~~~~~~~~~~~~~~~^^^^^^^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/numpy/_core/_methods.py", line 48, in _amin
+    return umr_minimum(a, axis, None, out, keepdims, initial, where)
+ValueError: zero-size array to reduction operation minimum which has no identity
+
+2025-11-22 13:59:55,034 [ERROR] PIV processing failed: zero-size array to reduction operation minimum which has no identity
+2025-11-22 13:59:55,035 [WARNING] PIVResult has no passes for frame 1. Skipping save.
+2025-11-22 13:59:55,037 [INFO] All 5 images processed successfully
+2025-11-22 13:59:55,037 [INFO] [Batch 1] 5 images processed and saved
+2025-11-22 13:59:55,074 [INFO] 
+2025-11-22 13:59:55,074 [INFO] ================================================================================
+2025-11-22 13:59:55,074 [INFO] All 1 batches complete!
+2025-11-22 13:59:55,074 [INFO] Total images processed: 5
+2025-11-22 13:59:55,074 [INFO] ================================================================================

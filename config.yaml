@@ -26,8 +26,8 @@ logging:
   level: INFO
   console: true
 processing:
-  instantaneous: true
-  ensemble: false
+  instantaneous: false
+  ensemble: true
   stereo: false
   backend: cpu
   debug: false
