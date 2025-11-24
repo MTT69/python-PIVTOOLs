@@ -1,25 +1,24 @@
 paths:
   base_paths:
-  - D:\Processed_Wake_PIV\hehehhehehe
+  - D:\Processed_Wake_PIV\hohohohoho
   source_paths:
-  - C:\Users\ees1u24\Desktop\PIV_POV\Colored
+  - D:\Wake_PIV_16_8
   camera_numbers:
   - 1
   - 2
   camera_count: 2
-  camera_subfolders:
-  - Cam6
-  - Cam7
+  camera_subfolders: []
 images:
-  num_images: 11
-  image_format: IMG%05d.tif
+  num_images: 30
+  image_format:
+  - Case_A_Phase_003_Run_1.set
   vector_format:
   - '%05d.mat'
-  time_resolved: true
+  time_resolved: false
   dtype: float32
-  zero_based_indexing: true
+  zero_based_indexing: false
 batches:
-  size: 9
+  size: 10
 logging:
   file: pypiv.log
   level: INFO
@@ -73,12 +72,15 @@ instantaneous_piv:
     - 64
   - - 32
     - 32
+  - - 16
+    - 16
   overlap:
   - 50
   - 50
   - 50
+  - 50
   runs:
-  - 3
+  - 4
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
@@ -133,7 +135,7 @@ calibration:
     asymmetric: false
     dt: 2
 filters:
-- type: time
+- type: pod
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat
