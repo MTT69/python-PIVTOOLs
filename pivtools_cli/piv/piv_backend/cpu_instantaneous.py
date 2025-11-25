@@ -834,19 +834,6 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 g_kernel /= max(np.sum(g_kernel), 1e-12)
                 self.G_smooth_predictor.append(g_kernel)
 
-        # # Verify window padding cache integrity
-        # assert len(self.win_ctrs_x) == len(config.window_sizes), f"Window centers X cache length mismatch: {len(self.win_ctrs_x)} vs {len(config.window_sizes)}"
-        # assert len(self.win_ctrs_y) == len(config.window_sizes), f"Window centers Y cache length mismatch: {len(self.win_ctrs_y)} vs {len(config.window_sizes)}"
-        # assert len(self.win_spacing_x) == len(config.window_sizes), f"Window spacing X cache length mismatch: {len(self.win_spacing_x)} vs {len(config.window_sizes)}"
-        # assert len(self.win_spacing_y) == len(config.window_sizes), f"Window spacing Y cache length mismatch: {len(self.win_spacing_y)} vs {len(config.window_sizes)}"
-        
-        # # Check that cached values are reasonable
-        # for pass_idx in range(len(config.window_sizes)):
-        #     assert len(self.win_ctrs_x[pass_idx]) > 0, f"No X window centers cached for pass {pass_idx}"
-        #     assert len(self.win_ctrs_y[pass_idx]) > 0, f"No Y window centers cached for pass {pass_idx}"
-        #     assert self.win_spacing_x[pass_idx] > 0, f"Invalid X spacing for pass {pass_idx}: {self.win_spacing_x[pass_idx]}"
-        #     assert self.win_spacing_y[pass_idx] > 0, f"Invalid Y spacing for pass {pass_idx}: {self.win_spacing_y[pass_idx]}"
-        
         logging.info(f"Successfully cached window padding for {len(config.window_sizes)} passes")
 
     
@@ -924,46 +911,3 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             assert pred_y.shape == expected_pred_shape, f"Predictor map Y shape incorrect for pass {pass_idx}: {pred_y.shape} vs {expected_pred_shape}"
         
         logging.info(f"Successfully cached interpolation grids for {len(config.window_sizes)} passes")
-
-    # def _apply_mask_to_vectors(
-    #     self,
-    #     win_ctrs_x: np.ndarray,
-    #     win_ctrs_y: np.ndarray,
-    #     mask: np.ndarray
-    # ) -> np.ndarray:
-    #     """
-    #     Apply user-defined mask to invalidate vectors in masked regions.
-        
-    #     A vector is invalidated if its window center falls within a masked region
-    #     (where mask == True).
-        
-    #     Parameters
-    #     ----------
-    #     win_ctrs_x : np.ndarray
-    #         1D array of window center x-coordinates
-    #     win_ctrs_y : np.ndarray
-    #         1D array of window center y-coordinates
-    #     mask : np.ndarray
-    #         Boolean mask array of shape (H, W) where True indicates masked regions
-            
-    #     Returns
-    #     -------
-    #     np.ndarray
-    #         Boolean mask of shape (len(win_ctrs_y), len(win_ctrs_x)) where
-    #         True indicates vectors to invalidate
-    #     """
-    #     grid_y, grid_x = np.meshgrid(win_ctrs_y, win_ctrs_x, indexing="ij")
-
-    #     # Round to nearest pixel indices
-    #     x_idx = np.round(grid_x).astype(int)
-    #     y_idx = np.round(grid_y).astype(int)
-
-    #     # Clip to valid image bounds
-    #     x_idx = np.clip(x_idx, 0, mask.shape[1] - 1)
-    #     y_idx = np.clip(y_idx, 0, mask.shape[0] - 1)
-
-    #     # Sample mask at window center locations
-    #     # mask[y, x] where True = masked region
-    #     vector_mask = mask[y_idx, x_idx]
-
-    #     return vector_mask

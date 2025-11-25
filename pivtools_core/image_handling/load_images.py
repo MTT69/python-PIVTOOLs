@@ -444,36 +444,57 @@ def compute_vector_mask(
         win_ctrs_y = result.win_ctrs_y
         n_win_x = result.n_win_x
         n_win_y = result.n_win_y
-        
-        box_filter_y = np.ones((win_y, 1), dtype=np.float32) / win_y
-        f_mask = convolve(im_mask, box_filter_y, mode='constant', cval=0.0)
-        
-        # Convolve along x (columns)
-        box_filter_x = np.ones((1, win_x), dtype=np.float32) / win_x
-        f_mask = convolve(f_mask, box_filter_x, mode='constant', cval=0.0)
-        
-        # Interpolate at window center positions using nearest neighbor
-        # Create grid of window centers
-        win_y_grid, win_x_grid = np.meshgrid(win_ctrs_y, win_ctrs_x, indexing='ij')
-        
-        # Convert to integer indices for nearest neighbor
-        win_y_idx = np.clip(np.round(win_y_grid).astype(int), 0, H - 1)
-        win_x_idx = np.clip(np.round(win_x_grid).astype(int), 0, W - 1)
-        
-        # Sample the filtered mask
-        b_mask_pass = f_mask[win_y_idx, win_x_idx] > threshold
-        
+
+        # Use geometric overlap check instead of box filter convolution
+        # This avoids asymmetry issues with even-sized kernels
+        b_mask_pass = np.zeros((n_win_y, n_win_x), dtype=bool)
+
+        # Calculate window bounds for each window center
+        # A window of size W centered at C covers pixels [C - W/2, C + W/2)
+        # Using floor to match C code: floor(C - (W-1)/2 + 0.5) to floor(C + (W-1)/2 + 0.5)
+        half_win_y = (win_y - 1) / 2.0
+        half_win_x = (win_x - 1) / 2.0
+
+        for iy in range(n_win_y):
+            y_center = win_ctrs_y[iy]
+            y_min = int(np.floor(y_center - half_win_y + 0.5))
+            y_max = int(np.floor(y_center + half_win_y + 0.5))
+
+            for ix in range(n_win_x):
+                x_center = win_ctrs_x[ix]
+                x_min = int(np.floor(x_center - half_win_x + 0.5))
+                x_max = int(np.floor(x_center + half_win_x + 0.5))
+
+                # Check overlap: window [y_min, y_max] × [x_min, x_max] with pixel mask
+                # Count masked pixels in window region
+                y_min_clip = max(0, y_min)
+                y_max_clip = min(H, y_max + 1)
+                x_min_clip = max(0, x_min)
+                x_max_clip = min(W, x_max + 1)
+
+                if y_max_clip > y_min_clip and x_max_clip > x_min_clip:
+                    window_region = pixel_mask[y_min_clip:y_max_clip, x_min_clip:x_max_clip]
+                    overlap_fraction = np.sum(window_region) / (win_y * win_x)
+                    b_mask_pass[iy, ix] = overlap_fraction > threshold
+
         vector_masks.append(b_mask_pass)
-        
+
         # Log statistics for this pass (debug level only)
         masked_vectors = np.sum(b_mask_pass)
         total_vectors = b_mask_pass.size
         mask_fraction = masked_vectors / total_vectors if total_vectors > 0 else 0
-        
+
+        # Find which rows are masked for debugging
+        masked_rows_y = np.any(b_mask_pass, axis=1)  # Which Y indices have any masks
+        masked_row_indices = np.where(masked_rows_y)[0]
+
         logging.debug(
             "Pass {}: {}/{} vectors masked ({:.1f}%), window size: ({}, {})",
             pass_idx + 1, masked_vectors, total_vectors,
             mask_fraction * 100, win_y, win_x
         )
+
+
+
     
     return vector_masks

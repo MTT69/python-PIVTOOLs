@@ -112,23 +112,7 @@ class CrossCorrelator(ABC):
             raise ValueError(f"Unrecognized window type '{window_type}'")
 
         return weight
-    
-    @profile
-    def _inpaint_nans_biharm(self, A):
-        mask = np.isnan(A)
-        A_filled = np.copy(A)
 
-        y, x = np.indices(A.shape)
-        known_points = np.array([y[~mask], x[~mask]]).T
-        known_values = A[~mask]
-        nan_points = np.array([y[mask], x[mask]]).T
-
-        A_filled[mask] = griddata(
-            known_points, known_values, nan_points, method="nearest"
-        )
-
-        return inpaint_biharmonic(A_filled, mask)
-    @profile
     def _inpaint_nans_griddata(self, A):
         """
         Fast NaN inpainting using scipy.interpolate.griddata.

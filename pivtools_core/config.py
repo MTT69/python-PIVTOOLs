@@ -799,6 +799,110 @@ masking:
         return self.data.get("processing", {}).get("dask_memory_limit", "4GB")
 
     @property
+    def filter_worker_count(self):
+        """
+        Manual filter worker count override.
+
+        Returns None for auto-detection based on ratio.
+        Set to specific number (e.g., 1 for low RAM) to override.
+
+        Returns
+        -------
+        int or None
+            Number of workers dedicated to filtering, or None for auto-detection
+        """
+        return self.data.get("processing", {}).get("filter_worker_count", None)
+
+    @property
+    def filter_worker_ratio(self):
+        """
+        Filter worker ratio (0.0-1.0) when auto-detecting.
+
+        Default 0.2 means 20% of workers filter, 80% correlate.
+        Only used when filter_worker_count is None.
+
+        Returns
+        -------
+        float
+            Ratio of workers to allocate for filtering (0.0 to 1.0)
+        """
+        return self.data.get("processing", {}).get("filter_worker_ratio", 0.2)
+
+    def get_filter_worker_allocation(self, total_workers: int):
+        """
+        Determine filter and correlation worker counts.
+
+        Parameters
+        ----------
+        total_workers : int
+            Total number of available workers
+
+        Returns
+        -------
+        tuple
+            (filter_workers, correlation_workers)
+
+        Examples
+        --------
+        100 cores, ratio=0.2 → (20, 80)
+        10 cores, count=1 → (1, 9)
+        5 cores, ratio=0.2 → (1, 4)
+        """
+        # Manual count takes precedence
+        if self.filter_worker_count is not None:
+            filter_workers = max(1, min(self.filter_worker_count, total_workers - 1))
+            return filter_workers, total_workers - filter_workers
+
+        # Auto-detect based on ratio
+        ratio = max(0.0, min(1.0, self.filter_worker_ratio))
+        filter_workers = max(1, int(total_workers * ratio))
+
+        # Ensure at least 1 correlation worker
+        if filter_workers >= total_workers:
+            filter_workers = total_workers - 1
+
+        return filter_workers, total_workers - filter_workers
+
+    @property
+    def always_batch(self):
+        """
+        Force batch mode even for spatial filters (unified pipeline).
+
+        When True, ALL processing uses batched pipeline for consistency.
+        Default True for simplified architecture.
+
+        Returns
+        -------
+        bool
+            Whether to always use batched processing
+        """
+        return self.data.get("processing", {}).get("always_batch", True)
+
+    @property
+    def auto_batch_size(self):
+        """
+        Auto-determine batch size based on filters.
+
+        Returns optimal batch size:
+        - Temporal filters (POD/time): 30-50 for temporal coherence
+        - Spatial filters only: 10-20 for lower latency
+        - No filters: 5-10 for minimal overhead
+
+        Returns
+        -------
+        int
+            Optimal batch size for current configuration
+        """
+        from pivtools_cli.preprocessing.preprocess import has_batch_filters
+
+        if has_batch_filters(self):
+            # POD/time need larger batches
+            return min(50, self.num_frame_pairs)
+        else:
+            # Spatial or no filters: smaller batches
+            return min(20, self.num_frame_pairs)
+
+    @property
     def peak_finder(self):
         """Return peak finder method (converted to numeric code)."""
         peak_finder = self.data.get("instantaneous_piv", {}).get("peak_finder", "gauss3").lower()
@@ -966,6 +1070,16 @@ masking:
             )
 
         return types
+
+    @property
+    def ensemble_store_planes(self):
+        """
+        Return True if correlation planes should be stored for ensemble PIV.
+
+        When enabled, saves AA, BB, AB correlation planes in 4D format
+        to files named 'planes_pass_{pass_number}.mat'.
+        """
+        return self.data.get("ensemble_piv", {}).get("store_planes", False)
 
     @property
     def outlier_detection_enabled(self):

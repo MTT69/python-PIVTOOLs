@@ -123,6 +123,98 @@ def apply_filters_to_single_batch(
     return batch_filtered_computed
 
 
+def apply_filters_to_batch(
+    batch: np.ndarray,
+    config: Config,
+) -> np.ndarray:
+    """
+    Apply ALL filters (temporal and spatial) to a batch.
+
+    Unified function that handles both batch and spatial filters.
+    Used by UnifiedBatchPipeline for consistent filter application.
+
+    Args:
+        batch: Numpy array of shape (N, 2, H, W)
+        config: Configuration object
+
+    Returns:
+        Filtered batch of same shape
+    """
+    filters = config.filters
+
+    if not filters:
+        return batch
+
+    for filter_spec in filters:
+        filter_type = filter_spec.get("type")
+
+        if filter_type == "pod":
+            # Call POD filter block function directly (already have numpy array)
+            from pivtools_cli.preprocessing.filters import _pod_filter_block
+            batch = _pod_filter_block(batch)
+        elif filter_type == "time":
+            # Call time filter block function directly (already have numpy array)
+            from pivtools_cli.preprocessing.filters import _subtract_local_min
+            batch = _subtract_local_min(batch)
+        else:
+            # Spatial filters (gaussian, median, etc.)
+            batch = apply_spatial_filter_to_batch(batch, filter_spec, config)
+
+    return batch
+
+
+def apply_spatial_filter_to_batch(
+    batch: np.ndarray,
+    filter_spec: dict,
+    config: Config,
+) -> np.ndarray:
+    """
+    Apply spatial filter to each frame in batch.
+
+    Args:
+        batch: Shape (N, 2, H, W)
+        filter_spec: Filter specification dict
+        config: Configuration
+
+    Returns:
+        Filtered batch of same shape
+    """
+    from pivtools_cli.preprocessing.filters import (
+        gaussian_filter_dask,
+        median_filter_dask,
+        norm_filter,
+        sbg_filter,
+    )
+
+    filter_type = filter_spec.get("type")
+    N = batch.shape[0]
+
+    # Apply to each frame
+    for n in range(N):
+        for frame_idx in range(2):  # A and B frames
+            frame_da = da.from_array(batch[n, frame_idx], chunks=batch[n, frame_idx].shape)
+            if filter_type == "gaussian":
+                sigma = filter_spec.get("sigma", 1.0)
+                batch[n, frame_idx] = gaussian_filter_dask(frame_da, sigma=sigma).compute()
+            elif filter_type == "median":
+                size = filter_spec.get("size", (5, 5))
+                if isinstance(size, list):
+                    size = tuple(size)
+                batch[n, frame_idx] = median_filter_dask(frame_da, size=size).compute()
+            elif filter_type == "norm":
+                size = filter_spec.get("size", (7, 7))
+                max_gain = filter_spec.get("max_gain", 1.0)
+                if isinstance(size, list):
+                    size = tuple(size)
+                batch[n, frame_idx] = norm_filter(frame_da, size=size, max_gain=max_gain).compute()
+            elif filter_type == "sbg":
+                bg = filter_spec.get("bg", None)
+                batch[n, frame_idx] = sbg_filter(frame_da, bg=bg).compute()
+            # Add other spatial filters as needed
+
+    return batch
+
+
 def has_batch_filters(config: Config) -> bool:
     """Check if config contains batch filters (time, POD)."""
     if not config.filters:

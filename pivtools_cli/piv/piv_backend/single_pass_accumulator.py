@@ -1,0 +1,664 @@
+"""
+Single Pass Accumulator for Ensemble PIV
+
+This module implements the SinglePassAccumulator class for ensemble PIV processing,
+handling accumulation of correlation planes and single-pass optimization.
+"""
+
+import logging
+from pathlib import Path
+from typing import Optional
+
+import cv2
+import numpy as np
+from dask.distributed import Client
+
+from pivtools_core.config import Config
+from pivtools_core.window_utils import compute_window_centers, compute_window_centers_single_mode
+from pivtools_cli.piv.piv_result import PIVEnsemblePassResult, PIVEnsembleResult
+from pivtools_cli.piv.piv_backend.gaussian_fitting import (
+    _fit_windows_batch,
+    _get_sigma_from_previous_pass,
+)
+
+
+class SinglePassAccumulator:
+    """
+    Accumulates correlation planes for single-pass ensemble PIV.
+
+    Single-pass formula:
+        R_AA = <A⋆A> - <A>⋆<A>
+        R_BB = <B⋆B> - <B>⋆<B>
+        R_AB = <A⋆B> - <A>⋆<B>
+
+    This eliminates the need to store all warped images, only accumulating:
+    - sum(A), sum(B): For computing means
+    - sum(A⋆A), sum(B⋆B), sum(A⋆B): For correlation planes
+
+    Used by UnifiedBatchPipeline for streaming ensemble PIV processing.
+    """
+
+    def __init__(self, config: Config, vector_masks: Optional[list[np.ndarray]] = None):
+        self.config = config
+        self.vector_masks = vector_masks if vector_masks is not None else []
+        self.n_images = 0
+        self.passes_data = []
+        self.passes_results = []  # Store completed pass results
+
+        H, W = config.image_shape
+
+        # Initialize accumulators for each pass
+        for pass_idx in range(config.ensemble_num_passes):
+            win_size = config.ensemble_window_sizes[pass_idx]
+            overlap = config.ensemble_overlaps[pass_idx]
+            runtype = config.ensemble_type[pass_idx]
+
+            # Determine correlation size
+            if runtype == 'single':
+                corr_size = tuple(config.ensemble_sum_window)
+            else:
+                corr_size = win_size
+
+            # Compute grid size
+            from pivtools_core.window_utils import compute_window_centers, compute_window_centers_single_mode
+
+            if runtype == 'single':
+                result = compute_window_centers_single_mode(
+                    image_shape=(H, W),
+                    window_size=tuple(win_size),
+                    sum_window=tuple(config.ensemble_sum_window),
+                    overlap=overlap,
+                    validate=True,
+                )
+            else:
+                result = compute_window_centers(
+                    image_shape=(H, W),
+                    window_size=tuple(win_size),
+                    overlap=overlap,
+                    validate=True,
+                )
+
+            n_win_y = result.n_win_y
+            n_win_x = result.n_win_x
+            plane_size = n_win_y * n_win_x * corr_size[0] * corr_size[1]
+
+            self.passes_data.append({
+                # Running sums for mean computation
+                "sum_warp_A": np.zeros((H, W), dtype=np.float32),
+                "sum_warp_B": np.zeros((H, W), dtype=np.float32),
+
+                # Running correlation plane sums (THREE planes for stacked Gaussian)
+                "sum_corr_AA": np.zeros(plane_size, dtype=np.float32),
+                "sum_corr_BB": np.zeros(plane_size, dtype=np.float32),
+                "sum_corr_AB": np.zeros(plane_size, dtype=np.float32),
+
+                # Grid info
+                "n_win_x": n_win_x,
+                "n_win_y": n_win_y,
+                "corr_size": corr_size,
+                "win_size": win_size,
+            })
+
+    def accumulate_batch(self, batch_result: dict, pass_idx: int):
+        """
+        Add batch results to running sums.
+
+        Parameters
+        ----------
+        batch_result : dict
+            Results from correlate_batch_for_accumulation containing sums
+        pass_idx : int
+            PIV pass index
+        """
+        pass_data = self.passes_data[pass_idx]
+
+        # Accumulate warped images
+        pass_data["sum_warp_A"] += batch_result["warp_A_sum"]
+        pass_data["sum_warp_B"] += batch_result["warp_B_sum"]
+
+        # Accumulate correlation planes (NO averaging yet)
+        pass_data["sum_corr_AA"] += batch_result["corr_AA_sum"]
+        pass_data["sum_corr_BB"] += batch_result["corr_BB_sum"]
+        pass_data["sum_corr_AB"] += batch_result["corr_AB_sum"]
+
+        # Store smoothed predictor (for pass > 0)
+        # All batches should have the same smoothed predictor, so just overwrite
+        if batch_result.get("smoothed_predictor") is not None:
+            pass_data["smoothed_predictor"] = batch_result["smoothed_predictor"]
+            logging.debug(
+                f"Pass {pass_idx + 1}: Stored smoothed predictor in passes_data "
+                f"(shape: {batch_result['smoothed_predictor'].shape})"
+            )
+
+        self.n_images += batch_result["n_images"]
+
+    def _correlate_mean_images(
+        self, A_mean: np.ndarray, B_mean: np.ndarray, pass_idx: int
+    ) -> tuple:
+        """
+        Correlate mean images to compute background correlation.
+
+        This implements the background term in the single-pass formula:
+            R_ensemble = <A⋆B> - <A>⋆<B>
+
+        Where <A>⋆<B> is the correlation of the mean images (background).
+
+        Parameters
+        ----------
+        A_mean : np.ndarray
+            Mean of all warped A images, shape (H, W)
+        B_mean : np.ndarray
+            Mean of all warped B images, shape (H, W)
+        pass_idx : int
+            PIV pass index
+
+        Returns
+        -------
+        tuple
+            (R_AA_bg, R_BB_bg, R_AB_bg): Background correlation planes
+        """
+        from pivtools_core.window_utils import apply_single_mode_padding
+
+        # Get configuration for this pass
+        win_size = self.config.ensemble_window_sizes[pass_idx]
+        corr_size = self.passes_data[pass_idx]["corr_size"]
+        n_win_y = self.passes_data[pass_idx]["n_win_y"]
+        n_win_x = self.passes_data[pass_idx]["n_win_x"]
+
+        # Check if single mode
+        runtype = self.config.ensemble_type[pass_idx]
+        is_single_mode = (runtype == 'single')
+
+        total_windows = n_win_y * n_win_x
+        H, W = A_mean.shape
+
+        # Apply padding for single mode
+        if is_single_mode:
+            sum_window = tuple(self.config.ensemble_sum_window)
+            A_mean, padding = apply_single_mode_padding(
+                A_mean, win_size, sum_window, pad_value=0.0
+            )
+            B_mean, _ = apply_single_mode_padding(
+                B_mean, win_size, sum_window, pad_value=0.0
+            )
+
+        # Allocate output correlation planes
+        correl_AA_bg = np.ascontiguousarray(
+            np.zeros(total_windows * corr_size[0] * corr_size[1], dtype=np.float32)
+        )
+        correl_BB_bg = np.ascontiguousarray(
+            np.zeros(total_windows * corr_size[0] * corr_size[1], dtype=np.float32)
+        )
+        correl_AB_bg = np.ascontiguousarray(
+            np.zeros(total_windows * corr_size[0] * corr_size[1], dtype=np.float32)
+        )
+
+        # Create temporary correlator to get library and arguments
+        from pivtools_cli.piv.piv_backend.factory import make_correlator_backend
+        correlator = make_correlator_backend(self.config, ensemble=True)
+
+        # Set up correlation arguments
+        (
+            win_size_arr,
+            n_windows,
+            b_mask,
+            n_peaks,
+            i_peak_finder,
+            b_ensemble,
+            pk_loc_x,
+            pk_loc_y,
+            pk_height,
+            sx,
+            sy,
+            sxy,
+            correl_out,
+            point_spread_a,
+            point_spread_b,
+        ) = correlator._set_lib_arguments_ensemble(
+            config=self.config,
+            win_size=win_size,
+            pass_idx=pass_idx,
+        )
+
+        # Image size for correlation
+        image_size = np.array([A_mean.shape[0], A_mean.shape[1]], dtype=np.int32)
+
+        # Cross-correlation AB
+        correlator.lib.bulkxcorr2d(
+            np.ascontiguousarray(A_mean, dtype=np.float32),
+            np.ascontiguousarray(B_mean, dtype=np.float32),
+            b_mask,
+            image_size,
+            correlator.win_ctrs_x[pass_idx].astype(np.float32),
+            correlator.win_ctrs_y[pass_idx].astype(np.float32),
+            n_windows,
+            correlator.win_weights_A[pass_idx],
+            b_ensemble,
+            correlator.win_weights_B[pass_idx],
+            win_size_arr,
+            int(n_peaks),
+            int(i_peak_finder),
+            pk_loc_x,
+            pk_loc_y,
+            pk_height,
+            sx,
+            sy,
+            sxy,
+            correl_AB_bg,
+        )
+
+        # Auto-correlation AA
+        correlator.lib.bulkxcorr2d(
+            np.ascontiguousarray(A_mean, dtype=np.float32),
+            np.ascontiguousarray(A_mean, dtype=np.float32),
+            b_mask,
+            image_size,
+            correlator.win_ctrs_x[pass_idx].astype(np.float32),
+            correlator.win_ctrs_y[pass_idx].astype(np.float32),
+            n_windows,
+            correlator.win_weights_A[pass_idx],
+            b_ensemble,
+            correlator.win_weights_A[pass_idx],
+            win_size_arr,
+            int(n_peaks),
+            int(i_peak_finder),
+            pk_loc_x,
+            pk_loc_y,
+            pk_height,
+            sx,
+            sy,
+            sxy,
+            correl_AA_bg,
+        )
+        logging.info(f"Pass {pass_idx}: AA_bg after bulkxcorr2d: [{correl_AA_bg.min():.3e}, {correl_AA_bg.max():.3e}], has_inf={np.isinf(correl_AA_bg).any()}, has_nan={np.isnan(correl_AA_bg).any()}")
+
+        # Auto-correlation BB
+        correlator.lib.bulkxcorr2d(
+            np.ascontiguousarray(B_mean, dtype=np.float32),
+            np.ascontiguousarray(B_mean, dtype=np.float32),
+            b_mask,
+            image_size,
+            correlator.win_ctrs_x[pass_idx].astype(np.float32),
+            correlator.win_ctrs_y[pass_idx].astype(np.float32),
+            n_windows,
+            correlator.win_weights_B[pass_idx],
+            b_ensemble,
+            correlator.win_weights_B[pass_idx],
+            win_size_arr,
+            int(n_peaks),
+            int(i_peak_finder),
+            pk_loc_x,
+            pk_loc_y,
+            pk_height,
+            sx,
+            sy,
+            sxy,
+            correl_BB_bg,
+        )
+        logging.info(f"Pass {pass_idx}: BB_bg after bulkxcorr2d: [{correl_BB_bg.min():.3e}, {correl_BB_bg.max():.3e}], has_inf={np.isinf(correl_BB_bg).any()}, has_nan={np.isnan(correl_BB_bg).any()}")
+
+        logging.info(f"Pass {pass_idx}: Computed background correlations from mean images")
+
+        return correl_AA_bg, correl_BB_bg, correl_AB_bg
+
+    def finalize_pass(
+        self, pass_idx: int, client: Client, scattered_cache: dict,
+        predictor_field: Optional[np.ndarray] = None,
+        output_path: Optional[Path] = None
+    ):
+        """
+        Finalize a single pass with single-pass optimization.
+
+        Parameters
+        ----------
+        pass_idx : int
+            Pass index to finalize
+        client : Client
+            Dask client for distributed Gaussian fitting
+        scattered_cache : dict
+            Pre-scattered correlator cache
+        predictor_field : Optional[np.ndarray], default None
+            Predictor displacement field used for warping in this pass.
+            Shape: (n_win_y, n_win_x, 2) where [:, :, 0] is Y, [:, :, 1] is X.
+            For pass > 0, this MUST be provided to add back to fitted displacements.
+        output_path : Optional[Path], default None
+            Directory where debug correlation planes and guesses will be saved.
+            If None, uses current working directory.
+
+        Returns
+        -------
+        PIVEnsemblePassResult
+            Result for this pass
+        """
+        from pivtools_core.window_utils import compute_window_centers, compute_window_centers_single_mode
+
+        logging.info(f"Finalizing pass {pass_idx + 1} with single-pass optimization")
+
+        pass_data = self.passes_data[pass_idx]
+        N = self.n_images
+
+        temp_piv_results = PIVEnsembleResult()
+        for pr in self.passes_results:
+            temp_piv_results.add_pass(pr)
+
+        logging.info(f"Pass {pass_idx + 1}: Applying single-pass optimization")
+
+        # Step 1: Compute mean warped images
+        A_mean = pass_data["sum_warp_A"] / N
+        B_mean = pass_data["sum_warp_B"] / N
+
+        # Step 2: Compute average correlation planes (RAW with background)
+        R_AA_raw = pass_data["sum_corr_AA"] / N
+        R_BB_raw = pass_data["sum_corr_BB"] / N
+        R_AB_raw = pass_data["sum_corr_AB"] / N
+
+        # Step 3: Correlate means for background subtraction
+        R_AA_bg, R_BB_bg, R_AB_bg = self._correlate_mean_images(A_mean, B_mean, pass_idx)
+
+
+        # Step 4: Background subtraction (SINGLE-PASS OPTIMIZATION)
+        #         R_ensemble = <A⋆B> - <A>⋆<B>
+        R_AA_ensemble = R_AA_raw - R_AA_bg
+        R_BB_ensemble = R_BB_raw - R_BB_bg
+        R_AB_ensemble = R_AB_raw - R_AB_bg
+
+        # Step 5: Get configuration for this pass
+        win_size = pass_data["win_size"]
+        corr_size = pass_data["corr_size"]
+        n_win_y = pass_data["n_win_y"]
+        n_win_x = pass_data["n_win_x"]
+        total_windows = n_win_y * n_win_x
+        
+        # Step 6: Perform distributed Gaussian fitting
+
+        # Get sigma values from previous pass (if applicable)
+        # For pass 0: None (sigmas computed from HWHM in _build_initial_guess)
+        # For pass > 0: Interpolated from previous pass after infilling
+        sigma_x, sigma_y = _get_sigma_from_previous_pass(
+            pass_idx, total_windows, self.config, temp_piv_results,
+            n_win_x, n_win_y
+        )
+
+        # Flatten mask for chunking (matches flat correlation plane arrays)
+        if self.vector_masks and pass_idx < len(self.vector_masks):
+            mask_flat = self.vector_masks[pass_idx].ravel(order='C').astype(bool)
+        else:
+            mask_flat = np.zeros(total_windows, dtype=bool)
+
+        # Distribute fitting across workers
+        workers = list(client.scheduler_info()["workers"].keys())
+        num_workers = len(workers)
+        windows_per_worker = (total_windows + num_workers - 1) // num_workers
+
+        futures = []
+        for i, worker in enumerate(workers):
+            start_idx = i * windows_per_worker
+            end_idx = min((i + 1) * windows_per_worker, total_windows)
+            if start_idx >= end_idx:
+                continue
+
+            start_idx_data = start_idx * corr_size[0] * corr_size[1]
+            end_idx_data = end_idx * corr_size[0] * corr_size[1]
+
+            # Scatter correlation planes to specific worker
+            AA_chunk = client.scatter(
+                R_AA_ensemble[start_idx_data:end_idx_data], workers=[worker]
+            )
+            BB_chunk = client.scatter(
+                R_BB_ensemble[start_idx_data:end_idx_data], workers=[worker]
+            )
+            AB_chunk = client.scatter(
+                R_AB_ensemble[start_idx_data:end_idx_data], workers=[worker]
+            )
+            # Scatter sigma values (or None for pass 0)
+            if sigma_x is not None and sigma_y is not None:
+                sigma_x_chunk = client.scatter(
+                    sigma_x[start_idx:end_idx], workers=[worker]
+                )
+                sigma_y_chunk = client.scatter(
+                    sigma_y[start_idx:end_idx], workers=[worker]
+                )
+            else:
+                sigma_x_chunk = None
+                sigma_y_chunk = None
+            mask_chunk = client.scatter(mask_flat[start_idx:end_idx], workers=[worker])
+
+            # Submit fitting task
+            fut = client.submit(
+                _fit_windows_batch,
+                AA_chunk, BB_chunk, AB_chunk,
+                sigma_x_chunk, sigma_y_chunk,
+                mask_chunk,
+                corr_size, self.config, pass_idx, scattered_cache,
+                workers=[worker],
+                pure=False,
+            )
+            futures.append(fut)
+
+        # Gather results
+        results = client.gather(futures)
+        gauss_flat = np.concatenate([r[0] for r in results])
+        status_flat = np.concatenate([r[1] for r in results])
+        initial_guess_flat = np.concatenate([r[2] for r in results])
+
+        gauss_results = gauss_flat.reshape(n_win_y, n_win_x, -1)
+        statuses = status_flat.reshape(n_win_y, n_win_x)
+        initial_guesses = initial_guess_flat.reshape(n_win_y, n_win_x, -1)
+
+        success_rate = np.sum(statuses == 0) / statuses.size
+        logging.info(f"Pass {pass_idx + 1}: Gaussian fitting success rate: {success_rate:.1%}")
+
+        # Step 7: Extract velocities from fitted parametes
+
+        # Determine correlation size for grid
+        runtype = self.config.ensemble_type[pass_idx]
+        if runtype == 'single':
+            grid_result = compute_window_centers_single_mode(
+                image_shape=self.config.image_shape,
+                window_size=tuple(win_size),
+                sum_window=tuple(self.config.ensemble_sum_window),
+                overlap=self.config.ensemble_overlaps[pass_idx],
+                validate=True,
+            )
+        else:
+            grid_result = compute_window_centers(
+                image_shape=self.config.image_shape,
+                window_size=tuple(win_size),
+                overlap=self.config.ensemble_overlaps[pass_idx],
+                validate=True,
+            )
+
+        # Extract velocity components and stresses from Gaussian parameters
+        # gauss_results has shape (n_win_y, n_win_x, 13)
+        #
+        # CORRECT Parameter ordering from marquadt_gaussian.c:
+        # [0] amp_A, [1] amp_B, [2] amp_AB,
+        # [3] sx_A, [4] sy_A, [5] sxy_A,
+        # [6] sx_AB, [7] sy_AB, [8] sxy_AB,
+        # [9] x0_A, [10] y0_A,
+        # [11] x0_AB, [12] y0_AB
+        #
+        # Displacement is computed from peak positions (x0_AB, y0_AB) relative to window center
+
+        # Get window center (zero displacement location)
+        win_center_x = corr_size[1] / 2.0 + 1
+        win_center_y = corr_size[0] / 2.0 + 1
+
+        # Extract peak positions from fitted Gaussian centers
+        x0_AB = gauss_results[:, :, 11].astype(np.float32)  # X position of AB peak
+        y0_AB = gauss_results[:, :, 12].astype(np.float32)  # Y position of AB peak
+
+        # Compute displacements as offset from window center
+        ux_mat = x0_AB - win_center_x  # X displacement in pixels
+        uy_mat = y0_AB - win_center_y  # Y displacement in pixels
+
+        if pass_idx > 0:
+            # Use the SMOOTHED predictor that was actually used for image warping
+            # This is stored in passes_data[pass_idx] during accumulate_batch
+            pass_data = self.passes_data[pass_idx]
+            if "smoothed_predictor" in pass_data and pass_data["smoothed_predictor"] is not None:
+                smoothed_pred = pass_data["smoothed_predictor"]
+                logging.info(
+                    f"Pass {pass_idx + 1}: Using smoothed predictor field from image warping"
+                )
+
+                # smoothed_pred is already on the window grid from _get_im_mesh
+                # Shape: (n_win_y, n_win_x, 2) where [:,:,0]=Y, [:,:,1]=X
+                ux_mat += smoothed_pred[:, :, 1]  # Add X-displacement
+                uy_mat += smoothed_pred[:, :, 0]  # Add Y-displacement
+
+                logging.info(
+                    f"Pass {pass_idx + 1}: Added smoothed predictor back to residual displacements. "
+                    f"ux range: [{ux_mat.min():.3f}, {ux_mat.max():.3f}], "
+                    f"uy range: [{uy_mat.min():.3f}, {uy_mat.max():.3f}]"
+                )
+            else:
+                logging.warning(
+                    f"Pass {pass_idx + 1}: No smoothed predictor found! "
+                    f"This will result in incorrect absolute displacements. "
+                    f"Residual displacements will be returned without predictor correction."
+                )
+
+        # Peak heights (amplitudes)
+        peakheights_A = gauss_results[:, :, 0].astype(np.float32)   # amp_A
+        peakheights_B = gauss_results[:, :, 1].astype(np.float32)   # amp_B
+        peakheights_AB = gauss_results[:, :, 2].astype(np.float32)  # amp_AB
+
+        # Gaussian widths for A autocorrelation
+        sig_A_x = gauss_results[:, :, 3].astype(np.float32)   # sx_A
+        sig_A_y = gauss_results[:, :, 4].astype(np.float32)   # sy_A
+        sig_A_xy = gauss_results[:, :, 5].astype(np.float32)  # sxy_A
+
+        # Gaussian widths for AB cross-correlation (predictor displacement uncertainty)
+        sig_AB_x = gauss_results[:, :, 6].astype(np.float32)   # sx_AB
+        sig_AB_y = gauss_results[:, :, 7].astype(np.float32)   # sy_AB
+        sig_AB_xy = gauss_results[:, :, 8].astype(np.float32)  # sxy_AB
+
+        UU_stress = sig_AB_x
+        VV_stress = sig_AB_y
+        UV_stress = sig_AB_xy
+
+        # NaN reasons from fitting status
+        nan_reason = statuses.astype(np.int32)
+
+        # Apply masking: set all fitted values to ZERO for masked windows
+        # Zero displacement is appropriate for masked regions (walls, boundaries, etc.)
+        # and prevents infilling artifacts at edges
+        mask = None
+        if self.vector_masks and pass_idx < len(self.vector_masks):
+            mask = self.vector_masks[pass_idx]
+
+            # Set all fitted values to ZERO for masked windows
+            # This allows zeros to propagate naturally to next pass without infilling
+            ux_mat[mask] = 0.0
+            uy_mat[mask] = 0.0
+            UU_stress[mask] = 0.0
+            VV_stress[mask] = 0.0
+            UV_stress[mask] = 0.0
+            peakheights_A[mask] = 0.0
+            peakheights_B[mask] = 0.0
+            peakheights_AB[mask] = 0.0
+            sig_A_x[mask] = 0.0
+            sig_A_y[mask] = 0.0
+            sig_A_xy[mask] = 0.0
+            sig_AB_x[mask] = 0.0
+            sig_AB_y[mask] = 0.0
+            sig_AB_xy[mask] = 0.0
+
+            # Set nan_reason to indicate masked vectors
+            nan_reason[mask] = -1  # -1 indicates masked vector (not correlated)
+            logging.info(f"Pass {pass_idx + 1}: {mask.sum()} vectors masked (set to zero)")
+        else:
+            logging.debug(f"Pass {pass_idx + 1}: No vector mask applied")
+
+        # Extract predictor field components if available
+        pred_x = None
+        pred_y = None
+        if predictor_field is not None:
+            logging.info(f"Pass {pass_idx + 1}: Storing predictor field in pass result")
+            pred_y = predictor_field[:, :, 0].copy()  # Y component
+            pred_x = predictor_field[:, :, 1].copy()  # X component
+
+        # Create pass result
+        pass_result = PIVEnsemblePassResult(
+            ux_mat=ux_mat,
+            uy_mat=uy_mat,
+            UU_stress=UU_stress,
+            VV_stress=VV_stress,
+            UV_stress=UV_stress,
+            peakheights_A=peakheights_A,
+            peakheights_B=peakheights_B,
+            peakheights_AB=peakheights_AB,
+            nan_reason=nan_reason,
+            sig_AB_x=sig_AB_x,
+            sig_AB_y=sig_AB_y,
+            sig_AB_xy=sig_AB_xy,
+            sig_A_x=sig_A_x,
+            sig_A_y=sig_A_y,
+            sig_A_xy=sig_A_xy,
+            b_mask=mask,
+            pred_x=pred_x,
+            pred_y=pred_y,
+            window_size=tuple(win_size),
+            win_ctrs_x=grid_result.win_ctrs_x,
+            win_ctrs_y=grid_result.win_ctrs_y,
+        )
+
+        # Store result in accumulator
+        self.passes_results.append(pass_result)
+
+        # Save correlation planes if store_planes is enabled
+        if hasattr(self.config, 'ensemble_store_planes') and self.config.ensemble_store_planes:
+            try:
+                from pathlib import Path
+                from scipy.io import savemat
+                import os
+                if output_path is not None:
+                    outdir = Path(output_path)
+                else:
+                    outdir = Path(os.getcwd())
+                outdir.mkdir(parents=True, exist_ok=True)
+
+                # Save correlation planes in 4D format (n_win_y, n_win_x, corr_h, corr_w)
+                planes_dict = {
+                    'AA': R_AA_ensemble.reshape(n_win_y, n_win_x, corr_size[0], corr_size[1]),
+                    'BB': R_BB_ensemble.reshape(n_win_y, n_win_x, corr_size[0], corr_size[1]),
+                    'AB': R_AB_ensemble.reshape(n_win_y, n_win_x, corr_size[0], corr_size[1]),
+                    'gauss_results': gauss_results,  # All fitted parameters
+                    'initial_guesses': initial_guesses,  # Initial guess parameters for fitting
+                    'corr_size': corr_size,
+                    'n_win_y': n_win_y,
+                    'n_win_x': n_win_x,
+                    'pass_idx': pass_idx,
+                }
+
+                savemat(
+                    outdir / f"planes_pass_{pass_idx + 1}.mat",
+                    planes_dict,
+                    do_compression=True
+                )
+                logging.info(f"Pass {pass_idx + 1}: Saved correlation planes to {outdir}/planes_pass_{pass_idx + 1}.mat")
+            except Exception as e:
+                logging.warning(f"Pass {pass_idx + 1}: Failed to save correlation planes: {e}")
+
+        logging.info(f"Pass {pass_idx + 1}: Finalization complete")
+
+        return pass_result
+
+    def get_ensemble_result(self) -> PIVEnsembleResult:
+        """
+        Get final ensemble result with all passes.
+
+        Returns
+        -------
+        PIVEnsembleResult
+            Complete ensemble PIV result with all passes
+        """
+        from pivtools_cli.piv.piv_result import PIVEnsembleResult
+
+        piv_results = PIVEnsembleResult()
+        for pass_result in self.passes_results:
+            piv_results.add_pass(pass_result)
+
+        logging.info(f"Assembled {len(self.passes_results)} ensemble passes")
+        return piv_results

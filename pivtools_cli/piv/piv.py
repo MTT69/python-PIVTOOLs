@@ -63,16 +63,12 @@ def _process_and_save_single_pair(
         Path to the saved file.
     """
     # Process PIV
-    import os
-    logging.debug(f"[Worker PID {os.getpid()}] Processing frame {frame_number}")
     piv_result = _piv_single_pass(image_pair, config, scattered_masks, scattered_cache)
     
     # Save immediately to avoid accumulating results in memory
     saved_path = save_piv_result_distributed(
         piv_result, output_path, frame_number, runs_to_save, vector_format
     )
-    
-    logging.debug(f"[Worker PID {os.getpid()}] Completed frame {frame_number}, saved to {saved_path}")
     
     return saved_path
 
@@ -200,7 +196,10 @@ def _piv_single_pass(
     correlator_cache: Optional[dict] = None,
 ) -> PIVResult:
     try:
-        image_block = image_block.compute()
+        # Handle both Dask arrays and numpy arrays
+        if hasattr(image_block, 'compute'):
+            image_block = image_block.compute()
+
         if image_block.ndim == 3:
             # Shape: (2, H, W)
             image_block = image_block[np.newaxis, ...]  # Shape: (1, 2, H, W)

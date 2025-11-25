@@ -1,4 +1,3 @@
-import gc
 import logging
 import os
 import sys
@@ -7,32 +6,19 @@ import time
 from pathlib import Path
 
 import yaml
-import dask
-import dask.array as da
-from dask.delayed import delayed
 
 # Add src to path for unified imports
 from pivtools_core.config import Config
 from pivtools_core.image_handling.load_images import load_images, load_mask_for_camera
 from pivtools_core.image_handling.load_images import compute_vector_mask
 
-from pivtools_cli.piv.piv import perform_piv_and_save
 from pivtools_cli.piv.save_results import (
     save_coordinates_from_config_distributed,
-    save_ensemble_result_distributed,
-    save_ensemble_coordinates_from_config_distributed,
     get_output_path,
     get_ensemble_output_path,
 )
 from pivtools_cli.piv_cluster.cluster import start_cluster
-from pivtools_cli.preprocessing.filters import filter_images
-from pivtools_cli.preprocessing.preprocess import (
-    preprocess_images,
-    has_batch_filters,
-    get_batch_filter_specs,
-    get_spatial_filter_specs,
-    apply_filters_to_single_batch,
-)
+from pivtools_cli.processing.batch_pipeline import UnifiedBatchPipeline
 
 
 def validate_config(config: Config) -> tuple[bool, str, list[str]]:
@@ -50,13 +36,17 @@ def validate_config(config: Config) -> tuple[bool, str, list[str]]:
         if not source_path.exists():
             errors.append(f"Source path {i+1} does not exist: {source_path}")
 
-    # Check base paths exist (if used)
+    # Check base paths exist (if used) - create if missing
     for i, base_path in enumerate(config.base_paths):
         if not base_path.exists():
-            errors.append(f"Base path {i+1} does not exist: {base_path}")
+            try:
+                base_path.mkdir(parents=True, exist_ok=True)
+                warnings.append(f"Created base path {i+1}: {base_path}")
+            except Exception as e:
+                errors.append(f"Failed to create base path {i+1}: {base_path} - {e}")
 
     if errors:
-        return False, "\n".join(errors)
+        return False, "\n".join(errors), warnings
 
     # Check image files for each camera
     camera_numbers = config.camera_numbers
@@ -242,225 +232,88 @@ def main():
                 vector_masks = compute_vector_mask(mask, config)
                 logging.info("Vector masks computed: %d passes", len(vector_masks))
 
-            # Get output path for this camera (uncalibrated PIV)
-            output_path = get_output_path(
-                config,
-                camera_num,
-                use_uncalibrated=True
-            )
+            # Determine processing mode
+            is_ensemble = config.data.get("processing", {}).get("ensemble", False)
+            mode = "ensemble" if is_ensemble else "instantaneous"
 
-            # Check if we have batch filters (POD, time)
-            if has_batch_filters(config):
-                # BATCH FILTER PIPELINE: Process batch → filter → PIV → save → repeat
-                # This keeps memory low by never accumulating all images
-                logging.info("=" * 80)
-                logging.info("BATCH FILTER MODE DETECTED")
-                logging.info("=" * 80)
-
-                batch_filter_specs = get_batch_filter_specs(config)
-                batch_size = config.batch_size  # Already capped in config.py
-                num_pairs = config.num_frame_pairs  # Number of frame pairs to process
-                total_batches = (num_pairs + batch_size - 1) // batch_size
-
-                # Validate batch size
-                if batch_size > num_pairs:
-                    logging.error(
-                        f"ERROR: Batch size ({batch_size}) cannot exceed number of frame pairs ({num_pairs})!"
-                    )
-                    sys.exit(1)
-
-                logging.info(f"Total frame pairs: {num_pairs}")
-                logging.info(f"Batch size: {batch_size} (max allowed: {num_pairs})")
-                logging.info(f"Total batches: {total_batches}")
-                logging.info(f"Batch filters: {[f.get('type') for f in batch_filter_specs]}")
-                logging.info(f"Workers configured: {config.dask_workers_per_node}")
-                logging.info("=" * 80)
-
-                # Pre-compute and broadcast correlator cache ONCE (not per batch)
-                from pivtools_cli.piv.piv_backend.factory import make_correlator_backend
-                temp_correlator = make_correlator_backend(config)
-                correlator_cache = temp_correlator.get_cache_data()
-                scattered_cache = client.scatter(correlator_cache, broadcast=True)
-                logging.info("Broadcast correlator cache to all workers (ONCE)")
-
-                # Broadcast vector masks ONCE (not per batch)
-                scattered_masks = None
-                if vector_masks is not None:
-                    scattered_masks = client.scatter(vector_masks, broadcast=True)
-                    total_mask_size = sum(m.nbytes for m in vector_masks) / 1024
-                    logging.info(f"Broadcast vector masks to all workers (ONCE, {total_mask_size:.1f} KB)")
-
-                all_saved_paths = []
-
-                # Process each batch: filter in main → distribute to workers for PIV
-                for batch_idx in range(total_batches):
-                    batch_start = batch_idx * batch_size
-                    batch_end = min(batch_start + batch_size, num_pairs)
-                    batch_num = batch_idx + 1
-
-                    # Extract batch slice (still lazy)
-                    batch_images = images[batch_start:batch_end]
-
-                    # Apply batch filters in main process with multi-threading
-                    batch_filtered = apply_filters_to_single_batch(
-                        batch_images,
-                        batch_filter_specs,
-                        config,
-                        batch_num,
-                        total_batches,
-                    )
-
-                    # Split batch into individual pairs for low-memory distribution
-                    logging.info(f"[Batch {batch_num}] Splitting batch into {batch_end - batch_start} individual pairs for low-memory distribution")
-                    pairs = [batch_filtered[i] for i in range(batch_filtered.shape[0])]  # List of (2, H, W) np.ndarray
-                    del batch_filtered  # Free main memory ASAP
-                    gc.collect()
-
-                    # Scatter individual pairs (Dask balances across workers)
-                    scattered_pairs = client.scatter(pairs)
-                    pair_mb = pairs[0].nbytes / (1024 ** 2)
-                    logging.info(f"[Batch {batch_num}] {len(pairs)} pairs scattered individually (~{pair_mb:.1f} MB each)")
-
-                    # Create Dask arrays from scattered pairs (each becomes a delayed task)
-                    dask_images = [
-                        da.from_delayed(
-                            scattered_pair,
-                            shape=(2, *config.image_shape),
-                            dtype=pairs[0].dtype
-                        )
-                        for scattered_pair in scattered_pairs
-                    ]
-
-                    # Stack into batch DA (still lazy, chunks=1 per image)
-                    batch_filtered_da = da.stack(dask_images, axis=0)
-
-                    # Apply spatial filters lazily on workers if any
-                    spatial_filter_specs = get_spatial_filter_specs(config)
-                    if spatial_filter_specs:
-                        logging.info(f"[Batch {batch_num}] Applying {len(spatial_filter_specs)} spatial filter(s) lazily on workers")
-                        original_filters = config.data['filters']
-                        config.data['filters'] = spatial_filter_specs
-                        batch_filtered_da = filter_images(batch_filtered_da, config)
-                        config.data['filters'] = original_filters
-
-                    # Distribute batch to workers for PIV and save
-                    # Use pre-scattered cache and masks (already broadcasted once)
-                    logging.info(f"[Batch {batch_num}] Starting parallel PIV processing on {config.dask_workers_per_node} workers...")
-                    saved_paths, _ = perform_piv_and_save(
-                        batch_filtered_da,
-                        config,
-                        client,
-                        output_path,
-                        start_frame=batch_start + 1,
-                        runs_to_save=config.instantaneous_runs_0based,
-                        vector_masks=None,  # Already scattered
-                        scattered_cache=scattered_cache,
-                        scattered_masks=scattered_masks,
-                    )
-
-                    all_saved_paths.extend(saved_paths)
-                    logging.info(f"[Batch {batch_num}] {len(saved_paths)} images processed and saved")
-
-                    # Free memory before next batch
-                    del pairs, scattered_pairs, dask_images, batch_filtered_da
-                    gc.collect()
-
-                logging.info("")
-                logging.info("=" * 80)
-                logging.info(f"All {total_batches} batches complete!")
-                logging.info(f"Total images processed: {len(all_saved_paths)}")
-                logging.info("=" * 80)
-
-            elif config.data.get("processing", {}).get("ensemble", False):
-                # ENSEMBLE PIV PIPELINE: Process all images together for ensemble averaging
-                logging.info("=" * 80)
-                logging.info("ENSEMBLE PIV MODE DETECTED")
-                logging.info("=" * 80)
-
-                from pivtools_cli.piv.piv_backend.cpu_ensemble import perform_ensemble_piv
-                from pivtools_cli.piv.piv_backend.factory import make_correlator_backend
-
-                # Get ensemble output path
-                ensemble_output_path = get_ensemble_output_path(
+            # Get output path based on mode
+            if is_ensemble:
+                output_path = get_ensemble_output_path(
+                    config,
+                    camera_num,
+                    use_uncalibrated=True
+                )
+            else:
+                output_path = get_output_path(
                     config,
                     camera_num,
                     use_uncalibrated=True
                 )
 
-                logging.info(f"Image files: {config.num_images}")
-                logging.info(f"Frame pairs: {config.num_frame_pairs}")
+            # Log processing configuration
+            logging.info("=" * 80)
+            logging.info(f"UNIFIED BATCH PIPELINE: {mode.upper()} MODE")
+            logging.info("=" * 80)
+            logging.info(f"Image files: {config.num_images}")
+            logging.info(f"Frame pairs: {config.num_frame_pairs}")
+
+            if is_ensemble:
                 logging.info(f"Ensemble passes: {config.ensemble_num_passes}")
                 logging.info(f"Ensemble window sizes: {config.ensemble_window_sizes}")
                 logging.info(f"Ensemble types: {config.ensemble_type}")
                 logging.info(f"Runs to save: {config.ensemble_runs_0based}")
-                logging.info(f"Output path: {ensemble_output_path}")
-                logging.info("=" * 80)
+            else:
+                logging.info(f"Runs to save: {config.instantaneous_runs_0based}")
 
-                # Preprocess images (apply spatial filters, stays lazy)
-                processed_images = preprocess_images(images, config)
+            if config.filters:
+                filter_names = [f.get('type') for f in config.filters]
+                logging.info(f"Filters: {filter_names}")
 
-                # Pre-compute and broadcast correlator cache ONCE
+            logging.info(f"Output path: {output_path}")
+            logging.info("=" * 80)
+
+            # Create unified pipeline
+            pipeline = UnifiedBatchPipeline(
+                client=client,
+                config=config,
+                mode=mode,
+            )
+
+            # Process with unified pipeline
+            logging.info(f"Starting {mode} PIV processing with unified batch pipeline...")
+            result = pipeline.process(
+                images,
+                output_path,
+                vector_masks=vector_masks,
+            )
+
+            # Save coordinates
+            if is_ensemble:
+                # For ensemble, save coordinates from cached correlator
+                from pivtools_cli.piv.save_results import save_ensemble_coordinates_from_config_distributed
+                from pivtools_cli.piv.piv_backend.factory import make_correlator_backend
+
                 temp_correlator = make_correlator_backend(config, ensemble=True)
                 correlator_cache = temp_correlator.get_cache_data()
-                scattered_cache = client.scatter(correlator_cache, broadcast=True)
-                logging.info("Broadcast correlator cache to all workers")
 
-                # Run ensemble PIV processing
-                logging.info("Starting ensemble PIV processing...")
-                ensemble_result = perform_ensemble_piv(
-                    processed_images,
-                    config,
-                    client,
-                    scattered_cache,
-                    vector_masks=vector_masks,
-                )
-
-                # Save ensemble result
-                saved_path = save_ensemble_result_distributed(
-                    ensemble_result,
-                    ensemble_output_path,
-                    runs_to_save=config.ensemble_runs_0based,
-                )
-                logging.info(f"Ensemble result saved to {saved_path}")
-
-                # Save coordinates for ensemble
                 coords_path = save_ensemble_coordinates_from_config_distributed(
                     config,
-                    ensemble_output_path,
+                    output_path,
                     correlator_cache=correlator_cache,
                     runs_to_save=config.ensemble_runs_0based,
                 )
                 logging.info(f"Ensemble coordinates saved to {coords_path}")
-
-                logging.info("")
-                logging.info("=" * 80)
-                logging.info("Ensemble PIV processing complete!")
-                logging.info("=" * 80)
-
             else:
-                # SPATIAL FILTER PIPELINE: Standard lazy processing
-                # Preprocess images (spatial filters only, stays lazy)
-                processed_images = preprocess_images(images, config)
+                # For instantaneous, use scatter approach
+                from pivtools_cli.piv.piv_backend.factory import make_correlator_backend
 
-                # Perform PIV and save in parallel on workers with lazy loading
-                all_saved_paths, scattered_cache = perform_piv_and_save(
-                    processed_images,
-                    config,
-                    client,
-                    output_path,
-                    start_frame=1,
-                    runs_to_save=config.instantaneous_runs_0based,
-                    vector_masks=vector_masks,
-                )
+                temp_correlator = make_correlator_backend(config)
+                correlator_cache = temp_correlator.get_cache_data()
+                scattered_cache = client.scatter(correlator_cache, broadcast=True)
 
-                logging.info(
-                    "PIV and save completed: %d frames saved to %s",
-                    len(all_saved_paths), output_path
-                )
+                # Sync to ensure workers are ready
+                client.sync(scattered_cache)
 
-            # Submit coordinate saving task (runs once per camera)
-            # Skip for ensemble mode since coordinates are saved inside that block
-            if not config.data.get("processing", {}).get("ensemble", False):
                 coords_future = client.submit(
                     save_coordinates_from_config_distributed,
                     config,
@@ -468,10 +321,17 @@ def main():
                     scattered_cache,
                     config.instantaneous_runs_0based,
                 )
-
-                # Wait for coordinates to be saved
                 coords_future.result()
-                logging.info("Coordinates saved to %s", output_path)
+                logging.info(f"Coordinates saved to {output_path}")
+
+            logging.info("")
+            logging.info("=" * 80)
+            logging.info(f"{mode.upper()} PIV PROCESSING COMPLETE!")
+            if is_ensemble:
+                logging.info(f"Ensemble result saved to {result}")
+            else:
+                logging.info(f"Total images processed: {len(result)}")
+            logging.info("=" * 80)
 
         if config.debug:
             current, peak = tracemalloc.get_traced_memory()

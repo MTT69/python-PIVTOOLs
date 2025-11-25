@@ -55,18 +55,13 @@ class PIVEnsembleBlockResult:
     point_spread_b_mean: Optional[np.ndarray] = None
     mean_A_warp: Optional[np.ndarray] = None
     mean_B_warp: Optional[np.ndarray] = None
+    vector_mask: Optional[np.ndarray] = None
     n_blocks: Optional[int] = None
     n_win_x: Optional[int] = None
     n_win_y: Optional[int] = None
 
     def summary(self) -> str:
-        return (
-            f"PIVEnsembleBlockResult("
-            f"corr_shape={None if self.correlation_plane_mean is None else self.correlation_plane_mean.shape}, "
-            f"predictor_field={None if self.predictor_field is None else self.predictor_field.shape}, "
-            f"pointspreadA={None if self.point_spread_a_mean is None else self.point_spread_a_mean.shape}, "
-            f"pointspreadB={None if self.point_spread_b_mean is None else self.point_spread_b_mean.shape})"
-        )
+        return "PIVEnsembleBlockResult(...)"
 
 
 @dataclass
@@ -109,13 +104,12 @@ class PIVEnsemblePassResult:
     sig_A_y: Optional[np.ndarray] = None
     sig_A_xy: Optional[np.ndarray] = None
 
-    # Predictor displacement variances (sig_PD)
-    sig_PD_x: Optional[np.ndarray] = None
-    sig_PD_y: Optional[np.ndarray] = None
-    sig_PD_xy: Optional[np.ndarray] = None
-
     # Mask (for consistency with instantaneous)
     b_mask: Optional[np.ndarray] = None
+
+    # Predictor field used for this pass (separate X and Y components)
+    pred_x: Optional[np.ndarray] = None
+    pred_y: Optional[np.ndarray] = None
 
     # Window info
     window_size: Optional[tuple[int, int]] = None

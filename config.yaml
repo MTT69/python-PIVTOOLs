@@ -1,26 +1,27 @@
 paths:
   base_paths:
-  - /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified
   source_paths:
-  - /Users/morgan/Downloads/SESA6070_Time_Resolved_Dataset
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
   camera_numbers:
   - 1
   camera_count: 1
   camera_subfolders: []
 images:
-  num_images: 10
+  num_images: 100
   image_format:
-  - IMG%05d.tif
+  - B%05d_A.tif
+  - B%05d_B.tif
   vector_format:
   - '%05d.mat'
   time_resolved: false
   dtype: float32
-  zero_based_indexing: true
+  zero_based_indexing: false
   pairing_mode: sequential
   pairing_skip: 0
-  num_frame_pairs: 5
+  num_frame_pairs: 100
 batches:
-  size: 5
+  size: 25
 logging:
   file: pypiv.log
   level: INFO
@@ -30,12 +31,15 @@ processing:
   ensemble: true
   stereo: false
   backend: cpu
-  debug: false
+  debug: true
   auto_compute_params: false
-  omp_threads: 10
-  dask_workers_per_node: 1
+  omp_threads: 2
+  dask_workers_per_node: 4
   dask_threads_per_worker: 1
-  dask_memory_limit: 10GB
+  dask_memory_limit: 3GB
+  filter_worker_count: null
+  filter_worker_ratio: 0.2
+  always_batch: true
 outlier_detection:
   enabled: true
   methods:
@@ -83,22 +87,24 @@ instantaneous_piv:
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
-  peak_finder: gauss6
+  peak_finder: gauss3
   secondary_peak: false
 ensemble_piv:
   window_size:
+  - - 128
+    - 128
   - - 64
     - 64
-  - - 32
-    - 32
   overlap:
-  - 0.5
-  - 0.5
+  - 50
+  - 50
   type:
   - std
   - std
   runs:
+  - 1
   - 2
+  store_planes: true
 calibration_format:
   image_format: calib%05d.tif
 calibration:
@@ -134,12 +140,11 @@ calibration:
     asymmetric: false
     dt: 2
 filters:
-- type: time
 masking:
-  enabled: false
+  enabled: true
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
-  mode: file
+  mode: rectangular
   rectangular:
     top: 64
     bottom: 64

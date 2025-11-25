@@ -327,12 +327,12 @@ def _create_ensemble_struct_all_passes(
         ('sig_A_x', object),
         ('sig_A_y', object),
         ('sig_A_xy', object),
-        ('sig_PD_x', object),
-        ('sig_PD_y', object),
-        ('sig_PD_xy', object),
         ('win_ctrs_x', object),
         ('win_ctrs_y', object),
         ('window_size', object),
+        ('b_mask', object),
+        ('pred_x', object),
+        ('pred_y', object),
     ]
 
     # Create the struct with shape (n_passes_to_save,)
@@ -399,14 +399,6 @@ def _create_ensemble_struct_all_passes(
         if pass_result.sig_A_xy is not None:
             ensemble_struct['sig_A_xy'][local_idx] = _convert_to_half_precision(pass_result.sig_A_xy)
 
-        # Sigma parameters (PD - predictor displacement)
-        if pass_result.sig_PD_x is not None:
-            ensemble_struct['sig_PD_x'][local_idx] = _convert_to_half_precision(pass_result.sig_PD_x)
-        if pass_result.sig_PD_y is not None:
-            ensemble_struct['sig_PD_y'][local_idx] = _convert_to_half_precision(pass_result.sig_PD_y)
-        if pass_result.sig_PD_xy is not None:
-            ensemble_struct['sig_PD_xy'][local_idx] = _convert_to_half_precision(pass_result.sig_PD_xy)
-
         # Window centers and size
         if pass_result.win_ctrs_x is not None:
             ensemble_struct['win_ctrs_x'][local_idx] = _convert_to_half_precision(pass_result.win_ctrs_x)
@@ -414,6 +406,16 @@ def _create_ensemble_struct_all_passes(
             ensemble_struct['win_ctrs_y'][local_idx] = _convert_to_half_precision(pass_result.win_ctrs_y)
         if pass_result.window_size is not None:
             ensemble_struct['window_size'][local_idx] = pass_result.window_size
+
+        # Mask
+        if pass_result.b_mask is not None:
+            ensemble_struct['b_mask'][local_idx] = pass_result.b_mask.astype(bool)
+
+        # Predictor fields
+        if pass_result.pred_x is not None:
+            ensemble_struct['pred_x'][local_idx] = _convert_to_half_precision(pass_result.pred_x)
+        if pass_result.pred_y is not None:
+            ensemble_struct['pred_y'][local_idx] = _convert_to_half_precision(pass_result.pred_y)
 
     return ensemble_struct
 
