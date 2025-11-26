@@ -425,7 +425,7 @@ def plot_vector():
     try:
         logger.info("plot_vector: received request")
         params = parse_plot_params(request)
-        logger.debug(f"plot_vector: parsed params: {params}")
+        # logger.debug(f"plot_vector: parsed params: {params}")  # Commented out - too verbose
         paths = validate_and_get_paths(params)
         data_dir = Path(paths["data_dir"])
         vector_fmt = get_config().vector_format
@@ -1672,3 +1672,298 @@ def transform_all_frames_status(job_id):
             job_data["estimated_remaining"] = max(0, estimated_total - elapsed)
 
     return jsonify(job_data)
+
+
+@vector_plot_bp.route("/check_available_data", methods=["GET"])
+def check_available_data():
+    """
+    Check what data sources are available for a given base path and camera.
+
+    Returns availability flags for:
+    - uncalibrated_instantaneous: Uncalibrated instantaneous PIV data
+    - calibrated_instantaneous: Calibrated instantaneous PIV data
+    - uncalibrated_ensemble: Uncalibrated ensemble PIV data
+    - calibrated_ensemble: Calibrated ensemble PIV data
+    - merged_instantaneous: Merged instantaneous data from multiple cameras
+    - merged_ensemble: Merged ensemble data from multiple cameras
+    - statistics: Mean statistics (only for calibrated instantaneous)
+
+    Also returns frame counts and available variables for each data source.
+    """
+    try:
+        base_path = request.args.get("base_path", default=None, type=str)
+        base_idx = request.args.get("base_path_idx", default=0, type=int)
+        cfg = get_config()
+
+        if not base_path:
+            try:
+                base_path = cfg.base_paths[base_idx]
+            except Exception:
+                raise ValueError("Invalid base_path and base_path_idx fallback failed")
+
+        camera = camera_number(request.args.get("camera", default=1))
+        base_path = Path(base_path)
+        num_frame_pairs = cfg.num_frame_pairs
+        vector_fmt = cfg.vector_format
+
+        available = {
+            "uncalibrated_instantaneous": {"exists": False, "frame_count": 0, "variables": []},
+            "calibrated_instantaneous": {"exists": False, "frame_count": 0, "variables": []},
+            "uncalibrated_ensemble": {"exists": False, "frame_count": 1, "variables": []},
+            "calibrated_ensemble": {"exists": False, "frame_count": 1, "variables": []},
+            "merged_instantaneous": {"exists": False, "frame_count": 0, "variables": []},
+            "merged_ensemble": {"exists": False, "frame_count": 1, "variables": []},
+            "statistics": {"exists": False, "variables": []},
+            "merged_statistics": {"exists": False, "variables": []},
+        }
+
+        def check_directory_for_frames(data_dir: Path, is_ensemble: bool = False, source_name: str = "") -> dict:
+            """Check if directory has valid data and count frames."""
+            result = {"exists": False, "frame_count": 0, "variables": []}
+
+            logger.debug(f"check_available_data: checking {source_name} at {data_dir}")
+            if not data_dir.exists():
+                logger.debug(f"check_available_data: {source_name} directory does not exist")
+                return result
+
+            if is_ensemble:
+                # Ensemble has single result file
+                ensemble_file = data_dir / "ensemble_result.mat"
+                logger.debug(f"check_available_data: looking for ensemble file at {ensemble_file}")
+                if ensemble_file.exists():
+                    logger.info(f"check_available_data: FOUND {source_name} ensemble at {ensemble_file}")
+                    result["exists"] = True
+                    result["frame_count"] = 1
+                    # Get variables from ensemble file
+                    try:
+                        mat = loadmat(str(ensemble_file), struct_as_record=False, squeeze_me=True)
+                        if "ensemble_result" in mat:
+                            er = mat["ensemble_result"]
+                            if isinstance(er, np.ndarray) and er.dtype == object and er.size > 0:
+                                pr = er.flat[0]
+                            else:
+                                pr = er
+                            # Get available attributes
+                            attrs = [n for n in dir(pr) if not n.startswith("_") and not callable(getattr(pr, n, None))]
+                            result["variables"] = attrs
+                    except Exception as e:
+                        logger.debug(f"Error reading ensemble vars: {e}")
+            else:
+                # Instantaneous has multiple frame files
+                frame_files = []
+                for frame in range(1, num_frame_pairs + 1):
+                    mat_file = data_dir / (vector_fmt % frame)
+                    if mat_file.exists():
+                        frame_files.append(mat_file)
+
+                if frame_files:
+                    result["exists"] = True
+                    result["frame_count"] = len(frame_files)
+                    # Get variables from first frame
+                    try:
+                        mat = loadmat(str(frame_files[0]), struct_as_record=False, squeeze_me=True)
+                        if "piv_result" in mat:
+                            pr = mat["piv_result"]
+                            if isinstance(pr, np.ndarray) and pr.dtype == object and pr.size > 0:
+                                pr = pr.flat[0]
+                            attrs = [n for n in dir(pr) if not n.startswith("_") and not callable(getattr(pr, n, None))]
+                            result["variables"] = attrs
+                    except Exception as e:
+                        logger.debug(f"Error reading instantaneous vars: {e}")
+
+            return result
+
+        def check_statistics(stats_dir: Path) -> dict:
+            """Check if mean statistics exist."""
+            result = {"exists": False, "variables": []}
+            mean_stats_file = stats_dir / "mean_stats" / "mean_stats.mat"
+
+            if mean_stats_file.exists():
+                result["exists"] = True
+                try:
+                    mat = loadmat(str(mean_stats_file), struct_as_record=False, squeeze_me=True)
+                    if "piv_result" in mat:
+                        pr = mat["piv_result"]
+                        if isinstance(pr, np.ndarray) and pr.dtype == object and pr.size > 0:
+                            pr = pr.flat[0]
+                        attrs = [n for n in dir(pr) if not n.startswith("_") and not callable(getattr(pr, n, None))]
+                        result["variables"] = attrs
+                except Exception as e:
+                    logger.debug(f"Error reading statistics vars: {e}")
+
+            return result
+
+        # Check uncalibrated instantaneous
+        uncal_inst_paths = get_data_paths(
+            base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=camera,
+            type_name="instantaneous", use_uncalibrated=True
+        )
+        available["uncalibrated_instantaneous"] = check_directory_for_frames(
+            Path(uncal_inst_paths["data_dir"]), is_ensemble=False, source_name="uncalibrated_instantaneous"
+        )
+
+        # Check calibrated instantaneous
+        cal_inst_paths = get_data_paths(
+            base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=camera,
+            type_name="instantaneous", use_uncalibrated=False
+        )
+        available["calibrated_instantaneous"] = check_directory_for_frames(
+            Path(cal_inst_paths["data_dir"]), is_ensemble=False, source_name="calibrated_instantaneous"
+        )
+
+        # Check uncalibrated ensemble
+        uncal_ens_paths = get_data_paths(
+            base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=camera,
+            type_name="ensemble", use_uncalibrated=True
+        )
+        available["uncalibrated_ensemble"] = check_directory_for_frames(
+            Path(uncal_ens_paths["data_dir"]), is_ensemble=True, source_name="uncalibrated_ensemble"
+        )
+
+        # Check calibrated ensemble
+        cal_ens_paths = get_data_paths(
+            base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=camera,
+            type_name="ensemble", use_uncalibrated=False
+        )
+        available["calibrated_ensemble"] = check_directory_for_frames(
+            Path(cal_ens_paths["data_dir"]), is_ensemble=True, source_name="calibrated_ensemble"
+        )
+
+        # Check merged instantaneous
+        merged_inst_paths = get_data_paths(
+            base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=camera,
+            type_name="instantaneous", use_merged=True
+        )
+        available["merged_instantaneous"] = check_directory_for_frames(
+            Path(merged_inst_paths["data_dir"]), is_ensemble=False, source_name="merged_instantaneous"
+        )
+
+        # Check merged ensemble
+        merged_ens_paths = get_data_paths(
+            base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=camera,
+            type_name="ensemble", use_merged=True
+        )
+        available["merged_ensemble"] = check_directory_for_frames(
+            Path(merged_ens_paths["data_dir"]), is_ensemble=True, source_name="merged_ensemble"
+        )
+
+        # Check statistics (only for calibrated instantaneous)
+        available["statistics"] = check_statistics(Path(cal_inst_paths["stats_dir"]))
+
+        # Also check merged statistics
+        available["merged_statistics"] = check_statistics(Path(merged_inst_paths["stats_dir"]))
+
+        return jsonify({
+            "success": True,
+            "camera": camera,
+            "base_path": str(base_path),
+            "available": available,
+        })
+
+    except ValueError as e:
+        logger.warning(f"check_available_data: validation error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception:
+        logger.exception("check_available_data: unexpected error")
+        return jsonify({"success": False, "error": "Internal server error"}), 500
+
+
+@vector_plot_bp.route("/plot_ensemble", methods=["GET"])
+def plot_ensemble():
+    """Plot ensemble PIV data (single result file with mean fields)."""
+    try:
+        logger.info("plot_ensemble: received request")
+        params = parse_plot_params(request)
+        params["type_name"] = "ensemble"  # Override type
+        # logger.debug(f"plot_ensemble: parsed params: {params}")  # Commented out - too verbose
+
+        paths = validate_and_get_paths(params)
+        data_dir = Path(paths["data_dir"])
+
+        # Ensemble has a single result file
+        ensemble_file = data_dir / "ensemble_result.mat"
+        coords_path = data_dir / "coordinates.mat" if (data_dir / "coordinates.mat").exists() else None
+
+        if not ensemble_file.exists():
+            return jsonify({"success": False, "error": f"Ensemble result not found: {ensemble_file}"}), 404
+
+        # Load ensemble result
+        mat = loadmat(str(ensemble_file), struct_as_record=False, squeeze_me=True)
+        if "ensemble_result" not in mat:
+            return jsonify({"success": False, "error": "Variable 'ensemble_result' not found in mat"}), 400
+
+        ensemble_result = mat["ensemble_result"]
+
+        # Find the run with valid data
+        pr = None
+        effective_run = params["run"]
+
+        if isinstance(ensemble_result, np.ndarray) and ensemble_result.dtype == object:
+            max_runs = ensemble_result.size
+            current_run = params["run"]
+            while current_run <= max_runs:
+                pr_candidate = ensemble_result[current_run - 1]
+                try:
+                    var_arr = np.asarray(getattr(pr_candidate, params["var"]))
+                    if var_arr.size > 0 and not np.all(np.isnan(var_arr)):
+                        pr = pr_candidate
+                        effective_run = current_run
+                        break
+                except Exception:
+                    pass
+                current_run += 1
+        else:
+            try:
+                var_arr = np.asarray(getattr(ensemble_result, params["var"]))
+                if var_arr.size > 0 and not np.all(np.isnan(var_arr)):
+                    pr = ensemble_result
+                    effective_run = 1
+            except Exception:
+                pass
+
+        if pr is None:
+            return jsonify({"success": False, "error": f"No valid data found for variable '{params['var']}'"}), 404
+
+        # Extract variable and mask
+        var_arr = np.asarray(getattr(pr, params["var"]))
+        try:
+            mask_arr = np.asarray(getattr(pr, "b_mask")).astype(bool)
+        except Exception:
+            mask_arr = np.zeros_like(var_arr, dtype=bool)
+
+        # Load coordinates if available
+        cx = cy = None
+        if coords_path and coords_path.exists():
+            coords_mat = loadmat(str(coords_path), struct_as_record=False, squeeze_me=True)
+            if "coordinates" in coords_mat:
+                coords = coords_mat["coordinates"]
+                cx, cy = extract_coordinates(coords, effective_run)
+
+        settings = make_scalar_settings(
+            get_config(),
+            variable=params["var"],
+            run_label=effective_run,
+            save_basepath=Path("plot_ensemble_tmp"),
+            variable_units="m/s",
+            length_units="mm",
+            coords_x=cx,
+            coords_y=cy,
+            lower_limit=params["lower_limit"],
+            upper_limit=params["upper_limit"],
+            cmap=params["cmap"],
+        )
+
+        b64_img, W, H, extra = create_and_return_plot(var_arr, mask_arr, settings, raw=params["raw"])
+        meta = build_response_meta(effective_run, params["var"], W, H, extra)
+
+        return jsonify({"success": True, "image": b64_img, "meta": meta})
+
+    except ValueError as e:
+        logger.warning(f"plot_ensemble: validation error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 400
+    except FileNotFoundError as e:
+        logger.warning(f"plot_ensemble: file not found: {e}")
+        return jsonify({"success": False, "error": str(e)}), 404
+    except Exception:
+        logger.exception("plot_ensemble: unexpected error")
+        return jsonify({"success": False, "error": "Internal server error"}), 500

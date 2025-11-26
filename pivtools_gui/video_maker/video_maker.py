@@ -23,7 +23,7 @@ from pivtools_core.vector_loading import read_mat_contents
 # Constants for optimization
 DEFAULT_BATCH_SIZE = 10  # Files to preload for processing
 LIMIT_SAMPLE_SIZE = 50  # Files for limit computation
-LUT_SIZE = 1024  # LUT resolution for color mapping
+LUT_SIZE = 4096  # High LUT resolution for smooth gradients and reduced banding
 PERCENTILE_LOWER = 5
 PERCENTILE_UPPER = 95
 
@@ -63,9 +63,9 @@ class PlotSettings:
     out_path: str = "field.mp4"
     mask_rgb: Tuple[int, int, int] = (200, 200, 200)  # RGB for masked pixels
 
-    # Quality knobs
+    # Quality knobs - optimized for sharp, production-quality output
     use_ffmpeg: bool = True  # only ffmpeg supported
-    crf: int = 18  # tuned for compatible H.264
+    crf: int = 15  # Lower CRF = higher quality (15 is visually lossless for most content)
     codec: str = "libx264"  # ensure H.264 by default
     pix_fmt: str = "yuv420p"  # ensure maximum compatibility (Windows players)
     preset: str = "slow"  # encoding speed/size tradeoff
@@ -75,8 +75,11 @@ class PlotSettings:
         None  # e.g. 2.0 or (H_out, W_out) or None (keep native)
     )
 
-    # Extra ffmpeg args (appended to the ffmpeg command) - use this to tune quality further
-    ffmpeg_extra_args: Tuple[str, ...] | List[str] = ()
+    # Extra ffmpeg args - add sharpening and quality tuning for scientific visualization
+    ffmpeg_extra_args: Tuple[str, ...] | List[str] = (
+        "-tune", "stillimage",  # Optimize for still images/slow motion (scientific data)
+        "-x264-params", "aq-mode=3:aq-strength=0.8",  # Adaptive quantization for smooth gradients
+    )
     ffmpeg_loglevel: str = "warning"
 
     # For progress updates
@@ -86,10 +89,10 @@ class PlotSettings:
     test_mode: bool = False
     test_frames: Optional[int] = None
 
-    # Noise reduction options
-    apply_smoothing: bool = True  # Enable light smoothing by default
-    smoothing_sigma: float = 0.8  # Gaussian smoothing strength
-    median_filter_size: int = 3  # Median filter to remove salt-and-pepper noise
+    # Noise reduction options - reduced by default to preserve sharpness
+    apply_smoothing: bool = False  # Disabled by default to preserve data sharpness
+    smoothing_sigma: float = 0.5  # Light Gaussian smoothing when enabled
+    median_filter_size: int = 0  # Disabled by default (set to 3 for salt-and-pepper noise)
 
     @property
     def xlabel(self):
@@ -142,6 +145,92 @@ def _natural_key(p: Path) -> List:
     parts = _num_re.split(s)
     parts[1::2] = [int(n) for n in parts[1::2]]
     return parts
+
+
+def find_highest_valid_run_from_file(filepath: str, var: str) -> int:
+    """
+    Find the highest run index (0-based) that has valid non-empty data by reading the mat file directly.
+    Returns 0 if no valid runs found or if single run.
+    """
+    try:
+        mat = loadmat(filepath, struct_as_record=False, squeeze_me=True)
+        piv_result = mat.get("piv_result")
+        if piv_result is None:
+            return 0
+
+        if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
+            # Multiple runs - check from highest to lowest
+            num_runs = piv_result.size
+            for run_idx in range(num_runs - 1, -1, -1):
+                try:
+                    pr = piv_result[run_idx]
+                    ux = np.asarray(getattr(pr, "ux", None))
+                    uy = np.asarray(getattr(pr, "uy", None))
+                    if ux is not None and uy is not None and ux.size > 0 and uy.size > 0:
+                        if ux.ndim == 2 and not np.all(np.isnan(ux)):
+                            return run_idx
+                except Exception:
+                    continue
+            return 0
+        else:
+            # Single run
+            return 0
+    except Exception as e:
+        logger.error(f"Error finding highest valid run in {filepath}: {e}")
+        return 0
+
+
+def find_all_valid_runs_from_file(filepath: str, var: str) -> List[int]:
+    """
+    Find all run indices (0-based) that have valid non-empty data by reading the mat file directly.
+    Returns list of valid run indices sorted ascending.
+    """
+    valid_runs = []
+    try:
+        mat = loadmat(filepath, struct_as_record=False, squeeze_me=True)
+        piv_result = mat.get("piv_result")
+        if piv_result is None:
+            return [0]
+
+        if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
+            # Multiple runs - check all
+            num_runs = piv_result.size
+            for run_idx in range(num_runs):
+                try:
+                    pr = piv_result[run_idx]
+                    ux = np.asarray(getattr(pr, "ux", None))
+                    uy = np.asarray(getattr(pr, "uy", None))
+                    if ux is not None and uy is not None and ux.size > 0 and uy.size > 0:
+                        if ux.ndim == 2 and not np.all(np.isnan(ux)):
+                            valid_runs.append(run_idx)
+                except Exception:
+                    continue
+        else:
+            # Single run - check if valid
+            try:
+                ux = np.asarray(getattr(piv_result, "ux", None))
+                uy = np.asarray(getattr(piv_result, "uy", None))
+                if ux is not None and uy is not None and ux.size > 0 and uy.size > 0:
+                    if ux.ndim == 2 and not np.all(np.isnan(ux)):
+                        valid_runs = [0]
+            except Exception:
+                pass
+    except Exception as e:
+        logger.error(f"Error finding valid runs in {filepath}: {e}")
+
+    return valid_runs if valid_runs else [0]
+
+
+# Keep old function names as aliases for backward compatibility
+def find_highest_valid_run(arrs: np.ndarray, filepath: str, var: str) -> int:
+    """Deprecated: Use find_highest_valid_run_from_file instead."""
+    return find_highest_valid_run_from_file(filepath, var)
+
+
+def find_all_valid_runs(arrs: np.ndarray, var: str) -> List[int]:
+    """Deprecated: This function requires a filepath. Use find_all_valid_runs_from_file instead."""
+    # This is a fallback that won't work properly - callers should use find_all_valid_runs_from_file
+    return [0]
 
 
 def _select_variable_from_arrs(
@@ -391,14 +480,14 @@ def _to_uint16_var(frame: np.ndarray, vmin: float, vmax: float) -> np.ndarray:
 
 
 def _apply_noise_reduction(field: np.ndarray, settings: PlotSettings) -> np.ndarray:
-    """Apply smoothing and filtering efficiently."""
-    if not getattr(settings, "apply_smoothing", True):
+    """Apply smoothing and filtering efficiently. Disabled by default for maximum sharpness."""
+    if not getattr(settings, "apply_smoothing", False):
         return field
     field_smooth = field.astype(np.float32)
-    median_size = getattr(settings, "median_filter_size", 3)
-    if median_size > 1:
+    median_size = getattr(settings, "median_filter_size", 0)
+    if median_size >= 3:  # Median filter requires size >= 3
         field_smooth = cv2.medianBlur(field_smooth, median_size)
-    sigma = getattr(settings, "smoothing_sigma", 0.8)
+    sigma = getattr(settings, "smoothing_sigma", 0.5)
     if sigma > 0:
         field_smooth = cv2.GaussianBlur(field_smooth, (0, 0), sigma)
     return field_smooth
@@ -537,16 +626,29 @@ def make_video_from_scalar(
         test_frames = getattr(settings, "test_frames", 50)
         files = files[:test_frames]
 
-    # Validate that the run_index exists in the files
-    # Note: read_mat_contents will raise ValueError if run_index is invalid
+    # Validate that the run_index exists in the files, or fall back to highest valid run
+    effective_run_index = run_index
     try:
-        test_arrs = read_mat_contents(str(files[0]), run_index=run_index)
-        # Check if the returned data contains any non-zero elements (i.e., is not empty)
+        # Find all valid runs by reading the mat file directly (avoids inhomogeneous array issue)
+        valid_runs = find_all_valid_runs_from_file(str(files[0]), var)
+
+        if run_index in valid_runs:
+            # Requested run is valid
+            effective_run_index = run_index
+        elif valid_runs:
+            # Fall back to highest valid run (like vector viewer does)
+            effective_run_index = max(valid_runs)
+            logger.info(f"Run {run_index} has no data, falling back to highest valid run: {effective_run_index}")
+        else:
+            raise ValueError(f"No valid runs found in {files[0]} for variable {var}")
+
+        # Verify we can read the effective run
+        test_arrs = read_mat_contents(str(files[0]), run_index=effective_run_index)
         if isinstance(test_arrs, np.ndarray):
             if test_arrs.size == 0 or not np.any(test_arrs):
-                raise ValueError(f"Run not found: run_index {run_index} contains empty/zero data in {files[0]}")
+                raise ValueError(f"Run not found: run_index {effective_run_index} contains empty/zero data in {files[0]}")
         else:
-            raise ValueError(f"Run not found: unexpected data type returned for run_index {run_index}")
+            raise ValueError(f"Run not found: unexpected data type returned for run_index {effective_run_index}")
     except ValueError as e:
         # read_mat_contents already validates run_index and raises informative errors
         if "Invalid run_index" in str(e) or "No valid runs" in str(e) or "Run not found" in str(e):
@@ -555,6 +657,9 @@ def make_video_from_scalar(
     except Exception as e:
         logger.error(f"Failed to validate run_index {run_index} in {files[0]}: {e}")
         raise ValueError(f"Run not found: unable to load data with run_index {run_index}")
+
+    # Use effective_run_index for all subsequent operations
+    run_index = effective_run_index
 
     # Compute limits in parallel
     try:
@@ -659,4 +764,5 @@ def make_video_from_scalar(
         "pix_fmt": getattr(settings, "pix_fmt", None),
         "crf": getattr(settings, "crf", None),
         "codec": getattr(settings, "codec", None),
+        "effective_run": run_index + 1,  # Return 1-based run number that was actually used
     }

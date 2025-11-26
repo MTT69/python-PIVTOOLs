@@ -25,7 +25,7 @@ from pivtools_core.paths import get_data_paths
 from pivtools_gui.piv_runner import get_runner
 from pivtools_gui.plotting.app.views import vector_plot_bp
 from pivtools_gui.post_processing.POD.app.views import POD_bp
-from pivtools_cli.preprocessing.preprocess import preprocess_images
+from pivtools_cli.preprocessing.preprocess import preprocess_images, apply_filters_to_batch
 from pivtools_gui.stereo_reconstruction.app.views import stereo_bp
 from pivtools_gui.utils import camera_folder, camera_number, numpy_to_png_base64, numpy_to_base64
 from pivtools_gui.vector_statistics.app.views import statistics_bp
@@ -44,7 +44,7 @@ app.register_blueprint(vector_plot_bp, url_prefix='/backend/plot')
 app.register_blueprint(masking_bp, url_prefix='/backend')
 app.register_blueprint(POD_bp, url_prefix='/backend')
 app.register_blueprint(calibration_bp, url_prefix='/backend')
-app.register_blueprint(video_maker_bp, url_prefix='/backend')
+app.register_blueprint(video_maker_bp, url_prefix='/backend/video')
 app.register_blueprint(stereo_bp, url_prefix='/backend')
 app.register_blueprint(statistics_bp, url_prefix='/backend')
 app.register_blueprint(merging_bp, url_prefix='/backend')
@@ -53,30 +53,81 @@ app.register_blueprint(merging_bp, url_prefix='/backend')
 processed_store = {"processed": {}}
 processing = False
 
-# Raw image cache: {(source_path_str, camera, frame_idx): (pair_array, base64_A, base64_B)}
-# Using source path string instead of index ensures cache invalidation when paths change
+# Raw image cache: {cache_key: (pair_array, base64_A, base64_B, stats, last_access_time)}
+# Cache key includes format, so jpeg and png entries are separate
 raw_image_cache = {}
-RAW_CACHE_MAX_SIZE = 15  # Maximum number of frame pairs to cache
+RAW_CACHE_MAX_SIZE = 20  # Maximum number of frame pairs to cache
+FRAME_1_KEYS = set()  # Track frame 1 keys to pin them in cache
+
+# Thread safety for cache access
+import threading
+cache_lock = threading.Lock()
 
 # --- Utility Functions ---
 
 def manage_cache_size():
-    """Remove oldest entries if cache exceeds max size (simple LRU)."""
+    """LRU eviction with frame 1 pinning. Thread-safe."""
     global raw_image_cache
-    if len(raw_image_cache) > RAW_CACHE_MAX_SIZE:
-        # Remove 20% of oldest entries
-        to_remove = len(raw_image_cache) - int(RAW_CACHE_MAX_SIZE * 0.8)
-        keys_to_remove = list(raw_image_cache.keys())[:to_remove]
-        for key in keys_to_remove:
+    with cache_lock:
+        if len(raw_image_cache) <= RAW_CACHE_MAX_SIZE:
+            return
+
+        # Sort by access time (5th element), excluding pinned frame 1 entries
+        evictable = []
+        for k, v in raw_image_cache.items():
+            if k in FRAME_1_KEYS:
+                continue  # Never evict frame 1
+            # v = (pair, b64_a, b64_b, stats, last_access_time)
+            access_time = v[4] if len(v) > 4 else 0
+            evictable.append((k, access_time))
+
+        evictable.sort(key=lambda x: x[1])  # Sort by access time (oldest first)
+
+        # Remove oldest until under limit
+        to_remove = len(raw_image_cache) - RAW_CACHE_MAX_SIZE
+        for key, access_time in evictable[:to_remove]:
             del raw_image_cache[key]
+
+
+def _log_cache_contents():
+    """Log cache contents: raw frames + processed frames (if any)."""
+    with cache_lock:
+        # Get raw frame indices
+        raw_frames = sorted([key[2] for key in raw_image_cache.keys()]) if raw_image_cache else []
+
+        # Get processed frame indices
+        proc_frames = sorted(processed_store.get("processed", {}).keys()) if processed_store.get("processed") else []
+
+        if not raw_frames:
+            return
+
+        # Format: "Cache: raw 1-10 | processed 1-10" or "Cache: raw 1-10" if no processed
+        raw_str = f"raw {min(raw_frames)}-{max(raw_frames)}"
+        if proc_frames:
+            proc_str = f"processed {min(proc_frames)}-{max(proc_frames)}"
+            logger.info(f"Cache: {raw_str} | {proc_str}")
+        else:
+            logger.info(f"Cache: {raw_str}")
+
 
 def cam_folder_key(camera, cfg):
     """Get camera folder using config to respect custom subfolders."""
     return cfg.get_camera_folder(camera_number(camera))
 
 
+def make_raw_cache_key(source_path_idx: int, camera: int, idx: int, img_format: str, cfg) -> tuple:
+    """Generate consistent cache key for raw images. Include all parameters that affect output."""
+    format_str = cfg.image_format[0]
+    if '.set' in str(format_str) or '.im7' in str(format_str):
+        source_path = cfg.source_paths[source_path_idx]
+    else:
+        folder = cfg.get_camera_folder(camera)
+        source_path = cfg.source_paths[source_path_idx] / folder if folder else cfg.source_paths[source_path_idx]
+    return (str(source_path), camera, idx, img_format)
+
+
 def cache_key(source_path_idx, camera, cfg):
-    """Generate cache key using actual source path for proper invalidation when paths change."""
+    """Generate cache key for processed images (no frame index - stores dict of frames)."""
     format_str = cfg.image_format[0]
     if '.set' in str(format_str) or '.im7' in str(format_str):
         source_path = cfg.source_paths[source_path_idx]
@@ -148,9 +199,10 @@ def get_calibration_method_params(cfg, method: str):
 
 def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: int, cfg, window: int = 10, img_format: str = "jpeg", auto_limits: bool = False):
     """
-    Background task to preload frames surrounding the current frame.
-    Loads 'window' frames before and after current_idx.
+    Background task to preload frames starting from current_idx.
+    Loads 'window' frames forward from current_idx. Thread-safe.
     """
+    import time as time_module
     try:
         format_str = cfg.image_format[0]
         if '.set' in str(format_str) or '.im7' in str(format_str):
@@ -161,33 +213,40 @@ def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: 
 
         num_pairs = cfg.num_frame_pairs
 
-        # Calculate range to preload (avoid duplicates with current frame)
-        start_idx = max(1, current_idx - window)
-        end_idx = min(num_pairs, current_idx + window)
+        # Calculate range to preload: current_idx through current_idx + window - 1
+        start_idx = max(1, current_idx)
+        end_idx = min(num_pairs, current_idx + window - 1)
 
         preloaded = 0
         for idx in range(start_idx, end_idx + 1):
-            if idx == current_idx:
-                continue  # Skip current frame (already loaded)
 
-            # Use actual path string for cache key to support path changes (include format)
-            cache_key_tuple = (str(source_path), camera, idx, img_format)
-            if cache_key_tuple in raw_image_cache:
-                continue  # Already cached
+            # Use consistent cache key function
+            cache_key_tuple = make_raw_cache_key(source_path_idx, camera, idx, img_format, cfg)
+
+            # Thread-safe check if already cached
+            with cache_lock:
+                if cache_key_tuple in raw_image_cache:
+                    continue  # Already cached
 
             try:
                 pair = read_pair(idx, source_path, camera, cfg)
                 b64_a = numpy_to_base64(pair[0], format=img_format)
                 b64_b = numpy_to_base64(pair[1], format=img_format)
-                
+
                 stats = None
                 if auto_limits:
                     stats = {
                         "A": {"vmin": float(np.percentile(pair[0], 1)), "vmax": float(np.percentile(pair[0], 99))},
                         "B": {"vmin": float(np.percentile(pair[1], 1)), "vmax": float(np.percentile(pair[1], 99))}
                     }
-                
-                raw_image_cache[cache_key_tuple] = (pair, b64_a, b64_b, stats)
+
+                # Thread-safe cache write with timestamp
+                access_time = time_module.time()
+                with cache_lock:
+                    raw_image_cache[cache_key_tuple] = (pair, b64_a, b64_b, stats, access_time)
+                    # Pin frame 1 entries
+                    if idx == 1:
+                        FRAME_1_KEYS.add(cache_key_tuple)
                 preloaded += 1
             except Exception as e:
                 logger.debug(f"Failed to preload frame {idx}: {e}")
@@ -195,7 +254,8 @@ def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: 
 
         manage_cache_size()
         if preloaded > 0:
-            logger.debug(f"Preloaded {preloaded} {img_format} frames around frame {current_idx}")
+            logger.info(f"Preloaded {preloaded} {img_format} frames for camera {camera}")
+            _log_cache_contents()
     except Exception as e:
         logger.debug(f"Error in background preload: {e}")
 
@@ -205,7 +265,7 @@ def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: 
 
 @api_bp.route("/get_frame_pair", methods=["GET"])
 def get_frame_pair():
-    start_time = time.perf_counter()
+    import time as time_module
     cfg = get_config()
     camera = request.args.get("camera", type=int)
     idx = request.args.get("idx", type=int)
@@ -213,11 +273,14 @@ def get_frame_pair():
     img_format = request.args.get("format", default="jpeg", type=str).lower()
     auto_limits = request.args.get("auto_limits", default="false").lower() == "true"
 
-    # Validate format
+    # Validate format - default to jpeg for speed
     if img_format not in ("png", "jpeg"):
-        img_format = "png"
+        img_format = "jpeg"
 
-    # Determine source path early for cache key
+    # Use consistent cache key function
+    cache_key_tuple = make_raw_cache_key(source_path_idx, camera, idx, img_format, cfg)
+
+    # Determine source path for reading (if cache miss)
     format_str = cfg.image_format[0]
     if '.set' in str(format_str) or '.im7' in str(format_str):
         source_path = cfg.source_paths[source_path_idx]
@@ -225,47 +288,40 @@ def get_frame_pair():
         folder = cfg.get_camera_folder(camera)
         source_path = cfg.source_paths[source_path_idx] / folder if folder else cfg.source_paths[source_path_idx]
 
-    # Check cache first - include format in cache key for proper separation
-    cache_key_tuple = (str(source_path), camera, idx, img_format)
-    if cache_key_tuple in raw_image_cache:
-        logger.debug(f"Cache HIT for frame {idx}, camera {camera}, format {img_format}")
-        cached_data = raw_image_cache[cache_key_tuple]
-        
-        # Handle variable cache structure (backward compatibility during runtime update)
-        if len(cached_data) == 4:
-            pair, b64_a, b64_b, stats = cached_data
-        else:
-            pair, b64_a, b64_b = cached_data
-            stats = None
-            
-        # Calculate stats if requested but missing
-        if auto_limits and stats is None:
-            stats = {
-                "A": {"vmin": float(np.percentile(pair[0], 1)), "vmax": float(np.percentile(pair[0], 99))},
-                "B": {"vmin": float(np.percentile(pair[1], 1)), "vmax": float(np.percentile(pair[1], 99))}
-            }
-            # Update cache
-            raw_image_cache[cache_key_tuple] = (pair, b64_a, b64_b, stats)
+    # Thread-safe cache check
+    with cache_lock:
+        if cache_key_tuple in raw_image_cache:
+            cached_data = raw_image_cache[cache_key_tuple]
 
-        # Trigger background preload of surrounding frames
-        threading.Thread(
-            target=_preload_surrounding_frames,
-            args=(source_path_idx, camera, idx, cfg, 10, img_format, auto_limits),
-            daemon=True
-        ).start()
+            # Handle variable cache structure (5 elements = has timestamp)
+            if len(cached_data) == 5:
+                pair, b64_a, b64_b, stats, _ = cached_data
+            elif len(cached_data) == 4:
+                pair, b64_a, b64_b, stats = cached_data
+            else:
+                pair, b64_a, b64_b = cached_data
+                stats = None
 
-        response = {"A": b64_a, "B": b64_b}
-        if stats:
-            response["stats"] = stats
-        return jsonify(response)
+            # Calculate stats if requested but missing
+            if auto_limits and stats is None:
+                stats = {
+                    "A": {"vmin": float(np.percentile(pair[0], 1)), "vmax": float(np.percentile(pair[0], 99))},
+                    "B": {"vmin": float(np.percentile(pair[1], 1)), "vmax": float(np.percentile(pair[1], 99))}
+                }
 
-    logger.debug(f"Cache MISS for frame {idx}, camera {camera}, format {img_format}, path {source_path}")
+            # Update cache with new access time
+            access_time = time_module.time()
+            raw_image_cache[cache_key_tuple] = (pair, b64_a, b64_b, stats, access_time)
+
+            # NOTE: No preload on cache hit - frontend handles prefetching
+
+            response = {"A": b64_a, "B": b64_b}
+            if stats:
+                response["stats"] = stats
+            return jsonify(response)
 
     try:
-        read_start = time.perf_counter()
         pair = read_pair(idx, source_path, camera, cfg)
-        read_end = time.perf_counter()
-        logger.debug(f"read_pair took {read_end - read_start:.4f} seconds")
     except FileNotFoundError as e:
         # Provide detailed error with search path and patterns
         image_format = cfg.image_format
@@ -283,11 +339,8 @@ def get_frame_pair():
             "source_path": str(source_path)
         }), 500
 
-    convert_start = time.perf_counter()
     b64_a = numpy_to_base64(pair[0], format=img_format)
     b64_b = numpy_to_base64(pair[1], format=img_format)
-    convert_end = time.perf_counter()
-    logger.debug(f"Conversion to {img_format} base64 took {convert_end - convert_start:.4f} seconds")
 
     stats = None
     if auto_limits:
@@ -296,19 +349,15 @@ def get_frame_pair():
             "B": {"vmin": float(np.percentile(pair[1], 1)), "vmax": float(np.percentile(pair[1], 99))}
         }
 
-    # Store in cache with format-aware key
-    raw_image_cache[cache_key_tuple] = (pair, b64_a, b64_b, stats)
+    # Thread-safe cache write with timestamp
+    access_time = time_module.time()
+    with cache_lock:
+        raw_image_cache[cache_key_tuple] = (pair, b64_a, b64_b, stats, access_time)
+        # Pin frame 1 entries
+        if idx == 1:
+            FRAME_1_KEYS.add(cache_key_tuple)
     manage_cache_size()
-
-    # Trigger background preload of surrounding frames
-    threading.Thread(
-        target=_preload_surrounding_frames,
-        args=(source_path_idx, camera, idx, cfg, 10, img_format, auto_limits),
-        daemon=True
-    ).start()
-
-    end_time = time.perf_counter()
-    logger.debug(f"Total /get_frame_pair took {end_time - start_time:.4f} seconds")
+    _log_cache_contents()
 
     response = {"A": b64_a, "B": b64_b}
     if stats:
@@ -328,7 +377,7 @@ def preload_images():
         "start_idx": 1,
         "count": 30,
         "source_path_idx": 0,
-        "format": "png"
+        "format": "jpeg"
     }
     """
     data = request.get_json() or {}
@@ -341,14 +390,16 @@ def preload_images():
 
     # Validate format
     if img_format not in ("png", "jpeg"):
-        img_format = "png"
+        img_format = "jpeg"
 
     cfg = get_config()
 
     # Start background preload
+    # Note: _preload_surrounding_frames loads `count` frames forward and some backward
+    # So we pass count directly, not count // 2
     threading.Thread(
         target=_preload_surrounding_frames,
-        args=(source_path_idx, camera, start_idx, cfg, count // 2, img_format, auto_limits),
+        args=(source_path_idx, camera, start_idx, cfg, count, img_format, auto_limits),
         daemon=True
     ).start()
 
@@ -421,36 +472,42 @@ def filter_images_endpoint():
 
     def process_and_store():
         global processing
-        logger.debug("/filter processing thread started")
         try:
             # Load with parallel I/O
             darr = load_pairs_parallel()
-            
-            # Process with dask, then compute both in parallel
-            processed_darr = preprocess_images(darr, cfg)
-            
-            # Compute processed
-            processed_all = dask.compute(processed_darr, scheduler='threads')[0]
-            
+
+            # Compute to numpy array first (required for apply_filters_to_batch)
+            batch_np = dask.compute(darr, scheduler='threads')[0]
+
+            # Apply ALL filters (spatial + batch) using unified function
+            processed_all = apply_filters_to_batch(
+                batch_np,
+                cfg,
+                save_diagnostics=False,
+                output_dir=None,
+                batch_idx=0,
+                pixel_mask=None  # TODO: load mask if configured
+            )
+
             # Store results
             k = cache_key(source_path_idx, camera, cfg)
             processed_store["processed"].setdefault(k, {})
-            
+
             # Batch update dictionary (faster than individual updates)
             processed_store["processed"][k].update({
-                abs_idx: processed_all[rel] 
+                abs_idx: processed_all[rel]
                 for rel, abs_idx in enumerate(indices)
             })
-            
+            _log_cache_contents()
+
         except Exception as e:
             logger.exception(f"Error during /filter processing: {e}")
         finally:
             processing = False
-            logger.debug("/filter processing thread finished (processing=False)")
 
     processing = True
     threading.Thread(target=process_and_store, daemon=True).start()
-    
+
     return jsonify(
         {
             "status": "processing",
@@ -463,6 +520,24 @@ def filter_images_endpoint():
     )
 
 
+@api_bp.route("/processing_status", methods=["GET", "POST"])
+def processing_status():
+    """
+    Check or modify processing status.
+
+    GET: Returns current processing state.
+    POST: Can cancel processing by setting {"cancel": true}.
+    """
+    global processing
+    if request.method == "POST":
+        data = request.get_json() or {}
+        if data.get("cancel"):
+            processing = False
+            logger.info("Processing cancelled by user request")
+            return jsonify({"status": "cancelled"})
+    return jsonify({"processing": processing})
+
+
 @api_bp.route("/get_processed_pair", methods=["GET"])
 def get_processed_pair():
     cfg = get_config()
@@ -472,14 +547,8 @@ def get_processed_pair():
     source_path_idx = request.args.get("source_path_idx", default=0, type=int)
     auto_limits = request.args.get("auto_limits", default="false").lower() == "true"
 
-    logger.debug(f"Checking cache for processed frame {frame}, type {typ}, camera {camera}, source_path_idx {source_path_idx}")
     b64_a, b64_b, stats = get_cached_pair(frame, typ, camera, source_path_idx, cfg, auto_limits)
-    
-    if b64_a is not None and b64_b is not None:
-        logger.debug(f"Cache hit for processed frame {frame}, type {typ}, camera {camera}")
-    else:
-        logger.debug(f"Cache miss for processed frame {frame}, type {typ}, camera {camera}")
-    
+
     response = {"status": "ok", "A": b64_a, "B": b64_b}
     if stats:
         response["stats"] = stats
@@ -815,6 +884,16 @@ def validate_files():
             }
             overall_valid = False
 
+    # If validation passed, preload first 10 frames for each camera in background
+    if overall_valid:
+        for camera_num in camera_numbers:
+            threading.Thread(
+                target=_preload_surrounding_frames,
+                args=(source_path_idx, camera_num, 1, cfg, 10, "jpeg", True),
+                daemon=True
+            ).start()
+        logger.info(f"Validation passed - preloading first 10 frames for {len(camera_numbers)} camera(s)")
+
     return jsonify({
         "valid": overall_valid,
         "details": results
@@ -832,7 +911,7 @@ def config_endpoint():
 
 @api_bp.route("/update_config", methods=["POST"])
 def update_config():
-    global raw_image_cache, processed_store
+    global raw_image_cache, processed_store, FRAME_1_KEYS
     data = request.get_json() or {}
     cfg = get_config()
 
@@ -843,10 +922,18 @@ def update_config():
     )
     format_changing = "images" in data and "image_format" in data.get("images", {})
 
-    # Clear caches if critical config is changing
+    # Check if filters are changing (affects processed cache only)
+    filters_changing = "filters" in data
+
+    # Thread-safe cache clearing
     if paths_changing or format_changing:
-        logger.info("Clearing image caches due to config change (paths or format)")
-        raw_image_cache.clear()
+        logger.info("Clearing all image caches due to config change (paths or format)")
+        with cache_lock:
+            raw_image_cache.clear()
+            FRAME_1_KEYS.clear()
+        processed_store["processed"] = {}
+    elif filters_changing:
+        logger.info("Clearing processed image cache due to filter change")
         processed_store["processed"] = {}
 
     # No special handling needed for filters - save them as-is including batch_size

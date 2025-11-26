@@ -1,4 +1,6 @@
 import os
+import shutil
+import subprocess
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -6,16 +8,144 @@ from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, jsonify, request, send_file
 from loguru import logger
+import numpy as np
+from scipy.io import loadmat
 
 from pivtools_core.config import get_config
 from pivtools_core.paths import get_data_paths
-from ..video_maker import PlotSettings, make_video_from_scalar
+from ..video_maker import PlotSettings, make_video_from_scalar, find_all_valid_runs_from_file, find_highest_valid_run_from_file
 
-video_maker_bp = Blueprint("video_maker", __name__, url_prefix="/video")
+video_maker_bp = Blueprint("video_maker", __name__ )
 
 # Constants
 VIDEO_EXTENSIONS = (".mp4", ".avi", ".mov", ".mkv")
 MAX_DEPTH = 5  # For deep search
+
+
+def check_ffmpeg_installed() -> Dict[str, Any]:
+    """Check if ffmpeg is installed and return version info."""
+    result = {
+        "installed": False,
+        "version": None,
+        "path": None,
+        "error": None,
+    }
+
+    # Try to find ffmpeg
+    ffmpeg_path = shutil.which("ffmpeg")
+    if ffmpeg_path:
+        result["path"] = ffmpeg_path
+        try:
+            proc = subprocess.run(
+                ["ffmpeg", "-version"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if proc.returncode == 0:
+                result["installed"] = True
+                # Extract version from first line
+                first_line = proc.stdout.split("\n")[0]
+                result["version"] = first_line
+        except subprocess.TimeoutExpired:
+            result["error"] = "ffmpeg check timed out"
+        except Exception as e:
+            result["error"] = str(e)
+    else:
+        result["error"] = "ffmpeg not found in PATH"
+
+    return result
+
+
+def check_video_data_availability(
+    base_path: Path,
+    camera: int,
+    num_frame_pairs: int,
+    vector_format: str,
+) -> Dict[str, Any]:
+    """
+    Check what data sources are available for video creation.
+    Returns availability info for calibrated, uncalibrated, and merged data.
+    """
+    available = {
+        "calibrated": {"exists": False, "frame_count": 0, "path": None},
+        "uncalibrated": {"exists": False, "frame_count": 0, "path": None},
+        "merged": {"exists": False, "frame_count": 0, "path": None},
+    }
+
+    # Check calibrated instantaneous
+    try:
+        cal_paths = get_data_paths(
+            base_dir=base_path,
+            num_frame_pairs=num_frame_pairs,
+            cam=camera,
+            type_name="instantaneous",
+            use_uncalibrated=False,
+            use_merged=False,
+        )
+        cal_data_dir = Path(cal_paths["data_dir"])
+        if cal_data_dir.exists():
+            frame_count = 0
+            for frame in range(1, num_frame_pairs + 1):
+                mat_file = cal_data_dir / (vector_format % frame)
+                if mat_file.exists():
+                    frame_count += 1
+            if frame_count > 0:
+                available["calibrated"]["exists"] = True
+                available["calibrated"]["frame_count"] = frame_count
+                available["calibrated"]["path"] = str(cal_data_dir)
+    except Exception as e:
+        logger.debug(f"Error checking calibrated data: {e}")
+
+    # Check uncalibrated instantaneous
+    try:
+        uncal_paths = get_data_paths(
+            base_dir=base_path,
+            num_frame_pairs=num_frame_pairs,
+            cam=camera,
+            type_name="instantaneous",
+            use_uncalibrated=True,
+            use_merged=False,
+        )
+        uncal_data_dir = Path(uncal_paths["data_dir"])
+        if uncal_data_dir.exists():
+            frame_count = 0
+            for frame in range(1, num_frame_pairs + 1):
+                mat_file = uncal_data_dir / (vector_format % frame)
+                if mat_file.exists():
+                    frame_count += 1
+            if frame_count > 0:
+                available["uncalibrated"]["exists"] = True
+                available["uncalibrated"]["frame_count"] = frame_count
+                available["uncalibrated"]["path"] = str(uncal_data_dir)
+    except Exception as e:
+        logger.debug(f"Error checking uncalibrated data: {e}")
+
+    # Check merged instantaneous
+    try:
+        merged_paths = get_data_paths(
+            base_dir=base_path,
+            num_frame_pairs=num_frame_pairs,
+            cam=camera,
+            type_name="instantaneous",
+            use_uncalibrated=False,
+            use_merged=True,
+        )
+        merged_data_dir = Path(merged_paths["data_dir"])
+        if merged_data_dir.exists():
+            frame_count = 0
+            for frame in range(1, num_frame_pairs + 1):
+                mat_file = merged_data_dir / (vector_format % frame)
+                if mat_file.exists():
+                    frame_count += 1
+            if frame_count > 0:
+                available["merged"]["exists"] = True
+                available["merged"]["frame_count"] = frame_count
+                available["merged"]["path"] = str(merged_data_dir)
+    except Exception as e:
+        logger.debug(f"Error checking merged data: {e}")
+
+    return available
 
 # In-memory video job state with thread-safety
 _video_state: Dict[str, Any] = {
@@ -77,6 +207,7 @@ def _run_video_job(
     source_type: str,
     endpoint: str,
     merged_flag: bool,
+    use_uncalibrated: bool,
     var: str,
     pattern: str,
     ps: PlotSettings,
@@ -96,12 +227,14 @@ def _run_video_job(
         )
 
         logger.info(
-            f"[VIDEO] Starting video job | base='{base}', cam={cam}, num_images={num_images}, run={run}, var={var}, test_mode={test_mode}"
+            f"[VIDEO] Starting video job | base='{base}', cam={cam}, num_images={num_images}, run={run}, var={var}, test_mode={test_mode}, merged={merged_flag}, uncalibrated={use_uncalibrated}"
         )
 
         cfg = get_config()
         paths = get_data_paths(
-            base, cfg.num_frame_pairs, cam, source_type, endpoint, merged_flag
+            base, cfg.num_frame_pairs, cam, source_type, endpoint,
+            use_merged=merged_flag,
+            use_uncalibrated=use_uncalibrated,
         )
 
         data_dir = Path(paths.get("data_dir"))
@@ -151,6 +284,7 @@ def _run_video_job(
                 "actual_max": meta.get("actual_max"),
                 "percentile_based": ps.lower_limit is None or ps.upper_limit is None,
             },
+            effective_run=meta.get("effective_run"),  # Return the run that was actually used
         )
         logger.info(f"[VIDEO] Job completed successfully. Output: {ps.out_path}")
 
@@ -219,16 +353,101 @@ def list_videos():
         return jsonify({"error": str(e), "videos": []}), 500
 
 
+@video_maker_bp.route("/check_ffmpeg", methods=["GET"])
+def check_ffmpeg():
+    """Check if ffmpeg is installed and available."""
+    try:
+        result = check_ffmpeg_installed()
+        return jsonify({"success": True, **result})
+    except Exception as e:
+        logger.exception(f"[VIDEO] Failed to check ffmpeg: {e}")
+        return jsonify({"success": False, "installed": False, "error": str(e)}), 500
+
+
+@video_maker_bp.route("/check_data_sources", methods=["GET"])
+def check_data_sources():
+    """
+    Check what data sources are available for video creation.
+
+    Query params:
+    - base_path: Base directory path
+    - camera: Camera number (1-based)
+
+    Returns availability info for calibrated, uncalibrated, and merged data.
+    """
+    try:
+        base_path_str = request.args.get("base_path")
+        camera_raw = request.args.get("camera", "1")
+
+        cfg = get_config(refresh=True)
+
+        if not base_path_str:
+            # Fall back to first configured base path
+            if cfg.base_paths:
+                base_path_str = cfg.base_paths[0]
+            else:
+                return jsonify({
+                    "success": False,
+                    "error": "No base_path provided and no default configured"
+                }), 400
+
+        try:
+            camera = int(camera_raw)
+            if camera < 1:
+                raise ValueError("Camera must be positive")
+        except ValueError:
+            return jsonify({"success": False, "error": "Invalid camera number"}), 400
+
+        base_path = Path(base_path_str).expanduser()
+        if not base_path.exists():
+            return jsonify({
+                "success": False,
+                "error": f"Base path does not exist: {base_path}"
+            }), 404
+
+        available = check_video_data_availability(
+            base_path=base_path,
+            camera=camera,
+            num_frame_pairs=cfg.num_frame_pairs,
+            vector_format=cfg.vector_format,
+        )
+
+        # Determine default data source
+        default_source = None
+        if available["merged"]["exists"]:
+            default_source = "merged"
+        elif available["calibrated"]["exists"]:
+            default_source = "calibrated"
+        elif available["uncalibrated"]["exists"]:
+            default_source = "uncalibrated"
+
+        has_any_data = any(v["exists"] for v in available.values())
+
+        return jsonify({
+            "success": True,
+            "available": available,
+            "default_source": default_source,
+            "has_any_data": has_any_data,
+            "base_path": str(base_path),
+            "camera": camera,
+        })
+
+    except Exception as e:
+        logger.exception(f"[VIDEO] Failed to check data sources: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @video_maker_bp.route("/start_video", methods=["POST"])
 def start_video():
     """
     Start video job with validation.
-    
+
     Expected JSON parameters:
     - base_path: str - Base directory path for data
     - camera: int - Camera number (1-based)
     - run: int - Run number (1-based)
     - var: str - Variable to visualize ("ux", "uy", "mag")
+    - data_source: str - Data source type ("calibrated", "uncalibrated", "merged")
     - fps: int (optional) - Video frame rate (1-120, default: 30)
     - test_mode: bool (optional) - Create test video with limited frames
     - test_frames: int (optional) - Number of frames for test mode (default: 50)
@@ -241,6 +460,14 @@ def start_video():
 
     data = request.get_json(silent=True) or {}
     cfg = get_config(refresh=True)
+
+    # Check ffmpeg first
+    ffmpeg_check = check_ffmpeg_installed()
+    if not ffmpeg_check["installed"]:
+        return jsonify({
+            "error": "ffmpeg is not installed. Please install ffmpeg to create videos.",
+            "ffmpeg_error": ffmpeg_check.get("error")
+        }), 400
 
     # Validate inputs
     base_path_str = data.get("base_path")
@@ -281,11 +508,47 @@ def start_video():
     num_images = int(data.get("num_images", 1))  # Keep for other uses, e.g., if needed elsewhere
     if num_images < 1:
         return jsonify({"error": "num_images must be positive"}), 400
-    merged_flag = str(data.get("merged", "0")) in ("1", "true", "True")
+
+    # Parse data source (new parameter)
+    data_source = data.get("data_source", "calibrated")
+    if data_source not in ("calibrated", "uncalibrated", "merged"):
+        return jsonify({"error": "Invalid data_source. Must be 'calibrated', 'uncalibrated', or 'merged'"}), 400
+
+    # Set flags based on data_source
+    use_uncalibrated = data_source == "uncalibrated"
+    merged_flag = data_source == "merged"
+
+    # Legacy support: if merged is explicitly set and data_source not provided, use merged flag
+    if "merged" in data and "data_source" not in data:
+        merged_flag = str(data.get("merged", "0")) in ("1", "true", "True")
+        use_uncalibrated = False
+
     endpoint = data.get("endpoint", "") or ""
     source_type = data.get("type", "instantaneous") or "instantaneous"
     if source_type not in ["instantaneous", "ensemble"]:  # Add allowed types
         return jsonify({"error": "Invalid source_type"}), 400
+
+    # Check if data is available for the selected source
+    available = check_video_data_availability(
+        base_path=base,
+        camera=cam,
+        num_frame_pairs=cfg.num_frame_pairs,
+        vector_format=cfg.vector_format,
+    )
+
+    if not available[data_source]["exists"]:
+        available_sources = [k for k, v in available.items() if v["exists"]]
+        if not available_sources:
+            return jsonify({
+                "error": f"No PIV data found for camera {cam}. Please run PIV processing first.",
+                "available_sources": []
+            }), 404
+        else:
+            return jsonify({
+                "error": f"No {data_source} data found for camera {cam}. Available sources: {', '.join(available_sources)}",
+                "available_sources": available_sources,
+                "selected_source": data_source
+            }), 404
 
     var = data.get("var", None) or data.get("var", "uy")
     if var not in ("ux", "uy", "mag"):
@@ -304,7 +567,7 @@ def start_video():
     except (ValueError, TypeError):
         return jsonify({"error": "Invalid FPS value"}), 400
 
-    ps.crf = 18
+    ps.crf = 15  # Lower CRF for higher quality (15 is near-lossless)
     ps.upscale = (1080, 1920) if data.get("resolution") != "4k" else (2160, 3840)
     ps.out_path = data.get(
         "out_name",
@@ -344,6 +607,7 @@ def start_video():
             source_type,
             endpoint,
             merged_flag,
+            use_uncalibrated,
             var,
             pattern,
             ps,
@@ -354,7 +618,13 @@ def start_video():
     )
     _video_thread.start()
 
-    return jsonify({"status": "started", "processing": True, "progress": 0}), 202
+    return jsonify({
+        "status": "started",
+        "processing": True,
+        "progress": 0,
+        "data_source": data_source,
+        "frame_count": available[data_source]["frame_count"],
+    }), 202
 
 
 @video_maker_bp.route("/cancel_video", methods=["POST"])
@@ -435,3 +705,110 @@ def download_video():
     except Exception as e:
         logger.error(f"Error serving video file: {e}")
         return jsonify({"error": f"Error serving file: {str(e)}"}), 500
+
+
+@video_maker_bp.route("/check_runs", methods=["GET"])
+def check_runs():
+    """
+    Check available runs in the video data for a given camera and data source.
+    Returns list of valid runs and the recommended (highest) run.
+
+    Query params:
+    - base_path: Base directory path
+    - camera: Camera number (1-based)
+    - data_source: Data source type (calibrated, uncalibrated, merged)
+    - var: Variable to check (ux, uy, mag) - defaults to ux
+    """
+    try:
+        base_path_str = request.args.get("base_path")
+        camera_raw = request.args.get("camera", "1")
+        data_source = request.args.get("data_source", "calibrated")
+        var = request.args.get("var", "ux")
+
+        cfg = get_config(refresh=True)
+
+        if not base_path_str:
+            if cfg.base_paths:
+                base_path_str = cfg.base_paths[0]
+            else:
+                return jsonify({
+                    "success": False,
+                    "error": "No base_path provided and no default configured"
+                }), 400
+
+        try:
+            camera = int(camera_raw)
+            if camera < 1:
+                raise ValueError("Camera must be positive")
+        except ValueError:
+            return jsonify({"success": False, "error": "Invalid camera number"}), 400
+
+        base_path = Path(base_path_str).expanduser()
+        if not base_path.exists():
+            return jsonify({
+                "success": False,
+                "error": f"Base path does not exist: {base_path}"
+            }), 404
+
+        # Determine flags based on data_source
+        use_uncalibrated = data_source == "uncalibrated"
+        use_merged = data_source == "merged"
+
+        # Get data paths
+        paths = get_data_paths(
+            base_dir=base_path,
+            num_frame_pairs=cfg.num_frame_pairs,
+            cam=camera,
+            type_name="instantaneous",
+            use_uncalibrated=use_uncalibrated,
+            use_merged=use_merged,
+        )
+
+        data_dir = Path(paths["data_dir"])
+        if not data_dir.exists():
+            return jsonify({
+                "success": False,
+                "error": f"Data directory does not exist: {data_dir}",
+                "runs": [],
+                "highest_run": 1
+            }), 404
+
+        # Find first mat file to check runs
+        mat_files = sorted(data_dir.glob("[0-9]*.mat"))
+        mat_files = [f for f in mat_files if "coordinate" not in f.name.lower()]
+
+        if not mat_files:
+            return jsonify({
+                "success": False,
+                "error": "No .mat files found",
+                "runs": [],
+                "highest_run": 1
+            }), 404
+
+        # Load first file and check valid runs
+        first_file = mat_files[0]
+        try:
+            valid_runs_0based = find_all_valid_runs_from_file(str(first_file), var)
+            valid_runs = [r + 1 for r in valid_runs_0based]  # Convert to 1-based
+            highest_run = max(valid_runs) if valid_runs else 1
+        except Exception as e:
+            logger.error(f"Error reading runs from {first_file}: {e}")
+            return jsonify({
+                "success": False,
+                "error": str(e),
+                "runs": [1],
+                "highest_run": 1
+            }), 500
+
+        return jsonify({
+            "success": True,
+            "runs": valid_runs,
+            "highest_run": highest_run,
+            "total_runs": len(valid_runs),
+            "data_source": data_source,
+            "camera": camera,
+        })
+
+    except Exception as e:
+        logger.exception(f"[VIDEO] Failed to check runs: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500

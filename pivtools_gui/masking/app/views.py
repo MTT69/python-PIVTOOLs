@@ -74,10 +74,13 @@ def load_mask():
     Query params:
       - path: full path to mask .mat file (preferred)
       - basepath_idx, camera: optional, used to construct path if 'path' not given
+      - polygons_only: if 'true', skip loading the full mask array (faster for editor)
     Returns: { mask: [0|1,...], width, height, polygons: [...] }
     """
     cfg = _cfg()
     path = request.args.get("path", default=None, type=str)
+    polygons_only = request.args.get("polygons_only", default="false", type=str).lower() == "true"
+
     # Optionally reconstruct path if not provided
     if not path or not Path(path).exists():
         try:
@@ -106,8 +109,19 @@ def load_mask():
 
         polygons_serializable = [serialize_polygon(p) for p in polygons]
         mask_arr = np.asarray(mask)
-        mask_flat = mask_arr.astype(np.uint8).flatten().tolist()
         height, width = mask_arr.shape
+
+        # If polygons_only is requested, skip the expensive mask flattening
+        if polygons_only:
+            return jsonify(
+                {
+                    "width": width,
+                    "height": height,
+                    "polygons": polygons_serializable,
+                }
+            )
+
+        mask_flat = mask_arr.astype(np.uint8).flatten().tolist()
         return jsonify(
             {
                 "mask": mask_flat,

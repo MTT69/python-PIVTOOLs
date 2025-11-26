@@ -29,7 +29,6 @@ logging:
 processing:
   instantaneous: true
   ensemble: false
-  stereo: false
   backend: cpu
   debug: false
   auto_compute_params: false
@@ -37,13 +36,12 @@ processing:
   dask_workers_per_node: 4
   dask_threads_per_worker: 1
   dask_memory_limit: 3GB
-  filter_worker_count: null
-  filter_worker_ratio: 0.2
+  filter_worker_count: 1
   always_batch: true
 outlier_detection:
   enabled: true
   methods:
-  - threshold: 0.3
+  - threshold: 0.2
     type: peak_mag
   - epsilon: 0.2
     threshold: 2
@@ -111,15 +109,9 @@ ensemble_piv:
     - 128
   - - 64
     - 64
-  - - 32
-    - 32
-  - - 16
-    - 16
   - - 16
     - 16
   overlap:
-  - 50
-  - 50
   - 50
   - 50
   - 50
@@ -127,16 +119,10 @@ ensemble_piv:
   - std
   - std
   - std
-  - std
-  - std
   runs:
-  - 1
-  - 2
   - 3
-  - 4
-  - 5
-  store_planes: true
-  save_diagnostics: true
+  store_planes: false
+  save_diagnostics: false
   sum_window:
   - 16
   - 16
@@ -175,8 +161,7 @@ calibration:
     enhance_dots: true
     asymmetric: false
     dt: 2
-filters:
-  - type: time
+filters: []
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat

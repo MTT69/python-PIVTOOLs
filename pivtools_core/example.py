@@ -1,11 +1,50 @@
 import logging
 import os
+import signal
 import sys
 import tracemalloc
 import time
 from pathlib import Path
 
 import yaml
+
+# Global references for clean shutdown
+_client = None
+_cluster = None
+_shutdown_requested = False
+
+
+def signal_handler(signum, frame):
+    """Handle termination signals for clean shutdown."""
+    global _shutdown_requested
+    _shutdown_requested = True
+    sig_name = signal.Signals(signum).name if hasattr(signal, 'Signals') else str(signum)
+    logging.info(f"Received signal {sig_name}, initiating clean shutdown...")
+    print(f"\n[CANCELLED] Received signal {sig_name}, shutting down...", flush=True)
+
+    # Close Dask client and cluster if they exist
+    try:
+        if _client is not None:
+            logging.info("Closing Dask client...")
+            _client.close()
+    except Exception as e:
+        logging.warning(f"Error closing client: {e}")
+
+    try:
+        if _cluster is not None:
+            logging.info("Closing Dask cluster...")
+            _cluster.close()
+    except Exception as e:
+        logging.warning(f"Error closing cluster: {e}")
+
+    logging.info("Shutdown complete.")
+    print("[CANCELLED] Shutdown complete.", flush=True)
+    sys.exit(1)
+
+
+# Register signal handlers
+signal.signal(signal.SIGTERM, signal_handler)
+signal.signal(signal.SIGINT, signal_handler)
 
 # Add src to path for unified imports
 from pivtools_core.config import Config
@@ -188,6 +227,8 @@ def main():
     if config.debug:
         tracemalloc.start()
 
+    global _client, _cluster
+
     try:
         cluster, client = start_cluster(
             n_workers_per_node=config.dask_workers_per_node,
@@ -196,6 +237,9 @@ def main():
             config=config,
             worker_omp_threads=worker_omp_threads,
         )
+        # Store references for signal handler
+        _cluster = cluster
+        _client = client
         logging.info("Dask cluster started successfully")
 
     except Exception as e:
@@ -217,6 +261,11 @@ def main():
         source_path = config.source_paths[0]
 
         for camera_num in camera_numbers:
+            # Check if shutdown was requested
+            if _shutdown_requested:
+                logging.info("Shutdown requested, stopping processing...")
+                break
+
             logging.info("Processing camera: Cam%d", camera_num)
 
             # Load images from source path (lazy loading - no memory consumption yet)
@@ -344,10 +393,25 @@ def main():
         print("Traceback:", flush=True)
         traceback.print_exc()
     finally:
-        client.close()
+        # Clean shutdown of Dask resources
+        try:
+            if client is not None:
+                client.close()
+        except Exception as e:
+            logging.warning(f"Error closing client in finally: {e}")
+
+        try:
+            if cluster is not None:
+                cluster.close()
+        except Exception as e:
+            logging.warning(f"Error closing cluster in finally: {e}")
+
         end_time = time.time()  # End timer
         elapsed = end_time - start_time
-        print(f"Total elapsed time: {elapsed:.2f} seconds", flush=True)
+        if _shutdown_requested:
+            print(f"[CANCELLED] Run cancelled after {elapsed:.2f} seconds", flush=True)
+        else:
+            print(f"Total elapsed time: {elapsed:.2f} seconds", flush=True)
 
 if __name__ == "__main__":
     main()

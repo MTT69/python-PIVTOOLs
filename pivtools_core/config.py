@@ -53,23 +53,26 @@ class Config:
                 default_config = """
 paths:
   base_paths:
-  - /base
+  - /set_me
   source_paths:
-  - /source
+  - /set_me
   camera_numbers:
   - 1
   camera_count: 1
+  camera_subfolders: []
 images:
-  num_images: 100
+  num_images: 1000
   image_format:
-    - B%05d_A.tif
-    - B%05d_B.tif
+  - B%05d_A.tif
+  - B%05d_B.tif
   vector_format:
-    - "%05d.mat"
+  - '%05d.mat'
   time_resolved: false
+  dtype: float32
   zero_based_indexing: false
   pairing_mode: sequential
-  dtype: float32
+  pairing_skip: 0
+  num_frame_pairs: 1000
 batches:
   size: 25
 logging:
@@ -79,23 +82,40 @@ logging:
 processing:
   instantaneous: true
   ensemble: false
-  stereo: false
   backend: cpu
   debug: false
   auto_compute_params: false
   omp_threads: 2
-  dask_workers_per_node: 5
+  dask_workers_per_node: 4
   dask_threads_per_worker: 1
-  dask_memory_limit: 2.5GB
+  dask_memory_limit: 3GB
+  filter_worker_count: 1
+  always_batch: true
 outlier_detection:
   enabled: true
   methods:
-  - threshold: 0.25
+  - threshold: 0.3
     type: peak_mag
   - epsilon: 0.2
     threshold: 2
     type: median_2d
 infilling:
+  mid_pass:
+    method: biharmonic
+    parameters:
+      ksize: 3
+  final_pass:
+    enabled: true
+    method: biharmonic
+    parameters:
+      ksize: 3
+ensemble_outlier_detection:
+  enabled: true
+  methods:
+  - epsilon: 0.2
+    threshold: 2
+    type: median_2d
+ensemble_infilling:
   mid_pass:
     method: biharmonic
     parameters:
@@ -148,23 +168,22 @@ ensemble_piv:
   - 50
   - 50
   - 50
-  runs:
-  - 3
-  window_type: gaussian
-  num_peaks: 3
-  peak_finder: gauss6
-  noisy: false
-  sum_window:
-  - 16
-  - 16
   type:
   - std
   - std
   - std
+  runs:
+  - 3
+  store_planes: false
+  save_diagnostics: false
+  sum_window:
+  - 16
+  - 16
+  resume_from_pass: 0
 calibration_format:
   image_format: calib%05d.tif
 calibration:
-  active: pinhole
+  active: polynomial
   scale_factor:
     dt: 0.56
     px_per_mm: 3.41
@@ -200,12 +219,13 @@ masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
-  mode: file
+  mode: rectangular
   rectangular:
-    top: 64
-    bottom: 64
+    top: 0
+    bottom: 0
     left: 0
     right: 0
+
 """
                 with open(cwd_config_path, 'w') as f:
                     f.write(default_config.strip())
@@ -801,32 +821,34 @@ masking:
     @property
     def filter_worker_count(self):
         """
-        Manual filter worker count override.
+        Number of workers dedicated to filtering.
 
-        Returns None for auto-detection based on ratio.
-        Set to specific number (e.g., 1 for low RAM) to override.
-
-        Returns
-        -------
-        int or None
-            Number of workers dedicated to filtering, or None for auto-detection
-        """
-        return self.data.get("processing", {}).get("filter_worker_count", None)
-
-    @property
-    def filter_worker_ratio(self):
-        """
-        Filter worker ratio (0.0-1.0) when auto-detecting.
-
-        Default 0.2 means 20% of workers filter, 80% correlate.
-        Only used when filter_worker_count is None.
+        Auto-determined based on filter types:
+        - 1 worker for temporal filters (time, POD) to avoid memory issues
+        - 2 workers for spatial-only filters
+        - Can be overridden by setting manually in config
 
         Returns
         -------
-        float
-            Ratio of workers to allocate for filtering (0.0 to 1.0)
+        int
+            Number of workers dedicated to filtering
         """
-        return self.data.get("processing", {}).get("filter_worker_ratio", 0.2)
+        # Check if manually set
+        manual_count = self.data.get("processing", {}).get(
+            "filter_worker_count"
+        )
+        if manual_count is not None:
+            return manual_count
+
+        # Auto-determine based on filter types
+        from pivtools_cli.preprocessing.preprocess import has_batch_filters
+
+        if has_batch_filters(self):
+            # Temporal filters (time, POD): use 1 worker to avoid memory issues
+            return 1
+        else:
+            # Spatial filters only: can use more workers
+            return 2
 
     def get_filter_worker_allocation(self, total_workers: int):
         """
@@ -844,23 +866,12 @@ masking:
 
         Examples
         --------
-        100 cores, ratio=0.2 → (20, 80)
         10 cores, count=1 → (1, 9)
-        5 cores, ratio=0.2 → (1, 4)
+        5 cores, count=2 → (2, 3)
         """
-        # Manual count takes precedence
-        if self.filter_worker_count is not None:
-            filter_workers = max(1, min(self.filter_worker_count, total_workers - 1))
-            return filter_workers, total_workers - filter_workers
-
-        # Auto-detect based on ratio
-        ratio = max(0.0, min(1.0, self.filter_worker_ratio))
-        filter_workers = max(1, int(total_workers * ratio))
-
-        # Ensure at least 1 correlation worker
-        if filter_workers >= total_workers:
-            filter_workers = total_workers - 1
-
+        filter_workers = max(
+            1, min(self.filter_worker_count, total_workers - 1)
+        )
         return filter_workers, total_workers - filter_workers
 
     @property
