@@ -168,16 +168,17 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             )
 
         cls._lib_marq = ctypes.CDLL(marquadt_libpath)
-        cls._lib_marq.fit_stacked_gaussian_export.argtypes = [
-            ctypes.c_size_t,
-            ctypes.POINTER(ctypes.c_double),
-            ctypes.POINTER(ctypes.c_double),
-            ctypes.POINTER(ctypes.c_double),
-            ctypes.POINTER(ctypes.c_double),
-            ctypes.POINTER(ctypes.c_double),
-            ctypes.POINTER(ctypes.c_int),
+        cls._lib_marq.fit_stacked_gaussian_batch.argtypes = [
+            ctypes.c_size_t,                  # num_windows
+            ctypes.c_size_t,                  # n (points per plane)
+            ctypes.POINTER(ctypes.c_double),  # X1 (grid coords)
+            ctypes.POINTER(ctypes.c_double),  # X2 (grid coords)
+            ctypes.POINTER(ctypes.c_double),  # y_batch (correlation data)
+            ctypes.POINTER(ctypes.c_double),  # initial_guess_batch
+            ctypes.POINTER(ctypes.c_double),  # out_params_batch
+            ctypes.POINTER(ctypes.c_int),     # out_status_batch
         ]
-        cls._lib_marq.fit_stacked_gaussian_export.restype = ctypes.c_int
+        cls._lib_marq.fit_stacked_gaussian_batch.restype = ctypes.c_int
 
         # Load cross-correlation library
         lib_path = os.path.join(
