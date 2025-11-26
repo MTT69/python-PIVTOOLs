@@ -343,6 +343,125 @@ def _fit_windows_batch(
     return np.array(results), np.array(statuses), np.array(initial_guesses)
 
 
+def _fit_windows_batch_optimized(
+    scattered_AA, scattered_BB, scattered_AB,
+    scattered_sigma_x, scattered_sigma_y, scattered_mask,
+    start_idx, end_idx,
+    win_size, config, pass_idx, scattered_cache, outdir=None
+):
+    """
+    Optimized Gaussian fitting with broadcast data and pre-allocated arrays.
+
+    Receives broadcast arrays and extracts local chunk to minimize serialization.
+
+    Parameters
+    ----------
+    scattered_AA, scattered_BB, scattered_AB : np.ndarray
+        Broadcast correlation planes (full arrays)
+    scattered_sigma_x, scattered_sigma_y : np.ndarray or None
+        Broadcast sigma values (full arrays, or None for pass 0)
+    scattered_mask : np.ndarray
+        Broadcast mask array (full array)
+    start_idx, end_idx : int
+        Window indices for this worker
+    win_size : tuple
+        (height, width) of correlation window
+    config : Config
+        Configuration object
+    pass_idx : int
+        Current pass index
+    scattered_cache : dict
+        Scattered correlator cache
+    outdir : Optional[Path]
+        Output directory for debug info
+
+    Returns
+    -------
+    results : np.ndarray
+        Fitted parameters for each window
+    statuses : np.ndarray
+        Fitting status codes
+    initial_guesses : np.ndarray
+        Initial guesses used for fitting
+    """
+    marquadt_lib = _load_marquadt_lib()
+
+    # Extract local chunk from broadcast data (no network transfer)
+    plane_size = win_size[0] * win_size[1]
+    start_data = start_idx * plane_size
+    end_data = end_idx * plane_size
+
+    AA_chunk = scattered_AA[start_data:end_data]
+    BB_chunk = scattered_BB[start_data:end_data]
+    AB_chunk = scattered_AB[start_data:end_data]
+
+    mask_chunk = scattered_mask[start_idx:end_idx]
+    sigma_x_chunk = scattered_sigma_x[start_idx:end_idx] if scattered_sigma_x is not None else None
+    sigma_y_chunk = scattered_sigma_y[start_idx:end_idx] if scattered_sigma_y is not None else None
+
+    num_windows = end_idx - start_idx
+    X1, X2, central_index, x_guess, y_guess = _get_pass_grid(pass_idx, config)
+
+    # Pre-allocate output arrays (avoid per-window allocation)
+    results = np.zeros((num_windows, 13), dtype=np.float64)
+    statuses = np.zeros(num_windows, dtype=np.int32)
+    initial_guesses = np.zeros((num_windows, 13), dtype=np.float64)
+
+    # Process windows
+    for idx in range(num_windows):
+        # Skip if masked
+        if mask_chunk[idx]:
+            statuses[idx] = -1  # Status -1 indicates masked/skipped window
+            continue
+
+        # Extract window
+        AA_win = _get_window(AA_chunk, idx, win_size)
+        BB_win = _get_window(BB_chunk, idx, win_size)
+        AB_win = _get_window(AB_chunk, idx, win_size)
+
+        # Get sigma values
+        sigma_x_val = sigma_x_chunk[idx] if sigma_x_chunk is not None else None
+        sigma_y_val = sigma_y_chunk[idx] if sigma_y_chunk is not None else None
+
+        # Build initial guess
+        initial_guess, real_corr = _build_initial_guess(
+            idx, pass_idx, AA_win, BB_win, AB_win, central_index,
+            x_guess, y_guess, sigma_x_val, sigma_y_val,
+            win_size, config
+        )
+
+        # Call C library (unavoidable per-window call)
+        out_params = results[idx]
+        out_status = np.zeros(1, dtype=np.int32)
+
+        marquadt_lib.fit_stacked_gaussian_export(
+            ctypes.c_size_t(win_size[0] * win_size[1]),
+            X2.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+            X1.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+            real_corr.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+            initial_guess.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+            out_params.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+            out_status.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
+        )
+
+        statuses[idx] = out_status[0]
+        initial_guesses[idx] = initial_guess
+
+        # Validate if converged
+        if statuses[idx] == 0:
+            is_valid, nan_reason_code = _validate_fitted_params(
+                out_params, win_size, pass_idx,
+                config.ensemble_type[pass_idx],
+                tuple(config.ensemble_sum_window),
+                float(AA_win[central_index]),
+                float(BB_win[central_index])
+            )
+            if not is_valid:
+                statuses[idx] = nan_reason_code
+
+    return results, statuses, initial_guesses
+
+
 def _get_window(flat_array, idx, win_size):
     """Extract one window from a flat array."""
     start = idx * win_size[0] * win_size[1]

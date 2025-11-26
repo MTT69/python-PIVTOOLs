@@ -223,12 +223,18 @@ def save_ensemble_coordinates_from_config_distributed(
     str
         Path to the saved coordinates file.
     """
-    # For ensemble, we need to use ensemble window sizes
-    window_sizes = config.ensemble_window_sizes
-    overlaps = config.ensemble_overlaps
-    image_shape = config.image_shape
+    from pivtools_cli.piv.piv_backend.cpu_ensemble import EnsembleCorrelatorCPU
 
-    num_passes = len(window_sizes)
+    # Create correlator with optional precomputed cache
+    # This handles both standard and single mode correctly
+    correlator = EnsembleCorrelatorCPU(config, precomputed_cache=correlator_cache)
+
+    # Extract the cached window centers (computed in _compute_window_centres_ensemble)
+    # These are CORRECT for both standard and single mode
+    win_ctrs_x_list = correlator.win_ctrs_x
+    win_ctrs_y_list = correlator.win_ctrs_y
+
+    num_passes = config.ensemble_num_passes
 
     if runs_to_save is None:
         runs_to_save = list(range(num_passes))
@@ -239,20 +245,9 @@ def save_ensemble_coordinates_from_config_distributed(
 
     for i in range(num_passes):
         if i in runs_to_save:
-            win_h, win_w = window_sizes[i]
-            overlap = overlaps[i] if i < len(overlaps) else overlaps[-1]
-
-            # Calculate window centers
-            step_x = int(win_w * (1 - overlap))
-            step_y = int(win_h * (1 - overlap))
-
-            img_h, img_w = image_shape
-
-            n_win_x = (img_w - win_w) // step_x + 1
-            n_win_y = (img_h - win_h) // step_y + 1
-
-            x_centers = np.arange(n_win_x) * step_x + win_w // 2
-            y_centers = np.arange(n_win_y) * step_y + win_h // 2
+            # Use cached window centers from correlator (handles single mode)
+            x_centers = win_ctrs_x_list[i]
+            y_centers = win_ctrs_y_list[i]
 
             # Create 2D coordinate grids with smallest y at the bottom
             x_grid, y_grid = np.meshgrid(x_centers + 1, y_centers[::-1] + 1, indexing='xy')
@@ -283,10 +278,12 @@ def _create_ensemble_struct_all_passes(
     runs_to_save: Optional[List[int]] = None,
 ) -> np.ndarray:
     """
-    Create a MATLAB-compatible struct with arrays indexed by pass number for ensemble results.
+    Create a MATLAB-compatible struct array with one element per pass for ensemble results.
 
-    This creates a single struct where each field (ux, uy, UU_stress, etc.) is
-    an array with one element per pass, matching the expected format.
+    This creates a struct ARRAY (N×1) where each element represents one pass,
+    matching the instantaneous format:
+        ensemble_result(1).ux = pass1_ux_matrix
+        ensemble_result(2).ux = pass2_ux_matrix
 
     Parameters
     ----------
@@ -298,17 +295,23 @@ def _create_ensemble_struct_all_passes(
     Returns
     -------
     np.ndarray
-        Structured numpy array compatible with scipy.io.savemat.
+        Structured numpy array (struct array) compatible with scipy.io.savemat.
     """
     n_passes = len(ensemble_result.passes)
 
     # Always save all passes, but empty arrays for non-selected passes
-    n_passes_to_save = n_passes
     passes_to_save = list(range(n_passes))
 
     # If runs_to_save is specified, only fill data for those passes
     if runs_to_save is None:
         runs_to_save = passes_to_save
+
+    # Get dtype from first pass for creating empty arrays
+    first_pass = ensemble_result.passes[0]
+    if first_pass.ux_mat is not None and first_pass.ux_mat.size > 0:
+        data_dtype = first_pass.ux_mat.dtype
+    else:
+        data_dtype = np.float64
 
     # Create structured dtype with all ensemble fields
     dtype = [
@@ -335,21 +338,33 @@ def _create_ensemble_struct_all_passes(
         ('pred_y', object),
     ]
 
-    # Create the struct with shape (n_passes_to_save,)
-    ensemble_struct = np.empty((n_passes_to_save,), dtype=dtype)
-
-    # Get dtype from first pass for creating empty arrays
-    first_pass = ensemble_result.passes[0]
-    if first_pass.ux_mat is not None and first_pass.ux_mat.size > 0:
-        data_dtype = first_pass.ux_mat.dtype
-    else:
-        data_dtype = np.float64
+    # Create struct ARRAY with one element per pass (like instantaneous)
+    ensemble_struct = np.empty((n_passes,), dtype=dtype)
 
     # Initialize all passes with empty arrays
     empty = np.empty((0, 0), dtype=data_dtype)
-    for i in range(n_passes_to_save):
-        for field_name, _ in dtype:
-            ensemble_struct[field_name][i] = empty
+    for i in range(n_passes):
+        ensemble_struct['ux'][i] = empty
+        ensemble_struct['uy'][i] = empty
+        ensemble_struct['UU_stress'][i] = empty
+        ensemble_struct['VV_stress'][i] = empty
+        ensemble_struct['UV_stress'][i] = empty
+        ensemble_struct['peakheights_A'][i] = empty
+        ensemble_struct['peakheights_B'][i] = empty
+        ensemble_struct['peakheights_AB'][i] = empty
+        ensemble_struct['nan_reason'][i] = empty
+        ensemble_struct['sig_AB_x'][i] = empty
+        ensemble_struct['sig_AB_y'][i] = empty
+        ensemble_struct['sig_AB_xy'][i] = empty
+        ensemble_struct['sig_A_x'][i] = empty
+        ensemble_struct['sig_A_y'][i] = empty
+        ensemble_struct['sig_A_xy'][i] = empty
+        ensemble_struct['win_ctrs_x'][i] = empty
+        ensemble_struct['win_ctrs_y'][i] = empty
+        ensemble_struct['window_size'][i] = empty
+        ensemble_struct['b_mask'][i] = empty
+        ensemble_struct['pred_x'][i] = empty
+        ensemble_struct['pred_y'][i] = empty
 
     # Fill with actual data for selected passes
     for local_idx, global_pass_idx in enumerate(passes_to_save):

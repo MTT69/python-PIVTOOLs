@@ -18,6 +18,7 @@ from pivtools_core.window_utils import compute_window_centers, compute_window_ce
 from pivtools_cli.piv.piv_result import PIVEnsemblePassResult, PIVEnsembleResult
 from pivtools_cli.piv.piv_backend.gaussian_fitting import (
     _fit_windows_batch,
+    _fit_windows_batch_optimized,
     _get_sigma_from_previous_pass,
 )
 
@@ -385,10 +386,27 @@ class SinglePassAccumulator:
         else:
             mask_flat = np.zeros(total_windows, dtype=bool)
 
-        # Distribute fitting across workers
+        # Distribute fitting across workers with optimized broadcast
         workers = list(client.scheduler_info()["workers"].keys())
         num_workers = len(workers)
         windows_per_worker = (total_windows + num_workers - 1) // num_workers
+
+        # Broadcast ENTIRE correlation planes ONCE (not per-worker chunks)
+        # Workers extract their local chunks without network transfer
+        scattered_AA = client.scatter(R_AA_ensemble, broadcast=True)
+        scattered_BB = client.scatter(R_BB_ensemble, broadcast=True)
+        scattered_AB = client.scatter(R_AB_ensemble, broadcast=True)
+
+        # Broadcast sigma fields once
+        if sigma_x is not None and sigma_y is not None:
+            scattered_sigma_x = client.scatter(sigma_x, broadcast=True)
+            scattered_sigma_y = client.scatter(sigma_y, broadcast=True)
+        else:
+            scattered_sigma_x = None
+            scattered_sigma_y = None
+
+        # Broadcast mask once
+        scattered_mask = client.scatter(mask_flat, broadcast=True)
 
         futures = []
         for i, worker in enumerate(workers):
@@ -397,38 +415,17 @@ class SinglePassAccumulator:
             if start_idx >= end_idx:
                 continue
 
-            start_idx_data = start_idx * corr_size[0] * corr_size[1]
-            end_idx_data = end_idx * corr_size[0] * corr_size[1]
-
-            # Scatter correlation planes to specific worker
-            AA_chunk = client.scatter(
-                R_AA_ensemble[start_idx_data:end_idx_data], workers=[worker]
-            )
-            BB_chunk = client.scatter(
-                R_BB_ensemble[start_idx_data:end_idx_data], workers=[worker]
-            )
-            AB_chunk = client.scatter(
-                R_AB_ensemble[start_idx_data:end_idx_data], workers=[worker]
-            )
-            # Scatter sigma values (or None for pass 0)
-            if sigma_x is not None and sigma_y is not None:
-                sigma_x_chunk = client.scatter(
-                    sigma_x[start_idx:end_idx], workers=[worker]
-                )
-                sigma_y_chunk = client.scatter(
-                    sigma_y[start_idx:end_idx], workers=[worker]
-                )
-            else:
-                sigma_x_chunk = None
-                sigma_y_chunk = None
-            mask_chunk = client.scatter(mask_flat[start_idx:end_idx], workers=[worker])
-
-            # Submit fitting task
+            # Pass indices instead of data chunks (worker extracts from broadcast data)
             fut = client.submit(
-                _fit_windows_batch,
-                AA_chunk, BB_chunk, AB_chunk,
-                sigma_x_chunk, sigma_y_chunk,
-                mask_chunk,
+                _fit_windows_batch_optimized,
+                scattered_AA,      # Broadcast data (no copy per worker)
+                scattered_BB,
+                scattered_AB,
+                scattered_sigma_x,
+                scattered_sigma_y,
+                scattered_mask,
+                start_idx,         # Indices instead of data
+                end_idx,
                 corr_size, self.config, pass_idx, scattered_cache,
                 workers=[worker],
                 pure=False,
@@ -445,8 +442,19 @@ class SinglePassAccumulator:
         statuses = status_flat.reshape(n_win_y, n_win_x)
         initial_guesses = initial_guess_flat.reshape(n_win_y, n_win_x, -1)
 
-        success_rate = np.sum(statuses == 0) / statuses.size
-        logging.info(f"Pass {pass_idx + 1}: Gaussian fitting success rate: {success_rate:.1%}")
+        # Calculate success rate excluding masked vectors
+        # Status -1 indicates masked/skipped windows (not fitted)
+        # Status 0 indicates successful fit
+        non_masked_windows = np.sum(statuses != -1)
+        successful_fits = np.sum(statuses == 0)
+        if non_masked_windows > 0:
+            success_rate = successful_fits / non_masked_windows
+            logging.info(
+                f"Pass {pass_idx + 1}: Gaussian fitting success rate: {success_rate:.1%} "
+                f"({successful_fits}/{non_masked_windows} non-masked windows)"
+            )
+        else:
+            logging.warning(f"Pass {pass_idx + 1}: All windows masked, no fitting performed")
 
         # Step 7: Extract velocities from fitted parametes
 
@@ -572,10 +580,23 @@ class SinglePassAccumulator:
             logging.debug(f"Pass {pass_idx + 1}: No vector mask applied")
 
         # Extract predictor field components if available
+        # Use the SMOOTHED predictor that was actually used for warping
         pred_x = None
         pred_y = None
-        if predictor_field is not None:
-            logging.info(f"Pass {pass_idx + 1}: Storing predictor field in pass result")
+        if pass_idx > 0 and "smoothed_predictor" in pass_data and pass_data["smoothed_predictor"] is not None:
+            smoothed_pred = pass_data["smoothed_predictor"]
+            logging.info(
+                f"Pass {pass_idx + 1}: Storing SMOOTHED predictor field in pass result "
+                f"(shape: {smoothed_pred.shape})"
+            )
+            pred_y = smoothed_pred[:, :, 0].copy()  # Y component
+            pred_x = smoothed_pred[:, :, 1].copy()  # X component
+        elif predictor_field is not None:
+            # Fallback to raw predictor if smoothed not available (shouldn't happen)
+            logging.warning(
+                f"Pass {pass_idx + 1}: Smoothed predictor not available, "
+                f"falling back to raw predictor field"
+            )
             pred_y = predictor_field[:, :, 0].copy()  # Y component
             pred_x = predictor_field[:, :, 1].copy()  # X component
 
@@ -662,3 +683,44 @@ class SinglePassAccumulator:
 
         logging.info(f"Assembled {len(self.passes_results)} ensemble passes")
         return piv_results
+
+    def clear_pass_data(self, pass_idx: int):
+        """
+        Clear accumulated data for a specific pass to free memory.
+
+        This is called after a pass has been finalized and saved to disk,
+        allowing the memory to be reclaimed. The pass result is kept in
+        passes_results for assembling the final output.
+
+        Parameters
+        ----------
+        pass_idx : int
+            Pass index to clear
+        """
+        if pass_idx >= len(self.passes_data):
+            logging.warning(f"Cannot clear pass {pass_idx}: index out of range")
+            return
+
+        pass_data = self.passes_data[pass_idx]
+
+        # Get memory usage before clearing
+        mem_before = (
+            pass_data["sum_warp_A"].nbytes +
+            pass_data["sum_warp_B"].nbytes +
+            pass_data["sum_corr_AA"].nbytes +
+            pass_data["sum_corr_BB"].nbytes +
+            pass_data["sum_corr_AB"].nbytes
+        ) / (1024 ** 2)  # Convert to MB
+
+        # Clear large arrays (keep metadata for grid info)
+        pass_data["sum_warp_A"] = None
+        pass_data["sum_warp_B"] = None
+        pass_data["sum_corr_AA"] = None
+        pass_data["sum_corr_BB"] = None
+        pass_data["sum_corr_AB"] = None
+        pass_data["smoothed_predictor"] = None
+
+        logging.info(
+            f"Pass {pass_idx + 1}: Cleared accumulated data "
+            f"(freed ~{mem_before:.1f} MB)"
+        )

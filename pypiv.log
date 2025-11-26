@@ -14932,3 +14932,917 @@ Traceback (most recent call last):
   File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/client.py", line 2394, in wait
     raise AllExit()
 distributed.client.AllExit
+2025-11-25 22:52:26,876 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 22:52:27,591 [INFO] ================================================================================
+2025-11-25 22:52:27,591 [INFO] VALIDATING CONFIGURATION
+2025-11-25 22:52:27,591 [INFO] ================================================================================
+2025-11-25 22:52:27,599 [INFO] ✓ Configuration validated successfully
+2025-11-25 22:52:27,599 [INFO]   Source paths: [PosixPath('/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1')]
+2025-11-25 22:52:27,599 [INFO]   Cameras: [1]
+2025-11-25 22:52:27,599 [INFO]   Image files: 100
+2025-11-25 22:52:27,599 [INFO]   Frame pairs: 100
+2025-11-25 22:52:27,599 [INFO]   Image format: ('B%05d_A.tif', 'B%05d_B.tif')
+2025-11-25 22:52:27,599 [INFO] 
+2025-11-25 22:52:27,599 [INFO] NOTES:
+2025-11-25 22:52:27,599 [INFO]   ℹ Camera 1: Processing subset - using 100 of 1000 available files
+2025-11-25 22:52:27,599 [INFO] ================================================================================
+2025-11-25 22:52:27,599 [INFO] 
+2025-11-25 22:52:27,599 [INFO] Set OMP_NUM_THREADS to 10 for main process batch filtering
+2025-11-25 22:52:29,124 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 22:52:29,129 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 22:52:29,129 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 22:52:29,150 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 22:52:29,791 [INFO] Worker logging configured successfully
+2025-11-25 22:52:29,791 [INFO] Worker logging configured successfully
+2025-11-25 22:52:29,791 [INFO] Worker logging configured successfully
+2025-11-25 22:52:29,791 [INFO] Worker logging configured successfully
+2025-11-25 22:52:29,793 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-25 22:52:29,793 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-25 22:52:29,793 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-25 22:52:29,793 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-25 22:52:29,795 [INFO] Dask cluster started successfully
+2025-11-25 22:52:29,796 [INFO] Dask Worker Info:
+2025-11-25 22:52:29,796 [INFO] Worker tcp://127.0.0.1:54991
+2025-11-25 22:52:29,797 [INFO]   pid: None
+2025-11-25 22:52:29,797 [INFO]   host: 127.0.0.1
+2025-11-25 22:52:29,797 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-aqm9grja
+2025-11-25 22:52:29,797 [INFO]   nanny: True
+2025-11-25 22:52:29,797 [INFO] Dask Worker Info:
+2025-11-25 22:52:29,797 [INFO] Worker tcp://127.0.0.1:54994
+2025-11-25 22:52:29,797 [INFO]   pid: None
+2025-11-25 22:52:29,797 [INFO]   host: 127.0.0.1
+2025-11-25 22:52:29,797 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-6yixf9r1
+2025-11-25 22:52:29,797 [INFO]   nanny: True
+2025-11-25 22:52:29,798 [INFO] Dask Worker Info:
+2025-11-25 22:52:29,798 [INFO] Worker tcp://127.0.0.1:54995
+2025-11-25 22:52:29,798 [INFO]   pid: None
+2025-11-25 22:52:29,798 [INFO]   host: 127.0.0.1
+2025-11-25 22:52:29,798 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-0jd6as8m
+2025-11-25 22:52:29,798 [INFO]   nanny: True
+2025-11-25 22:52:29,798 [INFO] Dask Worker Info:
+2025-11-25 22:52:29,798 [INFO] Worker tcp://127.0.0.1:55000
+2025-11-25 22:52:29,798 [INFO]   pid: None
+2025-11-25 22:52:29,798 [INFO]   host: 127.0.0.1
+2025-11-25 22:52:29,798 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-szxwln1l
+2025-11-25 22:52:29,798 [INFO]   nanny: True
+2025-11-25 22:52:29,798 [INFO] Processing camera: Cam1
+2025-11-25 22:52:29,815 [INFO] _detect_image_shape: image_format = ('B%05d_A.tif', 'B%05d_B.tif'), type = <class 'tuple'>
+2025-11-25 22:52:29,815 [INFO] Source path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1, Camera: 1
+2025-11-25 22:52:29,815 [INFO] Camera path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
+2025-11-25 22:52:29,815 [INFO] Trying to read file: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1/B00001_A.tif
+2025-11-25 22:52:29,837 [INFO] Detected image shape: (1152, 1024)
+2025-11-25 22:52:29,837 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-25 22:52:29,853 [INFO] Lazy loading complete: 100 independent delayed tasks created (~100 KB memory footprint)
+2025-11-25 22:52:29,853 [INFO] Pre-computing vector masks for Cam1
+2025-11-25 22:52:29,898 [INFO] Vector masks computed: 2 passes
+2025-11-25 22:52:29,898 [INFO] ================================================================================
+2025-11-25 22:52:29,898 [INFO] UNIFIED BATCH PIPELINE: ENSEMBLE MODE
+2025-11-25 22:52:29,898 [INFO] ================================================================================
+2025-11-25 22:52:29,898 [INFO] Image files: 100
+2025-11-25 22:52:29,898 [INFO] Frame pairs: 100
+2025-11-25 22:52:29,899 [INFO] Ensemble passes: 2
+2025-11-25 22:52:29,899 [INFO] Ensemble window sizes: [[128, 128], [64, 64]]
+2025-11-25 22:52:29,899 [INFO] Ensemble types: ['std', 'std']
+2025-11-25 22:52:29,899 [INFO] Runs to save: [0, 1]
+2025-11-25 22:52:29,899 [INFO] Output path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble
+2025-11-25 22:52:29,899 [INFO] ================================================================================
+2025-11-25 22:52:29,899 [INFO] Batch size: 25
+2025-11-25 22:52:29,900 [INFO] Assigned 1 filter workers
+2025-11-25 22:52:29,900 [INFO] Assigned 3 correlation workers
+2025-11-25 22:52:29,900 [INFO] Worker allocation: 1 filter, 3 correlation (total: 4)
+2025-11-25 22:52:29,900 [INFO] Starting ensemble PIV processing with unified batch pipeline...
+2025-11-25 22:52:29,921 [INFO] Loading C libraries (One-time init)...
+2025-11-25 22:52:29,988 [INFO] Broadcast correlator cache to all workers
+2025-11-25 22:52:29,993 [INFO] Broadcast vector masks (1.3 KB)
+2025-11-25 22:52:29,993 [INFO] Processing 2 pass(es) with 4 batches each for ensemble PIV
+2025-11-25 22:52:29,993 [INFO] 
+2025-11-25 22:52:29,993 [INFO] ======== PASS 1/2 ========
+2025-11-25 22:52:29,994 [INFO] [Pass 1] Initializing pipeline: batch 0 -> filter worker tcp://127.0.0.1:54991
+2025-11-25 22:52:30,086 [INFO] [Pass 1, Batch 1/4] Filter complete
+2025-11-25 22:52:30,138 [INFO] [Pass 1] Pipeline: batch 1 -> filter worker tcp://127.0.0.1:54991 (while batch 1 correlates)
+2025-11-25 22:52:30,152 [INFO] Loading C libraries (One-time init)...
+2025-11-25 22:52:30,153 [INFO] Loading C libraries (One-time init)...
+2025-11-25 22:52:30,154 [INFO] Loading C libraries (One-time init)...
+2025-11-25 22:52:32,423 [INFO] [Pass 1, Batch 1/4] Correlation complete
+2025-11-25 22:52:32,488 [INFO] [Pass 1, Batch 2/4] Filter complete
+2025-11-25 22:52:32,573 [INFO] [Pass 1] Pipeline: batch 2 -> filter worker tcp://127.0.0.1:54991 (while batch 2 correlates)
+2025-11-25 22:52:34,756 [INFO] [Pass 1, Batch 2/4] Correlation complete
+2025-11-25 22:52:34,792 [INFO] [Pass 1, Batch 3/4] Filter complete
+2025-11-25 22:52:34,845 [INFO] [Pass 1] Pipeline: batch 3 -> filter worker tcp://127.0.0.1:54991 (while batch 3 correlates)
+2025-11-25 22:52:36,820 [INFO] [Pass 1, Batch 3/4] Correlation complete
+2025-11-25 22:52:36,848 [INFO] [Pass 1, Batch 4/4] Filter complete
+2025-11-25 22:52:38,797 [INFO] [Pass 1, Batch 4/4] Correlation complete
+2025-11-25 22:52:38,798 [INFO] [Pass 1] Finalizing pass (single-pass optimization)
+2025-11-25 22:52:38,798 [INFO] Finalizing pass 1 with single-pass optimization
+2025-11-25 22:52:38,798 [INFO] Pass 1: Applying single-pass optimization
+2025-11-25 22:52:38,878 [INFO] Pass 0: AA_bg after bulkxcorr2d: [1.805e+03, 2.056e+06], has_inf=False, has_nan=False
+2025-11-25 22:52:38,918 [INFO] Pass 0: BB_bg after bulkxcorr2d: [1.847e+03, 2.068e+06], has_inf=False, has_nan=False
+2025-11-25 22:52:38,918 [INFO] Pass 0: Computed background correlations from mean images
+2025-11-25 22:53:01,879 [INFO] Pass 1: Gaussian fitting success rate: 88.2%
+2025-11-25 22:53:01,880 [INFO] Pass 1: 30 vectors masked (set to zero)
+2025-11-25 22:53:04,327 [INFO] Pass 1: Saved correlation planes to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/planes_pass_1.mat
+2025-11-25 22:53:04,328 [INFO] Pass 1: Finalization complete
+2025-11-25 22:53:04,336 [INFO] Saved ensemble result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_pass_1.mat
+2025-11-25 22:53:04,336 [INFO] Pass 1: Saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_pass_1.mat (progressive saving)
+2025-11-25 22:53:04,338 [INFO] Pass 1: Cleared accumulated data (freed ~56.8 MB)
+2025-11-25 22:53:04,338 [INFO] Predictor field extracted: shape=(19, 17, 2), non-zero ux range=[13.434, 17.859], non-zero uy range=[-0.108, 0.300], n_masked=30
+2025-11-25 22:53:04,339 [INFO] [Pass 1] Extracted predictor field for next pass
+2025-11-25 22:53:04,339 [INFO] 
+2025-11-25 22:53:04,339 [INFO] ======== PASS 2/2 ========
+2025-11-25 22:53:04,346 [INFO] [Pass 2] Broadcast predictor field from previous pass
+2025-11-25 22:53:04,348 [INFO] [Pass 2] Initializing pipeline: batch 0 -> filter worker tcp://127.0.0.1:54991
+2025-11-25 22:53:04,422 [INFO] [Pass 2, Batch 1/4] Filter complete
+2025-11-25 22:53:04,484 [INFO] [Pass 2] Pipeline: batch 1 -> filter worker tcp://127.0.0.1:54991 (while batch 1 correlates)
+2025-11-25 22:53:07,128 [INFO] [Pass 2, Batch 1/4] Correlation complete
+2025-11-25 22:53:07,162 [INFO] [Pass 2, Batch 2/4] Filter complete
+2025-11-25 22:53:07,215 [INFO] [Pass 2] Pipeline: batch 2 -> filter worker tcp://127.0.0.1:54991 (while batch 2 correlates)
+2025-11-25 22:53:09,853 [INFO] [Pass 2, Batch 2/4] Correlation complete
+2025-11-25 22:53:09,886 [INFO] [Pass 2, Batch 3/4] Filter complete
+2025-11-25 22:53:09,939 [INFO] [Pass 2] Pipeline: batch 3 -> filter worker tcp://127.0.0.1:54991 (while batch 3 correlates)
+2025-11-25 22:53:12,655 [INFO] [Pass 2, Batch 3/4] Correlation complete
+2025-11-25 22:53:12,687 [INFO] [Pass 2, Batch 4/4] Filter complete
+2025-11-25 22:53:15,296 [INFO] [Pass 2, Batch 4/4] Correlation complete
+2025-11-25 22:53:15,296 [INFO] [Pass 2] Finalizing pass (single-pass optimization)
+2025-11-25 22:53:15,296 [INFO] Finalizing pass 2 with single-pass optimization
+2025-11-25 22:53:15,296 [INFO] Pass 2: Applying single-pass optimization
+2025-11-25 22:53:15,325 [INFO] Pass 1: AA_bg after bulkxcorr2d: [-1.733e-05, 1.349e+05], has_inf=False, has_nan=False
+2025-11-25 22:53:15,334 [INFO] Pass 1: BB_bg after bulkxcorr2d: [-3.067e-05, 1.350e+05], has_inf=False, has_nan=False
+2025-11-25 22:53:15,335 [INFO] Pass 1: Computed background correlations from mean images
+2025-11-25 22:53:37,650 [INFO] Pass 2: Gaussian fitting success rate: 87.6%
+2025-11-25 22:53:37,651 [INFO] Pass 2: Using smoothed predictor field from image warping
+2025-11-25 22:53:37,651 [INFO] Pass 2: Added smoothed predictor back to residual displacements. ux range: [-34.463, 18.345], uy range: [-33.011, 0.332]
+2025-11-25 22:53:37,651 [INFO] Pass 2: 124 vectors masked (set to zero)
+2025-11-25 22:53:37,651 [INFO] Pass 2: Storing predictor field in pass result
+2025-11-25 22:53:39,264 [INFO] Pass 2: Saved correlation planes to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/planes_pass_2.mat
+2025-11-25 22:53:39,265 [INFO] Pass 2: Finalization complete
+2025-11-25 22:53:39,270 [INFO] Saved ensemble result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_pass_2.mat
+2025-11-25 22:53:39,270 [INFO] Pass 2: Saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_pass_2.mat (progressive saving)
+2025-11-25 22:53:39,271 [INFO] Pass 2: Cleared accumulated data (freed ~59.9 MB)
+2025-11-25 22:53:39,271 [INFO] Assembling final ensemble result from saved pass files
+2025-11-25 22:53:39,271 [INFO] Loading pass 1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_pass_1.mat
+2025-11-25 22:53:39,274 [ERROR] Pass 1 data not found in /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_pass_1.mat
+2025-11-25 22:56:32,132 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 22:56:33,182 [INFO] ================================================================================
+2025-11-25 22:56:33,182 [INFO] VALIDATING CONFIGURATION
+2025-11-25 22:56:33,182 [INFO] ================================================================================
+2025-11-25 22:56:33,190 [INFO] ✓ Configuration validated successfully
+2025-11-25 22:56:33,191 [INFO]   Source paths: [PosixPath('/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1')]
+2025-11-25 22:56:33,191 [INFO]   Cameras: [1]
+2025-11-25 22:56:33,191 [INFO]   Image files: 100
+2025-11-25 22:56:33,191 [INFO]   Frame pairs: 100
+2025-11-25 22:56:33,191 [INFO]   Image format: ('B%05d_A.tif', 'B%05d_B.tif')
+2025-11-25 22:56:33,191 [INFO] 
+2025-11-25 22:56:33,191 [INFO] NOTES:
+2025-11-25 22:56:33,191 [INFO]   ℹ Camera 1: Processing subset - using 100 of 1000 available files
+2025-11-25 22:56:33,191 [INFO] ================================================================================
+2025-11-25 22:56:33,191 [INFO] 
+2025-11-25 22:56:33,191 [INFO] Set OMP_NUM_THREADS to 10 for main process batch filtering
+2025-11-25 22:56:34,610 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 22:56:34,616 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 22:56:34,616 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 22:56:34,623 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 22:56:35,241 [INFO] Worker logging configured successfully
+2025-11-25 22:56:35,242 [INFO] Worker logging configured successfully
+2025-11-25 22:56:35,242 [INFO] Worker logging configured successfully
+2025-11-25 22:56:35,242 [INFO] Worker logging configured successfully
+2025-11-25 22:56:35,244 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-25 22:56:35,244 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-25 22:56:35,244 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-25 22:56:35,244 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-25 22:56:35,245 [INFO] Dask cluster started successfully
+2025-11-25 22:56:35,247 [INFO] Dask Worker Info:
+2025-11-25 22:56:35,247 [INFO] Worker tcp://127.0.0.1:55444
+2025-11-25 22:56:35,247 [INFO]   pid: None
+2025-11-25 22:56:35,247 [INFO]   host: 127.0.0.1
+2025-11-25 22:56:35,247 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-o7kef3ki
+2025-11-25 22:56:35,247 [INFO]   nanny: True
+2025-11-25 22:56:35,247 [INFO] Dask Worker Info:
+2025-11-25 22:56:35,248 [INFO] Worker tcp://127.0.0.1:55447
+2025-11-25 22:56:35,248 [INFO]   pid: None
+2025-11-25 22:56:35,248 [INFO]   host: 127.0.0.1
+2025-11-25 22:56:35,248 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-68fgkzbx
+2025-11-25 22:56:35,248 [INFO]   nanny: True
+2025-11-25 22:56:35,248 [INFO] Dask Worker Info:
+2025-11-25 22:56:35,248 [INFO] Worker tcp://127.0.0.1:55448
+2025-11-25 22:56:35,248 [INFO]   pid: None
+2025-11-25 22:56:35,248 [INFO]   host: 127.0.0.1
+2025-11-25 22:56:35,248 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-j1dfbqwb
+2025-11-25 22:56:35,248 [INFO]   nanny: True
+2025-11-25 22:56:35,248 [INFO] Dask Worker Info:
+2025-11-25 22:56:35,248 [INFO] Worker tcp://127.0.0.1:55449
+2025-11-25 22:56:35,248 [INFO]   pid: None
+2025-11-25 22:56:35,248 [INFO]   host: 127.0.0.1
+2025-11-25 22:56:35,248 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-lrqz7hmt
+2025-11-25 22:56:35,248 [INFO]   nanny: True
+2025-11-25 22:56:35,248 [INFO] Processing camera: Cam1
+2025-11-25 22:56:35,264 [INFO] _detect_image_shape: image_format = ('B%05d_A.tif', 'B%05d_B.tif'), type = <class 'tuple'>
+2025-11-25 22:56:35,264 [INFO] Source path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1, Camera: 1
+2025-11-25 22:56:35,264 [INFO] Camera path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
+2025-11-25 22:56:35,264 [INFO] Trying to read file: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1/B00001_A.tif
+2025-11-25 22:56:35,287 [INFO] Detected image shape: (1152, 1024)
+2025-11-25 22:56:35,287 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-25 22:56:35,304 [INFO] Lazy loading complete: 100 independent delayed tasks created (~100 KB memory footprint)
+2025-11-25 22:56:35,304 [INFO] Pre-computing vector masks for Cam1
+2025-11-25 22:56:35,353 [INFO] Vector masks computed: 2 passes
+2025-11-25 22:56:35,353 [INFO] ================================================================================
+2025-11-25 22:56:35,353 [INFO] UNIFIED BATCH PIPELINE: ENSEMBLE MODE
+2025-11-25 22:56:35,354 [INFO] ================================================================================
+2025-11-25 22:56:35,354 [INFO] Image files: 100
+2025-11-25 22:56:35,354 [INFO] Frame pairs: 100
+2025-11-25 22:56:35,354 [INFO] Ensemble passes: 2
+2025-11-25 22:56:35,354 [INFO] Ensemble window sizes: [[128, 128], [64, 64]]
+2025-11-25 22:56:35,354 [INFO] Ensemble types: ['std', 'std']
+2025-11-25 22:56:35,354 [INFO] Runs to save: [0, 1]
+2025-11-25 22:56:35,354 [INFO] Output path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble
+2025-11-25 22:56:35,354 [INFO] ================================================================================
+2025-11-25 22:56:35,354 [INFO] Batch size: 25
+2025-11-25 22:56:35,355 [INFO] Assigned 1 filter workers
+2025-11-25 22:56:35,355 [INFO] Assigned 3 correlation workers
+2025-11-25 22:56:35,355 [INFO] Worker allocation: 1 filter, 3 correlation (total: 4)
+2025-11-25 22:56:35,355 [INFO] Starting ensemble PIV processing with unified batch pipeline...
+2025-11-25 22:56:35,360 [INFO] Loading C libraries (One-time init)...
+2025-11-25 22:56:35,440 [INFO] Broadcast correlator cache to all workers
+2025-11-25 22:56:35,445 [INFO] Broadcast vector masks (1.3 KB)
+2025-11-25 22:56:35,446 [INFO] Processing 2 pass(es) with 4 batches each for ensemble PIV
+2025-11-25 22:56:35,446 [INFO] 
+2025-11-25 22:56:35,446 [INFO] ======== PASS 1/2 ========
+2025-11-25 22:56:35,447 [INFO] [Pass 1] Initializing pipeline: batch 0 -> filter worker tcp://127.0.0.1:55444
+2025-11-25 22:56:35,539 [INFO] [Pass 1, Batch 1/4] Filter complete
+2025-11-25 22:56:35,590 [INFO] [Pass 1] Pipeline: batch 1 -> filter worker tcp://127.0.0.1:55444 (while batch 1 correlates)
+2025-11-25 22:56:35,603 [INFO] Loading C libraries (One-time init)...
+2025-11-25 22:56:35,604 [INFO] Loading C libraries (One-time init)...
+2025-11-25 22:56:35,605 [INFO] Loading C libraries (One-time init)...
+2025-11-25 22:56:37,792 [INFO] [Pass 1, Batch 1/4] Correlation complete
+2025-11-25 22:56:37,887 [INFO] [Pass 1, Batch 2/4] Filter complete
+2025-11-25 22:56:37,946 [INFO] [Pass 1] Pipeline: batch 2 -> filter worker tcp://127.0.0.1:55444 (while batch 2 correlates)
+2025-11-25 22:56:40,250 [INFO] [Pass 1, Batch 2/4] Correlation complete
+2025-11-25 22:56:40,284 [INFO] [Pass 1, Batch 3/4] Filter complete
+2025-11-25 22:56:40,337 [INFO] [Pass 1] Pipeline: batch 3 -> filter worker tcp://127.0.0.1:55444 (while batch 3 correlates)
+2025-11-25 22:56:42,382 [INFO] [Pass 1, Batch 3/4] Correlation complete
+2025-11-25 22:56:42,415 [INFO] [Pass 1, Batch 4/4] Filter complete
+2025-11-25 22:56:44,556 [INFO] [Pass 1, Batch 4/4] Correlation complete
+2025-11-25 22:56:44,556 [INFO] [Pass 1] Finalizing pass (single-pass optimization)
+2025-11-25 22:56:44,556 [INFO] Finalizing pass 1 with single-pass optimization
+2025-11-25 22:56:44,556 [INFO] Pass 1: Applying single-pass optimization
+2025-11-25 22:56:44,627 [INFO] Pass 0: AA_bg after bulkxcorr2d: [1.805e+03, 2.056e+06], has_inf=False, has_nan=False
+2025-11-25 22:56:44,656 [INFO] Pass 0: BB_bg after bulkxcorr2d: [1.847e+03, 2.068e+06], has_inf=False, has_nan=False
+2025-11-25 22:56:44,657 [INFO] Pass 0: Computed background correlations from mean images
+2025-11-25 22:57:07,745 [INFO] Pass 1: Gaussian fitting success rate: 88.2%
+2025-11-25 22:57:07,746 [INFO] Pass 1: 30 vectors masked (set to zero)
+2025-11-25 22:57:10,160 [INFO] Pass 1: Saved correlation planes to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/planes_pass_1.mat
+2025-11-25 22:57:10,161 [INFO] Pass 1: Finalization complete
+2025-11-25 22:57:10,170 [INFO] Saved ensemble result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_pass_1.mat
+2025-11-25 22:57:10,170 [INFO] Pass 1: Saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_pass_1.mat (progressive saving)
+2025-11-25 22:57:10,172 [INFO] Pass 1: Cleared accumulated data (freed ~56.8 MB)
+2025-11-25 22:57:10,172 [INFO] Predictor field extracted: shape=(19, 17, 2), non-zero ux range=[13.434, 17.859], non-zero uy range=[-0.108, 0.300], n_masked=30
+2025-11-25 22:57:10,172 [INFO] [Pass 1] Extracted predictor field for next pass
+2025-11-25 22:57:10,172 [INFO] 
+2025-11-25 22:57:10,172 [INFO] ======== PASS 2/2 ========
+2025-11-25 22:57:10,177 [INFO] [Pass 2] Broadcast predictor field from previous pass
+2025-11-25 22:57:10,178 [INFO] [Pass 2] Initializing pipeline: batch 0 -> filter worker tcp://127.0.0.1:55444
+2025-11-25 22:57:10,247 [INFO] [Pass 2, Batch 1/4] Filter complete
+2025-11-25 22:57:10,306 [INFO] [Pass 2] Pipeline: batch 1 -> filter worker tcp://127.0.0.1:55444 (while batch 1 correlates)
+2025-11-25 22:57:12,944 [INFO] [Pass 2, Batch 1/4] Correlation complete
+2025-11-25 22:57:12,983 [INFO] [Pass 2, Batch 2/4] Filter complete
+2025-11-25 22:57:13,107 [INFO] [Pass 2] Pipeline: batch 2 -> filter worker tcp://127.0.0.1:55444 (while batch 2 correlates)
+2025-11-25 22:57:15,701 [INFO] [Pass 2, Batch 2/4] Correlation complete
+2025-11-25 22:57:15,742 [INFO] [Pass 2, Batch 3/4] Filter complete
+2025-11-25 22:57:15,797 [INFO] [Pass 2] Pipeline: batch 3 -> filter worker tcp://127.0.0.1:55444 (while batch 3 correlates)
+2025-11-25 22:57:18,441 [INFO] [Pass 2, Batch 3/4] Correlation complete
+2025-11-25 22:57:18,478 [INFO] [Pass 2, Batch 4/4] Filter complete
+2025-11-25 22:57:20,937 [INFO] [Pass 2, Batch 4/4] Correlation complete
+2025-11-25 22:57:20,937 [INFO] [Pass 2] Finalizing pass (single-pass optimization)
+2025-11-25 22:57:20,937 [INFO] Finalizing pass 2 with single-pass optimization
+2025-11-25 22:57:20,937 [INFO] Pass 2: Applying single-pass optimization
+2025-11-25 22:57:20,967 [INFO] Pass 1: AA_bg after bulkxcorr2d: [-1.733e-05, 1.349e+05], has_inf=False, has_nan=False
+2025-11-25 22:57:20,977 [INFO] Pass 1: BB_bg after bulkxcorr2d: [-3.067e-05, 1.350e+05], has_inf=False, has_nan=False
+2025-11-25 22:57:20,977 [INFO] Pass 1: Computed background correlations from mean images
+2025-11-25 22:57:43,614 [INFO] Pass 2: Gaussian fitting success rate: 87.6%
+2025-11-25 22:57:43,614 [INFO] Pass 2: Using smoothed predictor field from image warping
+2025-11-25 22:57:43,614 [INFO] Pass 2: Added smoothed predictor back to residual displacements. ux range: [-34.463, 18.345], uy range: [-33.011, 0.332]
+2025-11-25 22:57:43,615 [INFO] Pass 2: 124 vectors masked (set to zero)
+2025-11-25 22:57:43,615 [INFO] Pass 2: Storing predictor field in pass result
+2025-11-25 22:57:45,230 [INFO] Pass 2: Saved correlation planes to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/planes_pass_2.mat
+2025-11-25 22:57:45,230 [INFO] Pass 2: Finalization complete
+2025-11-25 22:57:45,240 [INFO] Saved ensemble result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_pass_2.mat
+2025-11-25 22:57:45,240 [INFO] Pass 2: Saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_pass_2.mat (progressive saving)
+2025-11-25 22:57:45,242 [INFO] Pass 2: Cleared accumulated data (freed ~59.9 MB)
+2025-11-25 22:57:45,242 [INFO] Assembling final ensemble result from saved pass files
+2025-11-25 22:57:45,242 [INFO] Loading pass 1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_pass_1.mat
+2025-11-25 22:57:45,244 [ERROR] Pass 1 data not found in /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_pass_1.mat
+2025-11-25 23:00:43,432 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 23:00:44,028 [INFO] ================================================================================
+2025-11-25 23:00:44,028 [INFO] VALIDATING CONFIGURATION
+2025-11-25 23:00:44,028 [INFO] ================================================================================
+2025-11-25 23:00:44,031 [INFO] ✓ Configuration validated successfully
+2025-11-25 23:00:44,032 [INFO]   Source paths: [PosixPath('/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1')]
+2025-11-25 23:00:44,032 [INFO]   Cameras: [1]
+2025-11-25 23:00:44,032 [INFO]   Image files: 100
+2025-11-25 23:00:44,032 [INFO]   Frame pairs: 100
+2025-11-25 23:00:44,032 [INFO]   Image format: ('B%05d_A.tif', 'B%05d_B.tif')
+2025-11-25 23:00:44,032 [INFO] 
+2025-11-25 23:00:44,032 [INFO] NOTES:
+2025-11-25 23:00:44,032 [INFO]   ℹ Camera 1: Processing subset - using 100 of 1000 available files
+2025-11-25 23:00:44,032 [INFO] ================================================================================
+2025-11-25 23:00:44,032 [INFO] 
+2025-11-25 23:00:44,032 [INFO] Set OMP_NUM_THREADS to 10 for main process batch filtering
+2025-11-25 23:00:45,420 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 23:00:45,423 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 23:00:45,424 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 23:00:45,424 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 23:00:46,059 [INFO] Worker logging configured successfully
+2025-11-25 23:00:46,059 [INFO] Worker logging configured successfully
+2025-11-25 23:00:46,060 [INFO] Worker logging configured successfully
+2025-11-25 23:00:46,060 [INFO] Worker logging configured successfully
+2025-11-25 23:00:46,061 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-25 23:00:46,062 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-25 23:00:46,062 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-25 23:00:46,062 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-25 23:00:46,063 [INFO] Dask cluster started successfully
+2025-11-25 23:00:46,064 [INFO] Dask Worker Info:
+2025-11-25 23:00:46,065 [INFO] Worker tcp://127.0.0.1:55836
+2025-11-25 23:00:46,065 [INFO]   pid: None
+2025-11-25 23:00:46,065 [INFO]   host: 127.0.0.1
+2025-11-25 23:00:46,065 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-72mikvli
+2025-11-25 23:00:46,065 [INFO]   nanny: True
+2025-11-25 23:00:46,065 [INFO] Dask Worker Info:
+2025-11-25 23:00:46,065 [INFO] Worker tcp://127.0.0.1:55839
+2025-11-25 23:00:46,065 [INFO]   pid: None
+2025-11-25 23:00:46,066 [INFO]   host: 127.0.0.1
+2025-11-25 23:00:46,066 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-nuzewp93
+2025-11-25 23:00:46,066 [INFO]   nanny: True
+2025-11-25 23:00:46,066 [INFO] Dask Worker Info:
+2025-11-25 23:00:46,066 [INFO] Worker tcp://127.0.0.1:55842
+2025-11-25 23:00:46,066 [INFO]   pid: None
+2025-11-25 23:00:46,066 [INFO]   host: 127.0.0.1
+2025-11-25 23:00:46,066 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-lkvo0v3g
+2025-11-25 23:00:46,066 [INFO]   nanny: True
+2025-11-25 23:00:46,066 [INFO] Dask Worker Info:
+2025-11-25 23:00:46,066 [INFO] Worker tcp://127.0.0.1:55843
+2025-11-25 23:00:46,066 [INFO]   pid: None
+2025-11-25 23:00:46,066 [INFO]   host: 127.0.0.1
+2025-11-25 23:00:46,066 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-0r4pw5ih
+2025-11-25 23:00:46,066 [INFO]   nanny: True
+2025-11-25 23:00:46,066 [INFO] Processing camera: Cam1
+2025-11-25 23:00:46,083 [INFO] _detect_image_shape: image_format = ('B%05d_A.tif', 'B%05d_B.tif'), type = <class 'tuple'>
+2025-11-25 23:00:46,083 [INFO] Source path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1, Camera: 1
+2025-11-25 23:00:46,083 [INFO] Camera path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
+2025-11-25 23:00:46,083 [INFO] Trying to read file: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1/B00001_A.tif
+2025-11-25 23:00:46,104 [INFO] Detected image shape: (1152, 1024)
+2025-11-25 23:00:46,104 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-25 23:00:46,120 [INFO] Lazy loading complete: 100 independent delayed tasks created (~100 KB memory footprint)
+2025-11-25 23:00:46,120 [INFO] Pre-computing vector masks for Cam1
+2025-11-25 23:00:46,166 [INFO] Vector masks computed: 2 passes
+2025-11-25 23:00:46,168 [INFO] ================================================================================
+2025-11-25 23:00:46,168 [INFO] UNIFIED BATCH PIPELINE: ENSEMBLE MODE
+2025-11-25 23:00:46,168 [INFO] ================================================================================
+2025-11-25 23:00:46,168 [INFO] Image files: 100
+2025-11-25 23:00:46,168 [INFO] Frame pairs: 100
+2025-11-25 23:00:46,168 [INFO] Ensemble passes: 2
+2025-11-25 23:00:46,168 [INFO] Ensemble window sizes: [[128, 128], [64, 64]]
+2025-11-25 23:00:46,168 [INFO] Ensemble types: ['std', 'std']
+2025-11-25 23:00:46,168 [INFO] Runs to save: [0, 1]
+2025-11-25 23:00:46,168 [INFO] Output path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble
+2025-11-25 23:00:46,168 [INFO] ================================================================================
+2025-11-25 23:00:46,168 [INFO] Batch size: 25
+2025-11-25 23:00:46,169 [INFO] Assigned 1 filter workers
+2025-11-25 23:00:46,169 [INFO] Assigned 3 correlation workers
+2025-11-25 23:00:46,169 [INFO] Worker allocation: 1 filter, 3 correlation (total: 4)
+2025-11-25 23:00:46,169 [INFO] Starting ensemble PIV processing with unified batch pipeline...
+2025-11-25 23:00:46,173 [INFO] Loading C libraries (One-time init)...
+2025-11-25 23:00:46,239 [INFO] Broadcast correlator cache to all workers
+2025-11-25 23:00:46,243 [INFO] Broadcast vector masks (1.3 KB)
+2025-11-25 23:00:46,244 [INFO] Processing 2 pass(es) with 4 batches each for ensemble PIV
+2025-11-25 23:00:46,244 [INFO] 
+2025-11-25 23:00:46,244 [INFO] ======== PASS 1/2 ========
+2025-11-25 23:00:46,245 [INFO] [Pass 1] Initializing pipeline: batch 0 -> filter worker tcp://127.0.0.1:55836
+2025-11-25 23:00:46,327 [INFO] [Pass 1, Batch 1/4] Filter complete
+2025-11-25 23:00:46,383 [INFO] [Pass 1] Pipeline: batch 1 -> filter worker tcp://127.0.0.1:55836 (while batch 1 correlates)
+2025-11-25 23:00:46,397 [INFO] Loading C libraries (One-time init)...
+2025-11-25 23:00:46,398 [INFO] Loading C libraries (One-time init)...
+2025-11-25 23:00:46,399 [INFO] Loading C libraries (One-time init)...
+2025-11-25 23:00:48,644 [INFO] [Pass 1, Batch 1/4] Correlation complete
+2025-11-25 23:00:48,767 [INFO] [Pass 1, Batch 2/4] Filter complete
+2025-11-25 23:00:48,832 [INFO] [Pass 1] Pipeline: batch 2 -> filter worker tcp://127.0.0.1:55836 (while batch 2 correlates)
+2025-11-25 23:00:51,094 [INFO] [Pass 1, Batch 2/4] Correlation complete
+2025-11-25 23:00:51,126 [INFO] [Pass 1, Batch 3/4] Filter complete
+2025-11-25 23:00:51,181 [INFO] [Pass 1] Pipeline: batch 3 -> filter worker tcp://127.0.0.1:55836 (while batch 3 correlates)
+2025-11-25 23:00:53,217 [INFO] [Pass 1, Batch 3/4] Correlation complete
+2025-11-25 23:00:53,251 [INFO] [Pass 1, Batch 4/4] Filter complete
+2025-11-25 23:00:55,422 [INFO] [Pass 1, Batch 4/4] Correlation complete
+2025-11-25 23:00:55,422 [INFO] [Pass 1] Finalizing pass (single-pass optimization)
+2025-11-25 23:00:55,422 [INFO] Finalizing pass 1 with single-pass optimization
+2025-11-25 23:00:55,422 [INFO] Pass 1: Applying single-pass optimization
+2025-11-25 23:00:55,493 [INFO] Pass 0: AA_bg after bulkxcorr2d: [1.805e+03, 2.056e+06], has_inf=False, has_nan=False
+2025-11-25 23:00:55,524 [INFO] Pass 0: BB_bg after bulkxcorr2d: [1.847e+03, 2.068e+06], has_inf=False, has_nan=False
+2025-11-25 23:00:55,524 [INFO] Pass 0: Computed background correlations from mean images
+2025-11-25 23:01:18,225 [INFO] Pass 1: Gaussian fitting success rate: 88.2%
+2025-11-25 23:01:18,226 [INFO] Pass 1: 30 vectors masked (set to zero)
+2025-11-25 23:01:20,672 [INFO] Pass 1: Saved correlation planes to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/planes_pass_1.mat
+2025-11-25 23:01:20,672 [INFO] Pass 1: Finalization complete
+2025-11-25 23:01:20,678 [INFO] Saved ensemble result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_pass_1.mat
+2025-11-25 23:01:20,678 [INFO] Pass 1: Saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_pass_1.mat (progressive saving)
+2025-11-25 23:01:20,679 [INFO] Pass 1: Cleared accumulated data (freed ~56.8 MB)
+2025-11-25 23:01:20,679 [INFO] Predictor field extracted: shape=(19, 17, 2), non-zero ux range=[13.434, 17.859], non-zero uy range=[-0.108, 0.300], n_masked=30
+2025-11-25 23:01:20,679 [INFO] [Pass 1] Extracted predictor field for next pass
+2025-11-25 23:01:20,679 [INFO] 
+2025-11-25 23:01:20,679 [INFO] ======== PASS 2/2 ========
+2025-11-25 23:01:20,683 [INFO] [Pass 2] Broadcast predictor field from previous pass
+2025-11-25 23:01:20,685 [INFO] [Pass 2] Initializing pipeline: batch 0 -> filter worker tcp://127.0.0.1:55836
+2025-11-25 23:01:20,764 [INFO] [Pass 2, Batch 1/4] Filter complete
+2025-11-25 23:01:20,817 [INFO] [Pass 2] Pipeline: batch 1 -> filter worker tcp://127.0.0.1:55836 (while batch 1 correlates)
+2025-11-25 23:01:23,672 [INFO] [Pass 2, Batch 1/4] Correlation complete
+2025-11-25 23:01:23,704 [INFO] [Pass 2, Batch 2/4] Filter complete
+2025-11-25 23:01:23,759 [INFO] [Pass 2] Pipeline: batch 2 -> filter worker tcp://127.0.0.1:55836 (while batch 2 correlates)
+2025-11-25 23:01:26,227 [INFO] [Pass 2, Batch 2/4] Correlation complete
+2025-11-25 23:01:26,263 [INFO] [Pass 2, Batch 3/4] Filter complete
+2025-11-25 23:01:26,316 [INFO] [Pass 2] Pipeline: batch 3 -> filter worker tcp://127.0.0.1:55836 (while batch 3 correlates)
+2025-11-25 23:01:28,861 [INFO] [Pass 2, Batch 3/4] Correlation complete
+2025-11-25 23:01:28,894 [INFO] [Pass 2, Batch 4/4] Filter complete
+2025-11-25 23:01:31,744 [INFO] [Pass 2, Batch 4/4] Correlation complete
+2025-11-25 23:01:31,745 [INFO] [Pass 2] Finalizing pass (single-pass optimization)
+2025-11-25 23:01:31,745 [INFO] Finalizing pass 2 with single-pass optimization
+2025-11-25 23:01:31,745 [INFO] Pass 2: Applying single-pass optimization
+2025-11-25 23:01:31,777 [INFO] Pass 1: AA_bg after bulkxcorr2d: [-1.733e-05, 1.349e+05], has_inf=False, has_nan=False
+2025-11-25 23:01:31,788 [INFO] Pass 1: BB_bg after bulkxcorr2d: [-3.067e-05, 1.350e+05], has_inf=False, has_nan=False
+2025-11-25 23:01:31,788 [INFO] Pass 1: Computed background correlations from mean images
+2025-11-25 23:01:54,270 [INFO] Pass 2: Gaussian fitting success rate: 87.6%
+2025-11-25 23:01:54,271 [INFO] Pass 2: Using smoothed predictor field from image warping
+2025-11-25 23:01:54,272 [INFO] Pass 2: Added smoothed predictor back to residual displacements. ux range: [-34.463, 18.345], uy range: [-33.011, 0.332]
+2025-11-25 23:01:54,272 [INFO] Pass 2: 124 vectors masked (set to zero)
+2025-11-25 23:01:54,272 [INFO] Pass 2: Storing predictor field in pass result
+2025-11-25 23:01:55,859 [INFO] Pass 2: Saved correlation planes to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/planes_pass_2.mat
+2025-11-25 23:01:55,859 [INFO] Pass 2: Finalization complete
+2025-11-25 23:01:55,867 [INFO] Saved ensemble result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_pass_2.mat
+2025-11-25 23:01:55,868 [INFO] Pass 2: Saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_pass_2.mat (progressive saving)
+2025-11-25 23:01:55,869 [INFO] Pass 2: Cleared accumulated data (freed ~59.9 MB)
+2025-11-25 23:01:55,869 [INFO] Assembling final ensemble result from saved pass files
+2025-11-25 23:01:55,869 [INFO] Loading pass 1 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_pass_1.mat
+2025-11-25 23:01:55,871 [INFO] Loaded pass 1 from file
+2025-11-25 23:01:55,871 [INFO] Loading pass 2 from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_pass_2.mat
+2025-11-25 23:01:55,872 [INFO] Loaded pass 2 from file
+2025-11-25 23:01:55,872 [INFO] Assembled ensemble result from 2 saved pass files
+2025-11-25 23:01:55,879 [INFO] Saved ensemble result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_result.mat
+2025-11-25 23:01:55,879 [INFO] Ensemble result saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_result.mat
+2025-11-25 23:01:55,912 [INFO] Saved ensemble coordinates to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/coordinates.mat
+2025-11-25 23:01:55,913 [INFO] Ensemble coordinates saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/coordinates.mat
+2025-11-25 23:01:55,913 [INFO] 
+2025-11-25 23:01:55,913 [INFO] ================================================================================
+2025-11-25 23:01:55,913 [INFO] ENSEMBLE PIV PROCESSING COMPLETE!
+2025-11-25 23:01:55,913 [INFO] Ensemble result saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_result.mat
+2025-11-25 23:01:55,913 [INFO] ================================================================================
+2025-11-25 23:06:15,533 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 23:06:16,574 [INFO] ================================================================================
+2025-11-25 23:06:16,574 [INFO] VALIDATING CONFIGURATION
+2025-11-25 23:06:16,574 [INFO] ================================================================================
+2025-11-25 23:06:16,582 [INFO] ✓ Configuration validated successfully
+2025-11-25 23:06:16,582 [INFO]   Source paths: [PosixPath('/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1')]
+2025-11-25 23:06:16,582 [INFO]   Cameras: [1]
+2025-11-25 23:06:16,582 [INFO]   Image files: 100
+2025-11-25 23:06:16,582 [INFO]   Frame pairs: 100
+2025-11-25 23:06:16,582 [INFO]   Image format: ('B%05d_A.tif', 'B%05d_B.tif')
+2025-11-25 23:06:16,582 [INFO] 
+2025-11-25 23:06:16,582 [INFO] NOTES:
+2025-11-25 23:06:16,582 [INFO]   ℹ Camera 1: Processing subset - using 100 of 1000 available files
+2025-11-25 23:06:16,582 [INFO] ================================================================================
+2025-11-25 23:06:16,582 [INFO] 
+2025-11-25 23:06:16,582 [INFO] Set OMP_NUM_THREADS to 10 for main process batch filtering
+2025-11-25 23:06:18,001 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 23:06:18,001 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 23:06:18,002 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 23:06:18,002 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 23:06:18,641 [INFO] Worker logging configured successfully
+2025-11-25 23:06:18,641 [INFO] Worker logging configured successfully
+2025-11-25 23:06:18,641 [INFO] Worker logging configured successfully
+2025-11-25 23:06:18,642 [INFO] Worker logging configured successfully
+2025-11-25 23:06:18,643 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-25 23:06:18,643 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-25 23:06:18,643 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-25 23:06:18,644 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-25 23:06:18,645 [INFO] Dask cluster started successfully
+2025-11-25 23:06:18,646 [INFO] Dask Worker Info:
+2025-11-25 23:06:18,646 [INFO] Worker tcp://127.0.0.1:56458
+2025-11-25 23:06:18,647 [INFO]   pid: None
+2025-11-25 23:06:18,647 [INFO]   host: 127.0.0.1
+2025-11-25 23:06:18,647 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-8ivl192q
+2025-11-25 23:06:18,647 [INFO]   nanny: True
+2025-11-25 23:06:18,647 [INFO] Dask Worker Info:
+2025-11-25 23:06:18,647 [INFO] Worker tcp://127.0.0.1:56459
+2025-11-25 23:06:18,647 [INFO]   pid: None
+2025-11-25 23:06:18,647 [INFO]   host: 127.0.0.1
+2025-11-25 23:06:18,648 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-rbpxzvlg
+2025-11-25 23:06:18,648 [INFO]   nanny: True
+2025-11-25 23:06:18,648 [INFO] Dask Worker Info:
+2025-11-25 23:06:18,648 [INFO] Worker tcp://127.0.0.1:56464
+2025-11-25 23:06:18,648 [INFO]   pid: None
+2025-11-25 23:06:18,648 [INFO]   host: 127.0.0.1
+2025-11-25 23:06:18,648 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-ukqxfiv5
+2025-11-25 23:06:18,648 [INFO]   nanny: True
+2025-11-25 23:06:18,648 [INFO] Dask Worker Info:
+2025-11-25 23:06:18,648 [INFO] Worker tcp://127.0.0.1:56465
+2025-11-25 23:06:18,648 [INFO]   pid: None
+2025-11-25 23:06:18,648 [INFO]   host: 127.0.0.1
+2025-11-25 23:06:18,648 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-13tu13kk
+2025-11-25 23:06:18,648 [INFO]   nanny: True
+2025-11-25 23:06:18,648 [INFO] Processing camera: Cam1
+2025-11-25 23:06:18,664 [INFO] _detect_image_shape: image_format = ('B%05d_A.tif', 'B%05d_B.tif'), type = <class 'tuple'>
+2025-11-25 23:06:18,664 [INFO] Source path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1, Camera: 1
+2025-11-25 23:06:18,665 [INFO] Camera path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
+2025-11-25 23:06:18,665 [INFO] Trying to read file: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1/B00001_A.tif
+2025-11-25 23:06:18,687 [INFO] Detected image shape: (1152, 1024)
+2025-11-25 23:06:18,687 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-25 23:06:18,703 [INFO] Lazy loading complete: 100 independent delayed tasks created (~100 KB memory footprint)
+2025-11-25 23:06:18,703 [INFO] Pre-computing vector masks for Cam1
+2025-11-25 23:06:18,747 [INFO] Vector masks computed: 2 passes
+2025-11-25 23:06:18,748 [INFO] ================================================================================
+2025-11-25 23:06:18,748 [INFO] UNIFIED BATCH PIPELINE: ENSEMBLE MODE
+2025-11-25 23:06:18,748 [INFO] ================================================================================
+2025-11-25 23:06:18,748 [INFO] Image files: 100
+2025-11-25 23:06:18,748 [INFO] Frame pairs: 100
+2025-11-25 23:06:18,748 [INFO] Ensemble passes: 2
+2025-11-25 23:06:18,748 [INFO] Ensemble window sizes: [[128, 128], [64, 64]]
+2025-11-25 23:06:18,748 [INFO] Ensemble types: ['std', 'std']
+2025-11-25 23:06:18,749 [INFO] Runs to save: [0, 1]
+2025-11-25 23:06:18,749 [INFO] Output path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble
+2025-11-25 23:06:18,749 [INFO] ================================================================================
+2025-11-25 23:06:18,749 [INFO] Batch size: 25
+2025-11-25 23:06:18,750 [INFO] Assigned 1 filter workers
+2025-11-25 23:06:18,750 [INFO] Assigned 3 correlation workers
+2025-11-25 23:06:18,750 [INFO] Worker allocation: 1 filter, 3 correlation (total: 4)
+2025-11-25 23:06:18,750 [INFO] Starting ensemble PIV processing with unified batch pipeline...
+2025-11-25 23:06:18,758 [INFO] Loading C libraries (One-time init)...
+2025-11-25 23:06:18,833 [INFO] Broadcast correlator cache to all workers
+2025-11-25 23:06:18,839 [INFO] Broadcast vector masks (1.3 KB)
+2025-11-25 23:06:18,839 [INFO] Processing 2 pass(es) with 4 batches each for ensemble PIV
+2025-11-25 23:06:18,840 [INFO] 
+2025-11-25 23:06:18,840 [INFO] ======== PASS 1/2 ========
+2025-11-25 23:06:18,841 [INFO] [Pass 1] Initializing pipeline: batch 0 -> filter worker tcp://127.0.0.1:56458
+2025-11-25 23:06:18,927 [INFO] [Pass 1, Batch 1/4] Filter complete
+2025-11-25 23:06:18,985 [INFO] [Pass 1] Pipeline: batch 1 -> filter worker tcp://127.0.0.1:56458 (while batch 1 correlates)
+2025-11-25 23:06:18,999 [INFO] Loading C libraries (One-time init)...
+2025-11-25 23:06:18,999 [INFO] Loading C libraries (One-time init)...
+2025-11-25 23:06:19,000 [INFO] Loading C libraries (One-time init)...
+2025-11-25 23:06:21,137 [INFO] [Pass 1, Batch 1/4] Correlation complete
+2025-11-25 23:06:21,226 [INFO] [Pass 1, Batch 2/4] Filter complete
+2025-11-25 23:06:21,286 [INFO] [Pass 1] Pipeline: batch 2 -> filter worker tcp://127.0.0.1:56458 (while batch 2 correlates)
+2025-11-25 23:06:23,396 [INFO] [Pass 1, Batch 2/4] Correlation complete
+2025-11-25 23:06:23,427 [INFO] [Pass 1, Batch 3/4] Filter complete
+2025-11-25 23:06:23,479 [INFO] [Pass 1] Pipeline: batch 3 -> filter worker tcp://127.0.0.1:56458 (while batch 3 correlates)
+2025-11-25 23:06:25,365 [INFO] [Pass 1, Batch 3/4] Correlation complete
+2025-11-25 23:06:25,398 [INFO] [Pass 1, Batch 4/4] Filter complete
+2025-11-25 23:06:27,831 [INFO] [Pass 1, Batch 4/4] Correlation complete
+2025-11-25 23:06:27,832 [INFO] [Pass 1] Finalizing pass (single-pass optimization)
+2025-11-25 23:06:27,832 [INFO] Finalizing pass 1 with single-pass optimization
+2025-11-25 23:06:27,833 [INFO] Pass 1: Applying single-pass optimization
+2025-11-25 23:06:27,903 [INFO] Pass 0: AA_bg after bulkxcorr2d: [1.805e+03, 2.056e+06], has_inf=False, has_nan=False
+2025-11-25 23:06:27,932 [INFO] Pass 0: BB_bg after bulkxcorr2d: [1.847e+03, 2.068e+06], has_inf=False, has_nan=False
+2025-11-25 23:06:27,932 [INFO] Pass 0: Computed background correlations from mean images
+2025-11-25 23:06:50,492 [INFO] Pass 1: Gaussian fitting success rate: 100.0% (225/225 non-masked windows)
+2025-11-25 23:06:50,493 [INFO] Pass 1: 30 vectors masked (set to zero)
+2025-11-25 23:06:50,493 [INFO] Pass 1: Finalization complete
+2025-11-25 23:06:50,496 [INFO] Pass 1: Creating ensemble_result.mat with pass 1
+2025-11-25 23:06:50,502 [INFO] Saved ensemble result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_result.mat
+2025-11-25 23:06:50,502 [INFO] Pass 1: Saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_result.mat (progressive saving)
+2025-11-25 23:06:50,503 [INFO] Pass 1: Cleared accumulated data (freed ~56.8 MB)
+2025-11-25 23:06:50,503 [INFO] Predictor field extracted: shape=(19, 17, 2), non-zero ux range=[13.434, 17.859], non-zero uy range=[-0.108, 0.300], n_masked=30
+2025-11-25 23:06:50,503 [INFO] [Pass 1] Extracted predictor field for next pass
+2025-11-25 23:06:50,503 [INFO] 
+2025-11-25 23:06:50,503 [INFO] ======== PASS 2/2 ========
+2025-11-25 23:06:50,508 [INFO] [Pass 2] Broadcast predictor field from previous pass
+2025-11-25 23:06:50,510 [INFO] [Pass 2] Initializing pipeline: batch 0 -> filter worker tcp://127.0.0.1:56458
+2025-11-25 23:06:50,582 [INFO] [Pass 2, Batch 1/4] Filter complete
+2025-11-25 23:06:50,636 [INFO] [Pass 2] Pipeline: batch 1 -> filter worker tcp://127.0.0.1:56458 (while batch 1 correlates)
+2025-11-25 23:06:53,138 [INFO] [Pass 2, Batch 1/4] Correlation complete
+2025-11-25 23:06:53,166 [INFO] [Pass 2, Batch 2/4] Filter complete
+2025-11-25 23:06:53,217 [INFO] [Pass 2] Pipeline: batch 2 -> filter worker tcp://127.0.0.1:56458 (while batch 2 correlates)
+2025-11-25 23:06:55,929 [INFO] [Pass 2, Batch 2/4] Correlation complete
+2025-11-25 23:06:55,960 [INFO] [Pass 2, Batch 3/4] Filter complete
+2025-11-25 23:06:56,021 [INFO] [Pass 2] Pipeline: batch 3 -> filter worker tcp://127.0.0.1:56458 (while batch 3 correlates)
+2025-11-25 23:06:58,698 [INFO] [Pass 2, Batch 3/4] Correlation complete
+2025-11-25 23:06:58,732 [INFO] [Pass 2, Batch 4/4] Filter complete
+2025-11-25 23:07:01,200 [INFO] [Pass 2, Batch 4/4] Correlation complete
+2025-11-25 23:07:01,200 [INFO] [Pass 2] Finalizing pass (single-pass optimization)
+2025-11-25 23:07:01,200 [INFO] Finalizing pass 2 with single-pass optimization
+2025-11-25 23:07:01,200 [INFO] Pass 2: Applying single-pass optimization
+2025-11-25 23:07:01,230 [INFO] Pass 1: AA_bg after bulkxcorr2d: [-1.733e-05, 1.349e+05], has_inf=False, has_nan=False
+2025-11-25 23:07:01,240 [INFO] Pass 1: BB_bg after bulkxcorr2d: [-3.067e-05, 1.350e+05], has_inf=False, has_nan=False
+2025-11-25 23:07:01,241 [INFO] Pass 1: Computed background correlations from mean images
+2025-11-25 23:07:24,066 [INFO] Pass 2: Gaussian fitting success rate: 98.9% (950/961 non-masked windows)
+2025-11-25 23:07:24,067 [INFO] Pass 2: Using smoothed predictor field from image warping
+2025-11-25 23:07:24,067 [INFO] Pass 2: Added smoothed predictor back to residual displacements. ux range: [-34.463, 18.345], uy range: [-33.011, 0.332]
+2025-11-25 23:07:24,067 [INFO] Pass 2: 124 vectors masked (set to zero)
+2025-11-25 23:07:24,067 [INFO] Pass 2: Storing predictor field in pass result
+2025-11-25 23:07:24,067 [INFO] Pass 2: Finalization complete
+2025-11-25 23:07:24,072 [INFO] Pass 2: Loading existing ensemble_result.mat to append pass 2
+2025-11-25 23:07:24,077 [INFO] Loaded ensemble result with 0 passes from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_result.mat
+2025-11-25 23:07:24,077 [INFO] Pass 2: Appended to ensemble result (now has 1 passes)
+2025-11-25 23:07:24,084 [INFO] Saved ensemble result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_result.mat
+2025-11-25 23:07:24,084 [INFO] Pass 2: Saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_result.mat (progressive saving)
+2025-11-25 23:07:24,085 [INFO] Pass 2: Cleared accumulated data (freed ~59.9 MB)
+2025-11-25 23:07:24,085 [INFO] All passes saved progressively to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_result.mat
+2025-11-25 23:07:24,122 [INFO] Saved ensemble coordinates to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/coordinates.mat
+2025-11-25 23:07:24,122 [INFO] Ensemble coordinates saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/coordinates.mat
+2025-11-25 23:07:24,122 [INFO] 
+2025-11-25 23:07:24,122 [INFO] ================================================================================
+2025-11-25 23:07:24,123 [INFO] ENSEMBLE PIV PROCESSING COMPLETE!
+2025-11-25 23:07:24,123 [INFO] Ensemble result saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_result.mat
+2025-11-25 23:07:24,123 [INFO] ================================================================================
+2025-11-25 23:14:34,565 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 23:14:35,166 [INFO] ================================================================================
+2025-11-25 23:14:35,166 [INFO] VALIDATING CONFIGURATION
+2025-11-25 23:14:35,166 [INFO] ================================================================================
+2025-11-25 23:14:35,173 [INFO] ✓ Configuration validated successfully
+2025-11-25 23:14:35,174 [INFO]   Source paths: [PosixPath('/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1')]
+2025-11-25 23:14:35,174 [INFO]   Cameras: [1]
+2025-11-25 23:14:35,174 [INFO]   Image files: 100
+2025-11-25 23:14:35,174 [INFO]   Frame pairs: 100
+2025-11-25 23:14:35,174 [INFO]   Image format: ('B%05d_A.tif', 'B%05d_B.tif')
+2025-11-25 23:14:35,174 [INFO] 
+2025-11-25 23:14:35,174 [INFO] NOTES:
+2025-11-25 23:14:35,174 [INFO]   ℹ Camera 1: Processing subset - using 100 of 1000 available files
+2025-11-25 23:14:35,174 [INFO] ================================================================================
+2025-11-25 23:14:35,174 [INFO] 
+2025-11-25 23:14:35,174 [INFO] Set OMP_NUM_THREADS to 10 for main process batch filtering
+2025-11-25 23:14:36,607 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 23:14:36,611 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 23:14:36,613 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 23:14:36,616 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 23:14:37,255 [INFO] Worker logging configured successfully
+2025-11-25 23:14:37,255 [INFO] Worker logging configured successfully
+2025-11-25 23:14:37,256 [INFO] Worker logging configured successfully
+2025-11-25 23:14:37,256 [INFO] Worker logging configured successfully
+2025-11-25 23:14:37,257 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-25 23:14:37,258 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-25 23:14:37,258 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-25 23:14:37,258 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-25 23:14:37,259 [INFO] Dask cluster started successfully
+2025-11-25 23:14:37,260 [INFO] Dask Worker Info:
+2025-11-25 23:14:37,261 [INFO] Worker tcp://127.0.0.1:57153
+2025-11-25 23:14:37,261 [INFO]   pid: None
+2025-11-25 23:14:37,261 [INFO]   host: 127.0.0.1
+2025-11-25 23:14:37,261 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-o4fx_v3s
+2025-11-25 23:14:37,261 [INFO]   nanny: True
+2025-11-25 23:14:37,261 [INFO] Dask Worker Info:
+2025-11-25 23:14:37,261 [INFO] Worker tcp://127.0.0.1:57156
+2025-11-25 23:14:37,261 [INFO]   pid: None
+2025-11-25 23:14:37,262 [INFO]   host: 127.0.0.1
+2025-11-25 23:14:37,262 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-ulgkql7i
+2025-11-25 23:14:37,262 [INFO]   nanny: True
+2025-11-25 23:14:37,262 [INFO] Dask Worker Info:
+2025-11-25 23:14:37,262 [INFO] Worker tcp://127.0.0.1:57157
+2025-11-25 23:14:37,262 [INFO]   pid: None
+2025-11-25 23:14:37,262 [INFO]   host: 127.0.0.1
+2025-11-25 23:14:37,262 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-2tgiv_ke
+2025-11-25 23:14:37,262 [INFO]   nanny: True
+2025-11-25 23:14:37,262 [INFO] Dask Worker Info:
+2025-11-25 23:14:37,262 [INFO] Worker tcp://127.0.0.1:57162
+2025-11-25 23:14:37,262 [INFO]   pid: None
+2025-11-25 23:14:37,262 [INFO]   host: 127.0.0.1
+2025-11-25 23:14:37,262 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-mopeovoc
+2025-11-25 23:14:37,262 [INFO]   nanny: True
+2025-11-25 23:14:37,262 [INFO] Processing camera: Cam1
+2025-11-25 23:14:37,278 [INFO] _detect_image_shape: image_format = ('B%05d_A.tif', 'B%05d_B.tif'), type = <class 'tuple'>
+2025-11-25 23:14:37,278 [INFO] Source path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1, Camera: 1
+2025-11-25 23:14:37,278 [INFO] Camera path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
+2025-11-25 23:14:37,279 [INFO] Trying to read file: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1/B00001_A.tif
+2025-11-25 23:14:37,300 [INFO] Detected image shape: (1152, 1024)
+2025-11-25 23:14:37,300 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-25 23:14:37,316 [INFO] Lazy loading complete: 100 independent delayed tasks created (~100 KB memory footprint)
+2025-11-25 23:14:37,317 [INFO] Pre-computing vector masks for Cam1
+2025-11-25 23:14:37,364 [INFO] Vector masks computed: 2 passes
+2025-11-25 23:14:37,364 [INFO] ================================================================================
+2025-11-25 23:14:37,364 [INFO] UNIFIED BATCH PIPELINE: ENSEMBLE MODE
+2025-11-25 23:14:37,365 [INFO] ================================================================================
+2025-11-25 23:14:37,365 [INFO] Image files: 100
+2025-11-25 23:14:37,365 [INFO] Frame pairs: 100
+2025-11-25 23:14:37,365 [INFO] Ensemble passes: 2
+2025-11-25 23:14:37,365 [INFO] Ensemble window sizes: [[128, 128], [64, 64]]
+2025-11-25 23:14:37,365 [INFO] Ensemble types: ['std', 'std']
+2025-11-25 23:14:37,365 [INFO] Runs to save: [0, 1]
+2025-11-25 23:14:37,365 [INFO] Output path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble
+2025-11-25 23:14:37,365 [INFO] ================================================================================
+2025-11-25 23:14:37,365 [INFO] Batch size: 25
+2025-11-25 23:14:37,366 [INFO] Assigned 1 filter workers
+2025-11-25 23:14:37,366 [INFO] Assigned 3 correlation workers
+2025-11-25 23:14:37,366 [INFO] Worker allocation: 1 filter, 3 correlation (total: 4)
+2025-11-25 23:14:37,366 [INFO] Starting ensemble PIV processing with unified batch pipeline...
+2025-11-25 23:14:37,375 [INFO] Loading C libraries (One-time init)...
+2025-11-25 23:14:37,440 [INFO] Broadcast correlator cache to all workers
+2025-11-25 23:14:37,444 [INFO] Broadcast vector masks (1.3 KB)
+2025-11-25 23:14:37,445 [INFO] Processing 2 pass(es) with 4 batches each for ensemble PIV
+2025-11-25 23:14:37,445 [INFO] 
+2025-11-25 23:14:37,445 [INFO] ======== PASS 1/2 ========
+2025-11-25 23:14:37,446 [INFO] [Pass 1] Initializing pipeline: batch 0 -> filter worker tcp://127.0.0.1:57153
+2025-11-25 23:14:37,542 [INFO] [Pass 1, Batch 1/4] Filter complete
+2025-11-25 23:14:37,592 [INFO] [Pass 1] Pipeline: batch 1 -> filter worker tcp://127.0.0.1:57153 (while batch 1 correlates)
+2025-11-25 23:14:37,605 [INFO] Loading C libraries (One-time init)...
+2025-11-25 23:14:37,606 [INFO] Loading C libraries (One-time init)...
+2025-11-25 23:14:37,607 [INFO] Loading C libraries (One-time init)...
+2025-11-25 23:14:39,880 [INFO] [Pass 1, Batch 1/4] Correlation complete
+2025-11-25 23:14:39,995 [INFO] [Pass 1, Batch 2/4] Filter complete
+2025-11-25 23:14:40,154 [INFO] [Pass 1] Pipeline: batch 2 -> filter worker tcp://127.0.0.1:57153 (while batch 2 correlates)
+2025-11-25 23:14:42,230 [INFO] [Pass 1, Batch 2/4] Correlation complete
+2025-11-25 23:14:42,264 [INFO] [Pass 1, Batch 3/4] Filter complete
+2025-11-25 23:14:42,316 [INFO] [Pass 1] Pipeline: batch 3 -> filter worker tcp://127.0.0.1:57153 (while batch 3 correlates)
+2025-11-25 23:14:44,384 [INFO] [Pass 1, Batch 3/4] Correlation complete
+2025-11-25 23:14:44,414 [INFO] [Pass 1, Batch 4/4] Filter complete
+2025-11-25 23:14:46,436 [INFO] [Pass 1, Batch 4/4] Correlation complete
+2025-11-25 23:14:46,436 [INFO] [Pass 1] Finalizing pass (single-pass optimization)
+2025-11-25 23:14:46,436 [INFO] Finalizing pass 1 with single-pass optimization
+2025-11-25 23:14:46,436 [INFO] Pass 1: Applying single-pass optimization
+2025-11-25 23:14:46,506 [INFO] Pass 0: AA_bg after bulkxcorr2d: [1.805e+03, 2.056e+06], has_inf=False, has_nan=False
+2025-11-25 23:14:46,535 [INFO] Pass 0: BB_bg after bulkxcorr2d: [1.847e+03, 2.068e+06], has_inf=False, has_nan=False
+2025-11-25 23:14:46,536 [INFO] Pass 0: Computed background correlations from mean images
+2025-11-25 23:15:10,866 [INFO] Pass 1: Gaussian fitting success rate: 100.0% (225/225 non-masked windows)
+2025-11-25 23:15:10,867 [INFO] Pass 1: 30 vectors masked (set to zero)
+2025-11-25 23:15:10,868 [INFO] Pass 1: Finalization complete
+2025-11-25 23:15:10,872 [INFO] Pass 1: Creating ensemble_result.mat with pass 1
+2025-11-25 23:15:10,878 [INFO] Saved ensemble result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_result.mat
+2025-11-25 23:15:10,878 [INFO] Pass 1: Saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_result.mat (progressive saving)
+2025-11-25 23:15:10,880 [INFO] Pass 1: Cleared accumulated data (freed ~56.8 MB)
+2025-11-25 23:15:10,881 [INFO] Predictor field extracted: shape=(19, 17, 2), non-zero ux range=[13.434, 17.859], non-zero uy range=[-0.108, 0.300], n_masked=30
+2025-11-25 23:15:10,881 [INFO] [Pass 1] Extracted predictor field for next pass
+2025-11-25 23:15:10,881 [INFO] 
+2025-11-25 23:15:10,881 [INFO] ======== PASS 2/2 ========
+2025-11-25 23:15:10,888 [INFO] [Pass 2] Broadcast predictor field from previous pass
+2025-11-25 23:15:10,890 [INFO] [Pass 2] Initializing pipeline: batch 0 -> filter worker tcp://127.0.0.1:57153
+2025-11-25 23:15:10,961 [INFO] [Pass 2, Batch 1/4] Filter complete
+2025-11-25 23:15:11,017 [INFO] [Pass 2] Pipeline: batch 1 -> filter worker tcp://127.0.0.1:57153 (while batch 1 correlates)
+2025-11-25 23:15:13,739 [INFO] [Pass 2, Batch 1/4] Correlation complete
+2025-11-25 23:15:13,772 [INFO] [Pass 2, Batch 2/4] Filter complete
+2025-11-25 23:15:13,829 [INFO] [Pass 2] Pipeline: batch 2 -> filter worker tcp://127.0.0.1:57153 (while batch 2 correlates)
+2025-11-25 23:15:16,104 [INFO] [Pass 2, Batch 2/4] Correlation complete
+2025-11-25 23:15:16,136 [INFO] [Pass 2, Batch 3/4] Filter complete
+2025-11-25 23:15:16,187 [INFO] [Pass 2] Pipeline: batch 3 -> filter worker tcp://127.0.0.1:57153 (while batch 3 correlates)
+2025-11-25 23:15:18,752 [INFO] [Pass 2, Batch 3/4] Correlation complete
+2025-11-25 23:15:18,788 [INFO] [Pass 2, Batch 4/4] Filter complete
+2025-11-25 23:15:21,186 [INFO] [Pass 2, Batch 4/4] Correlation complete
+2025-11-25 23:15:21,186 [INFO] [Pass 2] Finalizing pass (single-pass optimization)
+2025-11-25 23:15:21,186 [INFO] Finalizing pass 2 with single-pass optimization
+2025-11-25 23:15:21,186 [INFO] Pass 2: Applying single-pass optimization
+2025-11-25 23:15:21,218 [INFO] Pass 1: AA_bg after bulkxcorr2d: [-1.733e-05, 1.349e+05], has_inf=False, has_nan=False
+2025-11-25 23:15:21,229 [INFO] Pass 1: BB_bg after bulkxcorr2d: [-3.067e-05, 1.350e+05], has_inf=False, has_nan=False
+2025-11-25 23:15:21,230 [INFO] Pass 1: Computed background correlations from mean images
+2025-11-25 23:15:44,529 [INFO] Pass 2: Gaussian fitting success rate: 98.9% (950/961 non-masked windows)
+2025-11-25 23:15:44,530 [INFO] Pass 2: Using smoothed predictor field from image warping
+2025-11-25 23:15:44,530 [INFO] Pass 2: Added smoothed predictor back to residual displacements. ux range: [-34.463, 18.345], uy range: [-33.011, 0.332]
+2025-11-25 23:15:44,531 [INFO] Pass 2: 124 vectors masked (set to zero)
+2025-11-25 23:15:44,531 [INFO] Pass 2: Storing SMOOTHED predictor field in pass result (shape: (35, 31, 2))
+2025-11-25 23:15:44,531 [INFO] Pass 2: Finalization complete
+2025-11-25 23:15:44,533 [INFO] Pass 2: Loading existing ensemble_result.mat to append pass 2
+2025-11-25 23:18:44,350 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 23:18:45,382 [INFO] ================================================================================
+2025-11-25 23:18:45,382 [INFO] VALIDATING CONFIGURATION
+2025-11-25 23:18:45,382 [INFO] ================================================================================
+2025-11-25 23:18:45,390 [INFO] ✓ Configuration validated successfully
+2025-11-25 23:18:45,390 [INFO]   Source paths: [PosixPath('/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1')]
+2025-11-25 23:18:45,390 [INFO]   Cameras: [1]
+2025-11-25 23:18:45,390 [INFO]   Image files: 100
+2025-11-25 23:18:45,390 [INFO]   Frame pairs: 100
+2025-11-25 23:18:45,390 [INFO]   Image format: ('B%05d_A.tif', 'B%05d_B.tif')
+2025-11-25 23:18:45,390 [INFO] 
+2025-11-25 23:18:45,390 [INFO] NOTES:
+2025-11-25 23:18:45,390 [INFO]   ℹ Camera 1: Processing subset - using 100 of 1000 available files
+2025-11-25 23:18:45,390 [INFO] ================================================================================
+2025-11-25 23:18:45,390 [INFO] 
+2025-11-25 23:18:45,390 [INFO] Set OMP_NUM_THREADS to 10 for main process batch filtering
+2025-11-25 23:18:46,791 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 23:18:46,791 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 23:18:46,791 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 23:18:46,806 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-25 23:18:47,366 [INFO] Worker logging configured successfully
+2025-11-25 23:18:47,366 [INFO] Worker logging configured successfully
+2025-11-25 23:18:47,366 [INFO] Worker logging configured successfully
+2025-11-25 23:18:47,367 [INFO] Worker logging configured successfully
+2025-11-25 23:18:47,368 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-25 23:18:47,368 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-25 23:18:47,368 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-25 23:18:47,368 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-25 23:18:47,369 [INFO] Dask cluster started successfully
+2025-11-25 23:18:47,371 [INFO] Dask Worker Info:
+2025-11-25 23:18:47,371 [INFO] Worker tcp://127.0.0.1:57605
+2025-11-25 23:18:47,371 [INFO]   pid: None
+2025-11-25 23:18:47,372 [INFO]   host: 127.0.0.1
+2025-11-25 23:18:47,372 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-v_mgw23g
+2025-11-25 23:18:47,372 [INFO]   nanny: True
+2025-11-25 23:18:47,372 [INFO] Dask Worker Info:
+2025-11-25 23:18:47,372 [INFO] Worker tcp://127.0.0.1:57606
+2025-11-25 23:18:47,372 [INFO]   pid: None
+2025-11-25 23:18:47,372 [INFO]   host: 127.0.0.1
+2025-11-25 23:18:47,372 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-s3thii30
+2025-11-25 23:18:47,372 [INFO]   nanny: True
+2025-11-25 23:18:47,373 [INFO] Dask Worker Info:
+2025-11-25 23:18:47,373 [INFO] Worker tcp://127.0.0.1:57607
+2025-11-25 23:18:47,373 [INFO]   pid: None
+2025-11-25 23:18:47,373 [INFO]   host: 127.0.0.1
+2025-11-25 23:18:47,373 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-vvrxs81t
+2025-11-25 23:18:47,373 [INFO]   nanny: True
+2025-11-25 23:18:47,373 [INFO] Dask Worker Info:
+2025-11-25 23:18:47,373 [INFO] Worker tcp://127.0.0.1:57614
+2025-11-25 23:18:47,373 [INFO]   pid: None
+2025-11-25 23:18:47,373 [INFO]   host: 127.0.0.1
+2025-11-25 23:18:47,373 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-wi3s8htg
+2025-11-25 23:18:47,373 [INFO]   nanny: True
+2025-11-25 23:18:47,373 [INFO] Processing camera: Cam1
+2025-11-25 23:18:47,388 [INFO] _detect_image_shape: image_format = ('B%05d_A.tif', 'B%05d_B.tif'), type = <class 'tuple'>
+2025-11-25 23:18:47,388 [INFO] Source path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1, Camera: 1
+2025-11-25 23:18:47,388 [INFO] Camera path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
+2025-11-25 23:18:47,389 [INFO] Trying to read file: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1/B00001_A.tif
+2025-11-25 23:18:47,411 [INFO] Detected image shape: (1152, 1024)
+2025-11-25 23:18:47,411 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-25 23:18:47,427 [INFO] Lazy loading complete: 100 independent delayed tasks created (~100 KB memory footprint)
+2025-11-25 23:18:47,427 [INFO] Pre-computing vector masks for Cam1
+2025-11-25 23:18:47,470 [INFO] Vector masks computed: 2 passes
+2025-11-25 23:18:47,471 [INFO] ================================================================================
+2025-11-25 23:18:47,471 [INFO] UNIFIED BATCH PIPELINE: ENSEMBLE MODE
+2025-11-25 23:18:47,471 [INFO] ================================================================================
+2025-11-25 23:18:47,471 [INFO] Image files: 100
+2025-11-25 23:18:47,471 [INFO] Frame pairs: 100
+2025-11-25 23:18:47,471 [INFO] Ensemble passes: 2
+2025-11-25 23:18:47,471 [INFO] Ensemble window sizes: [[128, 128], [64, 64]]
+2025-11-25 23:18:47,471 [INFO] Ensemble types: ['std', 'std']
+2025-11-25 23:18:47,471 [INFO] Runs to save: [0, 1]
+2025-11-25 23:18:47,471 [INFO] Output path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble
+2025-11-25 23:18:47,471 [INFO] ================================================================================
+2025-11-25 23:18:47,471 [INFO] Batch size: 25
+2025-11-25 23:18:47,472 [INFO] Assigned 1 filter workers
+2025-11-25 23:18:47,472 [INFO] Assigned 3 correlation workers
+2025-11-25 23:18:47,472 [INFO] Worker allocation: 1 filter, 3 correlation (total: 4)
+2025-11-25 23:18:47,472 [INFO] Starting ensemble PIV processing with unified batch pipeline...
+2025-11-25 23:18:47,477 [INFO] Loading C libraries (One-time init)...
+2025-11-25 23:18:47,554 [INFO] Broadcast correlator cache to all workers
+2025-11-25 23:18:47,558 [INFO] Broadcast vector masks (1.3 KB)
+2025-11-25 23:18:47,559 [INFO] Processing 2 pass(es) with 4 batches each for ensemble PIV
+2025-11-25 23:18:47,559 [INFO] 
+2025-11-25 23:18:47,559 [INFO] ======== PASS 1/2 ========
+2025-11-25 23:18:47,560 [INFO] [Pass 1] Initializing pipeline: batch 0 -> filter worker tcp://127.0.0.1:57605
+2025-11-25 23:18:47,647 [INFO] [Pass 1, Batch 1/4] Filter complete
+2025-11-25 23:18:47,703 [INFO] [Pass 1] Pipeline: batch 1 -> filter worker tcp://127.0.0.1:57605 (while batch 1 correlates)
+2025-11-25 23:18:47,716 [INFO] Loading C libraries (One-time init)...
+2025-11-25 23:18:47,717 [INFO] Loading C libraries (One-time init)...
+2025-11-25 23:18:47,719 [INFO] Loading C libraries (One-time init)...
+2025-11-25 23:18:49,883 [INFO] [Pass 1, Batch 1/4] Correlation complete
+2025-11-25 23:18:49,961 [INFO] [Pass 1, Batch 2/4] Filter complete
+2025-11-25 23:18:50,022 [INFO] [Pass 1] Pipeline: batch 2 -> filter worker tcp://127.0.0.1:57605 (while batch 2 correlates)
+2025-11-25 23:18:52,159 [INFO] [Pass 1, Batch 2/4] Correlation complete
+2025-11-25 23:18:52,189 [INFO] [Pass 1, Batch 3/4] Filter complete
+2025-11-25 23:18:52,240 [INFO] [Pass 1] Pipeline: batch 3 -> filter worker tcp://127.0.0.1:57605 (while batch 3 correlates)
+2025-11-25 23:18:54,259 [INFO] [Pass 1, Batch 3/4] Correlation complete
+2025-11-25 23:18:54,290 [INFO] [Pass 1, Batch 4/4] Filter complete
+2025-11-25 23:18:56,307 [INFO] [Pass 1, Batch 4/4] Correlation complete
+2025-11-25 23:18:56,307 [INFO] [Pass 1] Finalizing pass (single-pass optimization)
+2025-11-25 23:18:56,308 [INFO] Finalizing pass 1 with single-pass optimization
+2025-11-25 23:18:56,308 [INFO] Pass 1: Applying single-pass optimization
+2025-11-25 23:18:56,379 [INFO] Pass 0: AA_bg after bulkxcorr2d: [1.805e+03, 2.056e+06], has_inf=False, has_nan=False
+2025-11-25 23:18:56,408 [INFO] Pass 0: BB_bg after bulkxcorr2d: [1.847e+03, 2.068e+06], has_inf=False, has_nan=False
+2025-11-25 23:18:56,408 [INFO] Pass 0: Computed background correlations from mean images
+2025-11-25 23:19:19,262 [INFO] Pass 1: Gaussian fitting success rate: 100.0% (225/225 non-masked windows)
+2025-11-25 23:19:19,262 [INFO] Pass 1: 30 vectors masked (set to zero)
+2025-11-25 23:19:19,262 [INFO] Pass 1: Finalization complete
+2025-11-25 23:19:19,265 [INFO] Pass 1: Creating ensemble_result.mat with pass 1
+2025-11-25 23:19:19,272 [INFO] Saved ensemble result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_result.mat
+2025-11-25 23:19:19,273 [INFO] Pass 1: Saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_result.mat (progressive saving)
+2025-11-25 23:19:19,273 [INFO] Pass 1: Cleared accumulated data (freed ~56.8 MB)
+2025-11-25 23:19:19,274 [INFO] Predictor field extracted: shape=(19, 17, 2), non-zero ux range=[13.434, 17.859], non-zero uy range=[-0.108, 0.300], n_masked=30
+2025-11-25 23:19:19,274 [INFO] [Pass 1] Extracted predictor field for next pass
+2025-11-25 23:19:19,274 [INFO] 
+2025-11-25 23:19:19,274 [INFO] ======== PASS 2/2 ========
+2025-11-25 23:19:19,279 [INFO] [Pass 2] Broadcast predictor field from previous pass
+2025-11-25 23:19:19,280 [INFO] [Pass 2] Initializing pipeline: batch 0 -> filter worker tcp://127.0.0.1:57605
+2025-11-25 23:19:19,339 [INFO] [Pass 2, Batch 1/4] Filter complete
+2025-11-25 23:19:19,398 [INFO] [Pass 2] Pipeline: batch 1 -> filter worker tcp://127.0.0.1:57605 (while batch 1 correlates)
+2025-11-25 23:19:21,974 [INFO] [Pass 2, Batch 1/4] Correlation complete
+2025-11-25 23:19:22,004 [INFO] [Pass 2, Batch 2/4] Filter complete
+2025-11-25 23:19:22,059 [INFO] [Pass 2] Pipeline: batch 2 -> filter worker tcp://127.0.0.1:57605 (while batch 2 correlates)
+2025-11-25 23:19:24,574 [INFO] [Pass 2, Batch 2/4] Correlation complete
+2025-11-25 23:19:24,609 [INFO] [Pass 2, Batch 3/4] Filter complete
+2025-11-25 23:19:24,665 [INFO] [Pass 2] Pipeline: batch 3 -> filter worker tcp://127.0.0.1:57605 (while batch 3 correlates)
+2025-11-25 23:19:27,120 [INFO] [Pass 2, Batch 3/4] Correlation complete
+2025-11-25 23:19:27,154 [INFO] [Pass 2, Batch 4/4] Filter complete
+2025-11-25 23:19:29,456 [INFO] [Pass 2, Batch 4/4] Correlation complete
+2025-11-25 23:19:29,456 [INFO] [Pass 2] Finalizing pass (single-pass optimization)
+2025-11-25 23:19:29,456 [INFO] Finalizing pass 2 with single-pass optimization
+2025-11-25 23:19:29,456 [INFO] Pass 2: Applying single-pass optimization
+2025-11-25 23:19:29,485 [INFO] Pass 1: AA_bg after bulkxcorr2d: [-1.733e-05, 1.349e+05], has_inf=False, has_nan=False
+2025-11-25 23:19:29,495 [INFO] Pass 1: BB_bg after bulkxcorr2d: [-3.067e-05, 1.350e+05], has_inf=False, has_nan=False
+2025-11-25 23:19:29,495 [INFO] Pass 1: Computed background correlations from mean images
+2025-11-25 23:19:51,680 [INFO] Pass 2: Gaussian fitting success rate: 98.9% (950/961 non-masked windows)
+2025-11-25 23:19:51,680 [INFO] Pass 2: Using smoothed predictor field from image warping
+2025-11-25 23:19:51,680 [INFO] Pass 2: Added smoothed predictor back to residual displacements. ux range: [-34.463, 18.345], uy range: [-33.011, 0.332]
+2025-11-25 23:19:51,680 [INFO] Pass 2: 124 vectors masked (set to zero)
+2025-11-25 23:19:51,681 [INFO] Pass 2: Storing SMOOTHED predictor field in pass result (shape: (35, 31, 2))
+2025-11-25 23:19:51,681 [INFO] Pass 2: Finalization complete
+2025-11-25 23:19:51,683 [INFO] Pass 2: Loading existing ensemble_result.mat to append pass 2
+2025-11-25 23:19:51,687 [INFO] Loaded ensemble result with 1 passes from /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_result.mat
+2025-11-25 23:19:51,687 [INFO] Pass 2: Appended to ensemble result (now has 2 passes)
+2025-11-25 23:19:51,696 [INFO] Saved ensemble result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_result.mat
+2025-11-25 23:19:51,696 [INFO] Pass 2: Saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_result.mat (progressive saving)
+2025-11-25 23:19:51,697 [INFO] Pass 2: Cleared accumulated data (freed ~59.9 MB)
+2025-11-25 23:19:51,697 [INFO] All passes saved progressively to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_result.mat
+2025-11-25 23:19:51,737 [INFO] Saved ensemble coordinates to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/coordinates.mat
+2025-11-25 23:19:51,737 [INFO] Ensemble coordinates saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/coordinates.mat
+2025-11-25 23:19:51,737 [INFO] 
+2025-11-25 23:19:51,737 [INFO] ================================================================================
+2025-11-25 23:19:51,738 [INFO] ENSEMBLE PIV PROCESSING COMPLETE!
+2025-11-25 23:19:51,738 [INFO] Ensemble result saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_result.mat
+2025-11-25 23:19:51,738 [INFO] ================================================================================

@@ -104,7 +104,7 @@ ensemble_piv:
   runs:
   - 1
   - 2
-  store_planes: true
+  store_planes: false
 calibration_format:
   image_format: calib%05d.tif
 calibration:

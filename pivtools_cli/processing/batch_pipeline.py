@@ -126,7 +126,7 @@ class UnifiedBatchPipeline:
 
         logging.info(f"Processing {num_passes} pass(es) with {num_batches} batches each for ensemble PIV")
 
-        # Multi-pass loop
+        # Multi-pass loop with pipelined batch processing
         predictor_field = None  # No predictor for pass 0
 
         for pass_idx in range(num_passes):
@@ -139,63 +139,87 @@ class UnifiedBatchPipeline:
                 scattered_predictor = self.client.scatter(predictor_field, broadcast=True)
                 logging.info(f"[Pass {pass_idx + 1}] Broadcast predictor field from previous pass")
 
-            # Process all batches for this pass
-            for batch_idx in range(num_batches):
-                batch_start = batch_idx * self.batch_size
-                batch_end = min(batch_start + self.batch_size, images.shape[0])
-                batch_slice = images[batch_start:batch_end]
+            # === PIPELINED BATCH PROCESSING ===
+            # Initialize first batch
+            batch_idx = 0
+            batch_slice = images[0:min(self.batch_size, images.shape[0])]
+            worker = self.filter_workers[0]
+            logging.info(f"[Pass {pass_idx+1}] Initializing pipeline: batch 0 -> filter worker {worker}")
 
-                # Assign to filter worker
-                worker = self.filter_workers[batch_idx % len(self.filter_workers)]
-                logging.info(f"[Pass {pass_idx + 1}] Submitting batch {batch_idx} to filter worker {worker}")
+            filter_future = self.client.submit(
+                _filter_batch_worker,
+                batch_slice,
+                self.config,
+                batch_idx,
+                workers=[worker],
+                priority=10,
+                pure=False,
+            )
 
-                # Submit filter task and wait
-                future = self.client.submit(
-                    _filter_batch_worker,
-                    batch_slice,
-                    self.config,
-                    batch_idx,
-                    workers=[worker],
-                    priority=10,
-                    pure=False,
-                )
-                filtered_batch = future.result()
-                logging.info(f"[Pass {pass_idx + 1}, Batch {batch_idx+1}/{num_batches}] Filtering complete")
+            # Process batches with overlapping filter/correlation
+            while batch_idx < num_batches:
+                # Wait for current filter to complete
+                filtered_batch = filter_future.result()
+                logging.info(f"[Pass {pass_idx+1}, Batch {batch_idx+1}/{num_batches}] Filter complete")
 
-                # Distribute to correlation workers and accumulate
-                self._correlate_and_accumulate_batch(
+                # Start correlation for THIS batch (non-blocking)
+                corr_futures = self._correlate_ensemble_batch_async(
                     filtered_batch,
-                    accumulator,
                     scattered_cache,
                     scattered_masks,
                     scattered_predictor,
                     pass_idx,
-                    batch_idx+1,
-                    num_batches,
                 )
+
+                # OVERLAP: Submit NEXT filter while THIS batch correlates
+                next_batch_idx = batch_idx + 1
+                if next_batch_idx < num_batches:
+                    next_start = next_batch_idx * self.batch_size
+                    next_end = min(next_start + self.batch_size, images.shape[0])
+                    next_slice = images[next_start:next_end]
+                    next_worker = self.filter_workers[next_batch_idx % len(self.filter_workers)]
+
+                    logging.info(
+                        f"[Pass {pass_idx+1}] Pipeline: batch {next_batch_idx} -> "
+                        f"filter worker {next_worker} (while batch {batch_idx+1} correlates)"
+                    )
+
+                    filter_future = self.client.submit(
+                        _filter_batch_worker,
+                        next_slice,
+                        self.config,
+                        next_batch_idx,
+                        workers=[next_worker],
+                        priority=10,
+                        pure=False,
+                    )
+
+                # Wait for current correlation to complete and accumulate
+                results = self.client.gather(corr_futures)
+                for result in results:
+                    accumulator.accumulate_batch(result, pass_idx=pass_idx)
+
+                logging.info(f"[Pass {pass_idx+1}, Batch {batch_idx+1}/{num_batches}] Correlation complete")
+
+                batch_idx += 1
 
             # Finalize this pass
             logging.info(f"[Pass {pass_idx + 1}] Finalizing pass (single-pass optimization)")
             pass_result = accumulator.finalize_pass(pass_idx, self.client, scattered_cache, predictor_field, output_path)
+
+            # PROGRESSIVE SAVING: Append pass to ensemble_result.mat and clear memory
+            self._append_ensemble_pass_progressive(pass_result, pass_idx, output_path)
+            accumulator.clear_pass_data(pass_idx)
 
             # Extract predictor field for next pass
             if pass_idx < num_passes - 1:
                 predictor_field = self._extract_predictor_field(pass_result, pass_idx)
                 logging.info(f"[Pass {pass_idx + 1}] Extracted predictor field for next pass")
 
-        # Get final ensemble result (all passes combined)
-        logging.info("Assembling final ensemble result from all passes")
-        ensemble_result = accumulator.get_ensemble_result()
-
-        # Save
-        saved_path = save_ensemble_result_distributed(
-            ensemble_result,
-            output_path,
-            runs_to_save=self.config.ensemble_runs_0based,
-        )
-
-        logging.info(f"Ensemble result saved to {saved_path}")
-        return saved_path
+        # PROGRESSIVE SAVING: Final result already assembled in ensemble_result.mat
+        final_path = output_path / "ensemble_result.mat"
+        logging.info(f"All passes saved progressively to {final_path}")
+        return str(final_path)
 
     def _extract_predictor_field(self, pass_result, pass_idx: int) -> np.ndarray:
         """
@@ -256,6 +280,152 @@ class UnifiedBatchPipeline:
             )
 
         return predictor_field
+
+    def _append_ensemble_pass_progressive(
+        self, pass_result, pass_idx: int, output_path: Path
+    ):
+        """
+        Append a single ensemble pass to ensemble_result.mat.
+
+        For pass 1: Creates new ensemble_result.mat with just pass 1
+        For pass 2+: Loads existing ensemble_result.mat, appends pass, saves back
+
+        Parameters
+        ----------
+        pass_result : PIVEnsemblePassResult
+            Result from current pass
+        pass_idx : int
+            Pass index
+        output_path : Path
+            Output directory
+        """
+        from pivtools_cli.piv.piv_result import PIVEnsembleResult
+        from scipy.io import loadmat
+
+        ensemble_filepath = output_path / "ensemble_result.mat"
+
+        if pass_idx == 0:
+            # First pass: Create new ensemble result
+            ensemble_result = PIVEnsembleResult()
+            ensemble_result.add_pass(pass_result)
+            logging.info(f"Pass {pass_idx + 1}: Creating ensemble_result.mat with pass 1")
+        else:
+            # Subsequent passes: Load existing, append, save back
+            logging.info(f"Pass {pass_idx + 1}: Loading existing ensemble_result.mat to append pass {pass_idx + 1}")
+
+            # Load existing ensemble result
+            ensemble_result = self._load_ensemble_result_from_file(ensemble_filepath)
+
+            # Append new pass
+            ensemble_result.add_pass(pass_result)
+            logging.info(f"Pass {pass_idx + 1}: Appended to ensemble result (now has {len(ensemble_result.passes)} passes)")
+
+        # Save back to ensemble_result.mat
+        save_ensemble_result_distributed(
+            ensemble_result,
+            output_path,
+            runs_to_save=self.config.ensemble_runs_0based,
+            filename="ensemble_result.mat",
+        )
+
+        logging.info(f"Pass {pass_idx + 1}: Saved to {ensemble_filepath} (progressive saving)")
+
+    def _load_ensemble_result_from_file(self, filepath: Path):
+        """
+        Load ensemble result from .mat file.
+
+        Parameters
+        ----------
+        filepath : Path
+            Path to ensemble_result.mat file
+
+        Returns
+        -------
+        PIVEnsembleResult
+            Loaded ensemble result with all passes
+        """
+        from pivtools_cli.piv.piv_result import PIVEnsembleResult, PIVEnsemblePassResult
+        from scipy.io import loadmat
+
+        if not filepath.exists():
+            raise FileNotFoundError(f"Ensemble result file not found: {filepath}")
+
+        # Load .mat file
+        mat_data = loadmat(filepath, squeeze_me=False, struct_as_record=False)
+        ensemble_data = mat_data["ensemble_result"]
+
+        # ensemble_data is a struct array with shape (n_passes,) or (n_passes, 1)
+        # Flatten to 1D if needed
+        if isinstance(ensemble_data, np.ndarray):
+            ensemble_data = ensemble_data.ravel()
+        else:
+            # Single element, convert to list
+            ensemble_data = [ensemble_data]
+
+        num_passes = len(ensemble_data)
+        ensemble_result = PIVEnsembleResult()
+
+        for pass_idx in range(num_passes):
+            pass_struct = ensemble_data[pass_idx]
+
+            # Helper to safely get field value
+            def get_field(field_name, default=None):
+                if hasattr(pass_struct, field_name):
+                    val = getattr(pass_struct, field_name)
+                    # Handle empty arrays
+                    if isinstance(val, np.ndarray) and val.size == 0:
+                        return default if default is not None else np.array([])
+                    return val
+                return default if default is not None else np.array([])
+
+            # Get nan_reason and convert to int32 if it's not empty
+            nan_reason_raw = get_field('nan_reason', None)
+            if nan_reason_raw is not None and isinstance(nan_reason_raw, np.ndarray) and nan_reason_raw.size > 0:
+                nan_reason = nan_reason_raw.astype(np.int32)
+            else:
+                nan_reason = np.array([], dtype=np.int32)
+
+            # Get b_mask and convert to bool if it's not empty
+            b_mask_raw = get_field('b_mask', None)
+            if b_mask_raw is not None and isinstance(b_mask_raw, np.ndarray) and b_mask_raw.size > 0:
+                b_mask = b_mask_raw.astype(bool)
+            else:
+                b_mask = None
+
+            # Get window_size
+            window_size_raw = get_field('window_size', np.array([0, 0]))
+            if isinstance(window_size_raw, np.ndarray) and window_size_raw.size >= 2:
+                window_size = tuple(window_size_raw.ravel()[:2])
+            else:
+                window_size = (0, 0)
+
+            pass_result = PIVEnsemblePassResult(
+                ux_mat=get_field('ux'),
+                uy_mat=get_field('uy'),
+                UU_stress=get_field('UU_stress'),
+                VV_stress=get_field('VV_stress'),
+                UV_stress=get_field('UV_stress'),
+                peakheights_A=get_field('peakheights_A'),
+                peakheights_B=get_field('peakheights_B'),
+                peakheights_AB=get_field('peakheights_AB'),
+                nan_reason=nan_reason,
+                sig_AB_x=get_field('sig_AB_x'),
+                sig_AB_y=get_field('sig_AB_y'),
+                sig_AB_xy=get_field('sig_AB_xy'),
+                sig_A_x=get_field('sig_A_x'),
+                sig_A_y=get_field('sig_A_y'),
+                sig_A_xy=get_field('sig_A_xy'),
+                b_mask=b_mask,
+                pred_x=get_field('pred_x', None),
+                pred_y=get_field('pred_y', None),
+                window_size=window_size,
+                win_ctrs_x=get_field('win_ctrs_x'),
+                win_ctrs_y=get_field('win_ctrs_y'),
+            )
+            ensemble_result.add_pass(pass_result)
+
+        logging.info(f"Loaded ensemble result with {num_passes} passes from {filepath}")
+        return ensemble_result
 
     def _process_instantaneous(
         self,
@@ -388,25 +558,44 @@ class UnifiedBatchPipeline:
 
         return filter_futures
 
-    def _correlate_and_accumulate_batch(
+    def _correlate_ensemble_batch_async(
         self,
         filtered_batch: np.ndarray,
-        accumulator,
         scattered_cache,
         scattered_masks,
         scattered_predictor,
         pass_idx: int,
-        batch_idx: int,
-        total_batches: int,
-    ):
-        """Correlate batch and accumulate to ensemble result."""
+    ) -> List:
+        """
+        Submit correlation tasks and return futures (non-blocking).
+
+        Returns futures instead of blocking on gather, allowing filter/correlation overlap.
+
+        Parameters
+        ----------
+        filtered_batch : np.ndarray
+            Filtered image batch
+        scattered_cache : dict
+            Pre-scattered correlator cache
+        scattered_masks : Optional
+            Pre-scattered vector masks
+        scattered_predictor : Optional
+            Pre-scattered predictor field
+        pass_idx : int
+            Current pass index
+
+        Returns
+        -------
+        List
+            List of futures for correlation results
+        """
         # Split into individual pairs
         pairs = [filtered_batch[i] for i in range(filtered_batch.shape[0])]
 
         # Scatter pairs to correlation workers
         scattered_pairs = self.client.scatter(pairs, workers=self.corr_workers)
 
-        # Submit correlation tasks
+        # Submit correlation tasks (returns futures immediately)
         corr_futures = self.client.map(
             _correlate_ensemble_pair_worker,
             scattered_pairs,
@@ -419,12 +608,7 @@ class UnifiedBatchPipeline:
             pure=False,
         )
 
-        # Gather results and accumulate
-        results = self.client.gather(corr_futures)
-        for result in results:
-            accumulator.accumulate_batch(result, pass_idx=pass_idx)
-
-        logging.info(f"[Pass {pass_idx + 1}, Batch {batch_idx}/{total_batches}] Correlation complete")
+        return corr_futures
 
     def _process_instantaneous_batch(
         self,

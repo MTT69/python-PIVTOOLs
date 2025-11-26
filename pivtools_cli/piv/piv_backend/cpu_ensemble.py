@@ -127,6 +127,27 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         # Initialize vector masks
         self.vector_masks = vector_masks if vector_masks is not None else []
 
+        # Pre-allocate correlation plane buffers (reused across batches)
+        self._corr_buffers = {}
+        for pass_idx in range(config.ensemble_num_passes):
+            corr_size = self.window_sizes_for_corr[pass_idx]
+            n_win_y = len(self.win_ctrs_y[pass_idx])
+            n_win_x = len(self.win_ctrs_x[pass_idx])
+            total_windows = n_win_y * n_win_x
+            plane_size = total_windows * corr_size[0] * corr_size[1]
+
+            # Pre-allocate buffers for AA, BB, AB
+            self._corr_buffers[pass_idx] = {
+                'AA': np.zeros(plane_size, dtype=np.float32),
+                'BB': np.zeros(plane_size, dtype=np.float32),
+                'AB': np.zeros(plane_size, dtype=np.float32),
+            }
+
+            logging.debug(
+                f"Pre-allocated correlation buffers for pass {pass_idx}: "
+                f"{plane_size * 4 * 3 / 1024 / 1024:.1f} MB"
+            )
+
     @classmethod
     def _load_libraries(cls):
         """Load C libraries once per process to avoid DLL thrashing."""
@@ -536,16 +557,15 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         total_windows = n_win_y * n_win_x
         N, _, H, W = images.shape
 
-        # Allocate THREE correlation accumulators
-        correl_AA_sum = np.ascontiguousarray(
-            np.zeros(total_windows * corr_size[0] * corr_size[1], dtype=np.float32)
-        )
-        correl_BB_sum = np.ascontiguousarray(
-            np.zeros(total_windows * corr_size[0] * corr_size[1], dtype=np.float32)
-        )
-        correl_AB_sum = np.ascontiguousarray(
-            np.zeros(total_windows * corr_size[0] * corr_size[1], dtype=np.float32)
-        )
+        # Reuse pre-allocated correlation buffers
+        correl_AA_sum = self._corr_buffers[pass_idx]['AA']
+        correl_BB_sum = self._corr_buffers[pass_idx]['BB']
+        correl_AB_sum = self._corr_buffers[pass_idx]['AB']
+
+        # Clear buffers (faster than reallocation)
+        correl_AA_sum.fill(0)
+        correl_BB_sum.fill(0)
+        correl_AB_sum.fill(0)
 
         # Accumulators for warped images
         warp_A_sum = np.zeros((H, W), dtype=np.float32)
@@ -709,10 +729,11 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             if self.vector_masks and pass_idx < len(self.vector_masks)
             else None
         )
+        # Copy buffers before returning (since they will be reused for next batch)
         return {
-            "corr_AA_sum": correl_AA_sum,
-            "corr_BB_sum": correl_BB_sum,
-            "corr_AB_sum": correl_AB_sum,
+            "corr_AA_sum": correl_AA_sum.copy(),
+            "corr_BB_sum": correl_BB_sum.copy(),
+            "corr_AB_sum": correl_AB_sum.copy(),
             "warp_A_sum": warp_A_sum,
             "warp_B_sum": warp_B_sum,
             "n_images": N,
