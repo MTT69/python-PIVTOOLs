@@ -5,6 +5,7 @@ This module implements the SinglePassAccumulator class for ensemble PIV processi
 handling accumulation of correlation planes and single-pass optimization.
 """
 
+import gc
 import logging
 from pathlib import Path
 from typing import Optional
@@ -16,9 +17,11 @@ from dask.distributed import Client
 from pivtools_core.config import Config
 from pivtools_cli.piv.piv_result import PIVEnsemblePassResult, PIVEnsembleResult
 from pivtools_cli.piv.piv_backend.gaussian_fitting import (
-    _fit_windows_batch_optimized,
+    _fit_windows_batch_from_scattered,
     _get_sigma_from_previous_pass,
 )
+from pivtools_cli.piv.piv_backend.outlier_detection import apply_outlier_detection
+from pivtools_cli.piv.piv_backend.infilling import apply_infilling
 
 
 class SinglePassAccumulator:
@@ -371,9 +374,10 @@ class SinglePassAccumulator:
         # Step 6: Perform distributed Gaussian fitting
 
         # Get sigma values from previous pass (if applicable)
-        # For pass 0: None (sigmas computed from HWHM in _build_initial_guess)
-        # For pass > 0: Interpolated from previous pass after infilling
-        sigma_x, sigma_y = _get_sigma_from_previous_pass(
+        # For pass 0: All None (sigmas computed from HWHM in _build_initial_guess)
+        # For pass > 0: Interpolated from previous pass after outlier detection & infilling
+        # Returns dict with keys: sig_AB_x, sig_AB_y, sig_AB_xy, sig_A_x, sig_A_y, sig_A_xy
+        sigma_dict = _get_sigma_from_previous_pass(
             pass_idx, total_windows, self.config, temp_piv_results,
             n_win_x, n_win_y
         )
@@ -384,47 +388,75 @@ class SinglePassAccumulator:
         else:
             mask_flat = np.zeros(total_windows, dtype=bool)
 
-        # Distribute fitting across workers with optimized broadcast
+        # Distribute fitting across workers
         workers = list(client.scheduler_info()["workers"].keys())
         num_workers = len(workers)
         windows_per_worker = (total_windows + num_workers - 1) // num_workers
 
-        # Broadcast ENTIRE correlation planes ONCE (not per-worker chunks)
-        # Workers extract their local chunks without network transfer
-        scattered_AA = client.scatter(R_AA_ensemble, broadcast=True)
-        scattered_BB = client.scatter(R_BB_ensemble, broadcast=True)
-        scattered_AB = client.scatter(R_AB_ensemble, broadcast=True)
+        # PRE-CHUNK and SCATTER correlation planes per worker
+        # At high resolution (4K+), correlation planes can reach GB in size.
+        # Each worker only needs ~1/N of the data. Pre-chunking reduces memory by ~87%.
+        #
+        # IMPORTANT: We scatter BEFORE submit to avoid embedding data in task graph.
+        # When arrays are passed directly to client.submit(), they get serialized into
+        # the task graph itself, causing "Sending large graph" warnings.
+        # By scattering first, we get futures (tiny references) instead of data.
+        plane_size = corr_size[0] * corr_size[1]
 
-        # Broadcast sigma fields once
-        if sigma_x is not None and sigma_y is not None:
-            scattered_sigma_x = client.scatter(sigma_x, broadcast=True)
-            scattered_sigma_y = client.scatter(sigma_y, broadcast=True)
-        else:
-            scattered_sigma_x = None
-            scattered_sigma_y = None
-
-        # Broadcast mask once
-        scattered_mask = client.scatter(mask_flat, broadcast=True)
-
-        futures = []
+        # Phase 1: Build chunks and scatter to target workers
+        scattered_chunks = []
         for i, worker in enumerate(workers):
             start_idx = i * windows_per_worker
             end_idx = min((i + 1) * windows_per_worker, total_windows)
             if start_idx >= end_idx:
                 continue
 
-            # Pass indices instead of data chunks (worker extracts from broadcast data)
+            # Extract correlation plane chunks for this worker
+            start_data = start_idx * plane_size
+            end_data = end_idx * plane_size
+
+            # Build sigma chunk dict for this worker
+            sigma_chunk = {}
+            for key in ['sig_AB_x', 'sig_AB_y', 'sig_AB_xy', 'sig_A_x', 'sig_A_y', 'sig_A_xy']:
+                if sigma_dict[key] is not None:
+                    sigma_chunk[key] = sigma_dict[key][start_idx:end_idx].copy()
+                else:
+                    sigma_chunk[key] = None
+
+            # Bundle all data for this worker into a single dict
+            # .copy() ensures we don't hold references to the large source arrays
+            chunk_dict = {
+                'AA': R_AA_ensemble[start_data:end_data].copy(),
+                'BB': R_BB_ensemble[start_data:end_data].copy(),
+                'AB': R_AB_ensemble[start_data:end_data].copy(),
+                'mask': mask_flat[start_idx:end_idx].copy(),
+                'sigma': sigma_chunk,
+            }
+
+            # Scatter to specific worker - returns a future, not data
+            scattered = client.scatter(chunk_dict, workers=[worker])
+            scattered_chunks.append((scattered, worker))
+
+        # Release large arrays - data now lives on workers
+        # Only delete if plane saving is not enabled (planes are saved later)
+        if not (hasattr(self.config, 'ensemble_store_planes') and self.config.ensemble_store_planes):
+            del R_AA_ensemble, R_BB_ensemble, R_AB_ensemble
+            gc.collect()
+
+        logging.debug(
+            f"Pass {pass_idx + 1}: Scattered {len(scattered_chunks)} chunks to workers"
+        )
+
+        # Phase 2: Submit tasks with futures (tiny task graph)
+        futures = []
+        for scattered, worker in scattered_chunks:
             fut = client.submit(
-                _fit_windows_batch_optimized,
-                scattered_AA,      # Broadcast data (no copy per worker)
-                scattered_BB,
-                scattered_AB,
-                scattered_sigma_x,
-                scattered_sigma_y,
-                scattered_mask,
-                start_idx,         # Indices instead of data
-                end_idx,
-                corr_size, self.config, pass_idx, scattered_cache,
+                _fit_windows_batch_from_scattered,
+                scattered,  # Future reference (~100 bytes), not data (~1 MB)
+                corr_size,
+                self.config,
+                pass_idx,
+                scattered_cache,
                 workers=[worker],
                 pure=False,
             )
@@ -432,6 +464,7 @@ class SinglePassAccumulator:
 
         # Gather results
         results = client.gather(futures)
+
         gauss_flat = np.concatenate([r[0] for r in results])
         status_flat = np.concatenate([r[1] for r in results])
         initial_guess_flat = np.concatenate([r[2] for r in results])
@@ -547,32 +580,135 @@ class SinglePassAccumulator:
         VV_stress = sig_AB_y
         UV_stress = sig_AB_xy
 
-        # NaN reasons from fitting status
+        # =========================================================
+        # STEP 7a: Apply Vector Mask FIRST (before outlier detection)
+        # =========================================================
+        # This matches instantaneous behavior: masked regions are set to zero
+        # and excluded from outlier detection
         nan_reason = statuses.astype(np.int32)
-        mask = None
+        vector_mask = None
         if self.vector_masks and pass_idx < len(self.vector_masks):
-            mask = self.vector_masks[pass_idx]
+            vector_mask = self.vector_masks[pass_idx]
 
             # Set all fitted values to ZERO for masked windows
-            # This allows zeros to propagate naturally to next pass without infilling
-            ux_mat[mask] = 0.0
-            uy_mat[mask] = 0.0
-            UU_stress[mask] = 0.0
-            VV_stress[mask] = 0.0
-            UV_stress[mask] = 0.0
-            peakheight[mask] = 0.0
-            sig_A_x[mask] = 0.0
-            sig_A_y[mask] = 0.0
-            sig_A_xy[mask] = 0.0
-            sig_AB_x[mask] = 0.0
-            sig_AB_y[mask] = 0.0
-            sig_AB_xy[mask] = 0.0
+            ux_mat[vector_mask] = 0.0
+            uy_mat[vector_mask] = 0.0
+            UU_stress[vector_mask] = 0.0
+            VV_stress[vector_mask] = 0.0
+            UV_stress[vector_mask] = 0.0
+            peakheight[vector_mask] = 0.0
+            sig_A_x[vector_mask] = 0.0
+            sig_A_y[vector_mask] = 0.0
+            sig_A_xy[vector_mask] = 0.0
+            sig_AB_x[vector_mask] = 0.0
+            sig_AB_y[vector_mask] = 0.0
+            sig_AB_xy[vector_mask] = 0.0
 
             # Set nan_reason to indicate masked vectors
-            nan_reason[mask] = -1  # -1 indicates masked vector (not correlated)
-            logging.info(f"Pass {pass_idx + 1}: {mask.sum()} vectors masked (set to zero)")
+            nan_reason[vector_mask] = -1  # -1 = masked vector (not correlated)
+            logging.info(f"Pass {pass_idx + 1}: {vector_mask.sum()} vectors masked (set to zero)")
+
+        # =========================================================
+        # STEP 7b: Outlier Detection and Infilling
+        # =========================================================
+
+        # Determine if this is final pass
+        is_final_pass = (pass_idx == self.config.ensemble_num_passes - 1)
+
+        # --- Combined Outlier Detection ---
+        # Start with fitting failures (statuses != 0 indicates failed fit)
+        # Exclude already-masked vectors from outlier detection
+        outlier_mask = (statuses != 0)
+        if vector_mask is not None:
+            outlier_mask = outlier_mask & ~vector_mask  # Don't double-count masked regions
+
+        # Apply additional outlier detection on valid fits if enabled
+        if self.config.ensemble_outlier_detection_enabled:
+            outlier_methods = self.config.ensemble_outlier_detection_methods
+            if outlier_methods:
+                # Only apply detection to non-failed, non-masked fits
+                valid_for_detection = ~outlier_mask
+                if vector_mask is not None:
+                    valid_for_detection = valid_for_detection & ~vector_mask
+                if valid_for_detection.any():
+                    detected_outliers = apply_outlier_detection(
+                        ux_mat, uy_mat,
+                        outlier_methods,
+                        peak_mag=peakheight
+                    )
+                    # Only mark as outliers within valid detection region
+                    outlier_mask |= (detected_outliers & valid_for_detection)
+
+        logging.info(
+            f"Pass {pass_idx + 1}: Outlier detection found {outlier_mask.sum()} outliers "
+            f"({outlier_mask.sum() / outlier_mask.size * 100:.1f}%)"
+        )
+
+        # --- Propagate outlier mask to ALL fields ---
+        # Set outlier locations to NaN for all fields
+        ux_mat[outlier_mask] = np.nan
+        uy_mat[outlier_mask] = np.nan
+        UU_stress[outlier_mask] = np.nan
+        VV_stress[outlier_mask] = np.nan
+        UV_stress[outlier_mask] = np.nan
+        sig_A_x[outlier_mask] = np.nan
+        sig_A_y[outlier_mask] = np.nan
+        sig_A_xy[outlier_mask] = np.nan
+        sig_AB_x[outlier_mask] = np.nan
+        sig_AB_y[outlier_mask] = np.nan
+        sig_AB_xy[outlier_mask] = np.nan
+        peakheight[outlier_mask] = np.nan
+
+        # Update nan_reason for detected outliers (code 10 = outlier on valid fit)
+        nan_reason[outlier_mask & (statuses == 0)] = 10
+
+        # --- Infilling ---
+        infill_mask = outlier_mask.copy()
+
+        if is_final_pass:
+            # Final pass: use final_pass config (may be disabled)
+            infill_cfg = self.config.ensemble_infilling_final_pass
+            if not infill_cfg.get('enabled', True):
+                logging.info(f"Pass {pass_idx + 1}: Final pass infilling disabled")
+                infill_mask = np.zeros_like(outlier_mask, dtype=bool)  # Skip infilling
         else:
-            logging.debug(f"Pass {pass_idx + 1}: No vector mask applied")
+            # Mid-pass: always infill (required for predictor)
+            infill_cfg = self.config.ensemble_infilling_mid_pass
+
+        if infill_mask.any():
+            logging.info(
+                f"Pass {pass_idx + 1}: Infilling {infill_mask.sum()} vectors using "
+                f"'{infill_cfg.get('method', 'biharmonic')}'"
+            )
+
+            # Infill displacement fields
+            ux_mat, uy_mat = apply_infilling(ux_mat, uy_mat, infill_mask, infill_cfg)
+
+            # Infill stress fields
+            UU_stress, VV_stress = apply_infilling(UU_stress, VV_stress, infill_mask, infill_cfg)
+            # UV_stress needs special handling (paired with zero array)
+            UV_temp = np.zeros_like(UV_stress)
+            UV_stress, _ = apply_infilling(UV_stress, UV_temp, infill_mask, infill_cfg)
+
+            # Infill sigma fields (A autocorrelation)
+            sig_A_x, sig_A_y = apply_infilling(sig_A_x, sig_A_y, infill_mask, infill_cfg)
+            sig_A_xy_temp = np.zeros_like(sig_A_xy)
+            sig_A_xy, _ = apply_infilling(sig_A_xy, sig_A_xy_temp, infill_mask, infill_cfg)
+
+            # Infill sigma fields (AB cross-correlation)
+            sig_AB_x, sig_AB_y = apply_infilling(sig_AB_x, sig_AB_y, infill_mask, infill_cfg)
+            sig_AB_xy_temp = np.zeros_like(sig_AB_xy)
+            sig_AB_xy, _ = apply_infilling(sig_AB_xy, sig_AB_xy_temp, infill_mask, infill_cfg)
+
+            # Infill peakheight (paired with zero array)
+            peakheight_temp = np.zeros_like(peakheight)
+            peakheight, _ = apply_infilling(peakheight, peakheight_temp, infill_mask, infill_cfg)
+
+        logging.info(
+            f"Pass {pass_idx + 1}: Post-processing complete. "
+            f"ux range: [{np.nanmin(ux_mat):.3f}, {np.nanmax(ux_mat):.3f}], "
+            f"uy range: [{np.nanmin(uy_mat):.3f}, {np.nanmax(uy_mat):.3f}]"
+        )
 
         # Extract predictor field components if available
         # Use the SMOOTHED predictor that was actually used for warping
@@ -610,7 +746,7 @@ class SinglePassAccumulator:
             sig_A_x=sig_A_x,
             sig_A_y=sig_A_y,
             sig_A_xy=sig_A_xy,
-            b_mask=mask,
+            b_mask=vector_mask,
             pred_x=pred_x,
             pred_y=pred_y,
             window_size=tuple(win_size),

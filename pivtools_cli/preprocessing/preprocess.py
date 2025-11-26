@@ -131,12 +131,16 @@ def apply_filters_to_batch(
     save_diagnostics: bool = False,
     output_dir: Optional[Path] = None,
     batch_idx: int = 0,
+    pixel_mask: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """
-    Apply ALL filters (temporal and spatial) to a batch.
+    Apply ALL filters (temporal and spatial) to a batch, including pixel masking.
 
     Unified function that handles both batch and spatial filters.
     Used by UnifiedBatchPipeline for consistent filter application.
+
+    The pixel mask is applied FIRST before any other filters to ensure masked
+    regions have zero intensity throughout the entire preprocessing pipeline.
 
     Args:
         batch: Numpy array of shape (N, 2, H, W)
@@ -144,6 +148,8 @@ def apply_filters_to_batch(
         save_diagnostics: If True, save diagnostic images for first batch
         output_dir: Output directory for diagnostic images
         batch_idx: Batch index (diagnostics only saved for batch 0)
+        pixel_mask: Optional boolean mask of shape (H, W) where True indicates
+            regions to mask (set to zero intensity). Applied before other filters.
 
     Returns:
         Filtered batch of same shape
@@ -157,8 +163,19 @@ def apply_filters_to_batch(
     if save_diagnostics and batch_idx == 0:
         filter_stages["00_original"] = batch.copy()
 
+    # Apply pixel mask FIRST (before any other filters)
+    # This ensures masked regions are zeroed throughout preprocessing
+    if pixel_mask is not None:
+        from pivtools_cli.preprocessing.filters import apply_pixel_mask_to_batch
+        batch = apply_pixel_mask_to_batch(batch, pixel_mask)
+        if save_diagnostics and batch_idx == 0:
+            filter_stages["01_pixel_mask"] = batch.copy()
+
     if not filters:
         return batch
+
+    # Offset filter indices if pixel mask was applied
+    filter_offset = 2 if pixel_mask is not None else 1
 
     for filter_idx, filter_spec in enumerate(filters):
         filter_type = filter_spec.get("type")
@@ -177,7 +194,7 @@ def apply_filters_to_batch(
 
         # Save after each filter for diagnostics
         if save_diagnostics and batch_idx == 0:
-            stage_name = f"{filter_idx + 1:02d}_{filter_type}"
+            stage_name = f"{filter_idx + filter_offset:02d}_{filter_type}"
             filter_stages[stage_name] = batch.copy()
 
     # Save diagnostic images if enabled

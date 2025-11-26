@@ -67,7 +67,7 @@ def _get_sigma_from_previous_pass(
     piv_results,
     n_win_x: int,
     n_win_y: int
-) -> tuple[np.ndarray | None, np.ndarray | None]:
+) -> dict:
     """
     Interpolate sigma fields from previous pass for initial guess.
 
@@ -76,9 +76,14 @@ def _get_sigma_from_previous_pass(
     are propagated from the previous pass to provide better initial
     uncertainty estimates.
 
-    For pass 0: Returns None (sigmas estimated from HWHM directly)
-    For pass > 0: Returns interpolated sigma fields from previous pass
-    after NaN infilling with Gaussian kernel smoothing.
+    For pass 0: Returns dict with all None values (sigmas estimated from HWHM)
+    For pass > 0: Returns interpolated sigma fields from previous pass,
+                  including all components for both A (autocorrelation) and
+                  AB (cross-correlation) Gaussians.
+
+    Note: NaN infilling is now handled uniformly in finalize_pass() for all
+    fields (ux, uy, stresses, sigmas). Sigma fields passed here should
+    already be infilled.
 
     Parameters
     ----------
@@ -97,37 +102,39 @@ def _get_sigma_from_previous_pass(
 
     Returns
     -------
-    sigma_x : np.ndarray or None
-        Sigma values in x direction (None for pass 0)
-    sigma_y : np.ndarray or None
-        Sigma values in y direction (None for pass 0)
+    dict with keys:
+        'sig_AB_x', 'sig_AB_y', 'sig_AB_xy': Cross-correlation sigma components
+        'sig_A_x', 'sig_A_y', 'sig_A_xy': Autocorrelation sigma components
+        All values are np.ndarray (flattened) or None for pass 0
     """
     if pass_idx == 0:
         # Pass 0: Sigmas computed from HWHM in _build_initial_guess
-        return None, None
+        return {
+            'sig_AB_x': None, 'sig_AB_y': None, 'sig_AB_xy': None,
+            'sig_A_x': None, 'sig_A_y': None, 'sig_A_xy': None,
+        }
 
-    # Retrieve sigma fields from previous pass
-    old_sigma_x = (piv_results.passes[pass_idx - 1].sig_AB_x.copy()
-                   .astype(np.float32))
-    old_sigma_y = (piv_results.passes[pass_idx - 1].sig_AB_y.copy()
-                   .astype(np.float32))
-
-    # Apply NaN infilling with Gaussian smoothing to suppress outliers
-    sigma_nan_mask = np.isnan(old_sigma_x) | np.isnan(old_sigma_y)
-    if sigma_nan_mask.any():
-        mid_infill_cfg = config.infilling_mid_pass
-        old_sigma_x, old_sigma_y = apply_infilling(
-            old_sigma_x, old_sigma_y, sigma_nan_mask, mid_infill_cfg
-        )
-
-    old_h, old_w = old_sigma_x.shape
+    prev_pass = piv_results.passes[pass_idx - 1]
+    old_h, old_w = prev_pass.sig_AB_x.shape
     new_h, new_w = n_win_y, n_win_x
 
-    # Interpolate to current grid using cubic interpolation
+    # Collect all sigma fields from previous pass
+    sigma_fields = {
+        'sig_AB_x': prev_pass.sig_AB_x.copy().astype(np.float32),
+        'sig_AB_y': prev_pass.sig_AB_y.copy().astype(np.float32),
+        'sig_AB_xy': prev_pass.sig_AB_xy.copy().astype(np.float32),
+        'sig_A_x': prev_pass.sig_A_x.copy().astype(np.float32),
+        'sig_A_y': prev_pass.sig_A_y.copy().astype(np.float32),
+        'sig_A_xy': prev_pass.sig_A_xy.copy().astype(np.float32),
+    }
+
+    result = {}
+
+    # Interpolate each field to current grid
     if (old_h, old_w) == (new_h, new_w):
         # Same grid size - no interpolation needed
-        sigma_x = old_sigma_x.ravel(order="C")
-        sigma_y = old_sigma_y.ravel(order="C")
+        for key, field in sigma_fields.items():
+            result[key] = field.ravel(order="C")
     else:
         # Different grid size - use cubic interpolation for smooth upsampling
         map_y, map_x = np.meshgrid(
@@ -135,15 +142,12 @@ def _get_sigma_from_previous_pass(
             np.linspace(0, old_w - 1, new_w).astype(np.float32),
             indexing="ij"
         )
-        sigma_x = cv2.remap(
-            old_sigma_x, map_x, map_y, cv2.INTER_CUBIC
-        ).ravel(order="C")
-        sigma_y = cv2.remap(
-            old_sigma_y, map_x, map_y, cv2.INTER_CUBIC
-        ).ravel(order="C")
+        for key, field in sigma_fields.items():
+            result[key] = cv2.remap(
+                field, map_x, map_y, cv2.INTER_CUBIC
+            ).ravel(order="C")
 
-    # No artificial min/max constraints - use interpolated values as-is
-    return sigma_x, sigma_y
+    return result
 
 
 def _validate_fitted_params(
@@ -228,27 +232,84 @@ def _validate_fitted_params(
     return True, 0
 
 
-def _fit_windows_batch_optimized(
-    scattered_AA, scattered_BB, scattered_AB,
-    scattered_sigma_x, scattered_sigma_y, scattered_mask,
-    start_idx, end_idx,
-    win_size, config, pass_idx, scattered_cache, outdir=None
+def _fit_windows_batch_from_scattered(
+    scattered_chunk: dict,
+    win_size: tuple,
+    config,
+    pass_idx: int,
+    scattered_cache: dict,
+    outdir=None
 ):
     """
-    Optimized Gaussian fitting with broadcast data and pre-allocated arrays.
+    Wrapper that unpacks a scattered chunk dict and calls the optimized fitter.
 
-    Receives broadcast arrays and extracts local chunk to minimize serialization.
+    This function allows correlation plane data to be pre-scattered to workers
+    before task submission, avoiding large task graph serialization. When chunks
+    are passed directly to client.submit(), they get embedded in the task graph.
+    By scattering first and passing futures, only small references are in the graph.
 
     Parameters
     ----------
-    scattered_AA, scattered_BB, scattered_AB : np.ndarray
-        Broadcast correlation planes (full arrays)
-    scattered_sigma_x, scattered_sigma_y : np.ndarray or None
-        Broadcast sigma values (full arrays, or None for pass 0)
-    scattered_mask : np.ndarray
-        Broadcast mask array (full array)
-    start_idx, end_idx : int
-        Window indices for this worker
+    scattered_chunk : dict
+        Dictionary containing pre-scattered correlation plane chunks:
+        - 'AA': Auto-correlation A chunk (flattened)
+        - 'BB': Auto-correlation B chunk (flattened)
+        - 'AB': Cross-correlation chunk (flattened)
+        - 'mask': Boolean mask chunk for this worker's windows
+        - 'sigma': Dict of sigma values for initial guesses
+    win_size : tuple
+        (height, width) of correlation window
+    config : Config
+        Configuration object
+    pass_idx : int
+        Current pass index
+    scattered_cache : dict
+        Scattered correlator cache
+    outdir : Optional[Path]
+        Output directory for debug info
+
+    Returns
+    -------
+    tuple
+        (results, statuses, initial_guesses) from _fit_windows_batch_optimized
+    """
+    return _fit_windows_batch_optimized(
+        scattered_chunk['AA'],
+        scattered_chunk['BB'],
+        scattered_chunk['AB'],
+        scattered_chunk['sigma'],
+        scattered_chunk['mask'],
+        win_size, config, pass_idx, scattered_cache, outdir
+    )
+
+
+def _fit_windows_batch_optimized(
+    AA_chunk, BB_chunk, AB_chunk,
+    sigma_chunk, mask_chunk,
+    win_size, config, pass_idx, scattered_cache, outdir=None
+):
+    """
+    Optimized Gaussian fitting with pre-chunked correlation planes.
+
+    All data is pre-chunked per-worker before submission - no extraction needed.
+    Uses sparse allocation: only allocates arrays for non-masked windows.
+
+    At high resolution (4K+), correlation planes can reach GB in size.
+    Pre-chunking avoids broadcasting full planes to all workers, reducing
+    per-worker memory by ~87% with 8 workers.
+
+    Parameters
+    ----------
+    AA_chunk, BB_chunk, AB_chunk : np.ndarray
+        Pre-chunked correlation planes for this worker's windows only.
+        Shape: (n_worker_windows * corr_h * corr_w,) flattened
+    sigma_chunk : dict
+        Per-worker sigma values with keys:
+        'sig_AB_x', 'sig_AB_y', 'sig_AB_xy': Cross-correlation sigmas
+        'sig_A_x', 'sig_A_y', 'sig_A_xy': Autocorrelation sigmas
+        All values are np.ndarray (already chunked) or None for pass 0
+    mask_chunk : np.ndarray
+        Per-worker mask array (already chunked for this worker)
     win_size : tuple
         (height, width) of correlation window
     config : Config
@@ -263,60 +324,60 @@ def _fit_windows_batch_optimized(
     Returns
     -------
     results : np.ndarray
-        Fitted parameters for each window
+        Fitted parameters for each window (shape: num_windows, 13)
     statuses : np.ndarray
-        Fitting status codes
+        Fitting status codes (shape: num_windows,)
     initial_guesses : np.ndarray
-        Initial guesses used for fitting
+        Initial guesses used for fitting (shape: num_windows, 13)
     """
     marquadt_lib = _load_marquadt_lib()
 
-    # Extract local chunk from broadcast data (no network transfer)
-    plane_size = win_size[0] * win_size[1]
-    start_data = start_idx * plane_size
-    end_data = end_idx * plane_size
-
-    AA_chunk = scattered_AA[start_data:end_data]
-    BB_chunk = scattered_BB[start_data:end_data]
-    AB_chunk = scattered_AB[start_data:end_data]
-
-    mask_chunk = scattered_mask[start_idx:end_idx]
-    sigma_x_chunk = scattered_sigma_x[start_idx:end_idx] if scattered_sigma_x is not None else None
-    sigma_y_chunk = scattered_sigma_y[start_idx:end_idx] if scattered_sigma_y is not None else None
-
-    num_windows = end_idx - start_idx
+    # All data is pre-chunked - no extraction needed
+    # num_windows derived from mask_chunk length
+    num_windows = len(mask_chunk)
     X1, X2, central_index, x_guess, y_guess = _get_pass_grid(pass_idx, config)
 
-    # Pre-allocate output arrays (avoid per-window allocation)
-    results = np.zeros((num_windows, 13), dtype=np.float64)
-    statuses = np.zeros(num_windows, dtype=np.int32)
-    initial_guesses = np.zeros((num_windows, 13), dtype=np.float64)
+    # SPARSE ALLOCATION: Only allocate for non-masked windows
+    valid_indices = np.where(~mask_chunk)[0]
+    n_valid = len(valid_indices)
 
-    # Process windows
-    for idx in range(num_windows):
-        # Skip if masked
-        if mask_chunk[idx]:
-            statuses[idx] = -1  # Status -1 indicates masked/skipped window
-            continue
+    if n_valid == 0:
+        # All windows masked - return immediately with default values
+        results = np.zeros((num_windows, 13), dtype=np.float64)
+        statuses = np.full(num_windows, -1, dtype=np.int32)  # -1 = masked
+        initial_guesses = np.zeros((num_windows, 13), dtype=np.float64)
+        return results, statuses, initial_guesses
 
-        # Extract window
+    # Allocate only for valid (non-masked) windows
+    results_valid = np.zeros((n_valid, 13), dtype=np.float64)
+    statuses_valid = np.zeros(n_valid, dtype=np.int32)
+    initial_guesses_valid = np.zeros((n_valid, 13), dtype=np.float64)
+
+    # Process only valid windows
+    for i, idx in enumerate(valid_indices):
+        # Extract window from correlation planes
         AA_win = _get_window(AA_chunk, idx, win_size)
         BB_win = _get_window(BB_chunk, idx, win_size)
         AB_win = _get_window(AB_chunk, idx, win_size)
 
-        # Get sigma values
-        sigma_x_val = sigma_x_chunk[idx] if sigma_x_chunk is not None else None
-        sigma_y_val = sigma_y_chunk[idx] if sigma_y_chunk is not None else None
+        # Get sigma values for this window (all 6 components for pass > 0)
+        # sigma_chunk values are already chunked, so idx is relative to chunk
+        sigma_vals = {}
+        for key in ['sig_AB_x', 'sig_AB_y', 'sig_AB_xy', 'sig_A_x', 'sig_A_y', 'sig_A_xy']:
+            if sigma_chunk[key] is not None:
+                sigma_vals[key] = sigma_chunk[key][idx]
+            else:
+                sigma_vals[key] = None
 
-        # Build initial guess
+        # Build initial guess with all sigma components
         initial_guess, real_corr = _build_initial_guess(
             idx, pass_idx, AA_win, BB_win, AB_win, central_index,
-            x_guess, y_guess, sigma_x_val, sigma_y_val,
+            x_guess, y_guess, sigma_vals,
             win_size, config
         )
 
         # Call C library (unavoidable per-window call)
-        out_params = results[idx]
+        out_params = results_valid[i]
         out_status = np.zeros(1, dtype=np.int32)
 
         marquadt_lib.fit_stacked_gaussian_export(
@@ -329,11 +390,11 @@ def _fit_windows_batch_optimized(
             out_status.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
         )
 
-        statuses[idx] = out_status[0]
-        initial_guesses[idx] = initial_guess
+        statuses_valid[i] = out_status[0]
+        initial_guesses_valid[i] = initial_guess
 
         # Validate if converged
-        if statuses[idx] == 0:
+        if statuses_valid[i] == 0:
             is_valid, nan_reason_code = _validate_fitted_params(
                 out_params, win_size, pass_idx,
                 config.ensemble_type[pass_idx],
@@ -342,7 +403,16 @@ def _fit_windows_batch_optimized(
                 float(BB_win[central_index])
             )
             if not is_valid:
-                statuses[idx] = nan_reason_code
+                statuses_valid[i] = nan_reason_code
+
+    # Expand back to full size for return
+    results = np.zeros((num_windows, 13), dtype=np.float64)
+    statuses = np.full(num_windows, -1, dtype=np.int32)  # -1 = masked default
+    initial_guesses = np.zeros((num_windows, 13), dtype=np.float64)
+
+    results[valid_indices] = results_valid
+    statuses[valid_indices] = statuses_valid
+    initial_guesses[valid_indices] = initial_guesses_valid
 
     return results, statuses, initial_guesses
 
@@ -464,7 +534,7 @@ def _estimate_sigma_from_plane(
 
 def _build_initial_guess(
     idx, pass_idx, AA_win, BB_win, AB_win, central_index,
-    x_guess, y_guess, sigma_x, sigma_y, win_size, config
+    x_guess, y_guess, sigma_vals, win_size, config
 ):
     """
     Build initial guess for Gaussian fitting.
@@ -475,8 +545,9 @@ def _build_initial_guess(
     - Amplitude: Peak values at those locations
 
     Sigma guesses come from:
-    - Pass 0: Computed as HWHM_cross - HWHM_auto
-    - Pass > 0: Interpolated from previous pass (after infilling)
+    - Pass 0: Computed from HWHM of correlation planes (all cross-terms = 0)
+    - Pass > 0: Interpolated from previous pass (after outlier detection and infilling)
+                All 6 components (sig_A_x/y/xy, sig_AB_x/y/xy) are used.
 
     Parameters
     ----------
@@ -496,10 +567,10 @@ def _build_initial_guess(
         X coordinate for center A position
     y_guess : float
         Y coordinate for center A position
-    sigma_x : float or None
-        Sigma in x direction (None for pass 0, interpolated value for pass > 0)
-    sigma_y : float or None
-        Sigma in y direction (None for pass 0, interpolated value for pass > 0)
+    sigma_vals : dict
+        Dictionary with keys: 'sig_AB_x', 'sig_AB_y', 'sig_AB_xy',
+                             'sig_A_x', 'sig_A_y', 'sig_A_xy'
+        All values are float or None (None for pass 0)
     win_size : tuple
         (height, width) of correlation window
     config : Config
@@ -517,14 +588,23 @@ def _build_initial_guess(
     max_idx = np.argmax(AB_win)
     guess_y_AB, guess_x_AB = np.unravel_index(max_idx, win_size, order="C")
 
-    # Sigma A: Always estimated from AA autocorrelation HWHM
-    sigma_A_x, sigma_A_y, hwhm_A_x, hwhm_A_y = _estimate_sigma_from_plane(
-        AA_win, central_index, win_size, central_index
+    # Check if we have sigma values from previous pass
+    has_prev_sigmas = (
+        sigma_vals['sig_AB_x'] is not None and
+        sigma_vals['sig_AB_y'] is not None
     )
 
-    # Sigma AB estimation
-    if pass_idx == 0 or sigma_x is None or sigma_y is None:
-        # Pass 0: Compute as HWHM_cross - HWHM_auto
+    if pass_idx == 0 or not has_prev_sigmas:
+        # Pass 0: Estimate sigmas from HWHM of correlation planes
+
+        # Sigma A: from AA autocorrelation HWHM
+        sigma_A_x, sigma_A_y, hwhm_A_x, hwhm_A_y = _estimate_sigma_from_plane(
+            AA_win, central_index, win_size, central_index
+        )
+        # No cross-term for pass 0 (assume axis-aligned Gaussian)
+        sigma_A_xy = 0.0
+
+        # Sigma AB: Compute as HWHM_cross - HWHM_auto
         # This removes the contribution of particle image size
         _, _, hwhm_AB_x, hwhm_AB_y = _estimate_sigma_from_plane(
             AB_win, max_idx, win_size, central_index, min_sigma=0.5
@@ -535,19 +615,30 @@ def _build_initial_guess(
         # Convert to sigma
         sigma_AB_x = hwhm_diff_x / np.sqrt(2 * np.log(2))
         sigma_AB_y = hwhm_diff_y / np.sqrt(2 * np.log(2))
+        # No cross-term for pass 0 (assume axis-aligned Gaussian)
+        sigma_AB_xy = 0.0
     else:
         # Pass > 0: Use interpolated values from previous pass
-        # No artificial constraints - trust the interpolated values
-        sigma_AB_x = float(sigma_x)
-        sigma_AB_y = float(sigma_y)
+        # All 6 components are interpolated after outlier detection and infilling
+
+        # Sigma A (autocorrelation) from previous pass
+        sigma_A_x = float(sigma_vals['sig_A_x']) if sigma_vals['sig_A_x'] is not None else 1.0
+        sigma_A_y = float(sigma_vals['sig_A_y']) if sigma_vals['sig_A_y'] is not None else 1.0
+        sigma_A_xy = float(sigma_vals['sig_A_xy']) if sigma_vals['sig_A_xy'] is not None else 0.0
+
+        # Sigma AB (cross-correlation) from previous pass
+        sigma_AB_x = float(sigma_vals['sig_AB_x'])
+        sigma_AB_y = float(sigma_vals['sig_AB_y'])
+        sigma_AB_xy = float(sigma_vals['sig_AB_xy']) if sigma_vals['sig_AB_xy'] is not None else 0.0
 
     initial_guess = np.array([
         float(AA_win[central_index]),    # Amp A at center
         float(BB_win[central_index]),    # Amp B at center
         float(AB_win[max_idx]),          # Amp AB at peak (not center!)
-        sigma_A_x, sigma_A_y, 0.0,       # Sigma A (adaptive from AA plane)
-        sigma_AB_x, sigma_AB_y, 0.0,     # Sigma AB (HWHM diff for pass 0,
-                                         # from previous pass for pass > 0)
+        sigma_A_x, sigma_A_y, sigma_A_xy,     # Sigma A (from HWHM for pass 0,
+                                              # interpolated from previous pass for pass > 0)
+        sigma_AB_x, sigma_AB_y, sigma_AB_xy,  # Sigma AB (HWHM diff for pass 0,
+                                              # interpolated from previous pass for pass > 0)
         x_guess, y_guess,                # Center A (x, y)
         float(guess_x_AB + 1),           # Center AB x (1-based indexing)
         float(guess_y_AB + 1),           # Center AB y (1-based indexing)

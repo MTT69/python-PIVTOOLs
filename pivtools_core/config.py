@@ -1154,6 +1154,34 @@ masking:
             "parameters": {"ksize": 3}
         })
 
+    # --- Ensemble-specific outlier detection and infilling ---
+    @property
+    def ensemble_outlier_detection_enabled(self) -> bool:
+        """Return True if ensemble outlier detection is enabled."""
+        return self.data.get("ensemble_outlier_detection", {}).get("enabled", True)
+
+    @property
+    def ensemble_outlier_detection_methods(self) -> list:
+        """Return list of ensemble outlier detection methods with their parameters."""
+        return self.data.get("ensemble_outlier_detection", {}).get("methods", [])
+
+    @property
+    def ensemble_infilling_mid_pass(self) -> dict:
+        """Return ensemble mid-pass infilling configuration."""
+        return self.data.get("ensemble_infilling", {}).get("mid_pass", {
+            "method": "biharmonic",
+            "parameters": {"ksize": 3}
+        })
+
+    @property
+    def ensemble_infilling_final_pass(self) -> dict:
+        """Return ensemble final-pass infilling configuration."""
+        return self.data.get("ensemble_infilling", {}).get("final_pass", {
+            "enabled": True,
+            "method": "biharmonic",
+            "parameters": {"ksize": 3}
+        })
+
     @property
     def secondary_peak(self):
         """Return True if secondary peak detection is enabled."""

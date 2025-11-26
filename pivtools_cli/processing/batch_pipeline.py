@@ -8,6 +8,7 @@ Supports:
 - Single-pass ensemble correlation
 """
 
+import gc
 import logging
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -87,6 +88,7 @@ class UnifiedBatchPipeline:
         images: da.Array,
         output_path: Path,
         vector_masks: Optional[List[np.ndarray]] = None,
+        pixel_mask: Optional[np.ndarray] = None,
     ):
         """
         Unified entry point for PIV processing.
@@ -94,11 +96,16 @@ class UnifiedBatchPipeline:
         Args:
             images: Dask array of shape (N, 2, H, W)
             output_path: Directory for saving results
-            vector_masks: Pre-computed masks for each pass
+            vector_masks: Pre-computed masks for each pass (for vector validation)
+            pixel_mask: Boolean mask of shape (H, W) where True = masked regions.
+                Applied during preprocessing to zero pixel intensities.
 
         Returns:
             List of saved file paths (instantaneous) or single path (ensemble)
         """
+        # Store pixel mask for use in filtering
+        self.pixel_mask = pixel_mask
+
         if self.mode == "ensemble":
             return self._process_ensemble(images, output_path, vector_masks)
         else:
@@ -150,8 +157,12 @@ class UnifiedBatchPipeline:
             logging.info(f"RESUME MODE: Starting from pass {resume_from_pass} (skipping passes 1-{resume_from_pass - 1})")
             logging.info(f"Loading predictor field from: {resume_path}")
 
-            # Load the existing ensemble result
-            existing_result = self._load_ensemble_result_from_file(resume_path)
+            # Load the existing ensemble result (predictor-only mode for memory efficiency)
+            # This loads only ux/uy and sig_AB_x/sig_AB_y, skipping stress/peakheight
+            # The full data is preserved in ensemble_result.mat and merged during save
+            existing_result = self._load_ensemble_result_from_file(
+                resume_path, predictor_only=True
+            )
 
             # Validate it has enough passes
             if len(existing_result.passes) < start_pass_idx:
@@ -199,6 +210,7 @@ class UnifiedBatchPipeline:
                 self.config,
                 batch_idx,
                 output_path,  # Pass output_path for diagnostics
+                self.scattered_pixel_mask,  # Pass pixel mask for preprocessing
                 workers=[worker],
                 priority=10,
                 pure=False,
@@ -243,6 +255,7 @@ class UnifiedBatchPipeline:
                         self.config,
                         next_batch_idx,
                         output_path,  # Pass output_path for diagnostics
+                        self.scattered_pixel_mask,  # Pass pixel mask for preprocessing
                         workers=[next_worker],
                         priority=10,
                         pure=False,
@@ -253,6 +266,9 @@ class UnifiedBatchPipeline:
                 for result in results:
                     accumulator.accumulate_batch(result, pass_idx=pass_idx)
 
+                # Clean up futures (gather already retrieves results, just delete references)
+                del corr_futures
+
                 logging.info(f"[Pass {pass_idx+1}, Batch {batch_idx+1}/{num_batches}] Correlation complete")
 
                 batch_idx += 1
@@ -262,8 +278,18 @@ class UnifiedBatchPipeline:
             pass_result = accumulator.finalize_pass(pass_idx, self.client, scattered_cache, predictor_field, output_path)
 
             # PROGRESSIVE SAVING: Append pass to ensemble_result.mat and clear memory
-            self._append_ensemble_pass_progressive(pass_result, pass_idx, output_path)
+            # Pass accumulator to avoid expensive file reload (uses in-memory passes)
+            self._append_ensemble_pass_progressive(
+                pass_result, pass_idx, output_path, accumulator=accumulator
+            )
             accumulator.clear_pass_data(pass_idx)
+
+            # MEMORY CLEANUP: Clear scattered predictor from previous pass
+            if scattered_predictor is not None:
+                del scattered_predictor
+                scattered_predictor = None
+                gc.collect()
+                logging.debug(f"[Pass {pass_idx + 1}] Cleaned up scattered predictor")
 
             # Extract predictor field for next pass
             if pass_idx < num_passes - 1:
@@ -336,13 +362,18 @@ class UnifiedBatchPipeline:
         return predictor_field
 
     def _append_ensemble_pass_progressive(
-        self, pass_result, pass_idx: int, output_path: Path
+        self, pass_result, pass_idx: int, output_path: Path, accumulator=None
     ):
         """
         Append a single ensemble pass to ensemble_result.mat.
 
-        For pass 1: Creates new ensemble_result.mat with just pass 1
-        For pass 2+: Loads existing ensemble_result.mat, appends pass, saves back
+        For fresh runs (no resume):
+            - Pass 1: Creates new ensemble_result.mat with just pass 1
+            - Pass 2+: Uses passes from accumulator (no file reload needed)
+
+        For resume runs:
+            - Load existing file fully (to preserve stress/peakheight from prior passes)
+            - Replace/append only the newly computed passes
 
         Parameters
         ----------
@@ -352,27 +383,77 @@ class UnifiedBatchPipeline:
             Pass index
         output_path : Path
             Output directory
+        accumulator : SinglePassAccumulator, optional
+            Accumulator containing previous pass results. If provided, avoids
+            expensive file reload by using in-memory passes.
         """
         from pivtools_cli.piv.piv_result import PIVEnsembleResult
-        from scipy.io import loadmat
 
         ensemble_filepath = output_path / "ensemble_result.mat"
+        resume_from_pass = self.config.ensemble_resume_from_pass
+        start_pass_idx = resume_from_pass - 1 if resume_from_pass > 0 else 0
 
-        if pass_idx == 0:
-            # First pass: Create new ensemble result
+        # Check if we're in resume mode and this is the first pass being saved
+        is_resume_mode = resume_from_pass > 0
+        is_first_resumed_pass = is_resume_mode and pass_idx == start_pass_idx
+
+        if is_first_resumed_pass and ensemble_filepath.exists():
+            # RESUME MODE: Load existing file fully to preserve all fields from prior passes
+            logging.info(
+                f"Pass {pass_idx + 1}: Resume mode - loading existing file to preserve prior passes"
+            )
+            existing_result = self._load_ensemble_result_from_file(
+                ensemble_filepath, predictor_only=False
+            )
+
+            # Build new ensemble result with existing passes + new pass
             ensemble_result = PIVEnsembleResult()
+
+            # Add existing passes up to (but not including) the resume point
+            for i in range(start_pass_idx):
+                if i < len(existing_result.passes):
+                    ensemble_result.add_pass(existing_result.passes[i])
+
+            # Add the newly computed pass
             ensemble_result.add_pass(pass_result)
-            logging.info(f"Pass {pass_idx + 1}: Creating ensemble_result.mat with pass 1")
+
+            logging.info(
+                f"Pass {pass_idx + 1}: Merged {start_pass_idx} existing passes + 1 new pass"
+            )
+        elif is_resume_mode and pass_idx > start_pass_idx:
+            # Subsequent passes in resume mode - load from file and append
+            logging.info(
+                f"Pass {pass_idx + 1}: Resume mode - appending to existing file"
+            )
+            existing_result = self._load_ensemble_result_from_file(
+                ensemble_filepath, predictor_only=False
+            )
+
+            ensemble_result = PIVEnsembleResult()
+            for prev_pass in existing_result.passes:
+                ensemble_result.add_pass(prev_pass)
+            ensemble_result.add_pass(pass_result)
+
+            logging.info(
+                f"Pass {pass_idx + 1}: Appended to {len(existing_result.passes)} existing passes"
+            )
         else:
-            # Subsequent passes: Load existing, append, save back
-            logging.info(f"Pass {pass_idx + 1}: Loading existing ensemble_result.mat to append pass {pass_idx + 1}")
+            # FRESH RUN: Use accumulator's in-memory passes (no file I/O needed)
+            ensemble_result = PIVEnsembleResult()
 
-            # Load existing ensemble result
-            ensemble_result = self._load_ensemble_result_from_file(ensemble_filepath)
-
-            # Append new pass
-            ensemble_result.add_pass(pass_result)
-            logging.info(f"Pass {pass_idx + 1}: Appended to ensemble result (now has {len(ensemble_result.passes)} passes)")
+            if accumulator is not None and hasattr(accumulator, 'passes_results'):
+                # Use passes from accumulator (already in memory)
+                # passes_results already contains the current pass after finalize_pass
+                for prev_pass in accumulator.passes_results:
+                    ensemble_result.add_pass(prev_pass)
+                logging.info(
+                    f"Pass {pass_idx + 1}: Building ensemble from {len(ensemble_result.passes)} "
+                    f"in-memory passes (no file reload)"
+                )
+            else:
+                # Fallback: single pass only
+                ensemble_result.add_pass(pass_result)
+                logging.info(f"Pass {pass_idx + 1}: Creating ensemble_result.mat with pass 1")
 
         # Save back to ensemble_result.mat
         save_ensemble_result_distributed(
@@ -384,7 +465,9 @@ class UnifiedBatchPipeline:
 
         logging.info(f"Pass {pass_idx + 1}: Saved to {ensemble_filepath} (progressive saving)")
 
-    def _load_ensemble_result_from_file(self, filepath: Path):
+    def _load_ensemble_result_from_file(
+        self, filepath: Path, predictor_only: bool = False
+    ):
         """
         Load ensemble result from .mat file.
 
@@ -392,11 +475,14 @@ class UnifiedBatchPipeline:
         ----------
         filepath : Path
             Path to ensemble_result.mat file
+        predictor_only : bool
+            If True, only load ux/uy fields (for predictor extraction).
+            This significantly reduces memory usage and I/O time.
 
         Returns
         -------
         PIVEnsembleResult
-            Loaded ensemble result with all passes
+            Loaded ensemble result with all passes (minimal data if predictor_only)
         """
         from pivtools_cli.piv.piv_result import PIVEnsembleResult, PIVEnsemblePassResult
         from scipy.io import loadmat
@@ -432,51 +518,87 @@ class UnifiedBatchPipeline:
                     return val
                 return default if default is not None else np.array([])
 
-            # Get nan_reason and convert to int32 if it's not empty
-            nan_reason_raw = get_field('nan_reason', None)
-            if nan_reason_raw is not None and isinstance(nan_reason_raw, np.ndarray) and nan_reason_raw.size > 0:
-                nan_reason = nan_reason_raw.astype(np.int32)
+            if predictor_only:
+                # Minimal load: only fields needed for predictor and sigma
+                # - ux/uy: for predictor field extraction
+                # - all sig_* fields: for sigma interpolation in resume
+                # Skip stress, peakheight to reduce memory
+                pass_result = PIVEnsemblePassResult(
+                    ux_mat=get_field('ux'),
+                    uy_mat=get_field('uy'),
+                    UU_stress=None,
+                    VV_stress=None,
+                    UV_stress=None,
+                    peakheight=None,
+                    nan_reason=np.array([], dtype=np.int32),
+                    sig_AB_x=get_field('sig_AB_x'),  # Needed for sigma interp
+                    sig_AB_y=get_field('sig_AB_y'),  # Needed for sigma interp
+                    sig_AB_xy=get_field('sig_AB_xy'),  # Needed for sigma interp
+                    sig_A_x=get_field('sig_A_x'),  # Needed for sigma interp
+                    sig_A_y=get_field('sig_A_y'),  # Needed for sigma interp
+                    sig_A_xy=get_field('sig_A_xy'),  # Needed for sigma interp
+                    b_mask=None,
+                    pred_x=None,
+                    pred_y=None,
+                    window_size=(0, 0),
+                    win_ctrs_x=None,
+                    win_ctrs_y=None,
+                )
             else:
-                nan_reason = np.array([], dtype=np.int32)
+                # Full load: all fields
+                # Get nan_reason and convert to int32 if it's not empty
+                nan_reason_raw = get_field('nan_reason', None)
+                if nan_reason_raw is not None and isinstance(
+                    nan_reason_raw, np.ndarray
+                ) and nan_reason_raw.size > 0:
+                    nan_reason = nan_reason_raw.astype(np.int32)
+                else:
+                    nan_reason = np.array([], dtype=np.int32)
 
-            # Get b_mask and convert to bool if it's not empty
-            b_mask_raw = get_field('b_mask', None)
-            if b_mask_raw is not None and isinstance(b_mask_raw, np.ndarray) and b_mask_raw.size > 0:
-                b_mask = b_mask_raw.astype(bool)
-            else:
-                b_mask = None
+                # Get b_mask and convert to bool if it's not empty
+                b_mask_raw = get_field('b_mask', None)
+                if b_mask_raw is not None and isinstance(
+                    b_mask_raw, np.ndarray
+                ) and b_mask_raw.size > 0:
+                    b_mask = b_mask_raw.astype(bool)
+                else:
+                    b_mask = None
 
-            # Get window_size
-            window_size_raw = get_field('window_size', np.array([0, 0]))
-            if isinstance(window_size_raw, np.ndarray) and window_size_raw.size >= 2:
-                window_size = tuple(window_size_raw.ravel()[:2])
-            else:
-                window_size = (0, 0)
+                # Get window_size
+                window_size_raw = get_field('window_size', np.array([0, 0]))
+                if isinstance(window_size_raw, np.ndarray) and window_size_raw.size >= 2:
+                    window_size = tuple(window_size_raw.ravel()[:2])
+                else:
+                    window_size = (0, 0)
 
-            pass_result = PIVEnsemblePassResult(
-                ux_mat=get_field('ux'),
-                uy_mat=get_field('uy'),
-                UU_stress=get_field('UU_stress'),
-                VV_stress=get_field('VV_stress'),
-                UV_stress=get_field('UV_stress'),
-                peakheight=get_field('peakheight'),
-                nan_reason=nan_reason,
-                sig_AB_x=get_field('sig_AB_x'),
-                sig_AB_y=get_field('sig_AB_y'),
-                sig_AB_xy=get_field('sig_AB_xy'),
-                sig_A_x=get_field('sig_A_x'),
-                sig_A_y=get_field('sig_A_y'),
-                sig_A_xy=get_field('sig_A_xy'),
-                b_mask=b_mask,
-                pred_x=get_field('pred_x', None),
-                pred_y=get_field('pred_y', None),
-                window_size=window_size,
-                win_ctrs_x=get_field('win_ctrs_x'),
-                win_ctrs_y=get_field('win_ctrs_y'),
-            )
+                pass_result = PIVEnsemblePassResult(
+                    ux_mat=get_field('ux'),
+                    uy_mat=get_field('uy'),
+                    UU_stress=get_field('UU_stress'),
+                    VV_stress=get_field('VV_stress'),
+                    UV_stress=get_field('UV_stress'),
+                    peakheight=get_field('peakheight'),
+                    nan_reason=nan_reason,
+                    sig_AB_x=get_field('sig_AB_x'),
+                    sig_AB_y=get_field('sig_AB_y'),
+                    sig_AB_xy=get_field('sig_AB_xy'),
+                    sig_A_x=get_field('sig_A_x'),
+                    sig_A_y=get_field('sig_A_y'),
+                    sig_A_xy=get_field('sig_A_xy'),
+                    b_mask=b_mask,
+                    pred_x=get_field('pred_x', None),
+                    pred_y=get_field('pred_y', None),
+                    window_size=window_size,
+                    win_ctrs_x=get_field('win_ctrs_x'),
+                    win_ctrs_y=get_field('win_ctrs_y'),
+                )
             ensemble_result.add_pass(pass_result)
 
-        logging.info(f"Loaded ensemble result with {num_passes} passes from {filepath}")
+        mode_str = "predictor-only" if predictor_only else "full"
+        logging.info(
+            f"Loaded ensemble result ({mode_str}) with {num_passes} passes "
+            f"from {filepath}"
+        )
         return ensemble_result
 
     def _process_instantaneous(
@@ -507,6 +629,8 @@ class UnifiedBatchPipeline:
             batch_slice,
             self.config,
             batch_idx,
+            None,  # output_path (not used for instantaneous diagnostics)
+            self.scattered_pixel_mask,  # Pass pixel mask for preprocessing
             workers=[worker],
             priority=10,
             pure=False,
@@ -543,6 +667,8 @@ class UnifiedBatchPipeline:
                     next_batch_slice,
                     self.config,
                     next_batch_idx,
+                    None,  # output_path (not used for instantaneous diagnostics)
+                    self.scattered_pixel_mask,  # Pass pixel mask for preprocessing
                     workers=[next_worker],
                     priority=10,
                     pure=False,
@@ -562,7 +688,7 @@ class UnifiedBatchPipeline:
     def _scatter_immutable_data(
         self, vector_masks: Optional[List[np.ndarray]]
     ) -> Tuple:
-        """Scatter cache and masks once (broadcast to all workers)."""
+        """Scatter cache, masks, and pixel mask once (broadcast to all workers)."""
         # Create and scatter correlator cache
         temp_correlator = make_correlator_backend(
             self.config,
@@ -572,12 +698,22 @@ class UnifiedBatchPipeline:
         scattered_cache = self.client.scatter(correlator_cache, broadcast=True)
         logging.info("Broadcast correlator cache to all workers")
 
-        # Scatter masks if present
+        # Scatter vector masks if present (for correlation validation)
         scattered_masks = None
         if vector_masks:
             scattered_masks = self.client.scatter(vector_masks, broadcast=True)
             mask_size = sum(m.nbytes for m in vector_masks) / 1024
             logging.info(f"Broadcast vector masks ({mask_size:.1f} KB)")
+
+        # Scatter pixel mask if present (for preprocessing)
+        scattered_pixel_mask = None
+        if self.pixel_mask is not None:
+            scattered_pixel_mask = self.client.scatter(self.pixel_mask, broadcast=True)
+            mask_size = self.pixel_mask.nbytes / 1024
+            logging.info(f"Broadcast pixel mask ({mask_size:.1f} KB)")
+
+        # Store for use in filter workers
+        self.scattered_pixel_mask = scattered_pixel_mask
 
         return scattered_cache, scattered_masks
 
@@ -714,12 +850,20 @@ def _filter_batch_worker(
     config: Config,
     batch_idx: int,
     output_path: Optional[Path] = None,
+    pixel_mask: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """
     Apply all filters to batch on filter worker.
 
     Uses multi-threading for CPU-intensive operations (POD SVD, etc.).
     Sets OMP_NUM_THREADS to use all cores on this worker.
+
+    Args:
+        batch_images: Dask array slice for this batch
+        config: Configuration object
+        batch_idx: Batch index (for diagnostics)
+        output_path: Output directory for diagnostic images
+        pixel_mask: Boolean mask (H, W) where True = masked regions to zero
     """
     import os
 
@@ -732,8 +876,7 @@ def _filter_batch_worker(
     with dask.config.set(scheduler='threads', num_workers=worker_cores):
         batch = batch_images.compute()
 
-    # Apply all filters (temporal and spatial)
-    # Pass diagnostic parameters for first batch
+    # Apply all filters (temporal and spatial) including pixel masking
     from pivtools_cli.preprocessing.preprocess import apply_filters_to_batch
 
     save_diagnostics = (
@@ -748,6 +891,7 @@ def _filter_batch_worker(
         save_diagnostics=save_diagnostics,
         output_dir=output_path,
         batch_idx=batch_idx,
+        pixel_mask=pixel_mask,
     )
 
     return batch_filtered

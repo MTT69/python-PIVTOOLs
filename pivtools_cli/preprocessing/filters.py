@@ -367,6 +367,84 @@ def gaussian_filter_dask(images: da.Array, sigma=1.0) -> da.Array:
     return gaussian_filter(images, sigma=(0, 0, sigma, sigma))
 
 
+def pixel_mask_filter(images: da.Array, mask: np.ndarray = None) -> da.Array:
+    """
+    Apply pixel mask to images by setting masked regions to zero intensity.
+
+    This filter should be applied before PIV processing to zero out regions
+    that should not contribute to correlation (e.g., boundaries, obstructions).
+
+    Args:
+        images (da.Array): Dask array of shape (N, 2, H, W).
+        mask (np.ndarray): Boolean mask of shape (H, W) where True indicates
+            regions to mask (set to zero). If None, returns images unchanged.
+
+    Returns:
+        da.Array: Images with masked regions set to zero intensity.
+    """
+    if mask is None:
+        return images
+
+    # Ensure mask is boolean
+    mask = np.asarray(mask, dtype=bool)
+
+    # Apply mask using map_blocks for efficiency
+    def _apply_pixel_mask(block, mask):
+        # block shape: (N, 2, H, W)
+        # mask shape: (H, W)
+        # Set masked pixels to 0
+        result = block.copy()
+        result[:, :, mask] = 0
+        return result
+
+    return images.map_blocks(
+        _apply_pixel_mask,
+        mask=mask,
+        dtype=images.dtype
+    )
+
+
+def apply_pixel_mask_to_batch(batch: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """
+    Apply pixel mask to a numpy batch of images.
+
+    Sets pixel intensity to zero in masked regions. Used by the batch pipeline
+    for both instantaneous and ensemble PIV processing.
+
+    Args:
+        batch (np.ndarray): Image batch of shape (N, 2, H, W).
+        mask (np.ndarray): Boolean mask of shape (H, W) where True indicates
+            regions to mask (set to zero). If None, returns batch unchanged.
+
+    Returns:
+        np.ndarray: Batch with masked regions set to zero intensity.
+    """
+    if mask is None:
+        return batch
+
+    # Ensure mask is boolean
+    mask = np.asarray(mask, dtype=bool)
+
+    # Validate shapes
+    if batch.ndim != 4:
+        logging.error(f"Pixel mask: Expected 4D batch (N, 2, H, W), got {batch.ndim}D")
+        return batch
+
+    _, _, H, W = batch.shape
+    if mask.shape != (H, W):
+        logging.error(f"Pixel mask shape {mask.shape} doesn't match image shape ({H}, {W})")
+        return batch
+
+    # Set masked pixels to 0
+    result = batch.copy()
+    result[:, :, mask] = 0
+
+    masked_pixels = np.sum(mask)
+    logging.debug(f"Applied pixel mask: {masked_pixels} pixels zeroed per frame")
+
+    return result
+
+
 FILTER_MAP = {
     "time": time_filter,
     "pod": pod_filter,

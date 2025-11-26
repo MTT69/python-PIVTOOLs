@@ -317,7 +317,11 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     uy_mat = pk_loc_y[0]
 
                     nan_mask = np.isnan(ux_mat) | np.isnan(uy_mat)
-                    
+
+                    # Include masked regions in nan_mask BEFORE outlier detection
+                    # This ensures outlier detection excludes masked regions
+                    nan_mask |= mask_bool
+
                     # Apply outlier detection if enabled
                     if config.outlier_detection_enabled:
                         outlier_methods = config.outlier_detection_methods
@@ -352,9 +356,6 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     # Select primary peak magnitude
                     primary_peak_mag = np.choose(peak_choice - 1, pk_height)
                     nan_mask |= np.isnan(primary_peak_mag)
-
-                    nan_mask |= mask_bool
-                    nan_mask |= primary_peak_mag < 0.2
 
                     # Q calculation (peak ratio)
                     shifted_pk_height = np.roll(pk_height, shift=-1, axis=0)

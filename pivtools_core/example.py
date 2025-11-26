@@ -280,11 +280,13 @@ def main():
             )
 
             # Process with unified pipeline
+            # Pass both pixel_mask (for preprocessing) and vector_masks (for correlation validation)
             logging.info(f"Starting {mode} PIV processing with unified batch pipeline...")
             result = pipeline.process(
                 images,
                 output_path,
                 vector_masks=vector_masks,
+                pixel_mask=mask,  # Apply pixel mask during preprocessing
             )
 
             # Save coordinates

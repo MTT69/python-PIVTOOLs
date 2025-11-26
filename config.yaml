@@ -58,6 +58,22 @@ infilling:
     method: biharmonic
     parameters:
       ksize: 3
+ensemble_outlier_detection:
+  enabled: true
+  methods:
+  - epsilon: 0.2
+    threshold: 2
+    type: median_2d
+ensemble_infilling:
+  mid_pass:
+    method: biharmonic
+    parameters:
+      ksize: 3
+  final_pass:
+    enabled: true
+    method: biharmonic
+    parameters:
+      ksize: 3
 plots:
   save_extension: .png
   save_pickle: true
@@ -95,9 +111,15 @@ ensemble_piv:
     - 128
   - - 64
     - 64
+  - - 32
+    - 32
+  - - 16
+    - 16
   - - 16
     - 16
   overlap:
+  - 50
+  - 50
   - 50
   - 50
   - 50
@@ -105,10 +127,14 @@ ensemble_piv:
   - std
   - std
   - std
+  - std
+  - std
   runs:
   - 1
   - 2
   - 3
+  - 4
+  - 5
   store_planes: true
   save_diagnostics: true
   sum_window:
