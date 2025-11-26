@@ -186,7 +186,7 @@ def _validate_fitted_params(
         Reason code if invalid (0 if valid)
         1 = solver didn't converge (handled before this)
         2 = AB peak height invalid (not in [0,1])
-        3 = breaks 1/4 displacement rule
+        3 = breaks 1/2 displacement rule
         4 = Gaussian spread too large
         5 = negative sigmas
     """
@@ -197,150 +197,35 @@ def _validate_fitted_params(
     x0_A, y0_A = gauss_params[9:11]
     x0_AB, y0_AB = gauss_params[11:13]
 
-    # Check 1: AB peak height validity (MATLAB line 130-134)
+    # Check 1: AB peak height validity
     if AA_central > 1e-12 and BB_central > 1e-12:
         AB_normalized = amp_AB / np.sqrt(AA_central * BB_central)
         if not np.isreal(AB_normalized) or AB_normalized < 0 or AB_normalized > 1:
             return False, 2
 
-    # Check 2: 1/4 displacement rule (MATLAB lines 136-179)
+    # Check 2: 1/2 displacement rule 
     if runtype == 'single':
         center_x = sum_window[1] / 2.0
         center_y = sum_window[0] / 2.0
-        quarter_x = sum_window[1] / 4.0
-        quarter_y = sum_window[0] / 4.0
+        half_x = sum_window[1] / 2.0
+        half_y = sum_window[0] / 2.0
     else:
         center_x = win_size[1] / 2.0
         center_y = win_size[0] / 2.0
-        quarter_x = win_size[1] / 4.0
-        quarter_y = win_size[0] / 4.0
+        half_x = win_size[1] / 2.0
+        half_y = win_size[0] / 2.0
 
-    # For pass > 0 or single mode, check peak is within central quarter
+    # For pass > 0 or single mode, check peak is within central half
     if pass_idx > 0 or runtype == 'single':
-        if (abs(x0_AB - center_x) > quarter_x or
-            abs(y0_AB - center_y) > quarter_y):
+        if (abs(x0_AB - center_x) > half_x or
+            abs(y0_AB - center_y) > half_y):
             return False, 3
 
-    # Check 3: Negative sigmas (MATLAB line 180-183)
+    # Check 3: Negative sigmas
     if sx_AB < 0 or sy_AB < 0:
         return False, 5
 
     return True, 0
-
-
-def _fit_windows_batch(
-    AA_chunk, BB_chunk, AB_chunk, sigma_x_chunk,
-    sigma_y_chunk, mask_chunk, win_size, config, pass_idx,
-    scattered_cache, outdir=None
-):
-    """
-    Fit Gaussians to correlation windows on a worker.
-
-    Displacement and amplitude guesses are ALWAYS found from peaks in
-    the correlation planes. Sigma values come from previous pass
-    (if pass > 0) or computed from HWHM (if pass 0).
-
-    Parameters
-    ----------
-    AA_chunk : np.ndarray
-        AA autocorrelation chunk
-    BB_chunk : np.ndarray
-        BB autocorrelation chunk
-    AB_chunk : np.ndarray
-        AB cross-correlation chunk
-    sigma_x_chunk : np.ndarray or None
-        Sigma values in x direction (None for pass 0)
-    sigma_y_chunk : np.ndarray or None
-        Sigma values in y direction (None for pass 0)
-    mask_chunk : np.ndarray (bool)
-        Boolean mask indicating which windows to skip (True = masked)
-    win_size : tuple
-        (height, width) of correlation window
-    config : Config
-        Configuration object
-    pass_idx : int
-        Current pass index
-    scattered_cache : dict
-        Scattered correlator cache
-    outdir : Optional[Path]
-        Output directory for debug info
-
-    Returns
-    -------
-    results : np.ndarray
-        Fitted parameters for each window
-    statuses : np.ndarray
-        Fitting status codes
-    initial_guesses : np.ndarray
-        Initial guesses used for fitting
-    """
-    marquadt_lib = _load_marquadt_lib()
-
-    num_windows = len(mask_chunk)
-    X1, X2, central_index, x_guess, y_guess = _get_pass_grid(pass_idx, config)
-
-    results = []
-    statuses = []
-    initial_guesses = []
-
-    for idx in range(num_windows):
-        out_params = np.zeros(13, dtype=np.float64)
-        out_status = np.zeros(1, dtype=np.int32)
-        initial_guess = np.zeros(13, dtype=np.float64)
-
-        # Skip fitting if this window is masked
-        if mask_chunk[idx]:
-            out_status[0] = -1  # Status -1 indicates masked/skipped window
-            results.append(out_params)
-            statuses.append(out_status[0])
-            initial_guesses.append(initial_guess)
-            continue
-
-        AA_win = _get_window(AA_chunk, idx, win_size)
-        BB_win = _get_window(BB_chunk, idx, win_size)
-        AB_win = _get_window(AB_chunk, idx, win_size)
-
-        # Get sigma values for this window (None for pass 0)
-        sigma_x_val = sigma_x_chunk[idx] if sigma_x_chunk is not None else None
-        sigma_y_val = sigma_y_chunk[idx] if sigma_y_chunk is not None else None
-
-        initial_guess, real_corr = _build_initial_guess(
-            idx, pass_idx, AA_win, BB_win, AB_win, central_index,
-            x_guess, y_guess, sigma_x_val, sigma_y_val,
-            win_size, config
-        )
-
-        marquadt_lib.fit_stacked_gaussian_export(
-            ctypes.c_size_t(win_size[0] * win_size[1]),
-            X2.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-            X1.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-            real_corr.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-            initial_guess.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-            out_params.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-            out_status.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
-        )
-
-        # Validate fitted parameters (only if solver converged)
-        if out_status[0] == 0:
-            is_valid, nan_reason_code = _validate_fitted_params(
-                out_params,
-                win_size,
-                pass_idx,
-                config.ensemble_type[pass_idx],
-                tuple(config.ensemble_sum_window),
-                float(AA_win[central_index]),
-                float(BB_win[central_index])
-            )
-
-            # Update status if validation fails
-            if not is_valid:
-                out_status[0] = nan_reason_code  # Override GSL status with validation code
-
-        results.append(out_params)
-        statuses.append(out_status[0])  # Now includes validation failures
-        initial_guesses.append(initial_guess)
-
-    return np.array(results), np.array(statuses), np.array(initial_guesses)
 
 
 def _fit_windows_batch_optimized(

@@ -320,9 +320,7 @@ def _create_ensemble_struct_all_passes(
         ('UU_stress', object),
         ('VV_stress', object),
         ('UV_stress', object),
-        ('peakheights_A', object),
-        ('peakheights_B', object),
-        ('peakheights_AB', object),
+        ('peakheight', object),
         ('nan_reason', object),
         ('sig_AB_x', object),
         ('sig_AB_y', object),
@@ -349,9 +347,7 @@ def _create_ensemble_struct_all_passes(
         ensemble_struct['UU_stress'][i] = empty
         ensemble_struct['VV_stress'][i] = empty
         ensemble_struct['UV_stress'][i] = empty
-        ensemble_struct['peakheights_A'][i] = empty
-        ensemble_struct['peakheights_B'][i] = empty
-        ensemble_struct['peakheights_AB'][i] = empty
+        ensemble_struct['peakheight'][i] = empty
         ensemble_struct['nan_reason'][i] = empty
         ensemble_struct['sig_AB_x'][i] = empty
         ensemble_struct['sig_AB_y'][i] = empty
@@ -386,13 +382,9 @@ def _create_ensemble_struct_all_passes(
         if pass_result.UV_stress is not None:
             ensemble_struct['UV_stress'][local_idx] = _convert_to_half_precision(pass_result.UV_stress)
 
-        # Peak heights
-        if pass_result.peakheights_A is not None:
-            ensemble_struct['peakheights_A'][local_idx] = _convert_to_half_precision(pass_result.peakheights_A)
-        if pass_result.peakheights_B is not None:
-            ensemble_struct['peakheights_B'][local_idx] = _convert_to_half_precision(pass_result.peakheights_B)
-        if pass_result.peakheights_AB is not None:
-            ensemble_struct['peakheights_AB'][local_idx] = _convert_to_half_precision(pass_result.peakheights_AB)
+        # Normalized peak height
+        if pass_result.peakheight is not None:
+            ensemble_struct['peakheight'][local_idx] = _convert_to_half_precision(pass_result.peakheight)
 
         # NaN reason
         if pass_result.nan_reason is not None:

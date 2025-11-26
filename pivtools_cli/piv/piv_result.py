@@ -85,10 +85,8 @@ class PIVEnsemblePassResult:
     VV_stress: Optional[np.ndarray] = None  # Variance in Y
     UV_stress: Optional[np.ndarray] = None  # Covariance XY
 
-    # Peak heights (normalized)
-    peakheights_A: Optional[np.ndarray] = None
-    peakheights_B: Optional[np.ndarray] = None
-    peakheights_AB: Optional[np.ndarray] = None
+    # Normalized peak height: AB / sqrt(A * B)
+    peakheight: Optional[np.ndarray] = None
 
     # NaN reason codes (0=valid, 1-6=various failure modes)
     nan_reason: Optional[np.ndarray] = None

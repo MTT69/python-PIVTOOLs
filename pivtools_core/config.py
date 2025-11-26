@@ -1082,6 +1082,39 @@ masking:
         return self.data.get("ensemble_piv", {}).get("store_planes", False)
 
     @property
+    def ensemble_resume_from_pass(self) -> int:
+        """
+        Return the pass index to resume from (1-based).
+
+        When set, ensemble processing will skip passes 1 through (resume_from_pass - 1)
+        and load the predictor field from the existing ensemble_result.mat in the
+        output directory.
+
+        Returns
+        -------
+        int
+            Pass number to resume from (1-based), or 0 if not resuming
+            E.g., 4 means skip passes 1-3 and start processing from pass 4
+
+        Example
+        -------
+        If you completed passes 1-3 with window sizes [128, 64, 32] and want to add
+        pass 4 at window size 16:
+
+        ensemble_piv:
+          window_size:
+          - [128, 128]
+          - [64, 64]
+          - [32, 32]
+          - [16, 16]   # New pass
+          resume_from_pass: 4
+
+        The existing ensemble_result.mat in the output directory must contain
+        passes 1-3. Pass 4 will be appended to it.
+        """
+        return self.data.get("ensemble_piv", {}).get("resume_from_pass", 0)
+
+    @property
     def outlier_detection_enabled(self):
         """Return True if outlier detection is enabled."""
         return self.data.get("outlier_detection", {}).get("enabled", True)

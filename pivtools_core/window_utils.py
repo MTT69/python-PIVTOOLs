@@ -384,9 +384,14 @@ def compute_window_centers_single_mode(
     else:
         first_ctr_y = 0.5 + sum_height / 2.0
 
-    # Last center ensures full SumWindow fits within padded image
-    last_ctr_x = Nx - sum_width / 2.0 + 0.5
-    last_ctr_y = Ny - sum_height / 2.0 + 0.5
+    # Last center must allow full window extraction within padded image
+    # C code does: row_min = floor(center - (size-1)/2 + 0.5)
+    # For window to fit: row_min + size <= Nx
+    # Therefore: center <= Nx - size/2 - 0.5 (for even sizes)
+    # This matches MATLAB: Nx - (SumWindow/2) + 0.5 becomes Nx - sum_width/2 - 0.5
+    # when accounting for 0-based vs 1-based indexing
+    last_ctr_x = Nx - sum_width / 2.0 - 0.5
+    last_ctr_y = Ny - sum_height / 2.0 - 0.5
 
     # Compute number of windows
     n_win_x = int(np.floor((last_ctr_x - first_ctr_x) / win_spacing_x)) + 1
@@ -407,6 +412,20 @@ def compute_window_centers_single_mode(
         n_win_y,
         dtype=np.float32
     )
+
+    # Verify last window fits within padded image (catches off-by-one errors early)
+    max_ctr_x = win_ctrs_x[-1]
+    max_ctr_y = win_ctrs_y[-1]
+    half_win_x = (sum_width - 1) / 2.0
+    half_win_y = (sum_height - 1) / 2.0
+
+    if max_ctr_x + half_win_x >= Nx or max_ctr_y + half_win_y >= Ny:
+        raise ValueError(
+            f"Single mode window centers exceed padded image bounds. "
+            f"max_center=({max_ctr_x:.1f}, {max_ctr_y:.1f}), "
+            f"half_window=({half_win_x:.1f}, {half_win_y:.1f}), "
+            f"padded_size=({Nx}, {Ny}), sum_window={sum_window}"
+        )
 
     logging.debug(
         f"Computed single-mode window centers: image_shape={image_shape}, "

@@ -574,6 +574,12 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         # Store smoothed predictor (will be set during warping if pass > 0)
         smoothed_predictor = None
 
+        vector_mask = (
+            self.vector_masks[pass_idx]
+            if self.vector_masks and pass_idx < len(self.vector_masks)
+            else None
+        )
+
         # Process each image pair
         for n in range(N):
             try:
@@ -600,6 +606,10 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                             f"Pass {pass_idx + 1}: Got smoothed predictor field "
                             f"(shape: {delta_ab_pred.shape})"
                         )
+
+                        # Apply vector mask to zero out masked vectors
+                        if vector_mask is not None:
+                            smoothed_predictor[vector_mask] = 0
 
                 if predictor_field is not None and pass_idx > 0:
 
@@ -724,11 +734,6 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 traceback.print_exc()
                 continue
 
-        vector_mask = (
-            self.vector_masks[pass_idx]
-            if self.vector_masks and pass_idx < len(self.vector_masks)
-            else None
-        )
         # Copy buffers before returning (since they will be reused for next batch)
         return {
             "corr_AA_sum": correl_AA_sum.copy(),
@@ -764,13 +769,6 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         win_size_arr = np.ascontiguousarray(np.array(corr_size, dtype=np.int32))
         n_windows = np.ascontiguousarray(np.array([n_win_y, n_win_x], dtype=np.int32))
 
-        # Masking (keep 2D shape like instantaneous mode)
-        # NOTE: b_mask is passed to C library bulkxcorr2d as float32 array
-        # where True (1.0) = masked/skip, False (0.0) = process normally.
-        # The C library should skip correlation computation for masked windows
-        # to avoid wasting computation on windows that will be discarded.
-        # Even though Gaussian fitting is skipped in Python, ideally the C
-        # library should also skip correlation for efficiency.
         if self.vector_masks and pass_idx < len(self.vector_masks):
             b_mask = np.ascontiguousarray(
                 self.vector_masks[pass_idx].astype(np.float32)

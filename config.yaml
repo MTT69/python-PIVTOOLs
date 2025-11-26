@@ -95,16 +95,30 @@ ensemble_piv:
     - 128
   - - 64
     - 64
+  - - 16
+    - 16
+  - - 8
+    - 8
   overlap:
+  - 50
+  - 50
   - 50
   - 50
   type:
   - std
   - std
+  - std
+  - single
   runs:
   - 1
   - 2
-  store_planes: false
+  - 3
+  - 4
+  store_planes: true
+  sum_window:
+  - 16
+  - 16
+  resume_from_pass: 4
 calibration_format:
   image_format: calib%05d.tif
 calibration:

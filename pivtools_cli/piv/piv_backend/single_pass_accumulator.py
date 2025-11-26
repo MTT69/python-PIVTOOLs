@@ -14,10 +14,8 @@ import numpy as np
 from dask.distributed import Client
 
 from pivtools_core.config import Config
-from pivtools_core.window_utils import compute_window_centers, compute_window_centers_single_mode
 from pivtools_cli.piv.piv_result import PIVEnsemblePassResult, PIVEnsembleResult
 from pivtools_cli.piv.piv_backend.gaussian_fitting import (
-    _fit_windows_batch,
     _fit_windows_batch_optimized,
     _get_sigma_from_previous_pass,
 )
@@ -527,10 +525,13 @@ class SinglePassAccumulator:
                     f"Residual displacements will be returned without predictor correction."
                 )
 
-        # Peak heights (amplitudes)
-        peakheights_A = gauss_results[:, :, 0].astype(np.float32)   # amp_A
-        peakheights_B = gauss_results[:, :, 1].astype(np.float32)   # amp_B
-        peakheights_AB = gauss_results[:, :, 2].astype(np.float32)  # amp_AB
+        # Normalized peak height: AB / sqrt(A * B)
+        amp_A = gauss_results[:, :, 0].astype(np.float32)
+        amp_B = gauss_results[:, :, 1].astype(np.float32)
+        amp_AB = gauss_results[:, :, 2].astype(np.float32)
+        # Compute geometric mean, avoiding division by zero
+        geom_mean = np.sqrt(np.maximum(amp_A * amp_B, 1e-12))
+        peakheight = amp_AB / geom_mean
 
         # Gaussian widths for A autocorrelation
         sig_A_x = gauss_results[:, :, 3].astype(np.float32)   # sx_A
@@ -563,9 +564,7 @@ class SinglePassAccumulator:
             UU_stress[mask] = 0.0
             VV_stress[mask] = 0.0
             UV_stress[mask] = 0.0
-            peakheights_A[mask] = 0.0
-            peakheights_B[mask] = 0.0
-            peakheights_AB[mask] = 0.0
+            peakheight[mask] = 0.0
             sig_A_x[mask] = 0.0
             sig_A_y[mask] = 0.0
             sig_A_xy[mask] = 0.0
@@ -607,9 +606,7 @@ class SinglePassAccumulator:
             UU_stress=UU_stress,
             VV_stress=VV_stress,
             UV_stress=UV_stress,
-            peakheights_A=peakheights_A,
-            peakheights_B=peakheights_B,
-            peakheights_AB=peakheights_AB,
+            peakheight=peakheight,
             nan_reason=nan_reason,
             sig_AB_x=sig_AB_x,
             sig_AB_y=sig_AB_y,

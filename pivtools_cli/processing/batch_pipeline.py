@@ -124,12 +124,59 @@ class UnifiedBatchPipeline:
         num_batches = (images.shape[0] + self.batch_size - 1) // self.batch_size
         num_passes = self.config.ensemble_num_passes
 
-        logging.info(f"Processing {num_passes} pass(es) with {num_batches} batches each for ensemble PIV")
+        # Check for resume configuration
+        resume_from_pass = self.config.ensemble_resume_from_pass
+        start_pass_idx = 0  # Default: start from pass 0
+        predictor_field: Optional[np.ndarray] = None  # Initialize here
+
+        if resume_from_pass > 0:
+            # Validate resume configuration
+            if resume_from_pass > num_passes:
+                raise ValueError(
+                    f"resume_from_pass={resume_from_pass} exceeds total passes ({num_passes}). "
+                    "Check your ensemble_piv.window_size configuration."
+                )
+
+            # Look for existing ensemble_result.mat in the output directory
+            resume_path = output_path / "ensemble_result.mat"
+            if not resume_path.exists():
+                raise FileNotFoundError(
+                    f"Resume file not found: {resume_path}. "
+                    f"Cannot resume from pass {resume_from_pass} without existing results. "
+                    "Ensure ensemble_result.mat exists in the output directory from a previous run."
+                )
+
+            start_pass_idx = resume_from_pass - 1  # Convert to 0-based
+            logging.info(f"RESUME MODE: Starting from pass {resume_from_pass} (skipping passes 1-{resume_from_pass - 1})")
+            logging.info(f"Loading predictor field from: {resume_path}")
+
+            # Load the existing ensemble result
+            existing_result = self._load_ensemble_result_from_file(resume_path)
+
+            # Validate it has enough passes
+            if len(existing_result.passes) < start_pass_idx:
+                raise ValueError(
+                    f"Existing ensemble_result.mat contains only {len(existing_result.passes)} passes, "
+                    f"but resume_from_pass={resume_from_pass} requires at least {start_pass_idx} passes."
+                )
+
+            # Extract predictor field from the pass just before where we resume
+            last_pass = existing_result.passes[start_pass_idx - 1]
+            predictor_field = self._extract_predictor_field(last_pass, start_pass_idx - 1)
+            logging.info(f"Extracted predictor field from pass {start_pass_idx}")
+
+            # Populate accumulator with previous passes for sigma interpolation
+            # This ensures _get_sigma_from_previous_pass() can access pass N-1 results
+            for prev_pass in existing_result.passes:
+                accumulator.passes_results.append(prev_pass)
+            logging.info(f"Loaded {len(existing_result.passes)} previous pass results into accumulator")
+
+        logging.info(f"Processing passes {start_pass_idx + 1}-{num_passes} with {num_batches} batches each for ensemble PIV")
 
         # Multi-pass loop with pipelined batch processing
-        predictor_field = None  # No predictor for pass 0
+        # predictor_field is already initialized: None if fresh start, or loaded from resume file
 
-        for pass_idx in range(num_passes):
+        for pass_idx in range(start_pass_idx, num_passes):
             logging.info("")
             logging.info(f"======== PASS {pass_idx + 1}/{num_passes} ========")
 
