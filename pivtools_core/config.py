@@ -1082,6 +1082,19 @@ masking:
         return self.data.get("ensemble_piv", {}).get("store_planes", False)
 
     @property
+    def ensemble_save_diagnostics(self):
+        """
+        Return True if diagnostic images should be saved for ensemble PIV.
+
+        When enabled, saves diagnostic images to a 'filters' subdirectory:
+        - First batch, first pair: original images and after each filter applied
+        - Each pass: warped images (A_warped, B_warped) for the first image pair
+
+        All images are saved as 8-bit TIFFs for easy visualization.
+        """
+        return self.data.get("ensemble_piv", {}).get("save_diagnostics", False)
+
+    @property
     def ensemble_resume_from_pass(self) -> int:
         """
         Return the pass index to resume from (1-based).

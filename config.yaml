@@ -97,10 +97,7 @@ ensemble_piv:
     - 64
   - - 16
     - 16
-  - - 8
-    - 8
   overlap:
-  - 50
   - 50
   - 50
   - 50
@@ -108,17 +105,16 @@ ensemble_piv:
   - std
   - std
   - std
-  - single
   runs:
   - 1
   - 2
   - 3
-  - 4
   store_planes: true
+  save_diagnostics: true
   sum_window:
   - 16
   - 16
-  resume_from_pass: 4
+  resume_from_pass: 0
 calibration_format:
   image_format: calib%05d.tif
 calibration:
@@ -154,6 +150,7 @@ calibration:
     asymmetric: false
     dt: 2
 filters:
+  - type: time
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat

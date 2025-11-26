@@ -508,6 +508,9 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         config: Config,
         pass_idx: int,
         predictor_field: Optional[np.ndarray] = None,
+        save_diagnostics: bool = False,
+        output_path: Optional[str] = None,
+        is_first_batch: bool = False,
     ) -> dict:
         """
         Correlate batch and return SUMS for single-pass accumulation.
@@ -528,6 +531,12 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         predictor_field : Optional[np.ndarray]
             Predictor field from previous pass (shape: n_win_y+2, n_win_x+2, 2)
             containing [uy, ux]. None for pass 0.
+        save_diagnostics : bool
+            If True, save warped images for first pair
+        output_path : Optional[str]
+            Output directory for diagnostic images
+        is_first_batch : bool
+            If True, this is the first batch (save diagnostics for first pair)
 
         Returns
         -------
@@ -631,6 +640,11 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                         borderMode=cv2.BORDER_CONSTANT,
                         borderValue=0,
                     )
+
+                    # Clip negative values from cubic interpolation ringing
+                    # PIV images should have non-negative intensity values
+                    image_a_prime = np.clip(image_a_prime, 0, None)
+                    image_b_prime = np.clip(image_b_prime, 0, None)
                 else:
                     # No warping for pass 0
                     image_a_prime = image_a
@@ -639,6 +653,20 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 # Accumulate RAW warped images (for computing <A>, <B> later)
                 warp_A_sum += image_a_prime
                 warp_B_sum += image_b_prime
+
+                # Save warped images for diagnostic purposes (first pair of first batch)
+                if save_diagnostics and is_first_batch and n == 0 and output_path is not None:
+                    from pathlib import Path
+                    from pivtools_cli.preprocessing.diagnostics import save_warped_diagnostics
+                    save_warped_diagnostics(
+                        image_a_warped=image_a_prime,
+                        image_b_warped=image_b_prime,
+                        output_dir=Path(output_path),
+                        pass_idx=pass_idx,
+                        pair_idx=0,
+                        image_a_original=image_a,  # Original pre-warp image
+                        image_b_original=image_b,  # Original pre-warp image
+                    )
 
                 # Apply padding for single mode
                 if is_single_mode:
@@ -815,32 +843,6 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             point_spread_a,
             point_spread_b,
         )
-
-    def _get_image_prime(
-        self,
-        image_a: np.ndarray,
-        image_b: np.ndarray,
-        im_mesh_A: np.ndarray,
-        im_mesh_B: np.ndarray,
-    ):
-        """Warp images using predictor field."""
-        image_a_prime = cv2.remap(
-            image_a.astype(np.float32),
-            im_mesh_A[..., 1].astype(np.float32),
-            im_mesh_A[..., 0].astype(np.float32),
-            cv2.INTER_CUBIC,
-            borderMode=cv2.BORDER_CONSTANT,
-            borderValue=0,
-        )
-        image_b_prime = cv2.remap(
-            image_b.astype(np.float32),
-            im_mesh_B[..., 1].astype(np.float32),
-            im_mesh_B[..., 0].astype(np.float32),
-            cv2.INTER_CUBIC,
-            borderMode=cv2.BORDER_CONSTANT,
-            borderValue=0,
-        )
-        return image_a_prime.astype(np.float32), image_b_prime.astype(np.float32)
 
     def _get_im_mesh(self, pass_idx: int, predictor_field: Optional[np.ndarray], interp: str = "cubic"):
         """Compute image meshes with predictor field warping."""

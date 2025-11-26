@@ -1,4 +1,6 @@
 import logging
+from pathlib import Path
+from typing import Optional
 
 import dask
 import dask.array as da
@@ -126,6 +128,9 @@ def apply_filters_to_single_batch(
 def apply_filters_to_batch(
     batch: np.ndarray,
     config: Config,
+    save_diagnostics: bool = False,
+    output_dir: Optional[Path] = None,
+    batch_idx: int = 0,
 ) -> np.ndarray:
     """
     Apply ALL filters (temporal and spatial) to a batch.
@@ -136,16 +141,26 @@ def apply_filters_to_batch(
     Args:
         batch: Numpy array of shape (N, 2, H, W)
         config: Configuration object
+        save_diagnostics: If True, save diagnostic images for first batch
+        output_dir: Output directory for diagnostic images
+        batch_idx: Batch index (diagnostics only saved for batch 0)
 
     Returns:
         Filtered batch of same shape
     """
+    from pathlib import Path
+
     filters = config.filters
+
+    # Track filter stages for diagnostics
+    filter_stages = {}
+    if save_diagnostics and batch_idx == 0:
+        filter_stages["00_original"] = batch.copy()
 
     if not filters:
         return batch
 
-    for filter_spec in filters:
+    for filter_idx, filter_spec in enumerate(filters):
         filter_type = filter_spec.get("type")
 
         if filter_type == "pod":
@@ -159,6 +174,22 @@ def apply_filters_to_batch(
         else:
             # Spatial filters (gaussian, median, etc.)
             batch = apply_spatial_filter_to_batch(batch, filter_spec, config)
+
+        # Save after each filter for diagnostics
+        if save_diagnostics and batch_idx == 0:
+            stage_name = f"{filter_idx + 1:02d}_{filter_type}"
+            filter_stages[stage_name] = batch.copy()
+
+    # Save diagnostic images if enabled
+    if save_diagnostics and batch_idx == 0 and output_dir is not None:
+        from pivtools_cli.preprocessing.diagnostics import save_filter_diagnostics
+        save_filter_diagnostics(
+            original_batch=filter_stages.get("00_original"),
+            filtered_stages=filter_stages,
+            output_dir=Path(output_dir),
+            batch_idx=batch_idx,
+            pair_idx=0,
+        )
 
     return batch
 

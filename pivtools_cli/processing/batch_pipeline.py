@@ -198,6 +198,7 @@ class UnifiedBatchPipeline:
                 batch_slice,
                 self.config,
                 batch_idx,
+                output_path,  # Pass output_path for diagnostics
                 workers=[worker],
                 priority=10,
                 pure=False,
@@ -209,6 +210,9 @@ class UnifiedBatchPipeline:
                 filtered_batch = filter_future.result()
                 logging.info(f"[Pass {pass_idx+1}, Batch {batch_idx+1}/{num_batches}] Filter complete")
 
+                # Determine if this is the first batch (for diagnostic saving)
+                is_first_batch = (batch_idx == 0)
+
                 # Start correlation for THIS batch (non-blocking)
                 corr_futures = self._correlate_ensemble_batch_async(
                     filtered_batch,
@@ -216,6 +220,8 @@ class UnifiedBatchPipeline:
                     scattered_masks,
                     scattered_predictor,
                     pass_idx,
+                    output_path=output_path,
+                    is_first_batch=is_first_batch,
                 )
 
                 # OVERLAP: Submit NEXT filter while THIS batch correlates
@@ -236,6 +242,7 @@ class UnifiedBatchPipeline:
                         next_slice,
                         self.config,
                         next_batch_idx,
+                        output_path,  # Pass output_path for diagnostics
                         workers=[next_worker],
                         priority=10,
                         pure=False,
@@ -452,9 +459,7 @@ class UnifiedBatchPipeline:
                 UU_stress=get_field('UU_stress'),
                 VV_stress=get_field('VV_stress'),
                 UV_stress=get_field('UV_stress'),
-                peakheights_A=get_field('peakheights_A'),
-                peakheights_B=get_field('peakheights_B'),
-                peakheights_AB=get_field('peakheights_AB'),
+                peakheight=get_field('peakheight'),
                 nan_reason=nan_reason,
                 sig_AB_x=get_field('sig_AB_x'),
                 sig_AB_y=get_field('sig_AB_y'),
@@ -612,6 +617,8 @@ class UnifiedBatchPipeline:
         scattered_masks,
         scattered_predictor,
         pass_idx: int,
+        output_path: Optional[Path] = None,
+        is_first_batch: bool = False,
     ) -> List:
         """
         Submit correlation tasks and return futures (non-blocking).
@@ -630,6 +637,10 @@ class UnifiedBatchPipeline:
             Pre-scattered predictor field
         pass_idx : int
             Current pass index
+        output_path : Optional[Path]
+            Output directory for diagnostic images
+        is_first_batch : bool
+            Whether this is the first batch (for diagnostics)
 
         Returns
         -------
@@ -638,6 +649,7 @@ class UnifiedBatchPipeline:
         """
         # Split into individual pairs
         pairs = [filtered_batch[i] for i in range(filtered_batch.shape[0])]
+        pair_indices = list(range(len(pairs)))
 
         # Scatter pairs to correlation workers
         scattered_pairs = self.client.scatter(pairs, workers=self.corr_workers)
@@ -646,11 +658,14 @@ class UnifiedBatchPipeline:
         corr_futures = self.client.map(
             _correlate_ensemble_pair_worker,
             scattered_pairs,
+            pair_indices,  # Pass pair index for diagnostic check
             config=self.config,
             scattered_cache=scattered_cache,
             scattered_masks=scattered_masks,
             scattered_predictor=scattered_predictor,
             pass_idx=pass_idx,
+            output_path=output_path,
+            is_first_batch=is_first_batch,
             workers=self.corr_workers,
             pure=False,
         )
@@ -698,6 +713,7 @@ def _filter_batch_worker(
     batch_images: da.Array,
     config: Config,
     batch_idx: int,
+    output_path: Optional[Path] = None,
 ) -> np.ndarray:
     """
     Apply all filters to batch on filter worker.
@@ -717,19 +733,36 @@ def _filter_batch_worker(
         batch = batch_images.compute()
 
     # Apply all filters (temporal and spatial)
+    # Pass diagnostic parameters for first batch
     from pivtools_cli.preprocessing.preprocess import apply_filters_to_batch
-    batch_filtered = apply_filters_to_batch(batch, config)
+
+    save_diagnostics = (
+        hasattr(config, 'ensemble_save_diagnostics') and
+        config.ensemble_save_diagnostics and
+        batch_idx == 0
+    )
+
+    batch_filtered = apply_filters_to_batch(
+        batch,
+        config,
+        save_diagnostics=save_diagnostics,
+        output_dir=output_path,
+        batch_idx=batch_idx,
+    )
 
     return batch_filtered
 
 
 def _correlate_ensemble_pair_worker(
     image_pair: np.ndarray,
+    pair_idx: int,
     config: Config,
     scattered_cache: dict,
     scattered_masks: Optional[List[np.ndarray]],
     scattered_predictor: Optional[np.ndarray],
     pass_idx: int,
+    output_path: Optional[Path] = None,
+    is_first_batch: bool = False,
 ) -> dict:
     """
     Correlate single pair for ensemble accumulation.
@@ -749,12 +782,23 @@ def _correlate_ensemble_pair_worker(
         vector_masks=scattered_masks,
     )
 
+    # Determine if we should save diagnostics (first pair of first batch)
+    save_diagnostics = (
+        hasattr(config, 'ensemble_save_diagnostics') and
+        config.ensemble_save_diagnostics and
+        is_first_batch and
+        pair_idx == 0
+    )
+
     # Correlate and return sums (for accumulation)
     result = correlator.correlate_batch_for_accumulation(
         image_pair[np.newaxis, ...],  # Add batch dimension
         config,
         pass_idx=pass_idx,
         predictor_field=scattered_predictor,
+        save_diagnostics=save_diagnostics,
+        output_path=str(output_path) if output_path else None,
+        is_first_batch=is_first_batch,
     )
 
     return result

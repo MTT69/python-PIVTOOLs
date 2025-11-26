@@ -549,10 +549,6 @@ class SinglePassAccumulator:
 
         # NaN reasons from fitting status
         nan_reason = statuses.astype(np.int32)
-
-        # Apply masking: set all fitted values to ZERO for masked windows
-        # Zero displacement is appropriate for masked regions (walls, boundaries, etc.)
-        # and prevents infilling artifacts at edges
         mask = None
         if self.vector_masks and pass_idx < len(self.vector_masks):
             mask = self.vector_masks[pass_idx]
@@ -637,6 +633,10 @@ class SinglePassAccumulator:
                     outdir = Path(os.getcwd())
                 outdir.mkdir(parents=True, exist_ok=True)
 
+                # Create correlator to get window weights
+                from pivtools_cli.piv.piv_backend.factory import make_correlator_backend
+                correlator_for_weights = make_correlator_backend(self.config, ensemble=True)
+
                 # Save correlation planes in 4D format (n_win_y, n_win_x, corr_h, corr_w)
                 planes_dict = {
                     'AA': R_AA_ensemble.reshape(n_win_y, n_win_x, corr_size[0], corr_size[1]),
@@ -648,6 +648,9 @@ class SinglePassAccumulator:
                     'n_win_y': n_win_y,
                     'n_win_x': n_win_x,
                     'pass_idx': pass_idx,
+                    # Window weights used in cross-correlation
+                    'win_weight_A': correlator_for_weights.win_weights_A[pass_idx],
+                    'win_weight_B': correlator_for_weights.win_weights_B[pass_idx],
                 }
 
                 savemat(
