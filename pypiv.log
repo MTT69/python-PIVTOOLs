@@ -19238,3 +19238,1729 @@ distributed.comm.core.CommClosedError: in <TCP (closed) ConnectionPool.update_da
 2025-11-26 15:37:59,126 [INFO] ENSEMBLE PIV PROCESSING COMPLETE!
 2025-11-26 15:37:59,126 [INFO] Ensemble result saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/ensemble/ensemble_result.mat
 2025-11-26 15:37:59,126 [INFO] ================================================================================
+2025-11-26 15:42:17,155 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-26 15:42:17,776 [INFO] ================================================================================
+2025-11-26 15:42:17,776 [INFO] VALIDATING CONFIGURATION
+2025-11-26 15:42:17,776 [INFO] ================================================================================
+2025-11-26 15:42:17,784 [INFO] ✓ Configuration validated successfully
+2025-11-26 15:42:17,784 [INFO]   Source paths: [PosixPath('/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1')]
+2025-11-26 15:42:17,784 [INFO]   Cameras: [1]
+2025-11-26 15:42:17,784 [INFO]   Image files: 100
+2025-11-26 15:42:17,784 [INFO]   Frame pairs: 100
+2025-11-26 15:42:17,784 [INFO]   Image format: ('B%05d_A.tif', 'B%05d_B.tif')
+2025-11-26 15:42:17,784 [INFO] 
+2025-11-26 15:42:17,784 [INFO] NOTES:
+2025-11-26 15:42:17,784 [INFO]   ℹ Camera 1: Processing subset - using 100 of 1000 available files
+2025-11-26 15:42:17,784 [INFO] ================================================================================
+2025-11-26 15:42:17,784 [INFO] 
+2025-11-26 15:42:17,784 [INFO] Set OMP_NUM_THREADS to 10 for main process batch filtering
+2025-11-26 15:42:19,251 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-26 15:42:19,262 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-26 15:42:19,270 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-26 15:42:19,275 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-26 15:42:19,904 [INFO] Worker logging configured successfully
+2025-11-26 15:42:19,904 [INFO] Worker logging configured successfully
+2025-11-26 15:42:19,905 [INFO] Worker logging configured successfully
+2025-11-26 15:42:19,905 [INFO] Worker logging configured successfully
+2025-11-26 15:42:19,906 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-26 15:42:19,906 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-26 15:42:19,906 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-26 15:42:19,907 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-26 15:42:19,907 [INFO] Dask cluster started successfully
+2025-11-26 15:42:19,909 [INFO] Dask Worker Info:
+2025-11-26 15:42:19,909 [INFO] Worker tcp://127.0.0.1:60065
+2025-11-26 15:42:19,909 [INFO]   pid: None
+2025-11-26 15:42:19,910 [INFO]   host: 127.0.0.1
+2025-11-26 15:42:19,910 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-ohgigzrn
+2025-11-26 15:42:19,910 [INFO]   nanny: True
+2025-11-26 15:42:19,910 [INFO] Dask Worker Info:
+2025-11-26 15:42:19,910 [INFO] Worker tcp://127.0.0.1:60068
+2025-11-26 15:42:19,911 [INFO]   pid: None
+2025-11-26 15:42:19,911 [INFO]   host: 127.0.0.1
+2025-11-26 15:42:19,911 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-ish0agj5
+2025-11-26 15:42:19,911 [INFO]   nanny: True
+2025-11-26 15:42:19,911 [INFO] Dask Worker Info:
+2025-11-26 15:42:19,911 [INFO] Worker tcp://127.0.0.1:60071
+2025-11-26 15:42:19,911 [INFO]   pid: None
+2025-11-26 15:42:19,911 [INFO]   host: 127.0.0.1
+2025-11-26 15:42:19,911 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-n032s6o5
+2025-11-26 15:42:19,911 [INFO]   nanny: True
+2025-11-26 15:42:19,911 [INFO] Dask Worker Info:
+2025-11-26 15:42:19,911 [INFO] Worker tcp://127.0.0.1:60074
+2025-11-26 15:42:19,911 [INFO]   pid: None
+2025-11-26 15:42:19,911 [INFO]   host: 127.0.0.1
+2025-11-26 15:42:19,911 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-q1zcb3or
+2025-11-26 15:42:19,911 [INFO]   nanny: True
+2025-11-26 15:42:19,911 [INFO] Processing camera: Cam1
+2025-11-26 15:42:19,927 [INFO] _detect_image_shape: image_format = ('B%05d_A.tif', 'B%05d_B.tif'), type = <class 'tuple'>
+2025-11-26 15:42:19,927 [INFO] Source path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1, Camera: 1
+2025-11-26 15:42:19,927 [INFO] Camera path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
+2025-11-26 15:42:19,927 [INFO] Trying to read file: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1/B00001_A.tif
+2025-11-26 15:42:19,950 [INFO] Detected image shape: (1152, 1024)
+2025-11-26 15:42:19,950 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-26 15:42:19,966 [INFO] Lazy loading complete: 100 independent delayed tasks created (~100 KB memory footprint)
+2025-11-26 15:42:19,966 [INFO] Pre-computing vector masks for Cam1
+2025-11-26 15:42:20,145 [INFO] Vector masks computed: 3 passes
+2025-11-26 15:42:20,146 [INFO] ================================================================================
+2025-11-26 15:42:20,146 [INFO] UNIFIED BATCH PIPELINE: INSTANTANEOUS MODE
+2025-11-26 15:42:20,146 [INFO] ================================================================================
+2025-11-26 15:42:20,146 [INFO] Image files: 100
+2025-11-26 15:42:20,146 [INFO] Frame pairs: 100
+2025-11-26 15:42:20,146 [INFO] Runs to save: [2]
+2025-11-26 15:42:20,146 [INFO] Filters: ['time']
+2025-11-26 15:42:20,146 [INFO] Output path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/instantaneous
+2025-11-26 15:42:20,146 [INFO] ================================================================================
+2025-11-26 15:42:20,147 [INFO] Batch size: 25
+2025-11-26 15:42:20,147 [INFO] Assigned 1 filter workers
+2025-11-26 15:42:20,147 [INFO] Assigned 3 correlation workers
+2025-11-26 15:42:20,148 [INFO] Worker allocation: 1 filter, 3 correlation (total: 4)
+2025-11-26 15:42:20,148 [INFO] Starting instantaneous PIV processing with unified batch pipeline...
+2025-11-26 15:42:20,157 [INFO] Successfully cached window padding for 3 passes
+2025-11-26 15:42:20,161 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-26 15:42:20,226 [INFO] Broadcast correlator cache to all workers
+2025-11-26 15:42:20,231 [INFO] Broadcast vector masks (5.7 KB)
+2025-11-26 15:42:20,237 [INFO] Broadcast pixel mask (1152.0 KB)
+2025-11-26 15:42:20,238 [INFO] Processing 4 batches for instantaneous PIV
+2025-11-26 15:42:20,239 [INFO] Submitting batch 0 to filter worker tcp://127.0.0.1:60065
+2025-11-26 15:42:20,599 [INFO] [Batch 1/4] Filtering complete
+2025-11-26 15:42:20,599 [INFO] [Batch 1/4] Starting correlation...
+2025-11-26 15:42:20,781 [INFO] Submitting batch 1 to filter worker tcp://127.0.0.1:60065
+2025-11-26 15:42:20,813 [INFO] mask: ((17, 15), dtype('float32'), True)
+2025-11-26 15:42:20,813 [INFO] win_ctrs_x: ((15,), dtype('float32'), True)
+2025-11-26 15:42:20,813 [INFO] win_ctrs_y: ((17,), dtype('float32'), True)
+2025-11-26 15:42:20,813 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:20,813 [INFO] window_weight_a: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:20,813 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:20,813 [INFO] window_weight_b: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:20,813 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:20,813 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:20,813 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:20,813 [INFO] pk_loc_x: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:20,813 [INFO] pk_loc_y: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:20,813 [INFO] pk_height: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:20,813 [INFO] sx: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:20,813 [INFO] sy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:20,813 [INFO] sxy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:20,813 [INFO] correl_plane_out: ((4177920,), dtype('float32'), True)
+2025-11-26 15:42:20,816 [INFO] mask: ((17, 15), dtype('float32'), True)
+2025-11-26 15:42:20,816 [INFO] win_ctrs_x: ((15,), dtype('float32'), True)
+2025-11-26 15:42:20,816 [INFO] win_ctrs_y: ((17,), dtype('float32'), True)
+2025-11-26 15:42:20,816 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:20,816 [INFO] window_weight_a: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:20,816 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:20,816 [INFO] window_weight_b: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:20,816 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:20,816 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:20,816 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:20,816 [INFO] pk_loc_x: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:20,816 [INFO] pk_loc_y: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:20,817 [INFO] pk_height: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:20,817 [INFO] sx: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:20,817 [INFO] sy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:20,817 [INFO] sxy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:20,817 [INFO] correl_plane_out: ((4177920,), dtype('float32'), True)
+2025-11-26 15:42:20,826 [INFO] mask: ((17, 15), dtype('float32'), True)
+2025-11-26 15:42:20,826 [INFO] win_ctrs_x: ((15,), dtype('float32'), True)
+2025-11-26 15:42:20,826 [INFO] win_ctrs_y: ((17,), dtype('float32'), True)
+2025-11-26 15:42:20,826 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:20,826 [INFO] window_weight_a: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:20,826 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:20,826 [INFO] window_weight_b: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:20,826 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:20,827 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:20,827 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:20,827 [INFO] pk_loc_x: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:20,827 [INFO] pk_loc_y: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:20,827 [INFO] pk_height: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:20,827 [INFO] sx: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:20,827 [INFO] sy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:20,827 [INFO] sxy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:20,827 [INFO] correl_plane_out: ((4177920,), dtype('float32'), True)
+2025-11-26 15:42:20,932 [INFO] mask: ((35, 31), dtype('float32'), True)
+2025-11-26 15:42:20,932 [INFO] win_ctrs_x: ((31,), dtype('float32'), True)
+2025-11-26 15:42:20,933 [INFO] win_ctrs_y: ((35,), dtype('float32'), True)
+2025-11-26 15:42:20,933 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:20,933 [INFO] window_weight_a: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:20,933 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:20,933 [INFO] window_weight_b: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:20,933 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:20,933 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:20,933 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:20,933 [INFO] pk_loc_x: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:20,933 [INFO] pk_loc_y: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:20,933 [INFO] pk_height: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:20,933 [INFO] sx: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:20,933 [INFO] sy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:20,933 [INFO] sxy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:20,933 [INFO] correl_plane_out: ((4444160,), dtype('float32'), True)
+2025-11-26 15:42:20,933 [INFO] mask: ((35, 31), dtype('float32'), True)
+2025-11-26 15:42:20,933 [INFO] win_ctrs_x: ((31,), dtype('float32'), True)
+2025-11-26 15:42:20,933 [INFO] win_ctrs_y: ((35,), dtype('float32'), True)
+2025-11-26 15:42:20,933 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:20,933 [INFO] window_weight_a: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:20,933 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:20,933 [INFO] window_weight_b: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:20,933 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:20,933 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:20,933 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:20,933 [INFO] pk_loc_x: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:20,933 [INFO] pk_loc_y: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:20,933 [INFO] pk_height: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:20,934 [INFO] sx: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:20,934 [INFO] sy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:20,934 [INFO] sxy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:20,934 [INFO] correl_plane_out: ((4444160,), dtype('float32'), True)
+2025-11-26 15:42:20,939 [INFO] mask: ((35, 31), dtype('float32'), True)
+2025-11-26 15:42:20,939 [INFO] win_ctrs_x: ((31,), dtype('float32'), True)
+2025-11-26 15:42:20,939 [INFO] win_ctrs_y: ((35,), dtype('float32'), True)
+2025-11-26 15:42:20,940 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:20,940 [INFO] window_weight_a: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:20,940 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:20,940 [INFO] window_weight_b: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:20,940 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:20,940 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:20,940 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:20,940 [INFO] pk_loc_x: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:20,940 [INFO] pk_loc_y: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:20,940 [INFO] pk_height: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:20,940 [INFO] sx: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:20,940 [INFO] sy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:20,940 [INFO] sxy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:20,940 [INFO] correl_plane_out: ((4444160,), dtype('float32'), True)
+2025-11-26 15:42:21,004 [INFO] mask: ((71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,004 [INFO] win_ctrs_x: ((63,), dtype('float32'), True)
+2025-11-26 15:42:21,004 [INFO] win_ctrs_y: ((71,), dtype('float32'), True)
+2025-11-26 15:42:21,004 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,004 [INFO] window_weight_a: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,004 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,004 [INFO] window_weight_b: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,004 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,004 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,004 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,004 [INFO] pk_loc_x: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,004 [INFO] pk_loc_y: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,004 [INFO] pk_height: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,004 [INFO] sx: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,004 [INFO] mask: ((71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,005 [INFO] sy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,005 [INFO] sxy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,005 [INFO] correl_plane_out: ((4580352,), dtype('float32'), True)
+2025-11-26 15:42:21,005 [INFO] win_ctrs_x: ((63,), dtype('float32'), True)
+2025-11-26 15:42:21,005 [INFO] win_ctrs_y: ((71,), dtype('float32'), True)
+2025-11-26 15:42:21,005 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,005 [INFO] window_weight_a: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,005 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,005 [INFO] window_weight_b: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,005 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,005 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,005 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,005 [INFO] pk_loc_x: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,005 [INFO] pk_loc_y: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,005 [INFO] pk_height: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,005 [INFO] sx: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,005 [INFO] sy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,005 [INFO] sxy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,005 [INFO] correl_plane_out: ((4580352,), dtype('float32'), True)
+2025-11-26 15:42:21,008 [INFO] mask: ((71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,009 [INFO] win_ctrs_x: ((63,), dtype('float32'), True)
+2025-11-26 15:42:21,009 [INFO] win_ctrs_y: ((71,), dtype('float32'), True)
+2025-11-26 15:42:21,009 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,009 [INFO] window_weight_a: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,009 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,009 [INFO] window_weight_b: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,009 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,009 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,009 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,009 [INFO] pk_loc_x: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,009 [INFO] pk_loc_y: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,009 [INFO] pk_height: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,009 [INFO] sx: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,009 [INFO] sy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,009 [INFO] sxy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,010 [INFO] correl_plane_out: ((4580352,), dtype('float32'), True)
+2025-11-26 15:42:21,117 [INFO] mask: ((17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,117 [INFO] win_ctrs_x: ((15,), dtype('float32'), True)
+2025-11-26 15:42:21,117 [INFO] mask: ((17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,118 [INFO] win_ctrs_y: ((17,), dtype('float32'), True)
+2025-11-26 15:42:21,118 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,118 [INFO] window_weight_a: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,118 [INFO] win_ctrs_x: ((15,), dtype('float32'), True)
+2025-11-26 15:42:21,118 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,118 [INFO] win_ctrs_y: ((17,), dtype('float32'), True)
+2025-11-26 15:42:21,118 [INFO] window_weight_b: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,118 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,118 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,118 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,118 [INFO] window_weight_a: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,118 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,118 [INFO] pk_loc_x: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,118 [INFO] pk_loc_y: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,118 [INFO] pk_height: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,118 [INFO] sx: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,118 [INFO] sy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,118 [INFO] sxy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,118 [INFO] correl_plane_out: ((4177920,), dtype('float32'), True)
+2025-11-26 15:42:21,118 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,118 [INFO] window_weight_b: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,118 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,118 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,118 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,118 [INFO] pk_loc_x: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,118 [INFO] pk_loc_y: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,118 [INFO] pk_height: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,118 [INFO] sx: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,118 [INFO] sy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,118 [INFO] sxy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,118 [INFO] correl_plane_out: ((4177920,), dtype('float32'), True)
+2025-11-26 15:42:21,118 [INFO] mask: ((17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,119 [INFO] win_ctrs_x: ((15,), dtype('float32'), True)
+2025-11-26 15:42:21,119 [INFO] win_ctrs_y: ((17,), dtype('float32'), True)
+2025-11-26 15:42:21,119 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,119 [INFO] window_weight_a: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,119 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,119 [INFO] window_weight_b: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,119 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,119 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,119 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,119 [INFO] pk_loc_x: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,119 [INFO] pk_loc_y: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,119 [INFO] pk_height: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,119 [INFO] sx: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,119 [INFO] sy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,119 [INFO] sxy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,119 [INFO] correl_plane_out: ((4177920,), dtype('float32'), True)
+2025-11-26 15:42:21,175 [INFO] mask: ((35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,175 [INFO] mask: ((35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,175 [INFO] win_ctrs_x: ((31,), dtype('float32'), True)
+2025-11-26 15:42:21,175 [INFO] win_ctrs_y: ((35,), dtype('float32'), True)
+2025-11-26 15:42:21,175 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,175 [INFO] window_weight_a: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,175 [INFO] win_ctrs_x: ((31,), dtype('float32'), True)
+2025-11-26 15:42:21,175 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,175 [INFO] window_weight_b: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,175 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,175 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,175 [INFO] win_ctrs_y: ((35,), dtype('float32'), True)
+2025-11-26 15:42:21,175 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,175 [INFO] pk_loc_x: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,175 [INFO] pk_loc_y: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,175 [INFO] pk_height: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,175 [INFO] mask: ((35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,175 [INFO] sx: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,175 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,175 [INFO] sy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,175 [INFO] win_ctrs_x: ((31,), dtype('float32'), True)
+2025-11-26 15:42:21,175 [INFO] sxy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,175 [INFO] win_ctrs_y: ((35,), dtype('float32'), True)
+2025-11-26 15:42:21,175 [INFO] window_weight_a: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,175 [INFO] correl_plane_out: ((4444160,), dtype('float32'), True)
+2025-11-26 15:42:21,175 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,175 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,175 [INFO] window_weight_a: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,176 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,176 [INFO] window_weight_b: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,176 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,176 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,176 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,176 [INFO] window_weight_b: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,176 [INFO] pk_loc_x: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,176 [INFO] pk_loc_y: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,176 [INFO] pk_height: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,176 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,176 [INFO] sx: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,176 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,176 [INFO] sy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,176 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,176 [INFO] sxy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,176 [INFO] pk_loc_x: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,176 [INFO] correl_plane_out: ((4444160,), dtype('float32'), True)
+2025-11-26 15:42:21,176 [INFO] pk_loc_y: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,176 [INFO] pk_height: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,176 [INFO] sx: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,176 [INFO] sy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,176 [INFO] sxy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,176 [INFO] correl_plane_out: ((4444160,), dtype('float32'), True)
+2025-11-26 15:42:21,215 [INFO] mask: ((71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,215 [INFO] win_ctrs_x: ((63,), dtype('float32'), True)
+2025-11-26 15:42:21,215 [INFO] win_ctrs_y: ((71,), dtype('float32'), True)
+2025-11-26 15:42:21,215 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,215 [INFO] window_weight_a: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,215 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,216 [INFO] window_weight_b: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,216 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,216 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,216 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,216 [INFO] pk_loc_x: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,216 [INFO] pk_loc_y: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,216 [INFO] pk_height: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,216 [INFO] sx: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,216 [INFO] sy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,216 [INFO] sxy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,216 [INFO] correl_plane_out: ((4580352,), dtype('float32'), True)
+2025-11-26 15:42:21,219 [INFO] mask: ((71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,219 [INFO] win_ctrs_x: ((63,), dtype('float32'), True)
+2025-11-26 15:42:21,219 [INFO] win_ctrs_y: ((71,), dtype('float32'), True)
+2025-11-26 15:42:21,219 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,219 [INFO] window_weight_a: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,219 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,219 [INFO] window_weight_b: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,219 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,219 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,219 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,219 [INFO] pk_loc_x: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,219 [INFO] pk_loc_y: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,219 [INFO] pk_height: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,219 [INFO] sx: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,219 [INFO] sy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,219 [INFO] sxy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,219 [INFO] correl_plane_out: ((4580352,), dtype('float32'), True)
+2025-11-26 15:42:21,219 [INFO] mask: ((71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,219 [INFO] win_ctrs_x: ((63,), dtype('float32'), True)
+2025-11-26 15:42:21,219 [INFO] win_ctrs_y: ((71,), dtype('float32'), True)
+2025-11-26 15:42:21,219 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,219 [INFO] window_weight_a: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,219 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,219 [INFO] window_weight_b: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,219 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,219 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,219 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,219 [INFO] pk_loc_x: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,219 [INFO] pk_loc_y: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,219 [INFO] pk_height: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,219 [INFO] sx: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,219 [INFO] sy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,219 [INFO] sxy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,219 [INFO] correl_plane_out: ((4580352,), dtype('float32'), True)
+2025-11-26 15:42:21,295 [INFO] mask: ((17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,295 [INFO] win_ctrs_x: ((15,), dtype('float32'), True)
+2025-11-26 15:42:21,295 [INFO] win_ctrs_y: ((17,), dtype('float32'), True)
+2025-11-26 15:42:21,295 [INFO] mask: ((17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,295 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,295 [INFO] win_ctrs_x: ((15,), dtype('float32'), True)
+2025-11-26 15:42:21,295 [INFO] window_weight_a: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,295 [INFO] win_ctrs_y: ((17,), dtype('float32'), True)
+2025-11-26 15:42:21,295 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,295 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,295 [INFO] window_weight_b: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,295 [INFO] window_weight_a: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,295 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,295 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,295 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,295 [INFO] window_weight_b: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,295 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,295 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,295 [INFO] pk_loc_x: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,295 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,295 [INFO] pk_loc_y: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,295 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,295 [INFO] pk_height: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,295 [INFO] pk_loc_x: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,295 [INFO] sx: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,295 [INFO] pk_loc_y: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,295 [INFO] sy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,295 [INFO] pk_height: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,295 [INFO] sx: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,295 [INFO] sxy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,295 [INFO] sy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,295 [INFO] sxy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,295 [INFO] correl_plane_out: ((4177920,), dtype('float32'), True)
+2025-11-26 15:42:21,295 [INFO] correl_plane_out: ((4177920,), dtype('float32'), True)
+2025-11-26 15:42:21,296 [INFO] mask: ((17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,296 [INFO] win_ctrs_x: ((15,), dtype('float32'), True)
+2025-11-26 15:42:21,296 [INFO] win_ctrs_y: ((17,), dtype('float32'), True)
+2025-11-26 15:42:21,296 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,296 [INFO] window_weight_a: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,296 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,296 [INFO] window_weight_b: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,296 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,296 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,296 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,296 [INFO] pk_loc_x: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,296 [INFO] pk_loc_y: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,296 [INFO] pk_height: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,296 [INFO] sx: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,296 [INFO] sy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,296 [INFO] sxy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,296 [INFO] correl_plane_out: ((4177920,), dtype('float32'), True)
+2025-11-26 15:42:21,347 [INFO] mask: ((35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,347 [INFO] win_ctrs_x: ((31,), dtype('float32'), True)
+2025-11-26 15:42:21,347 [INFO] win_ctrs_y: ((35,), dtype('float32'), True)
+2025-11-26 15:42:21,347 [INFO] mask: ((35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,347 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,347 [INFO] window_weight_a: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,347 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,347 [INFO] window_weight_b: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,347 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,347 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,347 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,347 [INFO] pk_loc_x: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,348 [INFO] pk_loc_y: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,348 [INFO] pk_height: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,348 [INFO] sx: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,348 [INFO] win_ctrs_x: ((31,), dtype('float32'), True)
+2025-11-26 15:42:21,348 [INFO] sy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,348 [INFO] sxy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,348 [INFO] correl_plane_out: ((4444160,), dtype('float32'), True)
+2025-11-26 15:42:21,348 [INFO] win_ctrs_y: ((35,), dtype('float32'), True)
+2025-11-26 15:42:21,348 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,348 [INFO] window_weight_a: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,348 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,348 [INFO] window_weight_b: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,348 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,348 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,349 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,349 [INFO] pk_loc_x: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,349 [INFO] pk_loc_y: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,349 [INFO] pk_height: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,349 [INFO] sx: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,349 [INFO] sy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,349 [INFO] sxy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,349 [INFO] correl_plane_out: ((4444160,), dtype('float32'), True)
+2025-11-26 15:42:21,351 [INFO] mask: ((35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,352 [INFO] win_ctrs_x: ((31,), dtype('float32'), True)
+2025-11-26 15:42:21,352 [INFO] win_ctrs_y: ((35,), dtype('float32'), True)
+2025-11-26 15:42:21,352 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,352 [INFO] window_weight_a: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,352 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,352 [INFO] window_weight_b: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,352 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,352 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,352 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,352 [INFO] pk_loc_x: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,352 [INFO] pk_loc_y: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,352 [INFO] pk_height: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,352 [INFO] sx: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,352 [INFO] sy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,352 [INFO] sxy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,353 [INFO] correl_plane_out: ((4444160,), dtype('float32'), True)
+2025-11-26 15:42:21,388 [INFO] mask: ((71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,388 [INFO] win_ctrs_x: ((63,), dtype('float32'), True)
+2025-11-26 15:42:21,389 [INFO] win_ctrs_y: ((71,), dtype('float32'), True)
+2025-11-26 15:42:21,389 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,389 [INFO] window_weight_a: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,389 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,389 [INFO] window_weight_b: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,389 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,389 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,389 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,389 [INFO] pk_loc_x: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,389 [INFO] pk_loc_y: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,389 [INFO] pk_height: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,389 [INFO] sx: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,389 [INFO] sy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,389 [INFO] sxy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,389 [INFO] correl_plane_out: ((4580352,), dtype('float32'), True)
+2025-11-26 15:42:21,392 [INFO] mask: ((71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,393 [INFO] win_ctrs_x: ((63,), dtype('float32'), True)
+2025-11-26 15:42:21,393 [INFO] win_ctrs_y: ((71,), dtype('float32'), True)
+2025-11-26 15:42:21,393 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,393 [INFO] window_weight_a: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,393 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,393 [INFO] window_weight_b: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,393 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,393 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,393 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,393 [INFO] pk_loc_x: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,393 [INFO] pk_loc_y: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,393 [INFO] pk_height: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,393 [INFO] sx: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,393 [INFO] sy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,393 [INFO] sxy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,393 [INFO] correl_plane_out: ((4580352,), dtype('float32'), True)
+2025-11-26 15:42:21,398 [INFO] mask: ((71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,398 [INFO] win_ctrs_x: ((63,), dtype('float32'), True)
+2025-11-26 15:42:21,398 [INFO] win_ctrs_y: ((71,), dtype('float32'), True)
+2025-11-26 15:42:21,398 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,398 [INFO] window_weight_a: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,398 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,399 [INFO] window_weight_b: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,399 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,399 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,399 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,399 [INFO] pk_loc_x: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,399 [INFO] pk_loc_y: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,399 [INFO] pk_height: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,399 [INFO] sx: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,399 [INFO] sy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,399 [INFO] sxy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,399 [INFO] correl_plane_out: ((4580352,), dtype('float32'), True)
+2025-11-26 15:42:21,470 [INFO] mask: ((17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,470 [INFO] win_ctrs_x: ((15,), dtype('float32'), True)
+2025-11-26 15:42:21,470 [INFO] win_ctrs_y: ((17,), dtype('float32'), True)
+2025-11-26 15:42:21,470 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,470 [INFO] window_weight_a: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,470 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,470 [INFO] window_weight_b: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,470 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,470 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,470 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,470 [INFO] pk_loc_x: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,470 [INFO] pk_loc_y: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,470 [INFO] pk_height: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,470 [INFO] sx: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,470 [INFO] sy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,470 [INFO] sxy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,470 [INFO] correl_plane_out: ((4177920,), dtype('float32'), True)
+2025-11-26 15:42:21,471 [INFO] mask: ((17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,471 [INFO] win_ctrs_x: ((15,), dtype('float32'), True)
+2025-11-26 15:42:21,471 [INFO] win_ctrs_y: ((17,), dtype('float32'), True)
+2025-11-26 15:42:21,471 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,471 [INFO] window_weight_a: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,471 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,471 [INFO] window_weight_b: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,471 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,471 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,471 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,471 [INFO] pk_loc_x: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,471 [INFO] pk_loc_y: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,471 [INFO] pk_height: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,471 [INFO] sx: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,471 [INFO] sy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,471 [INFO] sxy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,471 [INFO] correl_plane_out: ((4177920,), dtype('float32'), True)
+2025-11-26 15:42:21,476 [INFO] mask: ((17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,476 [INFO] win_ctrs_x: ((15,), dtype('float32'), True)
+2025-11-26 15:42:21,476 [INFO] win_ctrs_y: ((17,), dtype('float32'), True)
+2025-11-26 15:42:21,476 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,476 [INFO] window_weight_a: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,477 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,477 [INFO] window_weight_b: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,477 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,477 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,477 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,477 [INFO] pk_loc_x: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,477 [INFO] pk_loc_y: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,477 [INFO] pk_height: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,477 [INFO] sx: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,477 [INFO] sy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,477 [INFO] sxy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,477 [INFO] correl_plane_out: ((4177920,), dtype('float32'), True)
+2025-11-26 15:42:21,525 [INFO] mask: ((35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,525 [INFO] win_ctrs_x: ((31,), dtype('float32'), True)
+2025-11-26 15:42:21,525 [INFO] win_ctrs_y: ((35,), dtype('float32'), True)
+2025-11-26 15:42:21,525 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,525 [INFO] window_weight_a: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,525 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,525 [INFO] window_weight_b: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,525 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,525 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,525 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,525 [INFO] pk_loc_x: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,525 [INFO] pk_loc_y: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,525 [INFO] pk_height: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,525 [INFO] sx: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,525 [INFO] sy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,525 [INFO] sxy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,525 [INFO] correl_plane_out: ((4444160,), dtype('float32'), True)
+2025-11-26 15:42:21,525 [INFO] mask: ((35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,525 [INFO] win_ctrs_x: ((31,), dtype('float32'), True)
+2025-11-26 15:42:21,525 [INFO] win_ctrs_y: ((35,), dtype('float32'), True)
+2025-11-26 15:42:21,525 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,525 [INFO] window_weight_a: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,525 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,525 [INFO] window_weight_b: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,525 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,525 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,525 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,525 [INFO] pk_loc_x: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,525 [INFO] pk_loc_y: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,525 [INFO] pk_height: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,525 [INFO] sx: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,525 [INFO] sy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,525 [INFO] sxy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,525 [INFO] correl_plane_out: ((4444160,), dtype('float32'), True)
+2025-11-26 15:42:21,529 [INFO] mask: ((35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,529 [INFO] win_ctrs_x: ((31,), dtype('float32'), True)
+2025-11-26 15:42:21,529 [INFO] win_ctrs_y: ((35,), dtype('float32'), True)
+2025-11-26 15:42:21,529 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,529 [INFO] window_weight_a: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,529 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,529 [INFO] window_weight_b: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,529 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,529 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,529 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,529 [INFO] pk_loc_x: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,529 [INFO] pk_loc_y: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,529 [INFO] pk_height: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,529 [INFO] sx: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,529 [INFO] sy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,529 [INFO] sxy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,529 [INFO] correl_plane_out: ((4444160,), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] mask: ((71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] win_ctrs_x: ((63,), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] win_ctrs_y: ((71,), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,574 [INFO] window_weight_a: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] mask: ((71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,574 [INFO] window_weight_b: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] win_ctrs_x: ((63,), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,574 [INFO] win_ctrs_y: ((71,), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,574 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,574 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,574 [INFO] window_weight_a: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] pk_loc_x: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,574 [INFO] pk_loc_y: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] window_weight_b: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] pk_height: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,574 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,574 [INFO] sx: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,574 [INFO] pk_loc_x: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] sy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] pk_loc_y: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] sxy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] pk_height: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] correl_plane_out: ((4580352,), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] sx: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] sy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] mask: ((71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] sxy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] correl_plane_out: ((4580352,), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] win_ctrs_x: ((63,), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] win_ctrs_y: ((71,), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,574 [INFO] window_weight_a: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,574 [INFO] window_weight_b: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,574 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,574 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,574 [INFO] pk_loc_x: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] pk_loc_y: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] pk_height: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] sx: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] sy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] sxy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,574 [INFO] correl_plane_out: ((4580352,), dtype('float32'), True)
+2025-11-26 15:42:21,651 [INFO] mask: ((17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] win_ctrs_x: ((15,), dtype('float32'), True)
+2025-11-26 15:42:21,651 [INFO] mask: ((17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] win_ctrs_y: ((17,), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,652 [INFO] win_ctrs_x: ((15,), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] window_weight_a: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,652 [INFO] win_ctrs_y: ((17,), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] window_weight_b: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,652 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,652 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,652 [INFO] window_weight_a: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,652 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,652 [INFO] pk_loc_x: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] window_weight_b: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] pk_loc_y: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,652 [INFO] pk_height: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,652 [INFO] sx: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,652 [INFO] sy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] pk_loc_x: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] sxy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] pk_loc_y: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] correl_plane_out: ((4177920,), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] pk_height: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] sx: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] sy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] sxy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] correl_plane_out: ((4177920,), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] mask: ((17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] win_ctrs_x: ((15,), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] win_ctrs_y: ((17,), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,652 [INFO] window_weight_a: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,652 [INFO] window_weight_b: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,652 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,652 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,652 [INFO] pk_loc_x: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] pk_loc_y: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] pk_height: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] sx: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,652 [INFO] sy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,653 [INFO] sxy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,653 [INFO] correl_plane_out: ((4177920,), dtype('float32'), True)
+2025-11-26 15:42:21,710 [INFO] mask: ((35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] win_ctrs_x: ((31,), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] win_ctrs_y: ((35,), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,711 [INFO] window_weight_a: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,711 [INFO] window_weight_b: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,711 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,711 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,711 [INFO] pk_loc_x: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] pk_loc_y: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] pk_height: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] sx: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] mask: ((35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] sy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] mask: ((35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] sxy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] win_ctrs_x: ((31,), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] correl_plane_out: ((4444160,), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] win_ctrs_x: ((31,), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] win_ctrs_y: ((35,), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] win_ctrs_y: ((35,), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,711 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,711 [INFO] window_weight_a: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] window_weight_a: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,711 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,711 [INFO] window_weight_b: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,711 [INFO] window_weight_b: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,711 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,711 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,711 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,711 [INFO] pk_loc_x: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,711 [INFO] pk_loc_y: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] pk_loc_x: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] pk_height: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] sx: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] sy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] pk_loc_y: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] sxy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] correl_plane_out: ((4444160,), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] pk_height: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] sx: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] sy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] sxy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,711 [INFO] correl_plane_out: ((4444160,), dtype('float32'), True)
+2025-11-26 15:42:21,759 [INFO] mask: ((71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,759 [INFO] mask: ((71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] win_ctrs_x: ((63,), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] win_ctrs_y: ((71,), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,760 [INFO] win_ctrs_x: ((63,), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] window_weight_a: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,760 [INFO] mask: ((71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] window_weight_b: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] win_ctrs_y: ((71,), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] win_ctrs_x: ((63,), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,760 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,760 [INFO] win_ctrs_y: ((71,), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,760 [INFO] window_weight_a: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,760 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,760 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,760 [INFO] pk_loc_x: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] window_weight_a: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] window_weight_b: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] pk_loc_y: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,760 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,760 [INFO] pk_height: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] window_weight_b: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,760 [INFO] sx: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,760 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,760 [INFO] sy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] pk_loc_x: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,760 [INFO] sxy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] pk_loc_y: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,760 [INFO] correl_plane_out: ((4580352,), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] pk_height: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] pk_loc_x: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] sx: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] pk_loc_y: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] sy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] pk_height: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] sxy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] sx: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] correl_plane_out: ((4580352,), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] sy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] sxy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,760 [INFO] correl_plane_out: ((4580352,), dtype('float32'), True)
+2025-11-26 15:42:21,835 [INFO] mask: ((17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,838 [INFO] mask: ((17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,839 [INFO] mask: ((17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,851 [INFO] win_ctrs_x: ((15,), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] win_ctrs_x: ((15,), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] win_ctrs_x: ((15,), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] win_ctrs_y: ((17,), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] win_ctrs_y: ((17,), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] win_ctrs_y: ((17,), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,870 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,870 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,870 [INFO] window_weight_a: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] window_weight_a: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,870 [INFO] window_weight_a: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,870 [INFO] window_weight_b: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,870 [INFO] window_weight_b: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,870 [INFO] window_weight_b: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,870 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,870 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,870 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,870 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,870 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,870 [INFO] pk_loc_x: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] pk_loc_x: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] pk_loc_y: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,870 [INFO] pk_loc_y: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] pk_height: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,870 [INFO] pk_height: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] sx: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] sx: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] pk_loc_x: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] sy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] sy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] sxy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] pk_loc_y: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] sxy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] correl_plane_out: ((4177920,), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] pk_height: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] correl_plane_out: ((4177920,), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] sx: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] sy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] sxy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:21,870 [INFO] correl_plane_out: ((4177920,), dtype('float32'), True)
+2025-11-26 15:42:21,929 [INFO] mask: ((35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,930 [INFO] win_ctrs_x: ((31,), dtype('float32'), True)
+2025-11-26 15:42:21,930 [INFO] win_ctrs_y: ((35,), dtype('float32'), True)
+2025-11-26 15:42:21,930 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,930 [INFO] mask: ((35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,930 [INFO] mask: ((35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,930 [INFO] window_weight_a: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,930 [INFO] win_ctrs_x: ((31,), dtype('float32'), True)
+2025-11-26 15:42:21,930 [INFO] win_ctrs_x: ((31,), dtype('float32'), True)
+2025-11-26 15:42:21,930 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,930 [INFO] win_ctrs_y: ((35,), dtype('float32'), True)
+2025-11-26 15:42:21,930 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,930 [INFO] window_weight_a: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,930 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,930 [INFO] window_weight_b: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,930 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,930 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,930 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,930 [INFO] win_ctrs_y: ((35,), dtype('float32'), True)
+2025-11-26 15:42:21,930 [INFO] pk_loc_x: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,930 [INFO] pk_loc_y: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,930 [INFO] window_weight_b: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,930 [INFO] pk_height: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,930 [INFO] sx: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,930 [INFO] sy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,930 [INFO] sxy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,930 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,930 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,930 [INFO] correl_plane_out: ((4444160,), dtype('float32'), True)
+2025-11-26 15:42:21,930 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,930 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,930 [INFO] pk_loc_x: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,930 [INFO] pk_loc_y: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,930 [INFO] pk_height: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,930 [INFO] sx: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,930 [INFO] window_weight_a: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,931 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,931 [INFO] sy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,931 [INFO] sxy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,931 [INFO] window_weight_b: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:21,931 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,931 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,931 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,931 [INFO] pk_loc_x: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,931 [INFO] correl_plane_out: ((4444160,), dtype('float32'), True)
+2025-11-26 15:42:21,931 [INFO] pk_loc_y: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,931 [INFO] pk_height: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,931 [INFO] sx: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,931 [INFO] sy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,931 [INFO] sxy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:21,931 [INFO] correl_plane_out: ((4444160,), dtype('float32'), True)
+2025-11-26 15:42:21,976 [INFO] mask: ((71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,976 [INFO] win_ctrs_x: ((63,), dtype('float32'), True)
+2025-11-26 15:42:21,976 [INFO] win_ctrs_y: ((71,), dtype('float32'), True)
+2025-11-26 15:42:21,976 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,976 [INFO] window_weight_a: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,976 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,976 [INFO] window_weight_b: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,976 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,976 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,976 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,976 [INFO] pk_loc_x: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,976 [INFO] pk_loc_y: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,976 [INFO] pk_height: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,977 [INFO] sx: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,977 [INFO] sy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,976 [INFO] mask: ((71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,977 [INFO] sxy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,977 [INFO] correl_plane_out: ((4580352,), dtype('float32'), True)
+2025-11-26 15:42:21,977 [INFO] win_ctrs_x: ((63,), dtype('float32'), True)
+2025-11-26 15:42:21,977 [INFO] win_ctrs_y: ((71,), dtype('float32'), True)
+2025-11-26 15:42:21,977 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,977 [INFO] window_weight_a: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,977 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,977 [INFO] window_weight_b: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,977 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,977 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,977 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,977 [INFO] pk_loc_x: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,977 [INFO] pk_loc_y: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,977 [INFO] mask: ((71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,977 [INFO] pk_height: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,977 [INFO] sx: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,977 [INFO] win_ctrs_x: ((63,), dtype('float32'), True)
+2025-11-26 15:42:21,977 [INFO] sy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,977 [INFO] win_ctrs_y: ((71,), dtype('float32'), True)
+2025-11-26 15:42:21,977 [INFO] sxy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,977 [INFO] correl_plane_out: ((4580352,), dtype('float32'), True)
+2025-11-26 15:42:21,977 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,977 [INFO] window_weight_a: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,977 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:21,977 [INFO] window_weight_b: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:21,977 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:21,977 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:21,977 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:21,977 [INFO] pk_loc_x: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,977 [INFO] pk_loc_y: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,977 [INFO] pk_height: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,977 [INFO] sx: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,977 [INFO] sy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,978 [INFO] sxy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:21,978 [INFO] correl_plane_out: ((4580352,), dtype('float32'), True)
+2025-11-26 15:42:22,054 [INFO] mask: ((17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,054 [INFO] win_ctrs_x: ((15,), dtype('float32'), True)
+2025-11-26 15:42:22,054 [INFO] win_ctrs_y: ((17,), dtype('float32'), True)
+2025-11-26 15:42:22,054 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,054 [INFO] window_weight_a: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:22,054 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:22,054 [INFO] window_weight_b: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:22,054 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,054 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:22,054 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:22,054 [INFO] pk_loc_x: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,054 [INFO] pk_loc_y: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,054 [INFO] pk_height: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,054 [INFO] sx: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,054 [INFO] sy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,055 [INFO] sxy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,055 [INFO] correl_plane_out: ((4177920,), dtype('float32'), True)
+2025-11-26 15:42:22,055 [INFO] mask: ((17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,055 [INFO] win_ctrs_x: ((15,), dtype('float32'), True)
+2025-11-26 15:42:22,055 [INFO] win_ctrs_y: ((17,), dtype('float32'), True)
+2025-11-26 15:42:22,055 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,055 [INFO] window_weight_a: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:22,055 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:22,055 [INFO] window_weight_b: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:22,055 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,055 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:22,055 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:22,055 [INFO] pk_loc_x: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,055 [INFO] pk_loc_y: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,055 [INFO] pk_height: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,055 [INFO] sx: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,055 [INFO] sy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,055 [INFO] sxy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,055 [INFO] correl_plane_out: ((4177920,), dtype('float32'), True)
+2025-11-26 15:42:22,057 [INFO] mask: ((17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,057 [INFO] win_ctrs_x: ((15,), dtype('float32'), True)
+2025-11-26 15:42:22,057 [INFO] win_ctrs_y: ((17,), dtype('float32'), True)
+2025-11-26 15:42:22,057 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,057 [INFO] window_weight_a: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:22,057 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:22,057 [INFO] window_weight_b: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:22,057 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,057 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:22,057 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:22,057 [INFO] pk_loc_x: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,057 [INFO] pk_loc_y: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,057 [INFO] pk_height: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,057 [INFO] sx: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,057 [INFO] sy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,057 [INFO] sxy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,057 [INFO] correl_plane_out: ((4177920,), dtype('float32'), True)
+2025-11-26 15:42:22,110 [INFO] mask: ((35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,110 [INFO] mask: ((35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,110 [INFO] win_ctrs_x: ((31,), dtype('float32'), True)
+2025-11-26 15:42:22,110 [INFO] win_ctrs_x: ((31,), dtype('float32'), True)
+2025-11-26 15:42:22,110 [INFO] win_ctrs_y: ((35,), dtype('float32'), True)
+2025-11-26 15:42:22,110 [INFO] win_ctrs_y: ((35,), dtype('float32'), True)
+2025-11-26 15:42:22,110 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,110 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,110 [INFO] window_weight_a: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:22,110 [INFO] window_weight_a: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:22,110 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:22,110 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:22,110 [INFO] window_weight_b: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:22,110 [INFO] window_weight_b: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:22,110 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,110 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,110 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:22,110 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:22,111 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:22,111 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:22,111 [INFO] pk_loc_x: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,111 [INFO] pk_loc_x: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,111 [INFO] pk_loc_y: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,111 [INFO] pk_loc_y: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,111 [INFO] pk_height: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,111 [INFO] pk_height: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,111 [INFO] sx: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,111 [INFO] sx: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,111 [INFO] sy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,111 [INFO] sy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,111 [INFO] sxy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,111 [INFO] sxy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,111 [INFO] correl_plane_out: ((4444160,), dtype('float32'), True)
+2025-11-26 15:42:22,111 [INFO] correl_plane_out: ((4444160,), dtype('float32'), True)
+2025-11-26 15:42:22,115 [INFO] mask: ((35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,115 [INFO] win_ctrs_x: ((31,), dtype('float32'), True)
+2025-11-26 15:42:22,115 [INFO] win_ctrs_y: ((35,), dtype('float32'), True)
+2025-11-26 15:42:22,115 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,115 [INFO] window_weight_a: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:22,115 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:22,115 [INFO] window_weight_b: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:22,115 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,115 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:22,115 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:22,116 [INFO] pk_loc_x: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,116 [INFO] pk_loc_y: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,116 [INFO] pk_height: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,116 [INFO] sx: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,116 [INFO] sy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,116 [INFO] sxy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,116 [INFO] correl_plane_out: ((4444160,), dtype('float32'), True)
+2025-11-26 15:42:22,154 [INFO] mask: ((71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,154 [INFO] win_ctrs_x: ((63,), dtype('float32'), True)
+2025-11-26 15:42:22,154 [INFO] win_ctrs_y: ((71,), dtype('float32'), True)
+2025-11-26 15:42:22,154 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,154 [INFO] window_weight_a: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:22,154 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:22,154 [INFO] window_weight_b: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:22,154 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,154 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:22,154 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:22,154 [INFO] pk_loc_x: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,154 [INFO] pk_loc_y: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,154 [INFO] pk_height: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,154 [INFO] sx: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,154 [INFO] sy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,154 [INFO] sxy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,154 [INFO] correl_plane_out: ((4580352,), dtype('float32'), True)
+2025-11-26 15:42:22,156 [INFO] mask: ((71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,156 [INFO] win_ctrs_x: ((63,), dtype('float32'), True)
+2025-11-26 15:42:22,156 [INFO] win_ctrs_y: ((71,), dtype('float32'), True)
+2025-11-26 15:42:22,156 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,156 [INFO] window_weight_a: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:22,156 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:22,156 [INFO] window_weight_b: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:22,156 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,156 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:22,156 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:22,156 [INFO] pk_loc_x: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,156 [INFO] pk_loc_y: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,156 [INFO] pk_height: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,157 [INFO] sx: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,157 [INFO] sy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,157 [INFO] sxy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,157 [INFO] correl_plane_out: ((4580352,), dtype('float32'), True)
+2025-11-26 15:42:22,159 [INFO] mask: ((71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,159 [INFO] win_ctrs_x: ((63,), dtype('float32'), True)
+2025-11-26 15:42:22,159 [INFO] win_ctrs_y: ((71,), dtype('float32'), True)
+2025-11-26 15:42:22,159 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,159 [INFO] window_weight_a: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:22,159 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:22,159 [INFO] window_weight_b: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:22,160 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,160 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:22,160 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:22,160 [INFO] pk_loc_x: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,160 [INFO] pk_loc_y: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,160 [INFO] pk_height: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,160 [INFO] sx: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,160 [INFO] sy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,160 [INFO] sxy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,160 [INFO] correl_plane_out: ((4580352,), dtype('float32'), True)
+2025-11-26 15:42:22,233 [INFO] mask: ((17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,233 [INFO] win_ctrs_x: ((15,), dtype('float32'), True)
+2025-11-26 15:42:22,233 [INFO] win_ctrs_y: ((17,), dtype('float32'), True)
+2025-11-26 15:42:22,233 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,233 [INFO] window_weight_a: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:22,233 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:22,233 [INFO] window_weight_b: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:22,233 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,233 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:22,233 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:22,233 [INFO] pk_loc_x: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,233 [INFO] pk_loc_y: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,233 [INFO] pk_height: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,233 [INFO] sx: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,233 [INFO] sy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,233 [INFO] sxy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,233 [INFO] correl_plane_out: ((4177920,), dtype('float32'), True)
+2025-11-26 15:42:22,238 [INFO] mask: ((17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,239 [INFO] win_ctrs_x: ((15,), dtype('float32'), True)
+2025-11-26 15:42:22,239 [INFO] win_ctrs_y: ((17,), dtype('float32'), True)
+2025-11-26 15:42:22,239 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,239 [INFO] window_weight_a: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:22,239 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:22,239 [INFO] window_weight_b: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:22,239 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,239 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:22,239 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:22,239 [INFO] pk_loc_x: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,239 [INFO] pk_loc_y: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,239 [INFO] pk_height: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,239 [INFO] sx: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,239 [INFO] sy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,239 [INFO] sxy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,239 [INFO] correl_plane_out: ((4177920,), dtype('float32'), True)
+2025-11-26 15:42:22,239 [INFO] mask: ((17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,239 [INFO] win_ctrs_x: ((15,), dtype('float32'), True)
+2025-11-26 15:42:22,239 [INFO] win_ctrs_y: ((17,), dtype('float32'), True)
+2025-11-26 15:42:22,239 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,239 [INFO] window_weight_a: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:22,239 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:22,239 [INFO] window_weight_b: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:22,239 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,239 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:22,239 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:22,239 [INFO] pk_loc_x: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,239 [INFO] pk_loc_y: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,239 [INFO] pk_height: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,239 [INFO] sx: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,239 [INFO] sy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,239 [INFO] sxy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,239 [INFO] correl_plane_out: ((4177920,), dtype('float32'), True)
+2025-11-26 15:42:22,358 [INFO] mask: ((35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,358 [INFO] win_ctrs_x: ((31,), dtype('float32'), True)
+2025-11-26 15:42:22,358 [INFO] win_ctrs_y: ((35,), dtype('float32'), True)
+2025-11-26 15:42:22,358 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,358 [INFO] window_weight_a: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:22,358 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:22,358 [INFO] window_weight_b: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:22,358 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,359 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:22,359 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:22,359 [INFO] pk_loc_x: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,359 [INFO] pk_loc_y: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,359 [INFO] pk_height: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,359 [INFO] sx: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,359 [INFO] sy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,359 [INFO] sxy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,359 [INFO] correl_plane_out: ((4444160,), dtype('float32'), True)
+2025-11-26 15:42:22,360 [INFO] mask: ((35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,360 [INFO] win_ctrs_x: ((31,), dtype('float32'), True)
+2025-11-26 15:42:22,360 [INFO] win_ctrs_y: ((35,), dtype('float32'), True)
+2025-11-26 15:42:22,360 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,360 [INFO] window_weight_a: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:22,360 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:22,360 [INFO] window_weight_b: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:22,360 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,360 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:22,360 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:22,360 [INFO] pk_loc_x: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,360 [INFO] pk_loc_y: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,360 [INFO] pk_height: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,360 [INFO] sx: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,360 [INFO] sy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,360 [INFO] sxy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,361 [INFO] correl_plane_out: ((4444160,), dtype('float32'), True)
+2025-11-26 15:42:22,365 [INFO] mask: ((35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,365 [INFO] win_ctrs_x: ((31,), dtype('float32'), True)
+2025-11-26 15:42:22,365 [INFO] win_ctrs_y: ((35,), dtype('float32'), True)
+2025-11-26 15:42:22,365 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,365 [INFO] window_weight_a: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:22,365 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:22,365 [INFO] window_weight_b: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:22,365 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,365 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:22,365 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:22,365 [INFO] pk_loc_x: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,365 [INFO] pk_loc_y: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,365 [INFO] pk_height: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,366 [INFO] sx: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,366 [INFO] sy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,366 [INFO] sxy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,366 [INFO] correl_plane_out: ((4444160,), dtype('float32'), True)
+2025-11-26 15:42:22,401 [INFO] mask: ((71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,401 [INFO] win_ctrs_x: ((63,), dtype('float32'), True)
+2025-11-26 15:42:22,401 [INFO] win_ctrs_y: ((71,), dtype('float32'), True)
+2025-11-26 15:42:22,401 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,401 [INFO] window_weight_a: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:22,401 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:22,401 [INFO] window_weight_b: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:22,401 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,401 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:22,401 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:22,401 [INFO] pk_loc_x: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,401 [INFO] pk_loc_y: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,401 [INFO] pk_height: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,401 [INFO] sx: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,401 [INFO] sy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,401 [INFO] sxy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,401 [INFO] correl_plane_out: ((4580352,), dtype('float32'), True)
+2025-11-26 15:42:22,407 [INFO] mask: ((71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,407 [INFO] win_ctrs_x: ((63,), dtype('float32'), True)
+2025-11-26 15:42:22,407 [INFO] win_ctrs_y: ((71,), dtype('float32'), True)
+2025-11-26 15:42:22,407 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,407 [INFO] window_weight_a: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:22,407 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:22,407 [INFO] window_weight_b: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:22,407 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,407 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:22,407 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:22,407 [INFO] pk_loc_x: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,407 [INFO] pk_loc_y: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,407 [INFO] pk_height: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,408 [INFO] sx: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,408 [INFO] sy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,408 [INFO] sxy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,408 [INFO] correl_plane_out: ((4580352,), dtype('float32'), True)
+2025-11-26 15:42:22,413 [INFO] mask: ((71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,413 [INFO] win_ctrs_x: ((63,), dtype('float32'), True)
+2025-11-26 15:42:22,413 [INFO] win_ctrs_y: ((71,), dtype('float32'), True)
+2025-11-26 15:42:22,413 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,413 [INFO] window_weight_a: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:22,413 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:22,413 [INFO] window_weight_b: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:22,413 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,413 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:22,414 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:22,414 [INFO] pk_loc_x: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,414 [INFO] pk_loc_y: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,414 [INFO] pk_height: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,414 [INFO] sx: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,414 [INFO] sy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,414 [INFO] sxy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,414 [INFO] correl_plane_out: ((4580352,), dtype('float32'), True)
+2025-11-26 15:42:22,485 [INFO] mask: ((17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,485 [INFO] win_ctrs_x: ((15,), dtype('float32'), True)
+2025-11-26 15:42:22,485 [INFO] win_ctrs_y: ((17,), dtype('float32'), True)
+2025-11-26 15:42:22,485 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,485 [INFO] window_weight_a: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:22,485 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:22,485 [INFO] window_weight_b: ((128, 128), dtype('float32'), True)
+2025-11-26 15:42:22,485 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,485 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:22,485 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:22,485 [INFO] pk_loc_x: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,485 [INFO] pk_loc_y: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,485 [INFO] pk_height: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,485 [INFO] sx: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,485 [INFO] sy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,485 [INFO] sxy: ((1, 17, 15), dtype('float32'), True)
+2025-11-26 15:42:22,485 [INFO] correl_plane_out: ((4177920,), dtype('float32'), True)
+2025-11-26 15:42:22,527 [INFO] mask: ((35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,527 [INFO] win_ctrs_x: ((31,), dtype('float32'), True)
+2025-11-26 15:42:22,527 [INFO] win_ctrs_y: ((35,), dtype('float32'), True)
+2025-11-26 15:42:22,527 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,527 [INFO] window_weight_a: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:22,527 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:22,527 [INFO] window_weight_b: ((64, 64), dtype('float32'), True)
+2025-11-26 15:42:22,527 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,527 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:22,527 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:22,527 [INFO] pk_loc_x: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,527 [INFO] pk_loc_y: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,527 [INFO] pk_height: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,527 [INFO] sx: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,527 [INFO] sy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,527 [INFO] sxy: ((1, 35, 31), dtype('float32'), True)
+2025-11-26 15:42:22,527 [INFO] correl_plane_out: ((4444160,), dtype('float32'), True)
+2025-11-26 15:42:22,557 [INFO] mask: ((71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,557 [INFO] win_ctrs_x: ((63,), dtype('float32'), True)
+2025-11-26 15:42:22,557 [INFO] win_ctrs_y: ((71,), dtype('float32'), True)
+2025-11-26 15:42:22,557 [INFO] n_windows: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,557 [INFO] window_weight_a: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:22,557 [INFO] b_ensemble: (<class 'bool'>, False)
+2025-11-26 15:42:22,557 [INFO] window_weight_b: ((32, 32), dtype('float32'), True)
+2025-11-26 15:42:22,557 [INFO] win_size: ((2,), dtype('int32'), True)
+2025-11-26 15:42:22,557 [INFO] n_peaks: (<class 'int'>, 1)
+2025-11-26 15:42:22,557 [INFO] i_peak_finder: (<class 'int'>, 3)
+2025-11-26 15:42:22,557 [INFO] pk_loc_x: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,557 [INFO] pk_loc_y: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,557 [INFO] pk_height: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,557 [INFO] sx: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,557 [INFO] sy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,557 [INFO] sxy: ((1, 71, 63), dtype('float32'), True)
+2025-11-26 15:42:22,557 [INFO] correl_plane_out: ((4580352,), dtype('float32'), True)
+2025-11-26 15:42:22,615 [INFO] [Batch 1/4] Correlation complete
+2025-11-26 15:42:22,722 [INFO] [Batch 2/4] Filtering complete
+2025-11-26 15:42:22,722 [INFO] [Batch 2/4] Starting correlation...
+2025-11-26 15:42:22,903 [ERROR] Future exception was never retrieved
+future: <Future finished exception=CommClosedError('in <TCP (closed) ConnectionPool.update_data local=tcp://127.0.0.1:60082 remote=tcp://127.0.0.1:60074>: OSError: [Errno 55] No buffer space available')>
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/tornado/iostream.py", line 962, in _handle_write
+    num_bytes = self.write_to_fd(self._write_buffer.peek(size))
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/tornado/iostream.py", line 1121, in write_to_fd
+    return self.socket.send(data)  # type: ignore
+           ~~~~~~~~~~~~~~~~^^^^^^
+OSError: [Errno 55] No buffer space available
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/tornado/gen.py", line 796, in run
+    yielded = self.gen.throw(exc)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/utils.py", line 282, in quiet
+    yield task
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/tornado/gen.py", line 783, in run
+    value = future.result()
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/core.py", line 1259, in send_recv_from_rpc
+    return await send_recv(comm=comm, op=key, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/core.py", line 1018, in send_recv
+    response = await comm.read(deserializers=deserializers)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/comm/tcp.py", line 237, in read
+    convert_stream_closed_error(self, e)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/comm/tcp.py", line 143, in convert_stream_closed_error
+    raise CommClosedError(f"in {obj}: {exc.__class__.__name__}: {exc}") from exc
+distributed.comm.core.CommClosedError: in <TCP (closed) ConnectionPool.update_data local=tcp://127.0.0.1:60082 remote=tcp://127.0.0.1:60074>: OSError: [Errno 55] No buffer space available
+2025-11-26 15:43:57,051 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-26 15:43:57,581 [INFO] ================================================================================
+2025-11-26 15:43:57,581 [INFO] VALIDATING CONFIGURATION
+2025-11-26 15:43:57,581 [INFO] ================================================================================
+2025-11-26 15:43:57,585 [INFO] ✓ Configuration validated successfully
+2025-11-26 15:43:57,585 [INFO]   Source paths: [PosixPath('/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1')]
+2025-11-26 15:43:57,585 [INFO]   Cameras: [1]
+2025-11-26 15:43:57,585 [INFO]   Image files: 100
+2025-11-26 15:43:57,585 [INFO]   Frame pairs: 100
+2025-11-26 15:43:57,585 [INFO]   Image format: ('B%05d_A.tif', 'B%05d_B.tif')
+2025-11-26 15:43:57,585 [INFO] 
+2025-11-26 15:43:57,585 [INFO] NOTES:
+2025-11-26 15:43:57,585 [INFO]   ℹ Camera 1: Processing subset - using 100 of 1000 available files
+2025-11-26 15:43:57,585 [INFO] ================================================================================
+2025-11-26 15:43:57,585 [INFO] 
+2025-11-26 15:43:57,585 [INFO] Set OMP_NUM_THREADS to 10 for main process batch filtering
+2025-11-26 15:43:58,516 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-26 15:43:58,516 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-26 15:43:58,516 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-26 15:43:58,517 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-26 15:43:59,097 [INFO] Worker logging configured successfully
+2025-11-26 15:43:59,098 [INFO] Worker logging configured successfully
+2025-11-26 15:43:59,098 [INFO] Worker logging configured successfully
+2025-11-26 15:43:59,098 [INFO] Worker logging configured successfully
+2025-11-26 15:43:59,099 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-26 15:43:59,099 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-26 15:43:59,099 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-26 15:43:59,099 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-26 15:43:59,099 [INFO] Dask cluster started successfully
+2025-11-26 15:43:59,099 [INFO] Dask Worker Info:
+2025-11-26 15:43:59,099 [INFO] Worker tcp://127.0.0.1:60223
+2025-11-26 15:43:59,100 [INFO]   pid: None
+2025-11-26 15:43:59,100 [INFO]   host: 127.0.0.1
+2025-11-26 15:43:59,100 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-fzyd8l59
+2025-11-26 15:43:59,100 [INFO]   nanny: True
+2025-11-26 15:43:59,100 [INFO] Dask Worker Info:
+2025-11-26 15:43:59,100 [INFO] Worker tcp://127.0.0.1:60224
+2025-11-26 15:43:59,100 [INFO]   pid: None
+2025-11-26 15:43:59,100 [INFO]   host: 127.0.0.1
+2025-11-26 15:43:59,100 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-eodrlq9_
+2025-11-26 15:43:59,100 [INFO]   nanny: True
+2025-11-26 15:43:59,100 [INFO] Dask Worker Info:
+2025-11-26 15:43:59,100 [INFO] Worker tcp://127.0.0.1:60225
+2025-11-26 15:43:59,100 [INFO]   pid: None
+2025-11-26 15:43:59,100 [INFO]   host: 127.0.0.1
+2025-11-26 15:43:59,100 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-vzc3qnhz
+2025-11-26 15:43:59,100 [INFO]   nanny: True
+2025-11-26 15:43:59,100 [INFO] Dask Worker Info:
+2025-11-26 15:43:59,100 [INFO] Worker tcp://127.0.0.1:60226
+2025-11-26 15:43:59,100 [INFO]   pid: None
+2025-11-26 15:43:59,100 [INFO]   host: 127.0.0.1
+2025-11-26 15:43:59,100 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-equts3l6
+2025-11-26 15:43:59,100 [INFO]   nanny: True
+2025-11-26 15:43:59,100 [INFO] Processing camera: Cam1
+2025-11-26 15:43:59,102 [INFO] _detect_image_shape: image_format = ('B%05d_A.tif', 'B%05d_B.tif'), type = <class 'tuple'>
+2025-11-26 15:43:59,102 [INFO] Source path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1, Camera: 1
+2025-11-26 15:43:59,102 [INFO] Camera path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
+2025-11-26 15:43:59,102 [INFO] Trying to read file: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1/B00001_A.tif
+2025-11-26 15:43:59,108 [INFO] Detected image shape: (1152, 1024)
+2025-11-26 15:43:59,109 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-26 15:43:59,112 [INFO] Lazy loading complete: 100 independent delayed tasks created (~100 KB memory footprint)
+2025-11-26 15:43:59,113 [INFO] Pre-computing vector masks for Cam1
+2025-11-26 15:43:59,138 [INFO] Vector masks computed: 3 passes
+2025-11-26 15:43:59,138 [INFO] ================================================================================
+2025-11-26 15:43:59,138 [INFO] UNIFIED BATCH PIPELINE: INSTANTANEOUS MODE
+2025-11-26 15:43:59,138 [INFO] ================================================================================
+2025-11-26 15:43:59,138 [INFO] Image files: 100
+2025-11-26 15:43:59,138 [INFO] Frame pairs: 100
+2025-11-26 15:43:59,138 [INFO] Runs to save: [2]
+2025-11-26 15:43:59,138 [INFO] Filters: ['time']
+2025-11-26 15:43:59,138 [INFO] Output path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/instantaneous
+2025-11-26 15:43:59,138 [INFO] ================================================================================
+2025-11-26 15:43:59,138 [INFO] Batch size: 25
+2025-11-26 15:43:59,139 [INFO] Assigned 1 filter workers
+2025-11-26 15:43:59,139 [INFO] Assigned 3 correlation workers
+2025-11-26 15:43:59,139 [INFO] Worker allocation: 1 filter, 3 correlation (total: 4)
+2025-11-26 15:43:59,139 [INFO] Starting instantaneous PIV processing with unified batch pipeline...
+2025-11-26 15:43:59,145 [INFO] Successfully cached window padding for 3 passes
+2025-11-26 15:43:59,149 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-26 15:43:59,192 [INFO] Broadcast correlator cache to all workers
+2025-11-26 15:43:59,195 [INFO] Broadcast vector masks (5.7 KB)
+2025-11-26 15:43:59,199 [INFO] Broadcast pixel mask (1152.0 KB)
+2025-11-26 15:43:59,200 [INFO] Processing 4 batches for instantaneous PIV
+2025-11-26 15:43:59,200 [INFO] Submitting batch 0 to filter worker tcp://127.0.0.1:60223
+2025-11-26 15:43:59,590 [INFO] [Batch 1/4] Filtering complete
+2025-11-26 15:43:59,590 [INFO] [Batch 1/4] Starting correlation...
+2025-11-26 15:43:59,755 [ERROR] Future exception was never retrieved
+future: <Future finished exception=CommClosedError('in <TCP (closed) ConnectionPool.update_data local=tcp://127.0.0.1:60239 remote=tcp://127.0.0.1:60225>: OSError: [Errno 55] No buffer space available')>
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/tornado/iostream.py", line 962, in _handle_write
+    num_bytes = self.write_to_fd(self._write_buffer.peek(size))
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/tornado/iostream.py", line 1121, in write_to_fd
+    return self.socket.send(data)  # type: ignore
+           ~~~~~~~~~~~~~~~~^^^^^^
+OSError: [Errno 55] No buffer space available
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/tornado/gen.py", line 796, in run
+    yielded = self.gen.throw(exc)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/utils.py", line 282, in quiet
+    yield task
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/tornado/gen.py", line 783, in run
+    value = future.result()
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/core.py", line 1259, in send_recv_from_rpc
+    return await send_recv(comm=comm, op=key, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/core.py", line 1018, in send_recv
+    response = await comm.read(deserializers=deserializers)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/comm/tcp.py", line 237, in read
+    convert_stream_closed_error(self, e)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/comm/tcp.py", line 143, in convert_stream_closed_error
+    raise CommClosedError(f"in {obj}: {exc.__class__.__name__}: {exc}") from exc
+distributed.comm.core.CommClosedError: in <TCP (closed) ConnectionPool.update_data local=tcp://127.0.0.1:60239 remote=tcp://127.0.0.1:60225>: OSError: [Errno 55] No buffer space available
+2025-11-26 15:44:25,676 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-26 15:44:26,124 [INFO] ================================================================================
+2025-11-26 15:44:26,124 [INFO] VALIDATING CONFIGURATION
+2025-11-26 15:44:26,124 [INFO] ================================================================================
+2025-11-26 15:44:26,128 [INFO] ✓ Configuration validated successfully
+2025-11-26 15:44:26,128 [INFO]   Source paths: [PosixPath('/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1')]
+2025-11-26 15:44:26,128 [INFO]   Cameras: [1]
+2025-11-26 15:44:26,128 [INFO]   Image files: 100
+2025-11-26 15:44:26,128 [INFO]   Frame pairs: 100
+2025-11-26 15:44:26,128 [INFO]   Image format: ('B%05d_A.tif', 'B%05d_B.tif')
+2025-11-26 15:44:26,128 [INFO] 
+2025-11-26 15:44:26,128 [INFO] NOTES:
+2025-11-26 15:44:26,128 [INFO]   ℹ Camera 1: Processing subset - using 100 of 1000 available files
+2025-11-26 15:44:26,128 [INFO] ================================================================================
+2025-11-26 15:44:26,128 [INFO] 
+2025-11-26 15:44:26,128 [INFO] Set OMP_NUM_THREADS to 10 for main process batch filtering
+2025-11-26 15:44:26,972 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-26 15:44:26,973 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-26 15:44:26,973 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-26 15:44:26,977 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-26 15:44:27,615 [INFO] Worker logging configured successfully
+2025-11-26 15:44:27,615 [INFO] Worker logging configured successfully
+2025-11-26 15:44:27,615 [INFO] Worker logging configured successfully
+2025-11-26 15:44:27,616 [INFO] Worker logging configured successfully
+2025-11-26 15:44:27,616 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-26 15:44:27,616 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-26 15:44:27,617 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-26 15:44:27,617 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-26 15:44:27,617 [INFO] Dask cluster started successfully
+2025-11-26 15:44:27,617 [INFO] Dask Worker Info:
+2025-11-26 15:44:27,618 [INFO] Worker tcp://127.0.0.1:60284
+2025-11-26 15:44:27,618 [INFO]   pid: None
+2025-11-26 15:44:27,618 [INFO]   host: 127.0.0.1
+2025-11-26 15:44:27,618 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-3betczg9
+2025-11-26 15:44:27,618 [INFO]   nanny: True
+2025-11-26 15:44:27,618 [INFO] Dask Worker Info:
+2025-11-26 15:44:27,618 [INFO] Worker tcp://127.0.0.1:60285
+2025-11-26 15:44:27,618 [INFO]   pid: None
+2025-11-26 15:44:27,618 [INFO]   host: 127.0.0.1
+2025-11-26 15:44:27,618 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-cs5q9prk
+2025-11-26 15:44:27,618 [INFO]   nanny: True
+2025-11-26 15:44:27,618 [INFO] Dask Worker Info:
+2025-11-26 15:44:27,618 [INFO] Worker tcp://127.0.0.1:60286
+2025-11-26 15:44:27,618 [INFO]   pid: None
+2025-11-26 15:44:27,618 [INFO]   host: 127.0.0.1
+2025-11-26 15:44:27,618 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-cz4k33hi
+2025-11-26 15:44:27,618 [INFO]   nanny: True
+2025-11-26 15:44:27,618 [INFO] Dask Worker Info:
+2025-11-26 15:44:27,618 [INFO] Worker tcp://127.0.0.1:60287
+2025-11-26 15:44:27,618 [INFO]   pid: None
+2025-11-26 15:44:27,618 [INFO]   host: 127.0.0.1
+2025-11-26 15:44:27,618 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-rjn0fpsf
+2025-11-26 15:44:27,618 [INFO]   nanny: True
+2025-11-26 15:44:27,618 [INFO] Processing camera: Cam1
+2025-11-26 15:44:27,620 [INFO] _detect_image_shape: image_format = ('B%05d_A.tif', 'B%05d_B.tif'), type = <class 'tuple'>
+2025-11-26 15:44:27,620 [INFO] Source path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1, Camera: 1
+2025-11-26 15:44:27,620 [INFO] Camera path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
+2025-11-26 15:44:27,620 [INFO] Trying to read file: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1/B00001_A.tif
+2025-11-26 15:44:27,627 [INFO] Detected image shape: (1152, 1024)
+2025-11-26 15:44:27,627 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-26 15:44:27,631 [INFO] Lazy loading complete: 100 independent delayed tasks created (~100 KB memory footprint)
+2025-11-26 15:44:27,631 [INFO] Pre-computing vector masks for Cam1
+2025-11-26 15:44:27,659 [INFO] Vector masks computed: 3 passes
+2025-11-26 15:44:27,659 [INFO] ================================================================================
+2025-11-26 15:44:27,659 [INFO] UNIFIED BATCH PIPELINE: INSTANTANEOUS MODE
+2025-11-26 15:44:27,659 [INFO] ================================================================================
+2025-11-26 15:44:27,659 [INFO] Image files: 100
+2025-11-26 15:44:27,659 [INFO] Frame pairs: 100
+2025-11-26 15:44:27,659 [INFO] Runs to save: [2]
+2025-11-26 15:44:27,659 [INFO] Filters: ['time']
+2025-11-26 15:44:27,659 [INFO] Output path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/instantaneous
+2025-11-26 15:44:27,659 [INFO] ================================================================================
+2025-11-26 15:44:27,659 [INFO] Batch size: 25
+2025-11-26 15:44:27,663 [INFO] Assigned 1 filter workers
+2025-11-26 15:44:27,663 [INFO] Assigned 3 correlation workers
+2025-11-26 15:44:27,663 [INFO] Worker allocation: 1 filter, 3 correlation (total: 4)
+2025-11-26 15:44:27,663 [INFO] Starting instantaneous PIV processing with unified batch pipeline...
+2025-11-26 15:44:27,670 [INFO] Successfully cached window padding for 3 passes
+2025-11-26 15:44:27,676 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-26 15:44:27,734 [INFO] Broadcast correlator cache to all workers
+2025-11-26 15:44:27,737 [INFO] Broadcast vector masks (5.7 KB)
+2025-11-26 15:44:27,741 [INFO] Broadcast pixel mask (1152.0 KB)
+2025-11-26 15:44:27,741 [INFO] Processing 4 batches for instantaneous PIV
+2025-11-26 15:44:27,742 [INFO] Submitting batch 0 to filter worker tcp://127.0.0.1:60284
+2025-11-26 15:44:28,078 [INFO] [Batch 1/4] Filtering complete
+2025-11-26 15:44:28,078 [INFO] [Batch 1/4] Starting correlation...
+2025-11-26 15:44:28,247 [INFO] Submitting batch 1 to filter worker tcp://127.0.0.1:60284
+2025-11-26 15:44:29,822 [INFO] [Batch 1/4] Correlation complete
+2025-11-26 15:44:29,916 [INFO] [Batch 2/4] Filtering complete
+2025-11-26 15:44:29,916 [INFO] [Batch 2/4] Starting correlation...
+2025-11-26 15:44:30,081 [INFO] Submitting batch 2 to filter worker tcp://127.0.0.1:60284
+2025-11-26 15:44:31,577 [INFO] [Batch 2/4] Correlation complete
+2025-11-26 15:44:31,662 [INFO] [Batch 3/4] Filtering complete
+2025-11-26 15:44:31,662 [INFO] [Batch 3/4] Starting correlation...
+2025-11-26 15:44:31,820 [INFO] Submitting batch 3 to filter worker tcp://127.0.0.1:60284
+2025-11-26 15:44:33,297 [INFO] [Batch 3/4] Correlation complete
+2025-11-26 15:44:33,379 [INFO] [Batch 4/4] Filtering complete
+2025-11-26 15:44:33,379 [INFO] [Batch 4/4] Starting correlation...
+2025-11-26 15:44:34,977 [INFO] [Batch 4/4] Correlation complete
+2025-11-26 15:44:34,977 [INFO] Instantaneous PIV processing completed
+2025-11-26 15:44:34,977 [INFO] Returning 100 saved paths
+2025-11-26 15:44:34,982 [INFO] Successfully cached window padding for 3 passes
+2025-11-26 15:44:34,985 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-26 15:45:52,386 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-26 15:45:52,977 [INFO] ================================================================================
+2025-11-26 15:45:52,977 [INFO] VALIDATING CONFIGURATION
+2025-11-26 15:45:52,977 [INFO] ================================================================================
+2025-11-26 15:45:52,981 [INFO] ✓ Configuration validated successfully
+2025-11-26 15:45:52,981 [INFO]   Source paths: [PosixPath('/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1')]
+2025-11-26 15:45:52,981 [INFO]   Cameras: [1]
+2025-11-26 15:45:52,981 [INFO]   Image files: 100
+2025-11-26 15:45:52,981 [INFO]   Frame pairs: 100
+2025-11-26 15:45:52,981 [INFO]   Image format: ('B%05d_A.tif', 'B%05d_B.tif')
+2025-11-26 15:45:52,981 [INFO] 
+2025-11-26 15:45:52,981 [INFO] NOTES:
+2025-11-26 15:45:52,981 [INFO]   ℹ Camera 1: Processing subset - using 100 of 1000 available files
+2025-11-26 15:45:52,981 [INFO] ================================================================================
+2025-11-26 15:45:52,981 [INFO] 
+2025-11-26 15:45:52,981 [INFO] Set OMP_NUM_THREADS to 10 for main process batch filtering
+2025-11-26 15:45:53,934 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-26 15:45:53,934 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-26 15:45:53,934 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-26 15:45:53,934 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-26 15:45:54,548 [INFO] Worker logging configured successfully
+2025-11-26 15:45:54,548 [INFO] Worker logging configured successfully
+2025-11-26 15:45:54,548 [INFO] Worker logging configured successfully
+2025-11-26 15:45:54,548 [INFO] Worker logging configured successfully
+2025-11-26 15:45:54,549 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-26 15:45:54,549 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-26 15:45:54,549 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-26 15:45:54,549 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-11-26 15:45:54,550 [INFO] Dask cluster started successfully
+2025-11-26 15:45:54,550 [INFO] Dask Worker Info:
+2025-11-26 15:45:54,550 [INFO] Worker tcp://127.0.0.1:60550
+2025-11-26 15:45:54,550 [INFO]   pid: None
+2025-11-26 15:45:54,550 [INFO]   host: 127.0.0.1
+2025-11-26 15:45:54,550 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-glszm4h4
+2025-11-26 15:45:54,550 [INFO]   nanny: True
+2025-11-26 15:45:54,550 [INFO] Dask Worker Info:
+2025-11-26 15:45:54,550 [INFO] Worker tcp://127.0.0.1:60551
+2025-11-26 15:45:54,550 [INFO]   pid: None
+2025-11-26 15:45:54,550 [INFO]   host: 127.0.0.1
+2025-11-26 15:45:54,550 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-tx8s88_0
+2025-11-26 15:45:54,550 [INFO]   nanny: True
+2025-11-26 15:45:54,550 [INFO] Dask Worker Info:
+2025-11-26 15:45:54,550 [INFO] Worker tcp://127.0.0.1:60552
+2025-11-26 15:45:54,550 [INFO]   pid: None
+2025-11-26 15:45:54,550 [INFO]   host: 127.0.0.1
+2025-11-26 15:45:54,550 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-ajw1v8od
+2025-11-26 15:45:54,550 [INFO]   nanny: True
+2025-11-26 15:45:54,550 [INFO] Dask Worker Info:
+2025-11-26 15:45:54,550 [INFO] Worker tcp://127.0.0.1:60559
+2025-11-26 15:45:54,550 [INFO]   pid: None
+2025-11-26 15:45:54,550 [INFO]   host: 127.0.0.1
+2025-11-26 15:45:54,550 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-7avv2918
+2025-11-26 15:45:54,550 [INFO]   nanny: True
+2025-11-26 15:45:54,550 [INFO] Processing camera: Cam1
+2025-11-26 15:45:54,553 [INFO] _detect_image_shape: image_format = ('B%05d_A.tif', 'B%05d_B.tif'), type = <class 'tuple'>
+2025-11-26 15:45:54,553 [INFO] Source path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1, Camera: 1
+2025-11-26 15:45:54,553 [INFO] Camera path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
+2025-11-26 15:45:54,553 [INFO] Trying to read file: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1/B00001_A.tif
+2025-11-26 15:45:54,559 [INFO] Detected image shape: (1152, 1024)
+2025-11-26 15:45:54,559 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-26 15:45:54,563 [INFO] Lazy loading complete: 100 independent delayed tasks created (~100 KB memory footprint)
+2025-11-26 15:45:54,564 [INFO] Pre-computing vector masks for Cam1
+2025-11-26 15:45:54,597 [INFO] Vector masks computed: 3 passes
+2025-11-26 15:45:54,597 [INFO] ================================================================================
+2025-11-26 15:45:54,597 [INFO] UNIFIED BATCH PIPELINE: INSTANTANEOUS MODE
+2025-11-26 15:45:54,597 [INFO] ================================================================================
+2025-11-26 15:45:54,597 [INFO] Image files: 100
+2025-11-26 15:45:54,597 [INFO] Frame pairs: 100
+2025-11-26 15:45:54,597 [INFO] Runs to save: [2]
+2025-11-26 15:45:54,597 [INFO] Filters: ['time']
+2025-11-26 15:45:54,597 [INFO] Output path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/instantaneous
+2025-11-26 15:45:54,597 [INFO] ================================================================================
+2025-11-26 15:45:54,597 [INFO] Batch size: 25
+2025-11-26 15:45:54,598 [INFO] Assigned 1 filter workers
+2025-11-26 15:45:54,598 [INFO] Assigned 3 correlation workers
+2025-11-26 15:45:54,598 [INFO] Worker allocation: 1 filter, 3 correlation (total: 4)
+2025-11-26 15:45:54,598 [INFO] Starting instantaneous PIV processing with unified batch pipeline...
+2025-11-26 15:45:54,604 [INFO] Successfully cached window padding for 3 passes
+2025-11-26 15:45:54,609 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-26 15:45:54,657 [INFO] Broadcast correlator cache to all workers
+2025-11-26 15:45:54,663 [INFO] Broadcast vector masks (5.7 KB)
+2025-11-26 15:45:54,668 [INFO] Broadcast pixel mask (1152.0 KB)
+2025-11-26 15:45:54,668 [INFO] Processing 4 batches for instantaneous PIV
+2025-11-26 15:45:54,669 [INFO] Submitting batch 0 to filter worker tcp://127.0.0.1:60550
+2025-11-26 15:45:55,015 [INFO] [Batch 1/4] Filtering complete
+2025-11-26 15:45:55,016 [INFO] [Batch 1/4] Starting correlation...
+2025-11-26 15:45:55,187 [INFO] Submitting batch 1 to filter worker tcp://127.0.0.1:60550
+2025-11-26 15:45:56,809 [INFO] [Batch 1/4] Correlation complete
+2025-11-26 15:45:56,901 [INFO] [Batch 2/4] Filtering complete
+2025-11-26 15:45:56,901 [INFO] [Batch 2/4] Starting correlation...
+2025-11-26 15:45:57,075 [INFO] Submitting batch 2 to filter worker tcp://127.0.0.1:60550
+2025-11-26 15:45:58,595 [INFO] [Batch 2/4] Correlation complete
+2025-11-26 15:45:58,676 [INFO] [Batch 3/4] Filtering complete
+2025-11-26 15:45:58,676 [INFO] [Batch 3/4] Starting correlation...
+2025-11-26 15:45:58,831 [INFO] Submitting batch 3 to filter worker tcp://127.0.0.1:60550
+2025-11-26 15:46:00,370 [INFO] [Batch 3/4] Correlation complete
+2025-11-26 15:46:00,462 [INFO] [Batch 4/4] Filtering complete
+2025-11-26 15:46:00,462 [INFO] [Batch 4/4] Starting correlation...
+2025-11-26 15:46:02,096 [INFO] [Batch 4/4] Correlation complete
+2025-11-26 15:46:02,096 [INFO] Instantaneous PIV processing completed
+2025-11-26 15:46:02,096 [INFO] Returning 100 saved paths
+2025-11-26 15:46:02,101 [INFO] Successfully cached window padding for 3 passes
+2025-11-26 15:46:02,104 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-26 15:46:02,141 [INFO] Worker saved coordinates to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/instantaneous/coordinates.mat
+2025-11-26 15:46:02,142 [INFO] Coordinates saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/uncalibrated_piv/100/Cam1/instantaneous
+2025-11-26 15:46:02,142 [INFO] 
+2025-11-26 15:46:02,142 [INFO] ================================================================================
+2025-11-26 15:46:02,142 [INFO] INSTANTANEOUS PIV PROCESSING COMPLETE!
+2025-11-26 15:46:02,142 [INFO] Total images processed: 100
+2025-11-26 15:46:02,142 [INFO] ================================================================================

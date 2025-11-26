@@ -313,9 +313,6 @@ def main():
                 correlator_cache = temp_correlator.get_cache_data()
                 scattered_cache = client.scatter(correlator_cache, broadcast=True)
 
-                # Sync to ensure workers are ready
-                client.sync(scattered_cache)
-
                 coords_future = client.submit(
                     save_coordinates_from_config_distributed,
                     config,

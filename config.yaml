@@ -27,11 +27,11 @@ logging:
   level: INFO
   console: true
 processing:
-  instantaneous: false
-  ensemble: true
+  instantaneous: true
+  ensemble: false
   stereo: false
   backend: cpu
-  debug: true
+  debug: false
   auto_compute_params: false
   omp_threads: 2
   dask_workers_per_node: 4
