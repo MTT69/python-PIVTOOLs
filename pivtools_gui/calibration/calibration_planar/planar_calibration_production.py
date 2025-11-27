@@ -16,6 +16,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.io import savemat
 
+from pivtools_core.image_handling.load_images import read_image
+
 # ===================== CONFIGURATION VARIABLES =====================
 # Set these variables for your calibration setup
 SOURCE_DIR = "/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall"
@@ -108,6 +110,49 @@ class PlanarCalibrator:
             (cam_base / "indices").mkdir(parents=True, exist_ok=True)
             (cam_base / "model").mkdir(parents=True, exist_ok=True)
             (cam_base / "dewarp").mkdir(parents=True, exist_ok=True)
+
+    def _is_container_format(self):
+        """Check if file pattern is a container format (.set, .im7)"""
+        return '.set' in self.file_pattern.lower() or '.im7' in self.file_pattern.lower()
+
+    def _read_calibration_image(self, img_path, camera=1, img_index=1):
+        """Read calibration image with container format support.
+
+        Args:
+            img_path: Path to image file (for standard formats) or container file
+            camera: Camera number (1-based, used for container formats)
+            img_index: Image index (1-based, used for .set files)
+
+        Returns:
+            np.ndarray: Image data as uint8 or uint16
+        """
+        if self._is_container_format():
+            if '.set' in str(img_path).lower():
+                # .set file: pass camera_no and im_no
+                img = read_image(str(img_path), camera_no=camera, im_no=img_index)
+            elif '.im7' in str(img_path).lower():
+                # .im7 file: pass camera_no
+                img = read_image(str(img_path), camera_no=camera)
+            else:
+                img = read_image(str(img_path))
+        else:
+            # Standard format: just read the file
+            img = read_image(str(img_path))
+
+        # Ensure proper dtype for OpenCV operations
+        if img is not None:
+            # Handle bool arrays (can occur with some readers)
+            if img.dtype == np.bool_:
+                img = img.astype(np.uint8) * 255
+            # Handle float arrays (normalize to uint8 or uint16)
+            elif img.dtype in [np.float32, np.float64]:
+                img_min, img_max = img.min(), img.max()
+                if img_max > img_min:
+                    img = ((img - img_min) / (img_max - img_min) * 255).astype(np.uint8)
+                else:
+                    img = np.zeros_like(img, dtype=np.uint8)
+
+        return img
 
     def enhance_dots_image(self, img, fixed_radius=9):
         """
@@ -246,17 +291,32 @@ class PlanarCalibrator:
         """
         logger.info(f"Processing Camera {cam_num}")
 
-        # Setup paths
-        cam_input_dir = self.source_dir / "calibration" / f"Cam{cam_num}"
+        # Setup paths - container formats don't use Cam subdirectories
+        is_container = self._is_container_format()
+        if is_container:
+            cam_input_dir = self.source_dir / "calibration"
+        else:
+            cam_input_dir = self.source_dir / "calibration" / f"Cam{cam_num}"
         cam_output_base = self.base_dir / "calibration" / f"Cam{cam_num}"
 
         if not cam_input_dir.exists():
-            logger.error(f"Camera directory not found: {cam_input_dir}")
+            logger.error(f"Calibration directory not found: {cam_input_dir}")
             return
 
         # Build list of available image files (1-based indexing for numbered patterns)
         image_files = []
-        if "%" in self.file_pattern:
+        if is_container:
+            # Container format: single file contains all images and cameras
+            container_file = cam_input_dir / self.file_pattern
+            if container_file.exists():
+                # For containers, we still need to know how many images are available
+                # We'll use the selected_image_idx directly and let read_image handle it
+                image_files = [str(container_file)]
+                logger.info(f"Using container file: {container_file}")
+            else:
+                logger.error(f"Container file not found: {container_file}")
+                return
+        elif "%" in self.file_pattern:
             i = 1
             while True:
                 filename = self.file_pattern % i
@@ -276,20 +336,27 @@ class PlanarCalibrator:
             return
 
         idx = int(self.selected_image_idx)
-        if idx < 1 or idx > len(image_files):
-            logger.error(
-                f"Selected image index {idx} out of range (available: 1-{len(image_files)})"
-            )
-            return
-        img_path = image_files[idx - 1]
+
+        # For container formats, image_files has one entry (the container)
+        # For standard formats, validate index against available files
+        if not is_container:
+            if idx < 1 or idx > len(image_files):
+                logger.error(
+                    f"Selected image index {idx} out of range (available: 1-{len(image_files)})"
+                )
+                return
+            img_path = image_files[idx - 1]
+        else:
+            img_path = image_files[0]  # Container file path
+
         logger.info(f"Processing calibration image {idx}: {img_path}")
 
         # Create object points template
         objp = self.make_object_points()
         objp_2d = objp[:, :2]
 
-        # Detect grid and process single image
-        img = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
+        # Detect grid and process single image - use container-aware reader
+        img = self._read_calibration_image(img_path, camera=cam_num, img_index=idx)
         found, grid_points = self.detect_grid_in_image(img)
         if not found or grid_points is None:
             logger.error(f"Grid not found in image index {idx}: {img_path}")
@@ -312,6 +379,12 @@ class PlanarCalibrator:
         )
 
         # Save indexing and dewarp
+        # For container formats, use pattern + index as the filename reference
+        if self._is_container_format():
+            original_filename = f"{self.file_pattern}[{idx}]"
+        else:
+            original_filename = Path(img_path).name
+
         self._save_results(
             idx,
             cam_output_base,
@@ -323,7 +396,8 @@ class PlanarCalibrator:
             reproj_errs,
             reproj_errs_x,
             reproj_errs_y,
-            Path(img_path).name,
+            original_filename,
+            cam_num=cam_num,
         )
 
         # Prepare points for calibration
@@ -394,6 +468,7 @@ class PlanarCalibrator:
         reproj_errs_x,
         reproj_errs_y,
         original_filename,
+        cam_num=1,
     ):
         """Save all calibration results"""
         # Save grid indexing (store in indices folder)
@@ -454,6 +529,7 @@ class PlanarCalibrator:
             grid_points,
             original_filename,
             reprojection_error,
+            cam_num=cam_num,
         )
 
         logger.info(f"Saved results for image {img_index}")
@@ -465,17 +541,26 @@ class PlanarCalibrator:
         grid_points,
         original_filename,
         reprojection_error,
+        cam_num=1,
     ):
         """Save a figure showing the detected grid with dot indices"""
         try:
-            # Load original image for background
-            img_path = (
-                self.source_dir
-                / "calibration"
-                / cam_output_base.name
-                / original_filename
-            )
-            img = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)
+            # Load original image for background - handle container formats
+            if self._is_container_format():
+                img_path = self.source_dir / "calibration" / self.file_pattern
+                img = self._read_calibration_image(img_path, camera=cam_num, img_index=img_index)
+            else:
+                img_path = (
+                    self.source_dir
+                    / "calibration"
+                    / cam_output_base.name
+                    / original_filename
+                )
+                img = self._read_calibration_image(img_path)
+
+            # Convert to grayscale if needed
+            if img.ndim == 3:
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
             cols, rows = self.pattern_size
 

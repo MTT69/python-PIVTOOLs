@@ -357,8 +357,9 @@ def load_and_plot_data(
     if pr is None:
         raise ValueError(f"No non-empty run found for variable {var}")
 
-    # Special handling for uncalibrated plotting of peak_mag
-    if plot_kwargs.get("raw", False) and var == "peak_mag":
+    # Special handling for peak_mag (requires indexing via peak_choice)
+    # Works in both raw (uncalibrated) and calibrated modes
+    if var == "peak_mag":
         # Expect pr to have peak_mag and peak_choice attributes
         try:
             peak_mag = np.asarray(getattr(pr, "peak_mag"))
@@ -367,17 +368,20 @@ def load_and_plot_data(
             raise ValueError("peak_mag or peak_choice not found in piv_result element")
         # peak_mag: shape (n_peaks, H, W) or (1, H, W), peak_choice: (H, W) int
         # Use peak_choice to index into peak_mag along axis 0
-        # If peak_mag is shape (1, H, W), squeeze to (H, W)
-        if peak_mag.shape[0] == 1:
-            var_arr = np.squeeze(peak_mag, axis=0)
+        if peak_mag.ndim == 3:
+            if peak_mag.shape[0] == 1:
+                var_arr = np.squeeze(peak_mag, axis=0)
+            else:
+                # peak_choice values are indices for axis 0
+                h, w = peak_choice.shape
+                idx = peak_choice
+                # Build (H, W) matrix by advanced indexing
+                var_arr = peak_mag[idx, np.arange(h)[:, None], np.arange(w)[None, :]]
         else:
-            # peak_choice values are indices for axis 0
-            h, w = peak_choice.shape
-            idx = peak_choice
-            # Build (H, W) matrix by advanced indexing
-            var_arr = peak_mag[idx, np.arange(h)[:, None], np.arange(w)[None, :]]
-        # Mask: all valid
-        mask_arr = np.ones_like(var_arr, dtype=bool)
+            # Already 2D
+            var_arr = peak_mag
+        # Show all values - no masking for peak_mag
+        mask_arr = np.zeros_like(var_arr, dtype=bool)
     else:
         var_arr, mask_arr = extract_var_and_mask(pr, var)
 
@@ -533,31 +537,60 @@ def check_vars():
                 pr = piv_result.flat[0]
         else:
             pr = piv_result
-        vars_list = []
+        # Get all available field names from the piv_result structure
+        all_vars = []
         dt = getattr(pr, "dtype", None)
         if dt and getattr(dt, "names", None):
-            vars_list = list(dt.names)
+            all_vars = list(dt.names)
         else:
             try:
                 if hasattr(pr, "dtype") and getattr(pr.dtype, "names", None):
-                    vars_list = list(pr.dtype.names)
+                    all_vars = list(pr.dtype.names)
                 elif hasattr(pr, "dtype") and getattr(pr.dtype, "fields", None):
                     f = pr.dtype.fields
                     if isinstance(f, dict):
-                        vars_list = list(f.keys())
+                        all_vars = list(f.keys())
             except Exception:
                 pass
-            if not vars_list:
+            if not all_vars:
                 try:
                     attrs = [
                         n
                         for n in dir(pr)
                         if not n.startswith("_") and not callable(getattr(pr, n, None))
                     ]
-                    vars_list = attrs
+                    all_vars = attrs
                 except Exception:
-                    vars_list = []
-        return jsonify({"success": True, "vars": vars_list})
+                    all_vars = []
+
+        # Filter to only include plottable 2D arrays
+        # Exclude coordinate arrays (x, y) but keep everything else that's 2D
+        EXCLUDED_VARS = {"x", "y"}
+        plottable_vars = []
+        has_peak_choice = hasattr(pr, "peak_choice")
+
+        logger.info(f"check_vars: all_vars found = {all_vars}")
+        logger.info(f"check_vars: has_peak_choice = {has_peak_choice}")
+
+        for var_name in all_vars:
+            if var_name in EXCLUDED_VARS:
+                continue
+            try:
+                arr = np.asarray(getattr(pr, var_name))
+                logger.debug(f"check_vars: {var_name} shape={arr.shape} ndim={arr.ndim}")
+                if arr.ndim == 2:
+                    # Standard 2D array - plottable
+                    plottable_vars.append(var_name)
+                elif var_name == "peak_mag" and arr.ndim == 3 and has_peak_choice:
+                    # Special case: peak_mag is (n_peaks, H, W)
+                    # Include if peak_choice exists to index into it
+                    plottable_vars.append(var_name)
+            except Exception as e:
+                logger.debug(f"check_vars: {var_name} skipped due to error: {e}")
+                continue  # Skip fields that can't be converted to array
+
+        logger.info(f"check_vars: returning plottable_vars = {plottable_vars}")
+        return jsonify({"success": True, "vars": plottable_vars})
     except ValueError as e:
         logger.warning(f"check_vars: validation error: {e}")
         return jsonify({"success": False, "error": str(e)}), 400

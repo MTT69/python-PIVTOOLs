@@ -19,7 +19,7 @@ images:
   zero_based_indexing: false
   pairing_mode: sequential
   pairing_skip: 0
-  num_frame_pairs: 100
+  num_frame_pairs: 1000
 batches:
   size: 25
 logging:
@@ -27,8 +27,8 @@ logging:
   level: INFO
   console: true
 processing:
-  instantaneous: true
-  ensemble: false
+  instantaneous: false
+  ensemble: true
   backend: cpu
   debug: false
   auto_compute_params: false
@@ -130,7 +130,7 @@ ensemble_piv:
 calibration_format:
   image_format: calib%05d.tif
 calibration:
-  active: polynomial
+  active: pinhole
   scale_factor:
     dt: 0.56
     px_per_mm: 3.41
@@ -139,7 +139,7 @@ calibration:
     source_path_idx: 0
     camera: 1
     image_index: 0
-    file_pattern: calib%05d.tif
+    file_pattern: calib00001.tif
     pattern_cols: 10
     pattern_rows: 10
     dot_spacing_mm: 28.89
@@ -161,12 +161,13 @@ calibration:
     enhance_dots: true
     asymmetric: false
     dt: 2
-filters: []
+filters:
+- type: time
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
-  mode: rectangular
+  mode: file
   rectangular:
     top: 64
     bottom: 64

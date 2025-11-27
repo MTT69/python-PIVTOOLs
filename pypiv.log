@@ -40589,3 +40589,341 @@ distributed.comm.core.CommClosedError: in <TCP (closed) ConnectionPool.update_da
 2025-11-26 20:36:47,905 [INFO] 127.0.0.1 - - [26/Nov/2025 20:36:47] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
 2025-11-26 20:36:47,908 [INFO] 127.0.0.1 - - [26/Nov/2025 20:36:47] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
 2025-11-26 20:36:47,910 [INFO] 127.0.0.1 - - [26/Nov/2025 20:36:47] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-26 20:47:26,360 [INFO] 127.0.0.1 - - [26/Nov/2025 20:47:26] "GET /backend/config HTTP/1.1" 200 -
+2025-11-26 20:47:26,367 [INFO] 127.0.0.1 - - [26/Nov/2025 20:47:26] "[33mGET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-26 20:47:26,390 [INFO] 127.0.0.1 - - [26/Nov/2025 20:47:26] "GET /backend/plot/check_available_data?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1 HTTP/1.1" 200 -
+2025-11-26 20:58:08,858 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-26 20:58:08,859 [INFO] 127.0.0.1 - - [26/Nov/2025 20:58:08] "GET /backend/config HTTP/1.1" 200 -
+2025-11-26 20:58:08,875 [INFO] 127.0.0.1 - - [26/Nov/2025 20:58:08] "GET /grid.svg HTTP/1.1" 200 -
+2025-11-26 20:58:09,430 [INFO] 127.0.0.1 - - [26/Nov/2025 20:58:09] "POST /backend/validate_files HTTP/1.1" 200 -
+2025-11-26 20:58:11,164 [INFO] 127.0.0.1 - - [26/Nov/2025 20:58:11] "GET /backend/config HTTP/1.1" 200 -
+2025-11-26 20:58:11,166 [INFO] 127.0.0.1 - - [26/Nov/2025 20:58:11] "[33mGET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-26 20:58:11,184 [INFO] 127.0.0.1 - - [26/Nov/2025 20:58:11] "GET /backend/plot/check_available_data?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1 HTTP/1.1" 200 -
+2025-11-26 20:59:16,125 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-26 20:59:16,125 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:16] "GET /backend/config HTTP/1.1" 200 -
+2025-11-26 20:59:16,129 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:16] "GET /grid.svg HTTP/1.1" 200 -
+2025-11-26 20:59:16,667 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:16] "POST /backend/validate_files HTTP/1.1" 200 -
+2025-11-26 20:59:19,428 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:19] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-26 20:59:19,441 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:19] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-26 20:59:19,446 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:19] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-26 20:59:19,450 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:19] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-26 20:59:19,455 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:19] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-26 20:59:19,460 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:19] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-26 20:59:20,580 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:20] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 20:59:20,588 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:20] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 20:59:20,630 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:20] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-26 20:59:20,641 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:20] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-26 20:59:20,645 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:20] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-26 20:59:20,648 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:20] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-26 20:59:20,651 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:20] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-26 20:59:20,654 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:20] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-26 20:59:21,154 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:21] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 20:59:22,141 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:22] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 20:59:22,149 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:22] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 20:59:22,175 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:22] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-26 20:59:22,185 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:22] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-26 20:59:22,188 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:22] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-26 20:59:22,192 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:22] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-26 20:59:22,196 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:22] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-26 20:59:22,204 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:22] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-26 20:59:22,698 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:22] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 20:59:23,013 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:23] "[33mPOST /backend/calibration/polynomial/read_xml HTTP/1.1[0m" 404 -
+2025-11-26 20:59:24,752 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:24] "GET /backend/config HTTP/1.1" 200 -
+2025-11-26 20:59:24,755 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:24] "[33mGET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-26 20:59:24,766 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:24] "GET /backend/plot/check_available_data?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1 HTTP/1.1" 200 -
+2025-11-26 20:59:28,574 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:28] "[33mGET /backend/plot/check_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-26 20:59:28,760 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:28] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&var=ux&cmap=default&run=1&camera=1&merged=0&is_uncalibrated=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-26 20:59:28,768 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:28] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&var=ux&cmap=default&run=1&camera=1&merged=0&is_uncalibrated=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-26 20:59:28,849 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:28] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&var=ux&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-26 20:59:35,992 [INFO] 127.0.0.1 - - [26/Nov/2025 20:59:35] "GET /backend/plot/plot_ensemble?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&var=ux&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-26 21:00:28,634 [INFO] 127.0.0.1 - - [26/Nov/2025 21:00:28] "[33mPOST /backend/calibration/polynomial/read_xml HTTP/1.1[0m" 404 -
+2025-11-26 21:00:30,677 [INFO] 127.0.0.1 - - [26/Nov/2025 21:00:30] "POST /backend/calibration/planar/validate_images HTTP/1.1" 200 -
+2025-11-26 21:00:30,690 [INFO] 127.0.0.1 - - [26/Nov/2025 21:00:30] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:02:22,530 [INFO] 127.0.0.1 - - [26/Nov/2025 21:02:22] "[33mPOST /backend/calibration/polynomial/read_xml HTTP/1.1[0m" 404 -
+2025-11-26 21:02:25,138 [INFO] 127.0.0.1 - - [26/Nov/2025 21:02:25] "POST /backend/calibration/planar/validate_images HTTP/1.1" 200 -
+2025-11-26 21:02:25,154 [INFO] 127.0.0.1 - - [26/Nov/2025 21:02:25] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:03:25,027 [INFO] 127.0.0.1 - - [26/Nov/2025 21:03:25] "[33mPOST /backend/calibration/polynomial/read_xml HTTP/1.1[0m" 404 -
+2025-11-26 21:03:26,907 [INFO] 127.0.0.1 - - [26/Nov/2025 21:03:26] "POST /backend/calibration/planar/validate_images HTTP/1.1" 200 -
+2025-11-26 21:03:26,920 [INFO] 127.0.0.1 - - [26/Nov/2025 21:03:26] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:04:53,751 [INFO] 127.0.0.1 - - [26/Nov/2025 21:04:53] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:04:53,755 [INFO] 127.0.0.1 - - [26/Nov/2025 21:04:53] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:04:53,783 [INFO] 127.0.0.1 - - [26/Nov/2025 21:04:53] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-26 21:04:53,790 [INFO] 127.0.0.1 - - [26/Nov/2025 21:04:53] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-26 21:04:53,793 [INFO] 127.0.0.1 - - [26/Nov/2025 21:04:53] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-26 21:04:53,800 [INFO] 127.0.0.1 - - [26/Nov/2025 21:04:53] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-26 21:04:53,805 [INFO] 127.0.0.1 - - [26/Nov/2025 21:04:53] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-26 21:04:53,812 [INFO] 127.0.0.1 - - [26/Nov/2025 21:04:53] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-26 21:04:54,305 [INFO] 127.0.0.1 - - [26/Nov/2025 21:04:54] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:04:54,816 [INFO] 127.0.0.1 - - [26/Nov/2025 21:04:54] "[33mPOST /backend/calibration/polynomial/read_xml HTTP/1.1[0m" 404 -
+2025-11-26 21:04:56,891 [INFO] 127.0.0.1 - - [26/Nov/2025 21:04:56] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:04:56,906 [INFO] 127.0.0.1 - - [26/Nov/2025 21:04:56] "POST /backend/calibration/planar/validate_images HTTP/1.1" 200 -
+2025-11-26 21:05:04,071 [INFO] 127.0.0.1 - - [26/Nov/2025 21:05:04] "GET /backend/calibration/planar/get_image?source_path_idx=0&camera=1&image_index=0&file_pattern=calib%2505d.tif HTTP/1.1" 200 -
+2025-11-26 21:05:04,075 [INFO] 127.0.0.1 - - [26/Nov/2025 21:05:04] "POST /backend/calibration/planar/calibrate_all HTTP/1.1" 200 -
+2025-11-26 21:05:06,085 [INFO] 127.0.0.1 - - [26/Nov/2025 21:05:06] "GET /backend/calibration/planar/calibrate_all/status/a4868f06-fa6a-4f87-a8e4-afa713103ee9 HTTP/1.1" 200 -
+2025-11-26 21:05:07,093 [INFO] Processing Camera 1
+2025-11-26 21:05:07,093 [INFO] Processing calibration image 1: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1/calibration/Cam1/calib00001.tif
+2025-11-26 21:05:07,099 [INFO] 127.0.0.1 - - [26/Nov/2025 21:05:07] "[35m[1mPOST /backend/calibration/planar/compute HTTP/1.1[0m" 500 -
+2025-11-26 21:06:01,205 [INFO] 127.0.0.1 - - [26/Nov/2025 21:06:01] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:07:20,188 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-26 21:07:20,188 [INFO] 127.0.0.1 - - [26/Nov/2025 21:07:20] "[36mGET /grid.svg HTTP/1.1[0m" 304 -
+2025-11-26 21:07:20,188 [INFO] 127.0.0.1 - - [26/Nov/2025 21:07:20] "GET /backend/config HTTP/1.1" 200 -
+2025-11-26 21:07:20,720 [INFO] 127.0.0.1 - - [26/Nov/2025 21:07:20] "POST /backend/validate_files HTTP/1.1" 200 -
+2025-11-26 21:07:23,293 [INFO] 127.0.0.1 - - [26/Nov/2025 21:07:23] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:07:23,312 [INFO] 127.0.0.1 - - [26/Nov/2025 21:07:23] "POST /backend/calibration/planar/validate_images HTTP/1.1" 200 -
+2025-11-26 21:07:26,327 [INFO] 127.0.0.1 - - [26/Nov/2025 21:07:26] "GET /backend/calibration/planar/get_image?source_path_idx=0&camera=1&image_index=0&file_pattern=calib%2505d.tif HTTP/1.1" 200 -
+2025-11-26 21:07:26,333 [INFO] 127.0.0.1 - - [26/Nov/2025 21:07:26] "POST /backend/calibration/planar/calibrate_all HTTP/1.1" 200 -
+2025-11-26 21:07:28,341 [INFO] 127.0.0.1 - - [26/Nov/2025 21:07:28] "GET /backend/calibration/planar/calibrate_all/status/fe714203-3a5b-41e1-a998-4e73e9f94bbc HTTP/1.1" 200 -
+2025-11-26 21:07:29,351 [INFO] Processing Camera 1
+2025-11-26 21:07:29,352 [INFO] Processing calibration image 1: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1/calibration/Cam1/calib00001.tif
+2025-11-26 21:07:29,388 [INFO] Grid detected (Original image)
+2025-11-26 21:07:29,906 [INFO] Saved grid visualization: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/calibration/Cam1/indices/indexes_1.png
+2025-11-26 21:07:29,906 [INFO] Saved results for image 1
+2025-11-26 21:07:29,906 [INFO] Calibrating camera from image 1...
+2025-11-26 21:07:29,908 [INFO] Calibration reprojection RMS: 0.15655
+2025-11-26 21:07:29,909 [INFO] Saved camera model: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/calibration/Cam1/model/camera_model.mat
+2025-11-26 21:07:29,912 [INFO] 127.0.0.1 - - [26/Nov/2025 21:07:29] "POST /backend/calibration/planar/compute HTTP/1.1" 200 -
+2025-11-26 21:08:03,352 [INFO] 127.0.0.1 - - [26/Nov/2025 21:08:03] "POST /backend/stereo/calibration/validate_images HTTP/1.1" 200 -
+2025-11-26 21:08:03,361 [INFO] 127.0.0.1 - - [26/Nov/2025 21:08:03] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:08:14,781 [INFO] 127.0.0.1 - - [26/Nov/2025 21:08:14] "[33mPOST /backend/calibration/polynomial/read_xml HTTP/1.1[0m" 404 -
+2025-11-26 21:08:19,033 [INFO] 127.0.0.1 - - [26/Nov/2025 21:08:19] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:08:19,050 [INFO] 127.0.0.1 - - [26/Nov/2025 21:08:19] "POST /backend/calibration/planar/validate_images HTTP/1.1" 200 -
+2025-11-26 21:08:58,663 [INFO] 127.0.0.1 - - [26/Nov/2025 21:08:58] "POST /backend/calibration/planar/validate_images HTTP/1.1" 200 -
+2025-11-26 21:08:58,674 [INFO] 127.0.0.1 - - [26/Nov/2025 21:08:58] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:09:00,211 [INFO] 127.0.0.1 - - [26/Nov/2025 21:09:00] "POST /backend/calibration/planar/validate_images HTTP/1.1" 200 -
+2025-11-26 21:09:00,222 [INFO] 127.0.0.1 - - [26/Nov/2025 21:09:00] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:09:21,468 [INFO] 127.0.0.1 - - [26/Nov/2025 21:09:21] "POST /backend/calibration/planar/validate_images HTTP/1.1" 200 -
+2025-11-26 21:09:21,477 [INFO] 127.0.0.1 - - [26/Nov/2025 21:09:21] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:09:21,993 [INFO] 127.0.0.1 - - [26/Nov/2025 21:09:21] "POST /backend/calibration/planar/validate_images HTTP/1.1" 200 -
+2025-11-26 21:09:22,003 [INFO] 127.0.0.1 - - [26/Nov/2025 21:09:22] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:09:23,534 [INFO] 127.0.0.1 - - [26/Nov/2025 21:09:23] "POST /backend/calibration/planar/validate_images HTTP/1.1" 200 -
+2025-11-26 21:09:23,542 [INFO] 127.0.0.1 - - [26/Nov/2025 21:09:23] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:09:32,307 [INFO] 127.0.0.1 - - [26/Nov/2025 21:09:32] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:09:32,344 [INFO] 127.0.0.1 - - [26/Nov/2025 21:09:32] "POST /backend/calibration/planar/validate_images HTTP/1.1" 200 -
+2025-11-26 21:15:42,062 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-26 21:15:42,062 [INFO] 127.0.0.1 - - [26/Nov/2025 21:15:42] "GET /backend/config HTTP/1.1" 200 -
+2025-11-26 21:15:42,066 [INFO] 127.0.0.1 - - [26/Nov/2025 21:15:42] "[36mGET /grid.svg HTTP/1.1[0m" 304 -
+2025-11-26 21:15:42,616 [INFO] 127.0.0.1 - - [26/Nov/2025 21:15:42] "POST /backend/validate_files HTTP/1.1" 200 -
+2025-11-26 21:15:46,834 [INFO] 127.0.0.1 - - [26/Nov/2025 21:15:46] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:15:47,988 [INFO] 127.0.0.1 - - [26/Nov/2025 21:15:47] "POST /backend/calibration/planar/validate_images HTTP/1.1" 200 -
+2025-11-26 21:15:52,215 [INFO] 127.0.0.1 - - [26/Nov/2025 21:15:52] "GET /backend/calibration/planar/get_image?source_path_idx=0&camera=1&image_index=0&file_pattern=calibration.tiff HTTP/1.1" 200 -
+2025-11-26 21:15:52,241 [INFO] 127.0.0.1 - - [26/Nov/2025 21:15:52] "POST /backend/calibration/planar/calibrate_all HTTP/1.1" 200 -
+2025-11-26 21:15:54,248 [INFO] 127.0.0.1 - - [26/Nov/2025 21:15:54] "GET /backend/calibration/planar/calibrate_all/status/fef93187-96ca-4236-9494-96294a775220 HTTP/1.1" 200 -
+2025-11-26 21:15:56,247 [INFO] 127.0.0.1 - - [26/Nov/2025 21:15:56] "GET /backend/calibration/planar/calibrate_all/status/fef93187-96ca-4236-9494-96294a775220 HTTP/1.1" 200 -
+2025-11-26 21:15:58,251 [INFO] 127.0.0.1 - - [26/Nov/2025 21:15:58] "GET /backend/calibration/planar/calibrate_all/status/fef93187-96ca-4236-9494-96294a775220 HTTP/1.1" 200 -
+2025-11-26 21:15:59,262 [INFO] Processing Camera 1
+2025-11-26 21:15:59,263 [INFO] Processing calibration image 1: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1/calibration/Cam1/calibration.tiff
+2025-11-26 21:16:02,451 [ERROR] Grid not found in image index 1: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1/calibration/Cam1/calibration.tiff
+2025-11-26 21:16:02,457 [INFO] 127.0.0.1 - - [26/Nov/2025 21:16:02] "POST /backend/calibration/planar/compute HTTP/1.1" 200 -
+2025-11-26 21:16:37,503 [INFO] 127.0.0.1 - - [26/Nov/2025 21:16:37] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:17:02,044 [INFO] 127.0.0.1 - - [26/Nov/2025 21:17:02] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:17:04,465 [INFO] 127.0.0.1 - - [26/Nov/2025 21:17:04] "GET /backend/calibration/planar/get_image?source_path_idx=0&camera=1&image_index=0&file_pattern=calibration.tiff HTTP/1.1" 200 -
+2025-11-26 21:17:04,578 [INFO] 127.0.0.1 - - [26/Nov/2025 21:17:04] "POST /backend/calibration/planar/calibrate_all HTTP/1.1" 200 -
+2025-11-26 21:17:06,595 [INFO] 127.0.0.1 - - [26/Nov/2025 21:17:06] "GET /backend/calibration/planar/calibrate_all/status/71e79bd8-d277-4db9-9ba3-9b5211a082c8 HTTP/1.1" 200 -
+2025-11-26 21:17:08,597 [INFO] 127.0.0.1 - - [26/Nov/2025 21:17:08] "GET /backend/calibration/planar/calibrate_all/status/71e79bd8-d277-4db9-9ba3-9b5211a082c8 HTTP/1.1" 200 -
+2025-11-26 21:17:09,607 [INFO] Processing Camera 1
+2025-11-26 21:17:09,608 [INFO] Processing calibration image 1: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1/calibration/Cam1/calibration.tiff
+2025-11-26 21:17:12,453 [ERROR] Grid not found in image index 1: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1/calibration/Cam1/calibration.tiff
+2025-11-26 21:17:12,457 [INFO] 127.0.0.1 - - [26/Nov/2025 21:17:12] "POST /backend/calibration/planar/compute HTTP/1.1" 200 -
+2025-11-26 21:18:11,879 [INFO] 127.0.0.1 - - [26/Nov/2025 21:18:11] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:18:14,515 [INFO] 127.0.0.1 - - [26/Nov/2025 21:18:14] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:18:21,804 [INFO] 127.0.0.1 - - [26/Nov/2025 21:18:21] "POST /backend/calibration/planar/validate_images HTTP/1.1" 200 -
+2025-11-26 21:18:21,815 [INFO] 127.0.0.1 - - [26/Nov/2025 21:18:21] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:18:24,092 [INFO] 127.0.0.1 - - [26/Nov/2025 21:18:24] "POST /backend/calibration/planar/validate_images HTTP/1.1" 200 -
+2025-11-26 21:18:24,103 [INFO] 127.0.0.1 - - [26/Nov/2025 21:18:24] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:18:25,958 [INFO] 127.0.0.1 - - [26/Nov/2025 21:18:25] "POST /backend/calibration/planar/validate_images HTTP/1.1" 200 -
+2025-11-26 21:18:25,969 [INFO] 127.0.0.1 - - [26/Nov/2025 21:18:25] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:18:37,688 [INFO] 127.0.0.1 - - [26/Nov/2025 21:18:37] "GET /backend/config HTTP/1.1" 200 -
+2025-11-26 21:18:37,690 [INFO] 127.0.0.1 - - [26/Nov/2025 21:18:37] "[33mGET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-26 21:18:37,710 [INFO] 127.0.0.1 - - [26/Nov/2025 21:18:37] "GET /backend/plot/check_available_data?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1 HTTP/1.1" 200 -
+2025-11-26 21:18:39,802 [INFO] 127.0.0.1 - - [26/Nov/2025 21:18:39] "[33mGET /backend/video/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1&data_source=calibrated&var=ux HTTP/1.1[0m" 404 -
+2025-11-26 21:18:39,809 [INFO] 127.0.0.1 - - [26/Nov/2025 21:18:39] "GET /backend/video/check_data_sources?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1 HTTP/1.1" 200 -
+2025-11-26 21:18:39,823 [INFO] 127.0.0.1 - - [26/Nov/2025 21:18:39] "GET /backend/video/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1&data_source=uncalibrated&var=ux HTTP/1.1" 200 -
+2025-11-26 21:18:40,255 [INFO] 127.0.0.1 - - [26/Nov/2025 21:18:40] "GET /backend/video/check_ffmpeg HTTP/1.1" 200 -
+2025-11-26 21:18:42,803 [INFO] 127.0.0.1 - - [26/Nov/2025 21:18:42] "GET /backend/config HTTP/1.1" 200 -
+2025-11-26 21:18:42,806 [INFO] 127.0.0.1 - - [26/Nov/2025 21:18:42] "[33mGET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-26 21:18:42,816 [INFO] 127.0.0.1 - - [26/Nov/2025 21:18:42] "GET /backend/plot/check_available_data?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1 HTTP/1.1" 200 -
+2025-11-26 21:18:44,303 [INFO] 127.0.0.1 - - [26/Nov/2025 21:18:44] "POST /backend/calibration/planar/validate_images HTTP/1.1" 200 -
+2025-11-26 21:18:44,314 [INFO] 127.0.0.1 - - [26/Nov/2025 21:18:44] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:24:32,987 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-26 21:24:32,987 [INFO] 127.0.0.1 - - [26/Nov/2025 21:24:32] "GET /backend/config HTTP/1.1" 200 -
+2025-11-26 21:24:33,006 [INFO] 127.0.0.1 - - [26/Nov/2025 21:24:33] "GET /grid.svg HTTP/1.1" 200 -
+2025-11-26 21:24:33,559 [INFO] 127.0.0.1 - - [26/Nov/2025 21:24:33] "POST /backend/validate_files HTTP/1.1" 200 -
+2025-11-26 21:24:38,338 [INFO] 127.0.0.1 - - [26/Nov/2025 21:24:38] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:24:38,339 [INFO] 127.0.0.1 - - [26/Nov/2025 21:24:38] "POST /backend/calibration/planar/validate_images HTTP/1.1" 200 -
+2025-11-26 21:24:41,061 [INFO] 127.0.0.1 - - [26/Nov/2025 21:24:41] "GET /backend/calibration/planar/load_results?source_path_idx=0&camera=1&image_index=0 HTTP/1.1" 200 -
+2025-11-26 21:24:43,808 [INFO] 127.0.0.1 - - [26/Nov/2025 21:24:43] "GET /backend/calibration/planar/load_results?source_path_idx=0&camera=1&image_index=0 HTTP/1.1" 200 -
+2025-11-26 21:25:21,596 [INFO] 127.0.0.1 - - [26/Nov/2025 21:25:21] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:25:21,597 [INFO] 127.0.0.1 - - [26/Nov/2025 21:25:21] "POST /backend/calibration/planar/validate_images HTTP/1.1" 200 -
+2025-11-26 21:25:22,285 [INFO] 127.0.0.1 - - [26/Nov/2025 21:25:22] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:25:22,286 [INFO] 127.0.0.1 - - [26/Nov/2025 21:25:22] "POST /backend/calibration/planar/validate_images HTTP/1.1" 200 -
+2025-11-26 21:25:29,425 [INFO] 127.0.0.1 - - [26/Nov/2025 21:25:29] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:25:29,468 [INFO] 127.0.0.1 - - [26/Nov/2025 21:25:29] "POST /backend/calibration/planar/validate_images HTTP/1.1" 200 -
+2025-11-26 21:25:31,960 [INFO] 127.0.0.1 - - [26/Nov/2025 21:25:31] "GET /backend/calibration/planar/load_results?source_path_idx=0&camera=1&image_index=0 HTTP/1.1" 200 -
+2025-11-26 21:25:42,700 [INFO] 127.0.0.1 - - [26/Nov/2025 21:25:42] "GET /backend/calibration/planar/get_image?source_path_idx=0&camera=1&image_index=0&file_pattern=calib00001.tif HTTP/1.1" 200 -
+2025-11-26 21:25:42,706 [INFO] 127.0.0.1 - - [26/Nov/2025 21:25:42] "POST /backend/calibration/planar/calibrate_all HTTP/1.1" 200 -
+2025-11-26 21:25:44,716 [INFO] 127.0.0.1 - - [26/Nov/2025 21:25:44] "GET /backend/calibration/planar/calibrate_all/status/3c2b2aec-6dee-4f5c-84c2-a68a4c4ecc1f HTTP/1.1" 200 -
+2025-11-26 21:25:45,725 [INFO] Processing Camera 1
+2025-11-26 21:25:45,726 [INFO] Processing calibration image 1: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1/calibration/Cam1/calib00001.tif
+2025-11-26 21:25:45,766 [INFO] Grid detected (Original image)
+2025-11-26 21:25:46,292 [INFO] Saved grid visualization: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/calibration/Cam1/indices/indexes_1.png
+2025-11-26 21:25:46,292 [INFO] Saved results for image 1
+2025-11-26 21:25:46,292 [INFO] Calibrating camera from image 1...
+2025-11-26 21:25:46,295 [INFO] Calibration reprojection RMS: 0.15655
+2025-11-26 21:25:46,296 [INFO] Saved camera model: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/calibration/Cam1/model/camera_model.mat
+2025-11-26 21:25:46,298 [INFO] 127.0.0.1 - - [26/Nov/2025 21:25:46] "POST /backend/calibration/planar/compute HTTP/1.1" 200 -
+2025-11-26 21:27:02,297 [INFO] 127.0.0.1 - - [26/Nov/2025 21:27:02] "[33mGET /backend/plot/check_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-26 21:27:02,298 [INFO] 127.0.0.1 - - [26/Nov/2025 21:27:02] "GET /backend/config HTTP/1.1" 200 -
+2025-11-26 21:27:02,301 [INFO] 127.0.0.1 - - [26/Nov/2025 21:27:02] "[33mGET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-26 21:27:02,302 [INFO] 127.0.0.1 - - [26/Nov/2025 21:27:02] "[33mGET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&var=ux&cmap=default&run=1&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1[0m" 404 -
+2025-11-26 21:27:02,319 [INFO] 127.0.0.1 - - [26/Nov/2025 21:27:02] "GET /backend/plot/check_available_data?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1 HTTP/1.1" 200 -
+2025-11-26 21:27:02,455 [INFO] 127.0.0.1 - - [26/Nov/2025 21:27:02] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&var=ux&cmap=default&run=1&camera=1&merged=0&is_uncalibrated=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-26 21:27:02,549 [INFO] 127.0.0.1 - - [26/Nov/2025 21:27:02] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&var=ux&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-26 21:27:08,835 [INFO] 127.0.0.1 - - [26/Nov/2025 21:27:08] "GET /backend/plot/plot_ensemble?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&var=ux&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-26 21:27:12,182 [INFO] 127.0.0.1 - - [26/Nov/2025 21:27:12] "[33mGET /backend/plot/check_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-26 21:27:12,296 [INFO] 127.0.0.1 - - [26/Nov/2025 21:27:12] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&var=ux&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-26 21:28:45,660 [INFO] 127.0.0.1 - - [26/Nov/2025 21:28:45] "[33mGET /plot/check_vars?base_path=/tmp&frame=1&camera=1 HTTP/1.1[0m" 404 -
+2025-11-26 21:29:37,958 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-26 21:29:37,959 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:37] "GET /backend/config HTTP/1.1" 200 -
+2025-11-26 21:29:37,959 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:37] "[36mGET /grid.svg HTTP/1.1[0m" 304 -
+2025-11-26 21:29:38,505 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:38] "POST /backend/validate_files HTTP/1.1" 200 -
+2025-11-26 21:29:40,673 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:40] "[33mGET /backend/plot/check_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-26 21:29:40,674 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:40] "GET /backend/config HTTP/1.1" 200 -
+2025-11-26 21:29:40,676 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:40] "[33mGET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-26 21:29:40,678 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:40] "[33mGET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&var=ux&cmap=default&run=1&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1[0m" 404 -
+2025-11-26 21:29:40,690 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:40] "GET /backend/plot/check_available_data?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1 HTTP/1.1" 200 -
+2025-11-26 21:29:40,808 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:40] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&var=ux&cmap=default&run=1&camera=1&merged=0&is_uncalibrated=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-26 21:29:40,906 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:40] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&var=ux&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-26 21:29:47,234 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:47] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:29:47,269 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:47] "POST /backend/calibration/planar/validate_images HTTP/1.1" 200 -
+2025-11-26 21:29:47,572 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:47] "[33mGET /backend/plot/check_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-26 21:29:47,574 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:47] "GET /backend/config HTTP/1.1" 200 -
+2025-11-26 21:29:47,575 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:47] "[33mGET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-26 21:29:47,576 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:47] "[33mGET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&var=ux&cmap=default&run=1&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1[0m" 404 -
+2025-11-26 21:29:47,587 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:47] "GET /backend/plot/check_available_data?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1 HTTP/1.1" 200 -
+2025-11-26 21:29:47,696 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:47] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&var=ux&cmap=default&run=1&camera=1&merged=0&is_uncalibrated=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-26 21:29:47,784 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:47] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&var=ux&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-26 21:29:49,564 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:49] "GET /backend/plot/plot_ensemble?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&var=ux&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-26 21:29:53,631 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:53] "[33mGET /backend/video/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1&data_source=calibrated&var=ux HTTP/1.1[0m" 404 -
+2025-11-26 21:29:53,640 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:53] "GET /backend/video/check_data_sources?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1 HTTP/1.1" 200 -
+2025-11-26 21:29:53,654 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:53] "GET /backend/video/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1&data_source=uncalibrated&var=ux HTTP/1.1" 200 -
+2025-11-26 21:29:54,084 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:54] "GET /backend/video/check_ffmpeg HTTP/1.1" 200 -
+2025-11-26 21:29:58,387 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:58] "[33mGET /backend/plot/check_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-26 21:29:58,388 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:58] "GET /backend/config HTTP/1.1" 200 -
+2025-11-26 21:29:58,391 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:58] "[33mGET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-26 21:29:58,392 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:58] "[33mGET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&var=ux&cmap=default&run=1&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1[0m" 404 -
+2025-11-26 21:29:58,400 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:58] "GET /backend/plot/check_available_data?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1 HTTP/1.1" 200 -
+2025-11-26 21:29:58,507 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:58] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&var=ux&cmap=default&run=1&camera=1&merged=0&is_uncalibrated=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-26 21:29:58,595 [INFO] 127.0.0.1 - - [26/Nov/2025 21:29:58] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&var=ux&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-26 21:30:54,394 [INFO] 127.0.0.1 - - [26/Nov/2025 21:30:54] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-26 21:30:54,420 [INFO] 127.0.0.1 - - [26/Nov/2025 21:30:54] "POST /backend/calibration/planar/validate_images HTTP/1.1" 200 -
+2025-11-26 21:30:54,689 [INFO] 127.0.0.1 - - [26/Nov/2025 21:30:54] "GET /backend/config HTTP/1.1" 200 -
+2025-11-26 21:30:54,689 [INFO] 127.0.0.1 - - [26/Nov/2025 21:30:54] "[33mGET /backend/plot/check_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-26 21:30:54,692 [INFO] 127.0.0.1 - - [26/Nov/2025 21:30:54] "[33mGET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-26 21:30:54,697 [INFO] 127.0.0.1 - - [26/Nov/2025 21:30:54] "[33mGET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&var=ux&cmap=default&run=1&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1[0m" 404 -
+2025-11-26 21:30:54,713 [INFO] 127.0.0.1 - - [26/Nov/2025 21:30:54] "GET /backend/plot/check_available_data?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1 HTTP/1.1" 200 -
+2025-11-26 21:30:54,823 [INFO] 127.0.0.1 - - [26/Nov/2025 21:30:54] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&var=ux&cmap=default&run=1&camera=1&merged=0&is_uncalibrated=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-26 21:30:54,915 [INFO] 127.0.0.1 - - [26/Nov/2025 21:30:54] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&var=ux&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-27 09:42:51,829 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-27 09:42:51,891 [INFO] 127.0.0.1 - - [27/Nov/2025 09:42:51] "GET /backend/config HTTP/1.1" 200 -
+2025-11-27 09:42:52,438 [INFO] 127.0.0.1 - - [27/Nov/2025 09:42:52] "POST /backend/validate_files HTTP/1.1" 200 -
+2025-11-27 09:46:13,896 [INFO] 127.0.0.1 - - [27/Nov/2025 09:46:13] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-27 09:46:14,466 [INFO] 127.0.0.1 - - [27/Nov/2025 09:46:14] "POST /backend/validate_files HTTP/1.1" 200 -
+2025-11-27 09:46:18,125 [INFO] 127.0.0.1 - - [27/Nov/2025 09:46:18] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-27 09:46:18,658 [INFO] 127.0.0.1 - - [27/Nov/2025 09:46:18] "POST /backend/validate_files HTTP/1.1" 200 -
+2025-11-27 09:46:24,840 [INFO] 127.0.0.1 - - [27/Nov/2025 09:46:24] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-27 09:46:25,373 [INFO] 127.0.0.1 - - [27/Nov/2025 09:46:25] "POST /backend/validate_files HTTP/1.1" 200 -
+2025-11-27 09:46:27,846 [INFO] 127.0.0.1 - - [27/Nov/2025 09:46:27] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-27 09:46:28,450 [INFO] 127.0.0.1 - - [27/Nov/2025 09:46:28] "POST /backend/validate_files HTTP/1.1" 200 -
+2025-11-27 09:46:33,358 [INFO] 127.0.0.1 - - [27/Nov/2025 09:46:33] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-27 09:46:33,884 [INFO] 127.0.0.1 - - [27/Nov/2025 09:46:33] "POST /backend/validate_files HTTP/1.1" 200 -
+2025-11-27 09:46:44,246 [INFO] 127.0.0.1 - - [27/Nov/2025 09:46:44] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-27 09:46:44,759 [INFO] 127.0.0.1 - - [27/Nov/2025 09:46:44] "POST /backend/validate_files HTTP/1.1" 200 -
+2025-11-27 09:47:00,723 [INFO] 127.0.0.1 - - [27/Nov/2025 09:47:00] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-27 09:47:01,256 [INFO] 127.0.0.1 - - [27/Nov/2025 09:47:01] "POST /backend/validate_files HTTP/1.1" 200 -
+2025-11-27 09:47:06,209 [INFO] 127.0.0.1 - - [27/Nov/2025 09:47:06] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-27 09:47:06,786 [INFO] 127.0.0.1 - - [27/Nov/2025 09:47:06] "POST /backend/validate_files HTTP/1.1" 200 -
+2025-11-27 09:47:14,554 [INFO] 127.0.0.1 - - [27/Nov/2025 09:47:14] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-27 09:47:15,084 [INFO] 127.0.0.1 - - [27/Nov/2025 09:47:15] "POST /backend/validate_files HTTP/1.1" 200 -
+2025-11-27 09:47:33,367 [INFO] 127.0.0.1 - - [27/Nov/2025 09:47:33] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:47:33,382 [INFO] 127.0.0.1 - - [27/Nov/2025 09:47:33] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:47:33,388 [INFO] 127.0.0.1 - - [27/Nov/2025 09:47:33] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:47:33,392 [INFO] 127.0.0.1 - - [27/Nov/2025 09:47:33] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:47:33,396 [INFO] 127.0.0.1 - - [27/Nov/2025 09:47:33] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:47:33,401 [INFO] 127.0.0.1 - - [27/Nov/2025 09:47:33] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:47:37,580 [INFO] 127.0.0.1 - - [27/Nov/2025 09:47:37] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-27 09:47:39,291 [INFO] 127.0.0.1 - - [27/Nov/2025 09:47:39] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-27 09:47:45,379 [INFO] 127.0.0.1 - - [27/Nov/2025 09:47:45] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-27 09:47:45,381 [INFO] 127.0.0.1 - - [27/Nov/2025 09:47:45] "[33mGET /backend/load_mask?basepath_idx=0&camera=Cam1&polygons_only=true HTTP/1.1[0m" 404 -
+2025-11-27 09:48:24,645 [INFO] 127.0.0.1 - - [27/Nov/2025 09:48:24] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-27 09:48:24,651 [INFO] 127.0.0.1 - - [27/Nov/2025 09:48:24] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-27 09:48:24,694 [INFO] 127.0.0.1 - - [27/Nov/2025 09:48:24] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:48:24,717 [INFO] 127.0.0.1 - - [27/Nov/2025 09:48:24] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:48:24,722 [INFO] 127.0.0.1 - - [27/Nov/2025 09:48:24] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:48:24,730 [INFO] 127.0.0.1 - - [27/Nov/2025 09:48:24] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:48:24,734 [INFO] 127.0.0.1 - - [27/Nov/2025 09:48:24] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:48:24,740 [INFO] 127.0.0.1 - - [27/Nov/2025 09:48:24] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:48:25,220 [INFO] 127.0.0.1 - - [27/Nov/2025 09:48:25] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-27 09:48:30,684 [INFO] 127.0.0.1 - - [27/Nov/2025 09:48:30] "GET /backend/get_frame_pair?camera=1&idx=7&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:48:30,691 [INFO] 127.0.0.1 - - [27/Nov/2025 09:48:30] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:48:30,843 [INFO] 127.0.0.1 - - [27/Nov/2025 09:48:30] "GET /backend/get_frame_pair?camera=1&idx=8&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:48:30,995 [INFO] 127.0.0.1 - - [27/Nov/2025 09:48:30] "GET /backend/get_frame_pair?camera=1&idx=9&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:48:31,164 [INFO] 127.0.0.1 - - [27/Nov/2025 09:48:31] "GET /backend/get_frame_pair?camera=1&idx=10&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:48:31,372 [INFO] 127.0.0.1 - - [27/Nov/2025 09:48:31] "GET /backend/get_frame_pair?camera=1&idx=11&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:48:31,529 [INFO] 127.0.0.1 - - [27/Nov/2025 09:48:31] "GET /backend/get_frame_pair?camera=1&idx=12&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:48:31,703 [INFO] 127.0.0.1 - - [27/Nov/2025 09:48:31] "GET /backend/get_frame_pair?camera=1&idx=13&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:48:36,866 [INFO] 127.0.0.1 - - [27/Nov/2025 09:48:36] "GET /backend/get_processed_pair?type=processed&frame=8&camera=1&source_path_idx=0&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:48:37,384 [INFO] 127.0.0.1 - - [27/Nov/2025 09:48:37] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-27 09:48:38,594 [INFO] 127.0.0.1 - - [27/Nov/2025 09:48:38] "POST /backend/filter HTTP/1.1" 200 -
+2025-11-27 09:48:38,664 [INFO] _detect_image_shape: image_format = ('B%05d_A.tif', 'B%05d_B.tif'), type = <class 'tuple'>
+2025-11-27 09:48:38,664 [INFO] Source path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1, Camera: 1
+2025-11-27 09:48:38,664 [INFO] Camera path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
+2025-11-27 09:48:38,664 [INFO] Trying to read file: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1/B00001_A.tif
+2025-11-27 09:48:38,665 [INFO] Detected image shape: (1152, 1024)
+2025-11-27 09:48:38,665 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-27 09:48:39,610 [INFO] 127.0.0.1 - - [27/Nov/2025 09:48:39] "GET /backend/processing_status HTTP/1.1" 200 -
+2025-11-27 09:48:39,678 [INFO] 127.0.0.1 - - [27/Nov/2025 09:48:39] "GET /backend/get_processed_pair?type=processed&frame=8&camera=1&source_path_idx=0&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:49:02,590 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:02] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-27 09:49:06,339 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:06] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-27 09:49:06,355 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:06] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-27 09:49:06,374 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:06] "GET /backend/get_frame_pair?camera=1&idx=1&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:49:06,393 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:06] "GET /backend/get_frame_pair?camera=1&idx=2&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:49:06,397 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:06] "GET /backend/get_frame_pair?camera=1&idx=3&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:49:06,403 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:06] "GET /backend/get_frame_pair?camera=1&idx=4&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:49:06,408 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:06] "GET /backend/get_frame_pair?camera=1&idx=5&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:49:06,412 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:06] "GET /backend/get_frame_pair?camera=1&idx=6&source_path_idx=0&format=jpeg&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:49:06,454 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:06] "GET /backend/get_processed_pair?type=processed&frame=1&camera=1&source_path_idx=0&auto_limits=true HTTP/1.1" 200 -
+2025-11-27 09:49:06,901 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:06] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-27 09:49:18,548 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:18] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-27 09:49:18,578 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:18] "POST /backend/calibration/planar/validate_images HTTP/1.1" 200 -
+2025-11-27 09:49:22,997 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:22] "GET /backend/calibration/planar/get_image?source_path_idx=0&camera=1&image_index=0&file_pattern=calib00001.tif HTTP/1.1" 200 -
+2025-11-27 09:49:23,002 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:23] "POST /backend/calibration/planar/calibrate_all HTTP/1.1" 200 -
+2025-11-27 09:49:25,010 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:25] "GET /backend/calibration/planar/calibrate_all/status/127c7e5b-3a75-4c42-bd41-3d59f0cae07f HTTP/1.1" 200 -
+2025-11-27 09:49:27,011 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:27] "GET /backend/calibration/planar/calibrate_all/status/127c7e5b-3a75-4c42-bd41-3d59f0cae07f HTTP/1.1" 200 -
+2025-11-27 09:49:28,017 [INFO] Processing Camera 1
+2025-11-27 09:49:28,018 [INFO] Processing calibration image 1: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1/calibration/Cam1/calib00001.tif
+2025-11-27 09:49:28,067 [INFO] Grid detected (Original image)
+2025-11-27 09:49:28,684 [INFO] Saved grid visualization: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/calibration/Cam1/indices/indexes_1.png
+2025-11-27 09:49:28,684 [INFO] Saved results for image 1
+2025-11-27 09:49:28,684 [INFO] Calibrating camera from image 1...
+2025-11-27 09:49:28,687 [INFO] Calibration reprojection RMS: 0.15655
+2025-11-27 09:49:28,687 [INFO] Saved camera model: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified/calibration/Cam1/model/camera_model.mat
+2025-11-27 09:49:28,691 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:28] "POST /backend/calibration/planar/compute HTTP/1.1" 200 -
+2025-11-27 09:49:32,778 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:32] "[33mGET /backend/plot/check_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-27 09:49:32,779 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:32] "GET /backend/config HTTP/1.1" 200 -
+2025-11-27 09:49:32,782 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:32] "[33mGET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-27 09:49:32,783 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:32] "[33mGET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&var=ux&cmap=default&run=1&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1[0m" 404 -
+2025-11-27 09:49:32,785 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:32] "GET /backend/plot/check_available_data?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1 HTTP/1.1" 200 -
+2025-11-27 09:49:44,146 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:44] "POST /backend/update_config HTTP/1.1" 200 -
+2025-11-27 09:49:44,696 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:44] "POST /backend/validate_files HTTP/1.1" 200 -
+2025-11-27 09:49:44,936 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:44] "[33mGET /backend/plot/check_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-27 09:49:44,937 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:44] "GET /backend/config HTTP/1.1" 200 -
+2025-11-27 09:49:44,938 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:44] "[33mGET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1&merged=0 HTTP/1.1[0m" 404 -
+2025-11-27 09:49:44,939 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:44] "[33mGET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&var=ux&cmap=default&run=1&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1[0m" 404 -
+2025-11-27 09:49:44,949 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:44] "GET /backend/plot/check_available_data?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1 HTTP/1.1" 200 -
+2025-11-27 09:49:45,054 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:45] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&var=ux&cmap=default&run=1&camera=1&merged=0&is_uncalibrated=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-27 09:49:45,152 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:45] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&frame=1&var=ux&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-11-27 09:49:47,937 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:47] "GET /backend/plot/plot_ensemble?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&var=ux&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-11-27 09:49:53,359 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:53] "[33mGET /backend/video/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1&data_source=calibrated&var=ux HTTP/1.1[0m" 404 -
+2025-11-27 09:49:53,377 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:53] "GET /backend/video/check_data_sources?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1 HTTP/1.1" 200 -
+2025-11-27 09:49:53,396 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:53] "GET /backend/video/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/Planar_Images_with_wall/unified&camera=1&data_source=uncalibrated&var=ux HTTP/1.1" 200 -
+2025-11-27 09:49:53,841 [INFO] 127.0.0.1 - - [27/Nov/2025 09:49:53] "GET /backend/video/check_ffmpeg HTTP/1.1" 200 -

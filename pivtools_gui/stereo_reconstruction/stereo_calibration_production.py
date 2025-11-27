@@ -16,6 +16,8 @@ import numpy as np
 from loguru import logger
 from scipy.io import savemat
 
+from pivtools_core.image_handling.load_images import read_image
+
 # ===================== CONFIGURATION VARIABLES =====================
 # Set these variables for your calibration setup
 SOURCE_DIR = "/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Stereo_Images"
@@ -88,6 +90,49 @@ class StereoCalibrator:
         params.maxThreshold = 255
         params.thresholdStep = 5
         return cv2.SimpleBlobDetector_create(params)
+
+    def _is_container_format(self):
+        """Check if file pattern is a container format (.set, .im7)"""
+        return '.set' in self.file_pattern.lower() or '.im7' in self.file_pattern.lower()
+
+    def _read_calibration_image(self, img_path, camera=1, img_index=1):
+        """Read calibration image with container format support.
+
+        Args:
+            img_path: Path to image file (for standard formats) or container file
+            camera: Camera number (1-based, used for container formats)
+            img_index: Image index (1-based, used for .set files)
+
+        Returns:
+            np.ndarray: Image data as uint8 or uint16
+        """
+        if self._is_container_format():
+            if '.set' in str(img_path).lower():
+                # .set file: pass camera_no and im_no
+                img = read_image(str(img_path), camera_no=camera, im_no=img_index)
+            elif '.im7' in str(img_path).lower():
+                # .im7 file: pass camera_no
+                img = read_image(str(img_path), camera_no=camera)
+            else:
+                img = read_image(str(img_path))
+        else:
+            # Standard format: just read the file
+            img = read_image(str(img_path))
+
+        # Ensure proper dtype for OpenCV operations
+        if img is not None:
+            # Handle bool arrays (can occur with some readers)
+            if img.dtype == np.bool_:
+                img = img.astype(np.uint8) * 255
+            # Handle float arrays (normalize to uint8 or uint16)
+            elif img.dtype in [np.float32, np.float64]:
+                img_min, img_max = img.min(), img.max()
+                if img_max > img_min:
+                    img = ((img - img_min) / (img_max - img_min) * 255).astype(np.uint8)
+                else:
+                    img = np.zeros_like(img, dtype=np.uint8)
+
+        return img
 
     def enhance_dots_image(self, img, fixed_radius=9):
         """Enhance white dots in calibration image for better detection"""
@@ -192,34 +237,44 @@ class StereoCalibrator:
         """
         logger.info(f"Processing stereo pair: Camera {cam1_num} and Camera {cam2_num}")
 
-        # Setup paths
-        cam1_input_dir = self.source_dir / "calibration" / f"Cam{cam1_num}"
-        cam2_input_dir = self.source_dir / "calibration" / f"Cam{cam2_num}"
+        is_container = self._is_container_format()
 
-        if not cam1_input_dir.exists() or not cam2_input_dir.exists():
-            logger.error(
-                f"Camera directories not found: {cam1_input_dir} or {cam2_input_dir}"
-            )
-            return
+        # Setup paths - container formats don't use Cam subdirectories
+        if is_container:
+            calibration_dir = self.source_dir / "calibration"
+            container_file = calibration_dir / self.file_pattern
+            if not container_file.exists():
+                logger.error(f"Container file not found: {container_file}")
+                return
+            logger.info(f"Using container file: {container_file}")
+        else:
+            cam1_input_dir = self.source_dir / "calibration" / f"Cam{cam1_num}"
+            cam2_input_dir = self.source_dir / "calibration" / f"Cam{cam2_num}"
 
-        # Get image files for both cameras
-        cam1_files = self.get_image_files(cam1_input_dir)
-        cam2_files = self.get_image_files(cam2_input_dir)
+            if not cam1_input_dir.exists() or not cam2_input_dir.exists():
+                logger.error(
+                    f"Camera directories not found: {cam1_input_dir} or {cam2_input_dir}"
+                )
+                return
 
-        if not cam1_files or not cam2_files:
-            logger.error(f"No images found for camera pair {cam1_num}-{cam2_num}")
-            return
+            # Get image files for both cameras
+            cam1_files = self.get_image_files(cam1_input_dir)
+            cam2_files = self.get_image_files(cam2_input_dir)
 
-        # Match files by name
-        cam1_dict = {f.name: f for f in cam1_files}
-        cam2_dict = {f.name: f for f in cam2_files}
-        common_names = sorted(set(cam1_dict.keys()) & set(cam2_dict.keys()))
+            if not cam1_files or not cam2_files:
+                logger.error(f"No images found for camera pair {cam1_num}-{cam2_num}")
+                return
 
-        if not common_names:
-            logger.error("No matching image pairs found between cameras")
-            return
+            # Match files by name
+            cam1_dict = {f.name: f for f in cam1_files}
+            cam2_dict = {f.name: f for f in cam2_files}
+            common_names = sorted(set(cam1_dict.keys()) & set(cam2_dict.keys()))
 
-        logger.info(f"Found {len(common_names)} matching image pairs")
+            if not common_names:
+                logger.error("No matching image pairs found between cameras")
+                return
+
+            logger.info(f"Found {len(common_names)} matching image pairs")
 
         # Process all pairs and collect successful ones
         objpoints = []
@@ -229,20 +284,64 @@ class StereoCalibrator:
         objp = self.make_object_points()
         image_size = None
 
-        for filename in common_names:
-            cam1_file = cam1_dict[filename]
-            cam2_file = cam2_dict[filename]
+        # Determine iteration strategy based on format
+        if is_container:
+            # For container formats, iterate by index until we hit an error
+            # Try up to 1000 images (reasonable limit for calibration)
+            max_images = 1000
+            image_indices = range(1, max_images + 1)
+            iterate_by_index = True
+        else:
+            image_indices = common_names
+            iterate_by_index = False
 
-            # Process first image
-            img1 = cv2.imread(str(cam1_file), cv2.IMREAD_UNCHANGED)
+        for idx_or_filename in image_indices:
+            if iterate_by_index:
+                img_index = idx_or_filename
+                filename = f"{self.file_pattern}[{img_index}]"
+                try:
+                    # Read from container format with camera numbers
+                    img1 = self._read_calibration_image(
+                        container_file, camera=cam1_num, img_index=img_index
+                    )
+                    img2 = self._read_calibration_image(
+                        container_file, camera=cam2_num, img_index=img_index
+                    )
+                except Exception as e:
+                    # Container likely exhausted - stop iteration
+                    if img_index == 1:
+                        logger.error(f"Could not read first image from container: {e}")
+                        return
+                    break
+            else:
+                filename = idx_or_filename
+                cam1_file = cam1_dict[filename]
+                cam2_file = cam2_dict[filename]
+
+                # Process first image using container-aware reader
+                try:
+                    img1 = self._read_calibration_image(cam1_file)
+                except Exception as e:
+                    logger.warning(f"Could not load {cam1_file}: {e}")
+                    continue
+
+                # Process second image
+                try:
+                    img2 = self._read_calibration_image(cam2_file)
+                except Exception as e:
+                    logger.warning(f"Could not load {cam2_file}: {e}")
+                    continue
+
             if img1 is None:
-                logger.warning(f"Could not load {cam1_file}")
+                if iterate_by_index:
+                    break  # Container exhausted
+                logger.warning(f"Could not load image for {filename}")
                 continue
 
-            # Process second image
-            img2 = cv2.imread(str(cam2_file), cv2.IMREAD_UNCHANGED)
             if img2 is None:
-                logger.warning(f"Could not load {cam2_file}")
+                if iterate_by_index:
+                    break  # Container exhausted
+                logger.warning(f"Could not load image for {filename}")
                 continue
 
             # Set image size from first successful pair
@@ -425,14 +524,22 @@ class StereoCalibrator:
         try:
             import matplotlib.pyplot as plt
 
-            # Load original image for background
-            cam_input_dir = self.source_dir / "calibration" / f"Cam{cam_num}"
-            img_path = cam_input_dir / original_filename
-            img = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)
+            # Load original image for background - handle container formats
+            if self._is_container_format():
+                img_path = self.source_dir / "calibration" / self.file_pattern
+                img = self._read_calibration_image(img_path, camera=cam_num, img_index=img_index)
+            else:
+                cam_input_dir = self.source_dir / "calibration" / f"Cam{cam_num}"
+                img_path = cam_input_dir / original_filename
+                img = self._read_calibration_image(img_path)
 
             if img is None:
                 logger.warning(f"Could not load image for visualization: {img_path}")
                 return None
+
+            # Convert to grayscale if needed
+            if img.ndim == 3:
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
             cols, rows = self.pattern_size
 

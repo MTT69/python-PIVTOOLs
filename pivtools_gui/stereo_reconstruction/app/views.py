@@ -30,6 +30,7 @@ from loguru import logger
 from scipy.io.matlab.mio5_params import mat_struct
 
 from pivtools_core.config import get_config
+from pivtools_core.image_handling.load_images import read_image
 
 # Import production calibration and reconstruction classes
 from ..stereo_calibration_production import StereoCalibrator
@@ -144,6 +145,227 @@ def stereo_get_calibration_images():
     except Exception as e:
         logger.error(f"Error getting stereo calibration images: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+@stereo_bp.route("/stereo/calibration/validate_images", methods=["POST"])
+def stereo_validate_images():
+    """Validate calibration images exist and are readable for both cameras in a pair.
+
+    Supports both standard image formats (tif, png, jpg) and container formats (.set, .im7).
+    Returns per-camera validation status with image counts and preview images.
+    """
+    data = request.get_json() or {}
+    source_path_idx = int(data.get("source_path_idx", 0))
+    cam1 = camera_number(data.get("cam1", 1))
+    cam2 = camera_number(data.get("cam2", 2))
+    file_pattern = data.get("file_pattern", "planar_calibration_plate_*.tif")
+
+    try:
+        cfg = get_config()
+        source_root = Path(cfg.source_paths[source_path_idx])
+
+        # Detect container format
+        is_container = '.set' in file_pattern.lower() or '.im7' in file_pattern.lower()
+
+        # Overall validation result
+        result = {
+            "valid": True,
+            "checked": True,
+            "camera_pair": [cam1, cam2],
+            "file_pattern": file_pattern,
+            "container_format": is_container,
+            "cameras": {},
+            "matching_pairs": 0,
+            "error": None
+        }
+
+        # Helper function to validate a single camera
+        def validate_camera(cam_num):
+            cam_result = {
+                "camera": cam_num,
+                "valid": False,
+                "found_count": 0,
+                "camera_path": None,
+                "sample_files": [],
+                "first_image_preview": None,
+                "image_size": None,
+                "format_detected": None,
+                "error": None
+            }
+
+            # Setup paths based on format
+            if is_container:
+                cam_input_dir = source_root / "calibration"
+                container_file = cam_input_dir / file_pattern
+            else:
+                cam_input_dir = source_root / "calibration" / f"Cam{cam_num}"
+
+            cam_result["camera_path"] = str(cam_input_dir)
+
+            if not cam_input_dir.exists():
+                cam_result["error"] = f"Calibration directory not found: {cam_input_dir}"
+                return cam_result
+
+            # Find calibration images
+            image_files = []
+            sample_files = []
+
+            if is_container:
+                if container_file.exists():
+                    image_files = [str(container_file)]
+                    sample_files = [container_file.name]
+                else:
+                    cam_result["error"] = f"Container file not found: {container_file}"
+                    cam_result["format_detected"] = Path(file_pattern).suffix.lstrip('.')
+                    return cam_result
+            elif "%" in file_pattern:
+                i = 1
+                while True:
+                    filename = file_pattern % i
+                    filepath = cam_input_dir / filename
+                    if filepath.exists():
+                        image_files.append(str(filepath))
+                        if len(sample_files) < 5:
+                            sample_files.append(filename)
+                        i += 1
+                    else:
+                        break
+            else:
+                image_files = sorted(glob.glob(str(cam_input_dir / file_pattern)))
+                sample_files = [Path(f).name for f in image_files[:5]]
+
+            if not image_files:
+                # Try to suggest a pattern based on files that exist in the directory
+                error_msg = f"No images found matching pattern: {file_pattern}"
+
+                if cam_input_dir.exists():
+                    # List all image files in the directory
+                    all_files = []
+                    for ext in ['*.tif', '*.tiff', '*.png', '*.jpg', '*.jpeg', '*.bmp']:
+                        all_files.extend([f.name for f in cam_input_dir.glob(ext)])
+                        all_files.extend([f.name for f in cam_input_dir.glob(ext.upper())])
+
+                    if all_files:
+                        all_files = sorted(set(all_files))[:5]  # First 5 unique files
+                        cam_result["sample_files"] = all_files
+
+                        # Try to suggest a pattern from the first file
+                        import re
+                        sample = all_files[0]
+
+                        # Try to infer pattern from digits in filename
+                        digit_match = re.search(r'(\d+)', sample)
+                        if digit_match:
+                            num_digits = len(digit_match.group(1))
+                            suggested_pattern = re.sub(r'\d+', f'%0{num_digits}d', sample, count=1)
+
+                            if suggested_pattern and suggested_pattern != file_pattern:
+                                error_msg += f". Found files like: {', '.join(all_files[:3])}"
+                                if len(all_files) > 3:
+                                    error_msg += f" (+more)"
+                                error_msg += f". Try pattern: {suggested_pattern}"
+                                cam_result["suggested_pattern"] = suggested_pattern
+
+                cam_result["error"] = error_msg
+                return cam_result
+
+            cam_result["found_count"] = len(image_files) if not is_container else "container"
+            cam_result["sample_files"] = sample_files
+
+            # Try to read the first image for preview
+            try:
+                if is_container:
+                    if '.set' in file_pattern.lower():
+                        img = read_image(str(container_file), camera_no=cam_num, im_no=1)
+                    else:  # .im7
+                        img = read_image(str(container_file), camera_no=cam_num)
+                    cam_result["format_detected"] = Path(file_pattern).suffix.lstrip('.')
+                else:
+                    img = read_image(image_files[0])
+                    cam_result["format_detected"] = Path(image_files[0]).suffix.lstrip('.')
+
+                if img is not None:
+                    # Convert to grayscale if needed
+                    if img.ndim == 3:
+                        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                    else:
+                        gray = img.copy()
+
+                    cam_result["image_size"] = [int(gray.shape[1]), int(gray.shape[0])]
+
+                    # Normalize to 0-255 uint8 for display
+                    disp = gray.astype(float) - gray.min()
+                    if disp.max() > 0:
+                        disp = disp / disp.max()
+                    disp8 = (disp * 255).astype(np.uint8)
+
+                    # Convert to base64 PNG
+                    cam_result["first_image_preview"] = numpy_to_png_base64(disp8)
+                    cam_result["valid"] = True
+
+            except Exception as e:
+                cam_result["error"] = f"Images found but could not be read: {str(e)}"
+
+            return cam_result
+
+        # Validate both cameras
+        cam1_result = validate_camera(cam1)
+        cam2_result = validate_camera(cam2)
+
+        result["cameras"][f"cam{cam1}"] = cam1_result
+        result["cameras"][f"cam{cam2}"] = cam2_result
+
+        # Check overall validity
+        if not cam1_result["valid"]:
+            result["valid"] = False
+        if not cam2_result["valid"]:
+            result["valid"] = False
+
+        # Count matching pairs for standard formats
+        if not is_container:
+            cam1_path = source_root / "calibration" / f"Cam{cam1}"
+            cam2_path = source_root / "calibration" / f"Cam{cam2}"
+
+            if cam1_path.exists() and cam2_path.exists():
+                if "%" in file_pattern:
+                    # For numbered patterns, count how many exist in both
+                    matching = 0
+                    i = 1
+                    while True:
+                        filename = file_pattern % i
+                        if (cam1_path / filename).exists() and (cam2_path / filename).exists():
+                            matching += 1
+                            i += 1
+                        else:
+                            break
+                    result["matching_pairs"] = matching
+                else:
+                    # For glob patterns, find intersection
+                    cam1_files = set(Path(f).name for f in glob.glob(str(cam1_path / file_pattern)))
+                    cam2_files = set(Path(f).name for f in glob.glob(str(cam2_path / file_pattern)))
+                    result["matching_pairs"] = len(cam1_files & cam2_files)
+
+                if result["matching_pairs"] < 3:
+                    result["error"] = f"Need at least 3 matching pairs, found {result['matching_pairs']}"
+                    result["valid"] = False
+        else:
+            # For container formats, we can't easily count matching pairs
+            result["matching_pairs"] = "container"
+
+        return jsonify(result)
+
+    except Exception as e:
+        logger.error(f"Error validating stereo calibration images: {e}")
+        return jsonify({
+            "valid": False,
+            "checked": True,
+            "camera_pair": [cam1, cam2],
+            "file_pattern": file_pattern,
+            "container_format": False,
+            "cameras": {},
+            "matching_pairs": 0,
+            "error": str(e)
+        }), 500
 
 
 @stereo_bp.route("/stereo/calibration/run", methods=["POST"])

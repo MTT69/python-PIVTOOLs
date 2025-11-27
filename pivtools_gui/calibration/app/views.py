@@ -19,6 +19,7 @@ from ..calibration_planar.planar_calibration_production import (
 from ..vector_calibration_production import VectorCalibrator
 from pivtools_core.config import get_config
 from pivtools_core.paths import get_data_paths
+from pivtools_core.image_handling.load_images import read_image
 from ...plotting.app.views import extract_coordinates
 from ...utils import camera_number, numpy_to_png_base64
 
@@ -344,6 +345,222 @@ def planar_get_image():
     except Exception as e:
         logger.error(f"Error getting planar calibration image: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+@calibration_bp.route("/calibration/planar/validate_images", methods=["POST"])
+def planar_validate_images():
+    """Validate calibration images exist and are readable.
+
+    Supports both standard image formats (tif, png, jpg) and container formats (.set, .im7).
+    Returns validation status, file counts, and a preview image.
+    """
+    data = request.get_json() or {}
+    source_path_idx = int(data.get("source_path_idx", 0))
+    camera = camera_number(data.get("camera", 1))
+    file_pattern = data.get("file_pattern", "calib%05d.tif")
+
+    try:
+        cfg = get_config()
+        source_root = Path(cfg.source_paths[source_path_idx])
+
+        # Detect container format
+        is_container = '.set' in file_pattern.lower() or '.im7' in file_pattern.lower()
+
+        # Setup paths based on format
+        if is_container:
+            cam_input_dir = source_root / "calibration"
+            container_file = cam_input_dir / file_pattern
+        else:
+            cam_input_dir = source_root / "calibration" / f"Cam{camera}"
+
+        if not cam_input_dir.exists():
+            return jsonify({
+                "valid": False,
+                "checked": True,
+                "found_count": 0,
+                "file_pattern": file_pattern,
+                "camera_path": str(cam_input_dir),
+                "sample_files": [],
+                "first_image_preview": None,
+                "image_size": None,
+                "format_detected": None,
+                "container_format": is_container,
+                "error": f"Calibration directory not found: {cam_input_dir}"
+            })
+
+        # Find calibration images
+        image_files = []
+        sample_files = []
+
+        if is_container:
+            # Container format: check if file exists and try to read first image
+            if container_file.exists():
+                image_files = [str(container_file)]
+                sample_files = [container_file.name]
+                # For containers, we can't easily count images without reading
+                # Just indicate it exists
+            else:
+                return jsonify({
+                    "valid": False,
+                    "checked": True,
+                    "found_count": 0,
+                    "file_pattern": file_pattern,
+                    "camera_path": str(cam_input_dir),
+                    "sample_files": [],
+                    "first_image_preview": None,
+                    "image_size": None,
+                    "format_detected": Path(file_pattern).suffix.lstrip('.'),
+                    "container_format": True,
+                    "error": f"Container file not found: {container_file}"
+                })
+        elif "%" in file_pattern:
+            # Handle numbered patterns like calib%05d.tif
+            i = 1
+            while True:
+                filename = file_pattern % i
+                filepath = cam_input_dir / filename
+                if filepath.exists():
+                    image_files.append(str(filepath))
+                    if len(sample_files) < 5:
+                        sample_files.append(filename)
+                    i += 1
+                else:
+                    break
+        else:
+            # Handle glob patterns like planar_calibration_plate_*.tif
+            image_files = sorted(glob.glob(str(cam_input_dir / file_pattern)))
+            sample_files = [Path(f).name for f in image_files[:5]]
+
+        if not image_files:
+            # Try to suggest a pattern based on files that exist in the directory
+            suggested_pattern = None
+            found_files = []
+            error_msg = f"No images found matching pattern: {file_pattern}"
+
+            if cam_input_dir.exists():
+                # List all image files in the directory
+                all_files = []
+                for ext in ['*.tif', '*.tiff', '*.png', '*.jpg', '*.jpeg', '*.bmp']:
+                    all_files.extend([f.name for f in cam_input_dir.glob(ext)])
+                    all_files.extend([f.name for f in cam_input_dir.glob(ext.upper())])
+
+                if all_files:
+                    all_files = sorted(set(all_files))[:5]  # First 5 unique files
+                    found_files = all_files
+
+                    # Try to suggest a pattern from the first file
+                    import re
+                    sample = all_files[0]
+                    ext = Path(sample).suffix
+
+                    # Try to infer pattern from digits in filename
+                    # Match sequences of digits and replace with format specifier
+                    digit_match = re.search(r'(\d+)', sample)
+                    if digit_match:
+                        num_digits = len(digit_match.group(1))
+                        suggested_pattern = re.sub(r'\d+', f'%0{num_digits}d', sample, count=1)
+
+                    if suggested_pattern and suggested_pattern != file_pattern:
+                        error_msg += f". Found files like: {', '.join(all_files[:3])}"
+                        if len(all_files) > 3:
+                            error_msg += f" (+more)"
+                        error_msg += f". Try pattern: {suggested_pattern}"
+
+            return jsonify({
+                "valid": False,
+                "checked": True,
+                "found_count": 0,
+                "file_pattern": file_pattern,
+                "camera_path": str(cam_input_dir),
+                "sample_files": found_files,
+                "first_image_preview": None,
+                "image_size": None,
+                "format_detected": None,
+                "container_format": is_container,
+                "suggested_pattern": suggested_pattern,
+                "error": error_msg
+            })
+
+        # Try to read the first image for preview
+        preview_b64 = None
+        image_size = None
+        format_detected = None
+
+        try:
+            if is_container:
+                # Read from container with camera number and index
+                if '.set' in file_pattern.lower():
+                    img = read_image(str(container_file), camera_no=camera, im_no=1)
+                else:  # .im7
+                    img = read_image(str(container_file), camera_no=camera)
+                format_detected = Path(file_pattern).suffix.lstrip('.')
+            else:
+                img = read_image(image_files[0])
+                format_detected = Path(image_files[0]).suffix.lstrip('.')
+
+            if img is not None:
+                # Convert to grayscale if needed
+                if img.ndim == 3:
+                    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                else:
+                    gray = img.copy()
+
+                image_size = [int(gray.shape[1]), int(gray.shape[0])]
+
+                # Normalize to 0-255 uint8 for display
+                disp = gray.astype(float) - gray.min()
+                if disp.max() > 0:
+                    disp = disp / disp.max()
+                disp8 = (disp * 255).astype(np.uint8)
+
+                # Convert to base64 PNG
+                preview_b64 = numpy_to_png_base64(disp8)
+
+        except Exception as e:
+            logger.warning(f"Could not read first image for preview: {e}")
+            return jsonify({
+                "valid": False,
+                "checked": True,
+                "found_count": len(image_files) if not is_container else 1,
+                "file_pattern": file_pattern,
+                "camera_path": str(cam_input_dir),
+                "sample_files": sample_files,
+                "first_image_preview": None,
+                "image_size": None,
+                "format_detected": format_detected,
+                "container_format": is_container,
+                "error": f"Images found but could not be read: {str(e)}"
+            })
+
+        return jsonify({
+            "valid": True,
+            "checked": True,
+            "found_count": len(image_files) if not is_container else "container",
+            "file_pattern": file_pattern,
+            "camera_path": str(cam_input_dir),
+            "sample_files": sample_files,
+            "first_image_preview": preview_b64,
+            "image_size": image_size,
+            "format_detected": format_detected,
+            "container_format": is_container,
+            "error": None
+        })
+
+    except Exception as e:
+        logger.error(f"Error validating planar calibration images: {e}")
+        return jsonify({
+            "valid": False,
+            "checked": True,
+            "found_count": 0,
+            "file_pattern": file_pattern,
+            "camera_path": None,
+            "sample_files": [],
+            "first_image_preview": None,
+            "image_size": None,
+            "format_detected": None,
+            "container_format": False,
+            "error": str(e)
+        }), 500
 
 
 @calibration_bp.route("/calibration/planar/detect_grid", methods=["POST"])
@@ -678,6 +895,16 @@ def planar_load_results():
             "timestamp": str(grid_data.get("timestamp", "")),
             "original_filename": str(grid_data.get("original_filename", "")),
         }
+
+        # Try to load saved grid visualization PNG
+        grid_png_file = cam_output_base / "indices" / f"indexes_{image_index}.png"
+        if grid_png_file.exists():
+            try:
+                with open(grid_png_file, "rb") as f:
+                    grid_png_b64 = base64.b64encode(f.read()).decode("utf-8")
+                results["grid_data"]["grid_png"] = grid_png_b64
+            except Exception as e:
+                logger.warning(f"Could not load grid PNG: {e}")
 
         # Load camera model
         model_data = scipy.io.loadmat(
