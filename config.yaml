@@ -1,6 +1,26 @@
 paths:
   base_paths:
-  - D:\Processed_Wake_PIV\hohohohoho
+  - D:\Processed_Wake_PIV\Case_A_Phase_003_Run_1
+  - D:\Processed_Wake_PIV\Case_A_Phase_048_Run_1
+  - D:\Processed_Wake_PIV\Case_A_Phase_093_Run_1
+  - D:\Processed_Wake_PIV\Case_A_Phase_138_Run_1
+  - D:\Processed_Wake_PIV\Case_B_Phase_003_Run_1
+  - D:\Processed_Wake_PIV\Case_B_Phase_048_Run_1
+  - D:\Processed_Wake_PIV\Case_B_Phase_093_Run_1
+  - D:\Processed_Wake_PIV\Case_B_Phase_138_Run_1
+  - D:\Processed_Wake_PIV\Case_C_Phase_003_Run_1
+  - D:\Processed_Wake_PIV\Case_C_Phase_048_Run_1
+  - D:\Processed_Wake_PIV\Case_C_Phase_093_Run_1
+  - D:\Processed_Wake_PIV\Case_C_Phase_138_Run_1
+  - D:\Processed_Wake_PIV\Case_D_Phase_003_Run_1
+  - D:\Processed_Wake_PIV\Case_D_Phase_048_Run_1
+  - D:\Processed_Wake_PIV\Case_D_Phase_093_Run_1
+  - D:\Processed_Wake_PIV\Case_D_Phase_138_Run_1
+  - D:\Processed_Wake_PIV\Case_E_Phase_003_Run_1
+  - D:\Processed_Wake_PIV\Case_E_Phase_048_Run_1
+  - D:\Processed_Wake_PIV\Case_E_Phase_093_Run_1
+  - D:\Processed_Wake_PIV\Case_E_Phase_138_Run_1
+
   source_paths:
   - D:\Wake_PIV_16_8
   camera_numbers:
@@ -9,16 +29,16 @@ paths:
   camera_count: 2
   camera_subfolders: []
 images:
-  num_images: 30
+  num_images: 1200
   image_format:
-  - Case_A_Phase_003_Run_1.set
+  - Grid_Case_A_Run_2.set
   vector_format:
   - '%05d.mat'
   time_resolved: false
   dtype: float32
   zero_based_indexing: false
 batches:
-  size: 10
+  size: 50
 logging:
   file: pypiv.log
   level: INFO
@@ -33,7 +53,7 @@ processing:
   omp_threads: 10
   dask_workers_per_node: 1
   dask_threads_per_worker: 1
-  dask_memory_limit: 10GB
+  dask_memory_limit: 25GB
 outlier_detection:
   enabled: true
   methods:
