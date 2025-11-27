@@ -7,6 +7,7 @@ import numpy as np
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize, TwoSlopeNorm
 from matplotlib.ticker import FixedFormatter, FixedLocator
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from pivtools_core.config import Config
 
@@ -46,6 +47,10 @@ class Settings:
     coords_x: np.ndarray | None = None
     coords_y: np.ndarray | None = None
     symmetric_around_zero: bool = True
+    # New: axis limits and custom title
+    xlim: tuple[float, float] | None = None
+    ylim: tuple[float, float] | None = None
+    custom_title: str | None = None
 
 
 def make_scalar_settings(
@@ -65,6 +70,9 @@ def make_scalar_settings(
     coords_x: np.ndarray | None = None,
     coords_y: np.ndarray | None = None,
     symmetric_around_zero: bool = True,
+    xlim: tuple[float, float] | None = None,
+    ylim: tuple[float, float] | None = None,
+    custom_title: str | None = None,
 ) -> Settings:
     return Settings(
         variableName=variable,
@@ -86,6 +94,9 @@ def make_scalar_settings(
         coords_x=coords_x,
         coords_y=coords_y,
         symmetric_around_zero=symmetric_around_zero,
+        xlim=xlim,
+        ylim=ylim,
+        custom_title=custom_title,
     )
 
 # Function to plot a scalar field with masking and customizable settings
@@ -190,8 +201,10 @@ def plot_scalar_field(variable, mask, settings): # efe
     sm = ScalarMappable(norm=norm, cmap=cmap)
     sm.set_array([])  # required for some Matplotlib versions
 
-    # Use object-oriented colorbar
-    cbar = fig.colorbar(sm, ax=ax, label=cm_label)
+    # Use make_axes_locatable for colorbar that matches plot height
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(sm, cax=cax, label=cm_label)
 
     if isinstance(settings.levels, np.ndarray):
         if isinstance(norm, TwoSlopeNorm):
@@ -210,12 +223,20 @@ def plot_scalar_field(variable, mask, settings): # efe
     cbar.ax.yaxis.set_major_locator(FixedLocator(ticks))
     cbar.ax.yaxis.set_major_formatter(FixedFormatter(labels))
 
-    ax.set_title(f"{settings.title}")
+    # Use custom_title if provided, otherwise use auto-generated title
+    plot_title = settings.custom_title if settings.custom_title else settings.title
+    ax.set_title(f"{plot_title}")
     if settings.length_units:
         ax.set_xlabel(settings._xlabel + f" ({settings.length_units})")
         ax.set_ylabel(settings._ylabel + f" ({settings.length_units})")
     else:
         ax.set_xlabel(settings._xlabel)
         ax.set_ylabel(settings._ylabel)
+
+    # Apply axis limits if explicitly set by user
+    if settings.xlim is not None:
+        ax.set_xlim(settings.xlim)
+    if settings.ylim is not None:
+        ax.set_ylim(settings.ylim)
 
     return fig, ax, im

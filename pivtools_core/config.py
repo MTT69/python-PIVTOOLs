@@ -306,12 +306,14 @@ masking:
         """
         Calculate the number of frame pairs from the number of image files.
 
-        The calculation depends on whether data is time-resolved:
+        The calculation depends on the file format and whether data is time-resolved:
+        - Container formats (.set, .im7, .ims): num_pairs = num_images (each file contains A+B)
         - A/B format (len=2): num_pairs = num_images (e.g., 100 A/B sets → 100 pairs)
         - Time-resolved (sequential): num_pairs = num_images - 1 (e.g., 100 files → 99 overlapping pairs)
         - Non-time-resolved skip: num_pairs = num_images // 2 (e.g., 100 files → 50 non-overlapping pairs)
 
         Examples:
+            100 .set files → 100 pairs (each .set contains frame A and B)
             100 A/B files → 100 pairs (1A+1B, 2A+2B, ..., 100A+100B)
             100 time-resolved files → 99 pairs (1+2, 2+3, 3+4, ..., 99+100)
             100 skip-frame files → 50 pairs (1+2, 3+4, 5+6, ..., 99+100)
@@ -322,6 +324,11 @@ masking:
             Number of frame pairs that can be formed from the image files
         """
         num_images = self.num_images
+        
+        # Check for container formats (.set, .im7, .ims) which store A+B pairs together
+        format_str = self.image_format[0].lower()
+        if '.set' in format_str or '.im7' in format_str or '.ims' in format_str:
+            return num_images
 
         # A/B format (separate A and B files)
         if len(self.image_format) == 2:
