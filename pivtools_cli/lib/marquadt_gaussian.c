@@ -218,3 +218,71 @@ __attribute__((visibility("default")))
 int fit_stacked_gaussian_export(size_t n, const double *X1, const double *X2, const double *y, const double *initial_guess, double *out_params, int *out_status) {
     return fit_stacked_gaussian(n, X1, X2, y, initial_guess, out_params, out_status);
 }
+
+/**
+ * Batch fitting of multiple windows with OpenMP parallelization.
+ *
+ * This function processes multiple correlation plane windows in parallel,
+ * significantly improving throughput compared to sequential per-window calls.
+ *
+ * Parameters:
+ *   num_windows   : Number of windows to process
+ *   n_per_window  : Number of data points per window (h * w)
+ *   X1            : X1 grid coordinates (shared across all windows), length n_per_window
+ *   X2            : X2 grid coordinates (shared across all windows), length n_per_window
+ *   y_all         : Concatenated correlation data [AA|BB|AB] for all windows
+ *                   Shape: (num_windows * 3 * n_per_window,)
+ *                   Layout: window0_AA, window0_BB, window0_AB, window1_AA, ...
+ *   initial_guesses: Initial parameter guesses for all windows
+ *                   Shape: (num_windows * P_PARAMS,)
+ *   out_params    : Output fitted parameters for all windows
+ *                   Shape: (num_windows * P_PARAMS,)
+ *   out_statuses  : Output status codes for all windows
+ *                   Shape: (num_windows,)
+ *
+ * Returns:
+ *   Number of successfully fitted windows
+ */
+#ifdef __GNUC__
+__attribute__((visibility("default")))
+#endif
+int fit_stacked_gaussian_batch_export(
+    size_t num_windows,
+    size_t n_per_window,
+    const double *X1,
+    const double *X2,
+    const double *y_all,
+    const double *initial_guesses,
+    double *out_params,
+    int *out_statuses
+) {
+    int success_count = 0;
+    size_t corr_size = 3 * n_per_window;  // AA + BB + AB per window
+
+    #ifdef _OPENMP
+    #pragma omp parallel for reduction(+:success_count) schedule(dynamic, 16)
+    #endif
+    for (size_t i = 0; i < num_windows; i++) {
+        // Pointers into the flattened arrays for this window
+        const double *y_window = y_all + i * corr_size;
+        const double *guess_window = initial_guesses + i * P_PARAMS;
+        double *params_window = out_params + i * P_PARAMS;
+        int *status_window = out_statuses + i;
+
+        int ret = fit_stacked_gaussian(
+            n_per_window,
+            X1,  // Shared X1 grid
+            X2,  // Shared X2 grid
+            y_window,
+            guess_window,
+            params_window,
+            status_window
+        );
+
+        if (ret && *status_window == GSL_SUCCESS) {
+            success_count++;
+        }
+    }
+
+    return success_count;
+}

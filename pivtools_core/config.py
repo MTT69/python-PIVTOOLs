@@ -819,6 +819,25 @@ masking:
         return self.data.get("processing", {}).get("dask_memory_limit", "4GB")
 
     @property
+    def filter_omp_threads(self) -> int:
+        """
+        OMP threads for pipelined filter workers.
+
+        During pipelined batch processing, filter workers run concurrently with
+        correlation workers. Using all cores for filtering causes oversubscription.
+        This setting controls thread count for subsequent batches (first batch
+        still uses all cores since no correlation is running yet).
+
+        Default: 2
+
+        Returns
+        -------
+        int
+            Number of OMP threads for pipelined filter batches
+        """
+        return self.data.get("processing", {}).get("filter_omp_threads", 2)
+
+    @property
     def filter_worker_count(self):
         """
         Number of workers dedicated to filtering.

@@ -403,8 +403,10 @@ class SinglePassAccumulator:
         # By scattering first, we get futures (tiny references) instead of data.
         plane_size = corr_size[0] * corr_size[1]
 
-        # Phase 1: Build chunks and scatter to target workers
-        scattered_chunks = []
+        # Combined scatter and submit in single loop
+        # Each worker receives its chunk and immediately starts fitting
+        futures = []
+        chunks_submitted = 0
         for i, worker in enumerate(workers):
             start_idx = i * windows_per_worker
             end_idx = min((i + 1) * windows_per_worker, total_windows)
@@ -433,23 +435,8 @@ class SinglePassAccumulator:
                 'sigma': sigma_chunk,
             }
 
-            # Scatter to specific worker - returns a future, not data
+            # Scatter and immediately submit in single step
             scattered = client.scatter(chunk_dict, workers=[worker])
-            scattered_chunks.append((scattered, worker))
-
-        # Release large arrays - data now lives on workers
-        # Only delete if plane saving is not enabled (planes are saved later)
-        if not (hasattr(self.config, 'ensemble_store_planes') and self.config.ensemble_store_planes):
-            del R_AA_ensemble, R_BB_ensemble, R_AB_ensemble
-            gc.collect()
-
-        logging.debug(
-            f"Pass {pass_idx + 1}: Scattered {len(scattered_chunks)} chunks to workers"
-        )
-
-        # Phase 2: Submit tasks with futures (tiny task graph)
-        futures = []
-        for scattered, worker in scattered_chunks:
             fut = client.submit(
                 _fit_windows_batch_from_scattered,
                 scattered,  # Future reference (~100 bytes), not data (~1 MB)
@@ -461,6 +448,17 @@ class SinglePassAccumulator:
                 pure=False,
             )
             futures.append(fut)
+            chunks_submitted += 1
+
+        # Release large arrays - data now lives on workers
+        # Only delete if plane saving is not enabled (planes are saved later)
+        if not (hasattr(self.config, 'ensemble_store_planes') and self.config.ensemble_store_planes):
+            del R_AA_ensemble, R_BB_ensemble, R_AB_ensemble
+            gc.collect()
+
+        logging.debug(
+            f"Pass {pass_idx + 1}: Scattered and submitted {chunks_submitted} chunks to workers"
+        )
 
         # Gather results
         results = client.gather(futures)

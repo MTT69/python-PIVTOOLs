@@ -19,7 +19,7 @@ images:
   zero_based_indexing: false
   pairing_mode: sequential
   pairing_skip: 0
-  num_frame_pairs: 1000
+  num_frame_pairs: 100
 batches:
   size: 25
 logging:
@@ -37,6 +37,7 @@ processing:
   dask_threads_per_worker: 1
   dask_memory_limit: 3GB
   filter_worker_count: 1
+  filter_omp_threads: 2
   always_batch: true
 outlier_detection:
   enabled: true
@@ -121,8 +122,8 @@ ensemble_piv:
   - std
   runs:
   - 3
-  store_planes: false
-  save_diagnostics: false
+  store_planes: true
+  save_diagnostics: true
   sum_window:
   - 16
   - 16
@@ -167,7 +168,7 @@ masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
-  mode: file
+  mode: rectangular
   rectangular:
     top: 64
     bottom: 64

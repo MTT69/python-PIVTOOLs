@@ -20,6 +20,9 @@ except ImportError:
 
 from pivtools_core.config import Config
 
+import logging
+from typing import Callable, Optional
+
 
 class CrossCorrelator(ABC):
 
@@ -807,3 +810,183 @@ class CrossCorrelator(ABC):
         # Reshape back to (n,m) in Fortran order
         B = np.reshape(B, (n, m), order="F")
         return B
+
+    def _cache_window_padding_unified(
+        self,
+        config: Config,
+        window_sizes: List[tuple],
+        window_type: str,
+        compute_window_fn: Callable[[int, Config], tuple],
+        first_pass_ksize: tuple = (1, 1),
+    ) -> None:
+        """
+        Unified window padding cache for both instantaneous and ensemble modes.
+
+        Parameters
+        ----------
+        config : Config
+            Configuration object
+        window_sizes : List[tuple]
+            List of (height, width) window sizes for each pass
+        window_type : str
+            Window type for weighting function ('gaussian', 'blackman', etc.)
+        compute_window_fn : Callable
+            Function to compute window centers: fn(pass_idx, config) -> (spacing_x, spacing_y, ctrs_x, ctrs_y)
+        first_pass_ksize : tuple
+            Kernel size for first pass smoothing. (1,1) for ensemble, (0,0) for instantaneous.
+        """
+        self.win_ctrs_x: list[np.ndarray] = []
+        self.win_ctrs_y: list[np.ndarray] = []
+        self.win_spacing_x: list[int] = []
+        self.win_spacing_y: list[int] = []
+        self.win_ctrs_x_all: list[np.ndarray] = []
+        self.win_ctrs_y_all: list[np.ndarray] = []
+        self.n_pre_all: list[tuple[int, int]] = []
+        self.n_post_all: list[tuple[int, int]] = []
+        self.ksize_filt: list[tuple[int, int]] = []
+        self.sd: list[float] = []
+        self.G_smooth_predictor: list[np.ndarray] = []
+
+        H, W = config.image_shape
+
+        for pass_idx in range(len(window_sizes)):
+            spacing_x, spacing_y, win_ctrs_x, win_ctrs_y = compute_window_fn(pass_idx, config)
+
+            # Compute padded window centers (pre/post)
+            win_ctrs_x_pre = np.arange(1, win_ctrs_x[0] - spacing_x / 2, spacing_x)
+            if win_ctrs_x_pre.size == 0:
+                win_ctrs_x_pre = np.array([1])
+            win_ctrs_x_pre -= 1
+            win_ctrs_x_post = np.arange(W, win_ctrs_x[-1] + spacing_x / 2, -spacing_x)
+            if win_ctrs_x_post.size == 0:
+                win_ctrs_x_post = np.array([W])
+            win_ctrs_x_post -= 1
+            win_ctrs_x_all = np.concatenate(
+                [win_ctrs_x_pre, win_ctrs_x, win_ctrs_x_post[::-1]]
+            )
+
+            win_ctrs_y_pre = np.arange(1, win_ctrs_y[0] - spacing_y / 2, spacing_y)
+            if win_ctrs_y_pre.size == 0:
+                win_ctrs_y_pre = np.array([1])
+            win_ctrs_y_pre -= 1
+            win_ctrs_y_post = np.arange(H, win_ctrs_y[-1] + spacing_y / 2, -spacing_y)
+            if win_ctrs_y_post.size == 0:
+                win_ctrs_y_post = np.array([H])
+            win_ctrs_y_post -= 1
+            win_ctrs_y_all = np.concatenate(
+                [win_ctrs_y_pre, win_ctrs_y, win_ctrs_y_post[::-1]]
+            )
+
+            n_pre = (len(win_ctrs_y_pre), len(win_ctrs_x_pre))
+            n_post = (len(win_ctrs_y_post), len(win_ctrs_x_post))
+
+            self.win_ctrs_x.append(win_ctrs_x.astype(np.float32))
+            self.win_ctrs_y.append(win_ctrs_y.astype(np.float32))
+            self.win_spacing_x.append(spacing_x)
+            self.win_spacing_y.append(spacing_y)
+            self.win_ctrs_x_all.append(win_ctrs_x_all.astype(np.float32))
+            self.win_ctrs_y_all.append(win_ctrs_y_all.astype(np.float32))
+            self.n_pre_all.append(n_pre)
+            self.n_post_all.append(n_post)
+
+            if pass_idx == 0:
+                self.ksize_filt.append(first_pass_ksize)
+                if first_pass_ksize == (0, 0):
+                    self.sd.append(0.0)
+                else:
+                    self.sd.append(np.sqrt(np.prod(first_pass_ksize)) / 3 * 0.65)
+                self.G_smooth_predictor.append(np.ones((1, 1), dtype=np.float32))
+            else:
+                prev_counts = (
+                    len(self.win_ctrs_y[pass_idx - 1]),
+                    len(self.win_ctrs_x[pass_idx - 1]),
+                )
+                prev_spacing = (
+                    self.win_spacing_y[pass_idx - 1],
+                    self.win_spacing_x[pass_idx - 1],
+                )
+                k_filt = (
+                    np.round(np.array(prev_counts) / np.array(prev_spacing)).astype(int)
+                    + 1
+                )
+                k_filt_list = [int(k) for k in k_filt.tolist()]
+                k_filt_tuple = (
+                    k_filt_list[0] + (k_filt_list[0] % 2 == 0),
+                    k_filt_list[1] + (k_filt_list[1] % 2 == 0),
+                )
+                self.ksize_filt.append(k_filt_tuple)
+                self.sd.append(np.sqrt(np.prod(k_filt_tuple)) / 3 * 0.65)
+                g_kernel = self._window_weight_fun(k_filt_tuple, window_type)
+                g_kernel = g_kernel.astype(np.float32)
+                g_kernel /= max(np.sum(g_kernel), 1e-12)
+                self.G_smooth_predictor.append(g_kernel)
+
+        logging.info(f"Cached window padding for {len(window_sizes)} passes")
+
+    def _cache_interpolation_grids_unified(
+        self,
+        config: Config,
+        window_sizes: List[tuple],
+        include_first_pass: bool = True,
+    ) -> None:
+        """
+        Unified interpolation grid cache for both instantaneous and ensemble modes.
+
+        Parameters
+        ----------
+        config : Config
+            Configuration object
+        window_sizes : List[tuple]
+            List of window sizes (used only for iteration count)
+        include_first_pass : bool
+            If True, cache grids for pass 0 as well. Ensemble mode needs this,
+            instantaneous mode stores None for pass 0.
+        """
+        H, W = self.H, self.W
+
+        y_coords = np.arange(H, dtype=np.float32)
+        x_coords = np.arange(W, dtype=np.float32)
+        y_mesh, x_mesh = np.meshgrid(y_coords, x_coords, indexing="ij")
+        self.im_mesh = np.stack([y_mesh, x_mesh], axis=-1)
+
+        self.cached_dense_maps = []
+        self.cached_predictor_maps = []
+
+        for pass_idx in range(len(window_sizes)):
+            if pass_idx == 0:
+                if include_first_pass:
+                    # Ensemble mode: cache maps for first pass using current pass coords
+                    points_y = self.win_ctrs_y_all[pass_idx]
+                    points_x = self.win_ctrs_x_all[pass_idx]
+                else:
+                    # Instantaneous mode: no predictor correction on first pass
+                    self.cached_dense_maps.append(None)
+                    self.cached_predictor_maps.append(None)
+                    continue
+            else:
+                # Subsequent passes: use PREVIOUS pass coordinates
+                points_y = self.win_ctrs_y_all[pass_idx - 1]
+                points_x = self.win_ctrs_x_all[pass_idx - 1]
+
+            # Dense interpolation maps (for image warping)
+            map_x_1d = np.interp(x_coords, points_x, np.arange(len(points_x)))
+            map_y_1d = np.interp(y_coords, points_y, np.arange(len(points_y)))
+            map_y_2d, map_x_2d = np.meshgrid(
+                map_y_1d.astype(np.float32), map_x_1d.astype(np.float32),
+                indexing="ij"
+            )
+            self.cached_dense_maps.append((map_x_2d, map_y_2d))
+
+            # Predictor interpolation maps (from prev pass grid to current pass grid)
+            win_ctrs_x = self.win_ctrs_x[pass_idx]
+            win_ctrs_y = self.win_ctrs_y[pass_idx]
+
+            win_y, win_x = np.meshgrid(win_ctrs_y, win_ctrs_x, indexing="ij")
+            ix = np.interp(win_x.ravel(), points_x, np.arange(len(points_x)))
+            iy = np.interp(win_y.ravel(), points_y, np.arange(len(points_y)))
+            map_x = ix.reshape(win_x.shape).astype(np.float32)
+            map_y = iy.reshape(win_y.shape).astype(np.float32)
+
+            self.cached_predictor_maps.append((map_x, map_y))
+
+        logging.info(f"Cached interpolation grids for {len(window_sizes)} passes")
