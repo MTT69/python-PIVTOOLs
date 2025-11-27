@@ -18,6 +18,7 @@ from flask_cors import CORS
 from loguru import logger
 import os
 from pivtools_gui.calibration.app.views import calibration_bp
+from pivtools_gui.calibration_poly.app.views import calibration_poly_bp
 from pivtools_core.config import get_config, reload_config
 from pivtools_core.image_handling.load_images import read_pair
 from pivtools_gui.masking.app.views import masking_bp
@@ -44,6 +45,7 @@ app.register_blueprint(vector_plot_bp, url_prefix='/backend/plot')
 app.register_blueprint(masking_bp, url_prefix='/backend')
 app.register_blueprint(POD_bp, url_prefix='/backend')
 app.register_blueprint(calibration_bp, url_prefix='/backend')
+app.register_blueprint(calibration_poly_bp, url_prefix='/backend')
 app.register_blueprint(video_maker_bp, url_prefix='/backend/video')
 app.register_blueprint(stereo_bp, url_prefix='/backend')
 app.register_blueprint(statistics_bp, url_prefix='/backend')

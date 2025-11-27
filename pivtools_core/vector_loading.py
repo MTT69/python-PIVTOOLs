@@ -39,13 +39,25 @@ def read_mat_contents(
                     if ux.size > 0
                     else np.array([])
                 )
+                
+                print(f"DEBUG: Run {idx}: ux.shape={ux.shape}, uy.shape={uy.shape}, b_mask.shape={b_mask.shape}")
+                
                 if ux.size > 0 and uy.size > 0:
                     stacked = np.stack([ux, uy, b_mask], axis=0)  # (3, H, W)
                 else:
                     # Empty run - create placeholder with consistent shape if possible
                     stacked = np.array([[], [], []])  # Will be reshaped later
                 all_runs.append(stacked)
-            return np.array(all_runs)  # (R, 3, H, W)
+            
+            try:
+                return np.array(all_runs)  # (R, 3, H, W)
+            except ValueError as e:
+                # Fallback to object array if shapes are inconsistent
+                # Use manual assignment to avoid numpy broadcasting errors with mixed shapes
+                out = np.empty(len(all_runs), dtype=object)
+                for i, r in enumerate(all_runs):
+                    out[i] = r
+                return out
 
         # Single run selection (existing logic)
         if run_index is None:

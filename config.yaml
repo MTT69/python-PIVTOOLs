@@ -1,27 +1,44 @@
 paths:
   base_paths:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified
+  - D:\Processed_Wake_PIV\Case_A_Phase_003_Run_1
+  - D:\Processed_Wake_PIV\Case_A_Phase_048_Run_1
+  - D:\Processed_Wake_PIV\Case_A_Phase_093_Run_1
+  - D:\Processed_Wake_PIV\Case_A_Phase_138_Run_1
+  - D:\Processed_Wake_PIV\Case_B_Phase_003_Run_1
+  - D:\Processed_Wake_PIV\Case_B_Phase_048_Run_1
+  - D:\Processed_Wake_PIV\Case_B_Phase_093_Run_1
+  - D:\Processed_Wake_PIV\Case_B_Phase_138_Run_1
+  - D:\Processed_Wake_PIV\Case_C_Phase_003_Run_1
+  - D:\Processed_Wake_PIV\Case_C_Phase_048_Run_1
+  - D:\Processed_Wake_PIV\Case_C_Phase_093_Run_1
+  - D:\Processed_Wake_PIV\Case_C_Phase_138_Run_1
+  - D:\Processed_Wake_PIV\Case_D_Phase_003_Run_1
+  - D:\Processed_Wake_PIV\Case_D_Phase_048_Run_1
+  - D:\Processed_Wake_PIV\Case_D_Phase_093_Run_1
+  - D:\Processed_Wake_PIV\Case_D_Phase_138_Run_1
+  - D:\Processed_Wake_PIV\Case_E_Phase_003_Run_1
+  - D:\Processed_Wake_PIV\Case_E_Phase_048_Run_1
+  - D:\Processed_Wake_PIV\Case_E_Phase_093_Run_1
+  - D:\Processed_Wake_PIV\Case_E_Phase_138_Run_1
+
   source_paths:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
+  - D:\Wake_PIV_16_8
   camera_numbers:
   - 1
-  camera_count: 1
+  - 2
+  camera_count: 2
   camera_subfolders: []
 images:
-  num_images: 100
+  num_images: 1200
   image_format:
-  - B%05d_A.tif
-  - B%05d_B.tif
+  - Grid_Case_A_Run_2.set
   vector_format:
   - '%05d.mat'
   time_resolved: false
   dtype: float32
   zero_based_indexing: false
-  pairing_mode: sequential
-  pairing_skip: 0
-  num_frame_pairs: 1000
 batches:
-  size: 25
+  size: 50
 logging:
   file: pypiv.log
   level: INFO
@@ -35,9 +52,7 @@ processing:
   omp_threads: 2
   dask_workers_per_node: 4
   dask_threads_per_worker: 1
-  dask_memory_limit: 3GB
-  filter_worker_count: 1
-  always_batch: true
+  dask_memory_limit: 25GB
 outlier_detection:
   enabled: true
   methods:
@@ -92,12 +107,15 @@ instantaneous_piv:
     - 64
   - - 32
     - 32
+  - - 16
+    - 16
   overlap:
   - 50
   - 50
   - 50
+  - 50
   runs:
-  - 3
+  - 4
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
@@ -162,7 +180,7 @@ calibration:
     asymmetric: false
     dt: 2
 filters:
-- type: time
+- type: pod
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat
