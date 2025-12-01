@@ -1021,7 +1021,6 @@ When window sizes differ between passes, sigma fields must be interpolated:
 |--------|-------|------------|-------------|
 | `local_median` | Fastest | Low | Replace with median of ksize x ksize neighbors |
 | `knn` | Fast | Medium | K-nearest neighbors interpolation (KD-tree) |
-| `griddata_linear` | Medium | Medium | Delaunay triangulation + linear interpolation |
 | `rbf` | Slow | High | Radial basis function with thin plate spline |
 | `biharmonic` | Slow | Highest | Solves biharmonic PDE: ∇⁴u = 0 |
 
@@ -1271,37 +1270,3 @@ correlator.get_cache_data() -> dict:
 | `pivtools_cli/lib/PIV_2d_cross_correlate.c` | Bulk correlation | `bulkxcorr2d()` |
 
 ---
-
-## Appendix: Key Formulas
-
-### Cross-Correlation (FFT-based)
-```
-C(tau) = IFFT(FFT(A) * conj(FFT(B)))
-```
-
-### Normalized Peak Height
-```
-peak_normalized = amp_AB / sqrt(max(amp_A * amp_B, 1e-12))
-```
-
-### HWHM to Sigma Conversion
-```
-sigma = HWHM / sqrt(2 * ln(2)) ≈ HWHM / 1.177
-```
-
-### Displacement from Gaussian Center
-```
-ux = x0_AB - (corr_size_x / 2 + 1)
-uy = y0_AB - (corr_size_y / 2 + 1)
-```
-
-### Absolute Displacement (pass > 0)
-```
-ux_absolute = ux_residual + predictor_x_smoothed
-uy_absolute = uy_residual + predictor_y_smoothed
-```
-
-### Median Absolute Deviation (MAD)
-```
-MAD = 1.4826 * median(|x - median(x)|)
-```

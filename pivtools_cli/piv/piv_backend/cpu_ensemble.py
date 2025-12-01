@@ -441,7 +441,6 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         from pivtools_core.window_utils import apply_single_mode_padding
 
         win_size = config.ensemble_window_sizes[pass_idx]
-        corr_size = self.window_sizes_for_corr[pass_idx]
         n_win_y = len(self.win_ctrs_y[pass_idx])
         n_win_x = len(self.win_ctrs_x[pass_idx])
 
@@ -449,7 +448,6 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         runtype = config.ensemble_type[pass_idx]
         is_single_mode = (runtype == 'single')
 
-        total_windows = n_win_y * n_win_x
         N, _, H, W = images.shape
 
         # Reuse pre-allocated correlation buffers

@@ -167,6 +167,25 @@ def _get_sigma_from_previous_pass(
     return result
 
 
+def _estimate_offset(corr_plane: np.ndarray) -> float:
+    """
+    Estimate background offset from correlation plane.
+
+    Uses 5th percentile for robustness against peak values and outliers.
+
+    Parameters
+    ----------
+    corr_plane : np.ndarray
+        Flattened correlation plane
+
+    Returns
+    -------
+    float
+        Estimated background offset value
+    """
+    return float(np.percentile(corr_plane, 5))
+
+
 def _validate_fitted_params(
     gauss_params: np.ndarray,
     win_size: tuple,
@@ -211,12 +230,13 @@ def _validate_fitted_params(
         4 = Gaussian spread too large
         5 = negative sigmas
     """
-    # Extract parameters
+    # Extract parameters (16 total: 3 amps + 3 offsets + 6 sigmas + 4 positions)
     amp_A, amp_B, amp_AB = gauss_params[0:3]
-    sx_A, sy_A, sxy_A = gauss_params[3:6]
-    sx_AB, sy_AB, sxy_AB = gauss_params[6:9]
-    x0_A, y0_A = gauss_params[9:11]
-    x0_AB, y0_AB = gauss_params[11:13]
+    c_A, c_B, c_AB = gauss_params[3:6]  # offsets (unused in validation)
+    sx_A, sy_A, sxy_A = gauss_params[6:9]
+    sx_AB, sy_AB, sxy_AB = gauss_params[9:12]
+    x0_A, y0_A = gauss_params[12:14]
+    x0_AB, y0_AB = gauss_params[14:16]
 
     # Check 1: AB peak height validity
     if AA_central > 1e-12 and BB_central > 1e-12:
@@ -342,11 +362,11 @@ def _fit_windows_batch_optimized(
     Returns
     -------
     results : np.ndarray
-        Fitted parameters for each window (shape: num_windows, 13)
+        Fitted parameters for each window (shape: num_windows, 16)
     statuses : np.ndarray
         Fitting status codes (shape: num_windows,)
     initial_guesses : np.ndarray
-        Initial guesses used for fitting (shape: num_windows, 13)
+        Initial guesses used for fitting (shape: num_windows, 16)
     """
     marquadt_lib = _load_marquadt_lib()
 
@@ -355,23 +375,22 @@ def _fit_windows_batch_optimized(
     num_windows = len(mask_chunk)
     X1, X2, central_index, x_guess, y_guess = _get_pass_grid(pass_idx, config)
 
-    # SPARSE ALLOCATION: Only allocate for non-masked windows
     valid_indices = np.where(~mask_chunk)[0]
     n_valid = len(valid_indices)
 
     if n_valid == 0:
         # All windows masked - return immediately with default values
-        results = np.zeros((num_windows, 13), dtype=np.float64)
+        results = np.zeros((num_windows, 16), dtype=np.float64)
         statuses = np.full(num_windows, -1, dtype=np.int32)  # -1 = masked
-        initial_guesses = np.zeros((num_windows, 13), dtype=np.float64)
+        initial_guesses = np.zeros((num_windows, 16), dtype=np.float64)
         return results, statuses, initial_guesses
 
     n_per_window = win_size[0] * win_size[1]
 
     # Allocate batch arrays for valid windows only
-    results_valid = np.zeros((n_valid, 13), dtype=np.float64)
+    results_valid = np.zeros((n_valid, 16), dtype=np.float64)
     statuses_valid = np.zeros(n_valid, dtype=np.int32)
-    initial_guesses_valid = np.zeros((n_valid, 13), dtype=np.float64)
+    initial_guesses_valid = np.zeros((n_valid, 16), dtype=np.float64)
 
     # Build batch arrays: y_all contains [AA|BB|AB] for each valid window
     y_all = np.zeros(n_valid * 3 * n_per_window, dtype=np.float64)
@@ -431,9 +450,9 @@ def _fit_windows_batch_optimized(
                 statuses_valid[i] = nan_reason_code
 
     # Expand back to full size for return
-    results = np.zeros((num_windows, 13), dtype=np.float64)
+    results = np.zeros((num_windows, 16), dtype=np.float64)
     statuses = np.full(num_windows, -1, dtype=np.int32)  # -1 = masked default
-    initial_guesses = np.zeros((num_windows, 13), dtype=np.float64)
+    initial_guesses = np.zeros((num_windows, 16), dtype=np.float64)
 
     results[valid_indices] = results_valid
     statuses[valid_indices] = statuses_valid
@@ -656,17 +675,23 @@ def _build_initial_guess(
         sigma_AB_y = float(sigma_vals['sig_AB_y'])
         sigma_AB_xy = float(sigma_vals['sig_AB_xy']) if sigma_vals['sig_AB_xy'] is not None else 0.0
 
+    # Estimate offset values from correlation plane backgrounds (5th percentile)
+    c_A_guess = _estimate_offset(AA_win)
+    c_B_guess = _estimate_offset(BB_win)
+    c_AB_guess = _estimate_offset(AB_win)
+
+    # Build 16-parameter initial guess:
+    # [0-2] amplitudes, [3-5] offsets, [6-8] sigma_A, [9-11] sigma_AB, [12-15] positions
     initial_guess = np.array([
-        float(AA_win[central_index]),    # Amp A at center
-        float(BB_win[central_index]),    # Amp B at center
-        float(AB_win[max_idx]),          # Amp AB at peak (not center!)
-        sigma_A_x, sigma_A_y, sigma_A_xy,     # Sigma A (from HWHM for pass 0,
-                                              # interpolated from previous pass for pass > 0)
-        sigma_AB_x, sigma_AB_y, sigma_AB_xy,  # Sigma AB (HWHM diff for pass 0,
-                                              # interpolated from previous pass for pass > 0)
-        x_guess, y_guess,                # Center A (x, y)
-        float(guess_x_AB + 1),           # Center AB x (1-based indexing)
-        float(guess_y_AB + 1),           # Center AB y (1-based indexing)
+        float(AA_win[central_index]),    # [0] Amp A at center
+        float(BB_win[central_index]),    # [1] Amp B at center
+        float(AB_win[max_idx]),          # [2] Amp AB at peak (not center!)
+        c_A_guess, c_B_guess, c_AB_guess,    # [3-5] Offsets (re-estimated each pass)
+        sigma_A_x, sigma_A_y, sigma_A_xy,    # [6-8] Sigma A
+        sigma_AB_x, sigma_AB_y, sigma_AB_xy, # [9-11] Sigma AB
+        x_guess, y_guess,                    # [12-13] Center A (x, y)
+        float(guess_x_AB + 1),               # [14] Center AB x (1-based indexing)
+        float(guess_y_AB + 1),               # [15] Center AB y (1-based indexing)
     ], dtype=np.float64)
 
     real_corr = np.concatenate([AA_win, BB_win, AB_win]).astype(np.float64)

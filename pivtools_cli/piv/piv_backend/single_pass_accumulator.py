@@ -521,9 +521,9 @@ class SinglePassAccumulator:
         win_center_x = corr_size[1] / 2.0 + 1
         win_center_y = corr_size[0] / 2.0 + 1
 
-        # Extract peak positions from fitted Gaussian centers
-        x0_AB = gauss_results[:, :, 11].astype(np.float32)  # X position of AB peak
-        y0_AB = gauss_results[:, :, 12].astype(np.float32)  # Y position of AB peak
+        # Extract peak positions from fitted Gaussian centers (16-param layout)
+        x0_AB = gauss_results[:, :, 14].astype(np.float32)  # X position of AB peak
+        y0_AB = gauss_results[:, :, 15].astype(np.float32)  # Y position of AB peak
 
         # Compute displacements as offset from window center
         ux_mat = x0_AB - win_center_x  # X displacement in pixels
@@ -564,15 +564,20 @@ class SinglePassAccumulator:
         geom_mean = np.sqrt(np.maximum(amp_A * amp_B, 1e-12))
         peakheight = amp_AB / geom_mean
 
-        # Gaussian widths for A autocorrelation
-        sig_A_x = gauss_results[:, :, 3].astype(np.float32)   # sx_A
-        sig_A_y = gauss_results[:, :, 4].astype(np.float32)   # sy_A
-        sig_A_xy = gauss_results[:, :, 5].astype(np.float32)  # sxy_A
+        # Gaussian offset terms (background level for each plane)
+        c_A = gauss_results[:, :, 3].astype(np.float32)
+        c_B = gauss_results[:, :, 4].astype(np.float32)
+        c_AB = gauss_results[:, :, 5].astype(np.float32)
+
+        # Gaussian widths for A autocorrelation (indices shifted by +3 due to offset params)
+        sig_A_x = gauss_results[:, :, 6].astype(np.float32)   # sx_A
+        sig_A_y = gauss_results[:, :, 7].astype(np.float32)   # sy_A
+        sig_A_xy = gauss_results[:, :, 8].astype(np.float32)  # sxy_A
 
         # Gaussian widths for AB cross-correlation (predictor displacement uncertainty)
-        sig_AB_x = gauss_results[:, :, 6].astype(np.float32)   # sx_AB
-        sig_AB_y = gauss_results[:, :, 7].astype(np.float32)   # sy_AB
-        sig_AB_xy = gauss_results[:, :, 8].astype(np.float32)  # sxy_AB
+        sig_AB_x = gauss_results[:, :, 9].astype(np.float32)   # sx_AB
+        sig_AB_y = gauss_results[:, :, 10].astype(np.float32)  # sy_AB
+        sig_AB_xy = gauss_results[:, :, 11].astype(np.float32)  # sxy_AB
 
         UU_stress = sig_AB_x
         VV_stress = sig_AB_y
@@ -744,6 +749,9 @@ class SinglePassAccumulator:
             sig_A_x=sig_A_x,
             sig_A_y=sig_A_y,
             sig_A_xy=sig_A_xy,
+            c_A=c_A,
+            c_B=c_B,
+            c_AB=c_AB,
             b_mask=vector_mask,
             pred_x=pred_x,
             pred_y=pred_y,

@@ -1,8 +1,8 @@
 paths:
   base_paths:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/unified
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/particle_positions/planar/test
   source_paths:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/particle_positions/planar/
   camera_numbers:
   - 1
   camera_count: 1
@@ -91,8 +91,8 @@ instantaneous_piv:
     - 128
   - - 64
     - 64
-  - - 32
-    - 32
+  - - 16
+    - 16
   overlap:
   - 50
   - 50
@@ -163,9 +163,8 @@ calibration:
     asymmetric: false
     dt: 2
 filters:
-- type: time
 masking:
-  enabled: true
+  enabled: false
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
   mode: rectangular
