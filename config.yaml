@@ -5,13 +5,13 @@ paths:
   - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/particle_positions/planar/
   camera_numbers:
   - 1
-  camera_count: 1
+  - 2
+  camera_count: 2
   camera_subfolders: []
 images:
-  num_images: 100
+  num_images: 1200
   image_format:
-  - B%05d_A.tif
-  - B%05d_B.tif
+  - Case_B_Phase_138_Run_1.set
   vector_format:
   - '%05d.mat'
   time_resolved: false
@@ -27,8 +27,8 @@ logging:
   level: INFO
   console: true
 processing:
-  instantaneous: false
-  ensemble: true
+  instantaneous: true
+  ensemble: false
   backend: cpu
   debug: false
   auto_compute_params: false

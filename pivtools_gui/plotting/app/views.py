@@ -298,6 +298,21 @@ def parse_plot_params(req) -> Dict: # efe
         "TRUE",
     )
     
+    # Parse axis limits (optional, only apply when explicitly set)
+    xlim_min = req.args.get("xlim_min", type=float)
+    xlim_max = req.args.get("xlim_max", type=float)
+    ylim_min = req.args.get("ylim_min", type=float)
+    ylim_max = req.args.get("ylim_max", type=float)
+    
+    # Build xlim/ylim tuples only if both min and max are provided
+    xlim = (xlim_min, xlim_max) if xlim_min is not None and xlim_max is not None else None
+    ylim = (ylim_min, ylim_max) if ylim_min is not None and ylim_max is not None else None
+    
+    # Parse custom title (optional)
+    custom_title = req.args.get("title", default=None, type=str)
+    if custom_title and custom_title.strip() == "":
+        custom_title = None
+    
     # Validate frame number for calibrated data
     if not use_uncalibrated and not use_merged:
         if frame < 1 or frame > cfg.num_frame_pairs:
@@ -320,6 +335,9 @@ def parse_plot_params(req) -> Dict: # efe
         "cmap": cmap,
         "type_name": type_name,
         "raw": raw_mode,
+        "xlim": xlim,
+        "ylim": ylim,
+        "custom_title": custom_title,
     }
 
 
@@ -405,6 +423,9 @@ def load_and_plot_data(
         lower_limit=plot_kwargs.get("lower_limit"),
         upper_limit=plot_kwargs.get("upper_limit"),
         cmap=plot_kwargs.get("cmap"),
+        xlim=plot_kwargs.get("xlim"),
+        ylim=plot_kwargs.get("ylim"),
+        custom_title=plot_kwargs.get("custom_title"),
     )
 
     b64_img, W, H, extra = create_and_return_plot(
@@ -449,6 +470,9 @@ def plot_vector():
             upper_limit=params["upper_limit"],
             cmap=params["cmap"],
             raw=params["raw"],
+            xlim=params["xlim"],
+            ylim=params["ylim"],
+            custom_title=params["custom_title"],
         )
         meta = build_response_meta(effective_run, params["var"], W, H, extra)
         return jsonify({"success": True, "image": b64_img, "meta": meta})
@@ -482,6 +506,9 @@ def plot_stats():
             upper_limit=params["upper_limit"],
             cmap=params["cmap"],
             raw=params["raw"],
+            xlim=params["xlim"],
+            ylim=params["ylim"],
+            custom_title=params["custom_title"],
         )
         meta = build_response_meta(params["run"], params["var"], W, H, extra)
         return jsonify({"success": True, "image": b64_img, "meta": meta})
@@ -568,16 +595,14 @@ def check_vars():
         EXCLUDED_VARS = {"x", "y"}
         plottable_vars = []
         has_peak_choice = hasattr(pr, "peak_choice")
-
-        logger.info(f"check_vars: all_vars found = {all_vars}")
-        logger.info(f"check_vars: has_peak_choice = {has_peak_choice}")
-
         for var_name in all_vars:
             if var_name in EXCLUDED_VARS:
                 continue
             try:
-                arr = np.asarray(getattr(pr, var_name))
-                logger.debug(f"check_vars: {var_name} shape={arr.shape} ndim={arr.ndim}")
+                val = getattr(pr, var_name, None)
+                if val is None:
+                    continue
+                arr = np.asarray(val)
                 if arr.ndim == 2:
                     # Standard 2D array - plottable
                     plottable_vars.append(var_name)
@@ -585,11 +610,8 @@ def check_vars():
                     # Special case: peak_mag is (n_peaks, H, W)
                     # Include if peak_choice exists to index into it
                     plottable_vars.append(var_name)
-            except Exception as e:
-                logger.debug(f"check_vars: {var_name} skipped due to error: {e}")
+            except Exception:
                 continue  # Skip fields that can't be converted to array
-
-        logger.info(f"check_vars: returning plottable_vars = {plottable_vars}")
         return jsonify({"success": True, "vars": plottable_vars})
     except ValueError as e:
         logger.warning(f"check_vars: validation error: {e}")
@@ -772,6 +794,9 @@ def get_uncalibrated_image():
             variable_units="px/frame",
             length_units="px",
             raw=params["raw"],
+            xlim=params["xlim"],
+            ylim=params["ylim"],
+            custom_title=params["custom_title"],
         )
         meta = build_response_meta(effective_run, params["var"], W, H, extra)
         return jsonify({"success": True, "image": b64_img, "meta": meta})
@@ -839,15 +864,12 @@ def get_vector_at_position():
         if var_arr.ndim < 2:
             var_arr = var_arr.reshape(var_arr.shape[0], -1)
         H, W = var_arr.shape
-        xp = max(0.0, min(1.0, x_percent))
-        yp = max(0.0, min(1.0, y_percent))
-        j = int(round(xp * (W - 1)))
-        i = int(round(yp * (H - 1)))
-        i, j = max(0, min(H - 1, i)), max(0, min(W - 1, j))
+        
+        # Load coordinates to get the full data extent
+        coords_file = data_dir / "coordinates.mat"
+        cx_arr = cy_arr = None
         physical_coord_used = False
-        coord_x = coord_y = None
         try:
-            coords_file = data_dir / "coordinates.mat"
             if coords_file.exists():
                 coords_mat = loadmat(
                     str(coords_file), struct_as_record=False, squeeze_me=True
@@ -857,11 +879,53 @@ def get_vector_at_position():
                     cx, cy = extract_coordinates(coords_struct, effective_run)
                     cx_arr, cy_arr = np.asarray(cx), np.asarray(cy)
                     if cx_arr.shape == var_arr.shape:
-                        coord_x, coord_y = float(cx_arr[i, j]), float(cy_arr[i, j])
                         physical_coord_used = True
         except Exception as e:
             logger.debug(f"Coordinates load failed: {e}")
-        if not physical_coord_used:
+        
+        # Get axis limits from request (if user has set custom limits)
+        xlim = params.get("xlim")
+        ylim = params.get("ylim")
+        
+        # Determine the visible coordinate range
+        if physical_coord_used and cx_arr is not None and cy_arr is not None:
+            # Get full data extent
+            full_x_min, full_x_max = float(np.nanmin(cx_arr)), float(np.nanmax(cx_arr))
+            full_y_min, full_y_max = float(np.nanmin(cy_arr)), float(np.nanmax(cy_arr))
+            
+            # If user has set axis limits, use those as the visible range
+            if xlim is not None:
+                vis_x_min, vis_x_max = xlim
+            else:
+                vis_x_min, vis_x_max = full_x_min, full_x_max
+            
+            if ylim is not None:
+                vis_y_min, vis_y_max = ylim
+            else:
+                vis_y_min, vis_y_max = full_y_min, full_y_max
+            
+            # Map the mouse percentage to physical coordinates in the visible range
+            # X: left (0%) -> vis_x_min, right (100%) -> vis_x_max
+            target_x = vis_x_min + x_percent * (vis_x_max - vis_x_min)
+            # Y: top of image (0%) -> vis_y_max, bottom of image (100%) -> vis_y_min (inverted)
+            target_y = vis_y_max - y_percent * (vis_y_max - vis_y_min)
+            
+            # Find the grid index closest to this physical coordinate
+            # Calculate distance from target to each grid point
+            dist = np.sqrt((cx_arr - target_x)**2 + (cy_arr - target_y)**2)
+            min_idx = np.unravel_index(np.nanargmin(dist), dist.shape)
+            i, j = int(min_idx[0]), int(min_idx[1])
+            
+            coord_x, coord_y = float(cx_arr[i, j]), float(cy_arr[i, j])
+        else:
+            # Fallback: no physical coordinates, use array indices
+            xp = max(0.0, min(1.0, x_percent))
+            yp = max(0.0, min(1.0, y_percent))
+            j = int(round(xp * (W - 1)))
+            # Y is inverted: yp=0 is top of image, yp=1 is bottom
+            i = int(round((1.0 - yp) * (H - 1)))
+            i, j = max(0, min(H - 1, i)), max(0, min(W - 1, j))
+            
             x_coords = np.asarray(getattr(pr, "x", None))
             y_coords = np.asarray(getattr(pr, "y", None))
             if x_coords is not None and x_coords.shape == var_arr.shape:
@@ -871,9 +935,12 @@ def get_vector_at_position():
                 coord_x = float(j)
             if y_coords is not None and y_coords.shape == var_arr.shape:
                 y_min, y_max = float(np.nanmin(y_coords)), float(np.nanmax(y_coords))
-                coord_y = y_min + yp * (y_max - y_min)
+                # Y inverted: yp=0 -> y_max, yp=1 -> y_min
+                coord_y = y_max - yp * (y_max - y_min)
             else:
                 coord_y = float(i)
+        
+        # Get vector values at the computed index
         ux_arr = np.asarray(getattr(pr, "ux", None))
         uy_arr = np.asarray(getattr(pr, "uy", None))
         ux_val = (
@@ -925,15 +992,12 @@ def get_stats_value_at_position():
         if var_arr.ndim < 2:
             raise ValueError("Unexpected variable array shape")
         H, W = var_arr.shape
-        xp = max(0.0, min(1.0, x_percent))
-        yp = max(0.0, min(1.0, y_percent))
-        j = int(round(xp * (W - 1)))
-        i = int(round(yp * (H - 1)))
-        i, j = max(0, min(H - 1, i)), max(0, min(W - 1, j))
+        
+        # Load coordinates to get the full data extent
+        coords_file = mean_stats_dir / "coordinates.mat"
+        cx_arr = cy_arr = None
         physical_coord_used = False
-        coord_x = coord_y = None
         try:
-            coords_file = mean_stats_dir / "coordinates.mat"
             if coords_file.exists():
                 coords_mat = loadmat(
                     str(coords_file), struct_as_record=False, squeeze_me=True
@@ -943,11 +1007,52 @@ def get_stats_value_at_position():
                     cx, cy = extract_coordinates(coords_struct, effective_run)
                     cx_arr, cy_arr = np.asarray(cx), np.asarray(cy)
                     if cx_arr.shape == var_arr.shape:
-                        coord_x, coord_y = float(cx_arr[i, j]), float(cy_arr[i, j])
                         physical_coord_used = True
         except Exception as e:
             logger.debug(f"Coordinates load failed: {e}")
-        if not physical_coord_used:
+        
+        # Get axis limits from request (if user has set custom limits)
+        xlim = params.get("xlim")
+        ylim = params.get("ylim")
+        
+        # Determine the visible coordinate range and find grid index
+        if physical_coord_used and cx_arr is not None and cy_arr is not None:
+            # Get full data extent
+            full_x_min, full_x_max = float(np.nanmin(cx_arr)), float(np.nanmax(cx_arr))
+            full_y_min, full_y_max = float(np.nanmin(cy_arr)), float(np.nanmax(cy_arr))
+            
+            # If user has set axis limits, use those as the visible range
+            if xlim is not None:
+                vis_x_min, vis_x_max = xlim
+            else:
+                vis_x_min, vis_x_max = full_x_min, full_x_max
+            
+            if ylim is not None:
+                vis_y_min, vis_y_max = ylim
+            else:
+                vis_y_min, vis_y_max = full_y_min, full_y_max
+            
+            # Map the mouse percentage to physical coordinates in the visible range
+            # X: left (0%) -> vis_x_min, right (100%) -> vis_x_max
+            target_x = vis_x_min + x_percent * (vis_x_max - vis_x_min)
+            # Y: top of image (0%) -> vis_y_max, bottom of image (100%) -> vis_y_min (inverted)
+            target_y = vis_y_max - y_percent * (vis_y_max - vis_y_min)
+            
+            # Find the grid index closest to this physical coordinate
+            dist = np.sqrt((cx_arr - target_x)**2 + (cy_arr - target_y)**2)
+            min_idx = np.unravel_index(np.nanargmin(dist), dist.shape)
+            i, j = int(min_idx[0]), int(min_idx[1])
+            
+            coord_x, coord_y = float(cx_arr[i, j]), float(cy_arr[i, j])
+        else:
+            # Fallback: no physical coordinates, use array indices
+            xp = max(0.0, min(1.0, x_percent))
+            yp = max(0.0, min(1.0, y_percent))
+            j = int(round(xp * (W - 1)))
+            # Y is inverted: yp=0 is top of image, yp=1 is bottom
+            i = int(round((1.0 - yp) * (H - 1)))
+            i, j = max(0, min(H - 1, i)), max(0, min(W - 1, j))
+            
             x_arr = np.asarray(getattr(pr, "x", None))
             y_arr = np.asarray(getattr(pr, "y", None))
             if x_arr is not None and x_arr.shape == var_arr.shape:
@@ -957,9 +1062,12 @@ def get_stats_value_at_position():
                 coord_x = float(j)
             if y_arr is not None and y_arr.shape == var_arr.shape:
                 y_min, y_max = float(np.nanmin(y_arr)), float(np.nanmax(y_arr))
-                coord_y = y_min + yp * (y_max - y_min)
+                # Y inverted: yp=0 -> y_max, yp=1 -> y_min
+                coord_y = y_max - yp * (y_max - y_min)
             else:
                 coord_y = float(i)
+        
+        # Get values at the computed index
         ux_arr = np.asarray(getattr(pr, "ux", None))
         uy_arr = np.asarray(getattr(pr, "uy", None))
         ux_val = (
@@ -1984,6 +2092,9 @@ def plot_ensemble():
             lower_limit=params["lower_limit"],
             upper_limit=params["upper_limit"],
             cmap=params["cmap"],
+            xlim=params["xlim"],
+            ylim=params["ylim"],
+            custom_title=params["custom_title"],
         )
 
         b64_img, W, H, extra = create_and_return_plot(var_arr, mask_arr, settings, raw=params["raw"])
