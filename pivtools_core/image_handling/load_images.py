@@ -33,21 +33,26 @@ def read_image(file_path: str, **kwargs) -> np.ndarray:
 def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.ndarray:
     """Read a pair of images (A and B frames).
 
-    This function handles three main file organization strategies:
+    This function handles four main file organization strategies:
 
-    1. Multi-camera container files (.set, .im7):
-       - All cameras stored in ONE file per time instance
-       - .set: source_dir/xxx.set contains all cameras and all time instances
-       - .im7: source_dir/B00001.im7 contains all cameras for time instance 1
+    1. Multi-camera container files (.set):
+       - All cameras stored in ONE file for all time instances
+       - Organized as: source_dir/xxx.set contains all cameras and all time instances
        - No camera subdirectories (Cam1/, Cam2/, etc.)
 
-    2. Camera-specific directories with standard formats (.tif, .png, .jpg):
+    2. Multi-camera per-file container (.im7):
+       - All cameras stored in ONE file per time instance
+       - Organized as: source_dir/B00001.im7 contains all cameras for time instance 1
+       - No camera subdirectories
+
+    3. Single-camera video containers (.cine):
+       - One video file per camera in source directory
+       - Organized as: source_dir/Camera1.cine, source_dir/Camera2.cine
+       - Pattern uses %d for camera number (not frame index)
+
+    4. Camera-specific directories with standard formats (.tif, .png, .jpg):
        - Organized as: source_dir/Cam1/00001.tif, source_dir/Cam2/00001.tif
        - Each camera has its own subdirectory
-
-    3. Time-resolved formats (.cine):
-       - Camera-specific directories with video files
-       - Organized as: source_dir/Cam1/recording.cine
 
     Frame Pairing:
         The idx parameter is ALWAYS 1-based internally (idx=1 means first pair).
@@ -59,7 +64,7 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
 
     Args:
         idx (int): Pair number (1-based, where 1 = first pair)
-        camera_path (Path): Path to camera directory or source directory (for .set/.im7)
+        camera_path (Path): Path to camera directory or source directory (for containers)
         camera (int): Camera number (1-based)
         config (Config): Configuration object
 
@@ -68,29 +73,72 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
     """
     # Get image format - now always a tuple
     format_str = config.image_format[0]
+    image_type = config.image_type
 
-    # Special handling for .set and .im7 files (all cameras in one file per time instance)
-    if '.set' in str(format_str):
-        # For .set files, camera_path is the source directory
+    # Handle container formats first (no camera subdirectories)
+
+    # .set files: handling depends on time_resolved mode
+    # - Non-time-resolved: each entry contains A+B pair (read from one entry)
+    # - Time-resolved: each entry has ONE frame per camera, pair across entries
+    if image_type == "lavision_set":
         set_file_path = camera_path / format_str
-        return read_image(str(set_file_path), camera_no=camera, im_no=idx)
 
-    if '.im7' in str(format_str):
-        # For .im7 files, camera_path is the source directory
-        # Each .im7 file contains all cameras for one time instance
-        # Use frame pairing logic for im7 files
+        if config.time_resolved:
+            # Time-resolved: read single frame from two consecutive entries
+            frame_a_idx, frame_b_idx = config.get_frame_pair_indices(idx)
+            return read_image(
+                str(set_file_path),
+                camera_no=camera,
+                im_no=frame_a_idx,
+                im_no_b=frame_b_idx,
+                time_resolved=True
+            )
+        else:
+            # Pre-paired: A+B frames in one entry
+            return read_image(str(set_file_path), camera_no=camera, im_no=idx)
+
+    # .im7 files: handling depends on time_resolved mode
+    # - Non-time-resolved: each file contains A+B pair (read from one file)
+    # - Time-resolved: each file has ONE frame, pair across files
+    if image_type == "lavision_im7":
         frame_a_idx, frame_b_idx = config.get_frame_pair_indices(idx)
-        # Read frame A (im7 returns pair from single file, so we read it once)
-        im7_file_path = camera_path / (format_str % frame_a_idx)
-        return read_image(str(im7_file_path), camera_no=camera)
 
-    # Get the file indices for this pair using new pairing logic
+        if config.time_resolved:
+            # Time-resolved: read single frame from each of two files
+            # Each file has ONE frame per camera (not A+B pairs)
+            im7_file_a = camera_path / (format_str % frame_a_idx)
+            im7_file_b = camera_path / (format_str % frame_b_idx)
+            # Use frames=1, frames_per_camera=1 for single-frame .im7 files
+            # read_lavision_im7 returns shape (frames, H, W), so extract [0]
+            frame_a = read_image(str(im7_file_a), camera_no=camera, frames=1, frames_per_camera=1)[0]
+            frame_b = read_image(str(im7_file_b), camera_no=camera, frames=1, frames_per_camera=1)[0]
+            return np.stack([frame_a, frame_b], axis=0)
+        else:
+            # Non-time-resolved: each file contains A+B pair
+            im7_file_path = camera_path / (format_str % frame_a_idx)
+            return read_image(str(im7_file_path), camera_no=camera)
+
+    # .cine files: one video file per camera, frames extracted by index
+    if image_type == "cine":
+        # Format pattern uses %d for camera number (e.g., "Camera%d.cine")
+        cine_filename = format_str % camera
+        cine_path = camera_path / cine_filename
+
+        # Get frame indices from pairing logic
+        frame_a_idx, frame_b_idx = config.get_frame_pair_indices(idx)
+
+        # Reader handles FirstImageNo translation internally
+        # We pass frame_a_idx as the starting frame (1-based user frame)
+        return read_image(str(cine_path), idx=frame_a_idx, frames=2)
+
+    # Standard formats below (use camera subdirectories)
+
+    # Get the file indices for this pair
     frame_a_idx, frame_b_idx = config.get_frame_pair_indices(idx)
 
     # Check if we have A/B pair (len > 1) or single format
     if len(config.image_format) == 2:
         # Non-time-resolved: separate A and B formats
-        # Both use the same file index (pair 1 = file 1A + file 1B)
         image_format_A, image_format_B = config.image_format
         file_paths = [
             camera_path / (image_format_A % frame_a_idx),
@@ -103,17 +151,10 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
             camera_path / (format_str % frame_b_idx),
         ]
 
-    # Check if it's a proprietary format that reads pairs natively
-    file_ext = Path(file_paths[0]).suffix.lower()
-    if file_ext == ".cine":
-        # For .cine files, use the first frame index
-        # The frames parameter will read consecutive frames starting from that index
-        return read_image(str(file_paths[0]), idx=frame_a_idx - 1, frames=2)
-    else:
-        # Read individual frames (e.g., .tif, .png, .jpg)
-        frame_a = read_image(str(file_paths[0]))
-        frame_b = read_image(str(file_paths[1]))
-        return np.stack([frame_a, frame_b], axis=0)
+    # Read individual frames (e.g., .tif, .png, .jpg)
+    frame_a = read_image(str(file_paths[0]))
+    frame_b = read_image(str(file_paths[1]))
+    return np.stack([frame_a, frame_b], axis=0)
 
 
 def delayed_image_pair(idx: int, camera_path: Path, camera: int, config: Config) -> Delayed:
@@ -183,16 +224,21 @@ def load_images(camera: int, config: Config, source: Path = None) -> da.Array:
     """
     if source is None:
         source = config.source_paths[0]
-    
-    # For .set and .im7 files, there are no camera subdirectories
-    # All cameras are stored in a single file per time instance in the source directory
-    # File format: source_directory/B00001.im7 (contains all cameras for time instance 1)
-    format_str = config.image_format[0]
-    if '.set' in format_str:
+
+    # Determine camera_path based on image type
+    # Container formats don't use camera subdirectories:
+    # - .set/.im7: all cameras in one file
+    # - .cine: separate files per camera, but in source directory (not subdirs)
+    image_type = config.image_type
+
+    if image_type == "lavision_set":
         camera_path = source  # No camera subdirectory for set files
-    elif '.im7' in format_str:
+    elif image_type == "lavision_im7":
         camera_path = source  # No camera subdirectory for im7 files
+    elif image_type == "cine":
+        camera_path = source  # .cine files in source directory (no subdirs)
     else:
+        # Standard formats use camera subdirectories
         folder = config.get_camera_folder(camera)
         camera_path = source / folder if folder else source
     

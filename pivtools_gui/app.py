@@ -139,6 +139,27 @@ def cache_key(source_path_idx, camera, cfg):
     return (str(source_path), str(camera))
 
 
+def get_percentile_stats(img_array):
+    """Calculate vmin/vmax as percentages (0-100) of the data range.
+
+    This allows the frontend to work with any bit depth since the image
+    is normalized to 8-bit before sending, and contrast is expressed as
+    percentages of the display range.
+    """
+    p1 = float(np.percentile(img_array, 1))
+    p99 = float(np.percentile(img_array, 99))
+    img_min = float(img_array.min())
+    img_max = float(img_array.max())
+    data_range = img_max - img_min
+    if data_range > 0:
+        vmin_pct = 100.0 * (p1 - img_min) / data_range
+        vmax_pct = 100.0 * (p99 - img_min) / data_range
+    else:
+        vmin_pct = 0.0
+        vmax_pct = 100.0
+    return {"vmin_pct": round(vmin_pct, 2), "vmax_pct": round(vmax_pct, 2)}
+
+
 def get_cached_pair(frame, typ, camera, source_path_idx, cfg, auto_limits=False):
     """Fetch a cached pair (A, B) for given frame/type/camera/source_path_idx."""
     k = cache_key(source_path_idx, camera, cfg)
@@ -146,17 +167,17 @@ def get_cached_pair(frame, typ, camera, source_path_idx, cfg, auto_limits=False)
     pair = bucket.get(frame)
     if pair is None:
         return None, None, None
-    
+
     b64_a = numpy_to_png_base64(pair[0])
     b64_b = numpy_to_png_base64(pair[1])
-    
+
     stats = None
     if auto_limits:
         stats = {
-            "A": {"vmin": float(np.percentile(pair[0], 1)), "vmax": float(np.percentile(pair[0], 99))},
-            "B": {"vmin": float(np.percentile(pair[1], 1)), "vmax": float(np.percentile(pair[1], 99))}
+            "A": get_percentile_stats(pair[0]),
+            "B": get_percentile_stats(pair[1])
         }
-        
+
     return b64_a, b64_b, stats
 
 
@@ -238,8 +259,8 @@ def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: 
                 stats = None
                 if auto_limits:
                     stats = {
-                        "A": {"vmin": float(np.percentile(pair[0], 1)), "vmax": float(np.percentile(pair[0], 99))},
-                        "B": {"vmin": float(np.percentile(pair[1], 1)), "vmax": float(np.percentile(pair[1], 99))}
+                        "A": get_percentile_stats(pair[0]),
+                        "B": get_percentile_stats(pair[1])
                     }
 
                 # Thread-safe cache write with timestamp
@@ -307,8 +328,8 @@ def get_frame_pair():
             # Calculate stats if requested but missing
             if auto_limits and stats is None:
                 stats = {
-                    "A": {"vmin": float(np.percentile(pair[0], 1)), "vmax": float(np.percentile(pair[0], 99))},
-                    "B": {"vmin": float(np.percentile(pair[1], 1)), "vmax": float(np.percentile(pair[1], 99))}
+                    "A": get_percentile_stats(pair[0]),
+                    "B": get_percentile_stats(pair[1])
                 }
 
             # Update cache with new access time
@@ -347,8 +368,8 @@ def get_frame_pair():
     stats = None
     if auto_limits:
         stats = {
-            "A": {"vmin": float(np.percentile(pair[0], 1)), "vmax": float(np.percentile(pair[0], 99))},
-            "B": {"vmin": float(np.percentile(pair[1], 1)), "vmax": float(np.percentile(pair[1], 99))}
+            "A": get_percentile_stats(pair[0]),
+            "B": get_percentile_stats(pair[1])
         }
 
     # Thread-safe cache write with timestamp
@@ -621,8 +642,8 @@ def filter_single_frame():
         
         if auto_limits:
             response["stats"] = {
-                "A": {"vmin": float(np.percentile(processed_pair[0], 1)), "vmax": float(np.percentile(processed_pair[0], 99))},
-                "B": {"vmin": float(np.percentile(processed_pair[1], 1)), "vmax": float(np.percentile(processed_pair[1], 99))}
+                "A": get_percentile_stats(processed_pair[0]),
+                "B": get_percentile_stats(processed_pair[1])
             }
             
         return jsonify(response)

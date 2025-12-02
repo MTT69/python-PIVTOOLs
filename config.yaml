@@ -150,6 +150,17 @@ calibration:
     grid_tolerance: 0.5
     ransac_threshold: 3
     dt: 0.0275
+  charuco:
+    source_path_idx: 0
+    camera: 1
+    file_pattern: "*.tif"
+    squares_h: 10
+    squares_v: 9
+    square_size: 0.03
+    marker_ratio: 0.5
+    aruco_dict: DICT_4X4_1000
+    min_corners: 6
+    dt: 1.0
   stereo:
     source_path_idx: 0
     camera_pair:

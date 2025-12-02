@@ -250,7 +250,7 @@ masking:
     def image_format(self):
         """
         Return image format as a tuple.
-        
+
         Always returns a tuple for consistency:
         - Single format: ("format",)
         - A/B pair: ("format_A", "format_B")
@@ -262,13 +262,74 @@ masking:
                 return ("B%05d.tiff",)
             else:
                 return ("B%05d_A.tiff", "B%05d_B.tiff")
-        
+
         if isinstance(raw, str):
             return (raw,)
         elif isinstance(raw, (list, tuple)):
             return tuple(raw)
         else:
             raise ValueError(f"Invalid image_format type: {type(raw)}")
+
+    @property
+    def image_type(self) -> str:
+        """
+        Return image type: 'standard', 'cine', 'lavision_set', 'lavision_im7'.
+
+        If explicitly set in config, returns that value.
+        Otherwise, auto-detects from image_format pattern.
+
+        Returns
+        -------
+        str
+            One of: 'standard', 'cine', 'lavision_set', 'lavision_im7'
+        """
+        explicit_type = self.data.get("images", {}).get("image_type")
+        if explicit_type:
+            return explicit_type
+        return self._detect_image_type()
+
+    def _detect_image_type(self) -> str:
+        """Auto-detect image type from format string."""
+        fmt = self.image_format[0].lower()
+        if '.cine' in fmt:
+            return "cine"
+        elif '.set' in fmt:
+            return "lavision_set"
+        elif '.im7' in fmt:
+            return "lavision_im7"
+        elif '.ims' in fmt:
+            return "lavision_im7"  # .ims treated same as .im7
+        else:
+            return "standard"
+
+    @property
+    def is_container_format(self) -> bool:
+        """Return True if format stores multiple frames in single container.
+
+        Container formats:
+        - cine: Single-camera video container (one file per camera)
+        - lavision_set: Multi-camera container (all cameras in one file)
+        - lavision_im7: Multi-camera container (all cameras per file)
+        """
+        return self.image_type in ("cine", "lavision_set", "lavision_im7")
+
+    @property
+    def is_single_camera_container(self) -> bool:
+        """Return True if container has one camera per file (like .cine).
+
+        .cine files contain frames from a single camera. Multi-camera setups
+        have separate .cine files per camera (e.g., Camera1.cine, Camera2.cine).
+        """
+        return self.image_type == "cine"
+
+    @property
+    def is_multi_camera_container(self) -> bool:
+        """Return True if container has all cameras in one file (like .set, .im7).
+
+        .set and .im7 files store data from all cameras in a single file,
+        with camera_no parameter used to extract specific camera data.
+        """
+        return self.image_type in ("lavision_set", "lavision_im7")
 
     @property
     def base_paths(self):
@@ -304,19 +365,20 @@ masking:
     @property
     def num_frame_pairs(self):
         """
-        Calculate the number of frame pairs from the number of image files.
+        Calculate the number of frame pairs based on image type and pairing mode.
 
-        The calculation depends on the file format and whether data is time-resolved:
-        - Container formats (.set, .im7, .ims): num_pairs = num_images (each file contains A+B)
-        - A/B format (len=2): num_pairs = num_images (e.g., 100 A/B sets → 100 pairs)
-        - Time-resolved (sequential): num_pairs = num_images - 1 (e.g., 100 files → 99 overlapping pairs)
-        - Non-time-resolved skip: num_pairs = num_images // 2 (e.g., 100 files → 50 non-overlapping pairs)
+        The calculation depends on the image type and time_resolved setting:
 
-        Examples:
-            100 .set files → 100 pairs (each .set contains frame A and B)
-            100 A/B files → 100 pairs (1A+1B, 2A+2B, ..., 100A+100B)
-            100 time-resolved files → 99 pairs (1+2, 2+3, 3+4, ..., 99+100)
-            100 skip-frame files → 50 pairs (1+2, 3+4, 5+6, ..., 99+100)
+        Container formats:
+        - lavision_set: Each .set entry is one pair → num_images pairs
+        - lavision_im7: Each .im7 file is one pair → num_images pairs
+        - cine + time_resolved: Sequential overlapping → num_images - 1 pairs
+        - cine + skip: Non-overlapping → num_images // 2 pairs
+
+        Standard formats:
+        - A/B format (len=2): num_images pairs (1A+1B, 2A+2B, ...)
+        - time_resolved: num_images - 1 pairs (1+2, 2+3, 3+4, ...)
+        - skip: num_images // 2 pairs (1+2, 3+4, 5+6, ...)
 
         Returns
         -------
@@ -324,22 +386,48 @@ masking:
             Number of frame pairs that can be formed from the image files
         """
         num_images = self.num_images
-        
-        # Check for container formats (.set, .im7, .ims) which store A+B pairs together
-        format_str = self.image_format[0].lower()
-        if '.set' in format_str or '.im7' in format_str or '.ims' in format_str:
-            return num_images
+        image_type = self.image_type
 
-        # A/B format (separate A and B files)
+        # LaVision .set: depends on time_resolved
+        # - Non-time-resolved: each entry has A+B pair internally
+        # - Time-resolved: each entry has ONE frame per camera, pair across entries
+        if image_type == "lavision_set":
+            if self.time_resolved:
+                # Sequential overlapping: 100 entries → 99 pairs
+                return max(0, num_images - 1)
+            else:
+                # Each entry is a complete pair
+                return num_images
+
+        # LaVision .im7: depends on time_resolved
+        # - Non-time-resolved: each file has A+B pair internally
+        # - Time-resolved: each file has ONE frame, pair across files
+        if image_type == "lavision_im7":
+            if self.time_resolved:
+                # Sequential overlapping: 100 files → 99 pairs
+                return max(0, num_images - 1)
+            else:
+                # Each file is a complete pair
+                return num_images
+
+        # CINE: depends on time_resolved setting
+        if image_type == "cine":
+            if self.time_resolved:
+                # Sequential overlapping: 100 frames → 99 pairs
+                return max(0, num_images - 1)
+            else:
+                # Skip mode: 100 frames → 50 non-overlapping pairs
+                return num_images // 2
+
+        # Standard formats: A/B format
         if len(self.image_format) == 2:
             return num_images
 
-        # Single format with time-resolved = TRUE: sequential overlapping pairs
+        # Standard formats: time-resolved or skip
         if self.time_resolved:
             return max(0, num_images - 1)
 
-        # Single format with time-resolved = FALSE: skip frames (non-overlapping pairs)
-        # Non-overlapping pairs: (1+2), (3+4), (5+6), etc.
+        # Skip frames (non-overlapping)
         return num_images // 2
 
     @property
@@ -355,38 +443,98 @@ masking:
 
     def get_frame_pair_indices(self, pair_number: int) -> tuple:
         """
-        Get the file indices (frame_a_idx, frame_b_idx) for a given pair number.
+        Get the file/frame indices for a given pair number.
+
+        For container formats, indexing complexity is hidden from the user.
+        The returned indices are ready to use with the appropriate reader.
 
         Args:
             pair_number: 1-based pair number (pair 1, pair 2, etc.)
 
         Returns:
-            tuple: (frame_a_idx, frame_b_idx) in file numbering (respects zero_based_indexing)
+            tuple: (frame_a_idx, frame_b_idx) for the reader to use
 
-        Examples:
-            A/B format:
-                pair 1 → (1, 1), pair 2 → (2, 2), pair 3 → (3, 3)
-            Time-resolved (sequential overlapping):
-                pair 1 → (1, 2), pair 2 → (2, 3), pair 3 → (3, 4)
-            Non-time-resolved skip (non-overlapping):
-                pair 1 → (1, 2), pair 2 → (3, 4), pair 3 → (5, 6)
+        Examples by image_type:
+            lavision_set (non-time-resolved):
+                pair 1 → (1, 1) - reader extracts A+B from entry 1
+            lavision_set (time-resolved):
+                pair 1 → (1, 2), pair 2 → (2, 3) - pair frames from consecutive entries
+            lavision_im7 (non-time-resolved):
+                pair 1 → (1, 1) - reader extracts A+B from file 1
+            lavision_im7 (time-resolved):
+                pair 1 → (1, 2), pair 2 → (2, 3) - pair frames from consecutive files
+            cine + time_resolved:
+                pair 1 → (1, 2), pair 2 → (2, 3) - overlapping
+            cine + skip:
+                pair 1 → (1, 2), pair 2 → (3, 4) - non-overlapping
+            standard A/B:
+                pair 1 → (1, 1), pair 2 → (2, 2) - same index for A and B files
+            standard time_resolved:
+                pair 1 → (1, 2), pair 2 → (2, 3) - overlapping
+            standard skip:
+                pair 1 → (1, 2), pair 2 → (3, 4) - non-overlapping
         """
+        image_type = self.image_type
+
+        # LaVision .set: depends on time_resolved
+        # - Non-time-resolved: A+B pair in same entry
+        # - Time-resolved: pair frames from consecutive entries
+        if image_type == "lavision_set":
+            if self.time_resolved:
+                # Time-resolved: pair across entries (entry N + entry N+1)
+                return (pair_number, pair_number + 1)
+            else:
+                # Non-time-resolved: A+B in same entry
+                return (pair_number, pair_number)
+
+        # LaVision .im7: depends on time_resolved
+        # - Non-time-resolved: each file has A+B pair → same file index for both
+        # - Time-resolved: each file has ONE frame → pair across consecutive files
+        if image_type == "lavision_im7":
+            if self.time_resolved:
+                # Time-resolved: pair across files (file N + file N+1)
+                # Apply zero-based indexing to both file indices
+                if self.zero_based_indexing:
+                    file_a = pair_number - 1  # Pair 1 → files 0,1
+                    file_b = pair_number
+                else:
+                    file_a = pair_number      # Pair 1 → files 1,2
+                    file_b = pair_number + 1
+                return (file_a, file_b)
+            else:
+                # Non-time-resolved: each file is a complete A+B pair
+                file_idx = (pair_number - 1) if self.zero_based_indexing else pair_number
+                return (file_idx, file_idx)
+
+        # CINE: frame pairing depends on time_resolved
+        # Note: zero_based_indexing is NOT applied for cine - the reader
+        # handles FirstImageNo translation internally
+        if image_type == "cine":
+            if self.time_resolved:
+                # Sequential overlapping: pair n = frames (n, n+1)
+                frame_a = pair_number
+                frame_b = pair_number + 1
+            else:
+                # Skip mode: pair n = frames ((n-1)*2+1, (n-1)*2+2)
+                frame_a = (pair_number - 1) * 2 + 1
+                frame_b = frame_a + 1
+            return (frame_a, frame_b)
+
+        # Standard formats below
+
         # A/B format (separate A and B files) - always use same index for both
         if len(self.image_format) == 2:
-            # Convert pair number to file index (respecting zero_based_indexing)
             file_idx = (pair_number - 1) if self.zero_based_indexing else pair_number
             return (file_idx, file_idx)
 
         # Time-resolved = sequential overlapping pairs
         if self.time_resolved:
             # Sequential mode: pair 1=(0,1), pair 2=(1,2), pair 3=(2,3)
-            # Formula: pair n = (n-1, n)
             frame_a_idx = pair_number - 1
             frame_b_idx = pair_number
         else:
             # Non-time-resolved skip mode = non-overlapping pairs
             # Pair 1=(0,1), pair 2=(2,3), pair 3=(4,5), etc.
-            # Formula: pair n starts at (n-1) * 2
             start_idx = (pair_number - 1) * 2
             frame_a_idx = start_idx
             frame_b_idx = start_idx + 1
@@ -421,8 +569,8 @@ masking:
         """
         Detect image shape by reading the first image.
 
-        Handles all image formats including .set, .im7, and standard formats.
-        For .set and .im7 files, passes the required camera and image parameters.
+        Handles all image formats including .set, .im7, .cine, and standard formats.
+        For container formats, passes the required camera and image parameters.
 
         Returns
         -------
@@ -434,16 +582,16 @@ masking:
         source_path = self.source_paths[0]
         camera_num = self.camera_numbers[0]
         image_format = self.image_format
+        img_type = self.image_type
 
-        logging.info(f"_detect_image_shape: image_format = {image_format}, type = {type(image_format)}")
+        logging.info(f"_detect_image_shape: image_format = {image_format}, image_type = {img_type}")
         logging.info(f"Source path: {source_path}, Camera: {camera_num}")
 
-        # Use same logic as load_images.py read_pair
         format_str = image_format[0]  # Always tuple now
 
-        # Determine camera_path based on format (same as load_images)
-        if '.set' in str(format_str) or '.im7' in str(format_str):
-            camera_path = source_path  # No camera subdir for .set/.im7
+        # Determine camera_path based on image type (same as load_images)
+        if img_type in ("lavision_set", "lavision_im7", "cine"):
+            camera_path = source_path  # Container formats: no camera subdir
         else:
             folder = self.get_camera_folder(camera_num)
             camera_path = source_path / folder if folder else source_path
@@ -453,13 +601,17 @@ masking:
         # Determine start index
         start_idx = 0 if self.zero_based_indexing else 1
 
-        # Construct file path based on format type
-        if '.set' in str(format_str):
+        # Construct file path based on image type
+        if img_type == "lavision_set":
             file_path = camera_path / format_str
-        elif '.im7' in str(format_str):
+        elif img_type == "lavision_im7":
             file_path = camera_path / (format_str % start_idx)
+        elif img_type == "cine":
+            # CINE: format uses %d for camera number
+            cine_filename = format_str % camera_num
+            file_path = camera_path / cine_filename
         else:
-            # Regular files - use first format for shape detection
+            # Standard files - use first format for shape detection
             file_path = camera_path / (format_str % start_idx)
 
         logging.info(f"Trying to read file: {file_path}")
@@ -472,12 +624,15 @@ masking:
 
         try:
             # Read with appropriate parameters for each format
-            if '.set' in str(format_str):
+            if img_type == "lavision_set":
                 # For .set files, must provide camera_no and im_no
                 img = read_image(str(file_path), camera_no=camera_num, im_no=1)
-            elif '.im7' in str(format_str):
+            elif img_type == "lavision_im7":
                 # For .im7 files, must provide camera_no
                 img = read_image(str(file_path), camera_no=camera_num)
+            elif img_type == "cine":
+                # For .cine files, read first frame (idx=1)
+                img = read_image(str(file_path), idx=1, frames=2)
             else:
                 # Regular files don't need extra parameters
                 img = read_image(str(file_path))
@@ -671,13 +826,18 @@ masking:
         """Return stereo calibration parameters."""
         return self.calibration.get("stereo", {})
 
+    @property
+    def charuco_calibration(self):
+        """Return ChArUco board calibration parameters."""
+        return self.calibration.get("charuco", {})
+
     def get_calibration_method_params(self, method: str):
         """Get parameters for a specific calibration method."""
         return self.calibration.get(method, {})
 
     def set_active_calibration_method(self, method: str):
         """Set the active calibration method."""
-        if method in ["scale_factor", "pinhole", "stereo"]:
+        if method in ["scale_factor", "pinhole", "stereo", "charuco"]:
             self.data["calibration"]["active"] = method
         else:
             raise ValueError(f"Unknown calibration method: {method}")
@@ -713,6 +873,8 @@ masking:
             return self.pinhole_calibration.get("dt", 1)
         elif active_method == "scale_factor":
             return self.scale_factor_calibration.get("dt", 1)
+        elif active_method == "charuco":
+            return self.charuco_calibration.get("dt", 1)
         return 1
 
     @property
@@ -1368,22 +1530,26 @@ masking:
         return self.data.get("paths", {}).get("camera_subfolders", [])
 
     def get_camera_folder(self, camera_num: int) -> str:
-        """Get the subfolder name for a specific camera."""
-        # Check for container formats
-        fmt = self.image_format[0]
-        if '.set' in str(fmt) or '.im7' in str(fmt):
-             return ""
+        """Get the subfolder name for a specific camera.
+
+        Container formats (.cine, .set, .im7) don't use camera subfolders:
+        - .set/.im7: All cameras in one file
+        - .cine: Separate files per camera in source dir (uses %d in pattern)
+        """
+        # Container formats don't use camera subfolders
+        if self.is_container_format:
+            return ""
 
         subfolders = self.camera_subfolders
         # camera_num is 1-based
         idx = camera_num - 1
-        
+
         if subfolders and idx < len(subfolders) and subfolders[idx]:
             return subfolders[idx]
-            
+
         if self.camera_count == 1:
             return ""
-            
+
         return f"Cam{camera_num}"
 
 

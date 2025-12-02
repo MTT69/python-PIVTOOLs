@@ -455,6 +455,236 @@ class PlanarCalibrator:
             f"Saved camera model: {cam_output_base / 'model' / 'camera_model.mat'}"
         )
 
+    def process_camera_multi_image(self, cam_num, progress_callback=None):
+        """
+        Process all calibration images for one camera using multi-image aggregation.
+
+        Aggregates grid detections across all valid images and runs a single
+        cv2.calibrateCamera call for robust calibration (similar to ChArUco method).
+
+        Args:
+            cam_num: Camera number (1-based)
+            progress_callback: Optional callback for progress updates
+
+        Returns:
+            Dictionary with calibration results
+        """
+        logger.info(f"Processing Camera {cam_num} with multi-image aggregation")
+
+        # Setup paths
+        is_container = self._is_container_format()
+        if is_container:
+            cam_input_dir = self.source_dir / "calibration"
+        else:
+            cam_input_dir = self.source_dir / "calibration" / f"Cam{cam_num}"
+        cam_output_base = self.base_dir / "calibration" / f"Cam{cam_num}"
+
+        if not cam_input_dir.exists():
+            logger.error(f"Calibration directory not found: {cam_input_dir}")
+            return {"success": False, "error": "Directory not found"}
+
+        # Find all calibration images
+        image_files = self._find_calibration_images(cam_input_dir)
+        if not image_files:
+            logger.error(f"No calibration images found in {cam_input_dir}")
+            return {"success": False, "error": "No images found"}
+
+        logger.info(f"Found {len(image_files)} calibration images")
+
+        # Collect detections across all images
+        objp = self.make_object_points()
+        objp_2d = objp[:, :2]
+
+        all_objpoints = []
+        all_imgpoints = []
+        img_size = None
+        stats = {"valid": 0, "failed": 0}
+        valid_images = []
+
+        total_images = len(image_files)
+        for idx, img_path in enumerate(image_files, 1):
+            # Read image
+            if is_container:
+                img = self._read_calibration_image(img_path, camera=cam_num, img_index=idx)
+            else:
+                img = self._read_calibration_image(img_path, camera=cam_num, img_index=idx)
+
+            if img is None:
+                logger.warning(f"Could not read image {idx}: {img_path}")
+                stats["failed"] += 1
+                continue
+
+            if img_size is None:
+                h, w = img.shape[:2]
+                img_size = (w, h)
+
+            # Detect grid
+            found, grid_points = self.detect_grid_in_image(img)
+
+            if not found or grid_points is None:
+                logger.debug(f"Grid not found in image {idx}")
+                stats["failed"] += 1
+                continue
+
+            # Store detected points
+            num_points = min(len(grid_points), len(objp_2d))
+            obj_pts_3d = np.hstack(
+                [objp_2d[:num_points], np.zeros((num_points, 1))]
+            ).astype(np.float32)
+
+            all_objpoints.append(obj_pts_3d.reshape(-1, 1, 3))
+            all_imgpoints.append(grid_points[:num_points].reshape(-1, 1, 2))
+            valid_images.append(img_path)
+            stats["valid"] += 1
+
+            logger.info(f"Image {idx}: Detected {num_points} grid points")
+
+            # Save individual grid data
+            if not is_container:
+                original_filename = Path(img_path).name
+            else:
+                original_filename = f"{self.file_pattern}[{idx}]"
+
+            # Compute homography for this image
+            H, _ = cv2.findHomography(
+                grid_points[:num_points], objp_2d[:num_points], cv2.RANSAC, 3.0
+            )
+            mean_error, reproj_errs, reproj_errs_x, reproj_errs_y = (
+                self.calculate_reprojection_error(
+                    grid_points[:num_points], objp_2d[:num_points], H
+                )
+            )
+
+            # Save grid data for this image
+            grid_data = {
+                "grid_points": grid_points[:num_points],
+                "homography": H,
+                "reprojection_error": mean_error,
+                "reprojection_error_x_mean": float(np.mean(np.abs(reproj_errs_x))),
+                "reprojection_error_y_mean": float(np.mean(np.abs(reproj_errs_y))),
+                "pattern_size": self.pattern_size,
+                "dot_spacing_mm": self.dot_spacing_mm,
+                "original_filename": original_filename,
+                "timestamp": datetime.now().isoformat(),
+            }
+            savemat(cam_output_base / "indices" / f"indexing_{idx}.mat", grid_data)
+
+            if progress_callback:
+                progress_callback({
+                    "camera": cam_num,
+                    "processed_images": idx,
+                    "total_images": total_images,
+                    "valid_images": stats["valid"],
+                    "progress": int((idx / total_images) * 80),
+                })
+
+        logger.info(f"Valid images: {stats['valid']}, Failed: {stats['failed']}")
+
+        if stats["valid"] < 1:
+            logger.error("No valid images found for calibration")
+            return {
+                "success": False,
+                "error": "No valid images",
+                "stats": stats,
+            }
+
+        # Run camera calibration with all points
+        logger.info(f"Calibrating with {stats['valid']} images...")
+
+        ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(
+            all_objpoints, all_imgpoints, img_size, None, None
+        )
+
+        logger.info(f"RMS reprojection error: {ret:.4f} pixels")
+
+        # Calculate per-axis errors
+        all_errors = []
+        all_errors_x = []
+        all_errors_y = []
+
+        for i in range(len(all_objpoints)):
+            proj, _ = cv2.projectPoints(
+                all_objpoints[i], rvecs[i], tvecs[i], mtx, dist
+            )
+            proj = proj.reshape(-1, 2)
+            img_pts = all_imgpoints[i].reshape(-1, 2)
+            err_vec = img_pts - proj
+            all_errors.extend(np.linalg.norm(err_vec, axis=1).tolist())
+            all_errors_x.extend(err_vec[:, 0].tolist())
+            all_errors_y.extend(err_vec[:, 1].tolist())
+
+        # Save camera model
+        model_data = {
+            "camera_matrix": mtx,
+            "dist_coeffs": dist,
+            "rvecs": np.array([r.flatten() for r in rvecs]),
+            "tvecs": np.array([t.flatten() for t in tvecs]),
+            "reprojection_error": ret,
+            "reprojection_error_x_mean": float(np.mean(np.abs(all_errors_x))),
+            "reprojection_error_y_mean": float(np.mean(np.abs(all_errors_y))),
+            "reprojection_errors": np.array(all_errors),
+            "num_images": stats["valid"],
+            "image_size": list(img_size),
+            "timestamp": datetime.now().isoformat(),
+            "pattern_size": self.pattern_size,
+            "dot_spacing_mm": self.dot_spacing_mm,
+            "dt": self.dt,
+            "multi_image_mode": True,
+        }
+
+        model_path = cam_output_base / "model" / "camera_model.mat"
+        savemat(str(model_path), model_data)
+        logger.info(f"Saved camera model: {model_path}")
+
+        if progress_callback:
+            progress_callback({
+                "camera": cam_num,
+                "processed_images": total_images,
+                "total_images": total_images,
+                "valid_images": stats["valid"],
+                "progress": 100,
+            })
+
+        return {
+            "success": True,
+            "camera_matrix": mtx.tolist(),
+            "dist_coeffs": dist.tolist(),
+            "rms_error": float(ret),
+            "num_images_used": stats["valid"],
+            "stats": stats,
+            "model_path": str(model_path),
+        }
+
+    def _find_calibration_images(self, cam_input_dir):
+        """Find all calibration images in the directory."""
+        is_container = self._is_container_format()
+
+        if is_container:
+            container_file = cam_input_dir / self.file_pattern
+            if container_file.exists():
+                return [str(container_file)]
+            return []
+
+        # Numbered pattern
+        if "%" in self.file_pattern:
+            files = []
+            i = 1
+            while True:
+                try:
+                    filename = self.file_pattern % i
+                except TypeError:
+                    break
+                filepath = cam_input_dir / filename
+                if filepath.exists():
+                    files.append(str(filepath))
+                    i += 1
+                else:
+                    break
+            return files
+
+        # Glob pattern
+        return sorted([str(f) for f in cam_input_dir.glob(self.file_pattern)])
+
     def _save_results(
         self,
         img_index,
