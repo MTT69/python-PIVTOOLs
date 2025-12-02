@@ -91,17 +91,22 @@ def read_lavision_im7(
     return data.astype(np.float32)
 
 
-def read_lavision_pair(file_path: str, camera_no: int = 1) -> np.ndarray:
+def read_lavision_pair(file_path: str, camera_no: int = 1, **kwargs) -> np.ndarray:
     """Read LaVision .im7 file and return as frame pair.
-    
+
     Args:
         file_path: Path to the .im7 file (contains all cameras for one time instance)
         camera_no: Camera number (1-based) to extract from the file
-        
+        **kwargs: Additional args for time-resolved mode:
+            - frames: Number of frames to read (default 2)
+            - frames_per_camera: Frames stored per camera in file (default 2)
+
     Returns:
-        np.ndarray: Array of shape (2, H, W) containing frame A and B for the specified camera
+        np.ndarray: Array of shape (frames, H, W) containing image data
     """
-    return read_lavision_im7(file_path, camera_no, frames=2)
+    frames = kwargs.get('frames', 2)
+    frames_per_camera = kwargs.get('frames_per_camera', 2)
+    return read_lavision_im7(file_path, camera_no, frames=frames, frames_per_camera=frames_per_camera)
 
 
 def read_lavision_ims(

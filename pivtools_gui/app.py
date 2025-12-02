@@ -719,11 +719,14 @@ def validate_files():
 
     for camera_num in camera_numbers:
         try:
-            # Determine camera path
+            # Determine camera path based on image type
             format_str = cfg.image_format[0]
-            if '.set' in str(format_str) or '.im7' in str(format_str):
+            image_type = cfg.image_type
+            if image_type in ("lavision_set", "lavision_im7", "cine"):
+                # Container formats: files are in source directory (no camera subfolders)
                 camera_path = cfg.source_paths[source_path_idx]
             else:
+                # Standard formats: use camera subfolders
                 folder = cfg.get_camera_folder(camera_num)
                 camera_path = cfg.source_paths[source_path_idx] / folder if folder else cfg.source_paths[source_path_idx]
 
@@ -768,13 +771,22 @@ def validate_files():
             matching_files = []
 
             try:
-                if '.set' in str(format_str):
-                    # Set files: single file contains all
+                image_type = cfg.image_type
+                if image_type == "lavision_set":
+                    # Set files: single file contains all cameras and time instances
                     set_file = camera_path / format_str
                     actual_count = 1 if set_file.exists() else 0
                     expected_count = 1
                     matching_files = [set_file] if set_file.exists() else []
-                elif '.im7' in str(format_str):
+                elif image_type == "cine":
+                    # CINE files: one file per camera, all frames inside
+                    # Pattern uses %d for camera number (e.g., Camera%d.cine)
+                    cine_filename = format_str % camera_num
+                    cine_file = camera_path / cine_filename
+                    actual_count = 1 if cine_file.exists() else 0
+                    expected_count = 1  # One file per camera
+                    matching_files = [cine_file] if cine_file.exists() else []
+                elif image_type == "lavision_im7":
                     # IM7 files: one file per time instance
                     pattern = format_str.replace("%05d", "*").replace("%04d", "*").replace("%d", "*")
                     matching_files = list(camera_path.glob(pattern))
@@ -794,9 +806,9 @@ def validate_files():
             except Exception as e:
                 logger.error(f"Error counting files for camera {camera_num}: {e}")
 
-            # Check for indexing mismatch
+            # Check for indexing mismatch (only for standard formats with numbered files)
             indexing_warning = None
-            if not ('.set' in str(format_str) or '.im7' in str(format_str)):
+            if image_type == "standard":
                 try:
                     if matching_files:
                         indices = []
@@ -828,7 +840,13 @@ def validate_files():
             if first_frame_status == "missing":
                 status = "error"
                 overall_valid = False
-                error_msg = f"First frame not found. Looking for: {format_str % start_idx}"
+                # Format error message based on image type (avoid string formatting errors)
+                if image_type == "lavision_set":
+                    error_msg = f"First frame not found. Container file: {format_str}"
+                elif image_type == "cine":
+                    error_msg = f"First frame not found. CINE file: {format_str % camera_num}"
+                else:
+                    error_msg = f"First frame not found. Looking for: {format_str % start_idx}"
 
                 # Help user: show what files ARE in the folder
                 if camera_path.exists() and camera_path.is_dir():
@@ -843,7 +861,13 @@ def validate_files():
             elif last_frame_status == "missing":
                 status = "error"
                 overall_valid = False
-                error_msg = f"Last frame not found. Expected: {format_str % end_idx}"
+                # Format error message based on image type (avoid string formatting errors)
+                if image_type == "lavision_set":
+                    error_msg = f"Last frame not found. Container file: {format_str}"
+                elif image_type == "cine":
+                    error_msg = f"Last frame not found. CINE file: {format_str % camera_num}"
+                else:
+                    error_msg = f"Last frame not found. Expected: {format_str % end_idx}"
 
             elif actual_count < expected_count:
                 # ERROR: Not enough files (missing data)
