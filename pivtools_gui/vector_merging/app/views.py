@@ -323,6 +323,7 @@ def _process_single_frame_merge(args):
     Helper function for parallel processing of single frame merging.
     Must be a top-level function for multiprocessing.
     """
+    cfg = get_config()
     frame_idx, base_dir, cameras, type_name, endpoint, num_images_for_path, vector_format, valid_runs, total_runs = args
     try:
         merged_runs_dict = merge_vectors_for_frame(
