@@ -102,6 +102,11 @@ class PIVEnsemblePassResult:
     sig_A_y: Optional[np.ndarray] = None
     sig_A_xy: Optional[np.ndarray] = None
 
+    # Gaussian offset terms (background levels)
+    c_A: Optional[np.ndarray] = None
+    c_B: Optional[np.ndarray] = None
+    c_AB: Optional[np.ndarray] = None
+
     # Mask (for consistency with instantaneous)
     b_mask: Optional[np.ndarray] = None
 

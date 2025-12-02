@@ -211,6 +211,7 @@ class UnifiedBatchPipeline:
                 batch_idx,
                 output_path,  # Pass output_path for diagnostics
                 self.scattered_pixel_mask,  # Pass pixel mask for preprocessing
+                True,  # is_first_batch=True: use all cores (no correlation yet)
                 workers=[worker],
                 priority=10,
                 pure=False,
@@ -256,6 +257,7 @@ class UnifiedBatchPipeline:
                         next_batch_idx,
                         output_path,  # Pass output_path for diagnostics
                         self.scattered_pixel_mask,  # Pass pixel mask for preprocessing
+                        False,  # is_first_batch=False: use reduced cores (pipelined with correlation)
                         workers=[next_worker],
                         priority=10,
                         pure=False,
@@ -631,6 +633,7 @@ class UnifiedBatchPipeline:
             batch_idx,
             None,  # output_path (not used for instantaneous diagnostics)
             self.scattered_pixel_mask,  # Pass pixel mask for preprocessing
+            True,  # is_first_batch - use all cores, no correlation running yet
             workers=[worker],
             priority=10,
             pure=False,
@@ -669,6 +672,7 @@ class UnifiedBatchPipeline:
                     next_batch_idx,
                     None,  # output_path (not used for instantaneous diagnostics)
                     self.scattered_pixel_mask,  # Pass pixel mask for preprocessing
+                    False,  # is_first_batch - use reduced cores, correlation is running
                     workers=[next_worker],
                     priority=10,
                     pure=False,
@@ -738,6 +742,9 @@ class UnifiedBatchPipeline:
                 batch_slice,
                 self.config,
                 batch_idx,
+                None,  # output_path
+                None,  # pixel_mask
+                batch_idx == 0,  # is_first_batch - only first uses all cores
                 workers=[worker],
                 priority=10,
                 pure=False,
@@ -851,12 +858,13 @@ def _filter_batch_worker(
     batch_idx: int,
     output_path: Optional[Path] = None,
     pixel_mask: Optional[np.ndarray] = None,
+    is_first_batch: bool = False,
 ) -> np.ndarray:
     """
     Apply all filters to batch on filter worker.
 
     Uses multi-threading for CPU-intensive operations (POD SVD, etc.).
-    Sets OMP_NUM_THREADS to use all cores on this worker.
+    Thread count depends on whether this is the first batch or a pipelined batch.
 
     Args:
         batch_images: Dask array slice for this batch
@@ -864,11 +872,18 @@ def _filter_batch_worker(
         batch_idx: Batch index (for diagnostics)
         output_path: Output directory for diagnostic images
         pixel_mask: Boolean mask (H, W) where True = masked regions to zero
+        is_first_batch: If True, use all cores (no correlation running yet).
+                       If False, use config.filter_omp_threads to avoid oversubscription.
     """
     import os
 
-    # Use ALL cores on this worker
-    worker_cores = os.cpu_count()
+    # First batch: use all cores (no correlation running yet)
+    # Subsequent batches: use config value to avoid oversubscription with correlation
+    if is_first_batch:
+        worker_cores = os.cpu_count() or 4
+    else:
+        worker_cores = config.filter_omp_threads
+
     os.environ["OMP_NUM_THREADS"] = str(worker_cores)
     os.environ["MKL_NUM_THREADS"] = str(worker_cores)
 

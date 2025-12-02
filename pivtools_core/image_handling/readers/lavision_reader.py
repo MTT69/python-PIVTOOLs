@@ -7,30 +7,43 @@ from . import register_reader
 
 
 def read_lavision_im7(
-    file_path: str, camera_no: int = 1, frames: int = 2
+    file_path: str,
+    camera_no: int = 1,
+    frames: int = 2,
+    frames_per_camera: int = 2
 ) -> np.ndarray:
     """Read LaVision .im7 files.
-    
+
     LaVision .im7 files store all cameras in a single file per time instance.
-    Each file contains frame pairs (A and B) for all cameras.
-    
-    Structure: For N cameras, the file contains 2*N frames in sequence:
-    - Frames 0,1: Camera 1, frames A and B
-    - Frames 2,3: Camera 2, frames A and B
-    - etc.
-    
+
+    Standard PIV mode (frames_per_camera=2):
+        Each file contains frame pairs (A and B) for all cameras.
+        Structure: For N cameras, the file contains 2*N frames:
+        - Frames 0,1: Camera 1, frames A and B
+        - Frames 2,3: Camera 2, frames A and B
+        - etc.
+
+    Single frame mode (frames_per_camera=1):
+        Each file contains one frame per camera (e.g., time-resolved/snapshot).
+        Structure: For N cameras, the file contains N frames:
+        - Frame 0: Camera 1
+        - Frame 1: Camera 2
+        - etc.
+
     Args:
         file_path: Path to the .im7 file
         camera_no: Camera number (1-based indexing)
-        frames: Number of frames to read (typically 2 for PIV)
-        
+        frames: Number of frames to read from this camera
+        frames_per_camera: Frames stored per camera in the file (2=PIV, 1=single)
+
     Returns:
         np.ndarray: Array of shape (frames, H, W) containing the image data
     """
     import sys
     if sys.platform == "darwin":
         raise ImportError(
-            "lvpyio is not shipped or supported on macOS (darwin). Please use a supported platform for LaVision .im7 reading."
+            "lvpyio is not supported on macOS. "
+            "Please use Windows for LaVision .im7 reading."
         )
     try:
         import lvpyio as lv
@@ -41,12 +54,14 @@ def read_lavision_im7(
 
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"Image file not found: {file_path}")
-    
+
     # Read the buffer as a generator
     buffer = lv.read_buffer(file_path)
-    
+
     # Calculate which frames we need for this camera
-    start_frame = (camera_no - 1) * 2
+    # For standard PIV: camera 1 -> frames 0,1; camera 2 -> frames 2,3
+    # For single frame: camera 1 -> frame 0; camera 2 -> frame 1
+    start_frame = (camera_no - 1) * frames_per_camera
     end_frame = start_frame + frames
     
     # Iterate through the generator, only processing the frames we need

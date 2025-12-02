@@ -744,171 +744,37 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
     def _cache_window_padding(self, config: Config) -> None:
         """Cache window padding information.
 
-        :param config: Configuration object.
-        :type config: Config
+        Uses unified base class implementation with instantaneous-specific parameters.
         """
-        self.win_ctrs_x: list[np.ndarray] = []
-        self.win_ctrs_y: list[np.ndarray] = []
-        self.win_spacing_x: list[int] = []
-        self.win_spacing_y: list[int] = []
-        self.win_ctrs_x_all: list[np.ndarray] = []
-        self.win_ctrs_y_all: list[np.ndarray] = []
-        self.n_pre_all: list[tuple[int, int]] = []
-        self.n_post_all: list[tuple[int, int]] = []
-        self.ksize_filt: list[tuple[int, int]] = []
-        self.sd: list[float] = []
-        self.G_smooth_predictor: list[np.ndarray] = []
-
-        H, W = config.image_shape
-
-        for pass_idx, _ in enumerate(config.window_sizes):
-            spacing_x, spacing_y, win_ctrs_x, win_ctrs_y = self._compute_window_centres(
-                pass_idx, config
-            )
-
-            win_ctrs_x_pre = np.arange(1, win_ctrs_x[0] - spacing_x / 2, spacing_x)
-            if win_ctrs_x_pre.size == 0:
-                win_ctrs_x_pre = np.array([1])
-            win_ctrs_x_pre -= 1
-            win_ctrs_x_post = np.arange(
-                W, win_ctrs_x[-1] + spacing_x / 2, -spacing_x
-            )
-            if win_ctrs_x_post.size == 0:
-                win_ctrs_x_post = np.array([W])
-            win_ctrs_x_post -= 1
-            win_ctrs_x_all = np.concatenate(
-                [win_ctrs_x_pre, win_ctrs_x, win_ctrs_x_post[::-1]]
-            )
-
-            win_ctrs_y_pre = np.arange(1, win_ctrs_y[0] - spacing_y / 2, spacing_y)
-            if win_ctrs_y_pre.size == 0:
-                win_ctrs_y_pre = np.array([1])
-            win_ctrs_y_pre -= 1
-            win_ctrs_y_post = np.arange(
-                H, win_ctrs_y[-1] + spacing_y / 2, -spacing_y
-            )
-            if win_ctrs_y_post.size == 0:
-                win_ctrs_y_post = np.array([H])
-            win_ctrs_y_post -= 1
-            win_ctrs_y_all = np.concatenate(
-                [win_ctrs_y_pre, win_ctrs_y, win_ctrs_y_post[::-1]]
-            )
-
-            n_pre = (len(win_ctrs_y_pre), len(win_ctrs_x_pre))
-            n_post = (len(win_ctrs_y_post), len(win_ctrs_x_post))
-
-            self.win_ctrs_x.append(win_ctrs_x.astype(np.float32))
-            self.win_ctrs_y.append(win_ctrs_y.astype(np.float32))
-            self.win_spacing_x.append(spacing_x)
-            self.win_spacing_y.append(spacing_y)
-            self.win_ctrs_x_all.append(win_ctrs_x_all.astype(np.float32))
-            self.win_ctrs_y_all.append(win_ctrs_y_all.astype(np.float32))
-            self.n_pre_all.append(n_pre)
-            self.n_post_all.append(n_post)
-
-            if pass_idx == 0:
-                self.ksize_filt.append((0, 0))
-                self.sd.append(0.0)
-                self.G_smooth_predictor.append(np.ones((1, 1), dtype=np.float32))
-            else:
-                prev_counts = (
-                    len(self.win_ctrs_y[pass_idx - 1]),
-                    len(self.win_ctrs_x[pass_idx - 1]),
-                )
-                prev_spacing = (
-                    self.win_spacing_y[pass_idx - 1],
-                    self.win_spacing_x[pass_idx - 1],
-                )
-                k_filt = (
-                    np.round(np.array(prev_counts) / np.array(prev_spacing)).astype(int)
-                    + 1
-                )
-                k_filt_list = [int(k) for k in k_filt.tolist()]
-                k_filt_tuple = (
-                    k_filt_list[0] + (k_filt_list[0] % 2 == 0),
-                    k_filt_list[1] + (k_filt_list[1] % 2 == 0),
-                )
-                self.ksize_filt.append(k_filt_tuple)
-                self.sd.append(np.sqrt(np.prod(k_filt_tuple)) / 3 * 0.65)
-                g_kernel = self._window_weight_fun(k_filt_tuple, config.window_type)
-                g_kernel = g_kernel.astype(np.float32)
-                g_kernel /= max(np.sum(g_kernel), 1e-12)
-                self.G_smooth_predictor.append(g_kernel)
-
-        logging.info(f"Successfully cached window padding for {len(config.window_sizes)} passes")
+        self._cache_window_padding_unified(
+            config=config,
+            window_sizes=config.window_sizes,
+            window_type=config.window_type,
+            compute_window_fn=self._compute_window_centres,
+            first_pass_ksize=(0, 0),  # Instantaneous uses (0, 0) for first pass
+        )
 
     
     
     def _cache_interpolation_grids(self, config: Config) -> None:
         """Cache interpolation grid coordinates for reuse across passes.
 
-        This significantly improves performance by avoiding repeated
-        computation of coordinate grids.
-        
-        :param config: Configuration object.
-        :type config: Config
+        Uses unified base class implementation with instantaneous-specific parameters.
         """
-        # Cache the image mesh for dense interpolation
-        y_coords = np.arange(self.H, dtype=np.float32)
-        x_coords = np.arange(self.W, dtype=np.float32)
-        x_mesh, y_mesh = np.meshgrid(x_coords, y_coords)
-        self.im_mesh = np.stack([y_mesh, x_mesh], axis=-1)
-        
-        # Pre-cache coordinate mappings for each pass
-        self.cached_dense_maps = []
-        self.cached_predictor_maps = []
-        
-        for pass_idx in range(len(config.window_sizes)):
-            if pass_idx == 0:
-                self.cached_dense_maps.append(None)
-                self.cached_predictor_maps.append(None)
-            else:
-                # Cache dense interpolation maps
-                points = (
-                    self.win_ctrs_y_all[pass_idx - 1],
-                    self.win_ctrs_x_all[pass_idx - 1]
-                )
-                map_x_1d = np.interp(
-                    x_coords, points[1], np.arange(len(points[1]))
-                )
-                map_y_1d = np.interp(
-                    y_coords, points[0], np.arange(len(points[0]))
-                )
-                map_x_2d, map_y_2d = np.meshgrid(
-                    map_x_1d.astype(np.float32),
-                    map_y_1d.astype(np.float32)
-                )
-                self.cached_dense_maps.append((map_x_2d, map_y_2d))
-                
-                # Cache predictor interpolation maps
-                win_x, win_y = np.meshgrid(
-                    self.win_ctrs_x[pass_idx],
-                    self.win_ctrs_y[pass_idx]
-                )
-                ix = np.interp(
-                    win_x.ravel(), points[1], np.arange(len(points[1]))
-                )
-                iy = np.interp(
-                    win_y.ravel(), points[0], np.arange(len(points[0]))
-                )
-                map_x = ix.reshape(win_x.shape).astype(np.float32)
-                map_y = iy.reshape(win_x.shape).astype(np.float32)
-                self.cached_predictor_maps.append((map_x, map_y))
+        self._cache_interpolation_grids_unified(
+            config=config,
+            window_sizes=config.window_sizes,
+            include_first_pass=False,  # Instantaneous doesn't need first pass grids
+        )
 
-        # Verify caching integrity
-        assert len(self.cached_dense_maps) == len(config.window_sizes), f"Dense maps cache length mismatch: {len(self.cached_dense_maps)} vs {len(config.window_sizes)}"
-        assert len(self.cached_predictor_maps) == len(config.window_sizes), f"Predictor maps cache length mismatch: {len(self.cached_predictor_maps)} vs {len(config.window_sizes)}"
-        
-        # Check that non-zero passes have cached maps
+        # Verify caching integrity (keep assertions for debugging)
+        assert len(self.cached_dense_maps) == len(config.window_sizes), \
+            f"Dense maps cache length mismatch: {len(self.cached_dense_maps)} vs {len(config.window_sizes)}"
+        assert len(self.cached_predictor_maps) == len(config.window_sizes), \
+            f"Predictor maps cache length mismatch: {len(self.cached_predictor_maps)} vs {len(config.window_sizes)}"
+
         for pass_idx in range(1, len(config.window_sizes)):
-            assert self.cached_dense_maps[pass_idx] is not None, f"Dense map for pass {pass_idx} is None"
-            assert self.cached_predictor_maps[pass_idx] is not None, f"Predictor map for pass {pass_idx} is None"
-            dense_x, dense_y = self.cached_dense_maps[pass_idx]
-            pred_x, pred_y = self.cached_predictor_maps[pass_idx]
-            assert dense_x.shape == (self.H, self.W), f"Dense map X shape incorrect for pass {pass_idx}: {dense_x.shape} vs {(self.H, self.W)}"
-            assert dense_y.shape == (self.H, self.W), f"Dense map Y shape incorrect for pass {pass_idx}: {dense_y.shape} vs {(self.H, self.W)}"
-            expected_pred_shape = (len(self.win_ctrs_y[pass_idx]), len(self.win_ctrs_x[pass_idx]))
-            assert pred_x.shape == expected_pred_shape, f"Predictor map X shape incorrect for pass {pass_idx}: {pred_x.shape} vs {expected_pred_shape}"
-            assert pred_y.shape == expected_pred_shape, f"Predictor map Y shape incorrect for pass {pass_idx}: {pred_y.shape} vs {expected_pred_shape}"
-        
-        logging.info(f"Successfully cached interpolation grids for {len(config.window_sizes)} passes")
+            assert self.cached_dense_maps[pass_idx] is not None, \
+                f"Dense map for pass {pass_idx} is None"
+            assert self.cached_predictor_maps[pass_idx] is not None, \
+                f"Predictor map for pass {pass_idx} is None"

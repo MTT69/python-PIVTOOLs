@@ -1,8 +1,8 @@
 paths:
   base_paths:
-  - D:\Processed_Wake_PIV\Case_B_Phase_138_Run_1
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/particle_positions/planar/test
   source_paths:
-  - D:\Wake_PIV_16_8
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/particle_positions/planar/
   camera_numbers:
   - 1
   - 2
@@ -19,7 +19,7 @@ images:
   zero_based_indexing: false
   pairing_mode: sequential
   pairing_skip: 0
-  num_frame_pairs: 1200
+  num_frame_pairs: 100
 batches:
   size: 25
 logging:
@@ -37,6 +37,7 @@ processing:
   dask_threads_per_worker: 1
   dask_memory_limit: 3GB
   filter_worker_count: 1
+  filter_omp_threads: 2
   always_batch: true
 outlier_detection:
   enabled: true
@@ -90,8 +91,8 @@ instantaneous_piv:
     - 128
   - - 64
     - 64
-  - - 32
-    - 32
+  - - 16
+    - 16
   overlap:
   - 50
   - 50
@@ -121,8 +122,8 @@ ensemble_piv:
   - std
   runs:
   - 3
-  store_planes: false
-  save_diagnostics: false
+  store_planes: true
+  save_diagnostics: true
   sum_window:
   - 16
   - 16
@@ -162,12 +163,11 @@ calibration:
     asymmetric: false
     dt: 2
 filters:
-- type: time
 masking:
-  enabled: true
+  enabled: false
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
-  mode: file
+  mode: rectangular
   rectangular:
     top: 64
     bottom: 64

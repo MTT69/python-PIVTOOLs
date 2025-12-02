@@ -328,6 +328,9 @@ def _create_ensemble_struct_all_passes(
         ('sig_A_x', object),
         ('sig_A_y', object),
         ('sig_A_xy', object),
+        ('c_A', object),
+        ('c_B', object),
+        ('c_AB', object),
         ('win_ctrs_x', object),
         ('win_ctrs_y', object),
         ('window_size', object),
@@ -355,6 +358,9 @@ def _create_ensemble_struct_all_passes(
         ensemble_struct['sig_A_x'][i] = empty
         ensemble_struct['sig_A_y'][i] = empty
         ensemble_struct['sig_A_xy'][i] = empty
+        ensemble_struct['c_A'][i] = empty
+        ensemble_struct['c_B'][i] = empty
+        ensemble_struct['c_AB'][i] = empty
         ensemble_struct['win_ctrs_x'][i] = empty
         ensemble_struct['win_ctrs_y'][i] = empty
         ensemble_struct['window_size'][i] = empty
@@ -405,6 +411,14 @@ def _create_ensemble_struct_all_passes(
             ensemble_struct['sig_A_y'][local_idx] = _convert_to_half_precision(pass_result.sig_A_y)
         if pass_result.sig_A_xy is not None:
             ensemble_struct['sig_A_xy'][local_idx] = _convert_to_half_precision(pass_result.sig_A_xy)
+
+        # Gaussian offset parameters (background levels)
+        if pass_result.c_A is not None:
+            ensemble_struct['c_A'][local_idx] = _convert_to_half_precision(pass_result.c_A)
+        if pass_result.c_B is not None:
+            ensemble_struct['c_B'][local_idx] = _convert_to_half_precision(pass_result.c_B)
+        if pass_result.c_AB is not None:
+            ensemble_struct['c_AB'][local_idx] = _convert_to_half_precision(pass_result.c_AB)
 
         # Window centers and size
         if pass_result.win_ctrs_x is not None:
