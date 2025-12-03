@@ -1,126 +1,280 @@
 """
 Pinhole (Planar) Calibration Views.
 
-Provides Flask endpoints for planar calibration and vector calibration
-using pinhole camera model.
+Clean API for planar calibration:
+- /calibration/planar/validate - Validate calibration images
+- /calibration/planar/frame/<idx> - Get single calibration frame
+- /calibration/planar/generate_model - Start calibration job for single camera
+- /calibration/planar/generate_model_all - Start calibration job for all cameras
+- /calibration/planar/job/<job_id> - Poll job status
+- /calibration/planar/model - Load saved camera model + detections
 """
 
-import base64
-import glob
-import os
 import threading
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
-import cv2
 import numpy as np
 import scipy.io
 from flask import Blueprint, jsonify, request
 from loguru import logger
 
 from pivtools_core.config import get_config
-from pivtools_core.image_handling.load_images import read_image
+from pivtools_core.image_handling.calibration_loader import (
+    read_calibration_image,
+    validate_calibration_images,
+)
+from pivtools_core.image_handling.path_utils import build_calibration_camera_path
 
-from ..calibration_planar.planar_calibration_production import PlanarCalibrator
-from ..vector_calibration_production import VectorCalibrator
-from ..services.job_manager import job_manager
-from ...utils import camera_number, numpy_to_png_base64
+from pivtools_gui.calibration.calibration_planar.planar_calibration_production import MultiViewCalibrator
+from pivtools_gui.calibration.services.job_manager import job_manager
+from pivtools_gui.utils import camera_number, numpy_to_png_base64
 
 pinhole_bp = Blueprint("pinhole", __name__)
 
 
 # ============================================================================
-# VECTOR CALIBRATION ROUTES (using pinhole camera model)
+# ROUTE 1: Validate Calibration Images
 # ============================================================================
 
 
-@pinhole_bp.route("/calibration/vectors/calibrate_all", methods=["POST"])
-def vectors_calibrate_all():
+@pinhole_bp.route("/calibration/planar/validate", methods=["POST"])
+def planar_validate():
     """
-    Start vector calibration job using production methods.
+    Validate calibration images exist and are readable.
 
     Request JSON:
         source_path_idx: int
         camera: int
-        model_index: int - Index of camera model to use
-        dt: float - Time between frames
-        image_count: int
-        vector_pattern: str - Pattern for vector files (default: "%05d.mat")
-        type_name: str - Type of data (default: "instantaneous")
+
+    Reads image_format, num_images, subfolder from config.
 
     Returns:
-        JSON with job_id, status, model_used, image_count
+        JSON with valid, found_count, sample_files, first_image_preview, etc.
     """
     data = request.get_json() or {}
     source_path_idx = int(data.get("source_path_idx", 0))
     camera = camera_number(data.get("camera", 1))
-    model_index = int(data.get("model_index", 0))
-    dt = float(data.get("dt", 1.0))
-    image_count = int(data.get("image_count", 1000))
-    vector_pattern = data.get("vector_pattern", "%05d.mat")
-    type_name = data.get("type_name", "instantaneous")
+
+    try:
+        cfg = get_config()
+
+        # Use centralized validation
+        result = validate_calibration_images(
+            camera=camera,
+            config=cfg,
+            source_path_idx=source_path_idx,
+        )
+
+        # Add extra fields
+        result["container_format"] = cfg.calibration_image_type in ("lavision_set", "lavision_im7", "cine")
+
+        return jsonify(result)
+
+    except Exception as e:
+        logger.error(f"Validation error: {e}")
+        return jsonify({
+            "valid": False,
+            "found_count": 0,
+            "error": str(e),
+        }), 500
+
+
+# ============================================================================
+# ROUTE 2: Get Single Calibration Frame
+# ============================================================================
+
+
+@pinhole_bp.route("/calibration/planar/frame/<int:idx>", methods=["GET"])
+def planar_frame(idx: int):
+    """
+    Get a single calibration frame (image only, no overlay).
+
+    Query params:
+        source_path_idx: int
+        camera: int
+
+    Returns:
+        JSON with image (base64), width, height, stats
+    """
+    source_path_idx = request.args.get("source_path_idx", default=0, type=int)
+    camera = camera_number(request.args.get("camera", default=1, type=int))
+
+    try:
+        cfg = get_config()
+
+        # Read image
+        img = read_calibration_image(idx, camera, cfg, source_path_idx)
+
+        if img is None:
+            return jsonify({"error": f"Could not read frame {idx}"}), 404
+
+        # Calculate stats
+        stats = {
+            "min": float(img.min()),
+            "max": float(img.max()),
+            "mean": float(img.mean()),
+            "vmin_pct": float(np.percentile(img, 1)),
+            "vmax_pct": float(np.percentile(img, 99)),
+        }
+
+        # Normalize to uint8 for display
+        vmin = np.percentile(img, 1)
+        vmax = np.percentile(img, 99)
+        if vmax > vmin:
+            disp = ((img - vmin) / (vmax - vmin) * 255).clip(0, 255).astype(np.uint8)
+        else:
+            disp = np.zeros_like(img, dtype=np.uint8)
+
+        # Encode to base64
+        b64 = numpy_to_png_base64(disp)
+
+        return jsonify({
+            "image": b64,
+            "width": int(img.shape[1]),
+            "height": int(img.shape[0]),
+            "stats": stats,
+            "frame_idx": idx,
+        })
+
+    except FileNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        logger.error(f"Error reading frame {idx}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# ============================================================================
+# ROUTE 3: Generate Camera Model (Start Job)
+# ============================================================================
+
+
+@pinhole_bp.route("/calibration/planar/generate_model", methods=["POST"])
+def planar_generate_model():
+    """
+    Start camera model generation job.
+
+    Request JSON:
+        source_path_idx: int
+        camera: int
+
+    All calibration parameters are read from config.yaml.
+    Uses MultiViewCalibrator.process_single_camera() for the actual calibration.
+
+    Returns:
+        JSON with job_id, status
+    """
+    data = request.get_json() or {}
+    source_path_idx = int(data.get("source_path_idx", 0))
+    camera = camera_number(data.get("camera", 1))
 
     # Create job
     job_id = job_manager.create_job(
-        "vector",
-        processed_frames=0,
-        successful_frames=0,
-        total_frames=image_count,
+        "planar",
+        processed_images=0,
+        valid_images=0,
+        total_images=0,
+        camera=camera,
     )
 
-    def run_vector_calibration():
+    def run_calibration():
         try:
             job_manager.update_job(job_id, status="running")
 
+            # Get config and parameters
             cfg = get_config()
+            pinhole_cfg = cfg.data.get("calibration", {}).get("pinhole", {})
+
+            # Get paths
             base_root = Path(cfg.base_paths[source_path_idx])
+            subfolder = cfg.calibration_subfolder
+
+            # Build source directory path
+            # For calibration images, the source is typically base_path/Cam{N}/subfolder
+            source_dir = build_calibration_camera_path(cfg, source_path_idx, camera, subfolder)
+
+            # Debug logging
+            logger.info(f"[DEBUG] base_root: {base_root}")
+            logger.info(f"[DEBUG] subfolder from config: '{subfolder}'")
+            logger.info(f"[DEBUG] source_dir (from build_calibration_camera_path): {source_dir}")
+            logger.info(f"[DEBUG] source_dir exists: {source_dir.exists()}")
+            logger.info(f"[DEBUG] calibration_image_format: {cfg.calibration_image_format}")
+            logger.info(f"[DEBUG] use_camera_subfolders: {cfg.calibration_use_camera_subfolders}")
+            if source_dir.exists():
+                files = list(source_dir.iterdir())[:10]
+                logger.info(f"[DEBUG] Files in source_dir: {[f.name for f in files]}")
+
+            # Create calibrator using the production class
+            calibrator = MultiViewCalibrator(
+                source_dir=str(source_dir),
+                base_dir=str(base_root),
+                camera_count=1,  # Processing single camera
+                file_pattern=cfg.calibration_image_format,
+                pattern_cols=pinhole_cfg.get("pattern_cols", 10),
+                pattern_rows=pinhole_cfg.get("pattern_rows", 10),
+                dot_spacing_mm=pinhole_cfg.get("dot_spacing_mm", 28.89),
+                asymmetric=pinhole_cfg.get("asymmetric", False),
+                enhance_dots=pinhole_cfg.get("enhance_dots", True),
+                calibration_subfolder="",  # Already included in source_dir
+            )
 
             def progress_callback(progress_data):
                 job_manager.update_job(
                     job_id,
+                    processed_images=progress_data.get("processed_images", 0),
+                    valid_images=progress_data.get("valid_images", 0),
+                    total_images=progress_data.get("total_images", 0),
                     progress=progress_data.get("progress", 0),
-                    processed_frames=progress_data.get("processed_frames", 0),
-                    successful_frames=progress_data.get("successful_frames", 0),
                 )
 
-            # Create calibrator
-            calibrator = VectorCalibrator(
-                base_dir=base_root,
-                camera_num=camera,
-                model_index=model_index,
-                dt=dt,
-                vector_pattern=vector_pattern,
-                type_name=type_name,
+            # Run calibration using the production class method
+            result = calibrator.process_single_camera(
+                cam_num=camera,
+                progress_callback=progress_callback,
+                save_visualizations=False,  # Skip figure generation for GUI
             )
 
-            # Run calibration with progress callback
-            calibrator.process_run(image_count, progress_callback)
-
-            job_manager.complete_job(job_id)
+            if result.get("success"):
+                job_manager.complete_job(
+                    job_id,
+                    camera_matrix=result.get("camera_matrix"),
+                    dist_coeffs=result.get("dist_coeffs"),
+                    rms_error=result.get("rms_error"),
+                    num_images_used=result.get("num_images_used"),
+                    model_path=result.get("model_path"),
+                )
+                logger.info(f"Planar calibration completed for camera {camera}")
+            else:
+                job_manager.fail_job(job_id, result.get("error", "Calibration failed"))
 
         except Exception as e:
-            logger.error(f"Vector calibration job {job_id} failed: {e}")
+            logger.error(f"Planar calibration job {job_id} failed: {e}")
             job_manager.fail_job(job_id, str(e))
 
-    # Start job in background thread
-    thread = threading.Thread(target=run_vector_calibration)
+    thread = threading.Thread(target=run_calibration)
     thread.daemon = True
     thread.start()
 
-    return jsonify(
-        {
-            "job_id": job_id,
-            "status": "starting",
-            "message": f"Vector calibration job started for camera {camera}",
-            "model_used": f"index_{model_index}",
-            "image_count": image_count,
-        }
-    )
+    return jsonify({
+        "job_id": job_id,
+        "status": "starting",
+        "message": f"Camera model generation started for camera {camera}",
+    })
 
 
-@pinhole_bp.route("/calibration/vectors/status/<job_id>", methods=["GET"])
-def vectors_status(job_id):
-    """Get vector calibration job status."""
+# ============================================================================
+# ROUTE 4: Get Job Status
+# ============================================================================
+
+
+@pinhole_bp.route("/calibration/planar/job/<job_id>", methods=["GET"])
+def planar_job_status(job_id: str):
+    """
+    Get calibration job status.
+
+    Returns:
+        JSON with status, progress, processed_images, valid_images, total_images,
+        elapsed_time, estimated_remaining, error (if failed)
+    """
     job_data = job_manager.get_job_with_timing(job_id)
     if job_data is None:
         return jsonify({"error": "Job not found"}), 404
@@ -129,635 +283,49 @@ def vectors_status(job_id):
 
 
 # ============================================================================
-# PLANAR CALIBRATION ROUTES
+# ROUTE 5: Load Saved Model + Detections
 # ============================================================================
 
 
-def _find_calibration_images(cam_input_dir: Path, file_pattern: str) -> list:
+@pinhole_bp.route("/calibration/planar/model", methods=["GET"])
+def planar_load_model():
     """
-    Find calibration images matching the given pattern.
+    Load saved camera model and detection coordinates.
 
-    Args:
-        cam_input_dir: Directory containing calibration images
-        file_pattern: Pattern for filenames (supports %d or glob patterns)
+    Query params:
+        source_path_idx: int
+        camera: int
 
     Returns:
-        List of absolute file paths
+        JSON with exists, camera_model, detections (per-frame), summary
     """
-    if "%" in file_pattern:
-        # Handle numbered patterns like calib%05d.tif
-        image_files = []
-        i = 1
-        while True:
-            filename = file_pattern % i
-            filepath = cam_input_dir / filename
-            if filepath.exists():
-                image_files.append(str(filepath))
-                i += 1
-            else:
-                break
-    else:
-        # Handle glob patterns like planar_calibration_plate_*.tif
-        image_files = sorted(glob.glob(str(cam_input_dir / file_pattern)))
-
-    return image_files
-
-
-@pinhole_bp.route("/calibration/planar/get_image", methods=["GET"])
-def planar_get_image():
-    """Get calibration image for production planar calibration."""
     source_path_idx = request.args.get("source_path_idx", default=0, type=int)
     camera = camera_number(request.args.get("camera", default=1, type=int))
-    image_index = request.args.get("image_index", default=0, type=int)
-    file_pattern = request.args.get("file_pattern", default="calib%05d.tif")
 
     try:
         cfg = get_config()
-        source_root = Path(cfg.source_paths[source_path_idx])
-        cam_input_dir = source_root / "calibration" / f"Cam{camera}"
-
-        logger.info(f"Looking for images in: {cam_input_dir}")
-
-        if not cam_input_dir.exists():
-            return (
-                jsonify({"error": f"Camera directory not found: {cam_input_dir}"}),
-                404,
-            )
-
-        image_files = _find_calibration_images(cam_input_dir, file_pattern)
-
-        if not image_files:
-            return (
-                jsonify({"error": f"No images found with pattern {file_pattern}"}),
-                404,
-            )
-
-        if image_index >= len(image_files):
-            return (
-                jsonify(
-                    {
-                        "error": f"Image index {image_index} out of range (0-{len(image_files)-1})"
-                    }
-                ),
-                404,
-            )
-
-        img_path = image_files[image_index]
-        img = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
-        if img is None:
-            return jsonify({"error": f"Could not load image: {img_path}"}), 500
-
-        # Convert to grayscale if needed and normalize for display
-        if img.ndim == 3:
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        else:
-            gray = img.copy()
-
-        # Normalize to 0-255 uint8 for display
-        disp = gray - gray.min()
-        if disp.max() > 0:
-            disp = disp / disp.max()
-        disp8 = (disp * 255).astype(np.uint8)
-
-        b64 = numpy_to_png_base64(disp8)
-
-        return jsonify(
-            {
-                "image": b64,
-                "width": int(gray.shape[1]),
-                "height": int(gray.shape[0]),
-                "path": str(img_path),
-                "filename": Path(img_path).name,
-                "total_images": len(image_files),
-                "current_index": image_index,
-                "all_filenames": [Path(f).name for f in image_files],
-            }
-        )
-
-    except Exception as e:
-        logger.error(f"Error getting planar calibration image: {e}")
-        return jsonify({"error": str(e)}), 500
-
-
-@pinhole_bp.route("/calibration/planar/validate_images", methods=["POST"])
-def planar_validate_images():
-    """
-    Validate calibration images exist and are readable.
-
-    Supports both standard image formats and container formats (.set, .im7).
-    """
-    data = request.get_json() or {}
-    source_path_idx = int(data.get("source_path_idx", 0))
-    camera = camera_number(data.get("camera", 1))
-    file_pattern = data.get("file_pattern", "calib%05d.tif")
-
-    try:
-        cfg = get_config()
-        source_root = Path(cfg.source_paths[source_path_idx])
-
-        # Detect container format
-        is_container = (
-            ".set" in file_pattern.lower() or ".im7" in file_pattern.lower()
-        )
-
-        # Setup paths based on format
-        if is_container:
-            cam_input_dir = source_root / "calibration"
-            container_file = cam_input_dir / file_pattern
-        else:
-            cam_input_dir = source_root / "calibration" / f"Cam{camera}"
-
-        if not cam_input_dir.exists():
-            return jsonify(
-                {
-                    "valid": False,
-                    "checked": True,
-                    "found_count": 0,
-                    "file_pattern": file_pattern,
-                    "camera_path": str(cam_input_dir),
-                    "sample_files": [],
-                    "first_image_preview": None,
-                    "image_size": None,
-                    "format_detected": None,
-                    "container_format": is_container,
-                    "error": f"Calibration directory not found: {cam_input_dir}",
-                }
-            )
-
-        # Find calibration images
-        image_files = []
-        sample_files = []
-
-        if is_container:
-            if container_file.exists():
-                image_files = [str(container_file)]
-                sample_files = [container_file.name]
-            else:
-                return jsonify(
-                    {
-                        "valid": False,
-                        "checked": True,
-                        "found_count": 0,
-                        "file_pattern": file_pattern,
-                        "camera_path": str(cam_input_dir),
-                        "sample_files": [],
-                        "first_image_preview": None,
-                        "image_size": None,
-                        "format_detected": Path(file_pattern).suffix.lstrip("."),
-                        "container_format": True,
-                        "error": f"Container file not found: {container_file}",
-                    }
-                )
-        else:
-            image_files = _find_calibration_images(cam_input_dir, file_pattern)
-            sample_files = [Path(f).name for f in image_files[:5]]
-
-        if not image_files:
-            # Try to suggest a pattern based on files that exist
-            suggested_pattern = None
-            found_files = []
-            error_msg = f"No images found matching pattern: {file_pattern}"
-
-            if cam_input_dir.exists():
-                all_files = []
-                for ext in ["*.tif", "*.tiff", "*.png", "*.jpg", "*.jpeg", "*.bmp"]:
-                    all_files.extend([f.name for f in cam_input_dir.glob(ext)])
-                    all_files.extend([f.name for f in cam_input_dir.glob(ext.upper())])
-
-                if all_files:
-                    all_files = sorted(set(all_files))[:5]
-                    found_files = all_files
-
-                    import re
-
-                    sample = all_files[0]
-                    digit_match = re.search(r"(\d+)", sample)
-                    if digit_match:
-                        num_digits = len(digit_match.group(1))
-                        suggested_pattern = re.sub(
-                            r"\d+", f"%0{num_digits}d", sample, count=1
-                        )
-
-                    if suggested_pattern and suggested_pattern != file_pattern:
-                        error_msg += f". Found files like: {', '.join(all_files[:3])}"
-                        if len(all_files) > 3:
-                            error_msg += " (+more)"
-                        error_msg += f". Try pattern: {suggested_pattern}"
-
-            return jsonify(
-                {
-                    "valid": False,
-                    "checked": True,
-                    "found_count": 0,
-                    "file_pattern": file_pattern,
-                    "camera_path": str(cam_input_dir),
-                    "sample_files": found_files,
-                    "first_image_preview": None,
-                    "image_size": None,
-                    "format_detected": None,
-                    "container_format": is_container,
-                    "suggested_pattern": suggested_pattern,
-                    "error": error_msg,
-                }
-            )
-
-        # Try to read the first image for preview
-        preview_b64 = None
-        image_size = None
-        format_detected = None
-
-        try:
-            if is_container:
-                if ".set" in file_pattern.lower():
-                    img = read_image(str(container_file), camera_no=camera, im_no=1)
-                else:
-                    img = read_image(str(container_file), camera_no=camera)
-                format_detected = Path(file_pattern).suffix.lstrip(".")
-            else:
-                img = read_image(image_files[0])
-                format_detected = Path(image_files[0]).suffix.lstrip(".")
-
-            if img is not None:
-                if img.ndim == 3:
-                    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                else:
-                    gray = img.copy()
-
-                image_size = [int(gray.shape[1]), int(gray.shape[0])]
-
-                disp = gray.astype(float) - gray.min()
-                if disp.max() > 0:
-                    disp = disp / disp.max()
-                disp8 = (disp * 255).astype(np.uint8)
-
-                preview_b64 = numpy_to_png_base64(disp8)
-
-        except Exception as e:
-            logger.warning(f"Could not read first image for preview: {e}")
-            return jsonify(
-                {
-                    "valid": False,
-                    "checked": True,
-                    "found_count": len(image_files) if not is_container else 1,
-                    "file_pattern": file_pattern,
-                    "camera_path": str(cam_input_dir),
-                    "sample_files": sample_files,
-                    "first_image_preview": None,
-                    "image_size": None,
-                    "format_detected": format_detected,
-                    "container_format": is_container,
-                    "error": f"Images found but could not be read: {str(e)}",
-                }
-            )
-
-        return jsonify(
-            {
-                "valid": True,
-                "checked": True,
-                "found_count": len(image_files) if not is_container else "container",
-                "file_pattern": file_pattern,
-                "camera_path": str(cam_input_dir),
-                "sample_files": sample_files,
-                "first_image_preview": preview_b64,
-                "image_size": image_size,
-                "format_detected": format_detected,
-                "container_format": is_container,
-                "error": None,
-            }
-        )
-
-    except Exception as e:
-        logger.error(f"Error validating planar calibration images: {e}")
-        return jsonify(
-            {
-                "valid": False,
-                "checked": True,
-                "found_count": 0,
-                "file_pattern": file_pattern,
-                "camera_path": None,
-                "sample_files": [],
-                "first_image_preview": None,
-                "image_size": None,
-                "format_detected": None,
-                "container_format": False,
-                "error": str(e),
-            }
-        ), 500
-
-
-@pinhole_bp.route("/calibration/planar/detect_grid", methods=["POST"])
-def planar_detect_grid():
-    """Detect grid in calibration image using production methods."""
-    data = request.get_json() or {}
-    source_path_idx = int(data.get("source_path_idx", 0))
-    camera = camera_number(data.get("camera", 1))
-    image_index = int(data.get("image_index", 0))
-    file_pattern = data.get("file_pattern", "calib%05d.tif")
-    pattern_cols = int(data.get("pattern_cols", 10))
-    pattern_rows = int(data.get("pattern_rows", 10))
-    enhance_dots = bool(data.get("enhance_dots", True))
-    asymmetric = bool(data.get("asymmetric", False))
-
-    try:
-        cfg = get_config()
-        source_root = Path(cfg.source_paths[source_path_idx])
         base_root = Path(cfg.base_paths[source_path_idx])
+        cam_output_base = base_root / "calibration" / f"Cam{camera}" / "pinhole_planar"
 
-        calibrator = PlanarCalibrator(
-            source_dir=source_root,
-            base_dir=base_root,
-            camera_count=1,
-            file_pattern=file_pattern,
-            pattern_cols=pattern_cols,
-            pattern_rows=pattern_rows,
-            asymmetric=asymmetric,
-            enhance_dots=enhance_dots,
-        )
-
-        cam_input_dir = source_root / "calibration" / f"Cam{camera}"
-        image_files = _find_calibration_images(cam_input_dir, file_pattern)
-
-        if image_index >= len(image_files):
-            return jsonify({"error": "Image index out of range"}), 404
-
-        img_path = image_files[image_index]
-        img = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
-
-        found, grid_points = calibrator.detect_grid_in_image(img)
-
-        if not found:
-            return jsonify({"error": "Grid not detected", "found": False})
-
-        return jsonify(
-            {
-                "found": True,
-                "grid_points": grid_points.tolist(),
-                "count": len(grid_points.tolist()),
-                "pattern_size": [pattern_cols, pattern_rows],
-            }
-        )
-
-    except Exception as e:
-        logger.error(f"Error detecting grid: {e}")
-        return jsonify({"error": str(e)}), 500
-
-
-@pinhole_bp.route("/calibration/planar/compute", methods=["POST"])
-def planar_compute():
-    """Compute full planar calibration using production methods."""
-    data = request.get_json() or {}
-    source_path_idx = int(data.get("source_path_idx", 0))
-    camera = camera_number(data.get("camera", 1))
-    image_index = int(data.get("image_index", 0))
-    file_pattern = data.get("file_pattern", "calib%05d.tif")
-    pattern_cols = int(data.get("pattern_cols", 10))
-    pattern_rows = int(data.get("pattern_rows", 10))
-    dot_spacing_mm = float(data.get("dot_spacing_mm", 28.89))
-    enhance_dots = bool(data.get("enhance_dots", True))
-    asymmetric = bool(data.get("asymmetric", False))
-    dt = float(data.get("dt", 1.0))
-
-    try:
-        cfg = get_config()
-        source_root = Path(cfg.source_paths[source_path_idx])
-        base_root = Path(cfg.base_paths[source_path_idx])
-        cam_output_base = base_root / "calibration" / f"Cam{camera}"
-
-        cam_input_dir = source_root / "calibration" / f"Cam{camera}"
-        image_files = _find_calibration_images(cam_input_dir, file_pattern)
-
-        if image_index >= len(image_files):
-            return (
-                jsonify(
-                    {
-                        "error": f"Image index {image_index} out of range (0-{len(image_files)-1})"
-                    }
-                ),
-                404,
-            )
-
-        img_path = image_files[image_index]
-
-        # Create calibrator instance
-        calibrator = PlanarCalibrator(
-            source_dir=source_root,
-            base_dir=base_root,
-            camera_count=1,
-            file_pattern=file_pattern,
-            pattern_cols=pattern_cols,
-            pattern_rows=pattern_rows,
-            dot_spacing_mm=dot_spacing_mm,
-            asymmetric=asymmetric,
-            enhance_dots=enhance_dots,
-            dt=dt,
-            selected_image_idx=image_index + 1,
-        )
-
-        # Run calibration for this camera and image
-        calibrator.process_camera(camera)
-
-        # Load results
+        model_file = cam_output_base / "model" / "pinhole_model.mat"
         indices_folder = cam_output_base / "indices"
-        model_folder = cam_output_base / "model"
-        dewarp_folder = cam_output_base / "dewarp"
-        grid_file = indices_folder / f"indexing_{image_index+1}.mat"
-        model_file = model_folder / "camera_model.mat"
-        grid_png_file = indices_folder / f"indexes_{image_index+1}.png"
-        dewarped_file = dewarp_folder / f"dewarped_{image_index+1}.tif"
-        results = {}
 
-        # Load grid data
-        if grid_file.exists():
-            grid_data = scipy.io.loadmat(
-                grid_file, struct_as_record=False, squeeze_me=True
-            )
-            grid_points = grid_data["grid_points"]
-            pattern_size = grid_data["pattern_size"]
-            dot_spacing = float(grid_data["dot_spacing_mm"])
-            cols, rows = pattern_size
-
-            px_per_mm = None
-            if grid_points.shape[0] >= 2:
-                first_row = grid_points[:cols]
-                x_vals = first_row[:, 0]
-                px_per_mm = (
-                    (x_vals.max() - x_vals.min()) / (cols - 1) / dot_spacing
-                    if dot_spacing > 0
-                    else None
-                )
-
-            grid_data_dict = {
-                "grid_points": grid_points.tolist(),
-                "homography": grid_data["homography"].tolist(),
-                "reprojection_error": float(grid_data["reprojection_error"]),
-                "reprojection_error_x_mean": float(
-                    grid_data.get("reprojection_error_x_mean", 0)
-                ),
-                "reprojection_error_y_mean": float(
-                    grid_data.get("reprojection_error_y_mean", 0)
-                ),
-                "pattern_size": pattern_size.tolist(),
-                "dot_spacing_mm": dot_spacing,
-                "pixels_per_mm": px_per_mm,
-                "timestamp": str(grid_data.get("timestamp", "")),
-                "original_filename": str(grid_data.get("original_filename", "")),
-            }
-            results["grid_data"] = grid_data_dict
-
-        # Load grid PNG visualization
-        if grid_png_file.exists():
-            try:
-                with open(grid_png_file, "rb") as f:
-                    grid_png_b64 = base64.b64encode(f.read()).decode("utf-8")
-                if "grid_data" in results:
-                    results["grid_data"]["grid_png"] = grid_png_b64
-                else:
-                    results["grid_png"] = grid_png_b64
-            except Exception as e:
-                logger.error(f"Error loading grid PNG: {e}")
-
-        # Load camera model
-        if model_file.exists():
-            model_data = scipy.io.loadmat(
-                model_file, struct_as_record=False, squeeze_me=True
-            )
-            results["camera_model"] = {
-                "camera_matrix": model_data["camera_matrix"].tolist(),
-                "dist_coeffs": model_data["dist_coeffs"].tolist(),
-                "reprojection_error": float(model_data["reprojection_error"]),
-                "reprojection_error_x_mean": float(
-                    model_data.get("reprojection_error_x_mean", 0)
-                ),
-                "reprojection_error_y_mean": float(
-                    model_data.get("reprojection_error_y_mean", 0)
-                ),
-                "focal_length": [
-                    float(model_data["camera_matrix"][0, 0]),
-                    float(model_data["camera_matrix"][1, 1]),
-                ],
-                "principal_point": [
-                    float(model_data["camera_matrix"][0, 2]),
-                    float(model_data["camera_matrix"][1, 2]),
-                ],
-                "timestamp": str(model_data.get("timestamp", "")),
-            }
-
-        # Load dewarped image
-        if dewarped_file.exists():
-            dewarped_img = cv2.imread(str(dewarped_file), cv2.IMREAD_UNCHANGED)
-            if dewarped_img is not None:
-                if dewarped_img.ndim == 3:
-                    dewarped_gray = cv2.cvtColor(dewarped_img, cv2.COLOR_BGR2GRAY)
-                else:
-                    dewarped_gray = dewarped_img.copy()
-                disp = dewarped_gray - dewarped_gray.min()
-                if disp.max() > 0:
-                    disp = disp / disp.max()
-                disp8 = (disp * 255).astype(np.uint8)
-                results["dewarped_image"] = numpy_to_png_base64(disp8)
-                results["dewarped_size"] = [
-                    int(dewarped_gray.shape[1]),
-                    int(dewarped_gray.shape[0]),
-                ]
-
-        return jsonify(
-            {
-                "status": "success",
-                "results": results,
-                "processed_file": Path(img_path).name,
-                "image_index": image_index,
-                "output_files": {
-                    "grid": str(grid_file),
-                    "model": str(model_file),
-                    "grid_png": str(grid_png_file),
-                    "dewarped": str(dewarped_file),
-                },
-            }
-        )
-
-    except Exception as e:
-        logger.error(f"Error computing planar calibration: {e}")
-        return jsonify({"error": str(e)}), 500
-
-
-@pinhole_bp.route("/calibration/planar/load_results", methods=["GET"])
-def planar_load_results():
-    """Load previously computed planar calibration results."""
-    source_path_idx = request.args.get("source_path_idx", default=0, type=int)
-    camera = camera_number(request.args.get("camera", default=1, type=int))
-    image_index = request.args.get("image_index", default=0, type=int)
-
-    try:
-        cfg = get_config()
-        base_root = Path(cfg.base_paths[source_path_idx])
-        cam_output_base = base_root / "calibration" / f"Cam{camera}"
-
-        grid_file = cam_output_base / "grid" / f"indexing_{image_index}.mat"
-        model_file = cam_output_base / "models" / f"{image_index}.mat"
-
-        if not grid_file.exists() or not model_file.exists():
-            return jsonify({"exists": False, "message": "No saved results found"})
-
-        results = {}
-
-        # Load grid data
-        grid_data = scipy.io.loadmat(grid_file, struct_as_record=False, squeeze_me=True)
-        grid_points = grid_data["grid_points"]
-        pattern_size = grid_data["pattern_size"]
-        dot_spacing_mm = float(grid_data["dot_spacing_mm"])
-        cols, rows = pattern_size
-
-        px_per_mm = None
-        if grid_points.shape[0] >= 2:
-            first_row = grid_points[:cols]
-            x_vals = first_row[:, 0]
-            px_per_mm = (
-                (x_vals.max() - x_vals.min()) / (cols - 1) / dot_spacing_mm
-                if dot_spacing_mm > 0
-                else None
-            )
-
-        results["grid_data"] = {
-            "grid_points": grid_points.tolist(),
-            "homography": grid_data["homography"].tolist(),
-            "reprojection_error": float(grid_data["reprojection_error"]),
-            "reprojection_error_x_mean": float(
-                grid_data.get("reprojection_error_x_mean", 0)
-            ),
-            "reprojection_error_y_mean": float(
-                grid_data.get("reprojection_error_y_mean", 0)
-            ),
-            "pattern_size": pattern_size.tolist(),
-            "dot_spacing_mm": dot_spacing_mm,
-            "pixels_per_mm": px_per_mm,
-            "timestamp": str(grid_data.get("timestamp", "")),
-            "original_filename": str(grid_data.get("original_filename", "")),
-        }
-
-        # Try to load grid PNG
-        grid_png_file = cam_output_base / "indices" / f"indexes_{image_index}.png"
-        if grid_png_file.exists():
-            try:
-                with open(grid_png_file, "rb") as f:
-                    grid_png_b64 = base64.b64encode(f.read()).decode("utf-8")
-                results["grid_data"]["grid_png"] = grid_png_b64
-            except Exception as e:
-                logger.warning(f"Could not load grid PNG: {e}")
+        # Check if model exists
+        if not model_file.exists():
+            return jsonify({
+                "exists": False,
+                "message": f"No saved camera model found for camera {camera}",
+            })
 
         # Load camera model
         model_data = scipy.io.loadmat(
-            model_file, struct_as_record=False, squeeze_me=True
+            str(model_file), struct_as_record=False, squeeze_me=True
         )
-        results["camera_model"] = {
+
+        camera_model = {
             "camera_matrix": model_data["camera_matrix"].tolist(),
-            "dist_coeffs": model_data["dist_coeffs"].tolist(),
-            "reprojection_error": float(model_data["reprojection_error"]),
-            "reprojection_error_x_mean": float(
-                model_data.get("reprojection_error_x_mean", 0)
-            ),
-            "reprojection_error_y_mean": float(
-                model_data.get("reprojection_error_y_mean", 0)
-            ),
+            "dist_coeffs": model_data["dist_coeffs"].flatten().tolist(),
+            "reprojection_error": float(model_data.get("reprojection_error", 0)),
             "focal_length": [
                 float(model_data["camera_matrix"][0, 0]),
                 float(model_data["camera_matrix"][1, 1]),
@@ -766,168 +334,179 @@ def planar_load_results():
                 float(model_data["camera_matrix"][0, 2]),
                 float(model_data["camera_matrix"][1, 2]),
             ],
+            "num_images_used": int(model_data.get("num_images_used", 0)),
         }
 
-        # Try to load dewarped image
-        dewarped_pattern = f"{grid_data.get('original_filename', 'unknown').split('.')[0]}_dewarped.tif"
-        dewarped_file = cam_output_base / "dewarped" / dewarped_pattern
+        # Load per-frame detections
+        detections = {}
+        if indices_folder.exists():
+            for idx_file in sorted(indices_folder.glob("indexing_*.mat")):
+                try:
+                    frame_num = int(idx_file.stem.split("_")[1])
+                    grid_data = scipy.io.loadmat(
+                        str(idx_file), struct_as_record=False, squeeze_me=True
+                    )
 
-        if dewarped_file.exists():
-            dewarped_img = cv2.imread(str(dewarped_file), cv2.IMREAD_UNCHANGED)
-            if dewarped_img is not None:
-                if dewarped_img.ndim == 3:
-                    dewarped_gray = cv2.cvtColor(dewarped_img, cv2.COLOR_BGR2GRAY)
-                else:
-                    dewarped_gray = dewarped_img.copy()
+                    detections[str(frame_num)] = {
+                        "grid_points": grid_data["grid_points"].tolist(),
+                    }
 
-                disp = dewarped_gray - dewarped_gray.min()
-                if disp.max() > 0:
-                    disp = disp / disp.max()
-                disp8 = (disp * 255).astype(np.uint8)
+                    if "reprojection_error" in grid_data:
+                        detections[str(frame_num)]["reprojection_error"] = float(
+                            grid_data["reprojection_error"]
+                        )
 
-                results["dewarped_image"] = numpy_to_png_base64(disp8)
-                results["dewarped_size"] = [
-                    int(dewarped_gray.shape[1]),
-                    int(dewarped_gray.shape[0]),
-                ]
+                except Exception as e:
+                    logger.warning(f"Could not load {idx_file}: {e}")
 
-        return jsonify({"exists": True, "results": results})
+        # Summary
+        summary = {
+            "total_frames": len(detections),
+            "frames_with_detections": len(detections),
+            "pattern_size": [
+                int(model_data.get("pattern_cols", 10)),
+                int(model_data.get("pattern_rows", 10)),
+            ],
+            "dot_spacing_mm": float(model_data.get("dot_spacing_mm", 28.89)),
+        }
+
+        return jsonify({
+            "exists": True,
+            "camera_model": camera_model,
+            "detections": detections,
+            "summary": summary,
+        })
 
     except Exception as e:
-        logger.error(f"Error loading planar calibration results: {e}")
+        logger.error(f"Error loading model: {e}")
         return jsonify({"error": str(e)}), 500
 
 
-def _process_single_image(
-    idx,
-    source_root,
-    base_root,
-    file_pattern,
-    pattern_cols,
-    pattern_rows,
-    dot_spacing_mm,
-    asymmetric,
-    enhance_dots,
-    dt,
-    camera,
-):
-    """Helper function for parallel processing of single calibration images."""
-    try:
-        calibrator = PlanarCalibrator(
-            source_dir=source_root,
-            base_dir=base_root,
-            camera_count=1,
-            file_pattern=file_pattern,
-            pattern_cols=pattern_cols,
-            pattern_rows=pattern_rows,
-            dot_spacing_mm=dot_spacing_mm,
-            asymmetric=asymmetric,
-            enhance_dots=enhance_dots,
-            dt=dt,
-            selected_image_idx=idx + 1,
-        )
-        calibrator.process_camera(camera)
-        return idx, True
-    except Exception as e:
-        logger.error(f"Error processing image {idx}: {e}")
-        return idx, False
+# ============================================================================
+# ROUTE 6: Generate Camera Model for All Cameras
+# ============================================================================
 
 
-@pinhole_bp.route("/calibration/planar/calibrate_all", methods=["POST"])
-def planar_calibrate_all():
-    """Start batch planar calibration job for all images for a camera."""
+@pinhole_bp.route("/calibration/planar/generate_model_all", methods=["POST"])
+def planar_generate_model_all():
+    """
+    Start camera model generation job for all configured cameras.
+
+    Request JSON:
+        source_path_idx: int
+
+    All calibration parameters are read from config.yaml.
+    Processes each camera in sequence using MultiViewCalibrator.process_single_camera().
+
+    Returns:
+        JSON with job_id, status, cameras list
+    """
     data = request.get_json() or {}
     source_path_idx = int(data.get("source_path_idx", 0))
-    camera = camera_number(data.get("camera", 1))
-    file_pattern = data.get("file_pattern", "calib%05d.tif")
-    pattern_cols = int(data.get("pattern_cols", 10))
-    pattern_rows = int(data.get("pattern_rows", 10))
-    dot_spacing_mm = float(data.get("dot_spacing_mm", 28.89))
-    enhance_dots = bool(data.get("enhance_dots", True))
-    asymmetric = bool(data.get("asymmetric", False))
-    dt = float(data.get("dt", 1.0))
 
-    job_id = job_manager.create_job(
-        "planar",
-        processed_indices=[],
-        total_images=0,
-    )
+    try:
+        cfg = get_config()
+        camera_numbers = cfg.camera_numbers
 
-    def run_planar_calibration():
-        try:
-            cfg = get_config()
-            source_root = Path(cfg.source_paths[source_path_idx])
-            base_root = Path(cfg.base_paths[source_path_idx])
-            cam_input_dir = source_root / "calibration" / f"Cam{camera}"
+        if not camera_numbers:
+            return jsonify({"error": "No cameras configured"}), 400
 
-            image_files = _find_calibration_images(cam_input_dir, file_pattern)
-            total_images = len(image_files)
+        # Create multi-camera job
+        job_id = job_manager.create_job(
+            "planar_all",
+            processed_cameras=0,
+            total_cameras=len(camera_numbers),
+            current_camera=None,
+            camera_results={},
+        )
 
-            job_manager.update_job(job_id, total_images=total_images, status="running")
+        def run_calibration():
+            try:
+                camera_results = {}
+                pinhole_cfg = cfg.data.get("calibration", {}).get("pinhole", {})
+                base_root = Path(cfg.base_paths[source_path_idx])
+                subfolder = cfg.calibration_subfolder
 
-            if total_images == 0:
-                job_manager.fail_job(job_id, "No calibration images found")
-                return
-
-            # Process all images in parallel
-            max_workers = min(os.cpu_count() or 4, total_images, 8)
-            with ProcessPoolExecutor(max_workers=max_workers) as executor:
-                futures = [
-                    executor.submit(
-                        _process_single_image,
-                        idx,
-                        source_root,
-                        base_root,
-                        file_pattern,
-                        pattern_cols,
-                        pattern_rows,
-                        dot_spacing_mm,
-                        asymmetric,
-                        enhance_dots,
-                        dt,
-                        camera,
-                    )
-                    for idx in range(total_images)
-                ]
-
-                processed_indices = []
-                for future in as_completed(futures):
-                    idx, success = future.result()
-                    processed_indices.append(idx)
-                    progress = int((len(processed_indices) / total_images) * 100)
+                for idx, camera in enumerate(camera_numbers):
+                    # Update job with current camera
                     job_manager.update_job(
                         job_id,
-                        processed_indices=processed_indices,
-                        progress=progress,
+                        status="running",
+                        current_camera=camera,
+                        processed_cameras=idx,
                     )
 
-            job_manager.complete_job(job_id)
+                    try:
+                        # Build source directory path
+                        source_dir = build_calibration_camera_path(
+                            cfg, source_path_idx, camera, subfolder
+                        )
 
-        except Exception as e:
-            logger.error(f"Planar calibration job {job_id} failed: {e}")
-            job_manager.fail_job(job_id, str(e))
+                        logger.info(f"Processing camera {camera} from {source_dir}")
 
-    thread = threading.Thread(target=run_planar_calibration)
-    thread.daemon = True
-    thread.start()
+                        # Create calibrator
+                        calibrator = MultiViewCalibrator(
+                            source_dir=str(source_dir),
+                            base_dir=str(base_root),
+                            camera_count=1,
+                            file_pattern=cfg.calibration_image_format,
+                            pattern_cols=pinhole_cfg.get("pattern_cols", 10),
+                            pattern_rows=pinhole_cfg.get("pattern_rows", 10),
+                            dot_spacing_mm=pinhole_cfg.get("dot_spacing_mm", 28.89),
+                            asymmetric=pinhole_cfg.get("asymmetric", False),
+                            enhance_dots=pinhole_cfg.get("enhance_dots", True),
+                            calibration_subfolder="",
+                        )
 
-    return jsonify(
-        {
+                        # Run calibration
+                        result = calibrator.process_single_camera(
+                            cam_num=camera,
+                            progress_callback=None,
+                            save_visualizations=False,
+                        )
+
+                        if result.get("success"):
+                            camera_results[camera] = {
+                                "status": "completed",
+                                "rms_error": result.get("rms_error"),
+                                "num_images_used": result.get("num_images_used"),
+                            }
+                            logger.info(f"Camera {camera} calibration completed")
+                        else:
+                            camera_results[camera] = {
+                                "status": "failed",
+                                "error": result.get("error", "Unknown error"),
+                            }
+
+                    except Exception as e:
+                        logger.error(f"Camera {camera} calibration failed: {e}")
+                        camera_results[camera] = {
+                            "status": "failed",
+                            "error": str(e),
+                        }
+
+                # Mark job complete
+                job_manager.complete_job(
+                    job_id,
+                    camera_results=camera_results,
+                    processed_cameras=len(camera_numbers),
+                )
+
+            except Exception as e:
+                logger.error(f"Multi-camera calibration job {job_id} failed: {e}")
+                job_manager.fail_job(job_id, str(e))
+
+        thread = threading.Thread(target=run_calibration)
+        thread.daemon = True
+        thread.start()
+
+        return jsonify({
             "job_id": job_id,
             "status": "starting",
-            "message": f"Planar calibration job started for camera {camera}",
-            "total_images": None,
-        }
-    )
+            "cameras": camera_numbers,
+            "message": f"Camera model generation started for {len(camera_numbers)} cameras",
+        })
 
-
-@pinhole_bp.route(
-    "/calibration/planar/calibrate_all/status/<job_id>", methods=["GET"]
-)
-def planar_calibrate_all_status(job_id):
-    """Get batch planar calibration job status."""
-    job_data = job_manager.get_job_with_timing(job_id)
-    if job_data is None:
-        return jsonify({"error": "Job not found"}), 404
-
-    return jsonify(job_data)
+    except Exception as e:
+        logger.error(f"Error starting multi-camera calibration: {e}")
+        return jsonify({"error": str(e)}), 500

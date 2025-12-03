@@ -14,9 +14,11 @@ Each sub-module uses the unified JobManager for background task tracking.
 
 from flask import Blueprint
 
-from .pinhole_views import pinhole_bp
-from .scale_factor_views import scale_factor_bp
-from .shared_views import calibration_shared_bp
+from pivtools_gui.calibration.app.pinhole_views import pinhole_bp
+from pivtools_gui.calibration.app.scale_factor_views import scale_factor_bp
+from pivtools_gui.calibration.app.shared_views import calibration_shared_bp
+from pivtools_gui.calibration.app.stereo_pinhole_views import stereo_pinhole_bp
+from pivtools_gui.calibration.app.stereo_charuco_views import stereo_charuco_bp
 
 # Main calibration blueprint that aggregates all sub-blueprints
 calibration_bp = Blueprint("calibration", __name__)
@@ -25,6 +27,8 @@ calibration_bp = Blueprint("calibration", __name__)
 # Note: Flask's nested blueprint registration uses register_blueprint
 calibration_bp.register_blueprint(scale_factor_bp)
 calibration_bp.register_blueprint(pinhole_bp)
+calibration_bp.register_blueprint(stereo_pinhole_bp)
+calibration_bp.register_blueprint(stereo_charuco_bp)
 calibration_bp.register_blueprint(calibration_shared_bp)
 
 # Try to import charuco views if available

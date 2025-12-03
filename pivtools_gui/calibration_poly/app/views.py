@@ -15,7 +15,7 @@ from loguru import logger
 
 from pivtools_core.config import get_config
 from pivtools_core.paths import get_data_paths
-from ...plotting.app.views import extract_coordinates
+from pivtools_core.coordinate_utils import extract_coordinates
 from ...utils import camera_number, numpy_to_png_base64
 from ..davis_polynomial_calibration import read_calibration_xml, PolynomialVectorCalibrator, convert_davis_coeffs_to_array
 
@@ -331,7 +331,7 @@ def calibration_poly_set_datum():
 
         run_idx = run - 1
 
-        # Use extract_coordinates from plotting.app.views
+        # Use extract_coordinates from pivtools_core.coordinate_utils
         cx, cy = extract_coordinates(coordinates, run)
 
         # Only apply datum shift if x/y are provided (not None)

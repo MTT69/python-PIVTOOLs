@@ -1,6 +1,7 @@
 import warnings
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Sequence, Tuple
+from typing import Any, List, Optional, Sequence, Tuple, Union
 
 import dask
 import dask.array as da
@@ -8,6 +9,278 @@ import numpy as np
 import scipy.io
 
 from pivtools_core.config import Config
+
+
+# =============================================================================
+# Run Validation API
+# =============================================================================
+
+
+@dataclass
+class RunValidationResult:
+    """Result of run validation."""
+
+    valid_runs: List[int]  # List of valid run indices (0-based by default)
+    total_runs: int  # Total number of runs in file
+    single_run: bool  # True if file has single run (not object array)
+
+
+def is_run_valid(
+    struct: Any,
+    fields: Sequence[str] = ("ux", "uy"),
+    require_2d: bool = True,
+    reject_all_nan: bool = True,
+) -> bool:
+    """
+    Check if a single piv_result/coordinates struct has valid data.
+
+    Args:
+        struct: A MATLAB struct object with field attributes
+        fields: Field names to check (default: ("ux", "uy") for vectors,
+                use ("x", "y") for coordinates)
+        require_2d: If True, require arrays to be 2-dimensional
+        reject_all_nan: If True, reject runs where all values are NaN
+
+    Returns:
+        True if all specified fields have valid data
+    """
+    for field in fields:
+        arr = getattr(struct, field, None)
+        if arr is None:
+            return False
+        arr = np.asarray(arr)
+
+        # Size check (always applied)
+        if arr.size == 0:
+            return False
+
+        # Dimension check (optional)
+        if require_2d and arr.ndim != 2:
+            return False
+
+        # NaN check (optional)
+        if reject_all_nan and np.all(np.isnan(arr)):
+            return False
+
+    return True
+
+
+def find_valid_runs(
+    file_path: Union[str, Path],
+    var_name: str = "piv_result",
+    fields: Sequence[str] = ("ux", "uy"),
+    require_2d: bool = True,
+    reject_all_nan: bool = True,
+    one_based: bool = False,
+) -> RunValidationResult:
+    """
+    Find all runs with valid data in a .mat file.
+
+    Args:
+        file_path: Path to .mat file
+        var_name: Variable name in mat file ("piv_result" or "coordinates")
+        fields: Field names to validate (default: ("ux", "uy"))
+        require_2d: If True, require arrays to be 2-dimensional
+        reject_all_nan: If True, reject runs where all values are NaN
+        one_based: If True, return 1-based indices; if False, 0-based
+
+    Returns:
+        RunValidationResult with valid_runs list, total_runs count, and single_run flag
+
+    Raises:
+        FileNotFoundError: If file does not exist
+        KeyError: If var_name not found in mat file
+    """
+    file_path = Path(file_path)
+    if not file_path.exists():
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    mat = scipy.io.loadmat(str(file_path), struct_as_record=False, squeeze_me=True)
+    if var_name not in mat:
+        raise KeyError(f"Variable '{var_name}' not found in {file_path}")
+
+    data = mat[var_name]
+    valid_runs: List[int] = []
+    offset = 1 if one_based else 0
+
+    # Check if multi-run (object array) or single-run
+    if isinstance(data, np.ndarray) and data.dtype == object:
+        # Multiple runs
+        total_runs = data.size
+        for run_idx in range(total_runs):
+            struct = data[run_idx]
+            if is_run_valid(struct, fields, require_2d, reject_all_nan):
+                valid_runs.append(run_idx + offset)
+        return RunValidationResult(
+            valid_runs=valid_runs, total_runs=total_runs, single_run=False
+        )
+    else:
+        # Single run
+        if is_run_valid(data, fields, require_2d, reject_all_nan):
+            valid_runs.append(offset)  # 0 for 0-based, 1 for 1-based
+        return RunValidationResult(
+            valid_runs=valid_runs, total_runs=1, single_run=True
+        )
+
+
+def get_first_valid_run(
+    file_path: Union[str, Path],
+    var_name: str = "piv_result",
+    fields: Sequence[str] = ("ux", "uy"),
+    require_2d: bool = True,
+    reject_all_nan: bool = True,
+    one_based: bool = False,
+) -> Optional[int]:
+    """
+    Return first valid run index, or None if no valid runs.
+
+    Args:
+        Same as find_valid_runs()
+
+    Returns:
+        First valid run index, or None if no valid runs
+    """
+    result = find_valid_runs(
+        file_path, var_name, fields, require_2d, reject_all_nan, one_based
+    )
+    return result.valid_runs[0] if result.valid_runs else None
+
+
+def get_highest_valid_run(
+    file_path: Union[str, Path],
+    var_name: str = "piv_result",
+    fields: Sequence[str] = ("ux", "uy"),
+    require_2d: bool = True,
+    reject_all_nan: bool = True,
+    one_based: bool = False,
+) -> Optional[int]:
+    """
+    Return highest valid run index, or None if no valid runs.
+
+    Args:
+        Same as find_valid_runs()
+
+    Returns:
+        Highest valid run index, or None if no valid runs
+    """
+    result = find_valid_runs(
+        file_path, var_name, fields, require_2d, reject_all_nan, one_based
+    )
+    return result.valid_runs[-1] if result.valid_runs else None
+
+
+def find_valid_piv_runs(
+    file_path: Union[str, Path], one_based: bool = False
+) -> RunValidationResult:
+    """
+    Find valid runs in a piv_result file (checks ux, uy).
+
+    Args:
+        file_path: Path to .mat file containing piv_result
+        one_based: If True, return 1-based indices; if False, 0-based
+
+    Returns:
+        RunValidationResult with valid_runs list, total_runs count, and single_run flag
+    """
+    return find_valid_runs(
+        file_path, var_name="piv_result", fields=("ux", "uy"), one_based=one_based
+    )
+
+
+def find_valid_coord_runs(
+    file_path: Union[str, Path], one_based: bool = False
+) -> RunValidationResult:
+    """
+    Find valid runs in a coordinates file (checks x, y).
+
+    Args:
+        file_path: Path to .mat file containing coordinates
+        one_based: If True, return 1-based indices; if False, 0-based
+
+    Returns:
+        RunValidationResult with valid_runs list, total_runs count, and single_run flag
+    """
+    return find_valid_runs(
+        file_path,
+        var_name="coordinates",
+        fields=("x", "y"),
+        require_2d=False,  # Coordinates may be 1D or 2D
+        one_based=one_based,
+    )
+
+
+def find_non_empty_run(
+    piv_result: Any,
+    var: str,
+    run: int = 1,
+    require_2d: bool = False,
+    reject_all_nan: bool = True,
+) -> Tuple[Optional[Any], int]:
+    """
+    Find a non-empty run in piv_result for a specified variable.
+
+    Searches starting from the given run index, returning the first run that
+    has valid (non-empty, optionally non-NaN) data for the specified variable.
+
+    This is a higher-level helper that wraps is_run_valid() for the common
+    pattern of finding valid data starting from a specific run.
+
+    Args:
+        piv_result: piv_result array (may be multi-run object array or single struct)
+        var: Variable name to check (e.g., "ux", "uy", "uz")
+        run: 1-based run number to start searching from (default: 1)
+        require_2d: If True, require arrays to be 2-dimensional
+        reject_all_nan: If True, reject runs where all values are NaN
+
+    Returns:
+        Tuple of (piv_result_element, run_number) where:
+        - piv_result_element: The valid piv_result struct, or None if not found
+        - run_number: The 1-based run number of the valid data
+
+    Raises:
+        ValueError: If run != 1 for single-run data and run is out of range
+
+    Example:
+        >>> mat = loadmat("B00001.mat", struct_as_record=False, squeeze_me=True)
+        >>> piv_result = mat["piv_result"]
+        >>> pr, run = find_non_empty_run(piv_result, "ux", run=1)
+        >>> if pr is not None:
+        ...     ux = np.asarray(pr.ux)
+    """
+    pr = None
+
+    if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
+        # Multi-run case
+        max_runs = piv_result.size
+        current_run = run
+        while current_run <= max_runs:
+            pr_candidate = piv_result[current_run - 1]
+            if is_run_valid(
+                pr_candidate,
+                fields=(var,),
+                require_2d=require_2d,
+                reject_all_nan=reject_all_nan,
+            ):
+                pr = pr_candidate
+                run = current_run
+                break
+            current_run += 1
+    else:
+        # Single-run case
+        if run != 1:
+            raise ValueError("piv_result contains a single run; use run=1")
+        if is_run_valid(
+            piv_result,
+            fields=(var,),
+            require_2d=require_2d,
+            reject_all_nan=reject_all_nan,
+        ):
+            pr = piv_result
+            run = 1
+        else:
+            pr = None
+
+    return pr, run
 
 
 def read_mat_contents(
@@ -59,14 +332,13 @@ def read_mat_contents(
                     out[i] = r
                 return out
 
-        # Single run selection (existing logic)
+        # Single run selection
         if run_index is None:
-            # Find first valid run (non-empty ux, uy)
+            # Find first valid run using unified validation
             for idx in range(total_runs):
                 pr = piv_result[idx]
-                ux = np.asarray(pr.ux)
-                uy = np.asarray(pr.uy)
-                if ux.size > 0 and uy.size > 0:
+                # Use lenient validation here (no ndim/NaN check) for backward compatibility
+                if is_run_valid(pr, fields=("ux", "uy"), require_2d=False, reject_all_nan=False):
                     run_index = idx
                     break
             else:

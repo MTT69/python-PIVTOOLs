@@ -21,13 +21,13 @@ from pivtools_gui.calibration.app.views import calibration_bp
 from pivtools_gui.calibration_poly.app.views import calibration_poly_bp
 from pivtools_core.config import get_config, reload_config
 from pivtools_core.image_handling.load_images import read_pair
+from pivtools_core.image_handling.path_utils import build_piv_camera_path, validate_images_generic
 from pivtools_gui.masking.app.views import masking_bp
 from pivtools_core.paths import get_data_paths
 from pivtools_gui.piv_runner import get_runner
-from pivtools_gui.plotting.app.views import vector_plot_bp
-from pivtools_gui.post_processing.POD.app.views import POD_bp
+from pivtools_gui.plotting.app.plotting_views import vector_plot_bp
 from pivtools_cli.preprocessing.preprocess import preprocess_images, apply_filters_to_batch
-from pivtools_gui.stereo_reconstruction.app.views import stereo_bp
+# from pivtools_gui.stereo_reconstruction.app.views import stereo_bp
 from pivtools_gui.utils import camera_folder, camera_number, numpy_to_png_base64, numpy_to_base64
 from pivtools_gui.vector_statistics.app.views import statistics_bp
 from pivtools_gui.vector_merging.app.views import merging_bp
@@ -43,11 +43,10 @@ api_bp = Blueprint('api', __name__, url_prefix='/backend')
 # Register existing blueprints with /backend prefix
 app.register_blueprint(vector_plot_bp, url_prefix='/backend/plot')
 app.register_blueprint(masking_bp, url_prefix='/backend')
-app.register_blueprint(POD_bp, url_prefix='/backend')
 app.register_blueprint(calibration_bp, url_prefix='/backend')
 app.register_blueprint(calibration_poly_bp, url_prefix='/backend')
 app.register_blueprint(video_maker_bp, url_prefix='/backend/video')
-app.register_blueprint(stereo_bp, url_prefix='/backend')
+# app.register_blueprint(stereo_bp, url_prefix='/backend')
 app.register_blueprint(statistics_bp, url_prefix='/backend')
 app.register_blueprint(merging_bp, url_prefix='/backend')
 
@@ -701,6 +700,10 @@ def validate_files():
     """
     Smart validation: Check first frame, last frame, and count files.
 
+    Uses the generic validate_images_generic() for core file detection,
+    with PIV-specific additions for pair validation, color detection,
+    indexing warnings, and background preloading.
+
     Returns per-camera validation with:
     - first_frame: "exists" or "missing"
     - last_frame: "exists" or "missing"
@@ -709,6 +712,8 @@ def validate_files():
     - status: "ok", "warning", or "error"
     - color_detected: True if images are color (will be converted)
     """
+    import re as re_module
+
     data = request.get_json() or {}
     source_path_idx = data.get("source_path_idx", 0)
 
@@ -719,37 +724,36 @@ def validate_files():
 
     for camera_num in camera_numbers:
         try:
-            # Determine camera path based on image type
+            # Build camera path using shared utility
+            camera_path = build_piv_camera_path(cfg, source_path_idx, camera_num)
             format_str = cfg.image_format[0]
             image_type = cfg.image_type
-            if image_type in ("lavision_set", "lavision_im7", "cine"):
-                # Container formats: files are in source directory (no camera subfolders)
-                camera_path = cfg.source_paths[source_path_idx]
-            else:
-                # Standard formats: use camera subfolders
-                folder = cfg.get_camera_folder(camera_num)
-                camera_path = cfg.source_paths[source_path_idx] / folder if folder else cfg.source_paths[source_path_idx]
+            num_images = cfg.num_images
+            num_pairs = cfg.num_frame_pairs
 
-            # Check if path exists
-            if not camera_path.exists():
-                results[f"camera_{camera_num}"] = {
-                    "status": "error",
-                    "error": f"Camera path does not exist: {camera_path}"
-                }
-                overall_valid = False
-                continue
+            # Create a frame reader function for preview generation
+            def read_frame(idx: int):
+                pair = read_pair(idx, camera_path, camera_num, cfg)
+                return pair[0]  # Return first frame of pair for preview
 
-            # Determine frame indices
-            start_idx = 0 if cfg.zero_based_indexing else 1
-            num_images = cfg.num_images  # Number of image files
-            num_pairs = cfg.num_frame_pairs  # Number of frame pairs
-            end_idx = start_idx + num_images - 1
+            # Use generic validator for core file detection
+            validation = validate_images_generic(
+                camera_path=camera_path,
+                camera=camera_num,
+                image_format=format_str,
+                image_type=image_type,
+                expected_count=num_images,
+                zero_based_indexing=cfg.zero_based_indexing,
+                read_frame_fn=read_frame,
+            )
 
-            # Test first frame
+            # PIV-specific: Test first and last pairs (more thorough than generic)
             first_frame_status = "missing"
+            last_frame_status = "missing"
             color_detected = False
+
             try:
-                first_pair = read_pair(1, camera_path, camera_num, cfg)  # Always use 1 internally
+                first_pair = read_pair(1, camera_path, camera_num, cfg)
                 first_frame_status = "exists"
                 # Check if color (ndim > 2 means we got a color image before conversion)
                 if first_pair.ndim > 2 and first_pair.shape[-1] > 1:
@@ -757,111 +761,61 @@ def validate_files():
             except Exception as e:
                 logger.debug(f"First frame check failed for camera {camera_num}: {e}")
 
-            # Test last frame
-            last_frame_status = "missing"
             try:
-                read_pair(num_pairs, camera_path, camera_num, cfg)  # Read last pair
+                read_pair(num_pairs, camera_path, camera_num, cfg)
                 last_frame_status = "exists"
             except Exception as e:
                 logger.debug(f"Last frame check failed for camera {camera_num}: {e}")
 
-            # Count files in directory
-            actual_count = 0
-            expected_count = num_images  # Expected number of image files
-            matching_files = []
-
-            try:
-                image_type = cfg.image_type
-                if image_type == "lavision_set":
-                    # Set files: single file contains all cameras and time instances
-                    set_file = camera_path / format_str
-                    actual_count = 1 if set_file.exists() else 0
-                    expected_count = 1
-                    matching_files = [set_file] if set_file.exists() else []
-                elif image_type == "cine":
-                    # CINE files: one file per camera, all frames inside
-                    # Pattern uses %d for camera number (e.g., Camera%d.cine)
-                    cine_filename = format_str % camera_num
-                    cine_file = camera_path / cine_filename
-                    actual_count = 1 if cine_file.exists() else 0
-                    expected_count = 1  # One file per camera
-                    matching_files = [cine_file] if cine_file.exists() else []
-                elif image_type == "lavision_im7":
-                    # IM7 files: one file per time instance
-                    pattern = format_str.replace("%05d", "*").replace("%04d", "*").replace("%d", "*")
-                    matching_files = list(camera_path.glob(pattern))
-                    actual_count = len(matching_files)
-                else:
-                    # Standard files: count matching pattern(s)
-                    if len(cfg.image_format) == 2:
-                        # Non-time-resolved: count A files
-                        pattern_a = cfg.image_format[0].replace("%05d", "*").replace("%04d", "*").replace("%d", "*")
-                        matching_files = list(camera_path.glob(pattern_a))
-                        actual_count = len(matching_files)
-                    else:
-                        # Time-resolved: count all matching files
-                        pattern = format_str.replace("%05d", "*").replace("%04d", "*").replace("%d", "*")
-                        matching_files = list(camera_path.glob(pattern))
-                        actual_count = len(matching_files)
-            except Exception as e:
-                logger.error(f"Error counting files for camera {camera_num}: {e}")
-
-            # Check for indexing mismatch (only for standard formats with numbered files)
+            # PIV-specific: Check for indexing mismatch (only for standard formats)
             indexing_warning = None
-            if image_type == "standard":
+            if image_type == "standard" and validation["sample_files"]:
                 try:
-                    if matching_files:
-                        indices = []
-                        for f in matching_files:
-                            try:
-                                import re
-                                match = re.search(r'(\d+)', f.name)
-                                if match:
-                                    idx = int(match.group(1))
-                                    indices.append(idx)
-                            except Exception:
-                                pass
-                        if indices:
-                            min_idx = min(indices)
-                            expected_min = 0 if cfg.zero_based_indexing else 1
-                            if min_idx != expected_min:
-                                indexing_warning = (
-                                    f"File indexing mismatch: found files starting at {min_idx}, "
-                                    f"but zero_based_indexing is "
-                                    f"{'enabled' if cfg.zero_based_indexing else 'disabled'} "
-                                    f"(expects {expected_min})"
-                                )
+                    indices = []
+                    for fname in validation["sample_files"]:
+                        match = re_module.search(r'(\d+)', fname)
+                        if match:
+                            indices.append(int(match.group(1)))
+                    if indices:
+                        min_idx = min(indices)
+                        expected_min = 0 if cfg.zero_based_indexing else 1
+                        if min_idx != expected_min:
+                            indexing_warning = (
+                                f"File indexing mismatch: found files starting at {min_idx}, "
+                                f"but zero_based_indexing is "
+                                f"{'enabled' if cfg.zero_based_indexing else 'disabled'} "
+                                f"(expects {expected_min})"
+                            )
                 except Exception as e:
                     logger.debug(f"Indexing check failed: {e}")
 
-            # Determine status with strict validation
-            error_msg = None
+            # Determine status based on both generic validation and pair checks
+            actual_count = validation["found_count"]
+            if actual_count == "container":
+                actual_count = num_images  # For containers, assume expected count
 
+            error_msg = validation.get("error")
+            status = "ok" if validation["valid"] else "error"
+
+            # Override with PIV-specific pair validation
             if first_frame_status == "missing":
                 status = "error"
-                overall_valid = False
-                # Format error message based on image type (avoid string formatting errors)
+                start_idx = 0 if cfg.zero_based_indexing else 1
                 if image_type == "lavision_set":
                     error_msg = f"First frame not found. Container file: {format_str}"
                 elif image_type == "cine":
                     error_msg = f"First frame not found. CINE file: {format_str % camera_num}"
                 else:
                     error_msg = f"First frame not found. Looking for: {format_str % start_idx}"
-
-                # Help user: show what files ARE in the folder
-                if camera_path.exists() and camera_path.is_dir():
-                    all_files = sorted([f.name for f in camera_path.iterdir() if f.is_file()])[:10]
-                    if all_files:
-                        error_msg += f". Found {len(all_files)} files: {', '.join(all_files[:5])}"
-                        if len(all_files) > 5:
-                            error_msg += f" and {len(all_files) - 5} more..."
-                    else:
-                        error_msg += f". Folder is empty: {camera_path}"
+                # Append folder contents hint from generic validator
+                if validation.get("sample_files"):
+                    error_msg += f". Found files: {', '.join(validation['sample_files'][:5])}"
+                if validation.get("suggested_pattern"):
+                    error_msg += f". Try pattern: {validation['suggested_pattern']}"
 
             elif last_frame_status == "missing":
                 status = "error"
-                overall_valid = False
-                # Format error message based on image type (avoid string formatting errors)
+                end_idx = (0 if cfg.zero_based_indexing else 1) + num_images - 1
                 if image_type == "lavision_set":
                     error_msg = f"Last frame not found. Container file: {format_str}"
                 elif image_type == "cine":
@@ -869,58 +823,27 @@ def validate_files():
                 else:
                     error_msg = f"Last frame not found. Expected: {format_str % end_idx}"
 
-            elif actual_count < expected_count:
-                # ERROR: Not enough files (missing data)
-                status = "error"
+            elif isinstance(actual_count, int) and actual_count > num_images:
+                # More files than expected - user processing subset (this is fine!)
+                status = "ok"
+                error_msg = f"Processing subset: {num_images} of {actual_count} files available"
+
+            if status == "error":
                 overall_valid = False
-                error_msg = f"Missing files: found {actual_count} files, expected {expected_count}"
-
-                # Suggest what patterns the actual files match
-                if camera_path.exists() and camera_path.is_dir() and actual_count == 0:
-                    all_files = sorted([f.name for f in camera_path.iterdir() if f.is_file()])[:10]
-                    if all_files:
-                        # Try to detect pattern
-                        import re
-                        sample = all_files[0]
-                        # Look for common extensions
-                        ext = Path(sample).suffix
-                        suggested_pattern = None
-
-                        # Check if files have _A/_B suffix
-                        if "_A" in sample or "_B" in sample:
-                            base = re.sub(r'\d+', '%05d', sample.split('_')[0])
-                            if "_A" in sample:
-                                suggested_pattern = f"{base}_A{ext}"
-                            elif "_B" in sample:
-                                suggested_pattern = f"{base}_B{ext}"
-                        else:
-                            # Try to infer pattern from digits
-                            suggested_pattern = re.sub(r'\d+', '%05d', sample)
-
-                        error_msg += f". Found files: {', '.join(all_files[:3])}"
-                        if len(all_files) > 3:
-                            error_msg += f" (+{len(all_files) - 3} more)"
-                        if suggested_pattern:
-                            error_msg += f". Try pattern: {suggested_pattern}"
-
-            elif actual_count > expected_count:
-                # WARNING: More files than expected (user processing subset - this is fine!)
-                status = "ok"
-                error_msg = f"Processing subset: {expected_count} of {actual_count} files available"
-
-            else:
-                status = "ok"
 
             results[f"camera_{camera_num}"] = {
                 "first_frame": first_frame_status,
                 "last_frame": last_frame_status,
-                "expected_count": expected_count,
+                "expected_count": num_images,
                 "actual_count": actual_count,
                 "status": status,
                 "camera_path": str(camera_path),
                 "color_detected": color_detected,
                 "indexing_warning": indexing_warning,
-                "error": error_msg
+                "error": error_msg,
+                "first_image_preview": validation.get("first_image_preview"),
+                "image_size": validation.get("image_size"),
+                "suggested_pattern": validation.get("suggested_pattern"),
             }
 
         except Exception as e:
@@ -1069,32 +992,35 @@ def update_config():
 def run_piv():
     """
     Start a PIV computation job as a subprocess.
-    
+
     This spawns the PIV computation outside of Flask for full computational
     performance while keeping the server responsive.
-    
+
     Request body (optional):
     {
-        "cameras": [1, 2, 3],  // List of camera numbers to process (optional)
-        "source_path_idx": 0,   // Index of source path (optional, default 0)
-        "base_path_idx": 0      // Index of base path (optional, default 0)
+        "cameras": [1, 2, 3],    // List of camera numbers to process (optional)
+        "source_path_idx": 0,    // Index of source path (legacy, use active_paths)
+        "base_path_idx": 0,      // Index of base path (legacy, use active_paths)
+        "active_paths": [0, 1]   // List of path indices to process (optional)
     }
     """
     data = request.get_json() or {}
-    
+
     # Extract parameters
     cameras = data.get("cameras")
     source_path_idx = data.get("source_path_idx", 0)
     base_path_idx = data.get("base_path_idx", 0)
-    
+    active_paths = data.get("active_paths")  # List of path indices to process
+
     # Get the runner and start the job
     runner = get_runner()
     result = runner.start_piv_job(
         cameras=cameras,
         source_path_idx=source_path_idx,
         base_path_idx=base_path_idx,
+        active_paths=active_paths,
     )
-    
+
     return jsonify(result), 200 if result.get("status") == "started" else 500
 
 

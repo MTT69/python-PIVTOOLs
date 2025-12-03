@@ -1,5 +1,4 @@
 import os
-import shutil
 import subprocess
 import threading
 from datetime import datetime
@@ -10,6 +9,7 @@ from flask import Blueprint, jsonify, request, send_file
 from loguru import logger
 import numpy as np
 from scipy.io import loadmat
+import imageio_ffmpeg
 
 from pivtools_core.config import get_config
 from pivtools_core.paths import get_data_paths
@@ -23,7 +23,7 @@ MAX_DEPTH = 5  # For deep search
 
 
 def check_ffmpeg_installed() -> Dict[str, Any]:
-    """Check if ffmpeg is installed and return version info."""
+    """Check if ffmpeg is installed and return version info (uses bundled imageio-ffmpeg)."""
     result = {
         "installed": False,
         "version": None,
@@ -31,13 +31,13 @@ def check_ffmpeg_installed() -> Dict[str, Any]:
         "error": None,
     }
 
-    # Try to find ffmpeg
-    ffmpeg_path = shutil.which("ffmpeg")
-    if ffmpeg_path:
+    # Use bundled ffmpeg from imageio-ffmpeg (always available via pip install)
+    try:
+        ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
         result["path"] = ffmpeg_path
         try:
             proc = subprocess.run(
-                ["ffmpeg", "-version"],
+                [ffmpeg_path, "-version"],
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -51,8 +51,8 @@ def check_ffmpeg_installed() -> Dict[str, Any]:
             result["error"] = "ffmpeg check timed out"
         except Exception as e:
             result["error"] = str(e)
-    else:
-        result["error"] = "ffmpeg not found in PATH"
+    except Exception as e:
+        result["error"] = f"Failed to get bundled ffmpeg: {e}"
 
     return result
 

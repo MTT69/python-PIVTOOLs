@@ -70,6 +70,17 @@ def validate_config(config: Config) -> tuple[bool, str, list[str]]:
     errors = []
     warnings = []
 
+    # Check source_paths and base_paths have the same length for paired processing
+    if len(config.source_paths) != len(config.base_paths):
+        errors.append(
+            f"source_paths ({len(config.source_paths)}) and base_paths ({len(config.base_paths)}) "
+            "must have the same number of entries for paired processing"
+        )
+
+    # Check at least one active path
+    if not config.active_paths:
+        errors.append("No active paths configured. Set active_paths in config or check indices are valid.")
+
     # Check source paths exist
     for i, source_path in enumerate(config.source_paths):
         if not source_path.exists():
@@ -258,128 +269,154 @@ def main():
             logging.info("  nanny: %s", meta.get("nanny"))
 
         camera_numbers = config.camera_numbers
-        source_path = config.source_paths[0]
+        active_path_indices = config.active_paths
 
-        for camera_num in camera_numbers:
+        # Log multi-path processing info
+        logging.info("")
+        logging.info("=" * 80)
+        logging.info("MULTI-PATH PROCESSING")
+        logging.info(f"Processing {len(active_path_indices)} path combination(s): {active_path_indices}")
+        logging.info("=" * 80)
+
+        for path_set_num, path_idx in enumerate(active_path_indices, start=1):
             # Check if shutdown was requested
             if _shutdown_requested:
                 logging.info("Shutdown requested, stopping processing...")
                 break
 
-            logging.info("Processing camera: Cam%d", camera_num)
-
-            # Load images from source path (lazy loading - no memory consumption yet)
-            images = load_images(camera_num, config, source=source_path)
-
-            # Load mask once per camera (if masking is enabled)
-            mask = load_mask_for_camera(camera_num, config, source_path_idx=0)
-
-            # Pre-compute vector masks once per camera (if masking is enabled)
-            vector_masks = None
-            if config.masking_enabled and mask is not None:
-                logging.info("Pre-computing vector masks for Cam%d", camera_num)
-                vector_masks = compute_vector_mask(mask, config)
-                logging.info("Vector masks computed: %d passes", len(vector_masks))
-
-            # Determine processing mode
-            is_ensemble = config.data.get("processing", {}).get("ensemble", False)
-            mode = "ensemble" if is_ensemble else "instantaneous"
-
-            # Get output path based on mode
-            if is_ensemble:
-                output_path = get_ensemble_output_path(
-                    config,
-                    camera_num,
-                    use_uncalibrated=True
-                )
-            else:
-                output_path = get_output_path(
-                    config,
-                    camera_num,
-                    use_uncalibrated=True
-                )
-
-            # Log processing configuration
-            logging.info("=" * 80)
-            logging.info(f"UNIFIED BATCH PIPELINE: {mode.upper()} MODE")
-            logging.info("=" * 80)
-            logging.info(f"Image files: {config.num_images}")
-            logging.info(f"Frame pairs: {config.num_frame_pairs}")
-
-            if is_ensemble:
-                logging.info(f"Ensemble passes: {config.ensemble_num_passes}")
-                logging.info(f"Ensemble window sizes: {config.ensemble_window_sizes}")
-                logging.info(f"Ensemble types: {config.ensemble_type}")
-                logging.info(f"Runs to save: {config.ensemble_runs_0based}")
-            else:
-                logging.info(f"Runs to save: {config.instantaneous_runs_0based}")
-
-            if config.filters:
-                filter_names = [f.get('type') for f in config.filters]
-                logging.info(f"Filters: {filter_names}")
-
-            logging.info(f"Output path: {output_path}")
-            logging.info("=" * 80)
-
-            # Create unified pipeline
-            pipeline = UnifiedBatchPipeline(
-                client=client,
-                config=config,
-                mode=mode,
-            )
-
-            # Process with unified pipeline
-            # Pass both pixel_mask (for preprocessing) and vector_masks (for correlation validation)
-            logging.info(f"Starting {mode} PIV processing with unified batch pipeline...")
-            result = pipeline.process(
-                images,
-                output_path,
-                vector_masks=vector_masks,
-                pixel_mask=mask,  # Apply pixel mask during preprocessing
-            )
-
-            # Save coordinates
-            if is_ensemble:
-                # For ensemble, save coordinates from cached correlator
-                from pivtools_cli.piv.save_results import save_ensemble_coordinates_from_config_distributed
-                from pivtools_cli.piv.piv_backend.factory import make_correlator_backend
-
-                temp_correlator = make_correlator_backend(config, ensemble=True)
-                correlator_cache = temp_correlator.get_cache_data()
-
-                coords_path = save_ensemble_coordinates_from_config_distributed(
-                    config,
-                    output_path,
-                    correlator_cache=correlator_cache,
-                    runs_to_save=config.ensemble_runs_0based,
-                )
-                logging.info(f"Ensemble coordinates saved to {coords_path}")
-            else:
-                # For instantaneous, use scatter approach
-                from pivtools_cli.piv.piv_backend.factory import make_correlator_backend
-
-                temp_correlator = make_correlator_backend(config)
-                correlator_cache = temp_correlator.get_cache_data()
-                scattered_cache = client.scatter(correlator_cache, broadcast=True)
-
-                coords_future = client.submit(
-                    save_coordinates_from_config_distributed,
-                    config,
-                    output_path,
-                    scattered_cache,
-                    config.instantaneous_runs_0based,
-                )
-                coords_future.result()
-                logging.info(f"Coordinates saved to {output_path}")
+            source_path = config.source_paths[path_idx]
+            base_path = config.base_paths[path_idx]
 
             logging.info("")
             logging.info("=" * 80)
-            logging.info(f"{mode.upper()} PIV PROCESSING COMPLETE!")
-            if is_ensemble:
-                logging.info(f"Ensemble result saved to {result}")
-            else:
-                logging.info(f"Total images processed: {len(result)}")
+            logging.info(f"PATH SET {path_set_num} of {len(active_path_indices)}")
+            logging.info(f"  Index: {path_idx}")
+            logging.info(f"  Source: {source_path}")
+            logging.info(f"  Base: {base_path}")
             logging.info("=" * 80)
+
+            for camera_num in camera_numbers:
+                # Check if shutdown was requested
+                if _shutdown_requested:
+                    logging.info("Shutdown requested, stopping processing...")
+                    break
+
+                logging.info("Processing camera: Cam%d", camera_num)
+
+                # Load images from source path (lazy loading - no memory consumption yet)
+                images = load_images(camera_num, config, source=source_path)
+
+                # Load mask once per camera (if masking is enabled)
+                mask = load_mask_for_camera(camera_num, config, source_path_idx=path_idx)
+
+                # Pre-compute vector masks once per camera (if masking is enabled)
+                vector_masks = None
+                if config.masking_enabled and mask is not None:
+                    logging.info("Pre-computing vector masks for Cam%d", camera_num)
+                    vector_masks = compute_vector_mask(mask, config)
+                    logging.info("Vector masks computed: %d passes", len(vector_masks))
+
+                # Determine processing mode
+                is_ensemble = config.data.get("processing", {}).get("ensemble", False)
+                mode = "ensemble" if is_ensemble else "instantaneous"
+
+                # Get output path based on mode
+                if is_ensemble:
+                    output_path = get_ensemble_output_path(
+                        config,
+                        camera_num,
+                        use_uncalibrated=True,
+                        base_path_idx=path_idx,
+                    )
+                else:
+                    output_path = get_output_path(
+                        config,
+                        camera_num,
+                        use_uncalibrated=True,
+                        base_path_idx=path_idx,
+                    )
+
+                # Log processing configuration
+                logging.info("=" * 80)
+                logging.info(f"UNIFIED BATCH PIPELINE: {mode.upper()} MODE")
+                logging.info("=" * 80)
+                logging.info(f"Image files: {config.num_images}")
+                logging.info(f"Frame pairs: {config.num_frame_pairs}")
+
+                if is_ensemble:
+                    logging.info(f"Ensemble passes: {config.ensemble_num_passes}")
+                    logging.info(f"Ensemble window sizes: {config.ensemble_window_sizes}")
+                    logging.info(f"Ensemble types: {config.ensemble_type}")
+                    logging.info(f"Runs to save: {config.ensemble_runs_0based}")
+                else:
+                    logging.info(f"Runs to save: {config.instantaneous_runs_0based}")
+
+                if config.filters:
+                    filter_names = [f.get('type') for f in config.filters]
+                    logging.info(f"Filters: {filter_names}")
+
+                logging.info(f"Output path: {output_path}")
+                logging.info("=" * 80)
+
+                # Create unified pipeline
+                pipeline = UnifiedBatchPipeline(
+                    client=client,
+                    config=config,
+                    mode=mode,
+                )
+
+                # Process with unified pipeline
+                # Pass both pixel_mask (for preprocessing) and vector_masks (for correlation validation)
+                logging.info(f"Starting {mode} PIV processing with unified batch pipeline...")
+                result = pipeline.process(
+                    images,
+                    output_path,
+                    vector_masks=vector_masks,
+                    pixel_mask=mask,  # Apply pixel mask during preprocessing
+                )
+
+                # Save coordinates
+                if is_ensemble:
+                    # For ensemble, save coordinates from cached correlator
+                    from pivtools_cli.piv.save_results import save_ensemble_coordinates_from_config_distributed
+                    from pivtools_cli.piv.piv_backend.factory import make_correlator_backend
+
+                    temp_correlator = make_correlator_backend(config, ensemble=True)
+                    correlator_cache = temp_correlator.get_cache_data()
+
+                    coords_path = save_ensemble_coordinates_from_config_distributed(
+                        config,
+                        output_path,
+                        correlator_cache=correlator_cache,
+                        runs_to_save=config.ensemble_runs_0based,
+                    )
+                    logging.info(f"Ensemble coordinates saved to {coords_path}")
+                else:
+                    # For instantaneous, use scatter approach
+                    from pivtools_cli.piv.piv_backend.factory import make_correlator_backend
+
+                    temp_correlator = make_correlator_backend(config)
+                    correlator_cache = temp_correlator.get_cache_data()
+                    scattered_cache = client.scatter(correlator_cache, broadcast=True)
+
+                    coords_future = client.submit(
+                        save_coordinates_from_config_distributed,
+                        config,
+                        output_path,
+                        scattered_cache,
+                        config.instantaneous_runs_0based,
+                    )
+                    coords_future.result()
+                    logging.info(f"Coordinates saved to {output_path}")
+
+                logging.info("")
+                logging.info("=" * 80)
+                logging.info(f"{mode.upper()} PIV PROCESSING COMPLETE!")
+                if is_ensemble:
+                    logging.info(f"Ensemble result saved to {result}")
+                else:
+                    logging.info(f"Total images processed: {len(result)}")
+                logging.info("=" * 80)
 
         if config.debug:
             current, peak = tracemalloc.get_traced_memory()

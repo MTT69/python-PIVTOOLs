@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """
-planar_calibration_production.py
+planar_calibration_multiview.py
 
-Production-ready planar calibration script for individual cameras.
-Processes calibration images, saves grid indexing, calibration models, and dewarped images.
+Pure Multi-View Pinhole Calibration script.
+- Aggregates multiple views of a calibration board.
+- Solves for Intrinsics (Camera Matrix + Distortion) using OpenCV.
+- Saves grid detections and final model to .mat files.
+- Visualizes detections for every image.
 """
 
 import glob
@@ -16,33 +19,90 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.io import savemat
 
+from pivtools_core.config import get_config, reload_config
 from pivtools_core.image_handling.load_images import read_image
 
-# ===================== CONFIGURATION VARIABLES =====================
-# Set these variables for your calibration setup
-SOURCE_DIR = "/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall"
-BASE_DIR = "/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test"
-CAMERA_COUNT = 1
-FILE_PATTERN = "calib%05d.tif"  # or 'B%05d.tif' for numbered files
+# ===================== CONFIGURATION =====================
 
-# Grid pattern parameters
+# SOURCE_DIR: Root directory containing data
+SOURCE_DIR = "/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/enhanced"
+
+# BASE_DIR: Output directory. 
+# Results save to: {BASE_DIR}/calibration/Cam{N}/pinhole_planar/...
+BASE_DIR = "/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images"
+
+# CALIBRATION_SUBFOLDER: Subfolder for images (leave "" if in root)
+CALIBRATION_SUBFOLDER = ""
+
+# CAMERA_NUMS: List of camera numbers to process (1-based), e.g. [1, 2] for stereo
+CAMERA_NUMS = [1]
+
+# CAMERA_SUBFOLDERS: List of subfolder names for each camera (index matches camera number - 1).
+#                    e.g., ["Cam1", "Cam2"] means camera 1 uses "Cam1/", camera 2 uses "Cam2/"
+#                    Set to [] (empty list) for container formats or when images are in SOURCE_DIR directly.
+CAMERA_SUBFOLDERS = []
+
+# FILE_PATTERN: Image naming format (e.g., "calib%05d.tif", "*.tif")
+FILE_PATTERN = "planar_calibration_plate_%02d.tif"
+
+# GRID PARAMETERS
 PATTERN_COLS = 10
 PATTERN_ROWS = 10
-DOT_SPACING_MM = 28.89
+DOT_SPACING_MM = 12.22
 ASYMMETRIC = False
-ENHANCE_DOTS = True
-SELECTED_IMAGE_IDX = 1  # Set to specific image index (1-based) to process only that image, or None to process all
+ENHANCE_DOTS = False
 
-# ===================================================================
+# Number of calibration images to use (set to None to use all available)
+NUM_CALIBRATION_IMAGES = None
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+# LOGGING SETUP
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
-class PlanarCalibrator:
+def apply_cli_settings_to_config():
+    """Update config.yaml with CLI-mode hardcoded settings.
+
+    This function writes the hardcoded configuration variables to config.yaml,
+    ensuring the centralized image loading system uses the correct paths and settings.
+
+    Returns
+    -------
+    Config
+        The reloaded config object with updated settings
+    """
+    config = get_config()
+
+    # Paths
+    config.data["paths"]["source_paths"] = [SOURCE_DIR]
+    config.data["paths"]["base_paths"] = [BASE_DIR]
+    config.data["paths"]["camera_subfolders"] = CAMERA_SUBFOLDERS
+    config.data["paths"]["camera_count"] = len(CAMERA_NUMS)
+    config.data["paths"]["camera_numbers"] = CAMERA_NUMS
+
+    # Calibration settings
+    config.data["calibration"]["image_format"] = FILE_PATTERN
+    config.data["calibration"]["subfolder"] = CALIBRATION_SUBFOLDER
+    config.data["calibration"]["use_camera_subfolders"] = bool(CAMERA_SUBFOLDERS)
+    if NUM_CALIBRATION_IMAGES is not None:
+        config.data["calibration"]["num_images"] = NUM_CALIBRATION_IMAGES
+
+    # Pinhole-specific params (for planar calibration)
+    config.data["calibration"]["pinhole"]["pattern_cols"] = PATTERN_COLS
+    config.data["calibration"]["pinhole"]["pattern_rows"] = PATTERN_ROWS
+    config.data["calibration"]["pinhole"]["dot_spacing_mm"] = DOT_SPACING_MM
+    config.data["calibration"]["pinhole"]["asymmetric"] = ASYMMETRIC
+    config.data["calibration"]["pinhole"]["enhance_dots"] = ENHANCE_DOTS
+
+    # Save to disk so centralized loader picks up changes
+    config.save()
+    logger.info("Updated config.yaml with CLI settings")
+
+    # Reload to ensure fresh state
+    return reload_config()
+
+
+class MultiViewCalibrator:
     def __init__(
         self,
         source_dir,
@@ -54,24 +114,10 @@ class PlanarCalibrator:
         dot_spacing_mm=28.89,
         asymmetric=False,
         enhance_dots=False,
-        dt=1.0,
-        selected_image_idx=1,  # 1-based index of specific calibration image to process
+        calibration_subfolder="",
+        camera_subfolders=None,
+        config=None,
     ):
-        """
-        Initialize planar calibrator
-
-        Args:
-            source_dir: Source directory containing calibration subdirectory
-            base_dir: Base output directory
-            camera_count: Number of cameras to process
-            file_pattern: File pattern (e.g., 'B%05d.tif', 'planar_calibration_plate_*.tif')
-            pattern_cols: Number of columns in calibration grid
-            pattern_rows: Number of rows in calibration grid
-            dot_spacing_mm: Physical spacing between dots in mm
-            asymmetric: Whether grid is asymmetric
-            enhance_dots: Whether to apply dot enhancement
-            dt: Time step between frames in seconds
-        """
         self.source_dir = Path(source_dir)
         self.base_dir = Path(base_dir)
         self.camera_count = camera_count
@@ -80,13 +126,14 @@ class PlanarCalibrator:
         self.dot_spacing_mm = dot_spacing_mm
         self.asymmetric = asymmetric
         self.enable_dot_enhancement = enhance_dots
-        self.dt = dt  # Add dt parameter
-        self.selected_image_idx = selected_image_idx
+        self.calibration_subfolder = calibration_subfolder
+        self.camera_subfolders = camera_subfolders
+        self._config = config
 
         # Create blob detector
         self.detector = self._create_blob_detector()
 
-        # Create base directories
+        # Setup output structure
         self._setup_directories()
 
     def _create_blob_detector(self):
@@ -94,7 +141,7 @@ class PlanarCalibrator:
         params = cv2.SimpleBlobDetector_Params()
         params.filterByArea = True
         params.minArea = 200
-        params.maxArea = 1000
+        params.maxArea = 5000 # Increased slightly for varying depths
         params.filterByCircularity = False
         params.filterByConvexity = False
         params.filterByInertia = False
@@ -104,98 +151,104 @@ class PlanarCalibrator:
         return cv2.SimpleBlobDetector_create(params)
 
     def _setup_directories(self):
-        """Create necessary output directories"""
+        """Create output directories with /pinhole_planar structure"""
         for cam_num in range(1, self.camera_count + 1):
-            cam_base = self.base_dir / "calibration" / f"Cam{cam_num}"
+            # NEW PATH STRUCTURE: .../CamX/pinhole_planar/
+            cam_base = self.base_dir / "calibration" / f"Cam{cam_num}" / "pinhole_planar"
             (cam_base / "indices").mkdir(parents=True, exist_ok=True)
             (cam_base / "model").mkdir(parents=True, exist_ok=True)
-            (cam_base / "dewarp").mkdir(parents=True, exist_ok=True)
+            (cam_base / "figures").mkdir(parents=True, exist_ok=True)
+
+    def _get_camera_input_dir(self, cam_num: int) -> Path:
+        """Get the input directory for calibration images.
+
+        Path structure: source / camera_folder / calibration_subfolder
+
+        Uses camera_subfolders array when provided (CLI mode),
+        otherwise falls back to config.get_calibration_camera_folder() (GUI mode).
+        """
+        base_path = self.source_dir
+
+        # Get camera folder - prefer CLI array, fall back to config
+        if self.camera_subfolders is not None and len(self.camera_subfolders) > 0:
+            # CLI mode: use explicit array
+            idx = cam_num - 1  # Convert 1-based to 0-based index
+            if idx < len(self.camera_subfolders) and self.camera_subfolders[idx]:
+                base_path = base_path / self.camera_subfolders[idx]
+        elif self._config is not None:
+            # GUI mode: use config's camera folder logic
+            camera_folder = self._config.get_calibration_camera_folder(cam_num)
+            if camera_folder:
+                base_path = base_path / camera_folder
+
+        # Add calibration subfolder if set
+        if self.calibration_subfolder:
+            base_path = base_path / self.calibration_subfolder
+
+        return base_path
 
     def _is_container_format(self):
-        """Check if file pattern is a container format (.set, .im7)"""
-        return '.set' in self.file_pattern.lower() or '.im7' in self.file_pattern.lower()
+        """Check if file pattern is a container format (.set, .im7, .cine)."""
+        pattern_lower = self.file_pattern.lower()
+        return '.set' in pattern_lower or '.im7' in pattern_lower or '.cine' in pattern_lower
 
-    def _read_calibration_image(self, img_path, camera=1, img_index=1):
-        """Read calibration image with container format support.
-
-        Args:
-            img_path: Path to image file (for standard formats) or container file
-            camera: Camera number (1-based, used for container formats)
-            img_index: Image index (1-based, used for .set files)
-
-        Returns:
-            np.ndarray: Image data as uint8 or uint16
-        """
-        if self._is_container_format():
-            if '.set' in str(img_path).lower():
-                # .set file: pass camera_no and im_no
-                img = read_image(str(img_path), camera_no=camera, im_no=img_index)
-            elif '.im7' in str(img_path).lower():
-                # .im7 file: pass camera_no
-                img = read_image(str(img_path), camera_no=camera)
+    def _read_image(self, img_path, camera=1, img_index=1):
+        """Robust image reader handling standard and container formats (.tif, .set, .im7, .cine)"""
+        try:
+            if self._is_container_format():
+                if '.set' in str(img_path).lower():
+                    img = read_image(str(img_path), camera_no=camera, im_no=img_index)
+                elif '.im7' in str(img_path).lower():
+                    img = read_image(str(img_path), camera_no=camera)
+                elif '.cine' in str(img_path).lower():
+                    # .cine files: use dedicated single-frame reader
+                    from pivtools_core.image_handling.readers.cine_reader import read_cine_single
+                    img = read_cine_single(str(img_path), idx=img_index)
+                else:
+                    img = read_image(str(img_path))
             else:
                 img = read_image(str(img_path))
-        else:
-            # Standard format: just read the file
-            img = read_image(str(img_path))
 
-        # Ensure proper dtype for OpenCV operations
-        if img is not None:
-            # Handle bool arrays (can occur with some readers)
+            if img is None:
+                return None
+
+            # Normalize to uint8
             if img.dtype == np.bool_:
                 img = img.astype(np.uint8) * 255
-            # Handle float arrays (normalize to uint8 or uint16)
             elif img.dtype in [np.float32, np.float64]:
                 img_min, img_max = img.min(), img.max()
                 if img_max > img_min:
                     img = ((img - img_min) / (img_max - img_min) * 255).astype(np.uint8)
                 else:
                     img = np.zeros_like(img, dtype=np.uint8)
-
-        return img
+            elif img.dtype == np.uint16:
+                # Simple downscale for detection, usually safe for grids
+                img = (img / 256).astype(np.uint8)
+                
+            return img
+        except Exception as e:
+            logger.warning(f"Error reading image {img_path}: {e}")
+            return None
 
     def enhance_dots_image(self, img, fixed_radius=9):
-        """
-        Enhance white dots in calibration image for better detection
-
-        Args:
-            img: Input grayscale image
-            fixed_radius: Radius for enhanced dots
-
-        Returns:
-            Enhanced image
-        """
-        # Threshold to binary to isolate white dots
+        """Enhance dots for easier detection"""
         _, binary = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-        # Find contours (each white dot)
-        contours, _ = cv2.findContours(
-            binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
-
-        # Create output as copy of original
+        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         output = img.copy()
-
         for cnt in contours:
-            # Find center of each dot
             (x, y), _ = cv2.minEnclosingCircle(cnt)
             center = (int(round(x)), int(round(y)))
-
-            # Draw filled white circle with fixed radius
             cv2.circle(output, center, fixed_radius, (255,), -1)
-
         return output
 
     def make_object_points(self):
-        """Create 3D object points for calibration grid"""
+        """Create real-world 3D coordinates (Z=0) for the board"""
         cols, rows = self.pattern_size
         objp = []
         for i in range(rows):
             for j in range(cols):
                 if self.asymmetric:
-                    x = j * self.dot_spacing_mm + (
-                        0.5 * self.dot_spacing_mm if (i % 2 == 1) else 0.0
-                    )
+                    x = j * self.dot_spacing_mm + (0.5 * self.dot_spacing_mm if (i % 2 == 1) else 0.0)
                     y = i * self.dot_spacing_mm
                 else:
                     x = j * self.dot_spacing_mm
@@ -203,683 +256,500 @@ class PlanarCalibrator:
                 objp.append([x, y, 0.0])
         return np.array(objp, dtype=np.float32)
 
-    def detect_grid_in_image(self, img):
-        """
-        Detect circle grid in image
-
-        Args:
-            img: Input image
-
-        Returns:
-            (found, centers) - boolean and Nx2 array of points
-        """
-        # Convert to grayscale if needed
+    def detect_grid(self, img):
+        """Detect grid points with subpixel refinement for accurate dot centers"""
         if img.ndim == 3:
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         else:
             gray = img.copy()
 
-        # Apply dot enhancement if requested
         if self.enable_dot_enhancement:
             gray = self.enhance_dots_image(gray)
 
-        # Grid detection flags
-        grid_flags = (
-            cv2.CALIB_CB_ASYMMETRIC_GRID
-            if self.asymmetric
-            else cv2.CALIB_CB_SYMMETRIC_GRID
-        )
+        flags = cv2.CALIB_CB_ASYMMETRIC_GRID if self.asymmetric else cv2.CALIB_CB_SYMMETRIC_GRID
 
-        # Try both original and inverted images
         for test_img, label in [(gray, "Original"), (255 - gray, "Inverted")]:
             found, centers = cv2.findCirclesGrid(
-                test_img,
-                self.pattern_size,
-                flags=grid_flags,
-                blobDetector=self.detector,
+                test_img, self.pattern_size, flags=flags, blobDetector=self.detector
             )
-
             if found:
-                logger.info(f"Grid detected ({label} image)")
-                return True, centers.reshape(-1, 2).astype(np.float32)
+                centers = centers.reshape(-1, 2).astype(np.float32)
+
+                # Subpixel refinement using cornerSubPix
+                # This significantly improves center accuracy for circular dots
+                criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.001)
+
+                # Window size for subpixel search - adjust based on typical dot size
+                # Using ~half the expected dot diameter gives good results
+                win_size = (11, 11)  # Search window
+                zero_zone = (-1, -1)  # No dead zone
+
+                # cornerSubPix expects (N, 1, 2) shape
+                centers_refined = cv2.cornerSubPix(
+                    gray,  # Use original gray (not inverted) for refinement
+                    centers.reshape(-1, 1, 2),
+                    win_size,
+                    zero_zone,
+                    criteria
+                )
+
+                return True, centers_refined.reshape(-1, 2).astype(np.float32)
 
         return False, None
 
-    def calculate_reprojection_error(self, grid_points, objp_2d, H):
-        """Calculate reprojection error using homography and return per-axis errors"""
-        H_inv = np.linalg.inv(H)
-        objp_h = np.hstack([objp_2d, np.ones((objp_2d.shape[0], 1))])
-        projected_h = (H_inv @ objp_h.T).T
-        projected = projected_h[:, :2] / projected_h[:, 2:]
+    def save_visualization(self, img, grid_points, img_idx, cam_base, filename):
+        """Save a figure showing the detected grid indices"""
+        try:
+            fig, ax = plt.subplots(figsize=(10, 8))
+            if img.ndim == 3:
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            
+            ax.imshow(img, cmap="gray")
+            cols = self.pattern_size[0]
 
-        # Error vector per point (pixel units)
-        error_vec = grid_points - projected
-        errors = np.linalg.norm(error_vec, axis=1)
-        errors_x = error_vec[:, 0]
-        errors_y = error_vec[:, 1]
+            # Plot points
+            ax.scatter(grid_points[:, 0], grid_points[:, 1], c='r', s=20)
 
-        # Return overall mean, full vector of norms, and per-axis errors
-        return errors.mean(), errors, errors_x, errors_y
+            # Annotate corners or all points to show orientation
+            # Annotating first and last point to verify ordering
+            ax.text(grid_points[0,0], grid_points[0,1], "Start (0,0)", color='cyan', fontsize=12)
+            ax.text(grid_points[-1,0], grid_points[-1,1], "End", color='cyan', fontsize=12)
 
-    def calculate_dewarped_size(self, H, img_shape):
-        """Calculate optimal output size for dewarped image"""
-        h, w = img_shape[:2]
-        corners = np.array(
-            [[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]], dtype=np.float32
-        ).reshape(-1, 1, 2)
-        physical_corners = cv2.perspectiveTransform(corners, H).reshape(-1, 2)
+            # Optional: Annotate every 10th point
+            for i, (x,y) in enumerate(grid_points):
+                if i % 10 == 0:
+                    r, c = divmod(i, cols)
+                    ax.text(x, y, f"{r},{c}", color='yellow', fontsize=8)
 
-        min_x, max_x = np.min(physical_corners[:, 0]), np.max(physical_corners[:, 0])
-        min_y, max_y = np.min(physical_corners[:, 1]), np.max(physical_corners[:, 1])
+            ax.set_title(f"Detection: {filename}")
+            ax.axis('off')
+            
+            out_path = cam_base / "figures" / f"detected_{img_idx:03d}.png"
+            plt.savefig(out_path, bbox_inches='tight', dpi=100)
+            plt.close(fig)
+        except Exception as e:
+            logger.warning(f"Failed to save visualization for {filename}: {e}")
 
-        width_px = int(np.ceil(max_x - min_x))
-        height_px = int(np.ceil(max_y - min_y))
+    def run(self):
+        logger.info("Starting Multi-View Pinhole Calibration...")
+        
+        objp_base = self.make_object_points() # Shape: (N, 3)
 
-        physical_to_pixel = np.array(
-            [[1, 0, -min_x], [0, 1, -min_y], [0, 0, 1]], dtype=np.float32
-        )
-        combined_H = physical_to_pixel @ H
+        for cam_num in range(1, self.camera_count + 1):
+            logger.info(f"--- Processing Camera {cam_num} ---")
 
-        return (width_px, height_px), combined_H
+            # Path setup: source / camera_folder / calibration_subfolder
+            cam_input_dir = self._get_camera_input_dir(cam_num)
+            cam_output_base = self.base_dir / "calibration" / f"Cam{cam_num}" / "pinhole_planar"
 
-    def process_camera(self, cam_num):
-        """
-        Process all calibration images for one camera
-
-        Args:
-            cam_num: Camera number (1-based)
-        """
-        logger.info(f"Processing Camera {cam_num}")
-
-        # Setup paths - container formats don't use Cam subdirectories
-        is_container = self._is_container_format()
-        if is_container:
-            cam_input_dir = self.source_dir / "calibration"
-        else:
-            cam_input_dir = self.source_dir / "calibration" / f"Cam{cam_num}"
-        cam_output_base = self.base_dir / "calibration" / f"Cam{cam_num}"
-
-        if not cam_input_dir.exists():
-            logger.error(f"Calibration directory not found: {cam_input_dir}")
-            return
-
-        # Build list of available image files (1-based indexing for numbered patterns)
-        image_files = []
-        if is_container:
-            # Container format: single file contains all images and cameras
-            container_file = cam_input_dir / self.file_pattern
-            if container_file.exists():
-                # For containers, we still need to know how many images are available
-                # We'll use the selected_image_idx directly and let read_image handle it
-                image_files = [str(container_file)]
-                logger.info(f"Using container file: {container_file}")
+            # Find images
+            image_files = []
+            is_container = self._is_container_format()
+            
+            if is_container:
+                container = cam_input_dir / self.file_pattern
+                if container.exists(): image_files = [str(container)]
+            elif "%" in self.file_pattern:
+                i = 1
+                while True:
+                    f = cam_input_dir / (self.file_pattern % i)
+                    if not f.exists(): break
+                    image_files.append(str(f))
+                    i += 1
             else:
-                logger.error(f"Container file not found: {container_file}")
-                return
+                image_files = sorted([str(f) for f in cam_input_dir.glob(self.file_pattern)])
+
+            if not image_files:
+                logger.error(f"No images found for Camera {cam_num}")
+                continue
+
+            # Containers are treated as 1 file, but might have many frames. 
+            # If standard files, we iterate list. If container, we might need a fixed range or metadata.
+            # Assuming standard files or single container loop for now.
+            
+            all_objpoints = [] # 3d point in real world space
+            all_imgpoints = [] # 2d points in image plane.
+            valid_indices_map = {} # Store pixel values for saving later
+            
+            img_shape = None
+            processed_count = 0
+
+            # Loop logic adjustment for containers vs files
+            loop_range = range(1, len(image_files) + 1) if not is_container else range(1, 101) # Arbitrary limit for container safety if length unknown
+
+            logger.info(f"Scanning images...")
+
+            for idx in loop_range:
+                if not is_container:
+                    img_path = image_files[idx-1]
+                    img_name = Path(img_path).name
+                else:
+                    img_path = image_files[0]
+                    img_name = f"frame_{idx}"
+                    # Check if we've run out of container frames by trying to read
+                    try:
+                        test = self._read_image(img_path, cam_num, idx)
+                        if test is None: break
+                    except: break
+
+                img = self._read_image(img_path, cam_num, idx)
+                if img is None: continue
+                
+                if img_shape is None:
+                    img_shape = img.shape[:2][::-1] # (width, height)
+
+                found, corners = self.detect_grid(img)
+
+                if found:
+                    all_objpoints.append(objp_base)
+                    all_imgpoints.append(corners)
+                    
+                    # Store for .mat saving
+                    valid_indices_map[idx] = corners
+                    
+                    # Visualization
+                    self.save_visualization(img, corners, idx, cam_output_base, img_name)
+                    processed_count += 1
+                    logger.info(f"  [+] Image {idx}: Grid detected.")
+                else:
+                    logger.debug(f"  [-] Image {idx}: Grid not found.")
+
+            if processed_count < 3:
+                logger.error("Not enough valid images for calibration (Need > 3).")
+                continue
+
+            # --- CALIBRATION ---
+            logger.info(f"Calibrating with {processed_count} valid views...")
+            
+            ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(
+                all_objpoints, all_imgpoints, img_shape, None, None
+            )
+
+            logger.info(f"Calibration Complete. RMS Error: {ret:.4f} pixels")
+
+            # --- SAVE RESULTS ---
+
+            # Prepare detections dictionary for .mat
+            # We want to save the pixel locations of every point for every valid image
+            detections_struct = {}
+            for img_idx, points in valid_indices_map.items():
+                detections_struct[f"image_{img_idx}"] = points
+
+            model_data = {
+                "camera_matrix": mtx,
+                "dist_coeffs": dist,
+                "rvecs": rvecs,
+                "tvecs": tvecs,
+                "rms_error": ret,
+                "image_width": img_shape[0],
+                "image_height": img_shape[1],
+                "detections_pixel_coords": detections_struct, # Store the raw grid points
+                "timestamp": datetime.now().isoformat(),
+                "pattern_cols": self.pattern_size[0],
+                "pattern_rows": self.pattern_size[1],
+                "dot_spacing_mm": self.dot_spacing_mm
+            }
+
+            out_file = cam_output_base / "model" / "pinhole_model.mat"
+            savemat(str(out_file), model_data)
+            logger.info(f"Saved model to: {out_file}")
+
+            # --- SAVE INDIVIDUAL DOT CENTERS TO INDICES DIRECTORY ---
+            # Save per-image .mat files with dot centers for overlay purposes
+            # Each file contains: centers (Nx2), grid_indices (Nx2 for row,col)
+            cols, rows = self.pattern_size
+            for img_idx, points in valid_indices_map.items():
+                # Create grid indices (row, col) for each detected point
+                # Points are ordered row-major: (0,0), (0,1), ..., (0,cols-1), (1,0), ...
+                grid_indices = np.zeros((len(points), 2), dtype=np.int32)
+                for i in range(len(points)):
+                    row, col = divmod(i, cols)
+                    grid_indices[i] = [row, col]
+
+                indices_data = {
+                    "centers_px": points,  # Nx2 array of (x, y) pixel coordinates
+                    "grid_row": grid_indices[:, 0],  # Row index for each dot
+                    "grid_col": grid_indices[:, 1],  # Column index for each dot
+                    "pattern_cols": cols,
+                    "pattern_rows": rows,
+                    "dot_spacing_mm": self.dot_spacing_mm
+                }
+
+                indices_file = cam_output_base / "indices" / f"dot_centers_{img_idx:03d}.mat"
+                savemat(str(indices_file), indices_data)
+
+            logger.info(f"Saved {len(valid_indices_map)} dot center files to indices directory")
+
+    def process_single_camera(
+        self,
+        cam_num: int,
+        progress_callback=None,
+        save_visualizations: bool = False,
+    ) -> dict:
+        """
+        Process a single camera for calibration with progress callback support.
+
+        This method is designed for GUI integration where we need:
+        - Progress updates during processing
+        - Return value with results (instead of just saving files)
+        - Optional visualization saving
+
+        Parameters
+        ----------
+        cam_num : int
+            Camera number (1-based)
+        progress_callback : callable, optional
+            Function called with dict containing:
+            - progress: int (0-100)
+            - processed_images: int
+            - valid_images: int
+            - total_images: int
+        save_visualizations : bool
+            Whether to save detection visualization figures
+
+        Returns
+        -------
+        dict
+            success: bool
+            camera_matrix: list (3x3)
+            dist_coeffs: list
+            rms_error: float
+            num_images_used: int
+            model_path: str
+            error: str (if failed)
+        """
+        logger.info(f"--- Processing Camera {cam_num} ---")
+
+        objp_base = self.make_object_points()
+
+        # Path setup: source / camera_folder / calibration_subfolder
+        cam_input_dir = self._get_camera_input_dir(cam_num)
+        cam_output_base = self.base_dir / "calibration" / f"Cam{cam_num}" / "pinhole_planar"
+
+        # Ensure directories exist
+        (cam_output_base / "indices").mkdir(parents=True, exist_ok=True)
+        (cam_output_base / "model").mkdir(parents=True, exist_ok=True)
+        if save_visualizations:
+            (cam_output_base / "figures").mkdir(parents=True, exist_ok=True)
+
+        # Find images
+        image_files = []
+        is_container = self._is_container_format()
+
+        if is_container:
+            container = cam_input_dir / self.file_pattern
+            if container.exists():
+                image_files = [str(container)]
         elif "%" in self.file_pattern:
             i = 1
             while True:
-                filename = self.file_pattern % i
-                filepath = cam_input_dir / filename
-                if filepath.exists():
-                    image_files.append(str(filepath))
-                    i += 1
-                else:
+                f = cam_input_dir / (self.file_pattern % i)
+                if not f.exists():
                     break
+                image_files.append(str(f))
+                i += 1
         else:
-            image_files = sorted(glob.glob(str(cam_input_dir / self.file_pattern)))
+            image_files = sorted([str(f) for f in cam_input_dir.glob(self.file_pattern)])
 
         if not image_files:
-            logger.error(
-                f"No calibration images found in {cam_input_dir} with pattern {self.file_pattern}"
-            )
-            return
+            return {"success": False, "error": f"No images found for Camera {cam_num} in {cam_input_dir}"}
 
-        idx = int(self.selected_image_idx)
-
-        # For container formats, image_files has one entry (the container)
-        # For standard formats, validate index against available files
-        if not is_container:
-            if idx < 1 or idx > len(image_files):
-                logger.error(
-                    f"Selected image index {idx} out of range (available: 1-{len(image_files)})"
-                )
-                return
-            img_path = image_files[idx - 1]
+        # Determine loop range
+        if is_container:
+            # For containers, we need to probe the number of frames
+            loop_range = range(1, 101)  # Arbitrary limit
         else:
-            img_path = image_files[0]  # Container file path
+            loop_range = range(1, len(image_files) + 1)
 
-        logger.info(f"Processing calibration image {idx}: {img_path}")
+        total_images = len(image_files) if not is_container else 100  # Estimate for containers
 
-        # Create object points template
-        objp = self.make_object_points()
-        objp_2d = objp[:, :2]
+        all_objpoints = []
+        all_imgpoints = []
+        valid_indices_map = {}
 
-        # Detect grid and process single image - use container-aware reader
-        img = self._read_calibration_image(img_path, camera=cam_num, img_index=idx)
-        found, grid_points = self.detect_grid_in_image(img)
-        if not found or grid_points is None:
-            logger.error(f"Grid not found in image index {idx}: {img_path}")
-            return
+        img_shape = None
+        processed_count = 0
+        valid_count = 0
 
-        # Compute homography and dewarp
-        H, _ = cv2.findHomography(
-            grid_points, objp_2d[: grid_points.shape[0]], cv2.RANSAC, 3.0
-        )
-        output_size, combined_H = self.calculate_dewarped_size(H, img.shape)
-        dewarped = cv2.warpPerspective(
-            img, combined_H, output_size, flags=cv2.INTER_LANCZOS4
-        )
+        logger.info("Scanning images...")
 
-        # Calculate reprojection error
-        mean_error, reproj_errs, reproj_errs_x, reproj_errs_y = (
-            self.calculate_reprojection_error(
-                grid_points, objp_2d[: grid_points.shape[0]], H
+        for idx in loop_range:
+            processed_count += 1
+
+            # Report progress (reserve 10% for final calibration)
+            if progress_callback:
+                progress = int(processed_count / total_images * 90) if total_images > 0 else 0
+                progress_callback({
+                    "progress": min(progress, 90),
+                    "processed_images": processed_count,
+                    "valid_images": valid_count,
+                    "total_images": total_images,
+                })
+
+            if not is_container:
+                if idx > len(image_files):
+                    break
+                img_path = image_files[idx - 1]
+                img_name = Path(img_path).name
+            else:
+                img_path = image_files[0]
+                img_name = f"frame_{idx}"
+                # Check if we've run out of container frames
+                try:
+                    test = self._read_image(img_path, cam_num, idx)
+                    if test is None:
+                        break
+                except Exception:
+                    break
+
+            img = self._read_image(img_path, cam_num, idx)
+            if img is None:
+                continue
+
+            if img_shape is None:
+                img_shape = img.shape[:2][::-1]  # (width, height)
+                # Update total_images estimate for containers
+                if is_container:
+                    total_images = processed_count  # Will be updated as we go
+
+            found, corners = self.detect_grid(img)
+
+            if found:
+                all_objpoints.append(objp_base)
+                all_imgpoints.append(corners)
+                valid_indices_map[idx] = corners
+                valid_count += 1
+
+                if save_visualizations:
+                    self.save_visualization(img, corners, idx, cam_output_base, img_name)
+
+                logger.info(f"  [+] Image {idx}: Grid detected.")
+            else:
+                logger.debug(f"  [-] Image {idx}: Grid not found.")
+
+        if valid_count < 3:
+            return {"success": False, "error": f"Only {valid_count} valid detections, need at least 3"}
+
+        # --- CALIBRATION ---
+        logger.info(f"Calibrating with {valid_count} valid views...")
+
+        try:
+            ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(
+                all_objpoints, all_imgpoints, img_shape, None, None
             )
-        )
+        except Exception as e:
+            return {"success": False, "error": f"OpenCV calibration failed: {e}"}
 
-        # Save indexing and dewarp
-        # For container formats, use pattern + index as the filename reference
-        if self._is_container_format():
-            original_filename = f"{self.file_pattern}[{idx}]"
-        else:
-            original_filename = Path(img_path).name
+        logger.info(f"Calibration Complete. RMS Error: {ret:.4f} pixels")
 
-        self._save_results(
-            idx,
-            cam_output_base,
-            grid_points,
-            H,
-            None,
-            dewarped,
-            mean_error,
-            reproj_errs,
-            reproj_errs_x,
-            reproj_errs_y,
-            original_filename,
-            cam_num=cam_num,
-        )
+        # --- SAVE RESULTS ---
+        detections_struct = {}
+        for img_idx, points in valid_indices_map.items():
+            detections_struct[f"image_{img_idx}"] = points
 
-        # Prepare points for calibration
-        obj_pts_3d = np.hstack(
-            [objp_2d[: grid_points.shape[0]], np.zeros((grid_points.shape[0], 1))]
-        ).astype(np.float32)
-        objpoints = [obj_pts_3d.reshape(-1, 1, 3)]
-        imgpoints = [grid_points.reshape(-1, 1, 2)]
-
-        # Run camera calibration
-        logger.info(f"Calibrating camera from image {idx}...")
-        ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(
-            objpoints,
-            imgpoints,
-            (
-                int(np.max(imgpoints[0][:, 0, 0])) + 100,
-                int(np.max(imgpoints[0][:, 0, 1])) + 100,
-            ),
-            None,
-            None,
-        )
-
-        # Compute reprojection errors
-        proj, _ = cv2.projectPoints(objpoints[0], rvecs[0], tvecs[0], mtx, dist)
-        proj = proj.reshape(-1, 2)
-        imgpt = imgpoints[0].reshape(-1, 2)
-        err_vec = imgpt - proj
-        all_errors = np.linalg.norm(err_vec, axis=1)
-        all_errs_x = err_vec[:, 0]
-        all_errs_y = err_vec[:, 1]
-
-        logger.info(f"Calibration reprojection RMS: {ret:.5f}")
-
-        # Save camera model with homography
         model_data = {
             "camera_matrix": mtx,
             "dist_coeffs": dist,
             "rvecs": rvecs,
             "tvecs": tvecs,
-            "reprojection_error": ret,
-            "homography": np.array(H, dtype=np.float32),
-            "reprojection_error_x_mean": float(np.mean(np.abs(all_errs_x))),
-            "reprojection_error_y_mean": float(np.mean(np.abs(all_errs_y))),
-            "reprojection_errors": all_errors,
-            "reprojection_errors_x": all_errs_x,
-            "reprojection_errors_y": all_errs_y,
-            "num_images": 1,
+            "rms_error": ret,
+            "reprojection_error": ret,  # Alias for compatibility
+            "num_images_used": valid_count,
+            "image_width": img_shape[0],
+            "image_height": img_shape[1],
+            "detections_pixel_coords": detections_struct,
             "timestamp": datetime.now().isoformat(),
-            "pattern_size": self.pattern_size,
-            "dot_spacing_mm": self.dot_spacing_mm,
-            "dt": self.dt,
+            "pattern_cols": self.pattern_size[0],
+            "pattern_rows": self.pattern_size[1],
+            "dot_spacing_mm": self.dot_spacing_mm
         }
-        savemat(cam_output_base / "model" / "camera_model.mat", model_data)
-        logger.info(
-            f"Saved camera model: {cam_output_base / 'model' / 'camera_model.mat'}"
-        )
 
-    def process_camera_multi_image(self, cam_num, progress_callback=None):
-        """
-        Process all calibration images for one camera using multi-image aggregation.
+        out_file = cam_output_base / "model" / "pinhole_model.mat"
+        savemat(str(out_file), model_data)
+        logger.info(f"Saved model to: {out_file}")
 
-        Aggregates grid detections across all valid images and runs a single
-        cv2.calibrateCamera call for robust calibration (similar to ChArUco method).
-
-        Args:
-            cam_num: Camera number (1-based)
-            progress_callback: Optional callback for progress updates
-
-        Returns:
-            Dictionary with calibration results
-        """
-        logger.info(f"Processing Camera {cam_num} with multi-image aggregation")
-
-        # Setup paths
-        is_container = self._is_container_format()
-        if is_container:
-            cam_input_dir = self.source_dir / "calibration"
-        else:
-            cam_input_dir = self.source_dir / "calibration" / f"Cam{cam_num}"
-        cam_output_base = self.base_dir / "calibration" / f"Cam{cam_num}"
-
-        if not cam_input_dir.exists():
-            logger.error(f"Calibration directory not found: {cam_input_dir}")
-            return {"success": False, "error": "Directory not found"}
-
-        # Find all calibration images
-        image_files = self._find_calibration_images(cam_input_dir)
-        if not image_files:
-            logger.error(f"No calibration images found in {cam_input_dir}")
-            return {"success": False, "error": "No images found"}
-
-        logger.info(f"Found {len(image_files)} calibration images")
-
-        # Collect detections across all images
-        objp = self.make_object_points()
-        objp_2d = objp[:, :2]
-
-        all_objpoints = []
-        all_imgpoints = []
-        img_size = None
-        stats = {"valid": 0, "failed": 0}
-        valid_images = []
-
-        total_images = len(image_files)
-        for idx, img_path in enumerate(image_files, 1):
-            # Read image
-            if is_container:
-                img = self._read_calibration_image(img_path, camera=cam_num, img_index=idx)
-            else:
-                img = self._read_calibration_image(img_path, camera=cam_num, img_index=idx)
-
-            if img is None:
-                logger.warning(f"Could not read image {idx}: {img_path}")
-                stats["failed"] += 1
-                continue
-
-            if img_size is None:
-                h, w = img.shape[:2]
-                img_size = (w, h)
-
-            # Detect grid
-            found, grid_points = self.detect_grid_in_image(img)
-
-            if not found or grid_points is None:
-                logger.debug(f"Grid not found in image {idx}")
-                stats["failed"] += 1
-                continue
-
-            # Store detected points
-            num_points = min(len(grid_points), len(objp_2d))
-            obj_pts_3d = np.hstack(
-                [objp_2d[:num_points], np.zeros((num_points, 1))]
-            ).astype(np.float32)
-
-            all_objpoints.append(obj_pts_3d.reshape(-1, 1, 3))
-            all_imgpoints.append(grid_points[:num_points].reshape(-1, 1, 2))
-            valid_images.append(img_path)
-            stats["valid"] += 1
-
-            logger.info(f"Image {idx}: Detected {num_points} grid points")
-
-            # Save individual grid data
-            if not is_container:
-                original_filename = Path(img_path).name
-            else:
-                original_filename = f"{self.file_pattern}[{idx}]"
-
-            # Compute homography for this image
-            H, _ = cv2.findHomography(
-                grid_points[:num_points], objp_2d[:num_points], cv2.RANSAC, 3.0
-            )
-            mean_error, reproj_errs, reproj_errs_x, reproj_errs_y = (
-                self.calculate_reprojection_error(
-                    grid_points[:num_points], objp_2d[:num_points], H
-                )
-            )
-
-            # Save grid data for this image
-            grid_data = {
-                "grid_points": grid_points[:num_points],
-                "homography": H,
-                "reprojection_error": mean_error,
-                "reprojection_error_x_mean": float(np.mean(np.abs(reproj_errs_x))),
-                "reprojection_error_y_mean": float(np.mean(np.abs(reproj_errs_y))),
-                "pattern_size": self.pattern_size,
+        # Save per-image detection files
+        cols, rows = self.pattern_size
+        for img_idx, points in valid_indices_map.items():
+            indices_data = {
+                "grid_points": points,  # Use grid_points for consistency with loader
+                "centers_px": points,   # Keep for backwards compat
+                "pattern_cols": cols,
+                "pattern_rows": rows,
                 "dot_spacing_mm": self.dot_spacing_mm,
-                "original_filename": original_filename,
-                "timestamp": datetime.now().isoformat(),
+                "frame_index": img_idx,
             }
-            savemat(cam_output_base / "indices" / f"indexing_{idx}.mat", grid_data)
+            # Use indexing_N.mat naming for consistency with loader
+            indices_file = cam_output_base / "indices" / f"indexing_{img_idx}.mat"
+            savemat(str(indices_file), indices_data)
 
-            if progress_callback:
-                progress_callback({
-                    "camera": cam_num,
-                    "processed_images": idx,
-                    "total_images": total_images,
-                    "valid_images": stats["valid"],
-                    "progress": int((idx / total_images) * 80),
-                })
+        logger.info(f"Saved {len(valid_indices_map)} detection files to indices directory")
 
-        logger.info(f"Valid images: {stats['valid']}, Failed: {stats['failed']}")
-
-        if stats["valid"] < 1:
-            logger.error("No valid images found for calibration")
-            return {
-                "success": False,
-                "error": "No valid images",
-                "stats": stats,
-            }
-
-        # Run camera calibration with all points
-        logger.info(f"Calibrating with {stats['valid']} images...")
-
-        ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(
-            all_objpoints, all_imgpoints, img_size, None, None
-        )
-
-        logger.info(f"RMS reprojection error: {ret:.4f} pixels")
-
-        # Calculate per-axis errors
-        all_errors = []
-        all_errors_x = []
-        all_errors_y = []
-
-        for i in range(len(all_objpoints)):
-            proj, _ = cv2.projectPoints(
-                all_objpoints[i], rvecs[i], tvecs[i], mtx, dist
-            )
-            proj = proj.reshape(-1, 2)
-            img_pts = all_imgpoints[i].reshape(-1, 2)
-            err_vec = img_pts - proj
-            all_errors.extend(np.linalg.norm(err_vec, axis=1).tolist())
-            all_errors_x.extend(err_vec[:, 0].tolist())
-            all_errors_y.extend(err_vec[:, 1].tolist())
-
-        # Save camera model
-        model_data = {
-            "camera_matrix": mtx,
-            "dist_coeffs": dist,
-            "rvecs": np.array([r.flatten() for r in rvecs]),
-            "tvecs": np.array([t.flatten() for t in tvecs]),
-            "reprojection_error": ret,
-            "reprojection_error_x_mean": float(np.mean(np.abs(all_errors_x))),
-            "reprojection_error_y_mean": float(np.mean(np.abs(all_errors_y))),
-            "reprojection_errors": np.array(all_errors),
-            "num_images": stats["valid"],
-            "image_size": list(img_size),
-            "timestamp": datetime.now().isoformat(),
-            "pattern_size": self.pattern_size,
-            "dot_spacing_mm": self.dot_spacing_mm,
-            "dt": self.dt,
-            "multi_image_mode": True,
-        }
-
-        model_path = cam_output_base / "model" / "camera_model.mat"
-        savemat(str(model_path), model_data)
-        logger.info(f"Saved camera model: {model_path}")
-
+        # Final progress
         if progress_callback:
             progress_callback({
-                "camera": cam_num,
-                "processed_images": total_images,
-                "total_images": total_images,
-                "valid_images": stats["valid"],
                 "progress": 100,
+                "processed_images": processed_count,
+                "valid_images": valid_count,
+                "total_images": processed_count,
             })
 
         return {
             "success": True,
             "camera_matrix": mtx.tolist(),
-            "dist_coeffs": dist.tolist(),
+            "dist_coeffs": dist.flatten().tolist(),
             "rms_error": float(ret),
-            "num_images_used": stats["valid"],
-            "stats": stats,
-            "model_path": str(model_path),
+            "num_images_used": valid_count,
+            "model_path": str(out_file),
         }
-
-    def _find_calibration_images(self, cam_input_dir):
-        """Find all calibration images in the directory."""
-        is_container = self._is_container_format()
-
-        if is_container:
-            container_file = cam_input_dir / self.file_pattern
-            if container_file.exists():
-                return [str(container_file)]
-            return []
-
-        # Numbered pattern
-        if "%" in self.file_pattern:
-            files = []
-            i = 1
-            while True:
-                try:
-                    filename = self.file_pattern % i
-                except TypeError:
-                    break
-                filepath = cam_input_dir / filename
-                if filepath.exists():
-                    files.append(str(filepath))
-                    i += 1
-                else:
-                    break
-            return files
-
-        # Glob pattern
-        return sorted([str(f) for f in cam_input_dir.glob(self.file_pattern)])
-
-    def _save_results(
-        self,
-        img_index,
-        cam_output_base,
-        grid_points,
-        H,
-        camera_model,
-        dewarped,
-        reprojection_error,
-        reproj_errs,
-        reproj_errs_x,
-        reproj_errs_y,
-        original_filename,
-        cam_num=1,
-    ):
-        """Save all calibration results"""
-        # Save grid indexing (store in indices folder)
-        grid_data = {
-            "grid_points": grid_points,
-            "homography": H,
-            "reprojection_error": reprojection_error,
-            "reprojection_error_x_mean": float(np.mean(np.abs(reproj_errs_x))),
-            "reprojection_error_y_mean": float(np.mean(np.abs(reproj_errs_y))),
-            "reprojection_errors": reproj_errs,
-            "reprojection_errors_x": reproj_errs_x,
-            "reprojection_errors_y": reproj_errs_y,
-            "original_filename": original_filename,
-            "pattern_size": self.pattern_size,
-            "dot_spacing_mm": self.dot_spacing_mm,
-            "dt": self.dt,  # Add dt to grid data
-            "timestamp": datetime.now().isoformat(),
-        }
-        savemat(cam_output_base / "indices" / f"indexing_{img_index}.mat", grid_data)
-
-        # Save calibration model - include dt and use camera_calibration_{idx}.mat in model folder
-        # Optionally save a per-image calibration model if provided
-        if camera_model is not None:
-            model_data = {
-                "camera_matrix": camera_model["camera_matrix"],
-                "dist_coeffs": camera_model["dist_coeffs"],
-                "rvecs": camera_model["rvecs"],
-                "tvecs": camera_model["tvecs"],
-                "reprojection_error": camera_model["reprojection_error"],
-                "reprojection_error_x_mean": float(np.mean(np.abs(reproj_errs_x))),
-                "reprojection_error_y_mean": float(np.mean(np.abs(reproj_errs_y))),
-                "reprojection_errors": reproj_errs,
-                "reprojection_errors_x": reproj_errs_x,
-                "reprojection_errors_y": reproj_errs_y,
-                "grid_points": grid_points,
-                "homography": H,
-                "original_filename": original_filename,
-                "pattern_size": self.pattern_size,
-                "dot_spacing_mm": self.dot_spacing_mm,
-                "dt": self.dt,  # IMPORTANT: Save dt with the model for vector calibration
-                "timestamp": datetime.now().isoformat(),
-            }
-            savemat(
-                cam_output_base / "model" / f"camera_calibration_{img_index}.mat",
-                model_data,
-            )
-        else:
-            logger.debug(f"No per-image camera model to save for image {img_index}")
-
-        # Save dewarped image in dewarp folder with clear name
-        dewarped_path = cam_output_base / "dewarp" / f"dewarped_{img_index}.tif"
-        cv2.imwrite(str(dewarped_path), dewarped)
-
-        # Save grid visualization with indices into indices folder as indexes_{idx}.png
-        self._save_grid_visualization(
-            img_index,
-            cam_output_base,
-            grid_points,
-            original_filename,
-            reprojection_error,
-            cam_num=cam_num,
-        )
-
-        logger.info(f"Saved results for image {img_index}")
-
-    def _save_grid_visualization(
-        self,
-        img_index,
-        cam_output_base,
-        grid_points,
-        original_filename,
-        reprojection_error,
-        cam_num=1,
-    ):
-        """Save a figure showing the detected grid with dot indices"""
-        try:
-            # Load original image for background - handle container formats
-            if self._is_container_format():
-                img_path = self.source_dir / "calibration" / self.file_pattern
-                img = self._read_calibration_image(img_path, camera=cam_num, img_index=img_index)
-            else:
-                img_path = (
-                    self.source_dir
-                    / "calibration"
-                    / cam_output_base.name
-                    / original_filename
-                )
-                img = self._read_calibration_image(img_path)
-
-            # Convert to grayscale if needed
-            if img.ndim == 3:
-                img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-            cols, rows = self.pattern_size
-
-            # Create figure
-            fig, ax = plt.subplots(figsize=(12, 10))
-
-            # Display image
-            ax.imshow(img, cmap="gray", alpha=0.7)
-
-            # Plot detected grid points with indices
-            for idx, (x, y) in enumerate(grid_points):
-                # Calculate grid coordinates (row, col)
-                row = idx // cols
-                col = idx % cols
-
-                # Plot point
-                ax.scatter(x, y, c="red", s=60, marker="o", alpha=0.8)
-
-                # Add index label
-                ax.text(
-                    x + 10,
-                    y - 10,
-                    f"({row},{col})",
-                    color="cyan",
-                    fontsize=8,
-                    fontweight="bold",
-                    bbox=dict(boxstyle="round,pad=0.3", facecolor="black", alpha=0.7),
-                )
-
-            ax.set_title(
-                f"Grid Detection: {original_filename}\n"
-                f"Detected: {len(grid_points)} points | "
-                f"Reprojection Error: {reprojection_error:.2f}px",
-                fontsize=12,
-                fontweight="bold",
-            )
-            ax.set_xlabel("X (pixels)")
-            ax.set_ylabel("Y (pixels)")
-            ax.grid(True, alpha=0.3)
-
-            # Invert y-axis to match image coordinates
-            ax.invert_yaxis()
-
-            # Save figure into indices folder with filename indexes_{idx}.png
-            fig_path = cam_output_base / "indices" / f"indexes_{img_index}.png"
-            plt.savefig(fig_path, dpi=150, bbox_inches="tight", facecolor="white")
-            plt.close(fig)
-
-            logger.info(f"Saved grid visualization: {fig_path}")
-
-        except Exception as e:
-            logger.warning(f"Failed to save grid visualization: {str(e)}")
-
-    def run(self):
-        """Run calibration for all cameras"""
-        logger.info(f"Starting planar calibration for {self.camera_count} cameras")
-        logger.info(f"Source: {self.source_dir}")
-        logger.info(f"Output: {self.base_dir}")
-        logger.info(f"Pattern: {self.file_pattern}")
-        logger.info(f"Grid size: {self.pattern_size}")
-        logger.info(f"Dot spacing: {self.dot_spacing_mm} mm")
-        logger.info(f"Dot enhancement: {self.enable_dot_enhancement}")
-
-        for cam_num in range(1, self.camera_count + 1):
-            try:
-                self.process_camera(cam_num)
-            except Exception as e:
-                logger.error(f"Failed to process Camera {cam_num}: {str(e)}")
-                continue
-
-        logger.info("Planar calibration completed")
-
-
-def main():
-    calibrator = PlanarCalibrator(
-        source_dir=SOURCE_DIR,
-        base_dir=BASE_DIR,
-        camera_count=CAMERA_COUNT,
-        file_pattern=FILE_PATTERN,
-        pattern_cols=PATTERN_COLS,
-        pattern_rows=PATTERN_ROWS,
-        dot_spacing_mm=DOT_SPACING_MM,
-        asymmetric=ASYMMETRIC,
-        enhance_dots=ENHANCE_DOTS,
-        selected_image_idx=SELECTED_IMAGE_IDX,  # Set to specific image index (or range) if needed
-    )
-
-    calibrator.run()
 
 
 if __name__ == "__main__":
-    main()
+    logger.info("=" * 60)
+    logger.info("Planar Calibration - Starting")
+    logger.info("=" * 60)
+    logger.info(f"Source: {SOURCE_DIR}")
+    logger.info(f"Output: {BASE_DIR}")
+    logger.info(f"Cameras: {CAMERA_NUMS}")
+    logger.info(f"Pattern: {PATTERN_COLS}x{PATTERN_ROWS}, {DOT_SPACING_MM}mm spacing")
+
+    # Apply CLI settings to config.yaml so centralized loaders work correctly
+    config = apply_cli_settings_to_config()
+
+    failed_cameras = []
+
+    for camera_num in CAMERA_NUMS:
+        logger.info(f"Processing Camera {camera_num}...")
+        try:
+            # Create calibrator using config - all settings are now in config.yaml
+            calibrator = MultiViewCalibrator(
+                source_dir=SOURCE_DIR,
+                base_dir=BASE_DIR,
+                camera_count=1,  # Process one at a time
+                file_pattern=FILE_PATTERN,
+                pattern_cols=PATTERN_COLS,
+                pattern_rows=PATTERN_ROWS,
+                dot_spacing_mm=DOT_SPACING_MM,
+                asymmetric=ASYMMETRIC,
+                enhance_dots=ENHANCE_DOTS,
+                calibration_subfolder=CALIBRATION_SUBFOLDER,
+                camera_subfolders=CAMERA_SUBFOLDERS,
+                config=config,
+            )
+            result = calibrator.process_single_camera(camera_num, save_visualizations=True)
+            if result.get("success"):
+                logger.info(f"Camera {camera_num} completed: RMS={result['rms_error']:.4f} px, {result['num_images_used']} images")
+            else:
+                logger.error(f"Camera {camera_num} failed: {result.get('error', 'Unknown error')}")
+                failed_cameras.append(camera_num)
+        except Exception as e:
+            logger.error(f"Camera {camera_num} failed: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            failed_cameras.append(camera_num)
+
+    logger.info("=" * 60)
+    if failed_cameras:
+        logger.error(f"Calibration failed for cameras: {failed_cameras}")
+    else:
+        logger.info("Planar calibration completed successfully for all cameras")

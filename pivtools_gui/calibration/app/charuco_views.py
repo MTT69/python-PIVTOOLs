@@ -14,10 +14,15 @@ from flask import Blueprint, jsonify, request
 from loguru import logger
 
 from pivtools_core.config import get_config
+from pivtools_core.image_handling.calibration_loader import (
+    read_calibration_image,
+    validate_calibration_images,
+)
+from pivtools_core.image_handling.path_utils import build_calibration_camera_path
 
-from ..calibration_charuco import ChArUcoCalibrator
-from ..services.job_manager import job_manager
-from ...utils import camera_number, numpy_to_png_base64
+from pivtools_gui.calibration.calibration_charuco import ChArUcoCalibrator
+from pivtools_gui.calibration.services.job_manager import job_manager
+from pivtools_gui.utils import camera_number 
 
 charuco_bp = Blueprint("charuco", __name__)
 
@@ -27,10 +32,17 @@ def charuco_validate_images():
     """
     Validate ChArUco calibration images exist and are readable.
 
+    Uses the unified calibration_loader for consistent path handling.
+    Note: Frontend now uses usePinholeValidation which calls the unified
+    /calibration/validate_images endpoint. This endpoint is kept for
+    backward compatibility.
+
     Request JSON:
         source_path_idx: int
         camera: int
-        file_pattern: str (default: "*.tif")
+        image_format: str (optional - overrides config)
+        num_images: int (optional - overrides config)
+        subfolder: str (optional - overrides config)
 
     Returns:
         JSON with validation status, file count, preview image
@@ -38,85 +50,33 @@ def charuco_validate_images():
     data = request.get_json() or {}
     source_path_idx = int(data.get("source_path_idx", 0))
     camera = camera_number(data.get("camera", 1))
-    file_pattern = data.get("file_pattern", "*.tif")
+
+    # Extract optional override parameters
+    image_format = data.get("image_format")
+    num_images = data.get("num_images")
+    if num_images is not None:
+        num_images = int(num_images)
+    subfolder = data.get("subfolder")
 
     try:
         cfg = get_config()
-        source_root = Path(cfg.source_paths[source_path_idx])
-        cam_input_dir = source_root / "calibration" / f"Cam{camera}"
 
-        if not cam_input_dir.exists():
-            return jsonify({
-                "valid": False,
-                "checked": True,
-                "found_count": 0,
-                "file_pattern": file_pattern,
-                "camera_path": str(cam_input_dir),
-                "sample_files": [],
-                "first_image_preview": None,
-                "error": f"Calibration directory not found: {cam_input_dir}",
-            })
+        # Use unified validation function with optional overrides
+        result = validate_calibration_images(
+            camera,
+            cfg,
+            source_path_idx,
+            image_format=image_format,
+            num_images=num_images,
+            subfolder=subfolder,
+        )
 
-        # Find images
-        image_files = sorted(cam_input_dir.glob(file_pattern))
-        sample_files = [f.name for f in image_files[:5]]
+        # Add extra context
+        result["camera"] = camera
+        result["source_path_idx"] = source_path_idx
+        result["checked"] = True
 
-        if not image_files:
-            # Try to suggest patterns
-            all_files = list(cam_input_dir.glob("*.*"))
-            image_exts = {".tif", ".tiff", ".png", ".jpg", ".jpeg", ".bmp"}
-            found_files = [f.name for f in all_files if f.suffix.lower() in image_exts][:5]
-
-            return jsonify({
-                "valid": False,
-                "checked": True,
-                "found_count": 0,
-                "file_pattern": file_pattern,
-                "camera_path": str(cam_input_dir),
-                "sample_files": found_files,
-                "first_image_preview": None,
-                "error": f"No images found matching pattern: {file_pattern}",
-            })
-
-        # Try to load first image for preview
-        preview_b64 = None
-        image_size = None
-
-        try:
-            img = cv2.imread(str(image_files[0]), cv2.IMREAD_UNCHANGED)
-            if img is not None:
-                # Convert to grayscale and normalize
-                if img.ndim == 3:
-                    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                else:
-                    gray = img.copy()
-
-                if gray.dtype == np.uint16:
-                    gray = (gray / 256).astype(np.uint8)
-
-                image_size = [int(gray.shape[1]), int(gray.shape[0])]
-
-                # Normalize for display
-                disp = gray.astype(float) - gray.min()
-                if disp.max() > 0:
-                    disp = disp / disp.max()
-                disp8 = (disp * 255).astype(np.uint8)
-                preview_b64 = numpy_to_png_base64(disp8)
-
-        except Exception as e:
-            logger.warning(f"Could not read first image for preview: {e}")
-
-        return jsonify({
-            "valid": True,
-            "checked": True,
-            "found_count": len(image_files),
-            "file_pattern": file_pattern,
-            "camera_path": str(cam_input_dir),
-            "sample_files": sample_files,
-            "first_image_preview": preview_b64,
-            "image_size": image_size,
-            "error": None,
-        })
+        return jsonify(result)
 
     except Exception as e:
         logger.error(f"Error validating ChArUco images: {e}")
@@ -124,113 +84,8 @@ def charuco_validate_images():
             "valid": False,
             "checked": True,
             "found_count": 0,
-            "file_pattern": file_pattern,
             "error": str(e),
         }), 500
-
-
-@charuco_bp.route("/calibration/charuco/detect", methods=["POST"])
-def charuco_detect():
-    """
-    Detect ChArUco board in a single image.
-
-    Request JSON:
-        source_path_idx: int
-        camera: int
-        image_index: int
-        file_pattern: str
-        squares_h: int (default: 10)
-        squares_v: int (default: 9)
-        square_size: float (default: 0.03)
-        marker_ratio: float (default: 0.5)
-        aruco_dict: str (default: "DICT_4X4_1000")
-
-    Returns:
-        JSON with detection results, corner count, preview
-    """
-    data = request.get_json() or {}
-    source_path_idx = int(data.get("source_path_idx", 0))
-    camera = camera_number(data.get("camera", 1))
-    image_index = int(data.get("image_index", 0))
-    file_pattern = data.get("file_pattern", "*.tif")
-    squares_h = int(data.get("squares_h", 10))
-    squares_v = int(data.get("squares_v", 9))
-    square_size = float(data.get("square_size", 0.03))
-    marker_ratio = float(data.get("marker_ratio", 0.5))
-    aruco_dict = data.get("aruco_dict", "DICT_4X4_1000")
-
-    try:
-        cfg = get_config()
-        source_root = Path(cfg.source_paths[source_path_idx])
-        base_root = Path(cfg.base_paths[source_path_idx])
-
-        cam_input_dir = source_root / "calibration" / f"Cam{camera}"
-        image_files = sorted(cam_input_dir.glob(file_pattern))
-
-        if image_index >= len(image_files):
-            return jsonify({"error": "Image index out of range", "found": False}), 404
-
-        # Create calibrator just for detection
-        calibrator = ChArUcoCalibrator(
-            source_dir=source_root,
-            base_dir=base_root,
-            camera_count=1,
-            file_pattern=file_pattern,
-            squares_h=squares_h,
-            squares_v=squares_v,
-            square_size=square_size,
-            marker_ratio=marker_ratio,
-            aruco_dict=aruco_dict,
-        )
-
-        # Load and detect
-        img_path = image_files[image_index]
-        img = cv2.imread(str(img_path), cv2.IMREAD_UNCHANGED)
-
-        if img is None:
-            return jsonify({"error": f"Could not read image: {img_path}", "found": False}), 500
-
-        if img.dtype == np.uint16:
-            img = (img / 256).astype(np.uint8)
-
-        found, corners, ids, marker_corners, marker_ids = calibrator.detect_charuco_corners(img)
-
-        if not found:
-            return jsonify({
-                "found": False,
-                "corner_count": 0,
-                "marker_count": len(marker_ids) if marker_ids is not None else 0,
-                "message": "ChArUco board not detected (insufficient corners)",
-            })
-
-        # Create visualization
-        if len(img.shape) == 2:
-            vis = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-        else:
-            vis = img.copy()
-
-        if marker_corners is not None:
-            cv2.aruco.drawDetectedMarkers(vis, marker_corners)
-        if corners is not None and ids is not None:
-            cv2.aruco.drawDetectedCornersCharuco(vis, corners, ids)
-
-        # Convert to base64
-        preview_b64 = numpy_to_png_base64(vis)
-
-        return jsonify({
-            "found": True,
-            "corner_count": len(corners),
-            "corners": corners.reshape(-1, 2).tolist(),
-            "corner_ids": ids.flatten().tolist(),
-            "marker_count": len(marker_ids) if marker_ids is not None else 0,
-            "detection_preview": preview_b64,
-            "image_path": str(img_path),
-            "image_filename": img_path.name,
-        })
-
-    except Exception as e:
-        logger.error(f"Error detecting ChArUco board: {e}")
-        return jsonify({"error": str(e), "found": False}), 500
 
 
 @charuco_bp.route("/calibration/charuco/calibrate", methods=["POST"])
@@ -238,10 +93,11 @@ def charuco_calibrate():
     """
     Start ChArUco calibration job with progress tracking.
 
+    Uses unified calibration config for path handling.
+
     Request JSON:
         source_path_idx: int
         camera: int
-        file_pattern: str
         squares_h: int
         squares_v: int
         square_size: float
@@ -255,7 +111,6 @@ def charuco_calibrate():
     data = request.get_json() or {}
     source_path_idx = int(data.get("source_path_idx", 0))
     camera = camera_number(data.get("camera", 1))
-    file_pattern = data.get("file_pattern", "*.tif")
     squares_h = int(data.get("squares_h", 10))
     squares_v = int(data.get("squares_v", 9))
     square_size = float(data.get("square_size", 0.03))
@@ -267,6 +122,11 @@ def charuco_calibrate():
     cfg = get_config()
     source_root = Path(cfg.source_paths[source_path_idx])
     base_root = Path(cfg.base_paths[source_path_idx])
+
+    # Get calibration path settings from unified config
+    file_pattern = cfg.calibration_image_format
+    calibration_subfolder = cfg.calibration_subfolder
+    camera_folder = cfg.get_calibration_camera_folder(camera)
 
     # Create job
     job_id = job_manager.create_job(
@@ -281,6 +141,10 @@ def charuco_calibrate():
         try:
             job_manager.update_job(job_id, status="running")
 
+            # Get calibration input path using config settings
+            cam_input_path = build_calibration_camera_path(cfg, source_path_idx, camera)
+
+            # Use config-based paths with explicit input path override
             calibrator = ChArUcoCalibrator(
                 source_dir=source_root,
                 base_dir=base_root,
@@ -293,6 +157,9 @@ def charuco_calibrate():
                 aruco_dict=aruco_dict,
                 min_corners=min_corners,
                 dt=dt,
+                camera_folder_template=camera_folder.replace(str(camera), "%d") if camera_folder else None,
+                calibration_subfolder=calibration_subfolder,
+                calibration_input_path=cam_input_path,
             )
 
             def progress_callback(progress_data):
@@ -351,9 +218,10 @@ def charuco_calibrate_all():
     """
     Start ChArUco calibration for all cameras.
 
+    Uses unified calibration config for path handling.
+
     Request JSON:
         source_path_idx: int
-        file_pattern: str
         squares_h: int
         squares_v: int
         square_size: float
@@ -367,7 +235,6 @@ def charuco_calibrate_all():
     """
     data = request.get_json() or {}
     source_path_idx = int(data.get("source_path_idx", 0))
-    file_pattern = data.get("file_pattern", "*.tif")
     squares_h = int(data.get("squares_h", 10))
     squares_v = int(data.get("squares_v", 9))
     square_size = float(data.get("square_size", 0.03))
@@ -380,6 +247,13 @@ def charuco_calibrate_all():
     camera_numbers = cfg.camera_numbers
     source_root = Path(cfg.source_paths[source_path_idx])
     base_root = Path(cfg.base_paths[source_path_idx])
+
+    # Get calibration path settings from unified config
+    file_pattern = cfg.calibration_image_format
+    calibration_subfolder = cfg.calibration_subfolder
+    # Get camera folder template from first camera
+    camera_folder = cfg.get_calibration_camera_folder(camera_numbers[0]) if camera_numbers else None
+    camera_folder_template = camera_folder.replace(str(camera_numbers[0]), "%d") if camera_folder else None
 
     # Create job with camera-aware tracking
     job_id = job_manager.create_job(
@@ -397,6 +271,12 @@ def charuco_calibrate_all():
         try:
             job_manager.update_job(job_id, status="running")
 
+            # Get calibration input path using config settings
+            # When use_camera_subfolders=False, path is same for all cameras
+            first_camera = camera_numbers[0] if camera_numbers else 1
+            cam_input_path = build_calibration_camera_path(cfg, source_path_idx, first_camera)
+
+            # Use config-based paths with explicit input path override
             calibrator = ChArUcoCalibrator(
                 source_dir=source_root,
                 base_dir=base_root,
@@ -409,6 +289,9 @@ def charuco_calibrate_all():
                 aruco_dict=aruco_dict,
                 min_corners=min_corners,
                 dt=dt,
+                camera_folder_template=camera_folder_template,
+                calibration_subfolder=calibration_subfolder,
+                calibration_input_path=cam_input_path,
             )
 
             def progress_callback(progress_data):
@@ -496,12 +379,23 @@ def charuco_load_results():
     """
     Load previously computed ChArUco calibration results.
 
+    Returns the overall camera model and per-frame detection data including
+    corner IDs and pixel coordinates for all calibration frames.
+
     Query params:
         source_path_idx: int
         camera: int
 
     Returns:
-        JSON with calibration results (camera_matrix, dist_coeffs, etc.)
+        JSON with:
+        - exists: bool
+        - camera_model: dict with camera_matrix, dist_coeffs, rvecs, tvecs, etc.
+        - frames: list of dicts, each with:
+            - frame_index: int (1-indexed)
+            - corners: list of [x, y] pixel coordinates
+            - corner_ids: list of corner IDs
+            - original_filename: str
+        - board: dict with board parameters
     """
     source_path_idx = request.args.get("source_path_idx", default=0, type=int)
     camera = camera_number(request.args.get("camera", default=1, type=int))
@@ -511,32 +405,65 @@ def charuco_load_results():
         base_root = Path(cfg.base_paths[source_path_idx])
         cam_output_base = base_root / "calibration" / f"Cam{camera}"
 
-        model_file = cam_output_base / "model" / "camera_model.mat"
-        json_file = cam_output_base / "model" / "camera_model.json"
+        # Check both old and new paths
+        model_folder = cam_output_base / "charuco_planar" / "model"
+        model_file = model_folder / "camera_model.mat"
+        indices_folder = cam_output_base / "charuco_planar" / "indices"
 
-        if not model_file.exists() and not json_file.exists():
-            return jsonify({"exists": False, "message": "No saved results found"})
+        # Fall back to old path structure if new doesn't exist
+        if not model_file.exists():
+            model_folder = cam_output_base / "model"
+            model_file = model_folder / "camera_model.mat"
+            indices_folder = cam_output_base / "indices"
 
-        # Prefer JSON for easier parsing
-        if json_file.exists():
-            import json
-            with open(json_file) as f:
-                results = json.load(f)
-            return jsonify({"exists": True, "results": results})
+        if not model_file.exists():
+            return jsonify({
+                "exists": False,
+                "message": "No saved camera model found"
+            })
 
-        # Fall back to .mat file
+        results = {"exists": True}
+
+        # Load camera model
         import scipy.io
-        mat_data = scipy.io.loadmat(str(model_file), struct_as_record=False, squeeze_me=True)
+        model_data = scipy.io.loadmat(
+            str(model_file), struct_as_record=False, squeeze_me=True
+        )
 
-        results = {
-            "camera_matrix": mat_data["camera_matrix"].tolist(),
-            "dist_coeffs": mat_data["dist_coeffs"].tolist(),
-            "rms_error": float(mat_data.get("reprojection_error", 0)),
-            "num_images_used": int(mat_data.get("num_images", 0)),
+        camera_model = {
+            "camera_matrix": model_data["camera_matrix"].tolist(),
+            "dist_coeffs": model_data["dist_coeffs"].tolist(),
+            "reprojection_error": float(model_data.get("reprojection_error", 0)),
+            "num_images_used": int(model_data.get("num_images", 0)),
+            "focal_length": [
+                float(model_data["camera_matrix"][0, 0]),
+                float(model_data["camera_matrix"][1, 1]),
+            ],
+            "principal_point": [
+                float(model_data["camera_matrix"][0, 2]),
+                float(model_data["camera_matrix"][1, 2]),
+            ],
         }
 
-        if "board_params" in mat_data:
-            bp = mat_data["board_params"]
+        # Include rvecs/tvecs if available
+        if "rvecs" in model_data:
+            rvecs = model_data["rvecs"]
+            if isinstance(rvecs, np.ndarray):
+                camera_model["rvecs"] = rvecs.tolist()
+        if "tvecs" in model_data:
+            tvecs = model_data["tvecs"]
+            if isinstance(tvecs, np.ndarray):
+                camera_model["tvecs"] = tvecs.tolist()
+
+        # Include dot_spacing_mm if available
+        if "dot_spacing_mm" in model_data:
+            camera_model["dot_spacing_mm"] = float(model_data["dot_spacing_mm"])
+
+        results["camera_model"] = camera_model
+
+        # Load board parameters if available
+        if "board_params" in model_data:
+            bp = model_data["board_params"]
             results["board"] = {
                 "squares_h": int(getattr(bp, "squares_h", 10)),
                 "squares_v": int(getattr(bp, "squares_v", 9)),
@@ -545,7 +472,55 @@ def charuco_load_results():
                 "aruco_dict": str(getattr(bp, "aruco_dict", "DICT_4X4_1000")),
             }
 
-        return jsonify({"exists": True, "results": results})
+        # Load per-frame detection data (corners and IDs)
+        frames = []
+        if indices_folder.exists():
+            # Find all indexing files
+            indexing_files = sorted(indices_folder.glob("indexing_*.mat"))
+
+            for idx_file in indexing_files:
+                try:
+                    # Extract frame number from filename
+                    frame_num = int(idx_file.stem.split("_")[1])
+
+                    frame_data = scipy.io.loadmat(
+                        str(idx_file), struct_as_record=False, squeeze_me=True
+                    )
+
+                    frame_info = {"frame_index": frame_num}
+
+                    # Corner pixel coordinates
+                    if "corners" in frame_data:
+                        corners = frame_data["corners"]
+                        if isinstance(corners, np.ndarray):
+                            frame_info["corners"] = corners.reshape(-1, 2).tolist()
+
+                    # Corner IDs
+                    if "corner_ids" in frame_data:
+                        ids = frame_data["corner_ids"]
+                        if isinstance(ids, np.ndarray):
+                            frame_info["corner_ids"] = ids.flatten().tolist()
+
+                    # Original filename
+                    if "original_filename" in frame_data:
+                        frame_info["original_filename"] = str(
+                            frame_data["original_filename"]
+                        )
+
+                    # Corner count
+                    if "corner_count" in frame_data:
+                        frame_info["corner_count"] = int(frame_data["corner_count"])
+
+                    frames.append(frame_info)
+
+                except Exception as e:
+                    logger.warning(f"Could not load frame data from {idx_file}: {e}")
+                    continue
+
+        results["frames"] = frames
+        results["num_frames"] = len(frames)
+
+        return jsonify(results)
 
     except Exception as e:
         logger.error(f"Error loading ChArUco calibration results: {e}")

@@ -570,6 +570,7 @@ def get_output_path(
     create: bool = True,
     use_uncalibrated: bool = True,
     piv_type: Optional[str] = None,
+    base_path_idx: int = 0,
 ) -> Path:
     """
     Get the output path for a specific camera's PIV results using the GUI path structure.
@@ -591,13 +592,15 @@ def get_output_path(
         If False, save to calibrated_piv directory.
     piv_type : Optional[str]
         Override the PIV type ("instantaneous" or "ensemble"). If None, determine from config.
+    base_path_idx : int
+        Index into config.base_paths to use. Defaults to 0.
 
     Returns
     -------
     Path
         Output path for PIV results.
     """
-    base_path = config.base_paths[0]
+    base_path = config.base_paths[base_path_idx]
 
     # Convert camera to int if it's a string
     if isinstance(camera, str):
@@ -635,6 +638,7 @@ def get_ensemble_output_path(
     camera: Union[int, str],
     create: bool = True,
     use_uncalibrated: bool = True,
+    base_path_idx: int = 0,
 ) -> Path:
     """
     Get the output path for ensemble PIV results.
@@ -651,6 +655,8 @@ def get_ensemble_output_path(
         If True, create the directory if it doesn't exist.
     use_uncalibrated : bool
         If True, save to uncalibrated_piv directory.
+    base_path_idx : int
+        Index into config.base_paths to use. Defaults to 0.
 
     Returns
     -------
@@ -662,7 +668,8 @@ def get_ensemble_output_path(
         camera,
         create=create,
         use_uncalibrated=use_uncalibrated,
-        piv_type="ensemble"
+        piv_type="ensemble",
+        base_path_idx=base_path_idx,
     )
 
 

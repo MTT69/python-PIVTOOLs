@@ -134,23 +134,26 @@ class PIVRunner:
         cameras: Optional[list[int]] = None,
         source_path_idx: int = 0,
         base_path_idx: int = 0,
+        active_paths: Optional[list[int]] = None,
         config_overrides: Optional[dict] = None,
     ) -> dict:
         """
         Start a new PIV computation job as a subprocess.
-        
-        Note: Currently runs example.py which reads all settings from config.yaml.
-        The parameters are accepted for API compatibility but not yet used.
-        Future enhancement: Pass parameters via CLI args or environment variables.
+
+        Runs example.py which reads settings from config.yaml. The active_paths
+        parameter can be used to override which source/base path pairs to process.
 
         Parameters
         ----------
         cameras : list[int], optional
             List of camera numbers to process (future feature).
         source_path_idx : int
-            Index of source path to use from config (future feature).
+            Index of source path to use from config (legacy, use active_paths instead).
         base_path_idx : int
-            Index of base path to use from config (future feature).
+            Index of base path to use from config (legacy, use active_paths instead).
+        active_paths : list[int], optional
+            List of path indices to process. If provided, overrides config.yaml's
+            active_paths setting via PIV_ACTIVE_PATHS environment variable.
         config_overrides : dict, optional
             Configuration overrides to apply before running (future feature).
 
@@ -171,9 +174,13 @@ class PIVRunner:
         log_handle = open(log_file, "w", buffering=1)  # Line buffered
 
         # Set up environment with PYTHONPATH to allow imports
-
         env = os.environ.copy()
         env['PYTHONPATH'] = str(self.project_root)
+
+        # Pass active paths via environment variable if specified
+        if active_paths is not None:
+            env['PIV_ACTIVE_PATHS'] = ','.join(str(i) for i in active_paths)
+            logger.info(f"Setting PIV_ACTIVE_PATHS={env['PIV_ACTIVE_PATHS']}")
 
         try:
             # Start subprocess

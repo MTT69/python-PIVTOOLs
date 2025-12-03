@@ -38,6 +38,11 @@ class Config:
         # Store the config path for saving
         self._config_path = path if path is not None else self._get_config_path()
 
+    def save(self):
+        """Save current config state to YAML file."""
+        with open(self._config_path, 'w') as f:
+            yaml.dump(self.data, f, default_flow_style=False, sort_keys=False)
+
     def _get_config_path(self):
         """Get the path to the config file in the current working directory."""
         # Always use current working directory (like CLI)
@@ -180,34 +185,41 @@ ensemble_piv:
   - 16
   - 16
   resume_from_pass: 0
-calibration_format:
-  image_format: calib%05d.tif
 calibration:
+  image_format: calib%05d.tif
+  num_images: 10
+  image_type: standard
+  zero_based_indexing: false
+  use_camera_subfolders: false
+  subfolder: ''
   active: polynomial
   scale_factor:
     dt: 0.56
     px_per_mm: 3.41
-    source_path_idx: 0
   pinhole:
-    source_path_idx: 0
     camera: 1
-    image_index: 0
-    file_pattern: calib%05d.tif
     pattern_cols: 10
     pattern_rows: 10
     dot_spacing_mm: 28.89
     enhance_dots: true
     asymmetric: false
-    dot_distance_mm: 28.9
     grid_tolerance: 0.5
     ransac_threshold: 3
     dt: 0.0275
+  charuco:
+    camera: 1
+    squares_h: 10
+    squares_v: 9
+    square_size: 0.03
+    marker_ratio: 0.5
+    aruco_dict: DICT_4X4_1000
+    min_corners: 6
+    dt: 1
   stereo:
-    source_path_idx: 0
     camera_pair:
     - 1
     - 2
-    file_pattern: planar_calibration_plate_*.tif
+    stereo_model_type: charuco
     pattern_cols: 10
     pattern_rows: 10
     dot_spacing_mm: 28.89
@@ -765,33 +777,168 @@ masking:
         return self.data.get("post_processing", [])
 
     # --- Calibration specific settings ---
+    # All calibration settings are now unified under the 'calibration' block
+
     @property
-    def calibration_image_format(self):
+    def calibration_image_format(self) -> str:
         """Return calibration image filename pattern.
-        Default 'Calib%05d.tif'. If user supplies a plain filename (no %), it
-        is used directly. If a dict block calibration: { image_format: ... }
-        exists use that, else look for images.calibration_image_format for
-        backward compatibility.
+
+        Now reads from unified calibration block.
+        Default 'calib%05d.tif'.
         """
-        # Preferred location
-        calib_block = self.data.get("calibration_format", {}) or {}
+        calib_block = self.data.get("calibration", {}) or {}
         fmt = calib_block.get("image_format", None)
-        if not fmt:
-            # fallback legacy key
-            fmt = self.data.get("images", {}).get("calibration_image_format", None)
-        if not fmt:
-            fmt = "calib%05d.tif"
         return fmt
 
-    def calibration_filename(self, index: int = 1):
+    def calibration_filename(self, index: int = 1) -> str:
+        """Generate calibration filename for a given index."""
         fmt = self.calibration_image_format
         try:
             if "%" in fmt:
                 return fmt % index
             return fmt
         except Exception:
-            # On formatting error, just return fmt
             return fmt
+
+    @property
+    def calibration_image_count(self) -> int:
+        """Return number of calibration images expected."""
+        calib_block = self.data.get("calibration", {}) or {}
+        return calib_block.get("num_images", 10)
+
+    @property
+    def calibration_image_type(self) -> str:
+        """Return calibration image type: 'standard', 'cine', 'lavision_set', 'lavision_im7'.
+
+        If explicitly set in config, returns that value.
+        Otherwise, auto-detects from calibration_image_format pattern.
+        """
+        calib_block = self.data.get("calibration", {}) or {}
+        explicit_type = calib_block.get("image_type")
+        if explicit_type:
+            return explicit_type
+        return self._detect_calibration_image_type()
+
+    def _detect_calibration_image_type(self) -> str:
+        """Auto-detect calibration image type from format string."""
+        fmt = self.calibration_image_format.lower()
+        if '.cine' in fmt:
+            return "cine"
+        elif '.set' in fmt:
+            return "lavision_set"
+        elif '.im7' in fmt:
+            return "lavision_im7"
+        elif '.ims' in fmt:
+            return "lavision_im7"
+        else:
+            return "standard"
+
+    @property
+    def calibration_is_container_format(self) -> bool:
+        """Return True if calibration format stores multiple frames in single container."""
+        return self.calibration_image_type in ("cine", "lavision_set", "lavision_im7")
+
+    @property
+    def calibration_zero_based_indexing(self) -> bool:
+        """Return True if calibration image indices start at 0."""
+        calib_block = self.data.get("calibration", {}) or {}
+        return calib_block.get("zero_based_indexing", False)
+
+    @property
+    def calibration_use_camera_subfolders(self) -> bool:
+        """Return True if calibration images use camera subfolders (Cam1/, Cam2/)."""
+        calib_block = self.data.get("calibration", {}) or {}
+        default = self.camera_count > 1
+        return calib_block.get("use_camera_subfolders", default)
+
+    @property
+    def calibration_subfolder(self) -> str:
+        """Return subfolder under camera folder for calibration images.
+
+        Path structure: source_path / camera_subfolder / calibration_subfolder / image_file
+        """
+        calib_block = self.data.get("calibration", {}) or {}
+        return calib_block.get("subfolder", "")
+
+    def get_calibration_camera_folder(self, camera_num: int) -> str:
+        """Get the subfolder name for calibration images of a specific camera.
+
+        Container formats (.cine, .set, .im7) don't use camera subfolders.
+        Returns empty string for single-camera setups or container formats.
+        """
+        # Container formats don't use camera subfolders
+        if self.calibration_is_container_format:
+            return ""
+
+        # Check if camera subfolders are enabled
+        if not self.calibration_use_camera_subfolders:
+            return ""
+
+        # Use same camera subfolders as PIV images if configured
+        subfolders = self.camera_subfolders
+        idx = camera_num - 1  # camera_num is 1-based
+
+        if subfolders and idx < len(subfolders) and subfolders[idx]:
+            return subfolders[idx]
+
+        if self.camera_count == 1:
+            return ""
+
+        return f"Cam{camera_num}"
+
+    def get_calibration_image_path(self, camera: int, index: int, source_path_idx: int = 0) -> Path:
+        """Build full path to a calibration image.
+
+        Path structure: source_path / camera_subfolder / calibration_subfolder / image_file
+
+        Parameters
+        ----------
+        camera : int
+            Camera number (1-based)
+        index : int
+            Image index (1-based or 0-based depending on calibration_zero_based_indexing)
+        source_path_idx : int
+            Index into source_paths list
+
+        Returns
+        -------
+        Path
+            Full path to the calibration image file
+        """
+        source_path = self.source_paths[source_path_idx]
+        camera_folder = self.get_calibration_camera_folder(camera)
+
+        # Build base path: source_path / camera_subfolder
+        if camera_folder:
+            camera_path = source_path / camera_folder
+        else:
+            camera_path = source_path
+
+        # Add calibration subfolder if specified
+        if self.calibration_subfolder:
+            camera_path = camera_path / self.calibration_subfolder
+
+        image_type = self.calibration_image_type
+        fmt = self.calibration_image_format
+
+        # For container formats, the path is just the container file
+        if image_type == "lavision_set":
+            return camera_path / fmt
+        elif image_type == "cine":
+            # CINE pattern uses %d for camera number
+            if "%" in fmt:
+                return camera_path / (fmt % camera)
+            return camera_path / fmt
+        elif image_type == "lavision_im7":
+            # IM7 uses %d for frame index
+            if "%" in fmt:
+                return camera_path / (fmt % index)
+            return camera_path / fmt
+        else:
+            # Standard formats use %d for frame index
+            if "%" in fmt:
+                return camera_path / (fmt % index)
+            return camera_path / fmt
 
     @property
     def calibration(self):
@@ -1505,20 +1652,34 @@ masking:
     def get_mask_path(self, camera_num: int, source_path_idx: int = 0):
         """
         Get the full path to the mask file for a given camera.
-        
+
+        For .set files, includes the set filename in the mask name to avoid
+        conflicts when multiple .set files exist in the same directory.
+        E.g., "experiment.set" -> "mask_experiment_Cam1.mat"
+
         Parameters
         ----------
         camera_num : int
             Camera number (e.g., 1 for Cam1)
         source_path_idx : int, optional
             Index into source_paths list, defaults to 0
-            
+
         Returns
         -------
         Path
             Full path to the mask .mat file
         """
-        mask_filename = self.mask_file_pattern % camera_num
+        base_pattern = self.mask_file_pattern % camera_num
+
+        # For .set files, include the set filename to disambiguate
+        if self.image_type == "lavision_set":
+            set_filename = self.image_format[0]  # e.g., "experiment.set"
+            set_stem = Path(set_filename).stem    # e.g., "experiment"
+            # Insert set name: "mask_Cam1.mat" -> "mask_experiment_Cam1.mat"
+            mask_filename = base_pattern.replace("mask_", f"mask_{set_stem}_")
+        else:
+            mask_filename = base_pattern
+
         return self.source_paths[source_path_idx] / mask_filename
 
     @property
@@ -1528,6 +1689,41 @@ masking:
     @property
     def camera_subfolders(self):
         return self.data.get("paths", {}).get("camera_subfolders", [])
+
+    @property
+    def active_paths(self) -> list:
+        """Return list of active path indices to process.
+
+        Supports GUI override via PIV_ACTIVE_PATHS environment variable.
+        Defaults to all paths if not specified.
+
+        Returns
+        -------
+        list[int]
+            List of 0-indexed path indices to process
+        """
+        # Check environment variable override (from GUI)
+        env_paths = os.environ.get('PIV_ACTIVE_PATHS')
+        if env_paths:
+            try:
+                indices = [int(i) for i in env_paths.split(',') if i.strip()]
+                # Validate indices
+                max_idx = len(self.source_paths) - 1
+                return [i for i in indices if 0 <= i <= max_idx]
+            except ValueError:
+                pass
+
+        # Fall back to config file
+        paths_data = self.data.get("paths", {})
+        active = paths_data.get("active_paths")
+
+        if active is None:
+            # Default: all paths are active
+            return list(range(len(self.source_paths)))
+
+        # Validate indices
+        max_idx = len(self.source_paths) - 1
+        return [i for i in active if 0 <= i <= max_idx]
 
     def get_camera_folder(self, camera_num: int) -> str:
         """Get the subfolder name for a specific camera.

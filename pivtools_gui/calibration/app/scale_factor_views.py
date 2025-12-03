@@ -13,8 +13,8 @@ from loguru import logger
 
 from pivtools_core.config import get_config
 
-from ..services.job_manager import job_manager
-from ..services.scale_factor_service import ScaleFactorCalibrator
+from pivtools_gui.calibration.services.job_manager import job_manager
+from pivtools_gui.calibration.services.scale_factor_service import ScaleFactorCalibrator
 
 scale_factor_bp = Blueprint("scale_factor", __name__)
 

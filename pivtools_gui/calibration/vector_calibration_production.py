@@ -3,36 +3,79 @@
 vector_calibration_production.py
 
 Production script for calibrating uncalibrated PIV vectors to physical units (m/s).
-Converts pixel-based vectors to physical velocities using camera calibration models.
+Converts pixel-based vectors to physical velocities using pinhole camera calibration models.
+Supports both ChArUco and Planar (circle grid) calibration models.
 """
 
 import logging
+import os
 import sys
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
 from scipy.io import loadmat, savemat
 
 sys.path.append(str(Path(__file__).parent.parent))
+from pivtools_core.config import get_config, reload_config
 from pivtools_core.paths import get_data_paths
 from pivtools_core.vector_loading import load_coords_from_directory, read_mat_contents
 
 # ===================== CONFIGURATION VARIABLES =====================
-# Set these variables for your calibration setup
-BASE_DIR = "/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/test"
-image_count = 1000
-DT_SECONDS = 1  # Time step between frames in seconds
-CAMERA_NUM = 1  # Camera number (1-based)
-MODEL_INDEX = 0  # Index of calibration model to use (0-based)
-DOT_SPACING_MM = 28.89  # Physical spacing between calibration dots in mm
+# Set these variables for your calibration setup.
+# These will be written to config.yaml before processing.
+BASE_DIR = "/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/test"
+NUM_FRAME_PAIRS = 100  # Number of frame pairs (from config.yaml images.num_frame_pairs)
+DT_SECONDS = 0.0057553  # Time step between frames in seconds
+CAMERA_NUMS = [1]  # List of camera numbers to process (1-based), e.g. [1, 2] for stereo
+MODEL_TYPE = "charuco"  # "charuco" or "planar" - sets calibration.active
 VECTOR_PATTERN = "%05d.mat"  # Pattern for vector files (e.g. "B%05d.mat", "%05d.mat")
-TYPE_NAME = "instantaneous"  # Type name for uncalibrated data directory (e.g. "Instantaneous", "piv")
-# Example: RUNS_TO_PROCESS = [1, 2, 3]  # Process only runs 1, 2, and 3
+TYPE_NAME = "instantaneous"  # Type name for data directory (e.g. "instantaneous", "ensemble")
+RUNS_TO_PROCESS = None  # List of 1-indexed runs to process, or None for all (e.g. [1, 2, 3])
+NUM_WORKERS = None  # Number of parallel workers, None = os.cpu_count()
 # ===================================================================
 
-# Add src to path to import modules
 
+def apply_cli_settings_to_config():
+    """Update config.yaml with CLI-mode hardcoded settings.
+
+    This function writes the hardcoded configuration variables to config.yaml,
+    ensuring the centralized paths and calibration systems use the correct settings.
+
+    Returns
+    -------
+    Config
+        The reloaded config object with updated settings
+    """
+    config = get_config()
+
+    # Paths
+    config.data["paths"]["base_paths"] = [BASE_DIR]
+    config.data["paths"]["camera_numbers"] = CAMERA_NUMS
+    config.data["paths"]["camera_count"] = len(CAMERA_NUMS)
+
+    # Images
+    config.data["images"]["num_frame_pairs"] = NUM_FRAME_PAIRS
+    config.data["images"]["vector_format"] = [VECTOR_PATTERN]
+
+    # Calibration - set active method based on MODEL_TYPE
+    if MODEL_TYPE.lower() == "charuco":
+        config.data["calibration"]["active"] = "charuco"
+        config.data["calibration"]["charuco"]["dt"] = DT_SECONDS
+    elif MODEL_TYPE.lower() == "planar":
+        config.data["calibration"]["active"] = "pinhole"
+        config.data["calibration"]["pinhole"]["dt"] = DT_SECONDS
+    else:
+        raise ValueError(f"MODEL_TYPE must be 'charuco' or 'planar', got '{MODEL_TYPE}'")
+
+    # Save to disk so centralized systems pick up changes
+    config.save()
+    logger.info("Updated config.yaml with CLI settings")
+
+    # Reload to ensure fresh state
+    return reload_config()
 
 # Configure logging
 logging.basicConfig(
@@ -41,103 +84,358 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _pixels_to_world_mm(
+    pts_px: np.ndarray,
+    camera_matrix: np.ndarray,
+    dist_coeffs: np.ndarray,
+    rvec: np.ndarray,
+    tvec: np.ndarray,
+) -> np.ndarray:
+    """
+    Convert pixel coordinates to world coordinates (mm) on the Z=0 plane.
+
+    Uses the pinhole camera model with distortion correction to project
+    pixel coordinates back to the calibration plane (Z=0).
+
+    Args:
+        pts_px: Pixel coordinates, shape (N, 2)
+        camera_matrix: 3x3 camera intrinsic matrix
+        dist_coeffs: Distortion coefficients
+        rvec: Rotation vector (3,)
+        tvec: Translation vector (3,)
+
+    Returns:
+        World coordinates (mm) on Z=0 plane, shape (N, 2)
+    """
+    if pts_px.size == 0:
+        return pts_px
+
+    # Undistort points to normalized camera coordinates
+    # Without P matrix, returns normalized coordinates (x/z, y/z) in camera frame
+    pts_normalized = cv2.undistortPoints(
+        pts_px.reshape(-1, 1, 2).astype(np.float32),
+        camera_matrix,
+        dist_coeffs,
+        P=None,  # No rectification, get normalized coords
+    ).reshape(-1, 2)
+
+    # Build rotation matrix from rvec
+    R, _ = cv2.Rodrigues(rvec)
+
+    # For Z=0 plane projection:
+    # Camera ray: [x_norm, y_norm, 1] (normalized coords with z=1)
+    # World point: P_world = R^T @ (s * ray - t) where s is scale factor
+    # On Z=0 plane: P_world[2] = 0
+    # Solving: R^T @ (s * [x_n, y_n, 1]^T - t) has z-component = 0
+
+    R_inv = R.T
+    t = tvec.flatten()
+
+    world_pts = np.zeros((pts_normalized.shape[0], 2), dtype=np.float64)
+
+    for i, (xn, yn) in enumerate(pts_normalized):
+        ray = np.array([xn, yn, 1.0])
+
+        # Transform ray and translation to world frame
+        # P_cam = s * ray, P_world = R^T @ (P_cam - t)
+        # P_world = R^T @ s @ ray - R^T @ t
+        # For P_world[2] = 0:
+        # (R^T @ ray)[2] * s = (R^T @ t)[2]
+        # s = (R^T @ t)[2] / (R^T @ ray)[2]
+
+        ray_world = R_inv @ ray
+        t_world = R_inv @ t
+
+        if abs(ray_world[2]) < 1e-10:
+            # Ray is parallel to Z=0 plane, use large value
+            world_pts[i] = [np.nan, np.nan]
+            continue
+
+        s = t_world[2] / ray_world[2]
+        P_world = s * ray_world - t_world
+
+        world_pts[i] = P_world[:2]
+
+    return world_pts
+
+
+def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
+    """
+    Process a single vector file for calibration.
+
+    Module-level function for multiprocessing compatibility.
+
+    Args:
+        args: Tuple of (file_idx, vector_file_path, output_file_path,
+                       coords_x_px, coords_y_px, camera_matrix, dist_coeffs,
+                       rvec, tvec, dt, max_run, valid_run_nums)
+
+    Returns:
+        Dict with results or None if failed
+    """
+    (
+        file_idx,
+        vector_file_path,
+        output_file_path,
+        coords_x_px,
+        coords_y_px,
+        camera_matrix,
+        dist_coeffs,
+        rvec,
+        tvec,
+        dt,
+        max_run,
+        valid_run_nums,
+    ) = args
+
+    try:
+        # Load uncalibrated vectors
+        vector_data = read_mat_contents(str(vector_file_path))
+
+        # Handle different vector data formats
+        if vector_data.ndim == 4 and vector_data.shape[0] == 1:
+            # Single run format: (1, 3, H, W)
+            ux_px = vector_data[0, 0, :, :]
+            uy_px = vector_data[0, 1, :, :]
+            b_mask = vector_data[0, 2, :, :]
+        elif vector_data.ndim == 3 and vector_data.shape[0] == 3:
+            # Single run format: (3, H, W)
+            ux_px = vector_data[0, :, :]
+            uy_px = vector_data[1, :, :]
+            b_mask = vector_data[2, :, :]
+        else:
+            return None
+
+        # Calibrate vectors using pinhole model
+        # Stack original coordinates
+        coords_flat = np.stack(
+            [coords_x_px.flatten(), coords_y_px.flatten()], axis=-1
+        ).astype(np.float32)
+
+        if coords_flat.size == 0 or ux_px.size == 0:
+            return None
+
+        # Project original positions to world (mm)
+        coords_world = _pixels_to_world_mm(
+            coords_flat, camera_matrix, dist_coeffs, rvec, tvec
+        )
+
+        # Displaced positions in pixels
+        disp_px = coords_flat + np.stack(
+            [ux_px.flatten(), uy_px.flatten()], axis=-1
+        ).astype(np.float32)
+
+        # Project displaced positions to world (mm)
+        disp_world = _pixels_to_world_mm(
+            disp_px, camera_matrix, dist_coeffs, rvec, tvec
+        )
+
+        # Compute displacement in mm
+        delta_mm = disp_world - coords_world
+
+        # Convert to m/s: mm -> m (/1000), per frame -> per second (/dt)
+        ux_ms = (delta_mm[:, 0] / 1000.0) / dt
+        uy_ms = (delta_mm[:, 1] / 1000.0) / dt
+
+        # Reshape back to original grid shape
+        ux_ms = ux_ms.reshape(ux_px.shape)
+        uy_ms = uy_ms.reshape(uy_px.shape)
+
+        # Create piv_result structure array
+        piv_dtype = np.dtype([("ux", "O"), ("uy", "O"), ("b_mask", "O")])
+        piv_result = np.empty(max_run, dtype=piv_dtype)
+
+        for run_num in range(1, max_run + 1):
+            if run_num in valid_run_nums:
+                piv_result[run_num - 1] = (ux_ms, uy_ms, b_mask)
+            else:
+                piv_result[run_num - 1] = (np.array([]), np.array([]), np.array([]))
+
+        # Save calibrated result
+        savemat(str(output_file_path), {"piv_result": piv_result})
+
+        return {"frame": file_idx, "success": True}
+
+    except Exception as e:
+        return {"frame": file_idx, "success": False, "error": str(e)}
+
+
 class VectorCalibrator:
+    """
+    Calibrates PIV vectors from pixels/frame to m/s using pinhole camera model.
+
+    Supports both ChArUco and Planar (circle grid) calibration models.
+    Uses rvec/tvec from the first calibration view to project pixels to
+    world coordinates on the Z=0 calibration plane.
+    """
+
     def __init__(
         self,
-        base_dir,
-        camera_num,
-        model_index,
-        dt,
-        dot_spacing_mm=28.89,
-        vector_pattern="%05d.mat",
-        type_name="Instantaneous",
+        base_dir: Optional[str] = None,
+        camera_num: Optional[int] = None,
+        model_type: Optional[str] = None,
+        dt: Optional[float] = None,
+        vector_pattern: Optional[str] = None,
+        type_name: str = "instantaneous",
+        runs: Optional[List[int]] = None,
+        num_workers: Optional[int] = None,
+        config=None,
     ):
         """
-        Initialize vector calibrator
+        Initialize vector calibrator.
+
+        Parameters can be provided explicitly or read from config. When config
+        is provided, it takes precedence for settings stored in config.yaml.
 
         Args:
-            base_dir: Base directory containing data
-            camera_num: Camera number (1-based)
-            model_index: Index of calibration model to use (0-based)
-            dt: Time step between frames in seconds
-            dot_spacing_mm: Physical spacing of calibration dots in mm
-            vector_pattern: Pattern for vector files (e.g. "B%05d.mat", "%05d.mat")
-            type_name: Type name for uncalibrated data directory (e.g. "Instantaneous", "piv")
+            base_dir: Base directory containing data (or from config.base_paths[0])
+            camera_num: Camera number (1-based) (or from config.camera_numbers[0])
+            model_type: Calibration model type - "charuco" or "planar" (or from config.active_calibration_method)
+            dt: Time step between frames in seconds (or from config.dt)
+            vector_pattern: Pattern for vector files (or from config.vector_format)
+            type_name: Type name for data directory (e.g. "instantaneous", "ensemble")
+            runs: List of 1-indexed run numbers to process, or None for all runs
+            num_workers: Number of parallel workers, None = os.cpu_count()
+            config: Optional Config object to read settings from
         """
-        self.base_dir = Path(base_dir)
-        self.camera_num = camera_num
-        self.model_index = model_index
-        self.dt = dt
-        self.dot_spacing_mm = dot_spacing_mm
-        self.vector_pattern = vector_pattern
+        self._config = config
+
+        # Read from config if provided, otherwise use explicit parameters
+        if config is not None:
+            self.base_dir = Path(base_dir) if base_dir else config.base_paths[0]
+            self.camera_num = camera_num if camera_num else config.camera_numbers[0]
+            # Map active calibration method to model type
+            active_method = config.active_calibration_method
+            if model_type:
+                self.model_type = model_type.lower()
+            elif active_method == "charuco":
+                self.model_type = "charuco"
+            elif active_method in ("pinhole", "planar"):
+                self.model_type = "planar"
+            else:
+                raise ValueError(f"Cannot determine model_type from config.active_calibration_method: {active_method}")
+            self.dt = dt if dt is not None else config.dt
+            self.vector_pattern = vector_pattern if vector_pattern else config.vector_format
+            self.num_frame_pairs = config.num_frame_pairs
+        else:
+            # Explicit parameters required when no config
+            if base_dir is None:
+                raise ValueError("base_dir is required when config is not provided")
+            if camera_num is None:
+                raise ValueError("camera_num is required when config is not provided")
+            if model_type is None:
+                raise ValueError("model_type is required when config is not provided")
+            if dt is None:
+                raise ValueError("dt is required when config is not provided")
+            self.base_dir = Path(base_dir)
+            self.camera_num = camera_num
+            self.model_type = model_type.lower()
+            self.dt = dt
+            self.vector_pattern = vector_pattern if vector_pattern else "%05d.mat"
+            self.num_frame_pairs = None  # Must be passed to process_run()
+
         self.type_name = type_name
+        self.runs = runs  # 1-indexed
+        self.num_workers = num_workers if num_workers else os.cpu_count()
+
+        # Validate model type
+        if self.model_type not in ("charuco", "planar"):
+            raise ValueError(
+                f"model_type must be 'charuco' or 'planar', got '{self.model_type}'"
+            )
 
         # Load calibration model
         self.calibration_model = self._load_calibration_model()
-        self.homography = self.calibration_model["homography"]
         self.camera_matrix = self.calibration_model["camera_matrix"]
         self.dist_coeffs = self.calibration_model["dist_coeffs"]
-        self.dot_spacing_mm = dot_spacing_mm
+        self.rvec = self.calibration_model["rvec"]  # First view
+        self.tvec = self.calibration_model["tvec"]  # First view
+        self.dot_spacing_mm = self.calibration_model["dot_spacing_mm"]
 
         logger.info(f"Initialized calibrator for Camera {camera_num}")
-        logger.info(f"Using calibration model index {model_index}")
+        logger.info(f"Model type: {self.model_type}")
         logger.info(f"Time step: {dt} seconds")
-        logger.info(f"Dot spacing: {dot_spacing_mm} mm")
+        logger.info(f"Dot spacing: {self.dot_spacing_mm} mm")
         logger.info(f"Vector pattern: {vector_pattern}")
         logger.info(f"Type name: {type_name}")
+        logger.info(f"Runs to process: {runs if runs else 'all'}")
+        logger.info(f"Worker count: {self.num_workers}")
 
-    def _load_calibration_model(self):
-        """Load the specified calibration model"""
+    def _load_calibration_model(self) -> Dict[str, Any]:
+        """Load the calibration model based on model_type."""
         calib_paths = get_data_paths(
             self.base_dir,
-            num_frame_pairs=1,  # Not used for calibration paths
+            num_frame_pairs=1,
             cam=self.camera_num,
-            type_name="",  # Not used for calibration paths
+            type_name="",
             calibration=True,
         )
 
         calib_dir = calib_paths["calib_dir"]
-        # Try common model filenames produced by planar calibrator
-        # Always look for the model at "model/camera_model.mat"
-        model_path = calib_dir / "model" / "camera_model.mat"
-        if not model_path.exists():
-            raise FileNotFoundError(f"Calibration model not found: {model_path}")
 
-        logger.info(f"Loading calibration model: {model_path}")
+        # Build model path based on model type
+        if self.model_type == "charuco":
+            model_path = calib_dir / "charuco_planar" / "model" / "camera_model.mat"
+        else:  # planar
+            model_path = calib_dir / "pinhole_planar" / "model" / "pinhole_model.mat"
+
+        if not model_path.exists():
+            raise FileNotFoundError(
+                f"Calibration model not found: {model_path}\n"
+                f"Expected {self.model_type} model at this location."
+            )
+
+        logger.info(f"Loading {self.model_type} calibration model: {model_path}")
         model_data = loadmat(str(model_path), squeeze_me=True, struct_as_record=False)
 
-        required_fields = ["homography", "camera_matrix", "dist_coeffs"]
-        missing_fields = [field for field in required_fields if field not in model_data]
+        # Validate required fields
+        required_fields = ["camera_matrix", "dist_coeffs", "rvecs", "tvecs"]
+        missing_fields = [f for f in required_fields if f not in model_data]
         if missing_fields:
             raise ValueError(
                 f"Missing required fields in calibration model: {missing_fields}"
             )
 
-        # Ensure homography is 3x3
-        homography = np.array(model_data["homography"])
-        if homography.shape != (3, 3):
-            raise ValueError(f"Homography must be 3x3, got shape {homography.shape}")
+        # Extract camera matrix and distortion coefficients
+        camera_matrix = np.array(model_data["camera_matrix"]).astype(np.float64)
+        dist_coeffs = np.array(model_data["dist_coeffs"]).flatten().astype(np.float64)
 
-        # Ensure dist_coeffs is 1D array
-        dist_coeffs = np.array(model_data["dist_coeffs"]).flatten()
+        # Extract rvec/tvec from first calibration view
+        rvecs = model_data["rvecs"]
+        tvecs = model_data["tvecs"]
 
-        model_data["homography"] = homography.astype(np.float32)
-        model_data["dist_coeffs"] = dist_coeffs.astype(np.float32)
+        # Handle single vs multiple views
+        if rvecs.ndim == 1:
+            rvec = rvecs.astype(np.float64)
+            tvec = tvecs.astype(np.float64)
+        else:
+            rvec = rvecs[0].flatten().astype(np.float64)
+            tvec = tvecs[0].flatten().astype(np.float64)
 
-        # Use dt from model if available, otherwise use instance dt
+        # Get dot spacing in mm (both model types now store dot_spacing_mm)
+        dot_spacing_mm = float(model_data.get("dot_spacing_mm", 28.89))
+
+        # Use dt from model if available
         if "dt" in model_data:
             logger.info(f"Using dt from calibration model: {model_data['dt']} seconds")
             self.dt = float(model_data["dt"])
-        else:
-            logger.info(
-                f"No dt in calibration model, using provided dt: {self.dt} seconds"
-            )
 
-        return model_data
+        return {
+            "camera_matrix": camera_matrix,
+            "dist_coeffs": dist_coeffs,
+            "rvec": rvec,
+            "tvec": tvec,
+            "dot_spacing_mm": dot_spacing_mm,
+        }
 
-    def calibrate_coordinates(self, coords_x, coords_y):
+    def calibrate_coordinates(
+        self, coords_x: np.ndarray, coords_y: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Convert pixel coordinates to physical coordinates in mm using homography and distortion correction.
+        Convert pixel coordinates to physical coordinates in mm.
+
+        Uses the pinhole camera model with distortion correction to project
+        pixel coordinates to the Z=0 calibration plane.
 
         Args:
             coords_x, coords_y: Coordinate arrays in pixels
@@ -145,50 +443,34 @@ class VectorCalibrator:
         Returns:
             (x_mm, y_mm): Coordinate arrays in mm
         """
-        # Stack coordinates for transformation
         pts = np.stack([coords_x.flatten(), coords_y.flatten()], axis=-1).astype(
             np.float32
         )
 
-        # Ensure we have valid points
         if pts.size == 0:
             return coords_x, coords_y
 
-        # Undistort points if distortion coefficients are present
-        if np.any(self.dist_coeffs):
-            # Reshape for cv2.undistortPoints: (N, 1, 2)
-            pts_reshaped = pts.reshape(-1, 1, 2)
-            try:
-                pts_ud = cv2.undistortPoints(
-                    pts_reshaped,
-                    self.camera_matrix,
-                    self.dist_coeffs,
-                    P=self.camera_matrix,
-                )
-                pts_ud = pts_ud.reshape(-1, 2)
-            except cv2.error as e:
-                logger.warning(f"Undistortion failed, using original points: {e}")
-                pts_ud = pts
-        else:
-            pts_ud = pts
-
-        # Apply homography using OpenCV for numerical stability
-        pts_ud = pts_ud.reshape(1, -1, 2)  # shape (1, N, 2) for perspectiveTransform
-        pts_mapped = cv2.perspectiveTransform(pts_ud, self.homography)[0]
-
-        # Reshape back to original shape
-        x_mm = pts_mapped[:, 0].reshape(coords_x.shape)
-        y_mm = pts_mapped[:, 1].reshape(coords_y.shape)
-
-        logger.info(
-            "Converted coordinates from pixels to mm (undistorted + homography)"
+        # Project to world coordinates (mm) on Z=0 plane
+        world_pts = _pixels_to_world_mm(
+            pts, self.camera_matrix, self.dist_coeffs, self.rvec, self.tvec
         )
+
+        x_mm = world_pts[:, 0].reshape(coords_x.shape)
+        y_mm = world_pts[:, 1].reshape(coords_y.shape)
+
+        logger.info("Converted coordinates from pixels to mm (pinhole model)")
 
         return x_mm, y_mm
 
-    def calibrate_vectors(self, ux_px, uy_px, coords_x_px, coords_y_px):
+    def calibrate_vectors(
+        self,
+        ux_px: np.ndarray,
+        uy_px: np.ndarray,
+        coords_x_px: np.ndarray,
+        coords_y_px: np.ndarray,
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Convert pixel-based velocity vectors to m/s using camera matrix (pinhole model) and distortion correction.
+        Convert pixel-based velocity vectors to m/s using pinhole camera model.
 
         Args:
             ux_px, uy_px: Velocity components in pixels/frame
@@ -197,100 +479,72 @@ class VectorCalibrator:
         Returns:
             (ux_ms, uy_ms): Velocity components in m/s
         """
-        # Stack coordinates
-        coords_px = np.stack([coords_x_px, coords_y_px], axis=-1).astype(np.float32)
-        shape = coords_px.shape[:-1]
-        coords_flat = coords_px.reshape(-1, 2)
+        coords_flat = np.stack(
+            [coords_x_px.flatten(), coords_y_px.flatten()], axis=-1
+        ).astype(np.float32)
 
-        # Check for valid data
         if coords_flat.size == 0 or ux_px.size == 0 or uy_px.size == 0:
             logger.warning("Empty coordinate or vector data, returning zeros")
             return np.zeros_like(ux_px), np.zeros_like(uy_px)
 
-        # Ensure arrays have compatible shapes
         if ux_px.shape != uy_px.shape or ux_px.shape != coords_x_px.shape:
             logger.error(
-                f"Shape mismatch: ux_px={ux_px.shape}, uy_px={uy_px.shape}, coords_x_px={coords_x_px.shape}"
+                f"Shape mismatch: ux_px={ux_px.shape}, uy_px={uy_px.shape}, "
+                f"coords_x_px={coords_x_px.shape}"
             )
             return np.zeros_like(ux_px), np.zeros_like(uy_px)
 
-        # Undistort grid points
-        if np.any(self.dist_coeffs):
-            # Reshape for cv2.undistortPoints: (N, 1, 2)
-            coords_reshaped = coords_flat.reshape(-1, 1, 2)
-            try:
-                coords_ud = cv2.undistortPoints(
-                    coords_reshaped,
-                    self.camera_matrix,
-                    self.dist_coeffs,
-                    P=self.camera_matrix,
-                )
-                coords_ud = coords_ud.reshape(-1, 2)
-            except cv2.error as e:
-                logger.warning(f"Grid undistortion failed, using original points: {e}")
-                coords_ud = coords_flat
-        else:
-            coords_ud = coords_flat
+        # Project original positions to world (mm)
+        coords_world = _pixels_to_world_mm(
+            coords_flat, self.camera_matrix, self.dist_coeffs, self.rvec, self.tvec
+        )
 
-        # Apply homography
-        coords_ud = coords_ud.reshape(1, -1, 2)
-        coords_mm = cv2.perspectiveTransform(coords_ud, self.homography)[0]
+        # Displaced positions in pixels
+        disp_px = coords_flat + np.stack(
+            [ux_px.flatten(), uy_px.flatten()], axis=-1
+        ).astype(np.float32)
 
-        # Displaced points
-        disp_px = coords_flat + np.stack([ux_px.flatten(), uy_px.flatten()], axis=-1)
+        # Project displaced positions to world (mm)
+        disp_world = _pixels_to_world_mm(
+            disp_px, self.camera_matrix, self.dist_coeffs, self.rvec, self.tvec
+        )
 
-        if np.any(self.dist_coeffs):
-            # Reshape for cv2.undistortPoints: (N, 1, 2)
-            disp_reshaped = disp_px.reshape(-1, 1, 2)
-            try:
-                disp_ud = cv2.undistortPoints(
-                    disp_reshaped,
-                    self.camera_matrix,
-                    self.dist_coeffs,
-                    P=self.camera_matrix,
-                )
-                disp_ud = disp_ud.reshape(-1, 2)
-            except cv2.error as e:
-                logger.warning(
-                    f"Displacement undistortion failed, using original points: {e}"
-                )
-                disp_ud = disp_px
-        else:
-            disp_ud = disp_px
-
-        disp_ud = disp_ud.reshape(1, -1, 2)
-        disp_mm = cv2.perspectiveTransform(disp_ud, self.homography)[0]
-
-        # Metric displacement
-        delta_mm = disp_mm - coords_mm
-
-        # Convert to m/s
-        ux_ms = (delta_mm[:, 0] / 1000.0) / self.dt  # mm to m, frame to s
+        # Compute displacement in mm, convert to m/s
+        delta_mm = disp_world - coords_world
+        ux_ms = (delta_mm[:, 0] / 1000.0) / self.dt
         uy_ms = (delta_mm[:, 1] / 1000.0) / self.dt
 
-        ux_ms = ux_ms.reshape(shape)
-        uy_ms = uy_ms.reshape(shape)
+        ux_ms = ux_ms.reshape(ux_px.shape)
+        uy_ms = uy_ms.reshape(uy_px.shape)
 
-        logger.info(
-            "Converted vectors from pixels/frame to m/s using undistortion + homography"
-        )
+        logger.info("Converted vectors from pixels/frame to m/s (pinhole model)")
 
         return ux_ms, uy_ms
 
-    def process_run(self, image_count, progress_cb=None):
+    def process_run(
+        self,
+        num_frame_pairs: Optional[int] = None,
+        progress_cb: Optional[Callable[[Dict[str, Any]], None]] = None,
+    ):
         """
-        Process and calibrate vectors for all available runs
+        Process and calibrate vectors for specified runs.
 
         Args:
-            image_count: Number of images in the run
+            num_frame_pairs: Number of frame pairs. If None, uses self.num_frame_pairs from config.
             progress_cb: Optional callback for progress updates
         """
-        logger.info(f"Processing run with {image_count} images")
+        # Use config value if not explicitly provided
+        if num_frame_pairs is None:
+            num_frame_pairs = self.num_frame_pairs
+        if num_frame_pairs is None:
+            raise ValueError("num_frame_pairs must be provided either to __init__ via config or to process_run()")
 
-        # Get data paths for uncalibrated data - use configured type
+        logger.info(f"Processing run with {num_frame_pairs} frame pairs")
+
+        # Get data paths for uncalibrated data
         paths = get_data_paths(
             self.base_dir,
-            num_frame_pairs=image_count - 1,  # Assuming time-resolved
+            num_frame_pairs=num_frame_pairs,
             cam=self.camera_num,
             type_name=self.type_name,
             use_uncalibrated=True,
@@ -302,7 +556,7 @@ class VectorCalibrator:
         # Get output paths for calibrated data
         calib_paths = get_data_paths(
             self.base_dir,
-            num_frame_pairs=image_count - 1,  # Assuming time-resolved
+            num_frame_pairs=num_frame_pairs,
             cam=self.camera_num,
             type_name=self.type_name,
         )
@@ -316,10 +570,10 @@ class VectorCalibrator:
                 f"Uncalibrated data directory not found: {uncalib_data_dir}"
             )
 
-        # Load coordinates for all runs
+        # Load coordinates for requested runs (1-indexed)
         logger.info("Loading coordinates...")
         x_coords_list, y_coords_list = load_coords_from_directory(
-            uncalib_data_dir, runs=None  # Load all available runs
+            uncalib_data_dir, runs=self.runs
         )
 
         if not x_coords_list:
@@ -331,16 +585,21 @@ class VectorCalibrator:
         # Find runs with valid data
         valid_runs = []
         for i, (x_coords, y_coords) in enumerate(zip(x_coords_list, y_coords_list)):
-            run_num = i + 1
-            # Ensure None is replaced with empty arrays
+            # Map back to original run number if filtering
+            if self.runs:
+                run_num = self.runs[i]
+            else:
+                run_num = i + 1
+
             if x_coords is None:
                 x_coords = np.array([])
             if y_coords is None:
                 y_coords = np.array([])
+
             valid_coords = np.sum(~np.isnan(x_coords)) + np.sum(~np.isnan(y_coords))
             logger.info(f"Run {run_num}: {valid_coords} valid coordinates")
             if valid_coords > 0:
-                valid_runs.append((i, run_num, valid_coords))
+                valid_runs.append((i, run_num, valid_coords, x_coords, y_coords))
 
         if not valid_runs:
             raise ValueError("No runs with valid coordinate data found")
@@ -350,194 +609,178 @@ class VectorCalibrator:
         )
 
         # Create coordinate structure
-        max_run = max([r[1] for r in valid_runs])
+        max_run = max(r[1] for r in valid_runs)
         coord_dtype = np.dtype([("x", "O"), ("y", "O")])
         coordinates = np.empty(max_run, dtype=coord_dtype)
 
-        # Process each valid run
-        for run_idx, run_num, valid_coord_count in valid_runs:
+        # Initialize all runs with empty arrays
+        for run_num in range(1, max_run + 1):
+            coordinates[run_num - 1] = (np.array([]), np.array([]))
+
+        # Process each valid run's coordinates
+        for list_idx, run_num, valid_coord_count, x_coords_px, y_coords_px in valid_runs:
             logger.info(
                 f"Processing run {run_num} with {valid_coord_count} valid coordinates"
             )
-            x_coords_px = x_coords_list[run_idx]
-            y_coords_px = y_coords_list[run_idx]
-
-            # Calibrate coordinates to mm
             x_coords_mm, y_coords_mm = self.calibrate_coordinates(
                 x_coords_px, y_coords_px
             )
             coordinates[run_num - 1] = (x_coords_mm, y_coords_mm)
 
-        # Fill all runs: valid runs get data, others get empty arrays
-        valid_run_indices = set(r[1] for r in valid_runs)
-        for run_num in range(1, max_run + 1):
-            if run_num in valid_run_indices:
-                # Already set above for valid runs
-                continue
-            coordinates[run_num - 1] = (np.array([]), np.array([]))
-
-        coords_output = {"coordinates": coordinates}
-
         # Save calibrated coordinates
-        calibrated_dir = (
-            self.base_dir
-            / "calibrated_piv"
-            / str(image_count)
-            / f"Cam{self.camera_num}"
-            / self.type_name
-        )
-        calibrated_dir.mkdir(parents=True, exist_ok=True)
-        coords_path = calibrated_dir / "coordinates.mat"
+        coords_output = {"coordinates": coordinates}
+        coords_path = calib_data_dir / "coordinates.mat"
         savemat(str(coords_path), coords_output)
         logger.info(f"Saved calibrated coordinates: {coords_path}")
 
-        # Process vector files using the first valid run's coordinates
+        # Process vector files using first valid run's coordinates
         if valid_runs:
-            first_run_idx = valid_runs[0][0]
-            x_coords_for_vectors = x_coords_list[first_run_idx]
-            y_coords_for_vectors = y_coords_list[first_run_idx]
+            first_run_data = valid_runs[0]
+            x_coords_for_vectors = first_run_data[3]
+            y_coords_for_vectors = first_run_data[4]
+            valid_run_nums = set(r[1] for r in valid_runs)
 
-            self._process_vector_files(
+            self._process_vector_files_parallel(
                 uncalib_data_dir,
                 calib_data_dir,
-                image_count,
+                num_frame_pairs,
                 x_coords_for_vectors,
                 y_coords_for_vectors,
                 max_run,
-                valid_runs,
+                valid_run_nums,
                 progress_cb,
             )
         else:
             logger.error("No valid runs found for vector processing")
 
-    def _process_vector_files(
+    def _process_vector_files_parallel(
         self,
-        uncalib_dir,
-        calib_dir,
-        num_images,
-        coords_x_px,
-        coords_y_px,
-        max_run,
-        valid_runs,
-        progress_cb,
+        uncalib_dir: Path,
+        calib_dir: Path,
+        num_images: int,
+        coords_x_px: np.ndarray,
+        coords_y_px: np.ndarray,
+        max_run: int,
+        valid_run_nums: set,
+        progress_cb: Optional[Callable[[Dict[str, Any]], None]],
     ):
-        """Process all vector files in the directory"""
-        logger.info("Processing vector files...")
+        """Process all vector files using parallel workers."""
+        logger.info(f"Processing vector files with {self.num_workers} workers...")
 
-        # Use configured vector pattern
-        vector_pattern = self.vector_pattern
-
-        processed_vectors = []
-
+        # Build list of files to process
+        tasks = []
         for i in range(1, num_images + 1):
-            vector_file = uncalib_dir / (vector_pattern % i)
-
+            vector_file = uncalib_dir / (self.vector_pattern % i)
             if not vector_file.exists():
-                if i <= 5:  # Only log first few missing files
-                    logger.warning(f"Vector file not found: {vector_file}")
                 continue
 
-            try:
-                # Load uncalibrated vectors
-                vector_data = read_mat_contents(str(vector_file))  # Shape varies
+            output_file = calib_dir / (self.vector_pattern % i)
+            tasks.append(
+                (
+                    i,
+                    str(vector_file),
+                    str(output_file),
+                    coords_x_px,
+                    coords_y_px,
+                    self.camera_matrix,
+                    self.dist_coeffs,
+                    self.rvec,
+                    self.tvec,
+                    self.dt,
+                    max_run,
+                    valid_run_nums,
+                )
+            )
 
-                # Handle different vector data formats
-                if vector_data.ndim == 4 and vector_data.shape[0] == 1:
-                    # Single run format: (1, 3, H, W)
-                    ux_px = vector_data[0, 0, :, :]
-                    uy_px = vector_data[0, 1, :, :]
-                    b_mask = vector_data[0, 2, :, :]
-                elif vector_data.ndim == 3 and vector_data.shape[0] == 3:
-                    # Single run format: (3, H, W)
-                    ux_px = vector_data[0, :, :]
-                    uy_px = vector_data[1, :, :]
-                    b_mask = vector_data[2, :, :]
+        if not tasks:
+            logger.warning("No vector files found to process")
+            return
+
+        logger.info(f"Found {len(tasks)} vector files to process")
+
+        successful = 0
+        failed = 0
+
+        with ProcessPoolExecutor(max_workers=self.num_workers) as executor:
+            futures = {
+                executor.submit(_process_single_vector_file, task): task[0]
+                for task in tasks
+            }
+
+            for future in as_completed(futures):
+                result = future.result()
+                if result and result.get("success"):
+                    successful += 1
                 else:
-                    logger.warning(
-                        f"Unexpected vector data shape in {vector_file.name}: {vector_data.shape}"
-                    )
-                    continue
+                    failed += 1
+                    if result and "error" in result:
+                        logger.debug(f"Frame {result['frame']} failed: {result['error']}")
 
-                # Calibrate vectors
-                ux_ms, uy_ms = self.calibrate_vectors(
-                    ux_px, uy_px, coords_x_px, coords_y_px
-                )
-
-                # Create piv_result structure array with proper MATLAB struct format
-                piv_dtype = np.dtype([("ux", "O"), ("uy", "O"), ("b_mask", "O")])
-                piv_result = np.empty(max_run, dtype=piv_dtype)
-
-                for run_num in range(1, max_run + 1):
-                    run_idx = run_num - 1  # Convert to 0-based
-
-                    # Check if this run has valid data
-                    run_has_data = any(r[1] == run_num for r in valid_runs)
-
-                    if run_has_data:
-                        # This creates piv_result(run_idx).ux, piv_result(run_idx).uy, piv_result(run_idx).b_mask
-                        piv_result[run_idx] = (ux_ms, uy_ms, b_mask)
-                    else:
-                        # Empty struct for runs not being processed
-                        piv_result[run_idx] = (np.array([]), np.array([]), np.array([]))
-
-                # Save calibrated piv_result into calibrated_piv output tree
-                output_file = calib_dir / (self.vector_pattern % i)
-                savemat(str(output_file), {"piv_result": piv_result})
-
-                processed_vectors.append(
-                    {"ux_ms": ux_ms, "uy_ms": uy_ms, "b_mask": b_mask, "frame": i}
-                )
-
-                # Progress callback
+                # Progress callback (approximate)
                 if progress_cb:
-                    progress = (i / num_images) * 100
+                    total_done = successful + failed
                     progress_cb(
                         {
-                            "processed_frames": i,
-                            "total_frames": num_images,
-                            "progress": progress,
-                            "successful_frames": len(processed_vectors),
+                            "processed_frames": total_done,
+                            "total_frames": len(tasks),
+                            "progress": (total_done / len(tasks)) * 100,
+                            "successful_frames": successful,
+                            "failed_frames": failed,
                         }
                     )
 
-            except Exception as e:
-                logger.error(f"Failed to process {vector_file.name}: {str(e)}")
-                continue
-
         logger.info(
-            f"Successfully processed {len(processed_vectors)} vector files into {calib_dir}"
+            f"Successfully processed {successful} vector files, {failed} failed"
         )
 
 
 def main():
-    logger.info("Starting vector calibration with configuration:")
+    """Main entry point for vector calibration."""
+    logger.info("=" * 60)
+    logger.info("Vector Calibration - Starting")
+    logger.info("=" * 60)
     logger.info(f"Base directory: {BASE_DIR}")
-    logger.info(f"Run number: {image_count}")
+    logger.info(f"Num frame pairs: {NUM_FRAME_PAIRS}")
     logger.info(f"Time step: {DT_SECONDS} seconds")
-    logger.info(f"Camera: {CAMERA_NUM}")
-    logger.info(f"Model index: {MODEL_INDEX}")
-    logger.info(f"Dot spacing: {DOT_SPACING_MM} mm")
+    logger.info(f"Cameras: {CAMERA_NUMS}")
+    logger.info(f"Model type: {MODEL_TYPE}")
     logger.info(f"Vector pattern: {VECTOR_PATTERN}")
     logger.info(f"Type name: {TYPE_NAME}")
+    logger.info(f"Runs to process: {RUNS_TO_PROCESS if RUNS_TO_PROCESS else 'all'}")
+    logger.info(f"Worker count: {NUM_WORKERS if NUM_WORKERS else 'auto'}")
 
-    try:
-        calibrator = VectorCalibrator(
-            base_dir=BASE_DIR,
-            camera_num=CAMERA_NUM,
-            model_index=MODEL_INDEX,
-            dt=DT_SECONDS,
-            dot_spacing_mm=DOT_SPACING_MM,
-            vector_pattern=VECTOR_PATTERN,
-            type_name=TYPE_NAME,
-        )
+    # Apply CLI settings to config.yaml so centralized systems work correctly
+    config = apply_cli_settings_to_config()
 
-        calibrator.process_run(image_count)
+    failed_cameras = []
 
-        logger.info("Vector calibration completed successfully")
+    for camera_num in CAMERA_NUMS:
+        logger.info(f"Processing Camera {camera_num}...")
+        try:
+            # Create calibrator using config - settings are now in config.yaml
+            calibrator = VectorCalibrator(
+                camera_num=camera_num,
+                type_name=TYPE_NAME,
+                runs=RUNS_TO_PROCESS,
+                num_workers=NUM_WORKERS,
+                config=config,
+            )
 
-    except Exception as e:
-        logger.error(f"Calibration failed: {str(e)}")
+            calibrator.process_run()  # num_frame_pairs read from config
+            logger.info(f"Camera {camera_num} completed successfully")
+
+        except Exception as e:
+            logger.error(f"Camera {camera_num} failed: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            failed_cameras.append(camera_num)
+
+    logger.info("=" * 60)
+    if failed_cameras:
+        logger.error(f"Calibration failed for cameras: {failed_cameras}")
         sys.exit(1)
+    else:
+        logger.info("Vector calibration completed successfully for all cameras")
 
 
 if __name__ == "__main__":

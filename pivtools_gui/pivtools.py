@@ -7,7 +7,6 @@ from dask.distributed import Client, LocalCluster
 from pivtools_core.config import Config
 from pivtools_core.image_handling.load_images import load_images
 from pivtools_core.image_handling.readers import list_supported_formats
-from .post_processing.POD.pod_decompose import pod_decompose, pod_rebuild
 from pivtools_cli.preprocessing.preprocess import preprocess_images
 from pivtools_gui.vector_statistics.ensemble_statistics import ensemble_statistics
 from pivtools_gui.vector_statistics.instantaneous_statistics import instantaneous_statistics

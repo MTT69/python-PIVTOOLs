@@ -30,6 +30,90 @@ def read_image(file_path: str, **kwargs) -> np.ndarray:
     return reader_func(file_path, **kwargs)
 
 
+def read_single_frame(
+    file_path: Path,
+    camera: int,
+    frame_idx: int,
+    image_type: str,
+    time_resolved: bool = True,
+) -> np.ndarray:
+    """Read a single frame from any supported image format.
+
+    This is the core reader that handles all format-specific logic for reading
+    ONE frame. Both PIV pair reading and calibration image reading use this
+    function, eliminating duplicated format handling.
+
+    Supported formats:
+    - lavision_set: All cameras/frames in one .set container
+    - lavision_im7: Per-frame .im7 files (or multi-frame)
+    - cine: Phantom .cine video containers
+    - standard: Individual image files (.tif, .png, .jpg, etc.)
+
+    Args:
+        file_path: Path to the image file or container
+        camera: Camera number (1-based)
+        frame_idx: Frame index within the file/container (1-based)
+        image_type: One of "lavision_set", "lavision_im7", "cine", "standard"
+        time_resolved: For .set files, whether to read single frame (True) or
+                      expect A+B pair in one entry (False)
+
+    Returns:
+        np.ndarray: Single frame of shape (H, W)
+
+    Raises:
+        FileNotFoundError: If the file does not exist
+        ValueError: If the image cannot be read or format is unsupported
+    """
+    file_path = Path(file_path)
+
+    if not file_path.exists():
+        raise FileNotFoundError(f"Image file not found: {file_path}")
+
+    if image_type == "lavision_set":
+        # .set container: all cameras and frames in one file
+        if time_resolved:
+            # Single frame per entry - read just one frame
+            img = read_image(
+                str(file_path),
+                camera_no=camera,
+                im_no=frame_idx,
+                time_resolved=True
+            )
+        else:
+            # Pre-paired A+B in one entry - read both, return first
+            img = read_image(str(file_path), camera_no=camera, im_no=frame_idx)
+
+        # If returned as pair (2, H, W), extract single frame
+        if img.ndim == 3 and img.shape[0] == 2:
+            img = img[0]
+        return img
+
+    elif image_type == "lavision_im7":
+        # .im7 file: may contain single frame or A+B pair
+        img = read_image(
+            str(file_path),
+            camera_no=camera,
+            frames=1,
+            frames_per_camera=1
+        )
+        # read_lavision_im7 returns (frames, H, W) for single frame
+        if img.ndim == 3:
+            img = img[0]
+        return img
+
+    elif image_type == "cine":
+        # .cine video container: frames extracted by index
+        # Reader handles FirstImageNo translation internally
+        img = read_image(str(file_path), idx=frame_idx, frames=1)
+        if img.ndim == 3 and img.shape[0] == 1:
+            img = img[0]
+        return img
+
+    else:
+        # Standard formats (.tif, .png, .jpg, etc.)
+        return read_image(str(file_path))
+
+
 def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.ndarray:
     """Read a pair of images (A and B frames).
 
@@ -71,90 +155,58 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
     Returns:
         np.ndarray: Stacked array of shape (2, H, W) containing frame A and B
     """
-    # Get image format - now always a tuple
     format_str = config.image_format[0]
     image_type = config.image_type
+    frame_a_idx, frame_b_idx = config.get_frame_pair_indices(idx)
 
-    # Handle container formats first (no camera subdirectories)
-
-    # .set files: handling depends on time_resolved mode
-    # - Non-time-resolved: each entry contains A+B pair (read from one entry)
-    # - Time-resolved: each entry has ONE frame per camera, pair across entries
+    # Handle container formats (single file contains multiple frames/cameras)
     if image_type == "lavision_set":
         set_file_path = camera_path / format_str
 
         if config.time_resolved:
-            # Time-resolved: read single frame from two consecutive entries
-            frame_a_idx, frame_b_idx = config.get_frame_pair_indices(idx)
-            return read_image(
-                str(set_file_path),
-                camera_no=camera,
-                im_no=frame_a_idx,
-                im_no_b=frame_b_idx,
-                time_resolved=True
-            )
+            # Time-resolved: read two separate frames from container
+            frame_a = read_single_frame(set_file_path, camera, frame_a_idx, image_type, time_resolved=True)
+            frame_b = read_single_frame(set_file_path, camera, frame_b_idx, image_type, time_resolved=True)
+            return np.stack([frame_a, frame_b], axis=0)
         else:
-            # Pre-paired: A+B frames in one entry
+            # Pre-paired: A+B frames in one entry - read directly
             return read_image(str(set_file_path), camera_no=camera, im_no=idx)
 
-    # .im7 files: handling depends on time_resolved mode
-    # - Non-time-resolved: each file contains A+B pair (read from one file)
-    # - Time-resolved: each file has ONE frame, pair across files
-    if image_type == "lavision_im7":
-        frame_a_idx, frame_b_idx = config.get_frame_pair_indices(idx)
-
+    elif image_type == "lavision_im7":
         if config.time_resolved:
-            # Time-resolved: read single frame from each of two files
-            # Each file has ONE frame per camera (not A+B pairs)
+            # Time-resolved: each file has one frame, read two files
             im7_file_a = camera_path / (format_str % frame_a_idx)
             im7_file_b = camera_path / (format_str % frame_b_idx)
-            # Use frames=1, frames_per_camera=1 for single-frame .im7 files
-            # read_lavision_im7 returns shape (frames, H, W), so extract [0]
-            frame_a = read_image(str(im7_file_a), camera_no=camera, frames=1, frames_per_camera=1)[0]
-            frame_b = read_image(str(im7_file_b), camera_no=camera, frames=1, frames_per_camera=1)[0]
+            frame_a = read_single_frame(im7_file_a, camera, frame_a_idx, image_type)
+            frame_b = read_single_frame(im7_file_b, camera, frame_b_idx, image_type)
             return np.stack([frame_a, frame_b], axis=0)
         else:
             # Non-time-resolved: each file contains A+B pair
             im7_file_path = camera_path / (format_str % frame_a_idx)
             return read_image(str(im7_file_path), camera_no=camera)
 
-    # .cine files: one video file per camera, frames extracted by index
-    if image_type == "cine":
-        # Format pattern uses %d for camera number (e.g., "Camera%d.cine")
+    elif image_type == "cine":
+        # .cine: one video file per camera, frames extracted by index
         cine_filename = format_str % camera
         cine_path = camera_path / cine_filename
-
-        # Get frame indices from pairing logic
-        frame_a_idx, frame_b_idx = config.get_frame_pair_indices(idx)
-
-        # Reader handles FirstImageNo translation internally
-        # We pass frame_a_idx as the starting frame (1-based user frame)
+        # For pairs, read 2 consecutive frames starting at frame_a_idx
         return read_image(str(cine_path), idx=frame_a_idx, frames=2)
 
-    # Standard formats below (use camera subdirectories)
-
-    # Get the file indices for this pair
-    frame_a_idx, frame_b_idx = config.get_frame_pair_indices(idx)
-
-    # Check if we have A/B pair (len > 1) or single format
-    if len(config.image_format) == 2:
-        # Non-time-resolved: separate A and B formats
-        image_format_A, image_format_B = config.image_format
-        file_paths = [
-            camera_path / (image_format_A % frame_a_idx),
-            camera_path / (image_format_B % frame_b_idx),
-        ]
     else:
-        # Time-resolved: single format, read two consecutive (or skipped) frames
-        file_paths = [
-            camera_path / (format_str % frame_a_idx),
-            camera_path / (format_str % frame_b_idx),
-        ]
+        # Standard formats: separate files per frame
+        if len(config.image_format) == 2:
+            # Non-time-resolved: separate A and B format patterns
+            image_format_A, image_format_B = config.image_format
+            file_a = camera_path / (image_format_A % frame_a_idx)
+            file_b = camera_path / (image_format_B % frame_b_idx)
+        else:
+            # Time-resolved: single format pattern
+            file_a = camera_path / (format_str % frame_a_idx)
+            file_b = camera_path / (format_str % frame_b_idx)
 
-    # Read individual frames (e.g., .tif, .png, .jpg)
-    frame_a = read_image(str(file_paths[0]))
-    frame_b = read_image(str(file_paths[1]))
-    return np.stack([frame_a, frame_b], axis=0)
+        frame_a = read_single_frame(file_a, camera, frame_a_idx, image_type)
+        frame_b = read_single_frame(file_b, camera, frame_b_idx, image_type)
+        return np.stack([frame_a, frame_b], axis=0)
 
 
 def delayed_image_pair(idx: int, camera_path: Path, camera: int, config: Config) -> Delayed:

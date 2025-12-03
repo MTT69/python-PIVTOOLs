@@ -1,6 +1,6 @@
 import glob
+import os
 import re
-import shutil
 import subprocess
 import sys
 import time
@@ -8,8 +8,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
-import os
+
 import cv2
+import imageio_ffmpeg
 import matplotlib.colors as mpl_colors
 import matplotlib.pyplot as plt
 import numpy as np
@@ -18,7 +19,11 @@ from scipy.io import loadmat
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from pivtools_core.vector_loading import read_mat_contents
+from pivtools_core.vector_loading import (
+    find_valid_runs,
+    get_highest_valid_run,
+    read_mat_contents,
+)
 
 # Constants for optimization
 DEFAULT_BATCH_SIZE = 10  # Files to preload for processing
@@ -149,32 +154,14 @@ def _natural_key(p: Path) -> List:
 
 def find_highest_valid_run_from_file(filepath: str, var: str) -> int:
     """
-    Find the highest run index (0-based) that has valid non-empty data by reading the mat file directly.
+    Find the highest run index (0-based) that has valid non-empty data.
     Returns 0 if no valid runs found or if single run.
+
+    Uses unified validation from pivtools_core.vector_loading.
     """
     try:
-        mat = loadmat(filepath, struct_as_record=False, squeeze_me=True)
-        piv_result = mat.get("piv_result")
-        if piv_result is None:
-            return 0
-
-        if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
-            # Multiple runs - check from highest to lowest
-            num_runs = piv_result.size
-            for run_idx in range(num_runs - 1, -1, -1):
-                try:
-                    pr = piv_result[run_idx]
-                    ux = np.asarray(getattr(pr, "ux", None))
-                    uy = np.asarray(getattr(pr, "uy", None))
-                    if ux is not None and uy is not None and ux.size > 0 and uy.size > 0:
-                        if ux.ndim == 2 and not np.all(np.isnan(ux)):
-                            return run_idx
-                except Exception:
-                    continue
-            return 0
-        else:
-            # Single run
-            return 0
+        result = get_highest_valid_run(filepath, one_based=False)
+        return result if result is not None else 0
     except Exception as e:
         logger.error(f"Error finding highest valid run in {filepath}: {e}")
         return 0
@@ -182,43 +169,17 @@ def find_highest_valid_run_from_file(filepath: str, var: str) -> int:
 
 def find_all_valid_runs_from_file(filepath: str, var: str) -> List[int]:
     """
-    Find all run indices (0-based) that have valid non-empty data by reading the mat file directly.
+    Find all run indices (0-based) that have valid non-empty data.
     Returns list of valid run indices sorted ascending.
-    """
-    valid_runs = []
-    try:
-        mat = loadmat(filepath, struct_as_record=False, squeeze_me=True)
-        piv_result = mat.get("piv_result")
-        if piv_result is None:
-            return [0]
 
-        if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
-            # Multiple runs - check all
-            num_runs = piv_result.size
-            for run_idx in range(num_runs):
-                try:
-                    pr = piv_result[run_idx]
-                    ux = np.asarray(getattr(pr, "ux", None))
-                    uy = np.asarray(getattr(pr, "uy", None))
-                    if ux is not None and uy is not None and ux.size > 0 and uy.size > 0:
-                        if ux.ndim == 2 and not np.all(np.isnan(ux)):
-                            valid_runs.append(run_idx)
-                except Exception:
-                    continue
-        else:
-            # Single run - check if valid
-            try:
-                ux = np.asarray(getattr(piv_result, "ux", None))
-                uy = np.asarray(getattr(piv_result, "uy", None))
-                if ux is not None and uy is not None and ux.size > 0 and uy.size > 0:
-                    if ux.ndim == 2 and not np.all(np.isnan(ux)):
-                        valid_runs = [0]
-            except Exception:
-                pass
+    Uses unified validation from pivtools_core.vector_loading.
+    """
+    try:
+        result = find_valid_runs(filepath, one_based=False)
+        return result.valid_runs if result.valid_runs else [0]
     except Exception as e:
         logger.error(f"Error finding valid runs in {filepath}: {e}")
-
-    return valid_runs if valid_runs else [0]
+        return [0]
 
 
 # Keep old function names as aliases for backward compatibility
@@ -510,11 +471,11 @@ class FFmpegVideoWriter:
         extra_args=None,
         loglevel="warning",
     ):
-        if shutil.which("ffmpeg") is None:
-            raise RuntimeError("ffmpeg not found on PATH")
+        # Use bundled FFmpeg from imageio-ffmpeg (always available via pip install)
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
         path = Path(path).resolve()
         cmd = [
-            "ffmpeg",
+            ffmpeg_exe,
             "-y",
             "-loglevel",
             loglevel,

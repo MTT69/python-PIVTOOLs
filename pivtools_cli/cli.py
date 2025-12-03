@@ -125,34 +125,40 @@ instantaneous_piv:
   num_peaks: 1
   peak_finder: gauss3
   secondary_peak: false
-calibration_format:
-  image_format: calib%05d.tif
 calibration:
+  image_format: calib%05d.tif
+  num_images: 10
+  image_type: standard
+  zero_based_indexing: false
+  use_camera_subfolders: false
+  subfolder: ''
   active: pinhole
   scale_factor:
     dt: 0.56
     px_per_mm: 3.41
-    source_path_idx: 0
   pinhole:
-    source_path_idx: 0
     camera: 1
-    image_index: 0
-    file_pattern: calib%05d.tif
     pattern_cols: 10
     pattern_rows: 10
     dot_spacing_mm: 28.89
     enhance_dots: true
     asymmetric: false
-    dot_distance_mm: 28.9
     grid_tolerance: 0.5
     ransac_threshold: 3
     dt: 0.0275
+  charuco:
+    camera: 1
+    squares_h: 10
+    squares_v: 9
+    square_size: 0.03
+    marker_ratio: 0.5
+    aruco_dict: DICT_4X4_1000
+    min_corners: 6
+    dt: 1
   stereo:
-    source_path_idx: 0
     camera_pair:
     - 1
     - 2
-    file_pattern: planar_calibration_plate_*.tif
     pattern_cols: 10
     pattern_rows: 10
     dot_spacing_mm: 28.89
