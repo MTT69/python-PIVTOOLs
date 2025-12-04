@@ -1,20 +1,29 @@
 paths:
   base_paths:
-  - C:\Users\mtt1e23\Downloads\calibrated_piv_morgan
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/stereo/test
   source_paths:
-  - D:\DAVIS_BFS\gF_Ramp_experiment\BFS_1500_1
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/stereo
+  active_paths:
+  - 0
   camera_numbers:
   - 1
   - 2
   camera_count: 2
+  camera_subfolders: []
 images:
-  num_images: 50
+  num_images: 100
   image_format:
-  - B%05d.im7
+  - B%05d_A.tif
+  - B%05d_B.tif
   vector_format:
   - '%05d.mat'
   time_resolved: false
   dtype: float32
+  zero_based_indexing: false
+  pairing_mode: sequential
+  pairing_skip: 0
+  num_frame_pairs: 100
+  image_type: standard
 batches:
   size: 25
 logging:
@@ -22,25 +31,43 @@ logging:
   level: INFO
   console: true
 processing:
-  instantaneous: true
-  ensemble: false
-  stereo: false
+  instantaneous: false
+  ensemble: true
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 4
-  dask_workers_per_node: 1
+  omp_threads: 2
+  dask_workers_per_node: 4
   dask_threads_per_worker: 1
-  dask_memory_limit: 50GB
+  dask_memory_limit: 3GB
+  filter_worker_count: 1
+  filter_omp_threads: 2
+  always_batch: true
 outlier_detection:
   enabled: true
   methods:
-  - threshold: 0.25
+  - threshold: 0.2
     type: peak_mag
   - epsilon: 0.2
     threshold: 2
     type: median_2d
 infilling:
+  mid_pass:
+    method: biharmonic
+    parameters:
+      ksize: 3
+  final_pass:
+    enabled: true
+    method: biharmonic
+    parameters:
+      ksize: 3
+ensemble_outlier_detection:
+  enabled: true
+  methods:
+  - epsilon: 0.2
+    threshold: 2
+    type: median_2d
+ensemble_infilling:
   mid_pass:
     method: biharmonic
     parameters:
@@ -61,11 +88,6 @@ videos:
   use_merged: false
   variable: ux
   video_length: 100
-- endpoint: ''
-  type: gamma1
-  use_merged: false
-  variable: gamma1
-  video_length: 100
 statistics_extraction: null
 instantaneous_piv:
   window_size:
@@ -75,54 +97,90 @@ instantaneous_piv:
     - 64
   - - 32
     - 32
+  - - 16
+    - 8
   overlap:
   - 50
   - 50
   - 50
+  - 50
   runs:
-  - 3
+  - 4
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
-  peak_finder: gauss3
+  peak_finder: gauss6
   secondary_peak: false
-calibration_format:
-  image_format: calib%05d.tif
+ensemble_piv:
+  window_size:
+  - - 128
+    - 128
+  - - 64
+    - 64
+  - - 16
+    - 16
+  overlap:
+  - 50
+  - 50
+  - 50
+  type:
+  - std
+  - std
+  - std
+  runs:
+  - 3
+  store_planes: true
+  save_diagnostics: true
+  sum_window:
+  - 16
+  - 16
+  resume_from_pass: 0
 calibration:
-  active: pinhole
+  image_format: planar_calibration_plate_%02d.tif
+  num_images: 20
+  image_type: standard
+  zero_based_indexing: false
+  use_camera_subfolders: true
+  subfolder: calibration
+  active: charuco
   scale_factor:
     dt: 0.56
     px_per_mm: 3.41
     source_path_idx: 0
   pinhole:
-    source_path_idx: 0
     camera: 1
-    image_index: 0
-    file_pattern: calib%05d.tif
     pattern_cols: 10
     pattern_rows: 10
-    dot_spacing_mm: 28.89
-    enhance_dots: true
+    dot_spacing_mm: 12.22
+    enhance_dots: false
     asymmetric: false
-    dot_distance_mm: 28.9
     grid_tolerance: 0.5
     ransac_threshold: 3
-    dt: 0.0275
-  stereo:
+    dt: 0.0057553
     source_path_idx: 0
+    image_index: 0
+  charuco:
+    camera: 1
+    squares_h: 10
+    squares_v: 9
+    square_size: 0.03
+    marker_ratio: 0.5
+    aruco_dict: DICT_4X4_1000
+    min_corners: 6
+    dt: 0.0057553
+    source_path_idx: 0
+    file_pattern: '*.tif'
+  stereo:
     camera_pair:
     - 1
     - 2
-    file_pattern: planar_calibration_plate_*.tif
     pattern_cols: 10
     pattern_rows: 10
-    dot_spacing_mm: 28.89
+    dot_spacing_mm: 12.2222
     enhance_dots: true
     asymmetric: false
     dt: 2
-  image_format: calib%05d.tiff
-filters:
-- type: pod
+filters: []
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat

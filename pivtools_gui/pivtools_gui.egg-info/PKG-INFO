@@ -1,0 +1,26 @@
+Metadata-Version: 2.4
+Name: pivtools-gui
+Version: 0.1.0
+Summary: Web GUI for PIVTOOLs - Particle Image Velocimetry Tools
+License: MIT
+Project-URL: Homepage, https://github.com/MTT69/python-PIVTOOLs
+Project-URL: Repository, https://github.com/MTT69/python-PIVTOOLs
+Project-URL: Issues, https://github.com/MTT69/python-PIVTOOLs/issues
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Scientific/Engineering :: Image Processing
+Classifier: Framework :: Flask
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: pivtools-core>=0.1.0
+Requires-Dist: pivtools-cli>=0.1.0
+Requires-Dist: Flask==3.1.1
+Requires-Dist: flask-cors==6.0.1

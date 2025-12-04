@@ -1,0 +1,336 @@
+2025-11-16 16:01:49,720 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-16 16:01:49,728 [INFO] Config YAML:
+batches:
+  size: 25
+calibration:
+  active: pinhole
+  pinhole:
+    asymmetric: false
+    camera: 1
+    dot_distance_mm: 28.9
+    dot_spacing_mm: 28.89
+    dt: 0.0275
+    enhance_dots: true
+    file_pattern: calib%05d.tif
+    grid_tolerance: 0.5
+    image_index: 0
+    pattern_cols: 10
+    pattern_rows: 10
+    ransac_threshold: 3
+    source_path_idx: 0
+  scale_factor:
+    dt: 0.56
+    px_per_mm: 3.41
+    source_path_idx: 0
+  stereo:
+    asymmetric: false
+    camera_pair:
+    - 1
+    - 2
+    dot_spacing_mm: 28.89
+    dt: 2
+    enhance_dots: true
+    file_pattern: planar_calibration_plate_*.tif
+    pattern_cols: 10
+    pattern_rows: 10
+    source_path_idx: 0
+calibration_format:
+  image_format: calib%05d.tif
+filters:
+- type: pod
+images:
+  dtype: float32
+  image_format:
+  - B%05d_A.tif
+  - B%05d_A.tif
+  num_images: 100
+  time_resolved: false
+  vector_format:
+  - B%05d.mat
+infilling:
+  final_pass:
+    enabled: true
+    method: biharmonic
+    parameters:
+      ksize: 3
+  mid_pass:
+    method: biharmonic
+    parameters:
+      ksize: 3
+instantaneous_piv:
+  num_peaks: 1
+  overlap:
+  - 50
+  - 50
+  - 50
+  peak_finder: gauss3
+  runs:
+  - 3
+  secondary_peak: false
+  time_resolved: false
+  window_size:
+  - - 128
+    - 128
+  - - 64
+    - 64
+  - - 32
+    - 32
+  window_type: gaussian
+logging:
+  console: true
+  file: pypiv.log
+  level: INFO
+masking:
+  enabled: true
+  mask_file_pattern: mask_Cam%d.mat
+  mask_threshold: 0.01
+  mode: rectangular
+  rectangular:
+    bottom: 64
+    left: 0
+    right: 0
+    top: 64
+outlier_detection:
+  enabled: true
+  methods:
+  - threshold: 0.25
+    type: peak_mag
+  - epsilon: 0.2
+    threshold: 2
+    type: median_2d
+paths:
+  base_paths:
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/temporal
+  camera_count: 1
+  camera_numbers:
+  - 1
+  source_paths:
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall
+plots:
+  fontsize: 14
+  save_extension: .png
+  save_pickle: true
+  title_fontsize: 16
+processing:
+  auto_compute_params: false
+  backend: cpu
+  dask_memory_limit: 3GB
+  dask_threads_per_worker: 1
+  dask_workers_per_node: 4
+  debug: false
+  ensemble: false
+  instantaneous: true
+  omp_threads: 2
+  stereo: false
+statistics_extraction: null
+videos:
+- endpoint: ''
+  type: instantaneous
+  use_merged: false
+  variable: ux
+  video_length: 100
+
+2025-11-16 16:01:51,234 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-16 16:01:51,234 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-16 16:01:51,234 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-16 16:01:51,234 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-16 16:01:51,309 [INFO] Worker logging configured successfully
+2025-11-16 16:01:51,309 [INFO] Worker logging configured successfully
+2025-11-16 16:01:51,309 [INFO] Worker logging configured successfully
+2025-11-16 16:01:51,309 [INFO] Worker logging configured successfully
+2025-11-16 16:01:51,310 [INFO] Dask cluster started successfully
+2025-11-16 16:01:51,310 [INFO] Dask Worker Info:
+2025-11-16 16:01:51,310 [INFO] Worker tcp://127.0.0.1:59424
+2025-11-16 16:01:51,310 [INFO]   pid: None
+2025-11-16 16:01:51,310 [INFO]   host: 127.0.0.1
+2025-11-16 16:01:51,310 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-0tc___rj
+2025-11-16 16:01:51,310 [INFO]   nanny: True
+2025-11-16 16:01:51,310 [INFO] Dask Worker Info:
+2025-11-16 16:01:51,310 [INFO] Worker tcp://127.0.0.1:59425
+2025-11-16 16:01:51,310 [INFO]   pid: None
+2025-11-16 16:01:51,310 [INFO]   host: 127.0.0.1
+2025-11-16 16:01:51,310 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-x67kypbp
+2025-11-16 16:01:51,310 [INFO]   nanny: True
+2025-11-16 16:01:51,310 [INFO] Dask Worker Info:
+2025-11-16 16:01:51,310 [INFO] Worker tcp://127.0.0.1:59426
+2025-11-16 16:01:51,310 [INFO]   pid: None
+2025-11-16 16:01:51,310 [INFO]   host: 127.0.0.1
+2025-11-16 16:01:51,310 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-blsz_pgl
+2025-11-16 16:01:51,310 [INFO]   nanny: True
+2025-11-16 16:01:51,310 [INFO] Dask Worker Info:
+2025-11-16 16:01:51,310 [INFO] Worker tcp://127.0.0.1:59427
+2025-11-16 16:01:51,310 [INFO]   pid: None
+2025-11-16 16:01:51,310 [INFO]   host: 127.0.0.1
+2025-11-16 16:01:51,310 [INFO]   local_dir: /var/folders/zw/lm12s13x5td0brx_jr0b2lmr0000gn/T/dask-scratch-space/worker-upih36m2
+2025-11-16 16:01:51,310 [INFO]   nanny: True
+2025-11-16 16:01:51,311 [INFO] Processing camera: Cam1
+2025-11-16 16:01:51.311 | INFO     | pivtools_core.image_handling.load_images:load_images:182 - Creating 100 delayed tasks for lazy loading (Cam1)
+2025-11-16 16:01:51,313 [INFO] _detect_image_shape: image_format = ('B%05d_A.tif', 'B%05d_A.tif'), type = <class 'tuple'>
+2025-11-16 16:01:51,313 [INFO] Source path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall, Camera: 1
+2025-11-16 16:01:51,313 [INFO] Camera path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1
+2025-11-16 16:01:51,313 [INFO] Trying to read regular file: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Planar_Images_with_wall/Cam1/B00001_A.tif
+2025-11-16 16:01:51,318 [INFO] Detected image shape: (1152, 1024)
+2025-11-16 16:01:51,318 [INFO] Auto-detected image shape: (1152, 1024)
+2025-11-16 16:01:51.321 | INFO     | pivtools_core.image_handling.load_images:load_images:196 - Lazy loading complete: 100 independent delayed tasks created (~100 KB memory footprint)
+2025-11-16 16:01:51,321 [INFO] Batch filters detected (time/pod) - processing 100 images in batches of 25 on main process with multithreading
+2025-11-16 16:01:51,321 [INFO] Processing batch 1/4: images 1-25 (25 images)
+2025-11-16 16:01:51,321 [INFO] Applying filter: {'type': 'pod'}
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/preprocessing/filters.py:92: RuntimeWarning: divide by zero encountered in matmul
+  C1 = M1 @ M1.T
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/preprocessing/filters.py:92: RuntimeWarning: overflow encountered in matmul
+  C1 = M1 @ M1.T
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/preprocessing/filters.py:92: RuntimeWarning: invalid value encountered in matmul
+  C1 = M1 @ M1.T
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/preprocessing/filters.py:93: RuntimeWarning: divide by zero encountered in matmul
+  C2 = M2 @ M2.T
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/preprocessing/filters.py:93: RuntimeWarning: overflow encountered in matmul
+  C2 = M2 @ M2.T
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/preprocessing/filters.py:93: RuntimeWarning: invalid value encountered in matmul
+  C2 = M2 @ M2.T
+2025-11-16 16:01:51,472 [INFO] Batch 1/4 complete (~56.2 MB processed)
+2025-11-16 16:01:51,472 [INFO] Processing batch 2/4: images 26-50 (25 images)
+2025-11-16 16:01:51,472 [INFO] Applying filter: {'type': 'pod'}
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/preprocessing/filters.py:92: RuntimeWarning: divide by zero encountered in matmul
+  C1 = M1 @ M1.T
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/preprocessing/filters.py:92: RuntimeWarning: overflow encountered in matmul
+  C1 = M1 @ M1.T
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/preprocessing/filters.py:92: RuntimeWarning: invalid value encountered in matmul
+  C1 = M1 @ M1.T
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/preprocessing/filters.py:93: RuntimeWarning: divide by zero encountered in matmul
+  C2 = M2 @ M2.T
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/preprocessing/filters.py:93: RuntimeWarning: overflow encountered in matmul
+  C2 = M2 @ M2.T
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/preprocessing/filters.py:93: RuntimeWarning: invalid value encountered in matmul
+  C2 = M2 @ M2.T
+2025-11-16 16:01:51,564 [INFO] Batch 2/4 complete (~56.2 MB processed)
+2025-11-16 16:01:51,564 [INFO] Processing batch 3/4: images 51-75 (25 images)
+2025-11-16 16:01:51,564 [INFO] Applying filter: {'type': 'pod'}
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/preprocessing/filters.py:92: RuntimeWarning: divide by zero encountered in matmul
+  C1 = M1 @ M1.T
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/preprocessing/filters.py:92: RuntimeWarning: overflow encountered in matmul
+  C1 = M1 @ M1.T
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/preprocessing/filters.py:92: RuntimeWarning: invalid value encountered in matmul
+  C1 = M1 @ M1.T
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/preprocessing/filters.py:93: RuntimeWarning: divide by zero encountered in matmul
+  C2 = M2 @ M2.T
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/preprocessing/filters.py:93: RuntimeWarning: overflow encountered in matmul
+  C2 = M2 @ M2.T
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/preprocessing/filters.py:93: RuntimeWarning: invalid value encountered in matmul
+  C2 = M2 @ M2.T
+2025-11-16 16:01:51,655 [INFO] Batch 3/4 complete (~56.2 MB processed)
+2025-11-16 16:01:51,655 [INFO] Processing batch 4/4: images 76-100 (25 images)
+2025-11-16 16:01:51,655 [INFO] Applying filter: {'type': 'pod'}
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/preprocessing/filters.py:92: RuntimeWarning: divide by zero encountered in matmul
+  C1 = M1 @ M1.T
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/preprocessing/filters.py:92: RuntimeWarning: overflow encountered in matmul
+  C1 = M1 @ M1.T
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/preprocessing/filters.py:92: RuntimeWarning: invalid value encountered in matmul
+  C1 = M1 @ M1.T
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/preprocessing/filters.py:93: RuntimeWarning: divide by zero encountered in matmul
+  C2 = M2 @ M2.T
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/preprocessing/filters.py:93: RuntimeWarning: overflow encountered in matmul
+  C2 = M2 @ M2.T
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/preprocessing/filters.py:93: RuntimeWarning: invalid value encountered in matmul
+  C2 = M2 @ M2.T
+2025-11-16 16:01:51,749 [INFO] Batch 4/4 complete (~56.2 MB processed)
+2025-11-16 16:01:51,749 [INFO] All 4 batches processed and concatenated. Ready for PIV distribution (100 partitions)
+2025-11-16 16:01:51.750 | DEBUG    | pivtools_core.image_handling.load_images:load_mask_for_camera:286 - Using rectangular edge masking
+2025-11-16 16:01:51.751 | DEBUG    | pivtools_core.image_handling.load_images:create_rectangular_mask:241 - Created rectangular mask: top=64, bottom=64, left=0, right=0 (131072/1179648 pixels = 11.1%)
+2025-11-16 16:01:51,751 [INFO] Pre-computing vector masks for Cam1
+2025-11-16 16:01:51.969 | DEBUG    | pivtools_core.image_handling.load_images:compute_vector_mask:449 - Pass 1: 30/255 vectors masked (11.8%), window size: (128, 128)
+2025-11-16 16:01:52.068 | DEBUG    | pivtools_core.image_handling.load_images:compute_vector_mask:449 - Pass 2: 155/1085 vectors masked (14.3%), window size: (64, 64)
+2025-11-16 16:01:52.108 | DEBUG    | pivtools_core.image_handling.load_images:compute_vector_mask:449 - Pass 3: 567/4473 vectors masked (12.7%), window size: (32, 32)
+2025-11-16 16:01:52,108 [INFO] Vector masks computed: 3 passes
+2025-11-16 16:01:52,376 [INFO] Successfully cached window padding for 3 passes
+2025-11-16 16:01:52,382 [INFO] Successfully cached interpolation grids for 3 passes
+2025-11-16 16:01:52,428 [INFO] Broadcast correlator cache to all workers
+2025-11-16 16:01:52,433 [INFO] Broadcast vector masks to all workers (5.7 KB)
+2025-11-16 16:01:52,434 [INFO] Submitting 100 independent tasks to cluster
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/client.py:3371: UserWarning: Sending large graph of size 225.03 MiB.
+This may cause some slowdown.
+Consider loading the data with Dask directly
+ or using futures or delayed objects to embed the data into the graph without repetition.
+See also https://docs.dask.org/en/stable/best-practices.html#load-data-with-dask for more information.
+  warnings.warn(
+2025-11-16 16:01:52,513 [INFO] Tasks submitted. Dask scheduler managing distribution across workers. Each worker processes ONE image at a time.
+2025-11-16 16:01:52,732 - distributed.worker - ERROR - expected str, got 'bool'
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/utils.py", line 818, in wrapper
+    return await func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/worker.py", line 1574, in close
+    with self.rpc(self.nanny) as r:
+         ~~~~~~~~^^^^^^^^^^^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/core.py", line 1394, in __call__
+    addr = addr_from_args(addr=addr, ip=ip, port=port)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/core.py", line 1062, in addr_from_args
+    return normalize_address(addr)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/comm/addressing.py", line 54, in normalize_address
+    return unparse_address(*parse_address(addr))
+                            ~~~~~~~~~~~~~^^^^^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/comm/addressing.py", line 21, in parse_address
+    raise TypeError("expected str, got %r" % addr.__class__.__name__)
+TypeError: expected str, got 'bool'
+2025-11-16 16:01:52,733 - distributed.worker - ERROR - expected str, got 'bool'
+Traceback (most recent call last):
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/utils.py", line 818, in wrapper
+    return await func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/worker.py", line 1574, in close
+    with self.rpc(self.nanny) as r:
+         ~~~~~~~~^^^^^^^^^^^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/core.py", line 1394, in __call__
+    addr = addr_from_args(addr=addr, ip=ip, port=port)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/core.py", line 1062, in addr_from_args
+    return normalize_address(addr)
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/comm/addressing.py", line 54, in normalize_address
+    return unparse_address(*parse_address(addr))
+                            ~~~~~~~~~~~~~^^^^^^
+  File "/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/comm/addressing.py", line 21, in parse_address
+    raise TypeError("expected str, got %r" % addr.__class__.__name__)
+TypeError: expected str, got 'bool'
+2025-11-16 16:01:52,774 - distributed.scheduler - WARNING - Received heartbeat from unregistered worker 'tcp://127.0.0.1:59427'.
+2025-11-16 16:01:52,774 - distributed.scheduler - WARNING - Received heartbeat from unregistered worker 'tcp://127.0.0.1:59425'.
+2025-11-16 16:01:52,774 - distributed.worker - WARNING - Scheduler was unaware of this worker; shutting down.
+2025-11-16 16:01:52,775 - distributed.worker - WARNING - Scheduler was unaware of this worker; shutting down.
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/client.py:3371: UserWarning: Sending large graph of size 225.02 MiB.
+This may cause some slowdown.
+Consider loading the data with Dask directly
+ or using futures or delayed objects to embed the data into the graph without repetition.
+See also https://docs.dask.org/en/stable/best-practices.html#load-data-with-dask for more information.
+  warnings.warn(
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/client.py:3371: UserWarning: Sending large graph of size 225.02 MiB.
+This may cause some slowdown.
+Consider loading the data with Dask directly
+ or using futures or delayed objects to embed the data into the graph without repetition.
+See also https://docs.dask.org/en/stable/best-practices.html#load-data-with-dask for more information.
+  warnings.warn(
+2025-11-16 16:02:11,776 - distributed.nanny - WARNING - Worker process still alive after 4.0 seconds, killing
+2025-11-16 16:02:11,851 - distributed.nanny - WARNING - Worker process still alive after 4.0 seconds, killing
+2025-11-16 16:02:14,407 - distributed.worker.memory - WARNING - Unmanaged memory use is high. This may indicate a memory leak or the memory may not be released to the OS; see https://distributed.dask.org/en/latest/worker-memory.html#memory-not-released-back-to-the-os for more information. -- Unmanaged memory: 1.90 GiB -- Worker memory limit: 2.79 GiB
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/client.py:3371: UserWarning: Sending large graph of size 225.02 MiB.
+This may cause some slowdown.
+Consider loading the data with Dask directly
+ or using futures or delayed objects to embed the data into the graph without repetition.
+See also https://docs.dask.org/en/stable/best-practices.html#load-data-with-dask for more information.
+  warnings.warn(
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/client.py:3371: UserWarning: Sending large graph of size 225.02 MiB.
+This may cause some slowdown.
+Consider loading the data with Dask directly
+ or using futures or delayed objects to embed the data into the graph without repetition.
+See also https://docs.dask.org/en/stable/best-practices.html#load-data-with-dask for more information.
+  warnings.warn(
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/client.py:3371: UserWarning: Sending large graph of size 225.02 MiB.
+This may cause some slowdown.
+Consider loading the data with Dask directly
+ or using futures or delayed objects to embed the data into the graph without repetition.
+See also https://docs.dask.org/en/stable/best-practices.html#load-data-with-dask for more information.
+  warnings.warn(
+/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/piv/lib/python3.13/site-packages/distributed/client.py:3371: UserWarning: Sending large graph of size 225.02 MiB.
+This may cause some slowdown.
+Consider loading the data with Dask directly
+ or using futures or delayed objects to embed the data into the graph without repetition.
+See also https://docs.dask.org/en/stable/best-practices.html#load-data-with-dask for more information.
+  warnings.warn(
+/opt/homebrew/Cellar/python@3.13/3.13.8/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/resource_tracker.py:324: UserWarning: resource_tracker: There appear to be 12 leaked semaphore objects to clean up at shutdown: {'/loky-74466-zdbojx5b', '/loky-74466-5osspgb1', '/loky-74466-k8drmp60', '/loky-74466-ryquken2', '/loky-74466-nf2v6afh', '/loky-74466-m9jb4oqf', '/loky-74466-efdolu5h', '/loky-74466-fn9k1nbb', '/loky-74466-2wo90xa1', '/loky-74466-17i404vh', '/loky-74466-tgujfn6l', '/loky-74466-3amul72f'}
+  warnings.warn(

@@ -1,0 +1,5 @@
+2025-11-24 14:59:15,912 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-11-24 14:59:15,912 [INFO] 127.0.0.1 - - [24/Nov/2025 14:59:15] "GET /backend/config HTTP/1.1" 200 -
+2025-11-24 14:59:15,925 [INFO] 127.0.0.1 - - [24/Nov/2025 14:59:15] "[33mGET /apple-touch-icon-precomposed.png HTTP/1.1[0m" 404 -
+2025-11-24 14:59:16,046 [INFO] 127.0.0.1 - - [24/Nov/2025 14:59:16] "[33mGET /apple-touch-icon.png HTTP/1.1[0m" 404 -
+2025-11-24 14:59:16,455 [INFO] 127.0.0.1 - - [24/Nov/2025 14:59:16] "POST /backend/validate_files HTTP/1.1" 200 -

@@ -1,0 +1,32 @@
+include README.md
+include LICENSE
+include requirements.txt
+
+# Include C library source files
+recursive-include pivtools_cli/lib *.c *.h
+
+# Exclude unused C files
+exclude pivtools_cli/lib/peak_locate_gsl.c
+exclude pivtools_cli/lib/peak_locate_gsl.h
+exclude pivtools_cli/lib/peak_locate_gsl_print.c
+
+# Include static FFTW binaries for all platforms
+recursive-include static_fftw *
+
+# Include GUI static files and templates
+recursive-include pivtools_gui/static *
+recursive-include pivtools_gui/templates *
+
+# Exclude unnecessary files
+global-exclude __pycache__
+global-exclude *.py[co]
+global-exclude .DS_Store
+# Note: .so, .dll, .dylib files are included via package_data in pyproject.toml
+
+# Exclude test and development files
+prune tests
+prune manual_tools
+prune logs
+prune env
+prune .git
+prune .github

@@ -1,0 +1,31 @@
+Metadata-Version: 2.4
+Name: pivtools-core
+Version: 0.1.0
+Summary: Core utilities for PIVTOOLs - Particle Image Velocimetry Tools
+License: MIT
+Project-URL: Homepage, https://github.com/MTT69/python-PIVTOOLs
+Project-URL: Repository, https://github.com/MTT69/python-PIVTOOLs
+Project-URL: Issues, https://github.com/MTT69/python-PIVTOOLs/issues
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Scientific/Engineering :: Image Processing
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: dask[distributed]==2025.7.0
+Requires-Dist: loguru==0.7.3
+Requires-Dist: numpy==2.2.6
+Requires-Dist: opencv-python==4.12.0.88
+Requires-Dist: pandas==2.3.1
+Requires-Dist: pillow==11.3.0
+Requires-Dist: PyYAML==6.0.2
+Requires-Dist: scipy==1.16.1
+Requires-Dist: tifffile==2025.6.11
+Requires-Dist: tqdm==4.67.1

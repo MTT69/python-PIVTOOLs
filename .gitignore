@@ -4,3 +4,35 @@ check_mat.ipynb
 .gitignore
 __pycache__/
 morgan.jpeg
+
+# Python build artifacts
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.egg-info/
+*.egg
+build/
+
+pivtools_cli/lib/*.exp
+pivtools_cli/lib/*.o
+pivtools_cli/lib/*.so
+pivtools_cli/lib/*.dylib
+pivtools_cli/lib/*.dll
+pivtools_cli/lib/*.pdb
+pivtools_cli/lib/*.lib
+pivtools_cli/lib/*.obj
+pivtools_gui/static/*
+logs/*
+
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
