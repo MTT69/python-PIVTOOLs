@@ -272,7 +272,7 @@ def charuco_calibrate_all():
             job_manager.update_job(job_id, status="running")
 
             # Get calibration input path using config settings
-            # When use_camera_subfolders=False, path is same for all cameras
+            # When camera_subfolders is empty, path is same for all cameras
             first_camera = camera_numbers[0] if camera_numbers else 1
             cam_input_path = build_calibration_camera_path(cfg, source_path_idx, first_camera)
 

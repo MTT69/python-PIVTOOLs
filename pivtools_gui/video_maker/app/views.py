@@ -13,7 +13,7 @@ import imageio_ffmpeg
 
 from pivtools_core.config import get_config
 from pivtools_core.paths import get_data_paths
-from ..video_maker import PlotSettings, make_video_from_scalar, find_all_valid_runs_from_file, find_highest_valid_run_from_file
+from pivtools_gui.video_maker.video_maker import PlotSettings, make_video_from_scalar, find_all_valid_runs_from_file, find_highest_valid_run_from_file
 
 video_maker_bp = Blueprint("video_maker", __name__)
 

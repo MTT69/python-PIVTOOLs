@@ -18,7 +18,7 @@ from flask_cors import CORS
 from loguru import logger
 import os
 from pivtools_gui.calibration.app.views import calibration_bp
-from pivtools_gui.calibration_poly.app.views import calibration_poly_bp
+from pivtools_gui.calibration.calibration_poly.app.views import calibration_poly_bp
 from pivtools_core.config import get_config, reload_config
 from pivtools_core.image_handling.load_images import read_pair
 from pivtools_core.image_handling.path_utils import build_piv_camera_path, validate_images_generic

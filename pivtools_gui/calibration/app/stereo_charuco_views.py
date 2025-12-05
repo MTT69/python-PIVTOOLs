@@ -441,14 +441,21 @@ def stereo_charuco_load_model():
                     val = getattr(pp, field)
                     pattern_params[field] = val if not hasattr(val, "tolist") else val.tolist()
             elif isinstance(pp, dict):
-                pattern_params = pp
+                # Convert any ndarray values in the dict
+                for key, val in pp.items():
+                    pattern_params[key] = val.tolist() if hasattr(val, "tolist") else val
+
+        # Handle image_size - convert ndarray to list
+        image_size = model_data.get("image_size", [0, 0])
+        if hasattr(image_size, "tolist"):
+            image_size = image_size.tolist()
 
         summary = {
             "total_pairs": stereo_model["num_image_pairs"],
             "frames_with_detections": max(len(detections_cam1), len(detections_cam2)),
             "pattern_params": pattern_params,
             "pattern_type": "charuco",
-            "image_size": model_data.get("image_size", [0, 0]) if "image_size" in model_data else [0, 0],
+            "image_size": image_size,
         }
 
         return jsonify({

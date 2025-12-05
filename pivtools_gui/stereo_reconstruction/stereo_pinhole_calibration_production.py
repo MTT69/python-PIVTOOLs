@@ -43,10 +43,14 @@ PATTERN_COLS = 10
 PATTERN_ROWS = 10
 DOT_SPACING_MM = 12.2222
 ASYMMETRIC = False
-ENHANCE_DOTS = True
+ENHANCE_DOTS = False
 
 # Number of calibration images to use (set to None to use all available)
 NUM_CALIBRATION_IMAGES = None
+
+# USE_CONFIG_DIRECTLY: If True, skip updating config.yaml with above parameters
+# and load calibration settings directly from the existing config.yaml
+USE_CONFIG_DIRECTLY = False
 
 # ===================================================================
 
@@ -74,7 +78,6 @@ def apply_cli_settings_to_config() -> Config:
     # Calibration settings
     config.data["calibration"]["image_format"] = FILE_PATTERN
     config.data["calibration"]["subfolder"] = CALIBRATION_SUBFOLDER
-    config.data["calibration"]["use_camera_subfolders"] = bool(CAMERA_SUBFOLDERS)
 
     # Set calibration image count - explicit value or auto-detect from directory
     if NUM_CALIBRATION_IMAGES is not None:
@@ -327,9 +330,15 @@ def main():
     """Main entry point using hardcoded configuration.
 
     Updates config.yaml with the hardcoded settings, then runs stereo calibration.
+    When USE_CONFIG_DIRECTLY=True, loads settings from existing config.yaml instead.
     """
-    # Apply CLI settings to config.yaml so centralized loaders work correctly
-    config = apply_cli_settings_to_config()
+    if USE_CONFIG_DIRECTLY:
+        # Load settings directly from existing config.yaml
+        logger.info("Loading settings directly from config.yaml (USE_CONFIG_DIRECTLY=True)")
+        config = get_config()
+    else:
+        # Apply CLI settings to config.yaml so centralized loaders work correctly
+        config = apply_cli_settings_to_config()
 
     # Create calibrator using config - all settings are now in config.yaml
     calibrator = StereoPinholeCalibrator(config=config)

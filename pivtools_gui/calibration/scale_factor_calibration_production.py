@@ -1,20 +1,71 @@
+#!/usr/bin/env python3
 """
-Scale Factor Calibration Service.
+scale_factor_calibration_production.py
 
-Provides reusable calibration logic that can be called from CLI or GUI.
-Converts pixel-based measurements to physical units (mm, m/s).
+Scale Factor Calibration - Production Module.
+
+Converts pixel-based PIV results to physical units (mm, m/s).
+- Coordinates: pixels -> mm (zero-based at bottom-left)
+- Velocities: pixels/frame -> m/s
+
+Contains ScaleFactorCalibrator class that can be:
+- Imported and used by GUI views
+- Run standalone via CLI with hardcoded settings
 """
 
+import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 import numpy as np
 import scipy.io
-from loguru import logger
+from loguru import logger as loguru_logger
 
-from pivtools_core.config import get_config
+from pivtools_core.config import get_config, reload_config
 from pivtools_core.paths import get_data_paths
+from pivtools_core.vector_loading import load_coords_from_directory
+
+if TYPE_CHECKING:
+    from pivtools_core.config import PIVConfig
+
+# ===================== CLI CONFIGURATION =====================
+# These settings are used when running the script directly
+
+# SOURCE_DIR: Root directory containing source images (used for path resolution)
+SOURCE_DIR = "/path/to/source"
+
+# BASE_DIR: Output directory containing uncalibrated PIV results
+# Results are in: {BASE_DIR}/piv_results/Cam{N}/...
+BASE_DIR = "/path/to/output"
+
+# CAMERA_SUBFOLDERS: List of subfolder names for each camera
+# e.g., ["Cam1", "Cam2"] means camera 1 uses "Cam1/", camera 2 uses "Cam2/"
+CAMERA_SUBFOLDERS = ["Cam1", "Cam2"]
+
+# CAMERA_NUMS: List of camera numbers to process (1-based)
+CAMERA_NUMS = [1, 2]
+
+# SCALE FACTOR PARAMETERS
+DT = 1.0              # Time between frames (seconds)
+PX_PER_MM = 28.89     # Pixels per millimeter
+
+# PROCESSING OPTIONS
+IMAGE_COUNT = 1000              # Number of vector files to process per camera
+TYPE_NAME = "instantaneous"     # Type of data: "instantaneous" or "ensemble"
+
+# USE_CONFIG_DIRECTLY: If True, skip updating config.yaml with above parameters
+# and load calibration settings directly from the existing config.yaml
+USE_CONFIG_DIRECTLY = False
+
+# LOGGING SETUP (for CLI mode)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+# ===================== HELPER FUNCTIONS =====================
 
 
 def _process_vector_file(args: Tuple) -> bool:
@@ -36,7 +87,7 @@ def _process_vector_file(args: Tuple) -> bool:
         )
 
         if "piv_result" not in mat:
-            logger.warning(
+            loguru_logger.warning(
                 f"Vector file {vector_file_uncal} missing 'piv_result' field."
             )
             return False
@@ -71,10 +122,13 @@ def _process_vector_file(args: Tuple) -> bool:
         return True
 
     except Exception as e:
-        logger.error(
+        loguru_logger.error(
             f"Error processing vector file {vector_file_uncal}: {e}", exc_info=True
         )
         return False
+
+
+# ===================== CALIBRATOR CLASS =====================
 
 
 class ScaleFactorCalibrator:
@@ -91,27 +145,36 @@ class ScaleFactorCalibrator:
 
     def __init__(
         self,
-        dt: float,
-        px_per_mm: float,
         base_path: Path,
         source_path_idx: int = 0,
         type_name: str = "instantaneous",
+        dt: Optional[float] = None,
+        px_per_mm: Optional[float] = None,
+        config: Optional["PIVConfig"] = None,
     ):
         """
         Initialize scale factor calibrator.
 
         Args:
-            dt: Time between frames in seconds
-            px_per_mm: Pixels per millimeter
             base_path: Base output directory
             source_path_idx: Index into config source_paths (for getting settings)
             type_name: Type of data (instantaneous, ensemble)
+            dt: Time between frames in seconds (optional, reads from config if not provided)
+            px_per_mm: Pixels per millimeter (optional, reads from config if not provided)
+            config: Optional config object to read dt/px_per_mm from
         """
-        self.dt = dt
-        self.px_per_mm = px_per_mm
         self.base_path = Path(base_path)
         self.source_path_idx = source_path_idx
         self.type_name = type_name
+
+        # Read dt and px_per_mm from config if not provided directly
+        if config is not None:
+            sf_cfg = config.data.get("calibration", {}).get("scale_factor", {})
+            self.dt = dt if dt is not None else sf_cfg.get("dt", 1.0)
+            self.px_per_mm = px_per_mm if px_per_mm is not None else sf_cfg.get("px_per_mm", 1.0)
+        else:
+            self.dt = dt if dt is not None else 1.0
+            self.px_per_mm = px_per_mm if px_per_mm is not None else 1.0
 
     def calibrate_coordinates(
         self, x: np.ndarray, y: np.ndarray
@@ -262,7 +325,7 @@ class ScaleFactorCalibrator:
                         else:
                             result["failed_files"] += 1
                     except Exception as e:
-                        logger.error(f"Future failed with exception: {e}")
+                        loguru_logger.error(f"Future failed with exception: {e}")
                         result["failed_files"] += 1
 
                     processed += 1
@@ -294,25 +357,20 @@ class ScaleFactorCalibrator:
             True if successful
         """
         try:
-            mat = scipy.io.loadmat(
-                str(coords_path_uncal), struct_as_record=False, squeeze_me=True
-            )
-            coordinates = mat.get("coordinates", None)
+            # Use centralized coordinate loading
+            x_list, y_list = load_coords_from_directory(coords_path_uncal.parent)
 
-            if coordinates is None:
-                logger.warning(f"No 'coordinates' field in {coords_path_uncal}")
+            if not x_list:
+                loguru_logger.warning(f"No coordinates found in {coords_path_uncal.parent}")
                 return False
 
             # Build output struct array
             coord_dtype = np.dtype([("x", "O"), ("y", "O")])
-            out_coords = np.empty(len(coordinates), dtype=coord_dtype)
+            out_coords = np.empty(len(x_list), dtype=coord_dtype)
 
             processed_runs = 0
-            for run_idx, run_coords in enumerate(coordinates):
-                x = getattr(run_coords, "x", None)
-                y = getattr(run_coords, "y", None)
-
-                if x is not None and y is not None:
+            for run_idx, (x, y) in enumerate(zip(x_list, y_list)):
+                if x is not None and y is not None and x.size > 0 and y.size > 0:
                     x_calib, y_calib = self.calibrate_coordinates(x, y)
                     out_coords[run_idx] = (x_calib, y_calib)
                     processed_runs += 1
@@ -322,11 +380,17 @@ class ScaleFactorCalibrator:
             scipy.io.savemat(
                 str(coords_path_cal), {"coordinates": out_coords}, do_compression=True
             )
-            logger.info(f"Updated coordinates for {processed_runs} runs")
+            loguru_logger.info(f"Updated coordinates for {processed_runs} runs")
             return True
 
+        except FileNotFoundError:
+            loguru_logger.warning(f"No coordinates.mat found in {coords_path_uncal.parent}")
+            return False
+        except KeyError as e:
+            loguru_logger.warning(f"Invalid coordinates file: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Error processing coordinates: {e}", exc_info=True)
+            loguru_logger.error(f"Error processing coordinates: {e}", exc_info=True)
             return False
 
     def process_all_cameras(
@@ -401,7 +465,7 @@ class ScaleFactorCalibrator:
         total_processed_files = 0
 
         for cam_idx, cam_num in enumerate(cameras):
-            logger.info(f"Processing camera {cam_num} ({cam_idx + 1}/{total_cameras})")
+            loguru_logger.info(f"Processing camera {cam_num} ({cam_idx + 1}/{total_cameras})")
 
             def camera_progress(data: Dict[str, Any]):
                 nonlocal total_processed_files
@@ -437,3 +501,130 @@ class ScaleFactorCalibrator:
             overall_result["processed_cameras"] = cam_idx + 1
 
         return overall_result
+
+
+# ===================== CLI FUNCTIONS =====================
+
+
+def apply_cli_settings_to_config():
+    """Update config.yaml with CLI-mode hardcoded settings.
+
+    This function writes the hardcoded configuration variables to config.yaml,
+    ensuring the calibration system uses the correct paths and settings.
+
+    Returns
+    -------
+    Config
+        The reloaded config object with updated settings
+    """
+    config = get_config()
+
+    # Paths
+    config.data["paths"]["source_paths"] = [SOURCE_DIR]
+    config.data["paths"]["base_paths"] = [BASE_DIR]
+    config.data["paths"]["camera_subfolders"] = CAMERA_SUBFOLDERS
+    config.data["paths"]["camera_count"] = len(CAMERA_NUMS)
+    config.data["paths"]["camera_numbers"] = CAMERA_NUMS
+
+    # Ensure calibration section exists
+    if "calibration" not in config.data:
+        config.data["calibration"] = {}
+
+    # Scale factor settings
+    config.data["calibration"]["scale_factor"] = {
+        "dt": DT,
+        "px_per_mm": PX_PER_MM,
+    }
+
+    # Save to disk so other components pick up changes
+    config.save()
+    logger.info("Updated config.yaml with CLI settings")
+    logger.info(f"  dt = {DT} seconds")
+    logger.info(f"  px_per_mm = {PX_PER_MM}")
+    logger.info(f"  cameras = {CAMERA_NUMS}")
+
+    # Reload to ensure fresh state
+    return reload_config()
+
+
+def main():
+    """Run scale factor calibration for all configured cameras."""
+    logger.info("=" * 60)
+    logger.info("Scale Factor Calibration - Production Script")
+    logger.info("=" * 60)
+
+    if USE_CONFIG_DIRECTLY:
+        # Load settings directly from existing config.yaml
+        logger.info("Loading settings directly from config.yaml (USE_CONFIG_DIRECTLY=True)")
+        cfg = get_config()
+
+        # Extract settings from config
+        base_dir = cfg.data["paths"]["base_paths"][0]
+        camera_nums = cfg.data["paths"].get("camera_numbers", [1, 2])
+        dt = cfg.data["calibration"].get("scale_factor", {}).get("dt", 1.0)
+        px_per_mm = cfg.data["calibration"].get("scale_factor", {}).get("px_per_mm", 1.0)
+        image_count = cfg.data.get("processing", {}).get("num_frame_pairs", 1000)
+        type_name = cfg.data.get("processing", {}).get("type_name", "instantaneous")
+    else:
+        # Apply hardcoded settings to config
+        cfg = apply_cli_settings_to_config()
+
+        # Use hardcoded settings
+        base_dir = BASE_DIR
+        camera_nums = CAMERA_NUMS
+        dt = DT
+        px_per_mm = PX_PER_MM
+        image_count = IMAGE_COUNT
+        type_name = TYPE_NAME
+
+    # Create calibrator instance - reads dt/px_per_mm from config
+    calibrator = ScaleFactorCalibrator(
+        base_path=Path(base_dir),
+        source_path_idx=0,
+        type_name=type_name,
+        dt=dt,
+        px_per_mm=px_per_mm,
+        config=cfg,
+    )
+
+    logger.info(f"Processing {len(camera_nums)} camera(s): {camera_nums}")
+    logger.info(f"Image count per camera: {image_count}")
+    logger.info(f"Type: {type_name}")
+
+    # Progress callback for CLI output
+    def progress_callback(progress_data):
+        current_cam = progress_data.get("current_camera", "?")
+        overall_progress = progress_data.get("overall_progress", 0)
+        processed = progress_data.get("overall_processed_files", 0)
+        total = progress_data.get("overall_total_files", 0)
+        logger.info(f"  Camera {current_cam}: {overall_progress}% ({processed}/{total} files)")
+
+    # Run calibration for all cameras
+    result = calibrator.process_all_cameras(
+        cameras=camera_nums,
+        image_count=image_count,
+        progress_callback=progress_callback,
+    )
+
+    # Summary
+    logger.info("=" * 60)
+    logger.info("Calibration Complete!")
+    logger.info(f"  Total files: {result['total_files']}")
+    logger.info(f"  Successful: {result['successful_files']}")
+    logger.info(f"  Failed: {result['failed_files']}")
+    logger.info(f"  Cameras processed: {result['processed_cameras']}")
+    logger.info("=" * 60)
+
+    # Per-camera breakdown
+    for cam_num, cam_result in result.get("camera_results", {}).items():
+        status = "OK" if cam_result.get("failed_files", 0) == 0 else "ERRORS"
+        logger.info(
+            f"  Camera {cam_num}: {cam_result.get('successful_files', 0)}/"
+            f"{cam_result.get('total_files', 0)} files [{status}]"
+        )
+
+    return result
+
+
+if __name__ == "__main__":
+    main()

@@ -55,6 +55,10 @@ ENHANCE_DOTS = False
 # Number of calibration images to use (set to None to use all available)
 NUM_CALIBRATION_IMAGES = None
 
+# USE_CONFIG_DIRECTLY: If True, skip updating config.yaml with above parameters
+# and load calibration settings directly from the existing config.yaml
+USE_CONFIG_DIRECTLY = False
+
 # LOGGING SETUP
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -83,7 +87,6 @@ def apply_cli_settings_to_config():
     # Calibration settings
     config.data["calibration"]["image_format"] = FILE_PATTERN
     config.data["calibration"]["subfolder"] = CALIBRATION_SUBFOLDER
-    config.data["calibration"]["use_camera_subfolders"] = bool(CAMERA_SUBFOLDERS)
     if NUM_CALIBRATION_IMAGES is not None:
         config.data["calibration"]["num_images"] = NUM_CALIBRATION_IMAGES
 
@@ -115,7 +118,6 @@ class MultiViewCalibrator:
         asymmetric=False,
         enhance_dots=False,
         calibration_subfolder="",
-        camera_subfolders=None,
         config=None,
     ):
         self.source_dir = Path(source_dir)
@@ -127,7 +129,6 @@ class MultiViewCalibrator:
         self.asymmetric = asymmetric
         self.enable_dot_enhancement = enhance_dots
         self.calibration_subfolder = calibration_subfolder
-        self.camera_subfolders = camera_subfolders
         self._config = config
 
         # Create blob detector
@@ -163,20 +164,11 @@ class MultiViewCalibrator:
         """Get the input directory for calibration images.
 
         Path structure: source / camera_folder / calibration_subfolder
-
-        Uses camera_subfolders array when provided (CLI mode),
-        otherwise falls back to config.get_calibration_camera_folder() (GUI mode).
         """
         base_path = self.source_dir
 
-        # Get camera folder - prefer CLI array, fall back to config
-        if self.camera_subfolders is not None and len(self.camera_subfolders) > 0:
-            # CLI mode: use explicit array
-            idx = cam_num - 1  # Convert 1-based to 0-based index
-            if idx < len(self.camera_subfolders) and self.camera_subfolders[idx]:
-                base_path = base_path / self.camera_subfolders[idx]
-        elif self._config is not None:
-            # GUI mode: use config's camera folder logic
+        # Get camera folder from config
+        if self._config is not None:
             camera_folder = self._config.get_calibration_camera_folder(cam_num)
             if camera_folder:
                 base_path = base_path / camera_folder
@@ -708,32 +700,61 @@ if __name__ == "__main__":
     logger.info("=" * 60)
     logger.info("Planar Calibration - Starting")
     logger.info("=" * 60)
-    logger.info(f"Source: {SOURCE_DIR}")
-    logger.info(f"Output: {BASE_DIR}")
-    logger.info(f"Cameras: {CAMERA_NUMS}")
-    logger.info(f"Pattern: {PATTERN_COLS}x{PATTERN_ROWS}, {DOT_SPACING_MM}mm spacing")
 
-    # Apply CLI settings to config.yaml so centralized loaders work correctly
-    config = apply_cli_settings_to_config()
+    if USE_CONFIG_DIRECTLY:
+        # Load settings directly from existing config.yaml
+        logger.info("Loading settings directly from config.yaml (USE_CONFIG_DIRECTLY=True)")
+        config = get_config()
+
+        # Extract settings from config
+        source_dir = config.data["paths"]["source_paths"][0]
+        base_dir = config.data["paths"]["base_paths"][0]
+        camera_nums = config.data["paths"].get("camera_numbers", [1])
+        file_pattern = config.data["calibration"]["image_format"]
+        calibration_subfolder = config.data["calibration"].get("subfolder", "")
+        pattern_cols = config.data["calibration"]["pinhole"]["pattern_cols"]
+        pattern_rows = config.data["calibration"]["pinhole"]["pattern_rows"]
+        dot_spacing_mm = config.data["calibration"]["pinhole"]["dot_spacing_mm"]
+        asymmetric = config.data["calibration"]["pinhole"].get("asymmetric", False)
+        enhance_dots = config.data["calibration"]["pinhole"].get("enhance_dots", False)
+    else:
+        # Apply CLI settings to config.yaml so centralized loaders work correctly
+        config = apply_cli_settings_to_config()
+
+        # Use hardcoded settings
+        source_dir = SOURCE_DIR
+        base_dir = BASE_DIR
+        camera_nums = CAMERA_NUMS
+        file_pattern = FILE_PATTERN
+        calibration_subfolder = CALIBRATION_SUBFOLDER
+        pattern_cols = PATTERN_COLS
+        pattern_rows = PATTERN_ROWS
+        dot_spacing_mm = DOT_SPACING_MM
+        asymmetric = ASYMMETRIC
+        enhance_dots = ENHANCE_DOTS
+
+    logger.info(f"Source: {source_dir}")
+    logger.info(f"Output: {base_dir}")
+    logger.info(f"Cameras: {camera_nums}")
+    logger.info(f"Pattern: {pattern_cols}x{pattern_rows}, {dot_spacing_mm}mm spacing")
 
     failed_cameras = []
 
-    for camera_num in CAMERA_NUMS:
+    for camera_num in camera_nums:
         logger.info(f"Processing Camera {camera_num}...")
         try:
             # Create calibrator using config - all settings are now in config.yaml
             calibrator = MultiViewCalibrator(
-                source_dir=SOURCE_DIR,
-                base_dir=BASE_DIR,
+                source_dir=source_dir,
+                base_dir=base_dir,
                 camera_count=1,  # Process one at a time
-                file_pattern=FILE_PATTERN,
-                pattern_cols=PATTERN_COLS,
-                pattern_rows=PATTERN_ROWS,
-                dot_spacing_mm=DOT_SPACING_MM,
-                asymmetric=ASYMMETRIC,
-                enhance_dots=ENHANCE_DOTS,
-                calibration_subfolder=CALIBRATION_SUBFOLDER,
-                camera_subfolders=CAMERA_SUBFOLDERS,
+                file_pattern=file_pattern,
+                pattern_cols=pattern_cols,
+                pattern_rows=pattern_rows,
+                dot_spacing_mm=dot_spacing_mm,
+                asymmetric=asymmetric,
+                enhance_dots=enhance_dots,
+                calibration_subfolder=calibration_subfolder,
                 config=config,
             )
             result = calibrator.process_single_camera(camera_num, save_visualizations=True)

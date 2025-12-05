@@ -28,16 +28,20 @@ from pivtools_core.vector_loading import load_coords_from_directory, read_mat_co
 # ===================== CONFIGURATION VARIABLES =====================
 # Set these variables for your stereo reconstruction setup.
 # These will be written to config.yaml before processing.
-BASE_DIR = "/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/Stereo_Images/ProcessedPIV"
+BASE_DIR = "/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/stereo/processed"
 CAMERA_PAIR = [1, 2]  # Single pair [cam1_num, cam2_num]
 NUM_FRAME_PAIRS = 100  # Number of frame pairs to process
 DT_SECONDS = 0.0057553   # Time step between frames in seconds
-MODEL_TYPE = "planar"  # "charuco" or "pinhole" - determines stereo model expectation
+MODEL_TYPE = "pinhole"  # "charuco" or "pinhole" - determines stereo model expectation
 VECTOR_PATTERN = "%05d.mat"  # Pattern for vector files
 TYPE_NAME = "instantaneous"  # Type name for data directory
 MIN_TRIANGULATION_ANGLE = 5.0  # Minimum angle in degrees for triangulation quality
 RUNS_TO_PROCESS = None  # List of 1-indexed runs to process, or None for all
 NUM_WORKERS = None  # Number of parallel workers, None = os.cpu_count()
+
+# USE_CONFIG_DIRECTLY: If True, skip updating config.yaml with above parameters
+# and load reconstruction settings directly from the existing config.yaml
+USE_CONFIG_DIRECTLY = False
 # ===================================================================
 
 # Configure logging
@@ -391,8 +395,6 @@ def _load_stereo_model(
     """
     Load stereo calibration model from appropriate path.
 
-    Supports both new structured and legacy path conventions.
-
     Args:
         base_dir: Base directory for calibrated data
         cam1, cam2: Camera numbers
@@ -405,25 +407,12 @@ def _load_stereo_model(
         FileNotFoundError: If no stereo model found
         ValueError: If required fields missing
     """
-    # New structured path (from stereo_calibration_base.py)
-    new_path = base_dir / "calibration" / f"stereo_cam{cam1}_cam{cam2}" / "model" / "stereo_model.mat"
+    stereo_file = base_dir / "calibration" / f"stereo_cam{cam1}_cam{cam2}" / "model" / "stereo_model.mat"
 
-    # Legacy path
-    legacy_path = base_dir / "calibration" / f"stereo_model_cam{cam1}-cam{cam2}.mat"
+    if not stereo_file.exists():
+        raise FileNotFoundError(f"Stereo calibration not found at: {stereo_file}")
 
-    # Try new path first, then legacy
-    if new_path.exists():
-        stereo_file = new_path
-        logger.info(f"Loading stereo model from new path: {stereo_file}")
-    elif legacy_path.exists():
-        stereo_file = legacy_path
-        logger.info(f"Loading stereo model from legacy path: {stereo_file}")
-    else:
-        raise FileNotFoundError(
-            f"Stereo calibration not found at:\n"
-            f"  New path: {new_path}\n"
-            f"  Legacy path: {legacy_path}"
-        )
+    logger.info(f"Loading stereo model from: {stereo_file}")
 
     stereo_data = loadmat(str(stereo_file), squeeze_me=True, struct_as_record=False)
 
@@ -472,6 +461,9 @@ def _load_stereo_model(
         "rectification_R2": np.array(stereo_data["rectification_R2"]).astype(np.float64),
         "disparity_to_depth_Q": np.array(
             stereo_data.get("disparity_to_depth_Q", np.eye(4))
+        ).astype(np.float64),
+        "tvecs_1": np.array(
+            stereo_data.get("tvecs_1", [[0, 0, 0]])
         ).astype(np.float64),
     }
 
@@ -648,14 +640,24 @@ class StereoReconstructor:
                 valid_indices = first_result_3d["indices1"]
                 row_indices, col_indices = np.unravel_index(valid_indices, ref_shape)
 
-                # Center positions around zero
                 positions_3d = first_result_3d["positions_3d"]
-                mean_xyz = np.mean(positions_3d, axis=0)
-                centered_xyz = positions_3d - mean_xyz
 
-                x_grid[row_indices, col_indices] = centered_xyz[:, 0]
-                y_grid[row_indices, col_indices] = centered_xyz[:, 1]
-                z_grid[row_indices, col_indices] = centered_xyz[:, 2]
+                # Get Z offset from first calibration image (calibration plate position)
+                # tvecs_1[0] is the translation vector to the first calibration image
+                # tvecs_1[0][2] is the Z-distance from Camera 1 to the calibration plate
+                z_offset = 0.0
+                if "tvecs_1" in self.stereo_params:
+                    tvecs_1 = self.stereo_params["tvecs_1"]
+                    if tvecs_1.size > 0:
+                        z_offset = tvecs_1[0, 2]
+                        logger.info(f"Z reference (first calibration image): {z_offset:.2f} mm")
+
+                # Center X,Y only; reference Z to calibration plate plane (Z=0 at first calibration image)
+                mean_xy = np.mean(positions_3d[:, :2], axis=0)
+
+                x_grid[row_indices, col_indices] = positions_3d[:, 0] - mean_xy[0]
+                y_grid[row_indices, col_indices] = positions_3d[:, 1] - mean_xy[1]
+                z_grid[row_indices, col_indices] = positions_3d[:, 2] - z_offset
 
                 coordinates[run_num - 1] = (x_grid, y_grid, z_grid)
 
@@ -928,23 +930,47 @@ class StereoReconstructor:
 
 
 def main():
-    """Main entry point for stereo reconstruction."""
+    """Main entry point for stereo reconstruction.
+
+    When USE_CONFIG_DIRECTLY=True, loads settings from existing config.yaml instead
+    of applying the hardcoded CLI settings.
+    """
     logger.info("=" * 60)
     logger.info("Stereo Reconstruction - Starting")
     logger.info("=" * 60)
-    logger.info(f"Base directory: {BASE_DIR}")
-    logger.info(f"Camera pair: {CAMERA_PAIR}")
-    logger.info(f"Num frame pairs: {NUM_FRAME_PAIRS}")
-    logger.info(f"Time step: {DT_SECONDS} seconds")
-    logger.info(f"Model type: {MODEL_TYPE}")
-    logger.info(f"Vector pattern: {VECTOR_PATTERN}")
-    logger.info(f"Type name: {TYPE_NAME}")
-    logger.info(f"Min triangulation angle: {MIN_TRIANGULATION_ANGLE} degrees")
-    logger.info(f"Runs to process: {RUNS_TO_PROCESS if RUNS_TO_PROCESS else 'all'}")
-    logger.info(f"Worker count: {NUM_WORKERS if NUM_WORKERS else 'auto'}")
 
-    # Apply CLI settings to config.yaml so centralized systems work correctly
-    config = apply_cli_settings_to_config()
+    if USE_CONFIG_DIRECTLY:
+        # Load settings directly from existing config.yaml
+        logger.info("Loading settings directly from config.yaml (USE_CONFIG_DIRECTLY=True)")
+        config = get_config()
+
+        # Log settings from config
+        stereo_cfg = config.stereo_calibration
+        logger.info(f"Base directory: {config.base_paths[0]}")
+        logger.info(f"Camera pair: {stereo_cfg.get('camera_pair', [1, 2])}")
+        logger.info(f"Num frame pairs: {config.num_frame_pairs}")
+        logger.info(f"Time step: {config.dt} seconds")
+        logger.info(f"Model type: {stereo_cfg.get('stereo_model_type', 'charuco')}")
+        logger.info(f"Vector pattern: {config.vector_format}")
+        logger.info(f"Type name: {TYPE_NAME}")
+        logger.info(f"Min triangulation angle: {MIN_TRIANGULATION_ANGLE} degrees")
+        logger.info(f"Runs to process: {RUNS_TO_PROCESS if RUNS_TO_PROCESS else 'all'}")
+        logger.info(f"Worker count: {NUM_WORKERS if NUM_WORKERS else 'auto'}")
+    else:
+        # Log hardcoded settings and apply to config
+        logger.info(f"Base directory: {BASE_DIR}")
+        logger.info(f"Camera pair: {CAMERA_PAIR}")
+        logger.info(f"Num frame pairs: {NUM_FRAME_PAIRS}")
+        logger.info(f"Time step: {DT_SECONDS} seconds")
+        logger.info(f"Model type: {MODEL_TYPE}")
+        logger.info(f"Vector pattern: {VECTOR_PATTERN}")
+        logger.info(f"Type name: {TYPE_NAME}")
+        logger.info(f"Min triangulation angle: {MIN_TRIANGULATION_ANGLE} degrees")
+        logger.info(f"Runs to process: {RUNS_TO_PROCESS if RUNS_TO_PROCESS else 'all'}")
+        logger.info(f"Worker count: {NUM_WORKERS if NUM_WORKERS else 'auto'}")
+
+        # Apply CLI settings to config.yaml so centralized systems work correctly
+        config = apply_cli_settings_to_config()
 
     try:
         reconstructor = StereoReconstructor(

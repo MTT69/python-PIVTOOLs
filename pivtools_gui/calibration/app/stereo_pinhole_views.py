@@ -10,6 +10,7 @@ Clean API for stereo pinhole calibration using circle grid detection:
 - /calibration/stereo/pinhole/reconstruct - Start 3D vector reconstruction job
 """
 
+import re
 import threading
 from pathlib import Path
 
@@ -399,17 +400,30 @@ def stereo_pinhole_load_model():
         if indices_folder.exists():
             for idx_file in sorted(indices_folder.glob("indexing_*.mat")):
                 try:
-                    frame_num = int(idx_file.stem.split("_")[1])
                     grid_data = scipy.io.loadmat(
                         str(idx_file), struct_as_record=False, squeeze_me=True
                     )
 
+                    # Extract original source frame index from stored filename
+                    # Format is "frame_00004" where 4 is the actual source frame index
+                    original_filename = grid_data.get("original_filename", "")
+                    if hasattr(original_filename, "item"):
+                        original_filename = original_filename.item()  # Handle numpy scalar
+
+                    # Parse frame number from original filename (e.g., "frame_00004" → 4)
+                    match = re.search(r'(\d+)$', str(original_filename))
+                    if match:
+                        source_frame_idx = int(match.group(1))
+                    else:
+                        # Fallback to filename-based index for backward compatibility
+                        source_frame_idx = int(idx_file.stem.split("_")[1])
+
                     if "grid_points_cam1" in grid_data:
-                        detections_cam1[str(frame_num)] = {
+                        detections_cam1[str(source_frame_idx)] = {
                             "grid_points": grid_data["grid_points_cam1"].tolist(),
                         }
                     if "grid_points_cam2" in grid_data:
-                        detections_cam2[str(frame_num)] = {
+                        detections_cam2[str(source_frame_idx)] = {
                             "grid_points": grid_data["grid_points_cam2"].tolist(),
                         }
 
@@ -427,11 +441,16 @@ def stereo_pinhole_load_model():
             elif isinstance(pp, dict):
                 pattern_params = pp
 
+        # Handle image_size - ensure it's converted from numpy array
+        image_size = model_data.get("image_size", [0, 0]) if "image_size" in model_data else [0, 0]
+        if hasattr(image_size, "tolist"):
+            image_size = image_size.tolist()
+
         summary = {
             "total_pairs": stereo_model["num_image_pairs"],
             "frames_with_detections": max(len(detections_cam1), len(detections_cam2)),
             "pattern_params": pattern_params,
-            "image_size": model_data.get("image_size", [0, 0]) if "image_size" in model_data else [0, 0],
+            "image_size": image_size,
         }
 
         return jsonify({

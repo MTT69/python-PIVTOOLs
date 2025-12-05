@@ -56,7 +56,9 @@ MARKER_RATIO = 0.5          # Ratio of marker size to square size (usually 0.5)
 ARUCO_DICT = "DICT_4X4_1000" # ArUco dictionary used
 MIN_CORNERS = 6             # Minimum number of corners required to accept an image
 
-
+# USE_CONFIG_DIRECTLY: If True, skip updating config.yaml with above parameters
+# and load calibration settings directly from the existing config.yaml
+USE_CONFIG_DIRECTLY = False
 
 # ===================================================================
 
@@ -110,7 +112,6 @@ def apply_cli_settings_to_config():
     # Calibration settings
     config.data["calibration"]["image_format"] = FILE_PATTERN
     config.data["calibration"]["subfolder"] = CALIBRATION_SUBFOLDER
-    config.data["calibration"]["use_camera_subfolders"] = bool(CAMERA_SUBFOLDERS)
 
     # ChArUco-specific params
     config.data["calibration"]["charuco"]["squares_h"] = SQUARES_H
@@ -143,7 +144,6 @@ class ChArUcoCalibrator:
         min_corners=6,
         dt=1.0,
         calibration_subfolder="",
-        camera_subfolders=None,
         calibration_input_path=None,
         config=None,
     ):
@@ -159,7 +159,6 @@ class ChArUcoCalibrator:
         self.min_corners = min_corners
         self.dt = dt
         self.calibration_subfolder = calibration_subfolder
-        self.camera_subfolders = camera_subfolders
         self.calibration_input_path = Path(calibration_input_path) if calibration_input_path else None
         self._config = config
 
@@ -202,9 +201,6 @@ class ChArUcoCalibrator:
         """Get the input directory for calibration images.
 
         Path structure: source / camera_folder / calibration_subfolder
-
-        Uses camera_subfolders array when provided (CLI mode),
-        otherwise falls back to config.get_calibration_camera_folder() (GUI mode).
         """
         # If explicit calibration_input_path is provided, use it
         if self.calibration_input_path:
@@ -212,14 +208,8 @@ class ChArUcoCalibrator:
 
         base_path = self.source_dir
 
-        # Get camera folder - prefer CLI array, fall back to config
-        if self.camera_subfolders is not None and len(self.camera_subfolders) > 0:
-            # CLI mode: use explicit array
-            idx = cam_num - 1  # Convert 1-based to 0-based index
-            if idx < len(self.camera_subfolders) and self.camera_subfolders[idx]:
-                base_path = base_path / self.camera_subfolders[idx]
-        elif self._config is not None:
-            # GUI mode: use config's camera folder logic
+        # Get camera folder from config
+        if self._config is not None:
             camera_folder = self._config.get_calibration_camera_folder(cam_num)
             if camera_folder:
                 base_path = base_path / camera_folder
@@ -282,10 +272,6 @@ class ChArUcoCalibrator:
             if container_file.exists():
                 return [container_file]
             return []
-
-        # Glob pattern matching
-        if "*" in self.file_pattern or "?" in self.file_pattern:
-            return sorted(cam_input_dir.glob(self.file_pattern))
 
         # Numbered pattern (e.g., "calib%05d.tif")
         if "%" in self.file_pattern:
@@ -804,34 +790,64 @@ def main():
     logger.info("=" * 60)
     logger.info("ChArUco Calibration - Starting")
     logger.info("=" * 60)
-    logger.info(f"Source: {SOURCE_DIR}")
-    logger.info(f"Output: {BASE_DIR}")
-    logger.info(f"Cameras: {CAMERA_NUMS}")
-    logger.info(f"Board: {SQUARES_H}x{SQUARES_V} squares, {SQUARE_SIZE_M}m size")
 
-    # Apply CLI settings to config.yaml so centralized loaders work correctly
-    config = apply_cli_settings_to_config()
+    if USE_CONFIG_DIRECTLY:
+        # Load settings directly from existing config.yaml
+        logger.info("Loading settings directly from config.yaml (USE_CONFIG_DIRECTLY=True)")
+        config = get_config()
+
+        # Extract settings from config
+        source_dir = config.data["paths"]["source_paths"][0]
+        base_dir = config.data["paths"]["base_paths"][0]
+        camera_nums = config.data["paths"].get("camera_numbers", [1])
+        file_pattern = config.data["calibration"]["image_format"]
+        calibration_subfolder = config.data["calibration"].get("subfolder", "")
+        squares_h = config.data["calibration"]["charuco"]["squares_h"]
+        squares_v = config.data["calibration"]["charuco"]["squares_v"]
+        square_size_m = config.data["calibration"]["charuco"]["square_size"]
+        marker_ratio = config.data["calibration"]["charuco"].get("marker_ratio", 0.5)
+        aruco_dict = config.data["calibration"]["charuco"].get("aruco_dict", "DICT_4X4_1000")
+        min_corners = config.data["calibration"]["charuco"].get("min_corners", 6)
+    else:
+        # Apply CLI settings to config.yaml so centralized loaders work correctly
+        config = apply_cli_settings_to_config()
+
+        # Use hardcoded settings
+        source_dir = SOURCE_DIR
+        base_dir = BASE_DIR
+        camera_nums = CAMERA_NUMS
+        file_pattern = FILE_PATTERN
+        calibration_subfolder = CALIBRATION_SUBFOLDER
+        squares_h = SQUARES_H
+        squares_v = SQUARES_V
+        square_size_m = SQUARE_SIZE_M
+        marker_ratio = MARKER_RATIO
+        aruco_dict = ARUCO_DICT
+        min_corners = MIN_CORNERS
+
+    logger.info(f"Source: {source_dir}")
+    logger.info(f"Output: {base_dir}")
+    logger.info(f"Cameras: {camera_nums}")
+    logger.info(f"Board: {squares_h}x{squares_v} squares, {square_size_m}m size")
 
     failed_cameras = []
 
-    for camera_num in CAMERA_NUMS:
+    for camera_num in camera_nums:
         logger.info(f"Processing Camera {camera_num}...")
         try:
             # Create calibrator using config - all settings are now in config.yaml
             calibrator = ChArUcoCalibrator(
-                source_dir=SOURCE_DIR,
-                base_dir=BASE_DIR,
+                source_dir=source_dir,
+                base_dir=base_dir,
                 camera_count=1,  # Process one at a time
-                file_pattern=FILE_PATTERN,
-                squares_h=SQUARES_H,
-                squares_v=SQUARES_V,
-                square_size=SQUARE_SIZE_M,
-                marker_ratio=MARKER_RATIO,
-                aruco_dict=ARUCO_DICT,
-                min_corners=MIN_CORNERS,
-                dt=DT,
-                calibration_subfolder=CALIBRATION_SUBFOLDER,
-                camera_subfolders=CAMERA_SUBFOLDERS,
+                file_pattern=file_pattern,
+                squares_h=squares_h,
+                squares_v=squares_v,
+                square_size=square_size_m,
+                marker_ratio=marker_ratio,
+                aruco_dict=aruco_dict,
+                min_corners=min_corners,
+                calibration_subfolder=calibration_subfolder,
                 config=config,
             )
             result = calibrator.process_camera(camera_num, save_visualizations=True)

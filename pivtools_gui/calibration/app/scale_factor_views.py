@@ -11,10 +11,10 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request
 from loguru import logger
 
-from pivtools_core.config import get_config
+from pivtools_core.config import get_config, reload_config
 
 from pivtools_gui.calibration.services.job_manager import job_manager
-from pivtools_gui.calibration.services.scale_factor_service import ScaleFactorCalibrator
+from pivtools_gui.calibration.scale_factor_calibration_production import ScaleFactorCalibrator
 
 scale_factor_bp = Blueprint("scale_factor", __name__)
 
@@ -26,24 +26,30 @@ def scale_factor_calibrate_vectors():
 
     Request JSON:
         source_path_idx: int - Index into config source_paths
-        dt: float - Time between frames in seconds
-        px_per_mm: float - Pixels per millimeter
         image_count: int - Number of images to process
         type_name: str - Type of data (default: "instantaneous")
+
+    Note: dt and px_per_mm are read from config.calibration.scale_factor
 
     Returns:
         JSON with job_id, status, message, cameras, image_count
     """
     data = request.get_json() or {}
     source_path_idx = int(data.get("source_path_idx", 0))
-    dt = float(data.get("dt", 1.0))
-    px_per_mm = float(data.get("px_per_mm", 1.0))
     image_count = int(data.get("image_count", 1000))
     type_name = data.get("type_name", "instantaneous")
 
-    cfg = get_config()
+    # Reload config to get latest dt/px_per_mm values
+    cfg = reload_config()
     camera_numbers = cfg.camera_numbers
     base_root = Path(cfg.base_paths[source_path_idx])
+
+    # Log the scale factor settings being used
+    sf_cfg = cfg.data.get("calibration", {}).get("scale_factor", {})
+    logger.info(
+        f"Scale factor calibration using dt={sf_cfg.get('dt', 1.0)}, "
+        f"px_per_mm={sf_cfg.get('px_per_mm', 1.0)}"
+    )
 
     # Create job with camera-aware initial data
     job_id = job_manager.create_job(
@@ -64,13 +70,12 @@ def scale_factor_calibrate_vectors():
         try:
             job_manager.update_job(job_id, status="running")
 
-            # Create calibrator instance
+            # Create calibrator instance - reads dt/px_per_mm from config
             calibrator = ScaleFactorCalibrator(
-                dt=dt,
-                px_per_mm=px_per_mm,
                 base_path=base_root,
                 source_path_idx=source_path_idx,
                 type_name=type_name,
+                config=cfg,
             )
 
             def progress_callback(progress_data):

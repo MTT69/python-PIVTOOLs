@@ -374,8 +374,9 @@ def calibration_config():
         num_images: int - Number of calibration images expected
         image_type: str - 'standard' | 'cine' | 'lavision_set' | 'lavision_im7'
         zero_based_indexing: bool - Start indexing from 0
-        use_camera_subfolders: bool - Use Cam1/, Cam2/ structure
         subfolder: str - Subfolder for calibration images (e.g., "calibration")
+
+    Note: use_camera_subfolders is read-only - derived from paths.camera_subfolders
 
     Returns:
         JSON with current calibration config
@@ -412,8 +413,7 @@ def calibration_config():
             cal_block["image_type"] = data["image_type"]
         if "zero_based_indexing" in data:
             cal_block["zero_based_indexing"] = bool(data["zero_based_indexing"])
-        if "use_camera_subfolders" in data:
-            cal_block["use_camera_subfolders"] = bool(data["use_camera_subfolders"])
+        # use_camera_subfolders is read-only - derived from paths.camera_subfolders
         if "subfolder" in data:
             cal_block["subfolder"] = str(data["subfolder"])
 

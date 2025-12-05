@@ -190,9 +190,9 @@ calibration:
   num_images: 10
   image_type: standard
   zero_based_indexing: false
-  use_camera_subfolders: false
   subfolder: ''
   active: polynomial
+  piv_type: instantaneous
   scale_factor:
     dt: 0.56
     px_per_mm: 3.41
@@ -846,10 +846,14 @@ masking:
 
     @property
     def calibration_use_camera_subfolders(self) -> bool:
-        """Return True if calibration images use camera subfolders (Cam1/, Cam2/)."""
-        calib_block = self.data.get("calibration", {}) or {}
-        default = self.camera_count > 1
-        return calib_block.get("use_camera_subfolders", default)
+        """Return True if calibration images use camera subfolders (Cam1/, Cam2/).
+
+        This is determined automatically based on whether camera_subfolders
+        is configured in the paths section. If camera_subfolders exists and
+        is not empty, we use them for calibration paths.
+        """
+        subfolders = self.camera_subfolders
+        return bool(subfolders) and len(subfolders) > 0
 
     @property
     def calibration_subfolder(self) -> str:
@@ -864,27 +868,25 @@ masking:
         """Get the subfolder name for calibration images of a specific camera.
 
         Container formats (.cine, .set, .im7) don't use camera subfolders.
-        Returns empty string for single-camera setups or container formats.
+        Returns empty string if camera_subfolders is not configured or container format.
+
+        Single camera: no subfolders used, full path set directly
+        Multi camera: uses camera_subfolders from paths config (e.g., Cam1, Cam2)
         """
         # Container formats don't use camera subfolders
         if self.calibration_is_container_format:
             return ""
 
-        # Check if camera subfolders are enabled
-        if not self.calibration_use_camera_subfolders:
+        # Use camera subfolders from paths config if available
+        subfolders = self.camera_subfolders
+        if not subfolders:
             return ""
 
-        # Use same camera subfolders as PIV images if configured
-        subfolders = self.camera_subfolders
         idx = camera_num - 1  # camera_num is 1-based
-
-        if subfolders and idx < len(subfolders) and subfolders[idx]:
+        if idx < len(subfolders) and subfolders[idx]:
             return subfolders[idx]
 
-        if self.camera_count == 1:
-            return ""
-
-        return f"Cam{camera_num}"
+        return ""
 
     def get_calibration_image_path(self, camera: int, index: int, source_path_idx: int = 0) -> Path:
         """Build full path to a calibration image.
@@ -978,13 +980,54 @@ masking:
         """Return ChArUco board calibration parameters."""
         return self.calibration.get("charuco", {})
 
+    @property
+    def polynomial_calibration(self):
+        """Return polynomial calibration parameters."""
+        return self.calibration.get("polynomial", {})
+
+    def get_polynomial_camera_params(self, camera_num: int) -> dict:
+        """Get polynomial parameters for a specific camera.
+
+        Parameters
+        ----------
+        camera_num : int
+            Camera number (1-based)
+
+        Returns
+        -------
+        dict
+            Camera-specific polynomial parameters including:
+            - origin: {x, y} - pixel origin for normalization
+            - normalisation: {nx, ny} - normalization factors
+            - mm_per_pixel: float - scale factor
+            - coefficients_x: list[float] - 10 polynomial coefficients for X
+            - coefficients_y: list[float] - 10 polynomial coefficients for Y
+        """
+        cameras = self.polynomial_calibration.get("cameras", {})
+        # Try both string and int keys for compatibility
+        return cameras.get(str(camera_num), cameras.get(camera_num, {}))
+
+    @property
+    def stereo_charuco_calibration(self):
+        """Return stereo ChArUco calibration parameters."""
+        return self.calibration.get("stereo_charuco", {})
+
+    @property
+    def calibration_piv_type(self) -> str:
+        """Return PIV type for calibration: 'instantaneous' or 'ensemble'.
+
+        This determines which vector data directory to use when calibrating vectors.
+        """
+        calib_block = self.data.get("calibration", {}) or {}
+        return calib_block.get("piv_type", "instantaneous")
+
     def get_calibration_method_params(self, method: str):
         """Get parameters for a specific calibration method."""
         return self.calibration.get(method, {})
 
     def set_active_calibration_method(self, method: str):
         """Set the active calibration method."""
-        if method in ["scale_factor", "pinhole", "stereo", "charuco"]:
+        if method in ["scale_factor", "pinhole", "stereo", "charuco", "polynomial", "stereo_charuco"]:
             self.data["calibration"]["active"] = method
         else:
             raise ValueError(f"Unknown calibration method: {method}")
