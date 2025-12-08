@@ -211,7 +211,6 @@ def calibration_get_frame():
     idx = request.args.get("idx", default=1, type=int)
     source_path_idx = request.args.get("source_path_idx", default=0, type=int)
     output_format = request.args.get("format", default="jpeg", type=str).lower()
-    auto_limits = request.args.get("auto_limits", default="true", type=str).lower() == "true"
     quality = request.args.get("quality", default=85, type=int)
 
     try:
@@ -413,7 +412,9 @@ def calibration_config():
             cal_block["image_type"] = data["image_type"]
         if "zero_based_indexing" in data:
             cal_block["zero_based_indexing"] = bool(data["zero_based_indexing"])
-        # use_camera_subfolders is read-only - derived from paths.camera_subfolders
+        # use_camera_subfolders can now be set explicitly (especially for IM7 formats)
+        if "use_camera_subfolders" in data:
+            cal_block["use_camera_subfolders"] = bool(data["use_camera_subfolders"])
         if "subfolder" in data:
             cal_block["subfolder"] = str(data["subfolder"])
 
@@ -546,18 +547,23 @@ def vectors_calibrate():
 
                     # Create progress callback for this camera
                     def make_progress_cb(cam_num):
-                        def progress_cb(current, total, message=""):
-                            job_manager.update_job(
-                                job_id,
-                                camera_progress={
-                                    **job_manager.get_job(job_id).get("camera_progress", {}),
-                                    cam_num: {
-                                        "current": current,
-                                        "total": total,
-                                        "message": message,
+                        def progress_cb(progress_data):
+                            # progress_data is a dict with processed_frames, total_frames, progress, etc.
+                            try:
+                                current_job = job_manager.get_job(job_id) or {}
+                                job_manager.update_job(
+                                    job_id,
+                                    camera_progress={
+                                        **current_job.get("camera_progress", {}),
+                                        cam_num: {
+                                            "current": progress_data.get("processed_frames", 0),
+                                            "total": progress_data.get("total_frames", 0),
+                                            "progress": progress_data.get("progress", 0),
+                                        },
                                     },
-                                },
-                            )
+                                )
+                            except Exception as e:
+                                logger.warning(f"Progress callback error: {e}")
                         return progress_cb
 
                     calibrator = VectorCalibrator(

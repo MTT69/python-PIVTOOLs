@@ -26,6 +26,8 @@ from scipy.io import savemat
 
 matplotlib.use("Agg")
 
+from pivtools_core.config import get_config, reload_config
+from pivtools_core.paths import get_data_paths
 from pivtools_core.vector_loading import (
     find_valid_piv_runs,
     load_coords_from_directory,
@@ -34,7 +36,7 @@ from pivtools_core.vector_loading import (
 
 # ===================== CONFIGURATION =====================
 
-# SOURCE_DIR: Root directory containing vector data
+# SOURCE_DIR: Root directory containing calibrated vector data
 SOURCE_DIR = "/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing"
 
 # BASE_DIR: Output directory for statistics
@@ -47,23 +49,73 @@ VECTOR_FORMAT = "%05d.mat"
 TYPE_NAME = "instantaneous"
 USE_MERGED = False
 
-# Statistics to compute
-REQUESTED_STATISTICS = [
-    "mean_velocity",
-    "mean_vorticity",
-    "mean_divergence",
-    "reynolds_stress",
-    "normal_stress",
-    "mean_tke",
-    "inst_velocity",
-    "inst_fluctuations",
-    "inst_vorticity",
-    "inst_divergence",
-]
+# Statistics to compute (dict format for config compatibility)
+# Keys now match frontend IDs for 1:1 mapping
+ENABLED_STATISTICS = {
+    # Mean/time-averaged statistics
+    "mean_velocity": True,
+    "reynolds_stress": True,
+    "normal_stress": True,
+    "mean_tke": True,
+    "mean_vorticity": True,
+    "mean_divergence": True,
+    # Instantaneous (per-frame) statistics
+    "inst_velocity": True,
+    "inst_fluctuations": True,
+    "inst_vorticity": True,
+    "inst_divergence": True,
+    "inst_gamma": True,
+}
+
+# Additional parameters
+GAMMA_RADIUS = 5
+SAVE_FIGURES = True
+
+# USE_CONFIG_DIRECTLY: If True, skip updating config.yaml with above parameters
+# and load statistics settings directly from the existing config.yaml
+USE_CONFIG_DIRECTLY = True
 
 # LOGGING SETUP
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
+
+def apply_cli_settings_to_config():
+    """Update config.yaml with CLI-mode hardcoded settings.
+
+    This function writes the hardcoded configuration variables to config.yaml,
+    ensuring the processing system uses the correct paths and settings.
+
+    Returns
+    -------
+    Config
+        The reloaded config object with updated settings
+    """
+    config = get_config()
+
+    # Paths
+    config.data["paths"]["source_paths"] = [SOURCE_DIR]
+    config.data["paths"]["base_paths"] = [BASE_DIR]
+    config.data["paths"]["camera_numbers"] = CAMERA_NUMS
+
+    # Images settings
+    config.data["images"]["num_frame_pairs"] = NUM_FRAME_PAIRS
+    config.data["images"]["vector_format"] = [VECTOR_FORMAT]
+
+    # Statistics settings
+    if "statistics" not in config.data:
+        config.data["statistics"] = {}
+    config.data["statistics"]["enabled_methods"] = ENABLED_STATISTICS
+    config.data["statistics"]["gamma_radius"] = GAMMA_RADIUS
+    config.data["statistics"]["save_figures"] = SAVE_FIGURES
+    config.data["statistics"]["type_name"] = TYPE_NAME
+
+    # Save to disk so centralized loader picks up changes
+    config.save()
+    logger.info("Updated config.yaml with CLI settings")
+
+    # Reload to ensure fresh state
+    return reload_config()
 
 
 # ===================== HELPER FUNCTIONS =====================
@@ -262,20 +314,75 @@ class VectorStatisticsProcessor:
     - Frame-level parallelism using ProcessPoolExecutor
     """
 
-    # Valid statistics that can be requested
+    # Valid statistics that can be requested (maps to output fields)
+    # Note: Some have mean_ and inst_ variants from frontend
     VALID_STATISTICS = {
+        # Mean statistics
         "mean_velocity": ["ux", "uy"],
-        "mean_vorticity": ["vorticity_mean"],
-        "mean_divergence": ["divergence_mean"],
+        "mean_vorticity": ["vorticity"],
+        "mean_divergence": ["divergence"],
+        "mean_tke": ["tke"],
         "reynolds_stress": ["uv"],
         "normal_stress": ["uu", "vv"],
-        "mean_tke": ["tke_mean"],
-        "inst_velocity": ["u", "v"],
+        # Instantaneous (per-frame) statistics
+        "inst_velocity": ["ux", "uy"],  # Per-frame velocity
         "inst_fluctuations": ["u_prime", "v_prime"],
-        "inst_vorticity": ["vorticity_inst"],
-        "inst_divergence": ["divergence_inst"],
+        "inst_vorticity": ["vorticity"],
+        "inst_divergence": ["divergence"],
         "inst_gamma": ["gamma1", "gamma2"],
+        # Legacy/config names (for backwards compatibility)
+        "fluctuating_velocity": ["u_prime", "v_prime"],
+        "tke": ["tke"],
+        "vorticity": ["vorticity"],
+        "divergence": ["divergence"],
+        "gamma1": ["gamma1"],
+        "gamma2": ["gamma2"],
     }
+
+    # Map frontend/config names to internal processing names
+    # Identity mappings for new frontend keys + legacy mappings for backward compat
+    STAT_NAME_MAPPING = {
+        # Mean/time-averaged (identity mappings - these ARE the canonical names now)
+        "mean_velocity": "mean_velocity",
+        "mean_vorticity": "mean_vorticity",
+        "mean_divergence": "mean_divergence",
+        "mean_tke": "mean_tke",
+        "reynolds_stress": "reynolds_stress",
+        "normal_stress": "normal_stress",
+        # Instantaneous (identity mappings)
+        "inst_velocity": "inst_velocity",
+        "inst_fluctuations": "inst_fluctuations",
+        "inst_vorticity": "inst_vorticity",
+        "inst_divergence": "inst_divergence",
+        "inst_gamma": "inst_gamma",
+        # Legacy/backward compat mappings (old config keys -> new canonical names)
+        "tke": "mean_tke",
+        "vorticity": "mean_vorticity",
+        "divergence": "mean_divergence",
+        "fluctuating_velocity": "inst_fluctuations",
+        "gamma1": "gamma1",
+        "gamma2": "gamma2",
+    }
+
+    @classmethod
+    def normalize_stat_names(cls, requested: list) -> set:
+        """
+        Normalize frontend statistic names to internal names.
+
+        Args:
+            requested: List of statistic names from frontend or config
+
+        Returns:
+            Set of normalized internal statistic names
+        """
+        normalized = set()
+        for name in requested:
+            if name in cls.STAT_NAME_MAPPING:
+                normalized.add(cls.STAT_NAME_MAPPING[name])
+            else:
+                # Unknown name - keep as-is (will be validated later)
+                normalized.add(name)
+        return normalized
 
     def __init__(
         self,
@@ -286,6 +393,8 @@ class VectorStatisticsProcessor:
         type_name: str = "instantaneous",
         use_merged: bool = False,
         camera: int = 1,
+        gamma_radius: int = 5,
+        config=None,
     ):
         """
         Initialize the statistics processor.
@@ -306,6 +415,10 @@ class VectorStatisticsProcessor:
             Whether processing merged stereo data
         camera : int
             Camera number (1-based)
+        gamma_radius : int
+            Radius for gamma function calculations (default 5)
+        config : Config, optional
+            Config object for accessing settings
         """
         self.data_dir = Path(data_dir)
         self.base_dir = Path(base_dir)
@@ -314,20 +427,32 @@ class VectorStatisticsProcessor:
         self.type_name = type_name
         self.use_merged = use_merged
         self.camera = camera
+        self.gamma_radius = gamma_radius
+        self._config = config
 
         # Determine camera folder name
         self.cam_folder = "Merged" if use_merged else f"Cam{camera}"
 
-        # Setup output directories
+        # Setup output directories using centralized paths
         self._setup_directories()
 
     def _setup_directories(self):
-        """Create output directory structure."""
-        # Stats output: base_dir/statistics/{type_name}/{cam_folder}/
-        self.stats_dir = self.base_dir / "statistics" / self.type_name / self.cam_folder
+        """Create output directory structure using centralized get_data_paths()."""
+        # Use centralized path construction
+        paths = get_data_paths(
+            base_dir=self.base_dir,
+            num_frame_pairs=self.num_frame_pairs,
+            cam=self.camera,
+            type_name=self.type_name,
+            use_merged=self.use_merged,
+        )
+
+        self.stats_dir = paths["stats_dir"]
         self.mean_stats_dir = self.stats_dir / "mean_stats"
         self.figures_dir = self.stats_dir / "figures"
         self.inst_stats_dir = self.stats_dir / "instantaneous_stats"
+
+        logger.info(f"[Statistics] Output directory: {self.stats_dir}")
 
     def process(
         self,
@@ -361,12 +486,22 @@ class VectorStatisticsProcessor:
             logger.info(f"[Statistics] Starting for {self.cam_folder}")
 
             # Determine which statistics to compute
+            # Keep original requested names for logging, but also track normalized names
             if requested_statistics is None or len(requested_statistics) == 0:
-                active_stats = set(self.VALID_STATISTICS.keys())
-            else:
-                active_stats = set(requested_statistics)
+                # Default: compute common mean statistics only
+                requested_statistics = [
+                    "mean_velocity", "mean_vorticity", "mean_divergence",
+                    "reynolds_stress", "normal_stress", "mean_tke"
+                ]
 
-            logger.info(f"[Statistics] Active statistics: {active_stats}")
+            # Keep original names for reference
+            original_stats = set(requested_statistics)
+
+            # Normalize to internal names for processing
+            active_stats = self.normalize_stat_names(requested_statistics)
+
+            logger.info(f"[Statistics] Requested statistics: {original_stats}")
+            logger.info(f"[Statistics] Normalized to: {active_stats}")
 
             if progress_callback:
                 progress_callback(5)
@@ -463,34 +598,71 @@ class VectorStatisticsProcessor:
             return {"success": False, "error": str(e)}
 
     def _determine_calc_flags(self, active_stats: set) -> dict:
-        """Determine which calculations are needed based on requested statistics."""
+        """Determine which calculations are needed based on requested statistics.
+
+        Supports both new canonical names (mean_tke, mean_vorticity, etc.) and
+        legacy names (tke, vorticity, etc.) for backward compatibility.
+        """
+        # Mean statistics - check for reynolds/normal stress
         calc_reynolds = "reynolds_stress" in active_stats
         calc_normal = "normal_stress" in active_stats
-        calc_tke = "mean_tke" in active_stats
+
+        # Mean TKE - check both new and legacy names
+        calc_mean_tke = "mean_tke" in active_stats or "tke" in active_stats
 
         # Second moments needed for reynolds, normal stress, or tke
-        calc_second_moments = calc_reynolds or calc_normal or calc_tke
+        calc_second_moments = calc_reynolds or calc_normal or calc_mean_tke
+
+        # Mean vorticity/divergence - check both new and legacy names
+        calc_mean_vorticity = "mean_vorticity" in active_stats or "vorticity" in active_stats
+        calc_mean_divergence = "mean_divergence" in active_stats or "divergence" in active_stats
+
+        # Instantaneous statistics - check both new and legacy names
+        save_inst_velocity = "inst_velocity" in active_stats
+        save_fluctuations = "inst_fluctuations" in active_stats or "fluctuating_velocity" in active_stats
+        calc_inst_vorticity = "inst_vorticity" in active_stats
+        calc_inst_divergence = "inst_divergence" in active_stats
+        calc_inst_gamma = "inst_gamma" in active_stats
+
+        # Combined flags (calculate if either mean or inst needs it)
+        calc_vorticity = calc_mean_vorticity or calc_inst_vorticity
+        calc_divergence = calc_mean_divergence or calc_inst_divergence
 
         return {
+            # Mean statistics flags
             "calc_second_moments": calc_second_moments,
-            "calc_mean_tke": calc_tke,
-            "calc_mean_divergence": "mean_divergence" in active_stats,
-            "calc_mean_vorticity": "mean_vorticity" in active_stats,
-            "save_inst_velocity": "inst_velocity" in active_stats,
-            "save_inst_fluctuations": "inst_fluctuations" in active_stats,
-            "calc_inst_vorticity": "inst_vorticity" in active_stats,
-            "calc_inst_divergence": "inst_divergence" in active_stats,
-            "calc_inst_gamma": "inst_gamma" in active_stats,
+            "calc_tke": calc_mean_tke,
+            "calc_divergence": calc_divergence,
+            "calc_vorticity": calc_vorticity,
+            # Instantaneous statistics flags
+            "save_inst_velocity": save_inst_velocity,
+            "save_fluctuations": save_fluctuations,
+            "calc_inst_vorticity": calc_inst_vorticity,
+            "calc_inst_divergence": calc_inst_divergence,
+            "calc_gamma1": calc_inst_gamma or "gamma1" in active_stats,
+            "calc_gamma2": calc_inst_gamma or "gamma2" in active_stats,
+            "gamma_radius": self.gamma_radius,
+            # Granular save flags for separate mean vs inst control
+            "save_mean_vorticity": calc_mean_vorticity,
+            "save_mean_divergence": calc_mean_divergence,
+            "save_inst_vorticity": calc_inst_vorticity,
+            "save_inst_divergence": calc_inst_divergence,
         }
 
     def _should_compute_instantaneous(self, active_stats: set) -> bool:
-        """Check if any instantaneous statistics are requested."""
+        """Check if any instantaneous (per-frame) statistics are requested."""
+        # Statistics that require per-frame processing
         inst_stats = {
+            # New canonical names (frontend inst_* names)
             "inst_velocity",
             "inst_fluctuations",
             "inst_vorticity",
             "inst_divergence",
             "inst_gamma",
+            # Legacy/config names for backward compat
+            "fluctuating_velocity",
+            "gamma1",
+            "gamma2",
         }
         return bool(active_stats & inst_stats)
 
@@ -600,14 +772,14 @@ class VectorStatisticsProcessor:
             result["mean_uz"] = np.nanmean(uz, axis=0)
 
         # TKE
-        if calc_flags.get("calc_mean_tke", False) and "uu" in result:
+        if calc_flags.get("calc_tke", False) and "uu" in result:
             if stereo and "ww" in result:
                 result["tke"] = 0.5 * (result["uu"] + result["vv"] + result["ww"])
             else:
                 result["tke"] = 0.5 * (result["uu"] + result["vv"])
 
         # Divergence
-        if calc_flags.get("calc_mean_divergence", False):
+        if calc_flags.get("calc_divergence", False):
             if cx is not None and cy is not None:
                 dx = np.gradient(cx, axis=1)
                 dy = np.gradient(cy, axis=0)
@@ -619,7 +791,7 @@ class VectorStatisticsProcessor:
             result["divergence"] = dudx + dvdy
 
         # Vorticity
-        if calc_flags.get("calc_mean_vorticity", False):
+        if calc_flags.get("calc_vorticity", False):
             if cx is not None and cy is not None:
                 dx = np.gradient(cx, axis=1)
                 dy = np.gradient(cy, axis=0)
@@ -699,7 +871,8 @@ class VectorStatisticsProcessor:
                 try:
                     future.result()
                     completed += 1
-                    if progress_callback and completed % 10 == 0:
+                    # Report progress every frame for better granularity
+                    if progress_callback:
                         progress = 50 + int(completed / n_frames * 25)  # 50-75%
                         progress_callback(progress)
                 except Exception as e:
@@ -933,8 +1106,16 @@ def _process_frame_parallel(
                 v_t = run_data.get("uy", np.nan)
                 w_t = run_data.get("uz", None) if stereo else None
 
-                # Fluctuations
-                if calc_flags.get("save_inst_fluctuations", False):
+                # Instantaneous velocity (keep original ux, uy in output)
+                if calc_flags.get("save_inst_velocity", False):
+                    # ux/uy already in run_data from original file, just ensure they're there
+                    if "ux" not in run_data and isinstance(u_t, np.ndarray):
+                        run_data["ux"] = u_t
+                    if "uy" not in run_data and isinstance(v_t, np.ndarray):
+                        run_data["uy"] = v_t
+
+                # Fluctuations (u' = u - u_mean)
+                if calc_flags.get("save_fluctuations", False):
                     run_data["u_prime"] = u_t - mean_ux
                     run_data["v_prime"] = v_t - mean_uy
                     if stereo and w_t is not None:
@@ -942,40 +1123,54 @@ def _process_frame_parallel(
                         if mean_uz is not None:
                             run_data["w_prime"] = w_t - mean_uz
 
-                # Gradients for vorticity/divergence/gamma
-                need_grads = (
-                    calc_flags.get("calc_inst_divergence", False)
-                    or calc_flags.get("calc_inst_vorticity", False)
-                    or calc_flags.get("calc_inst_gamma", False)
-                )
+                # Instantaneous vorticity and divergence
+                calc_inst_vorticity = calc_flags.get("calc_inst_vorticity", False)
+                calc_inst_divergence = calc_flags.get("calc_inst_divergence", False)
+                calc_gamma1 = calc_flags.get("calc_gamma1", False)
+                calc_gamma2 = calc_flags.get("calc_gamma2", False)
+                gamma_radius = calc_flags.get("gamma_radius", 5)
+
+                # Need gradients for vorticity, divergence, or gamma
+                need_grads = (calc_inst_vorticity or calc_inst_divergence or
+                              calc_gamma1 or calc_gamma2)
 
                 if need_grads and isinstance(u_t, np.ndarray):
-                    if cx is not None and cy is not None:
-                        dx = np.gradient(cx, axis=1)
-                        dy = np.gradient(cy, axis=0)
-                        dudx = np.gradient(u_t, axis=1) / dx
-                        dudy = np.gradient(u_t, axis=0) / dy
-                        dvdx = np.gradient(v_t, axis=1) / dx
-                        dvdy = np.gradient(v_t, axis=0) / dy
-                    else:
+                    # Build coordinates if not provided
+                    if cx is None or cy is None:
                         y_grid, x_grid = np.meshgrid(
                             np.arange(u_t.shape[1]), np.arange(u_t.shape[0])
                         )
-                        cx, cy = x_grid, y_grid
-                        dudx = np.gradient(u_t, axis=1)
-                        dudy = np.gradient(u_t, axis=0)
-                        dvdx = np.gradient(v_t, axis=1)
-                        dvdy = np.gradient(v_t, axis=0)
+                        cx_local, cy_local = x_grid, y_grid
+                    else:
+                        cx_local, cy_local = cx, cy
 
-                    if calc_flags.get("calc_inst_divergence", False):
-                        run_data["divergence"] = dudx + dvdy
+                    # Compute gradients for vorticity/divergence
+                    if calc_inst_vorticity or calc_inst_divergence:
+                        if cx is not None and cy is not None:
+                            dx = np.gradient(cx, axis=1)
+                            dy = np.gradient(cy, axis=0)
+                            dudx = np.gradient(u_t, axis=1) / dx
+                            dudy = np.gradient(u_t, axis=0) / dy
+                            dvdx = np.gradient(v_t, axis=1) / dx
+                            dvdy = np.gradient(v_t, axis=0) / dy
+                        else:
+                            dudx = np.gradient(u_t, axis=1)
+                            dudy = np.gradient(u_t, axis=0)
+                            dvdx = np.gradient(v_t, axis=1)
+                            dvdy = np.gradient(v_t, axis=0)
 
-                    if calc_flags.get("calc_inst_vorticity", False):
-                        run_data["vorticity"] = dvdx - dudy
+                        if calc_inst_vorticity:
+                            run_data["vorticity"] = dvdx - dudy
 
-                    if calc_flags.get("calc_inst_gamma", False):
-                        run_data["gamma1"] = gamma1(cx, cy, u_t, v_t, d=10)
-                        run_data["gamma2"] = gamma2(cx, cy, u_t, v_t, d=10)
+                        if calc_inst_divergence:
+                            run_data["divergence"] = dudx + dvdy
+
+                    # Gamma functions for vortex identification
+                    if calc_gamma1:
+                        run_data["gamma1"] = gamma1(cx_local, cy_local, u_t, v_t, d=gamma_radius)
+
+                    if calc_gamma2:
+                        run_data["gamma2"] = gamma2(cx_local, cy_local, u_t, v_t, d=gamma_radius)
 
             results_list.append(run_data)
 
@@ -1010,53 +1205,141 @@ if __name__ == "__main__":
     logger.info("=" * 60)
     logger.info("Vector Statistics Processing - Starting")
     logger.info("=" * 60)
-    logger.info(f"Source: {SOURCE_DIR}")
-    logger.info(f"Output: {BASE_DIR}")
-    logger.info(f"Cameras: {CAMERA_NUMS}")
-    logger.info(f"Frame pairs: {NUM_FRAME_PAIRS}")
-    logger.info(f"Statistics: {REQUESTED_STATISTICS}")
 
-    failed_cameras = []
+    # Load config - either from YAML directly or apply CLI settings first
+    if USE_CONFIG_DIRECTLY:
+        logger.info("Loading settings from config.yaml")
+        config = get_config()
+    else:
+        logger.info("Applying CLI settings to config.yaml")
+        config = apply_cli_settings_to_config()
 
-    for camera_num in CAMERA_NUMS:
-        logger.info(f"\nProcessing Camera {camera_num}...")
+    # Get settings from config
+    source_dir = config.base_paths[0]  # Use base_paths as source for calibrated data
+    base_dir = config.base_paths[0]
+    camera_nums = config.camera_numbers
+    num_frame_pairs = config.num_frame_pairs
+    vector_format = config.vector_format
+    type_name = config.statistics_type_name
+    enabled_stats = config.statistics_enabled_list
+    gamma_radius = config.statistics_gamma_radius
+    save_figures = config.statistics_save_figures
 
+    # Data source toggles
+    process_cameras = config.statistics_process_cameras
+    process_merged = config.statistics_process_merged
+
+    logger.info(f"Source: {source_dir}")
+    logger.info(f"Output: {base_dir}")
+    logger.info(f"Cameras: {camera_nums}")
+    logger.info(f"Frame pairs: {num_frame_pairs}")
+    logger.info(f"Statistics: {enabled_stats}")
+    logger.info(f"Gamma radius: {gamma_radius}")
+    logger.info(f"Process cameras: {process_cameras}")
+    logger.info(f"Process merged: {process_merged}")
+
+    failed_sources = []
+
+    # Process individual cameras if enabled
+    if process_cameras:
+        logger.info("\n--- Processing Individual Cameras ---")
+        for camera_num in camera_nums:
+            logger.info(f"\nProcessing Camera {camera_num}...")
+
+            try:
+                # Build data directory path using centralized path helper
+                paths = get_data_paths(
+                    base_dir=base_dir,
+                    num_frame_pairs=num_frame_pairs,
+                    cam=camera_num,
+                    type_name=type_name,
+                )
+                data_dir = paths["data_dir"]
+
+                processor = VectorStatisticsProcessor(
+                    data_dir=data_dir,
+                    base_dir=base_dir,
+                    num_frame_pairs=num_frame_pairs,
+                    vector_format=vector_format,
+                    type_name=type_name,
+                    use_merged=False,
+                    camera=camera_num,
+                    gamma_radius=gamma_radius,
+                    config=config,
+                )
+
+                result = processor.process(
+                    requested_statistics=enabled_stats,
+                    save_figures=save_figures,
+                )
+
+                if result["success"]:
+                    logger.info(
+                        f"Camera {camera_num} completed: {result['num_runs']} runs, "
+                        f"output: {result['output_file']}"
+                    )
+                else:
+                    logger.error(f"Camera {camera_num} failed: {result.get('error', 'Unknown error')}")
+                    failed_sources.append(f"Cam{camera_num}")
+
+            except Exception as e:
+                logger.error(f"Camera {camera_num} failed: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                failed_sources.append(f"Cam{camera_num}")
+    else:
+        logger.info("Skipping individual cameras (process_cameras=False)")
+
+    # Process merged data if enabled
+    if process_merged:
+        logger.info("\n--- Processing Merged Data ---")
         try:
-            # Build data directory path
-            data_dir = Path(SOURCE_DIR) / f"Cam{camera_num}" / TYPE_NAME
+            # Build data directory path for merged data
+            paths = get_data_paths(
+                base_dir=base_dir,
+                num_frame_pairs=num_frame_pairs,
+                cam=1,  # Dummy camera number, use_merged overrides
+                type_name=type_name,
+                use_merged=True,
+            )
+            data_dir = paths["data_dir"]
 
             processor = VectorStatisticsProcessor(
                 data_dir=data_dir,
-                base_dir=Path(BASE_DIR),
-                num_frame_pairs=NUM_FRAME_PAIRS,
-                vector_format=VECTOR_FORMAT,
-                type_name=TYPE_NAME,
-                use_merged=USE_MERGED,
-                camera=camera_num,
+                base_dir=base_dir,
+                num_frame_pairs=num_frame_pairs,
+                vector_format=vector_format,
+                type_name=type_name,
+                use_merged=True,
+                camera=1,  # Not used when use_merged=True
+                gamma_radius=gamma_radius,
+                config=config,
             )
 
             result = processor.process(
-                requested_statistics=REQUESTED_STATISTICS,
-                save_figures=True,
+                requested_statistics=enabled_stats,
+                save_figures=save_figures,
             )
 
             if result["success"]:
                 logger.info(
-                    f"Camera {camera_num} completed: {result['num_runs']} runs, "
+                    f"Merged data completed: {result['num_runs']} runs, "
                     f"output: {result['output_file']}"
                 )
             else:
-                logger.error(f"Camera {camera_num} failed: {result.get('error', 'Unknown error')}")
-                failed_cameras.append(camera_num)
+                logger.error(f"Merged data failed: {result.get('error', 'Unknown error')}")
+                failed_sources.append("Merged")
 
         except Exception as e:
-            logger.error(f"Camera {camera_num} failed: {str(e)}")
+            logger.error(f"Merged data failed: {str(e)}")
             import traceback
             traceback.print_exc()
-            failed_cameras.append(camera_num)
+            failed_sources.append("Merged")
+    else:
+        logger.info("Skipping merged data (process_merged=False)")
 
     logger.info("=" * 60)
-    if failed_cameras:
-        logger.error(f"Processing failed for cameras: {failed_cameras}")
+    if failed_sources:
+        logger.error(f"Processing failed for: {failed_sources}")
     else:
-        logger.info("Vector statistics completed successfully for all cameras")
+        logger.info("Vector statistics completed successfully for all data sources")

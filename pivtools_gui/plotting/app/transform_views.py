@@ -9,12 +9,11 @@ Contains endpoints for:
 """
 
 import threading
-import time
-import uuid
 
 from flask import Blueprint, jsonify, request
 from loguru import logger
 
+from pivtools_gui.calibration.services.job_manager import job_manager
 from pivtools_gui.transforms import (
     VALID_TRANSFORMATIONS,
     VectorTransformProcessor,
@@ -23,9 +22,6 @@ from ...utils import camera_number
 
 
 transform_bp = Blueprint("transform", __name__)
-
-# Module-level job tracking for transformation jobs
-transformation_jobs = {}
 
 
 # =============================================================================
@@ -286,19 +282,21 @@ def transform_all_frames():
         logger.exception(f"Error getting transform status: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
-    job_id = str(uuid.uuid4())
+    # Create job using JobManager (thread-safe)
+    job_id = job_manager.create_job(
+        "transform",
+        transformations=transformations,
+        source_frame=source_frame,
+        source_camera=source_camera,
+        base_path=base_path,
+        processed_frames=0,
+        total_frames=0,
+        processed_cameras=0,
+    )
 
     def run_transformation():
         try:
-            transformation_jobs[job_id] = {
-                "status": "starting",
-                "progress": 0,
-                "processed_cameras": 0,
-                "processed_frames": 0,
-                "total_frames": 0,
-                "start_time": time.time(),
-                "error": None,
-            }
+            job_manager.update_job(job_id, status="running")
 
             # Create processor with the actual transformations
             proc = VectorTransformProcessor(
@@ -310,13 +308,14 @@ def transform_all_frames():
             )
 
             def progress_callback(info):
-                transformation_jobs[job_id].update({
-                    "status": "running",
-                    "progress": info.get("progress", 0),
-                    "processed_frames": info.get("processed_frames", 0),
-                    "total_frames": info.get("total_frames", 0),
-                    "processed_cameras": info.get("processed_cameras", 0),
-                })
+                job_manager.update_job(
+                    job_id,
+                    status="running",
+                    progress=info.get("progress", 0),
+                    processed_frames=info.get("processed_frames", 0),
+                    total_frames=info.get("total_frames", 0),
+                    processed_cameras=info.get("processed_cameras", 0),
+                )
 
             result = proc.transform_all_frames(
                 source_frame=source_frame,
@@ -325,23 +324,16 @@ def transform_all_frames():
             )
 
             if result["success"]:
-                transformation_jobs[job_id].update({
-                    "status": "completed",
-                    "progress": 100,
-                    "total_frames": result.get("total_frames", 0),
-                })
+                job_manager.complete_job(
+                    job_id,
+                    total_frames=result.get("total_frames", 0),
+                )
             else:
-                transformation_jobs[job_id].update({
-                    "status": "failed",
-                    "error": result.get("error", "Unknown error"),
-                })
+                job_manager.fail_job(job_id, result.get("error", "Unknown error"))
 
         except Exception as e:
             logger.exception(f"Transformation job {job_id} failed: {e}")
-            transformation_jobs[job_id].update({
-                "status": "failed",
-                "error": str(e),
-            })
+            job_manager.fail_job(job_id, str(e))
 
     # Start job in background thread
     thread = threading.Thread(target=run_transformation)
@@ -362,20 +354,10 @@ def transform_all_frames_status(job_id):
     Get transformation job status.
 
     Returns:
-        JSON with status, progress, processed_frames, etc.
+        JSON with status, progress, processed_frames, elapsed_time, estimated_remaining, etc.
     """
-    if job_id not in transformation_jobs:
+    job_data = job_manager.get_job_with_timing(job_id)
+    if job_data is None:
         return jsonify({"error": "Job not found"}), 404
-
-    job_data = transformation_jobs[job_id].copy()
-
-    # Add timing info
-    if "start_time" in job_data:
-        elapsed = time.time() - job_data["start_time"]
-        job_data["elapsed_time"] = elapsed
-
-        if job_data["status"] == "running" and job_data.get("progress", 0) > 0:
-            estimated_total = elapsed / (job_data["progress"] / 100.0)
-            job_data["estimated_remaining"] = max(0, estimated_total - elapsed)
 
     return jsonify(job_data)

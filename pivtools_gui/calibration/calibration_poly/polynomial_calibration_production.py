@@ -49,6 +49,13 @@ DT = 70e-6  # Time between frames (seconds) - typical for high-speed PIV
 # Calibration.xml should be at: SOURCE_DIR/CALIBRATION_SUBFOLDER/Calibration.xml
 CALIBRATION_SUBFOLDER = "calibration"
 
+# XML_PATH: Direct path to Calibration.xml (overrides SOURCE_DIR/CALIBRATION_SUBFOLDER)
+# Leave empty to use derived path from SOURCE_DIR + CALIBRATION_SUBFOLDER
+XML_PATH = ""
+
+# USE_XML: If True, read coefficients from XML; if False, use config.yaml values
+USE_XML = True
+
 # PROCESSING OPTIONS
 TYPE_NAME = "instantaneous"     # Type of data: "instantaneous" or "ensemble"
 
@@ -106,39 +113,52 @@ def apply_cli_settings_to_config():
 # ============================================================================
 
 
-def read_calibration_xml(source_path_idx: int, config: Optional["PIVConfig"] = None):
+def read_calibration_xml(
+    source_path_idx: int = 0,
+    xml_path: Optional[str] = None,
+    config: Optional["PIVConfig"] = None
+):
     """
-    Read Calibration.xml from the calibration subfolder.
+    Read Calibration.xml from direct path or calibration subfolder.
 
     Args:
-        source_path_idx: Index into config source_paths
+        source_path_idx: Index into config source_paths (fallback if xml_path not provided)
+        xml_path: Direct path to Calibration.xml (takes priority if provided)
         config: Optional config object (uses get_config() if not provided)
 
     Returns:
         Dict with status, file path, and cameras data
     """
-    logger.debug(f"Starting read_calibration_xml with index: {source_path_idx}")
     cfg = config if config is not None else get_config()
 
-    # Ensure source_paths exists and has the index
-    if not hasattr(cfg, "source_paths") or source_path_idx >= len(cfg.source_paths):
-        raise ValueError("Invalid source_path_idx")
-
-    source_root = Path(cfg.source_paths[source_path_idx])
-
-    # XML is in the calibration subfolder (with calibration images)
-    calib_subfolder = cfg.data.get("calibration", {}).get("subfolder", "")
-    if calib_subfolder:
-        xml_path = source_root / calib_subfolder / "Calibration.xml"
+    # Determine XML file path
+    if xml_path:
+        # Use direct path if provided
+        xml_file = Path(xml_path)
+        logger.debug(f"Using direct xml_path: {xml_file}")
     else:
-        # Fallback to source root
-        xml_path = source_root / "Calibration.xml"
+        # Fallback to derived path from source_path + subfolder
+        logger.debug(f"Starting read_calibration_xml with index: {source_path_idx}")
 
-    if not xml_path.exists():
-        raise FileNotFoundError(f"Calibration.xml not found at {xml_path}")
+        # Ensure source_paths exists and has the index
+        if not hasattr(cfg, "source_paths") or source_path_idx >= len(cfg.source_paths):
+            raise ValueError("Invalid source_path_idx")
 
-    logger.info(f"Reading Calibration.xml from: {xml_path}")
-    tree = ET.parse(xml_path)
+        source_root = Path(cfg.source_paths[source_path_idx])
+
+        # XML is in the calibration subfolder (with calibration images)
+        calib_subfolder = cfg.data.get("calibration", {}).get("subfolder", "")
+        if calib_subfolder:
+            xml_file = source_root / calib_subfolder / "Calibration.xml"
+        else:
+            # Fallback to source root
+            xml_file = source_root / "Calibration.xml"
+
+    if not xml_file.exists():
+        raise FileNotFoundError(f"Calibration.xml not found at {xml_file}")
+
+    logger.info(f"Reading Calibration.xml from: {xml_file}")
+    tree = ET.parse(xml_file)
     root = tree.getroot()
 
     cameras_data = {}
@@ -220,7 +240,7 @@ def read_calibration_xml(source_path_idx: int, config: Optional["PIVConfig"] = N
 
         cameras_data[cam_id] = cam_data
 
-    return {"status": "success", "file": str(xml_path), "cameras": cameras_data}
+    return {"status": "success", "file": str(xml_file), "cameras": cameras_data}
 
 
 def convert_davis_coeffs_to_array(coeff_dict: Dict[str, float]) -> np.ndarray:
@@ -907,6 +927,9 @@ def main():
         calibration_subfolder = cfg.data["calibration"].get("subfolder", "")
         dt = cfg.data["calibration"].get("polynomial", {}).get("dt", 1.0)
         type_name = cfg.data.get("processing", {}).get("type_name", "instantaneous")
+        # Get xml_path and use_xml from config
+        xml_path = cfg.data["calibration"].get("polynomial", {}).get("xml_path", "")
+        use_xml = cfg.data["calibration"].get("polynomial", {}).get("use_xml", True)
     else:
         # Apply hardcoded settings to config
         cfg = apply_cli_settings_to_config()
@@ -917,27 +940,12 @@ def main():
         calibration_subfolder = CALIBRATION_SUBFOLDER
         dt = DT
         type_name = TYPE_NAME
+        xml_path = XML_PATH
+        use_xml = USE_XML
 
-    # Read XML
-    logger.info("Reading Calibration.xml...")
-    try:
-        xml_result = read_calibration_xml(0, config=cfg)
-    except FileNotFoundError as e:
-        logger.error(f"Failed to read XML: {e}")
-        if not USE_CONFIG_DIRECTLY:
-            logger.error(f"Expected location: {SOURCE_DIR}/{CALIBRATION_SUBFOLDER}/Calibration.xml")
-        return
-
-    if xml_result.get("status") != "success":
-        logger.error("Failed to parse Calibration.xml")
-        return
-
-    logger.info(f"Found {len(xml_result['cameras'])} camera(s) in XML")
-    for cam_key in xml_result["cameras"]:
-        logger.info(f"  - {cam_key}")
-
-    logger.info(f"Processing {len(camera_nums)} camera(s): {camera_nums}")
-    logger.info(f"Type: {type_name}")
+    logger.info(f"use_xml: {use_xml}")
+    if xml_path:
+        logger.info(f"xml_path: {xml_path}")
 
     # Get vector format from config
     vec_fmt = cfg.vector_format
@@ -955,17 +963,100 @@ def main():
             f"({camera_frames}/{camera_total} frames)"
         )
 
-    # Run calibration for all cameras
-    result = PolynomialVectorCalibrator.process_all_cameras(
-        base_dir=Path(base_dir),
-        cameras=camera_nums,
-        xml_data=xml_result,
-        dt=dt,
-        vector_pattern=vec_fmt,
-        type_name=type_name,
-        config=cfg,
-        progress_callback=progress_callback,
-    )
+    if use_xml:
+        # Read XML and use XML data for calibration
+        logger.info("Reading Calibration.xml...")
+        try:
+            xml_result = read_calibration_xml(
+                source_path_idx=0,
+                xml_path=xml_path if xml_path else None,
+                config=cfg
+            )
+        except FileNotFoundError as e:
+            logger.error(f"Failed to read XML: {e}")
+            if not USE_CONFIG_DIRECTLY and not xml_path:
+                logger.error(f"Expected location: {SOURCE_DIR}/{CALIBRATION_SUBFOLDER}/Calibration.xml")
+            return
+
+        if xml_result.get("status") != "success":
+            logger.error("Failed to parse Calibration.xml")
+            return
+
+        logger.info(f"Found {len(xml_result['cameras'])} camera(s) in XML")
+        for cam_key in xml_result["cameras"]:
+            logger.info(f"  - {cam_key}")
+
+        logger.info(f"Processing {len(camera_nums)} camera(s): {camera_nums}")
+        logger.info(f"Type: {type_name}")
+
+        # Run calibration for all cameras using XML data
+        result = PolynomialVectorCalibrator.process_all_cameras(
+            base_dir=Path(base_dir),
+            cameras=camera_nums,
+            xml_data=xml_result,
+            dt=dt,
+            vector_pattern=vec_fmt,
+            type_name=type_name,
+            config=cfg,
+            progress_callback=progress_callback,
+        )
+    else:
+        # Use config values directly (no XML)
+        logger.info("Using coefficients from config.yaml (use_xml=False)")
+        logger.info(f"Processing {len(camera_nums)} camera(s): {camera_nums}")
+        logger.info(f"Type: {type_name}")
+
+        # Process each camera using config values
+        overall_result = {
+            "total_cameras": len(camera_nums),
+            "processed_cameras": 0,
+            "successful_files": 0,
+            "failed_files": 0,
+            "camera_results": {},
+        }
+
+        for idx, cam_num in enumerate(camera_nums):
+            logger.info(f"Processing camera {cam_num} ({idx + 1}/{len(camera_nums)})")
+
+            # Create calibrator - will read params from config
+            calibrator = PolynomialVectorCalibrator(
+                base_dir=Path(base_dir),
+                camera_num=cam_num,
+                dt=dt,
+                vector_pattern=vec_fmt,
+                type_name=type_name,
+                config=cfg,
+            )
+
+            def camera_progress(data: Dict[str, Any]):
+                progress_callback({
+                    "current_camera": cam_num,
+                    "processed_cameras": idx,
+                    "total_cameras": len(camera_nums),
+                    "camera_processed_frames": data.get("processed_frames", 0),
+                    "camera_total_frames": data.get("total_frames", 0),
+                    "overall_progress": int(((idx + data.get("progress", 0) / 100) / len(camera_nums)) * 100),
+                })
+
+            try:
+                cam_result = calibrator.process_vectors(progress_callback=camera_progress)
+                overall_result["camera_results"][cam_num] = {
+                    "status": "completed",
+                    "processed_frames": cam_result.get("processed_frames", 0),
+                    "successful_frames": cam_result.get("successful_frames", 0),
+                }
+                overall_result["successful_files"] += cam_result.get("successful_frames", 0)
+            except Exception as e:
+                logger.error(f"Camera {cam_num} failed: {e}")
+                overall_result["camera_results"][cam_num] = {
+                    "status": "failed",
+                    "error": str(e),
+                }
+                overall_result["failed_files"] += 1
+
+            overall_result["processed_cameras"] = idx + 1
+
+        result = overall_result
 
     # Summary
     logger.info("=" * 60)

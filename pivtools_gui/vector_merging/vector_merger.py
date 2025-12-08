@@ -10,6 +10,7 @@ following the pattern established by MultiViewCalibrator in the
 calibration module.
 """
 
+import logging
 import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -20,12 +21,70 @@ import scipy.io
 from loguru import logger
 from scipy.interpolate import RegularGridInterpolator
 
-from pivtools_core.config import get_config
+from pivtools_core.config import get_config, reload_config
 from pivtools_core.paths import get_data_paths
 from pivtools_core.vector_loading import (
     find_valid_piv_runs,
     load_coords_from_directory,
 )
+
+# ===================== CONFIGURATION =====================
+# These settings are used when running standalone (USE_CONFIG_DIRECTLY=False)
+# Or edit config.yaml and set USE_CONFIG_DIRECTLY=True
+
+# BASE_DIR: Base directory where PIV data is stored
+BASE_DIR = "/path/to/data"
+
+# CAMERAS: List of camera numbers to merge
+CAMERAS = [1, 2]
+
+# TYPE_NAME: Vector type ("instantaneous", "ensemble", etc.)
+TYPE_NAME = "instantaneous"
+
+# ENDPOINT: Optional endpoint specification
+ENDPOINT = ""
+
+# MAX_WORKERS: Number of parallel workers for processing
+MAX_WORKERS = 8
+
+# USE_CONFIG_DIRECTLY: If True, load settings directly from config.yaml
+USE_CONFIG_DIRECTLY = True
+
+# LOGGING SETUP
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+
+def apply_cli_settings_to_config():
+    """Update config.yaml with CLI-mode hardcoded settings.
+
+    This function writes the hardcoded configuration variables to config.yaml,
+    ensuring the centralized path system uses the correct paths and settings.
+
+    Returns
+    -------
+    Config
+        The reloaded config object with updated settings
+    """
+    config = get_config()
+
+    # Paths
+    config.data["paths"]["base_paths"] = [BASE_DIR]
+    config.data["paths"]["camera_numbers"] = CAMERAS
+
+    # Merging settings
+    if "merging" not in config.data:
+        config.data["merging"] = {}
+    config.data["merging"]["type_name"] = TYPE_NAME
+    config.data["merging"]["endpoint"] = ENDPOINT
+    config.data["merging"]["max_workers"] = MAX_WORKERS
+    config.data["merging"]["cameras"] = CAMERAS
+
+    # Save to disk so centralized loader picks up changes
+    config.save()
+    logger.info("Updated config.yaml with CLI settings")
+
+    # Reload to ensure fresh state
+    return reload_config()
 
 
 def _convert_to_half_precision(arr: np.ndarray) -> np.ndarray:
@@ -888,43 +947,53 @@ class VectorMerger:
 
 # CLI entry point for standalone usage
 if __name__ == "__main__":
-    import argparse
+    logger.info("=" * 60)
+    logger.info("Vector Merging - Starting")
+    logger.info("=" * 60)
 
-    parser = argparse.ArgumentParser(
-        description="Merge vector fields from multiple cameras"
-    )
-    parser.add_argument(
-        "base_dir",
-        type=Path,
-        help="Base directory containing camera data",
-    )
-    parser.add_argument(
-        "--cameras",
-        type=int,
-        nargs="+",
-        default=[1, 2],
-        help="Camera numbers to merge (default: 1 2)",
-    )
-    parser.add_argument(
-        "--type",
-        dest="type_name",
-        default="instantaneous",
-        help="Vector type (default: instantaneous)",
-    )
-    parser.add_argument(
-        "--endpoint",
-        default="",
-        help="Endpoint specification (default: empty)",
-    )
+    if USE_CONFIG_DIRECTLY:
+        # Load settings directly from existing config.yaml
+        logger.info("Loading settings directly from config.yaml (USE_CONFIG_DIRECTLY=True)")
+        config = get_config()
 
-    args = parser.parse_args()
+        # Extract settings from config (all from merging section)
+        base_dir = Path(config.base_paths[0])
+        cameras = config.merging_cameras
+        type_name = config.merging_type_name
+        endpoint = config.merging_endpoint
+        max_workers = config.merging_max_workers
+    else:
+        # Apply CLI settings to config.yaml so centralized loaders work correctly
+        config = apply_cli_settings_to_config()
 
+        # Use hardcoded settings
+        base_dir = Path(BASE_DIR)
+        cameras = CAMERAS
+        type_name = TYPE_NAME
+        endpoint = ENDPOINT
+        max_workers = MAX_WORKERS
+
+    logger.info(f"Base directory: {base_dir}")
+    logger.info(f"Cameras: {cameras}")
+    logger.info(f"Type: {type_name}")
+    logger.info(f"Max workers: {max_workers}")
+
+    # Run merging
     merger = VectorMerger(
-        base_dir=args.base_dir,
-        cameras=args.cameras,
-        type_name=args.type_name,
-        endpoint=args.endpoint,
+        base_dir=base_dir,
+        cameras=cameras,
+        type_name=type_name,
+        endpoint=endpoint,
     )
 
-    result = merger.run()
+    result = merger.merge_all_frames(max_workers=max_workers)
+
+    logger.info("=" * 60)
+    if result["success"]:
+        logger.info(f"Merge complete: {result['processed_count']} frames")
+        logger.info(f"Output: {result['output_dir']}")
+        logger.info("Vector merging completed successfully")
+    else:
+        logger.error(f"Merge failed: {result.get('error', 'Unknown error')}")
+
     exit(0 if result["success"] else 1)

@@ -225,7 +225,6 @@ def main():
     logging.info("")
 
     # Store original OMP_NUM_THREADS for workers
-    original_omp_threads = os.environ.get("OMP_NUM_THREADS", "1")
     
     # For batch filtering in main process, use all CPU cores
     max_threads = str(os.cpu_count() or 1)

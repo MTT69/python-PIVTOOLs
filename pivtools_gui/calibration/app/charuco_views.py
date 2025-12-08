@@ -94,16 +94,11 @@ def charuco_calibrate():
     Start ChArUco calibration job with progress tracking.
 
     Uses unified calibration config for path handling.
+    Board parameters are read from config (saved by frontend auto-save).
 
     Request JSON:
         source_path_idx: int
         camera: int
-        squares_h: int
-        squares_v: int
-        square_size: float
-        marker_ratio: float
-        aruco_dict: str
-        min_corners: int
 
     Returns:
         JSON with job_id, status, message
@@ -111,22 +106,24 @@ def charuco_calibrate():
     data = request.get_json() or {}
     source_path_idx = int(data.get("source_path_idx", 0))
     camera = camera_number(data.get("camera", 1))
-    squares_h = int(data.get("squares_h", 10))
-    squares_v = int(data.get("squares_v", 9))
-    square_size = float(data.get("square_size", 0.03))
-    marker_ratio = float(data.get("marker_ratio", 0.5))
-    aruco_dict = data.get("aruco_dict", "DICT_4X4_1000")
-    min_corners = int(data.get("min_corners", 6))
-    dt = float(data.get("dt", 1.0))
 
     cfg = get_config()
+    charuco_cfg = cfg.charuco_calibration
+
+    # Read ChArUco board parameters from config (saved by frontend auto-save)
+    squares_h = int(charuco_cfg.get("squares_h", 10))
+    squares_v = int(charuco_cfg.get("squares_v", 9))
+    square_size = float(charuco_cfg.get("square_size", 0.03))
+    marker_ratio = float(charuco_cfg.get("marker_ratio", 0.5))
+    aruco_dict = charuco_cfg.get("aruco_dict", "DICT_4X4_1000")
+    min_corners = int(charuco_cfg.get("min_corners", 6))
+    dt = float(charuco_cfg.get("dt", 1.0))
     source_root = Path(cfg.source_paths[source_path_idx])
     base_root = Path(cfg.base_paths[source_path_idx])
 
     # Get calibration path settings from unified config
     file_pattern = cfg.calibration_image_format
     calibration_subfolder = cfg.calibration_subfolder
-    camera_folder = cfg.get_calibration_camera_folder(camera)
 
     # Create job
     job_id = job_manager.create_job(
@@ -157,7 +154,6 @@ def charuco_calibrate():
                 aruco_dict=aruco_dict,
                 min_corners=min_corners,
                 dt=dt,
-                camera_folder_template=camera_folder.replace(str(camera), "%d") if camera_folder else None,
                 calibration_subfolder=calibration_subfolder,
                 calibration_input_path=cam_input_path,
             )
@@ -219,31 +215,29 @@ def charuco_calibrate_all():
     Start ChArUco calibration for all cameras.
 
     Uses unified calibration config for path handling.
+    Board parameters are read from config (saved by frontend auto-save).
 
     Request JSON:
         source_path_idx: int
-        squares_h: int
-        squares_v: int
-        square_size: float
-        marker_ratio: float
-        aruco_dict: str
-        min_corners: int
-        dt: float
 
     Returns:
         JSON with job_id, status, message, cameras
     """
     data = request.get_json() or {}
     source_path_idx = int(data.get("source_path_idx", 0))
-    squares_h = int(data.get("squares_h", 10))
-    squares_v = int(data.get("squares_v", 9))
-    square_size = float(data.get("square_size", 0.03))
-    marker_ratio = float(data.get("marker_ratio", 0.5))
-    aruco_dict = data.get("aruco_dict", "DICT_4X4_1000")
-    min_corners = int(data.get("min_corners", 6))
-    dt = float(data.get("dt", 1.0))
 
     cfg = get_config()
+    charuco_cfg = cfg.charuco_calibration
+
+    # Read ChArUco board parameters from config (saved by frontend auto-save)
+    squares_h = int(charuco_cfg.get("squares_h", 10))
+    squares_v = int(charuco_cfg.get("squares_v", 9))
+    square_size = float(charuco_cfg.get("square_size", 0.03))
+    marker_ratio = float(charuco_cfg.get("marker_ratio", 0.5))
+    aruco_dict = charuco_cfg.get("aruco_dict", "DICT_4X4_1000")
+    min_corners = int(charuco_cfg.get("min_corners", 6))
+    dt = float(charuco_cfg.get("dt", 1.0))
+
     camera_numbers = cfg.camera_numbers
     source_root = Path(cfg.source_paths[source_path_idx])
     base_root = Path(cfg.base_paths[source_path_idx])
@@ -251,9 +245,6 @@ def charuco_calibrate_all():
     # Get calibration path settings from unified config
     file_pattern = cfg.calibration_image_format
     calibration_subfolder = cfg.calibration_subfolder
-    # Get camera folder template from first camera
-    camera_folder = cfg.get_calibration_camera_folder(camera_numbers[0]) if camera_numbers else None
-    camera_folder_template = camera_folder.replace(str(camera_numbers[0]), "%d") if camera_folder else None
 
     # Create job with camera-aware tracking
     job_id = job_manager.create_job(
@@ -289,7 +280,6 @@ def charuco_calibrate_all():
                 aruco_dict=aruco_dict,
                 min_corners=min_corners,
                 dt=dt,
-                camera_folder_template=camera_folder_template,
                 calibration_subfolder=calibration_subfolder,
                 calibration_input_path=cam_input_path,
             )

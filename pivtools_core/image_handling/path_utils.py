@@ -26,7 +26,11 @@ def build_calibration_camera_path(
 ) -> Path:
     """Build the path to calibration images for a specific camera.
 
-    Path structure: source_path / camera_folder / calibration_subfolder
+    Path structure depends on calibration_image_type and use_camera_subfolders:
+    - Container formats (.set, .cine): source_path / calibration_subfolder
+    - IM7 with use_camera_subfolders=False: source_path / calibration_subfolder
+    - IM7 with use_camera_subfolders=True: source_path / camera_folder / calibration_subfolder
+    - Standard formats: source_path / camera_folder / calibration_subfolder
 
     This is the single source of truth for calibration path building,
     used by calibration_loader.py and the Flask calibration views.
@@ -46,12 +50,23 @@ def build_calibration_camera_path(
         >>> # Returns: /data/source/Cam1/calibration/
     """
     source_path = config.source_paths[source_path_idx]
-    camera_folder = config.get_calibration_camera_folder(camera)
+    cal_image_type = config.calibration_image_type
 
-    if camera_folder:
-        camera_path = source_path / camera_folder
-    else:
+    # Determine camera folder based on image type and settings
+    # SET and CINE never use camera subfolders
+    if cal_image_type in ("lavision_set", "cine"):
         camera_path = source_path
+    # IM7: check calibration_use_camera_subfolders
+    elif cal_image_type == "lavision_im7":
+        if config.calibration_use_camera_subfolders:
+            camera_folder = config.get_calibration_camera_folder(camera)
+            camera_path = source_path / camera_folder if camera_folder else source_path
+        else:
+            camera_path = source_path
+    else:
+        # Standard formats use camera subfolders
+        camera_folder = config.get_calibration_camera_folder(camera)
+        camera_path = source_path / camera_folder if camera_folder else source_path
 
     subfolder = subfolder_override if subfolder_override is not None else config.calibration_subfolder
     if subfolder:
@@ -67,8 +82,10 @@ def build_piv_camera_path(
 ) -> Path:
     """Build the path to PIV images for a specific camera.
 
-    Path structure depends on image type:
-    - Container formats (.set, .im7, .cine): source_path (no camera subfolder)
+    Path structure depends on image type and use_camera_subfolders setting:
+    - Container formats (.set, .cine): source_path (no camera subfolder)
+    - IM7 with use_camera_subfolders=False: source_path (all cameras in file)
+    - IM7 with use_camera_subfolders=True: source_path / camera_folder
     - Standard formats: source_path / camera_folder
 
     Args:
@@ -82,8 +99,18 @@ def build_piv_camera_path(
     source_path = config.source_paths[source_path_idx]
     image_type = config.image_type
 
-    # Container formats don't use camera subdirectories
-    if image_type in ("lavision_set", "lavision_im7", "cine"):
+    # SET and CINE never use camera subdirectories
+    if image_type in ("lavision_set", "cine"):
+        return source_path
+
+    # IM7: check if using camera subfolders
+    if image_type == "lavision_im7":
+        if config.images_use_camera_subfolders:
+            # Single-camera IM7 files in camera subdirectories
+            camera_folder = config.get_camera_folder(camera)
+            if camera_folder:
+                return source_path / camera_folder
+        # Multi-camera IM7 files (default): no subdirectory
         return source_path
 
     # Standard formats use camera subdirectories

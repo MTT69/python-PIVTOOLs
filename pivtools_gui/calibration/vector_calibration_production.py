@@ -36,6 +36,10 @@ VECTOR_PATTERN = "%05d.mat"  # Pattern for vector files (e.g. "B%05d.mat", "%05d
 TYPE_NAME = "instantaneous"  # Type name for data directory (e.g. "instantaneous", "ensemble")
 RUNS_TO_PROCESS = None  # List of 1-indexed runs to process, or None for all (e.g. [1, 2, 3])
 NUM_WORKERS = None  # Number of parallel workers, None = os.cpu_count()
+
+# USE_CONFIG_DIRECTLY: If True, skip updating config.yaml with above parameters
+# and load calibration settings directly from the existing config.yaml
+USE_CONFIG_DIRECTLY = True
 # ===================================================================
 
 
@@ -736,26 +740,51 @@ class VectorCalibrator:
 
 
 def main():
-    """Main entry point for vector calibration."""
+    """Main entry point for vector calibration.
+
+    When USE_CONFIG_DIRECTLY=True, loads settings from existing config.yaml instead
+    of applying the hardcoded CLI settings.
+    """
     logger.info("=" * 60)
     logger.info("Vector Calibration - Starting")
     logger.info("=" * 60)
-    logger.info(f"Base directory: {BASE_DIR}")
-    logger.info(f"Num frame pairs: {NUM_FRAME_PAIRS}")
-    logger.info(f"Time step: {DT_SECONDS} seconds")
-    logger.info(f"Cameras: {CAMERA_NUMS}")
-    logger.info(f"Model type: {MODEL_TYPE}")
-    logger.info(f"Vector pattern: {VECTOR_PATTERN}")
-    logger.info(f"Type name: {TYPE_NAME}")
-    logger.info(f"Runs to process: {RUNS_TO_PROCESS if RUNS_TO_PROCESS else 'all'}")
-    logger.info(f"Worker count: {NUM_WORKERS if NUM_WORKERS else 'auto'}")
 
-    # Apply CLI settings to config.yaml so centralized systems work correctly
-    config = apply_cli_settings_to_config()
+    if USE_CONFIG_DIRECTLY:
+        # Load settings directly from existing config.yaml
+        logger.info("Loading settings directly from config.yaml (USE_CONFIG_DIRECTLY=True)")
+        config = get_config()
+
+        # Log settings from config
+        logger.info(f"Base directory: {config.base_paths[0]}")
+        logger.info(f"Num frame pairs: {config.num_frame_pairs}")
+        logger.info(f"Time step: {config.dt} seconds")
+        logger.info(f"Cameras: {config.camera_numbers}")
+        logger.info(f"Active calibration: {config.active_calibration_method}")
+        logger.info(f"Vector pattern: {config.vector_format}")
+        logger.info(f"Type name: {TYPE_NAME}")
+        logger.info(f"Runs to process: {RUNS_TO_PROCESS if RUNS_TO_PROCESS else 'all'}")
+        logger.info(f"Worker count: {NUM_WORKERS if NUM_WORKERS else 'auto'}")
+
+        camera_nums = config.camera_numbers
+    else:
+        # Log hardcoded settings and apply to config
+        logger.info(f"Base directory: {BASE_DIR}")
+        logger.info(f"Num frame pairs: {NUM_FRAME_PAIRS}")
+        logger.info(f"Time step: {DT_SECONDS} seconds")
+        logger.info(f"Cameras: {CAMERA_NUMS}")
+        logger.info(f"Model type: {MODEL_TYPE}")
+        logger.info(f"Vector pattern: {VECTOR_PATTERN}")
+        logger.info(f"Type name: {TYPE_NAME}")
+        logger.info(f"Runs to process: {RUNS_TO_PROCESS if RUNS_TO_PROCESS else 'all'}")
+        logger.info(f"Worker count: {NUM_WORKERS if NUM_WORKERS else 'auto'}")
+
+        # Apply CLI settings to config.yaml so centralized systems work correctly
+        config = apply_cli_settings_to_config()
+        camera_nums = CAMERA_NUMS
 
     failed_cameras = []
 
-    for camera_num in CAMERA_NUMS:
+    for camera_num in camera_nums:
         logger.info(f"Processing Camera {camera_num}...")
         try:
             # Create calibrator using config - settings are now in config.yaml

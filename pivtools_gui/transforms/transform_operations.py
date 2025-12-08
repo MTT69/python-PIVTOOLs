@@ -18,12 +18,75 @@ import copy
 import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from typing_extensions import TypedDict
 
 import numpy as np
 from loguru import logger
 from scipy.io import loadmat, savemat
 
 from pivtools_core.coordinate_utils import extract_coordinates
+from pivtools_core.vector_loading import is_run_valid
+
+
+# =============================================================================
+# Constants
+# =============================================================================
+
+COORDINATES_FILENAME = "coordinates.mat"
+LOADMAT_OPTIONS = {"struct_as_record": False, "squeeze_me": True}
+
+
+# =============================================================================
+# TypedDict Return Types
+# =============================================================================
+
+
+class TransformResult(TypedDict, total=False):
+    """Return type for single-frame transform operations."""
+    success: bool
+    has_original: bool
+    pending_transformations: List[str]
+    error: str
+
+
+class TransformAllResult(TypedDict, total=False):
+    """Return type for batch transform operations."""
+    success: bool
+    total_frames: int
+    total_cameras: int
+    elapsed_time: float
+    error: str
+
+
+# =============================================================================
+# Mat File Helpers
+# =============================================================================
+
+
+def load_mat_for_transform(mat_file: Path) -> dict:
+    """
+    Load mat file with standardized options for transform operations.
+
+    Args:
+        mat_file: Path to the .mat file
+
+    Returns:
+        Dictionary containing mat file contents
+    """
+    return loadmat(str(mat_file), **LOADMAT_OPTIONS)
+
+
+def save_mat_from_transform(mat_file: Path, mat_dict: dict) -> None:
+    """
+    Save mat file with compression, suppressing warnings.
+
+    Args:
+        mat_file: Path to save the .mat file
+        mat_dict: Dictionary to save
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        savemat(str(mat_file), mat_dict, do_compression=True)
 
 
 # Valid transformation names
@@ -32,6 +95,7 @@ VALID_TRANSFORMATIONS = [
     "flip_lr",
     "rotate_90_cw",
     "rotate_90_ccw",
+    "rotate_180",
     "swap_ux_uy",
     "invert_ux_uy",
 ]
@@ -77,6 +141,14 @@ def apply_transformation_to_piv_result(pr: Any, transformation: str) -> None:
                 arr = np.asarray(getattr(pr, attr))
                 if arr.ndim >= 2 and arr.size > 0:
                     setattr(pr, attr, np.rot90(arr, k=1))
+
+    elif transformation == "rotate_180":
+        # Rotate 180 degrees (equivalent to two 90-degree rotations)
+        for attr in vector_attrs:
+            if hasattr(pr, attr):
+                arr = np.asarray(getattr(pr, attr))
+                if arr.ndim >= 2 and arr.size > 0:
+                    setattr(pr, attr, np.rot90(arr, k=2))
 
     elif transformation == "swap_ux_uy":
         # Swap ux and uy velocity components
@@ -148,6 +220,20 @@ def apply_transformation_to_coordinates(
         if cx.size > 0 and cy.size > 0:
             cx_rot = np.rot90(-cy, k=1)
             cy_rot = np.rot90(cx, k=1)
+
+            if isinstance(coords, np.ndarray) and coords.dtype == object:
+                coords[run - 1].x = cx_rot
+                coords[run - 1].y = cy_rot
+            else:
+                coords.x = cx_rot
+                coords.y = cy_rot
+
+    elif transformation == "rotate_180":
+        # Rotate coordinates 180 degrees: new_x = -old_x, new_y = -old_y
+        cx, cy = extract_coordinates(coords, run)
+        if cx.size > 0 and cy.size > 0:
+            cx_rot = np.rot90(-cx, k=2)
+            cy_rot = np.rot90(-cy, k=2)
 
             if isinstance(coords, np.ndarray) and coords.dtype == object:
                 coords[run - 1].x = cx_rot
@@ -256,13 +342,13 @@ def process_frame_worker(
         True if successful, False if an error occurred
     """
     try:
-        mat = loadmat(str(mat_file), struct_as_record=False, squeeze_me=True)
+        mat = load_mat_for_transform(mat_file)
         piv_result = mat["piv_result"]
 
         # Load coordinates if they exist
         coords = None
         if coords_file and coords_file.exists():
-            coords_mat = loadmat(str(coords_file), struct_as_record=False, squeeze_me=True)
+            coords_mat = load_mat_for_transform(coords_file)
             coords = coords_mat.get("coordinates")
 
         # Apply transformations to all non-empty runs
@@ -270,17 +356,15 @@ def process_frame_worker(
             num_runs = piv_result.size
             for run_idx in range(num_runs):
                 pr = piv_result[run_idx]
-                # Only apply to non-empty runs
+                # Only apply to non-empty runs - use centralized validation
                 try:
-                    if hasattr(pr, "ux"):
-                        ux = np.asarray(pr.ux)
-                        if ux.size > 0 and not np.all(np.isnan(ux)):
-                            for trans in transformations:
-                                apply_transformation_to_piv_result(pr, trans)
-                                if coords is not None:
-                                    apply_transformation_to_coordinates(
-                                        coords, run_idx + 1, trans
-                                    )
+                    if is_run_valid(pr, fields=("ux",), require_2d=False, reject_all_nan=True):
+                        for trans in transformations:
+                            apply_transformation_to_piv_result(pr, trans)
+                            if coords is not None:
+                                apply_transformation_to_coordinates(
+                                    coords, run_idx + 1, trans
+                                )
                 except Exception as e:
                     logger.warning(
                         f"Error checking run {run_idx + 1} in frame {frame}: {e}, skipping"
@@ -293,15 +377,11 @@ def process_frame_worker(
                     apply_transformation_to_coordinates(coords, 1, trans)
 
         # Save back the mat file
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", UserWarning)
-            savemat(str(mat_file), mat, do_compression=True)
+        save_mat_from_transform(mat_file, mat)
 
         # Save coordinates if they were loaded
         if coords is not None:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", UserWarning)
-                savemat(str(coords_file), {"coordinates": coords}, do_compression=True)
+            save_mat_from_transform(coords_file, {"coordinates": coords})
 
         return True
 
@@ -310,12 +390,15 @@ def process_frame_worker(
         return False
 
 
-def validate_transformations(transformations: List[str]) -> Tuple[bool, Optional[str]]:
+def validate_transformations(
+    transformations: List[str], allow_empty: bool = False
+) -> Tuple[bool, Optional[str]]:
     """
     Validate a list of transformation names.
 
     Args:
         transformations: List of transformation names to validate
+        allow_empty: If True, empty list is valid (for status/clear operations)
 
     Returns:
         Tuple of (is_valid, error_message)
@@ -323,6 +406,8 @@ def validate_transformations(transformations: List[str]) -> Tuple[bool, Optional
         - error_message: Error description if invalid, None if valid
     """
     if not transformations:
+        if allow_empty:
+            return True, None
         return False, "No transformations provided"
 
     invalid = [t for t in transformations if t not in VALID_TRANSFORMATIONS]
@@ -330,3 +415,73 @@ def validate_transformations(transformations: List[str]) -> Tuple[bool, Optional
         return False, f"Invalid transformations: {invalid}. Valid: {VALID_TRANSFORMATIONS}"
 
     return True, None
+
+
+def simplify_transformations(ops: List[str]) -> List[str]:
+    """
+    Simplify a list of transformations by cancelling inverse operations.
+
+    Rules:
+    - rotate_90_cw + rotate_90_ccw -> remove both (cancel)
+    - rotate_90_ccw + rotate_90_cw -> remove both (cancel)
+    - rotate_90_cw + rotate_90_cw -> rotate_180
+    - rotate_90_ccw + rotate_90_ccw -> rotate_180
+    - rotate_180 + rotate_180 -> remove both (cancel)
+    - flip_ud + flip_ud -> remove both (cancel)
+    - flip_lr + flip_lr -> remove both (cancel)
+    - invert_ux_uy + invert_ux_uy -> remove both (cancel)
+    - swap_ux_uy + swap_ux_uy -> remove both (cancel)
+
+    Args:
+        ops: List of transformation operation names
+
+    Returns:
+        Simplified list of transformations
+    """
+    if not ops:
+        return []
+
+    # Define cancellation pairs (a, b) means a followed by b cancels
+    CANCEL_PAIRS = {
+        ("rotate_90_cw", "rotate_90_ccw"),
+        ("rotate_90_ccw", "rotate_90_cw"),
+        ("rotate_180", "rotate_180"),
+        ("flip_ud", "flip_ud"),
+        ("flip_lr", "flip_lr"),
+        ("invert_ux_uy", "invert_ux_uy"),
+        ("swap_ux_uy", "swap_ux_uy"),
+    }
+
+    # Define merge rules: (a, b) -> c
+    MERGE_RULES = {
+        ("rotate_90_cw", "rotate_90_cw"): "rotate_180",
+        ("rotate_90_ccw", "rotate_90_ccw"): "rotate_180",
+    }
+
+    result = list(ops)
+    changed = True
+
+    # Keep simplifying until no more changes
+    while changed:
+        changed = False
+        i = 0
+        while i < len(result) - 1:
+            pair = (result[i], result[i + 1])
+
+            # Check for cancellation
+            if pair in CANCEL_PAIRS:
+                result.pop(i)
+                result.pop(i)
+                changed = True
+                continue
+
+            # Check for merge
+            if pair in MERGE_RULES:
+                result[i] = MERGE_RULES[pair]
+                result.pop(i + 1)
+                changed = True
+                continue
+
+            i += 1
+
+    return result

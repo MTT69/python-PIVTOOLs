@@ -41,7 +41,7 @@ NUM_WORKERS = None  # Number of parallel workers, None = os.cpu_count()
 
 # USE_CONFIG_DIRECTLY: If True, skip updating config.yaml with above parameters
 # and load reconstruction settings directly from the existing config.yaml
-USE_CONFIG_DIRECTLY = False
+USE_CONFIG_DIRECTLY = True
 # ===================================================================
 
 # Configure logging

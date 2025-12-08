@@ -1,7 +1,5 @@
 import os
-import subprocess
 import threading
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -9,52 +7,20 @@ from flask import Blueprint, jsonify, request, send_file
 from loguru import logger
 import numpy as np
 from scipy.io import loadmat
-import imageio_ffmpeg
 
 from pivtools_core.config import get_config
 from pivtools_core.paths import get_data_paths
-from pivtools_gui.video_maker.video_maker import PlotSettings, make_video_from_scalar, find_all_valid_runs_from_file, find_highest_valid_run_from_file
+from pivtools_gui.calibration.services.job_manager import job_manager
+from pivtools_gui.video_maker.video_maker import (
+    VideoMaker,
+    find_all_valid_runs_from_file,
+)
 
 video_maker_bp = Blueprint("video_maker", __name__)
 
 # Constants
 VIDEO_EXTENSIONS = (".mp4", ".avi", ".mov", ".mkv")
 MAX_DEPTH = 5  # For deep search
-
-
-def check_ffmpeg_installed() -> Dict[str, Any]:
-    """Check if ffmpeg is installed and return version info (uses bundled imageio-ffmpeg)."""
-    result = {
-        "installed": False,
-        "version": None,
-        "path": None,
-        "error": None,
-    }
-
-    # Use bundled ffmpeg from imageio-ffmpeg (always available via pip install)
-    try:
-        ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
-        result["path"] = ffmpeg_path
-        try:
-            proc = subprocess.run(
-                [ffmpeg_path, "-version"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if proc.returncode == 0:
-                result["installed"] = True
-                # Extract version from first line
-                first_line = proc.stdout.split("\n")[0]
-                result["version"] = first_line
-        except subprocess.TimeoutExpired:
-            result["error"] = "ffmpeg check timed out"
-        except Exception as e:
-            result["error"] = str(e)
-    except Exception as e:
-        result["error"] = f"Failed to get bundled ffmpeg: {e}"
-
-    return result
 
 
 def check_video_data_availability(
@@ -65,12 +31,13 @@ def check_video_data_availability(
 ) -> Dict[str, Any]:
     """
     Check what data sources are available for video creation.
-    Returns availability info for calibrated, uncalibrated, and merged data.
+    Returns availability info for calibrated, uncalibrated, merged, and inst_stats data.
     """
     available = {
         "calibrated": {"exists": False, "frame_count": 0, "path": None},
         "uncalibrated": {"exists": False, "frame_count": 0, "path": None},
         "merged": {"exists": False, "frame_count": 0, "path": None},
+        "inst_stats": {"exists": False, "frame_count": 0, "path": None},
     }
 
     # Check calibrated instantaneous
@@ -85,11 +52,7 @@ def check_video_data_availability(
         )
         cal_data_dir = Path(cal_paths["data_dir"])
         if cal_data_dir.exists():
-            frame_count = 0
-            for frame in range(1, num_frame_pairs + 1):
-                mat_file = cal_data_dir / (vector_format % frame)
-                if mat_file.exists():
-                    frame_count += 1
+            frame_count = len(list(cal_data_dir.glob("[0-9]*.mat")))
             if frame_count > 0:
                 available["calibrated"]["exists"] = True
                 available["calibrated"]["frame_count"] = frame_count
@@ -109,11 +72,7 @@ def check_video_data_availability(
         )
         uncal_data_dir = Path(uncal_paths["data_dir"])
         if uncal_data_dir.exists():
-            frame_count = 0
-            for frame in range(1, num_frame_pairs + 1):
-                mat_file = uncal_data_dir / (vector_format % frame)
-                if mat_file.exists():
-                    frame_count += 1
+            frame_count = len(list(uncal_data_dir.glob("[0-9]*.mat")))
             if frame_count > 0:
                 available["uncalibrated"]["exists"] = True
                 available["uncalibrated"]["frame_count"] = frame_count
@@ -133,11 +92,7 @@ def check_video_data_availability(
         )
         merged_data_dir = Path(merged_paths["data_dir"])
         if merged_data_dir.exists():
-            frame_count = 0
-            for frame in range(1, num_frame_pairs + 1):
-                mat_file = merged_data_dir / (vector_format % frame)
-                if mat_file.exists():
-                    frame_count += 1
+            frame_count = len(list(merged_data_dir.glob("[0-9]*.mat")))
             if frame_count > 0:
                 available["merged"]["exists"] = True
                 available["merged"]["frame_count"] = frame_count
@@ -145,157 +100,24 @@ def check_video_data_availability(
     except Exception as e:
         logger.debug(f"Error checking merged data: {e}")
 
+    # Check instantaneous statistics
+    try:
+        stats_dir = base_path / "statistics" / str(num_frame_pairs) / f"Cam{camera}" / "instantaneous" / "instantaneous_stats"
+        if stats_dir.exists():
+            frame_count = len(list(stats_dir.glob("[0-9]*.mat")))
+            if frame_count > 0:
+                available["inst_stats"]["exists"] = True
+                available["inst_stats"]["frame_count"] = frame_count
+                available["inst_stats"]["path"] = str(stats_dir)
+    except Exception as e:
+        logger.debug(f"Error checking inst_stats data: {e}")
+
     return available
 
-# In-memory video job state with thread-safety
-_video_state: Dict[str, Any] = {
-    "processing": False,
-    "progress": 0,
-    "message": None,
-    "started_at": None,
-    "finished_at": None,
-    "error": None,
-    "meta": None,
-    "out_path": None,
-    "current_frame": 0,
-    "total_frames": 0,
-}
-_video_thread: Optional[threading.Thread] = None
-_video_cancel_event = threading.Event()
-_video_state_lock = threading.RLock()  # Reentrant lock for safety
 
-
-def _video_set_state(**kwargs):
-    with _video_state_lock:
-        _video_state.update(kwargs)
-
-
-def _video_reset_state():
-    with _video_state_lock:
-        _video_state.update(
-            {
-                "processing": False,
-                "progress": 0,
-                "message": None,
-                "started_at": None,
-                "finished_at": None,
-                "error": None,
-                "meta": None,
-                "out_path": None,
-                "current_frame": 0,
-                "total_frames": 0,
-            }
-        )
-
-
-def progress_callback(current_frame: int, total_frames: int, message: str = ""):
-    """Thread-safe progress update."""
-    _video_set_state(
-        progress=int((current_frame / max(total_frames, 1)) * 100),
-        current_frame=current_frame,
-        total_frames=total_frames,
-        message=f"Processing frame {current_frame}/{total_frames}"
-        + (f" - {message}" if message else ""),
-    )
-
-
-def _run_video_job(
-    base: Path,
-    cam: int,
-    num_images: int,  # Number of images/files in the folder
-    run: int,  # Run number (1-based) for run_index
-    source_type: str,
-    endpoint: str,
-    merged_flag: bool,
-    use_uncalibrated: bool,
-    var: str,
-    pattern: str,
-    ps: PlotSettings,
-    test_mode: bool = False,
-    test_frames: int = 50,
-):
-    """Optimized job with better error handling."""
-    try:
-        _video_set_state(
-            processing=True,
-            progress=0,
-            started_at=datetime.utcnow().isoformat(),
-            message="Initializing video creation",
-            error=None,
-            meta=None,
-            current_frame=0,
-        )
-
-        logger.info(
-            f"[VIDEO] Starting video job | base='{base}', cam={cam}, num_images={num_images}, run={run}, var={var}, test_mode={test_mode}, merged={merged_flag}, uncalibrated={use_uncalibrated}"
-        )
-
-        cfg = get_config()
-        paths = get_data_paths(
-            base, cfg.num_frame_pairs, cam, source_type, endpoint,
-            use_merged=merged_flag,
-            use_uncalibrated=use_uncalibrated,
-        )
-
-        data_dir = Path(paths.get("data_dir"))
-        video_dir = Path(paths.get("video_dir"))
-
-        video_dir.mkdir(parents=True, exist_ok=True)
-
-        if not Path(ps.out_path).is_absolute():
-            ps.out_path = str(video_dir / ps.out_path)
-
-        ps.progress_callback = progress_callback
-        ps.test_mode = test_mode
-        ps.test_frames = test_frames if test_mode else None
-
-        _video_set_state(message="Starting video generation...")
-
-        meta = make_video_from_scalar(
-            data_dir,
-            var=var,
-            pattern=pattern,
-            settings=ps,
-            cancel_event=_video_cancel_event,
-            run_index=run - 1,  # Convert run (1-based) to run_index (0-based)
-        )
-
-        if _video_cancel_event.is_set():
-            _video_set_state(
-                processing=False,
-                progress=0,
-                message="Video creation was cancelled",
-                finished_at=datetime.utcnow().isoformat(),
-                error="Cancelled by user",
-            )
-            return
-
-        _video_set_state(
-            progress=100,
-            message="Video completed successfully",
-            processing=False,
-            finished_at=datetime.utcnow().isoformat(),
-            meta=meta,
-            out_path=ps.out_path,
-            computed_limits={
-                "lower": meta.get("vmin"),
-                "upper": meta.get("vmax"),
-                "actual_min": meta.get("actual_min"),
-                "actual_max": meta.get("actual_max"),
-                "percentile_based": ps.lower_limit is None or ps.upper_limit is None,
-            },
-            effective_run=meta.get("effective_run"),  # Return the run that was actually used
-        )
-        logger.info(f"[VIDEO] Job completed successfully. Output: {ps.out_path}")
-
-    except Exception as e:
-        logger.exception(f"[VIDEO] Job failed: {e}")
-        _video_set_state(
-            processing=False,
-            error=str(e),
-            message=f"Video creation failed: {str(e)}",
-            finished_at=datetime.utcnow().isoformat(),
-        )
+# Thread-local cancel events for job cancellation
+_cancel_events: Dict[str, threading.Event] = {}
+_cancel_events_lock = threading.Lock()
 
 
 @video_maker_bp.route("/list_videos", methods=["GET"])
@@ -351,17 +173,6 @@ def list_videos():
     except Exception as e:
         logger.exception(f"[VIDEO] Failed to list videos: {e}")
         return jsonify({"error": str(e), "videos": []}), 500
-
-
-@video_maker_bp.route("/check_ffmpeg", methods=["GET"])
-def check_ffmpeg():
-    """Check if ffmpeg is installed and available."""
-    try:
-        result = check_ffmpeg_installed()
-        return jsonify({"success": True, **result})
-    except Exception as e:
-        logger.exception(f"[VIDEO] Failed to check ffmpeg: {e}")
-        return jsonify({"success": False, "installed": False, "error": str(e)}), 500
 
 
 @video_maker_bp.route("/check_data_sources", methods=["GET"])
@@ -437,18 +248,154 @@ def check_data_sources():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@video_maker_bp.route("/available_variables", methods=["GET"])
+def available_variables():
+    """
+    Check what variables are available for video creation.
+    Returns base PIV variables plus any computed instantaneous stats.
+
+    Query params:
+    - base_path: Base directory path
+    - camera: Camera number (1-based)
+    - data_source: Data source type (calibrated, uncalibrated, merged)
+
+    Returns:
+    - variables: list of {name, label, group} for dropdown population
+    - has_stereo: whether uz (stereo) data is available
+    - has_inst_stats: whether instantaneous statistics have been computed
+    """
+    try:
+        base_path_str = request.args.get("base_path")
+        camera_raw = request.args.get("camera", "1")
+        data_source = request.args.get("data_source", "calibrated")
+
+        cfg = get_config(refresh=True)
+
+        if not base_path_str:
+            if cfg.base_paths:
+                base_path_str = cfg.base_paths[0]
+            else:
+                return jsonify({"success": False, "error": "No base_path provided"}), 400
+
+        try:
+            camera = int(camera_raw)
+            if camera < 1:
+                raise ValueError("Camera must be positive")
+        except ValueError:
+            return jsonify({"success": False, "error": "Invalid camera number"}), 400
+
+        base_path = Path(base_path_str).expanduser()
+
+        # Build base variables (always available from PIV data)
+        variables = [
+            {"name": "ux", "label": "Velocity (x)", "group": "piv"},
+            {"name": "uy", "label": "Velocity (y)", "group": "piv"},
+            {"name": "mag", "label": "Velocity Magnitude", "group": "piv"},
+        ]
+
+        # Determine flags based on data_source
+        use_uncalibrated = data_source == "uncalibrated"
+        use_merged = data_source == "merged"
+
+        # Get data paths
+        paths = get_data_paths(
+            base_dir=base_path,
+            num_frame_pairs=cfg.num_frame_pairs,
+            cam=camera,
+            type_name="instantaneous",
+            use_uncalibrated=use_uncalibrated,
+            use_merged=use_merged,
+        )
+
+        data_dir = Path(paths["data_dir"])
+        has_stereo = False
+
+        # Check for stereo (uz) in first PIV file
+        if data_dir.exists():
+            mat_files = sorted(data_dir.glob("[0-9]*.mat"))
+            mat_files = [f for f in mat_files if "coordinate" not in f.name.lower()][:1]
+            if mat_files:
+                try:
+                    mat = loadmat(str(mat_files[0]), struct_as_record=False, squeeze_me=True)
+                    piv_result = mat.get("piv_result")
+                    if piv_result is not None:
+                        if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
+                            pr = piv_result[0]
+                        else:
+                            pr = piv_result
+                        has_stereo = hasattr(pr, "uz") and pr.uz is not None and np.asarray(pr.uz).size > 0
+                except Exception as e:
+                    logger.debug(f"Error checking stereo: {e}")
+
+        if has_stereo:
+            variables.append({"name": "uz", "label": "Velocity (z)", "group": "piv"})
+
+        # Check for instantaneous statistics
+        # Stats path: {base_dir}/statistics/{num_frame_pairs}/{camera}/instantaneous/instantaneous_stats/
+        stats_base = base_path / "statistics" / str(cfg.num_frame_pairs) / f"Cam{camera}" / "instantaneous"
+        inst_stats_dir = stats_base / "instantaneous_stats"
+        has_inst_stats = inst_stats_dir.exists() and any(inst_stats_dir.glob("*.mat"))
+
+        if has_inst_stats:
+            # Check what fields are available in first stats file
+            inst_files = sorted(inst_stats_dir.glob("*.mat"))[:1]
+            if inst_files:
+                try:
+                    mat = loadmat(str(inst_files[0]), struct_as_record=False, squeeze_me=True)
+                    piv_result = mat.get("piv_result")
+                    if piv_result is not None:
+                        if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
+                            pr = piv_result[0]
+                        else:
+                            pr = piv_result
+
+                        # Check for each potential stat field
+                        stat_fields = [
+                            ("u_prime", "u' (fluctuation x)", "stats"),
+                            ("v_prime", "v' (fluctuation y)", "stats"),
+                            ("w_prime", "w' (fluctuation z)", "stats"),  # stereo only
+                            ("vorticity", "Vorticity", "stats"),
+                            ("divergence", "Divergence", "stats"),
+                            ("gamma1", "Gamma1 (vortex)", "stats"),
+                            ("gamma2", "Gamma2 (vortex)", "stats"),
+                        ]
+
+                        for field_name, label, group in stat_fields:
+                            if hasattr(pr, field_name):
+                                arr = np.asarray(getattr(pr, field_name))
+                                if arr.size > 0 and not np.all(np.isnan(arr)):
+                                    variables.append({
+                                        "name": field_name,
+                                        "label": label,
+                                        "group": group
+                                    })
+                except Exception as e:
+                    logger.debug(f"Error checking stats fields: {e}")
+
+        return jsonify({
+            "success": True,
+            "variables": variables,
+            "has_stereo": has_stereo,
+            "has_inst_stats": has_inst_stats,
+        })
+
+    except Exception as e:
+        logger.exception(f"[VIDEO] Failed to get available variables: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @video_maker_bp.route("/start_video", methods=["POST"])
 def start_video():
     """
-    Start video job with validation.
+    Start video job with validation using job_manager.
 
     Expected JSON parameters:
     - base_path: str - Base directory path for data
     - camera: int - Camera number (1-based)
     - run: int - Run number (1-based)
-    - var: str - Variable to visualize ("ux", "uy", "mag")
-    - data_source: str - Data source type ("calibrated", "uncalibrated", "merged")
-    - fps: int (optional) - Video frame rate (1-120, default: 30)
+    - var: str - Variable to visualize ("ux", "uy", "mag", "u_prime", "vorticity", etc.)
+    - data_source: str - Data source type ("calibrated", "uncalibrated", "merged", "inst_stats")
+    - fps: int (optional) - Video frame rate (1-120, default from config)
     - test_mode: bool (optional) - Create test video with limited frames
     - test_frames: int (optional) - Number of frames for test mode (default: 50)
     - lower/upper: float (optional) - Custom color scale limits
@@ -456,18 +403,8 @@ def start_video():
     - resolution: str (optional) - Video resolution ("4k" or default)
     - out_name: str (optional) - Custom output filename
     """
-    global _video_thread
-
     data = request.get_json(silent=True) or {}
     cfg = get_config(refresh=True)
-
-    # Check ffmpeg first
-    ffmpeg_check = check_ffmpeg_installed()
-    if not ffmpeg_check["installed"]:
-        return jsonify({
-            "error": "ffmpeg is not installed. Please install ffmpeg to create videos.",
-            "ffmpeg_error": ffmpeg_check.get("error")
-        }), 400
 
     # Validate inputs
     base_path_str = data.get("base_path")
@@ -505,28 +442,11 @@ def start_video():
     except ValueError:
         return jsonify({"error": "Invalid run number"}), 400
 
-    num_images = int(data.get("num_images", 1))  # Keep for other uses, e.g., if needed elsewhere
-    if num_images < 1:
-        return jsonify({"error": "num_images must be positive"}), 400
-
-    # Parse data source (new parameter)
+    # Parse data source
     data_source = data.get("data_source", "calibrated")
-    if data_source not in ("calibrated", "uncalibrated", "merged"):
-        return jsonify({"error": "Invalid data_source. Must be 'calibrated', 'uncalibrated', or 'merged'"}), 400
-
-    # Set flags based on data_source
-    use_uncalibrated = data_source == "uncalibrated"
-    merged_flag = data_source == "merged"
-
-    # Legacy support: if merged is explicitly set and data_source not provided, use merged flag
-    if "merged" in data and "data_source" not in data:
-        merged_flag = str(data.get("merged", "0")) in ("1", "true", "True")
-        use_uncalibrated = False
-
-    endpoint = data.get("endpoint", "") or ""
-    source_type = data.get("type", "instantaneous") or "instantaneous"
-    if source_type not in ["instantaneous", "ensemble"]:  # Add allowed types
-        return jsonify({"error": "Invalid source_type"}), 400
+    valid_sources = ("calibrated", "uncalibrated", "merged", "inst_stats")
+    if data_source not in valid_sources:
+        return jsonify({"error": f"Invalid data_source. Must be one of: {', '.join(valid_sources)}"}), 400
 
     # Check if data is available for the selected source
     available = check_video_data_availability(
@@ -535,6 +455,13 @@ def start_video():
         num_frame_pairs=cfg.num_frame_pairs,
         vector_format=cfg.vector_format,
     )
+
+    # For stats variables, auto-switch to inst_stats source
+    var = data.get("var", "ux")
+    STATS_VARIABLES = {"u_prime", "v_prime", "w_prime", "vorticity", "divergence", "gamma1", "gamma2"}
+    if var in STATS_VARIABLES and data_source != "inst_stats":
+        data_source = "inst_stats"
+        logger.info(f"[VIDEO] Auto-switching to inst_stats for variable '{var}'")
 
     if not available[data_source]["exists"]:
         available_sources = [k for k, v in available.items() if v["exists"]]
@@ -550,78 +477,138 @@ def start_video():
                 "selected_source": data_source
             }), 404
 
-    var = data.get("var", None) or data.get("var", "uy")
-    if var not in ("ux", "uy", "mag"):
-        return jsonify({"error": "Invalid var"}), 400
-    pattern = data.get("pattern", "[0-9]*.mat")
-
-    ps = PlotSettings()
+    # Validate variable
+    VALID_VARIABLES = {
+        "ux", "uy", "uz", "mag",  # PIV variables
+        "u_prime", "v_prime", "w_prime",  # Fluctuation stats
+        "vorticity", "divergence", "gamma1", "gamma2",  # Derived stats
+    }
+    if var not in VALID_VARIABLES:
+        return jsonify({"error": f"Invalid var '{var}'. Valid options: {', '.join(sorted(VALID_VARIABLES))}"}), 400
 
     # Parse FPS with validation (frames per second for video output)
-    fps = data.get("fps", 30)  # Default to 30 FPS if not provided
+    fps = data.get("fps", cfg.video_fps)
     try:
         fps = int(fps)
-        if fps < 1 or fps > 120:  # Reasonable range: 1-120 FPS
+        if fps < 1 or fps > 120:
             return jsonify({"error": "FPS must be between 1 and 120"}), 400
-        ps.fps = fps
     except (ValueError, TypeError):
         return jsonify({"error": "Invalid FPS value"}), 400
 
-    ps.crf = 15  # Lower CRF for higher quality (15 is near-lossless)
-    ps.upscale = (1080, 1920) if data.get("resolution") != "4k" else (2160, 3840)
-    ps.out_path = data.get(
-        "out_name",
-        f"run{run}_Cam{cam}_{var}{'_test' if test_mode else ''}.mp4",  # Use run for filename
-    )
+    # Get resolution and CRF from config or request
+    crf = cfg.video_crf
+    resolution = (2160, 3840) if data.get("resolution") == "4k" else cfg.video_resolution
 
+    # Parse color limits
     try:
         lower = data.get("lower")
         upper = data.get("upper")
-        ps.lower_limit = float(lower) if lower and str(lower).strip() else None
-        ps.upper_limit = float(upper) if upper and str(upper).strip() else None
+        lower_limit = float(lower) if lower and str(lower).strip() else None
+        upper_limit = float(upper) if upper and str(upper).strip() else None
     except ValueError:
         return jsonify({"error": "Invalid lower/upper limits"}), 400
 
     cmap = data.get("cmap")
-    if cmap and cmap != "default":
-        ps.cmap = cmap
+    if cmap == "default":
+        cmap = None
 
-    with _video_state_lock:
-        running = _video_thread is not None and _video_thread.is_alive()
-    if running:
-        with _video_state_lock:
-            st = {k: _video_state.get(k) for k in ("processing", "progress", "message")}
-        return jsonify({"status": "busy", **st}), 409
+    out_name = data.get("out_name")
 
-    _video_cancel_event.clear()
-    _video_reset_state()
-    _video_set_state(message="Video queued")
-
-    _video_thread = threading.Thread(
-        target=_run_video_job,
-        args=(
-            base,
-            cam,
-            num_images,  # Pass num_images for folder selection
-            run,  # Pass run for run_index
-            source_type,
-            endpoint,
-            merged_flag,
-            use_uncalibrated,
-            var,
-            pattern,
-            ps,
-            test_mode,
-            test_frames,
-        ),
-        daemon=True,
+    # Create job via job_manager
+    job_id = job_manager.create_job(
+        "video",
+        camera=cam,
+        variable=var,
+        data_source=data_source,
+        run=run,
+        current_frame=0,
+        total_frames=0,
     )
-    _video_thread.start()
+
+    # Create cancel event for this job
+    cancel_event = threading.Event()
+    with _cancel_events_lock:
+        _cancel_events[job_id] = cancel_event
+
+    def run_video():
+        try:
+            job_manager.update_job(job_id, status="running")
+
+            # Create VideoMaker instance
+            maker = VideoMaker(
+                base_dir=base,
+                camera=cam,
+                config=cfg,
+            )
+
+            def progress_cb(current, total, msg=""):
+                progress = int(current / max(total, 1) * 100)
+                job_manager.update_job(
+                    job_id,
+                    progress=progress,
+                    current_frame=current,
+                    total_frames=total,
+                    message=f"Processing frame {current}/{total}" + (f" - {msg}" if msg else ""),
+                )
+
+            # Run video generation using process_video
+            result = maker.process_video(
+                variable=var,
+                run=run,
+                data_source=data_source,
+                fps=fps,
+                crf=crf,
+                resolution=resolution,
+                cmap=cmap,
+                lower_limit=lower_limit,
+                upper_limit=upper_limit,
+                test_mode=test_mode,
+                test_frames=test_frames,
+                out_name=out_name,
+                progress_callback=progress_cb,
+                cancel_event=cancel_event,
+            )
+
+            if cancel_event.is_set():
+                job_manager.fail_job(job_id, "Cancelled by user")
+            elif result.get("success"):
+                job_manager.complete_job(
+                    job_id,
+                    out_path=result.get("out_path"),
+                    vmin=result.get("vmin"),
+                    vmax=result.get("vmax"),
+                    actual_min=result.get("actual_min"),
+                    actual_max=result.get("actual_max"),
+                    effective_run=result.get("effective_run"),
+                    frames=result.get("frames"),
+                    elapsed_sec=result.get("elapsed_sec"),
+                    data_source=result.get("data_source"),
+                    computed_limits={
+                        "lower": result.get("vmin"),
+                        "upper": result.get("vmax"),
+                        "actual_min": result.get("actual_min"),
+                        "actual_max": result.get("actual_max"),
+                        "percentile_based": lower_limit is None or upper_limit is None,
+                    },
+                )
+                logger.info(f"[VIDEO] Job {job_id} completed: {result.get('out_path')}")
+            else:
+                job_manager.fail_job(job_id, result.get("error", "Unknown error"))
+
+        except Exception as e:
+            logger.exception(f"[VIDEO] Job {job_id} failed: {e}")
+            job_manager.fail_job(job_id, str(e))
+        finally:
+            # Clean up cancel event
+            with _cancel_events_lock:
+                _cancel_events.pop(job_id, None)
+
+    thread = threading.Thread(target=run_video, daemon=True)
+    thread.start()
 
     return jsonify({
-        "status": "started",
-        "processing": True,
-        "progress": 0,
+        "job_id": job_id,
+        "status": "starting",
         "data_source": data_source,
         "frame_count": available[data_source]["frame_count"],
     }), 202
@@ -629,34 +616,87 @@ def start_video():
 
 @video_maker_bp.route("/cancel_video", methods=["POST"])
 def cancel_video():
-    """Cancel video job safely."""
-    _video_cancel_event.set()
-    with _video_state_lock:
-        is_running = bool(_video_thread is not None and _video_thread.is_alive())
-    if is_running:
-        _video_set_state(message="Cancellation requested")
-        return jsonify({"status": "cancelling", "processing": True}), 202
-    _video_reset_state()
-    return jsonify({"status": "idle", "processing": False}), 200
+    """
+    Cancel a video job.
+
+    Request JSON (optional):
+        job_id: str - Specific job ID to cancel. If not provided, cancels all running video jobs.
+    """
+    data = request.get_json(silent=True) or {}
+    job_id = data.get("job_id")
+
+    if job_id:
+        # Cancel specific job
+        with _cancel_events_lock:
+            cancel_event = _cancel_events.get(job_id)
+        if cancel_event:
+            cancel_event.set()
+            job_manager.update_job(job_id, message="Cancellation requested")
+            return jsonify({"status": "cancelling", "job_id": job_id}), 202
+        else:
+            return jsonify({"error": "Job not found or already completed", "job_id": job_id}), 404
+    else:
+        # Cancel all running video jobs
+        cancelled = []
+        with _cancel_events_lock:
+            for jid, event in list(_cancel_events.items()):
+                event.set()
+                job_manager.update_job(jid, message="Cancellation requested")
+                cancelled.append(jid)
+        if cancelled:
+            return jsonify({"status": "cancelling", "cancelled_jobs": cancelled}), 202
+        return jsonify({"status": "idle", "message": "No running video jobs"}), 200
+
+
+@video_maker_bp.route("/video/job/<job_id>", methods=["GET"])
+def video_job_status(job_id: str):
+    """
+    Get video job status by ID (matches calibration pattern).
+
+    Returns:
+        JSON with status, progress, current_frame, total_frames,
+        elapsed_time, estimated_remaining, error (if failed), etc.
+    """
+    job_data = job_manager.get_job_with_timing(job_id)
+    if job_data is None:
+        return jsonify({"error": "Job not found"}), 404
+
+    return jsonify(job_data)
 
 
 @video_maker_bp.route("/video_status", methods=["GET"])
 def video_status():
-    """Return thread-safe status."""
-    with _video_state_lock:
-        st = dict(_video_state)
-        st["processing"] = bool(
-            st.get("processing", False)
-            or (_video_thread is not None and _video_thread.is_alive())
-        )
-    st["progress"] = int(max(0, min(100, int(st.get("progress", 0)))))
-    if st.get("out_path"):
-        st["out_path"] = st["out_path"]
-    elif st.get("meta") and isinstance(st["meta"], dict) and "out_path" in st["meta"]:
-        st["out_path"] = st["meta"]["out_path"]
-    if st.get("computed_limits"):
-        st["computed_limits"] = st["computed_limits"]
-    return jsonify(st), 200
+    """
+    Get status of video jobs.
+
+    Query params:
+        job_id: str (optional) - Specific job ID to query
+
+    Returns status from job_manager.
+    """
+    job_id = request.args.get("job_id")
+
+    if job_id:
+        # Get specific job status
+        job_data = job_manager.get_job_with_timing(job_id)
+        if job_data is None:
+            return jsonify({"error": "Job not found", "processing": False}), 404
+        # Add processing flag for compatibility
+        job_data["processing"] = job_data.get("status") == "running"
+        return jsonify(job_data), 200
+    else:
+        # Get all video jobs (for backward compatibility)
+        video_jobs = job_manager.list_jobs(job_type="video")
+        if not video_jobs:
+            return jsonify({"processing": False, "message": "No video jobs"}), 200
+
+        # Get most recent job
+        most_recent = max(video_jobs.items(), key=lambda x: x[1].get("start_time", 0))
+        job_id, job_data = most_recent
+        job_data = job_manager.add_timing_info(job_data)
+        job_data["processing"] = job_data.get("status") == "running"
+        job_data["job_id"] = job_id
+        return jsonify(job_data), 200
 
 
 @video_maker_bp.route("/download", methods=["GET"])
@@ -716,8 +756,8 @@ def check_runs():
     Query params:
     - base_path: Base directory path
     - camera: Camera number (1-based)
-    - data_source: Data source type (calibrated, uncalibrated, merged)
-    - var: Variable to check (ux, uy, mag) - defaults to ux
+    - data_source: Data source type (calibrated, uncalibrated, merged, inst_stats)
+    - var: Variable to check (ux, uy, mag, u_prime, vorticity, etc.) - defaults to ux
     """
     try:
         base_path_str = request.args.get("base_path")
@@ -750,21 +790,30 @@ def check_runs():
                 "error": f"Base path does not exist: {base_path}"
             }), 404
 
-        # Determine flags based on data_source
-        use_uncalibrated = data_source == "uncalibrated"
-        use_merged = data_source == "merged"
+        # For stats variables, auto-switch to inst_stats
+        STATS_VARIABLES = {"u_prime", "v_prime", "w_prime", "vorticity", "divergence", "gamma1", "gamma2"}
+        if var in STATS_VARIABLES:
+            data_source = "inst_stats"
 
-        # Get data paths
-        paths = get_data_paths(
-            base_dir=base_path,
-            num_frame_pairs=cfg.num_frame_pairs,
-            cam=camera,
-            type_name="instantaneous",
-            use_uncalibrated=use_uncalibrated,
-            use_merged=use_merged,
-        )
+        # Get data directory based on data_source
+        if data_source == "inst_stats":
+            data_dir = base_path / "statistics" / str(cfg.num_frame_pairs) / f"Cam{camera}" / "instantaneous" / "instantaneous_stats"
+        else:
+            # Determine flags based on data_source
+            use_uncalibrated = data_source == "uncalibrated"
+            use_merged = data_source == "merged"
 
-        data_dir = Path(paths["data_dir"])
+            # Get data paths
+            paths = get_data_paths(
+                base_dir=base_path,
+                num_frame_pairs=cfg.num_frame_pairs,
+                cam=camera,
+                type_name="instantaneous",
+                use_uncalibrated=use_uncalibrated,
+                use_merged=use_merged,
+            )
+            data_dir = Path(paths["data_dir"])
+
         if not data_dir.exists():
             return jsonify({
                 "success": False,

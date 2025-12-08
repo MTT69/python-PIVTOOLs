@@ -18,7 +18,6 @@ from flask_cors import CORS
 from loguru import logger
 import os
 from pivtools_gui.calibration.app.views import calibration_bp
-from pivtools_gui.calibration.calibration_poly.app.views import calibration_poly_bp
 from pivtools_core.config import get_config, reload_config
 from pivtools_core.image_handling.load_images import read_pair
 from pivtools_core.image_handling.path_utils import build_piv_camera_path, validate_images_generic
@@ -26,6 +25,10 @@ from pivtools_gui.masking.app.views import masking_bp
 from pivtools_core.paths import get_data_paths
 from pivtools_gui.piv_runner import get_runner
 from pivtools_gui.plotting.app.plotting_views import vector_plot_bp
+# Old per-file transform storage (kept for backwards compatibility)
+from pivtools_gui.plotting.app.transform_views import transform_bp
+# New config-based transform storage
+from pivtools_gui.transforms.app.transform_views import transform_bp as transform_new_bp
 from pivtools_cli.preprocessing.preprocess import preprocess_images, apply_filters_to_batch
 # from pivtools_gui.stereo_reconstruction.app.views import stereo_bp
 from pivtools_gui.utils import camera_folder, camera_number, numpy_to_png_base64, numpy_to_base64
@@ -42,14 +45,13 @@ api_bp = Blueprint('api', __name__, url_prefix='/backend')
 
 # Register existing blueprints with /backend prefix
 app.register_blueprint(vector_plot_bp, url_prefix='/backend/plot')
+app.register_blueprint(transform_bp, url_prefix='/backend/plot')
 app.register_blueprint(masking_bp, url_prefix='/backend')
 app.register_blueprint(calibration_bp, url_prefix='/backend')
-app.register_blueprint(calibration_poly_bp, url_prefix='/backend')
 app.register_blueprint(video_maker_bp, url_prefix='/backend/video')
 # app.register_blueprint(stereo_bp, url_prefix='/backend')
 app.register_blueprint(statistics_bp, url_prefix='/backend')
 app.register_blueprint(merging_bp, url_prefix='/backend')
-
 # --- In-memory stores ---
 processed_store = {"processed": {}}
 processing = False

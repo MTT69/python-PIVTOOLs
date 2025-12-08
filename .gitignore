@@ -12,7 +12,7 @@ __pycache__/
 *.egg-info/
 *.egg
 build/
-
+logs/
 pivtools_cli/lib/*.exp
 pivtools_cli/lib/*.o
 pivtools_cli/lib/*.so

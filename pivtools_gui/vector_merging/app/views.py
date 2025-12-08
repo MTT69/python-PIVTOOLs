@@ -13,6 +13,7 @@ from flask import Blueprint, jsonify, request
 from loguru import logger
 
 from pivtools_core.config import get_config
+from pivtools_core.paths import get_data_paths
 
 from ...calibration.services.job_manager import job_manager
 from ...utils import camera_number
@@ -28,23 +29,24 @@ def merge_one_frame():
 
     Request JSON:
         base_path_idx: int - Index into config's base_paths
-        cameras: list - Camera numbers to merge (default: [1, 2])
+        cameras: list - Camera numbers to merge (default: from config)
         frame_idx: int - Frame number to merge (default: 1)
-        type_name: str - Vector type (default: "instantaneous")
-        endpoint: str - Optional endpoint specification
+        type_name: str - Vector type (default: from config)
+        endpoint: str - Optional endpoint specification (default: from config)
 
     Returns:
         JSON with status, frame, runs_merged, message
     """
     data = request.get_json() or {}
+    cfg = get_config()
+
     base_path_idx = int(data.get("base_path_idx", 0))
-    cameras = [camera_number(c) for c in data.get("cameras", [1, 2])]
+    cameras = [camera_number(c) for c in data.get("cameras", cfg.merging_cameras)]
     frame_idx = int(data.get("frame_idx", 1))
-    type_name = data.get("type_name", "instantaneous")
-    endpoint = data.get("endpoint", "")
+    type_name = data.get("type_name", cfg.merging_type_name)
+    endpoint = data.get("endpoint", cfg.merging_endpoint)
 
     try:
-        cfg = get_config()
         base_dir = Path(cfg.base_paths[base_path_idx])
 
         logger.info(f"Merging frame {frame_idx} for cameras {cameras}")
@@ -100,21 +102,22 @@ def merge_all_frames():
 
     Request JSON:
         base_path_idx: int - Index into config's base_paths
-        cameras: list - Camera numbers to merge (default: [1, 2])
-        type_name: str - Vector type (default: "instantaneous")
-        endpoint: str - Optional endpoint specification
+        cameras: list - Camera numbers to merge (default: from config)
+        type_name: str - Vector type (default: from config)
+        endpoint: str - Optional endpoint specification (default: from config)
 
     Returns:
         JSON with job_id, status, message
     """
     data = request.get_json() or {}
+    cfg = get_config()
+
     base_path_idx = int(data.get("base_path_idx", 0))
-    cameras = [camera_number(c) for c in data.get("cameras", [1, 2])]
-    type_name = data.get("type_name", "instantaneous")
-    endpoint = data.get("endpoint", "")
+    cameras = [camera_number(c) for c in data.get("cameras", cfg.merging_cameras)]
+    type_name = data.get("type_name", cfg.merging_type_name)
+    endpoint = data.get("endpoint", cfg.merging_endpoint)
 
     try:
-        cfg = get_config()
         base_dir = Path(cfg.base_paths[base_path_idx])
 
         # Create job
@@ -198,3 +201,76 @@ def merge_status(job_id: str):
         return jsonify({"error": "Job not found"}), 404
 
     return jsonify(job_data)
+
+
+@merging_bp.route("/merge_vectors/validate", methods=["POST"])
+def merge_validate():
+    """
+    Validate that vector data exists for all cameras before merging.
+
+    Request JSON:
+        base_path_idx: int - Index into config's base_paths
+        cameras: list - Camera numbers to check (default: from config)
+        type_name: str - Vector type (default: from config)
+        endpoint: str - Optional endpoint specification (default: from config)
+
+    Returns:
+        JSON with valid, cameras_found, valid_runs, total_runs, num_frame_pairs
+    """
+    data = request.get_json() or {}
+    cfg = get_config()
+
+    base_path_idx = int(data.get("base_path_idx", 0))
+    cameras = [camera_number(c) for c in data.get("cameras", cfg.merging_cameras)]
+    type_name = data.get("type_name", cfg.merging_type_name)
+    endpoint = data.get("endpoint", cfg.merging_endpoint)
+
+    try:
+        base_dir = Path(cfg.base_paths[base_path_idx])
+
+        # Check which cameras have valid data directories
+        cameras_found = []
+        for camera in cameras:
+            paths = get_data_paths(
+                base_dir=base_dir,
+                num_frame_pairs=cfg.num_frame_pairs,
+                cam=camera,
+                type_name=type_name,
+                endpoint=endpoint,
+            )
+            if paths["data_dir"].exists():
+                cameras_found.append(camera)
+
+        if len(cameras_found) < 2:
+            return jsonify({
+                "valid": False,
+                "cameras_found": cameras_found,
+                "cameras_requested": cameras,
+                "error": f"Need at least 2 cameras with data, found {len(cameras_found)}",
+            })
+
+        # Create merger to find valid runs
+        merger = VectorMerger(
+            base_dir=base_dir,
+            cameras=cameras_found,
+            type_name=type_name,
+            endpoint=endpoint,
+        )
+        valid_runs, total_runs = merger.find_valid_runs()
+
+        return jsonify({
+            "valid": len(valid_runs) > 0,
+            "cameras_found": cameras_found,
+            "cameras_requested": cameras,
+            "valid_runs": valid_runs,
+            "total_runs": total_runs,
+            "num_frame_pairs": cfg.num_frame_pairs,
+            "output_dir": str(merger.output_dir),
+        })
+
+    except Exception as e:
+        logger.error(f"Validation error: {e}", exc_info=True)
+        return jsonify({
+            "valid": False,
+            "error": str(e),
+        }), 500
