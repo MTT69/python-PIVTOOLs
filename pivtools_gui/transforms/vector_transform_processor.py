@@ -34,6 +34,7 @@ from .transform_operations import (
     apply_transformation_to_coordinates,
     apply_transformation_to_piv_result,
     backup_original_data,
+    coords_to_structured_array,
     has_original_backup,
     load_mat_for_transform,
     process_frame_worker,
@@ -177,11 +178,26 @@ class VectorTransformProcessor:
             # Create backups on first transformation
             mat, coords_mat = backup_original_data(mat, coords_mat)
 
-            # Initialize or update pending transformations list
+            # Initialize or update pending transformations list with robust conversion
             if "pending_transformations" not in mat:
                 mat["pending_transformations"] = []
-            if not isinstance(mat["pending_transformations"], list):
-                mat["pending_transformations"] = list(mat["pending_transformations"])
+            else:
+                pt = mat["pending_transformations"]
+                if isinstance(pt, np.ndarray):
+                    # Handle numpy arrays (may be object array of strings)
+                    if pt.ndim == 0:
+                        # Scalar array (single element)
+                        item = pt.item()
+                        mat["pending_transformations"] = [str(item)] if item else []
+                    else:
+                        # Multi-element array
+                        mat["pending_transformations"] = [str(x) for x in pt.flatten().tolist()]
+                elif isinstance(pt, str):
+                    # Single string
+                    mat["pending_transformations"] = [pt]
+                elif not isinstance(pt, list):
+                    # Other iterable
+                    mat["pending_transformations"] = list(pt) if pt else []
 
             mat["pending_transformations"].append(trans)
             # Simplify the transformation list (e.g., rotate_90_cw + rotate_90_ccw = [])
@@ -213,7 +229,16 @@ class VectorTransformProcessor:
 
             # Save coordinates if they were loaded
             if coords_mat is not None:
+                if "coordinates" in coords_mat:
+                    coords_mat["coordinates"] = coords_to_structured_array(
+                        coords_mat["coordinates"]
+                    )
                 save_mat_from_transform(coords_file, coords_mat)
+
+            # Also save to config.yaml for CLI integration
+            config = get_config()
+            config.set_camera_transforms(camera, mat["pending_transformations"])
+            config.save()
 
             return {
                 "success": True,
@@ -466,7 +491,8 @@ class VectorTransformProcessor:
                         for trans in transformations:
                             apply_transformation_to_coordinates(coords, 1, trans)
 
-                    save_mat_from_transform(coords_file, {"coordinates": coords})
+                    coords_struct = coords_to_structured_array(coords)
+                    save_mat_from_transform(coords_file, {"coordinates": coords_struct})
 
                 # Process frames in parallel
                 num_workers = min(os.cpu_count() or 1, len(vector_files), max_workers)

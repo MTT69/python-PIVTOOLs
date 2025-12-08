@@ -94,6 +94,38 @@ def save_mat_from_transform(mat_file: Path, mat_dict: dict) -> None:
         savemat(str(mat_file), mat_dict, oned_as="row", do_compression=True)
 
 
+def coords_to_structured_array(coords: np.ndarray) -> np.ndarray:
+    """
+    Convert coordinates loaded with struct_as_record=False back to structured array.
+
+    scipy.io.loadmat with struct_as_record=False creates Python objects with
+    .x and .y attributes. savemat() interprets these as cell arrays.
+    This function converts them back to proper MATLAB struct arrays.
+
+    Args:
+        coords: Coordinates array (object array of structs or single struct)
+
+    Returns:
+        Structured numpy array with dtype=[('x', object), ('y', object)]
+    """
+    dtype = [("x", object), ("y", object)]
+
+    if isinstance(coords, np.ndarray) and coords.dtype == object:
+        # Multi-run case: iterate through object array
+        num_runs = coords.size
+        coords_struct = np.empty((num_runs,), dtype=dtype)
+        for i in range(num_runs):
+            coords_struct["x"][i] = np.asarray(coords[i].x)
+            coords_struct["y"][i] = np.asarray(coords[i].y)
+        return coords_struct
+    else:
+        # Single-run case
+        coords_struct = np.empty((1,), dtype=dtype)
+        coords_struct["x"][0] = np.asarray(coords.x)
+        coords_struct["y"][0] = np.asarray(coords.y)
+        return coords_struct
+
+
 # Valid transformation names
 # Note: scale_velocity and scale_coords are parametric transforms
 # that require a :factor suffix (e.g., "scale_velocity:1000")
@@ -495,7 +527,8 @@ def process_frame_worker(
 
         # Save coordinates if they were loaded
         if coords is not None:
-            save_mat_from_transform(coords_file, {"coordinates": coords})
+            coords_struct = coords_to_structured_array(coords)
+            save_mat_from_transform(coords_file, {"coordinates": coords_struct})
 
         return True
 

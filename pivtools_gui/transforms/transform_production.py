@@ -27,6 +27,7 @@ from .transform_operations import (
     VALID_TRANSFORMATIONS,
     apply_transformation_to_piv_result,
     apply_transformation_to_coordinates,
+    coords_to_structured_array,
     load_mat_for_transform,
     save_mat_from_transform,
     simplify_transformations,
@@ -199,7 +200,8 @@ class TransformProcessor:
                                 apply_transformation_to_coordinates(coords, run_idx + 1, trans)
                         else:
                             apply_transformation_to_coordinates(coords, 1, trans)
-                    save_mat_from_transform(coords_file, {"coordinates": coords})
+                    coords_struct = coords_to_structured_array(coords)
+                    save_mat_from_transform(coords_file, {"coordinates": coords_struct})
                     logger.info("Coordinates transformed.")
 
             # Transform vector files in parallel
