@@ -10,8 +10,13 @@ Supported transformations:
 - flip_lr: Flip data horizontally (left-right)
 - rotate_90_cw: Rotate 90 degrees clockwise
 - rotate_90_ccw: Rotate 90 degrees counter-clockwise
+- rotate_180: Rotate 180 degrees
 - swap_ux_uy: Swap ux and uy velocity components
 - invert_ux_uy: Negate ux and uy velocity components
+
+Parametric transformations (require :factor suffix, e.g., "scale_velocity:1000"):
+- scale_velocity: Multiply ux, uy, uz by factor (for unit conversions like m/s to mm/s)
+- scale_coords: Multiply x, y coordinates by factor (for unit conversions like m to mm)
 """
 
 import copy
@@ -90,6 +95,8 @@ def save_mat_from_transform(mat_file: Path, mat_dict: dict) -> None:
 
 
 # Valid transformation names
+# Note: scale_velocity and scale_coords are parametric transforms
+# that require a :factor suffix (e.g., "scale_velocity:1000")
 VALID_TRANSFORMATIONS = [
     "flip_ud",
     "flip_lr",
@@ -98,7 +105,51 @@ VALID_TRANSFORMATIONS = [
     "rotate_180",
     "swap_ux_uy",
     "invert_ux_uy",
+    "scale_velocity",  # Parametric: requires :factor suffix
+    "scale_coords",    # Parametric: requires :factor suffix
 ]
+
+# Parametric transforms that require a numeric factor
+PARAMETRIC_TRANSFORMS = ["scale_velocity", "scale_coords"]
+
+
+def parse_parametric_transform(transformation: str) -> Tuple[str, Optional[float]]:
+    """
+    Parse a transformation string that may contain parameters.
+
+    Format: "transform_name:parameter"
+    Examples:
+        "flip_ud" -> ("flip_ud", None)
+        "scale_velocity:1000" -> ("scale_velocity", 1000.0)
+        "scale_coords:0.001" -> ("scale_coords", 0.001)
+
+    Args:
+        transformation: Transform string, optionally with :parameter suffix
+
+    Returns:
+        Tuple of (base_transform_name, parameter_value)
+
+    Raises:
+        ValueError: If parametric transform is missing parameter or has invalid format
+    """
+    if ":" not in transformation:
+        return (transformation, None)
+
+    parts = transformation.split(":", 1)
+    base_name = parts[0]
+
+    if base_name not in PARAMETRIC_TRANSFORMS:
+        raise ValueError(f"Unknown parametric transform: {base_name}")
+
+    try:
+        factor = float(parts[1])
+    except (ValueError, IndexError):
+        raise ValueError(f"Invalid parameter for {base_name}: expected numeric factor")
+
+    if factor == 0:
+        raise ValueError(f"Scale factor cannot be zero for {base_name}")
+
+    return (base_name, factor)
 
 
 def apply_transformation_to_piv_result(pr: Any, transformation: str) -> None:
@@ -109,16 +160,51 @@ def apply_transformation_to_piv_result(pr: Any, transformation: str) -> None:
 
     Args:
         pr: A piv_result struct with vector field attributes (ux, uy, etc.)
-        transformation: One of VALID_TRANSFORMATIONS
+        transformation: One of VALID_TRANSFORMATIONS, optionally with :parameter suffix
+            for parametric transforms (e.g., "scale_velocity:1000")
 
     Note:
         For rotate operations, both the spatial data and velocity components
         are transformed to maintain physical consistency.
+
+    Parametric transforms:
+        - scale_velocity:factor - multiply ux, uy, uz by factor
+        - scale_coords:factor - multiply x, y by factor
     """
     logger.debug(f"Applying transformation {transformation} to piv_result")
+
+    # Parse transformation to extract base name and optional parameter
+    base_name, param = parse_parametric_transform(transformation)
+
     vector_attrs = ["ux", "uy", "uz", "b_mask", "x", "y"]
 
-    if transformation == "flip_ud":
+    # Handle parametric transforms first
+    if base_name == "scale_velocity":
+        if param is None:
+            logger.error("scale_velocity requires a factor parameter")
+            return
+        # Scale velocity components only (not coordinates or mask)
+        for attr in ["ux", "uy", "uz"]:
+            if hasattr(pr, attr):
+                arr = np.asarray(getattr(pr, attr))
+                if arr.ndim >= 2 and arr.size > 0:
+                    setattr(pr, attr, arr * param)
+        return
+
+    elif base_name == "scale_coords":
+        if param is None:
+            logger.error("scale_coords requires a factor parameter")
+            return
+        # Scale coordinate grids only (not velocities or mask)
+        for attr in ["x", "y"]:
+            if hasattr(pr, attr):
+                arr = np.asarray(getattr(pr, attr))
+                if arr.ndim >= 2 and arr.size > 0:
+                    setattr(pr, attr, arr * param)
+        return
+
+    # Handle non-parametric transforms (use base_name for comparison)
+    if base_name == "flip_ud":
         # Flip upside down
         for attr in vector_attrs:
             if hasattr(pr, attr):
@@ -126,7 +212,7 @@ def apply_transformation_to_piv_result(pr: Any, transformation: str) -> None:
                 if arr.ndim >= 2 and arr.size > 0:
                     setattr(pr, attr, np.flipud(arr))
 
-    elif transformation == "rotate_90_cw":
+    elif base_name == "rotate_90_cw":
         # Rotate 90 degrees clockwise
         for attr in vector_attrs:
             if hasattr(pr, attr):
@@ -134,7 +220,7 @@ def apply_transformation_to_piv_result(pr: Any, transformation: str) -> None:
                 if arr.ndim >= 2 and arr.size > 0:
                     setattr(pr, attr, np.rot90(arr, k=-1))
 
-    elif transformation == "rotate_90_ccw":
+    elif base_name == "rotate_90_ccw":
         # Rotate 90 degrees counter-clockwise
         for attr in vector_attrs:
             if hasattr(pr, attr):
@@ -142,7 +228,7 @@ def apply_transformation_to_piv_result(pr: Any, transformation: str) -> None:
                 if arr.ndim >= 2 and arr.size > 0:
                     setattr(pr, attr, np.rot90(arr, k=1))
 
-    elif transformation == "rotate_180":
+    elif base_name == "rotate_180":
         # Rotate 180 degrees (equivalent to two 90-degree rotations)
         for attr in vector_attrs:
             if hasattr(pr, attr):
@@ -150,7 +236,7 @@ def apply_transformation_to_piv_result(pr: Any, transformation: str) -> None:
                 if arr.ndim >= 2 and arr.size > 0:
                     setattr(pr, attr, np.rot90(arr, k=2))
 
-    elif transformation == "swap_ux_uy":
+    elif base_name == "swap_ux_uy":
         # Swap ux and uy velocity components
         if hasattr(pr, "ux") and hasattr(pr, "uy"):
             ux = getattr(pr, "ux")
@@ -158,7 +244,7 @@ def apply_transformation_to_piv_result(pr: Any, transformation: str) -> None:
             setattr(pr, "ux", uy)
             setattr(pr, "uy", ux)
 
-    elif transformation == "invert_ux_uy":
+    elif base_name == "invert_ux_uy":
         # Invert (negate) ux and uy velocity components
         if hasattr(pr, "ux"):
             ux = np.asarray(getattr(pr, "ux"))
@@ -167,7 +253,7 @@ def apply_transformation_to_piv_result(pr: Any, transformation: str) -> None:
             uy = np.asarray(getattr(pr, "uy"))
             setattr(pr, "uy", -uy)
 
-    elif transformation == "flip_lr":
+    elif base_name == "flip_lr":
         # Flip left-right
         for attr in vector_attrs:
             if hasattr(pr, attr):
@@ -190,17 +276,45 @@ def apply_transformation_to_coordinates(
     Args:
         coords: Coordinates array (may be object array for multi-run)
         run: 1-based run number
-        transformation: One of VALID_TRANSFORMATIONS
+        transformation: One of VALID_TRANSFORMATIONS, optionally with :parameter suffix
 
     Note:
         Some transformations (flip_ud, flip_lr) don't affect coordinates.
         Rotation transformations update both x and y coordinate arrays.
+        scale_coords scales x and y by a factor.
+        scale_velocity doesn't affect coordinates.
     """
-    if transformation == "flip_ud":
+    # Parse transformation to extract base name and optional parameter
+    base_name, param = parse_parametric_transform(transformation)
+
+    # Handle parametric transforms
+    if base_name == "scale_coords":
+        if param is None:
+            return
+        # Scale x and y coordinates
+        cx, cy = extract_coordinates(coords, run)
+        if cx.size > 0 and cy.size > 0:
+            cx_scaled = cx * param
+            cy_scaled = cy * param
+
+            if isinstance(coords, np.ndarray) and coords.dtype == object:
+                coords[run - 1].x = cx_scaled
+                coords[run - 1].y = cy_scaled
+            else:
+                coords.x = cx_scaled
+                coords.y = cy_scaled
+        return
+
+    # scale_velocity doesn't affect coordinates
+    if base_name == "scale_velocity":
+        return
+
+    # Handle non-parametric transforms
+    if base_name == "flip_ud":
         # Coordinates stay the same for flip_ud
         pass
 
-    elif transformation == "rotate_90_cw":
+    elif base_name == "rotate_90_cw":
         # Rotate coordinates 90 degrees clockwise: new_x = old_y, new_y = -old_x
         cx, cy = extract_coordinates(coords, run)
         if cx.size > 0 and cy.size > 0:
@@ -214,7 +328,7 @@ def apply_transformation_to_coordinates(
                 coords.x = cx_rot
                 coords.y = cy_rot
 
-    elif transformation == "rotate_90_ccw":
+    elif base_name == "rotate_90_ccw":
         # Rotate coordinates 90 degrees counter-clockwise: new_x = -old_y, new_y = old_x
         cx, cy = extract_coordinates(coords, run)
         if cx.size > 0 and cy.size > 0:
@@ -228,7 +342,7 @@ def apply_transformation_to_coordinates(
                 coords.x = cx_rot
                 coords.y = cy_rot
 
-    elif transformation == "rotate_180":
+    elif base_name == "rotate_180":
         # Rotate coordinates 180 degrees: new_x = -old_x, new_y = -old_y
         cx, cy = extract_coordinates(coords, run)
         if cx.size > 0 and cy.size > 0:
@@ -242,7 +356,7 @@ def apply_transformation_to_coordinates(
                 coords.x = cx_rot
                 coords.y = cy_rot
 
-    elif transformation == "flip_lr":
+    elif base_name == "flip_lr":
         # Coordinates stay the same for flip_lr
         pass
 
@@ -396,6 +510,8 @@ def validate_transformations(
     """
     Validate a list of transformation names.
 
+    Handles both simple transforms and parametric transforms (e.g., "scale_velocity:1000").
+
     Args:
         transformations: List of transformation names to validate
         allow_empty: If True, empty list is valid (for status/clear operations)
@@ -410,7 +526,19 @@ def validate_transformations(
             return True, None
         return False, "No transformations provided"
 
-    invalid = [t for t in transformations if t not in VALID_TRANSFORMATIONS]
+    invalid = []
+    for t in transformations:
+        try:
+            base_name, param = parse_parametric_transform(t)
+            # Check if base name is valid
+            if base_name not in VALID_TRANSFORMATIONS:
+                invalid.append(t)
+            # If parametric, ensure parameter was provided
+            elif base_name in PARAMETRIC_TRANSFORMS and param is None:
+                invalid.append(f"{t} (missing factor parameter)")
+        except ValueError as e:
+            invalid.append(f"{t} ({str(e)})")
+
     if invalid:
         return False, f"Invalid transformations: {invalid}. Valid: {VALID_TRANSFORMATIONS}"
 
@@ -431,6 +559,8 @@ def simplify_transformations(ops: List[str]) -> List[str]:
     - flip_lr + flip_lr -> remove both (cancel)
     - invert_ux_uy + invert_ux_uy -> remove both (cancel)
     - swap_ux_uy + swap_ux_uy -> remove both (cancel)
+    - scale_velocity:A + scale_velocity:B -> scale_velocity:(A*B)
+    - scale_coords:A + scale_coords:B -> scale_coords:(A*B)
 
     Args:
         ops: List of transformation operation names
@@ -466,7 +596,31 @@ def simplify_transformations(ops: List[str]) -> List[str]:
         changed = False
         i = 0
         while i < len(result) - 1:
-            pair = (result[i], result[i + 1])
+            curr = result[i]
+            next_t = result[i + 1]
+
+            # Parse both transforms to check for parametric combinations
+            try:
+                curr_base, curr_param = parse_parametric_transform(curr)
+                next_base, next_param = parse_parametric_transform(next_t)
+
+                # Merge consecutive scale operations of the same type
+                if (
+                    curr_base == next_base
+                    and curr_base in PARAMETRIC_TRANSFORMS
+                    and curr_param is not None
+                    and next_param is not None
+                ):
+                    combined_factor = curr_param * next_param
+                    result[i] = f"{curr_base}:{combined_factor}"
+                    result.pop(i + 1)
+                    changed = True
+                    continue
+            except ValueError:
+                # If parsing fails, continue with normal checks
+                pass
+
+            pair = (curr, next_t)
 
             # Check for cancellation
             if pair in CANCEL_PAIRS:

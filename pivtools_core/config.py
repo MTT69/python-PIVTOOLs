@@ -1060,12 +1060,42 @@ merging:
 
     @property
     def calibration_subfolder(self) -> str:
-        """Return subfolder under camera folder for calibration images.
+        """Return subfolder for calibration images.
 
-        Path structure: source_path / camera_subfolder / calibration_subfolder / image_file
+        Path structure depends on calibration_path_order:
+        - camera_first: source_path / camera_subfolder / calibration_subfolder / image_file
+        - calibration_first: source_path / calibration_subfolder / camera_subfolder / image_file
         """
         calib_block = self.data.get("calibration", {}) or {}
         return calib_block.get("subfolder", "")
+
+    @property
+    def calibration_camera_subfolders(self) -> list:
+        """Return custom camera subfolder names for calibration images.
+
+        Independent from paths.camera_subfolders - specifically for calibration.
+        If not set, returns empty list (will use default Cam1, Cam2... pattern).
+
+        Example: ["camera1", "camera2"] for cameras in folders named camera1/, camera2/
+        """
+        calib_block = self.data.get("calibration", {}) or {}
+        return calib_block.get("camera_subfolders", [])
+
+    @property
+    def calibration_path_order(self) -> str:
+        """Return path order for calibration images.
+
+        Controls the order of camera folder and calibration subfolder in the path:
+        - 'camera_first': source/camera_folder/calibration_subfolder/file (default)
+        - 'calibration_first': source/calibration_subfolder/camera_folder/file
+
+        Returns
+        -------
+        str
+            Path order: 'camera_first' or 'calibration_first'
+        """
+        calib_block = self.data.get("calibration", {}) or {}
+        return calib_block.get("path_order", "camera_first")
 
     def get_calibration_camera_folder(self, camera_num: int) -> str:
         """Get the subfolder name for calibration images of a specific camera.
@@ -1073,8 +1103,8 @@ merging:
         Container formats (.cine, .set) don't use camera subfolders.
         IM7 depends on calibration_use_camera_subfolders setting.
 
-        Single camera: no subfolders used, full path set directly
-        Multi camera: uses camera_subfolders from paths config (e.g., Cam1, Cam2)
+        Uses calibration.camera_subfolders if set, otherwise falls back to
+        default Cam{N} pattern for multi-camera setups.
         """
         # SET and CINE never use camera subfolders
         if self.calibration_image_type in ("lavision_set", "cine"):
@@ -1086,8 +1116,8 @@ merging:
                 return ""  # Multi-camera file, no subfolder
             # Fall through to use camera subfolders
 
-        # Use camera subfolders from paths config if available
-        subfolders = self.camera_subfolders
+        # Use calibration-specific camera subfolders if available
+        subfolders = self.calibration_camera_subfolders
         if subfolders:
             idx = camera_num - 1  # camera_num is 1-based
             if idx < len(subfolders) and subfolders[idx]:

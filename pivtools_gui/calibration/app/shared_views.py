@@ -391,6 +391,8 @@ def calibration_config():
             "use_camera_subfolders": cfg.calibration_use_camera_subfolders,
             "subfolder": cfg.calibration_subfolder,
             "is_container_format": cfg.calibration_is_container_format,
+            "camera_subfolders": cfg.calibration_camera_subfolders,
+            "path_order": cfg.calibration_path_order,
         })
 
     # POST - Update config
@@ -417,6 +419,12 @@ def calibration_config():
             cal_block["use_camera_subfolders"] = bool(data["use_camera_subfolders"])
         if "subfolder" in data:
             cal_block["subfolder"] = str(data["subfolder"])
+        # NEW: camera_subfolders - independent from PIV camera subfolders
+        if "camera_subfolders" in data:
+            cal_block["camera_subfolders"] = list(data["camera_subfolders"]) if data["camera_subfolders"] else []
+        # NEW: path_order - controls whether camera folder comes before or after calibration subfolder
+        if "path_order" in data:
+            cal_block["path_order"] = str(data["path_order"])
 
         # Save config
         cfg.save()
@@ -430,6 +438,8 @@ def calibration_config():
             "use_camera_subfolders": cfg.calibration_use_camera_subfolders,
             "subfolder": cfg.calibration_subfolder,
             "is_container_format": cfg.calibration_is_container_format,
+            "camera_subfolders": cfg.calibration_camera_subfolders,
+            "path_order": cfg.calibration_path_order,
         })
 
     except Exception as e:

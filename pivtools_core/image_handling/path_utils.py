@@ -26,11 +26,20 @@ def build_calibration_camera_path(
 ) -> Path:
     """Build the path to calibration images for a specific camera.
 
-    Path structure depends on calibration_image_type and use_camera_subfolders:
+    Path structure depends on calibration_image_type, use_camera_subfolders,
+    and calibration_path_order:
+
+    path_order='camera_first' (default):
     - Container formats (.set, .cine): source_path / calibration_subfolder
     - IM7 with use_camera_subfolders=False: source_path / calibration_subfolder
     - IM7 with use_camera_subfolders=True: source_path / camera_folder / calibration_subfolder
     - Standard formats: source_path / camera_folder / calibration_subfolder
+
+    path_order='calibration_first':
+    - Container formats (.set, .cine): source_path / calibration_subfolder
+    - IM7 with use_camera_subfolders=False: source_path / calibration_subfolder
+    - IM7 with use_camera_subfolders=True: source_path / calibration_subfolder / camera_folder
+    - Standard formats: source_path / calibration_subfolder / camera_folder
 
     This is the single source of truth for calibration path building,
     used by calibration_loader.py and the Flask calibration views.
@@ -45,32 +54,49 @@ def build_calibration_camera_path(
     Returns:
         Path: Full path to calibration image directory
 
-    Example:
+    Examples:
+        >>> # camera_first (default): source/Cam1/calibration/
         >>> path = build_calibration_camera_path(config, 0, 1)
-        >>> # Returns: /data/source/Cam1/calibration/
+
+        >>> # calibration_first: source/calibration/Cam1/
+        >>> # (when config.calibration_path_order = 'calibration_first')
+        >>> path = build_calibration_camera_path(config, 0, 1)
     """
     source_path = config.source_paths[source_path_idx]
     cal_image_type = config.calibration_image_type
+    path_order = config.calibration_path_order
+    subfolder = subfolder_override if subfolder_override is not None else config.calibration_subfolder
 
-    # Determine camera folder based on image type and settings
-    # SET and CINE never use camera subfolders
+    # Container formats (SET, CINE) never use camera subfolders
     if cal_image_type in ("lavision_set", "cine"):
         camera_path = source_path
-    # IM7: check calibration_use_camera_subfolders
-    elif cal_image_type == "lavision_im7":
-        if config.calibration_use_camera_subfolders:
-            camera_folder = config.get_calibration_camera_folder(camera)
-            camera_path = source_path / camera_folder if camera_folder else source_path
-        else:
-            camera_path = source_path
-    else:
-        # Standard formats use camera subfolders
-        camera_folder = config.get_calibration_camera_folder(camera)
-        camera_path = source_path / camera_folder if camera_folder else source_path
+        if subfolder:
+            camera_path = camera_path / subfolder
+        return camera_path
 
-    subfolder = subfolder_override if subfolder_override is not None else config.calibration_subfolder
-    if subfolder:
-        camera_path = camera_path / subfolder
+    # Determine if camera folder should be used
+    use_camera_folder = True
+    if cal_image_type == "lavision_im7":
+        use_camera_folder = config.calibration_use_camera_subfolders
+
+    # Get camera folder name
+    camera_folder = config.get_calibration_camera_folder(camera) if use_camera_folder else ""
+
+    # Build path based on order preference
+    if path_order == "calibration_first":
+        # source / calibration_subfolder / camera_folder
+        camera_path = source_path
+        if subfolder:
+            camera_path = camera_path / subfolder
+        if camera_folder:
+            camera_path = camera_path / camera_folder
+    else:
+        # camera_first (default): source / camera_folder / calibration_subfolder
+        camera_path = source_path
+        if camera_folder:
+            camera_path = camera_path / camera_folder
+        if subfolder:
+            camera_path = camera_path / subfolder
 
     return camera_path
 
