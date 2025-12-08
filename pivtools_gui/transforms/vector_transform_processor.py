@@ -34,9 +34,11 @@ from .transform_operations import (
     apply_transformation_to_coordinates,
     apply_transformation_to_piv_result,
     backup_original_data,
+    coords_mat_to_saveable,
     coords_to_structured_array,
     has_original_backup,
     load_mat_for_transform,
+    mat_dict_to_saveable,
     process_frame_worker,
     restore_original_data,
     save_mat_from_transform,
@@ -224,16 +226,12 @@ class VectorTransformProcessor:
                 if coords is not None:
                     apply_transformation_to_coordinates(coords, 1, trans)
 
-            # Save back the mat file
-            save_mat_from_transform(mat_file, mat)
+            # Save back the mat file (convert structs to proper format)
+            save_mat_from_transform(mat_file, mat_dict_to_saveable(mat))
 
             # Save coordinates if they were loaded
             if coords_mat is not None:
-                if "coordinates" in coords_mat:
-                    coords_mat["coordinates"] = coords_to_structured_array(
-                        coords_mat["coordinates"]
-                    )
-                save_mat_from_transform(coords_file, coords_mat)
+                save_mat_from_transform(coords_file, coords_mat_to_saveable(coords_mat))
 
             # Also save to config.yaml for CLI integration
             config = get_config()
@@ -286,11 +284,16 @@ class VectorTransformProcessor:
             # Restore from backups
             mat, coords_mat = restore_original_data(mat, coords_mat)
 
-            # Save back
-            save_mat_from_transform(mat_file, mat)
+            # Save back (convert structs to proper format)
+            save_mat_from_transform(mat_file, mat_dict_to_saveable(mat))
 
             if coords_mat is not None:
-                save_mat_from_transform(coords_file, coords_mat)
+                save_mat_from_transform(coords_file, coords_mat_to_saveable(coords_mat))
+
+            # Clear transforms from config.yaml
+            config = get_config()
+            config.clear_camera_transforms(camera)
+            config.save()
 
             return {"success": True, "has_original": False}
 
@@ -415,7 +418,7 @@ class VectorTransformProcessor:
                 del source_mat["piv_result_original"]
             source_mat["pending_transformations"] = []
 
-            save_mat_from_transform(source_mat_file, source_mat)
+            save_mat_from_transform(source_mat_file, mat_dict_to_saveable(source_mat))
 
             # Remove original from source coordinates
             source_coords_file = source_data_dir / COORDINATES_FILENAME
@@ -423,7 +426,7 @@ class VectorTransformProcessor:
                 coords_mat = load_mat_for_transform(source_coords_file)
                 if "coordinates_original" in coords_mat:
                     del coords_mat["coordinates_original"]
-                    save_mat_from_transform(source_coords_file, coords_mat)
+                    save_mat_from_transform(source_coords_file, coords_mat_to_saveable(coords_mat))
 
             # Get cameras to process
             all_cameras = self.config.camera_numbers if self.camera is None else [self.camera]

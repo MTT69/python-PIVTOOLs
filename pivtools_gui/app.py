@@ -986,6 +986,21 @@ def update_config():
                 normalized[k] = v
         cfg.data["calibration"]["polynomial"]["cameras"] = normalized
 
+    # Normalize camera keys in transforms.cameras to integers
+    transforms_cameras = cfg.data.get("transforms", {}).get("cameras")
+    if transforms_cameras and isinstance(transforms_cameras, dict):
+        normalized = {}
+        for k, v in transforms_cameras.items():
+            try:
+                int_key = int(k)
+                if int_key in normalized and isinstance(k, str):
+                    normalized[int_key] = v
+                elif int_key not in normalized:
+                    normalized[int_key] = v
+            except (ValueError, TypeError):
+                normalized[k] = v
+        cfg.data["transforms"]["cameras"] = normalized
+
     # Handle camera_numbers based on camera_count changes
     new_camera_count = cfg.data["paths"].get("camera_count", 1)
 

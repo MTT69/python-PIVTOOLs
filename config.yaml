@@ -82,17 +82,19 @@ plots:
   save_pickle: true
   fontsize: 14
   title_fontsize: 16
-videos:
-- endpoint: ''
-  type: instantaneous
-  use_merged: false
+video:
+  base_path_idx: 0
+  camera: 1
+  data_source: calibrated
   variable: ux
-  video_length: 100
+  run: 1
+  piv_type: instantaneous
+  cmap: default
+  lower: ''
+  upper: ''
   fps: 30
   crf: 15
-  resolution:
-  - 1080
-  - 1920
+  resolution: 1080p
 statistics:
   enabled_methods:
     mean_velocity: true
@@ -258,9 +260,9 @@ masking:
     right: 0
 merging:
   type_name: instantaneous
-  endpoint: ''
-  max_workers: 8
   cameras: []
   base_path_idx: 0
 transforms:
+  base_path_idx: 0
+  type_name: instantaneous
   cameras: {}

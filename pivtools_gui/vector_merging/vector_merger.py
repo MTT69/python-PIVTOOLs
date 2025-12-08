@@ -42,12 +42,6 @@ CAMERAS = [1, 2]
 # TYPE_NAME: Vector type ("instantaneous", "ensemble", etc.)
 TYPE_NAME = "instantaneous"
 
-# ENDPOINT: Optional endpoint specification
-ENDPOINT = ""
-
-# MAX_WORKERS: Number of parallel workers for processing
-MAX_WORKERS = 8
-
 # USE_CONFIG_DIRECTLY: If True, load settings directly from config.yaml
 USE_CONFIG_DIRECTLY = True
 
@@ -76,8 +70,6 @@ def apply_cli_settings_to_config():
     if "merging" not in config.data:
         config.data["merging"] = {}
     config.data["merging"]["type_name"] = TYPE_NAME
-    config.data["merging"]["endpoint"] = ENDPOINT
-    config.data["merging"]["max_workers"] = MAX_WORKERS
     config.data["merging"]["cameras"] = CAMERAS
 
     # Save to disk so centralized loader picks up changes
@@ -782,7 +774,7 @@ class VectorMerger:
     def merge_all_frames(
         self,
         progress_callback: Optional[Callable[[dict], None]] = None,
-        max_workers: Optional[int] = None,
+        max_workers: int = 8,
     ) -> dict:
         """
         Process all frames with multiprocessing support.
@@ -793,7 +785,7 @@ class VectorMerger:
                 - processed_frames: int
                 - total_frames: int
                 - message: str
-            max_workers: Maximum number of parallel workers (default: from config)
+            max_workers: Maximum number of parallel workers (default: 8)
 
         Returns:
             dict with:
@@ -803,11 +795,6 @@ class VectorMerger:
                 - valid_runs: list
                 - error: str (if failed)
         """
-        # Read max_workers from config if not provided
-        if max_workers is None:
-            cfg = get_config()
-            max_workers = cfg.merging_max_workers
-
         # Find valid runs
         valid_runs, total_runs = self.find_valid_runs()
 
@@ -962,8 +949,6 @@ if __name__ == "__main__":
         base_dir = Path(config.base_paths[0])
         cameras = config.merging_cameras
         type_name = config.merging_type_name
-        endpoint = config.merging_endpoint
-        max_workers = config.merging_max_workers
     else:
         # Apply CLI settings to config.yaml so centralized loaders work correctly
         config = apply_cli_settings_to_config()
@@ -972,23 +957,19 @@ if __name__ == "__main__":
         base_dir = Path(BASE_DIR)
         cameras = CAMERAS
         type_name = TYPE_NAME
-        endpoint = ENDPOINT
-        max_workers = MAX_WORKERS
 
     logger.info(f"Base directory: {base_dir}")
     logger.info(f"Cameras: {cameras}")
     logger.info(f"Type: {type_name}")
-    logger.info(f"Max workers: {max_workers}")
 
     # Run merging
     merger = VectorMerger(
         base_dir=base_dir,
         cameras=cameras,
         type_name=type_name,
-        endpoint=endpoint,
     )
 
-    result = merger.merge_all_frames(max_workers=max_workers)
+    result = merger.merge_all_frames()
 
     logger.info("=" * 60)
     if result["success"]:

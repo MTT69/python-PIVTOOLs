@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Optional
 import logging
 import os
 import shutil
@@ -40,8 +41,66 @@ class Config:
 
     def save(self):
         """Save current config state to YAML file."""
+        self._normalize_calibration_block()
         with open(self._config_path, 'w') as f:
             yaml.dump(self.data, f, default_flow_style=False, sort_keys=False)
+
+    def _normalize_calibration_block(self):
+        """Reorder calibration block keys for consistent organization.
+
+        Groups image-related settings together at the top, followed by
+        active method selection, then method-specific configs.
+        """
+        if "calibration" not in self.data:
+            return
+
+        cal = self.data["calibration"]
+
+        # Define desired key order: image settings first, then method configs
+        image_settings = [
+            "image_format",
+            "num_images",
+            "image_type",
+            "zero_based_indexing",
+            "use_camera_subfolders",
+            "subfolder",
+            "camera_subfolders",
+            "path_order",
+        ]
+        meta_settings = ["active", "piv_type"]
+        method_configs = [
+            "scale_factor",
+            "pinhole",
+            "charuco",
+            "stereo",
+            "polynomial",
+            "stereo_charuco",
+        ]
+
+        # Build ordered dict
+        ordered = {}
+
+        # Add image settings first
+        for key in image_settings:
+            if key in cal:
+                ordered[key] = cal[key]
+
+        # Add meta settings
+        for key in meta_settings:
+            if key in cal:
+                ordered[key] = cal[key]
+
+        # Add method configs
+        for key in method_configs:
+            if key in cal:
+                ordered[key] = cal[key]
+
+        # Add any remaining keys not in our lists
+        for key, value in cal.items():
+            if key not in ordered:
+                ordered[key] = value
+
+        self.data["calibration"] = ordered
 
     def _get_config_path(self):
         """Get the path to the config file in the current working directory."""
@@ -190,7 +249,10 @@ calibration:
   num_images: 10
   image_type: standard
   zero_based_indexing: false
+  use_camera_subfolders: false
   subfolder: ''
+  camera_subfolders: []
+  path_order: camera_first
   active: polynomial
   piv_type: instantaneous
   scale_factor:
@@ -893,78 +955,119 @@ merging:
     def plot_title_fontsize(self):
         return self.plots.get("title_fontsize", 16)
 
-    @property
-    def videos(self):
-        """
-        Returns the 'videos' list from config.yaml. Ensures a list is returned.
-        Each entry may contain: type, endpoint, use_merged, video_length, variable.
-        """
-        vids = self.data.get("videos", [])
-        if vids is None:
-            return []
-        if isinstance(vids, dict):
-            return [vids]
-        return list(vids)
+    # --- Video properties (single dict format) ---
 
     @property
-    def video_fps(self) -> int:
-        """Return default video frame rate.
-
-        Returns
-        -------
-        int
-            Frame rate in fps (default 30)
-        """
-        vids = self.videos
-        if vids and len(vids) > 0:
-            return vids[0].get("fps", 30)
-        return 30
+    def video(self) -> dict:
+        """Return full video configuration block."""
+        return self.data.get("video", {})
 
     @property
-    def video_crf(self) -> int:
-        """Return default video quality (CRF).
-
-        Lower CRF = higher quality. 15 is visually lossless.
-
-        Returns
-        -------
-        int
-            CRF value 0-51 (default 15)
-        """
-        vids = self.videos
-        if vids and len(vids) > 0:
-            return vids[0].get("crf", 15)
-        return 15
+    def video_base_path_idx(self) -> int:
+        """Return base path index for video operations."""
+        return self.video.get("base_path_idx", 0)
 
     @property
-    def video_resolution(self) -> tuple:
-        """Return default video resolution (height, width).
+    def video_camera(self) -> int:
+        """Return camera number for video (1-based)."""
+        return self.video.get("camera", 1)
 
-        Returns
-        -------
-        tuple
-            (height, width) in pixels (default (1080, 1920))
-        """
-        vids = self.videos
-        if vids and len(vids) > 0:
-            res = vids[0].get("resolution", [1080, 1920])
-            if isinstance(res, (list, tuple)) and len(res) >= 2:
-                return (res[0], res[1])
-        return (1080, 1920)
+    @property
+    def video_data_source(self) -> str:
+        """Return data source: 'calibrated', 'uncalibrated', 'merged', 'inst_stats'."""
+        return self.video.get("data_source", "calibrated")
 
     @property
     def video_variable(self) -> str:
-        """Return default video variable.
+        """Return variable name for video."""
+        return self.video.get("variable", "ux")
 
-        Returns
-        -------
-        str
-            Variable name (default 'ux')
-        """
-        vids = self.videos
-        if vids and len(vids) > 0:
-            return vids[0].get("variable", "ux")
-        return "ux"
+    @property
+    def video_run(self) -> int:
+        """Return run number (1-based)."""
+        return self.video.get("run", 1)
+
+    @property
+    def video_piv_type(self) -> str:
+        """Return PIV type: 'instantaneous' or 'ensemble'."""
+        return self.video.get("piv_type", "instantaneous")
+
+    @property
+    def video_cmap(self) -> str:
+        """Return colormap name. 'default' means auto-select."""
+        return self.video.get("cmap", "default")
+
+    @property
+    def video_lower_limit(self) -> Optional[float]:
+        """Return lower color limit. None or '' means auto."""
+        val = self.video.get("lower", "")
+        if val == "" or val is None:
+            return None
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return None
+
+    @property
+    def video_upper_limit(self) -> Optional[float]:
+        """Return upper color limit. None or '' means auto."""
+        val = self.video.get("upper", "")
+        if val == "" or val is None:
+            return None
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return None
+
+    @property
+    def video_fps(self) -> int:
+        """Return video frame rate."""
+        return self.video.get("fps", 30)
+
+    @property
+    def video_crf(self) -> int:
+        """Return video CRF quality (lower = higher quality)."""
+        return self.video.get("crf", 15)
+
+    @property
+    def video_resolution(self) -> tuple:
+        """Return video resolution as (height, width) tuple."""
+        res = self.video.get("resolution", "1080p")
+        if isinstance(res, str):
+            if res == "4k":
+                return (2160, 3840)
+            return (1080, 1920)
+        elif isinstance(res, (list, tuple)) and len(res) >= 2:
+            return (res[0], res[1])
+        return (1080, 1920)
+
+    @property
+    def video_resolution_str(self) -> str:
+        """Return resolution as string: '1080p' or '4k'."""
+        res = self.video.get("resolution", "1080p")
+        if isinstance(res, str):
+            return res
+        elif isinstance(res, (list, tuple)):
+            if res[0] >= 2160:
+                return "4k"
+        return "1080p"
+
+    @property
+    def videos(self):
+        """DEPRECATED: Use video property instead. Returns list for backward compatibility."""
+        # If old format exists, return it
+        vids = self.data.get("videos", None)
+        if vids is not None:
+            if vids is None:
+                return []
+            if isinstance(vids, dict):
+                return [vids]
+            return list(vids)
+        # Otherwise, return new format as single-item list
+        vid = self.data.get("video", {})
+        if vid:
+            return [vid]
+        return []
 
     @property
     def post_processing(self):
@@ -1289,28 +1392,6 @@ merging:
             Vector type: 'instantaneous', 'ensemble', etc.
         """
         return self.merging.get("type_name", "instantaneous")
-
-    @property
-    def merging_endpoint(self) -> str:
-        """Return default endpoint for merging.
-
-        Returns
-        -------
-        str
-            Endpoint specification (empty string for default)
-        """
-        return self.merging.get("endpoint", "")
-
-    @property
-    def merging_max_workers(self) -> int:
-        """Return max parallel workers for merging.
-
-        Returns
-        -------
-        int
-            Number of workers for multiprocessing (default 8)
-        """
-        return self.merging.get("max_workers", 8)
 
     @property
     def merging_cameras(self) -> list:
@@ -2197,7 +2278,8 @@ merging:
         if "cameras" not in self.data["transforms"]:
             self.data["transforms"]["cameras"] = {}
 
-        self.data["transforms"]["cameras"][str(camera)] = {"operations": operations}
+        # Use integer key - YAML handles this correctly
+        self.data["transforms"]["cameras"][camera] = {"operations": operations}
 
     def clear_camera_transforms(self, camera: int):
         """Clear all transforms for a specific camera.
@@ -2208,9 +2290,34 @@ merging:
             Camera number (1-based)
         """
         if "transforms" in self.data and "cameras" in self.data["transforms"]:
-            cam_key = str(camera)
-            if cam_key in self.data["transforms"]["cameras"]:
-                self.data["transforms"]["cameras"][cam_key]["operations"] = []
+            # Check for both int and string keys (backwards compatibility)
+            cameras = self.data["transforms"]["cameras"]
+            if camera in cameras:
+                cameras[camera]["operations"] = []
+            elif str(camera) in cameras:
+                cameras[str(camera)]["operations"] = []
+
+    @property
+    def transforms_base_path_idx(self) -> int:
+        """Return base path index for transform operations.
+
+        Returns
+        -------
+        int
+            Index into base_paths list (default 0)
+        """
+        return self.transforms.get("base_path_idx", 0)
+
+    @property
+    def transforms_type_name(self) -> str:
+        """Return data type name for transform operations.
+
+        Returns
+        -------
+        str
+            Either 'instantaneous' or 'ensemble' (default 'instantaneous')
+        """
+        return self.transforms.get("type_name", "instantaneous")
 
     def get_camera_folder(self, camera_num: int) -> str:
         """Get the subfolder name for a specific camera.

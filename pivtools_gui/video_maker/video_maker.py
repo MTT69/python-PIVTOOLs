@@ -1142,48 +1142,137 @@ class VideoMaker:
         )
 
 
-# ===================== MAIN =====================
+# ===================== PRODUCTION SCRIPT =====================
+
+# Hardcoded configuration for standalone execution
+# These are used when USE_CONFIG_DIRECTLY = False
+
+# BASE_DIR: Base directory containing PIV data
+_BASE_DIR = "/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images"
+
+# CAMERA_NUMS: List of camera numbers to process (1-based)
+_CAMERA_NUMS = [1]
+
+# VIDEO PARAMETERS
+_VARIABLE = "ux"  # Variable to visualize: ux, uy, mag, u_prime, vorticity, etc.
+_RUN = 1  # Run number (1-based)
+_DATA_SOURCE = "calibrated"  # calibrated, uncalibrated, merged, inst_stats
+_FPS = 30  # Video frame rate
+_CRF = 15  # FFmpeg CRF quality (lower = higher quality)
+_RESOLUTION = (1080, 1920)  # Output resolution (height, width) or None for native
+_CMAP = None  # Colormap name or None for auto
+_LOWER_LIMIT = None  # Lower color limit or None for auto
+_UPPER_LIMIT = None  # Upper color limit or None for auto
+
+# TEST MODE
+_TEST_MODE = False  # If True, only process _TEST_FRAMES frames
+_TEST_FRAMES = 50  # Number of frames for test mode
+
+# USE_CONFIG_DIRECTLY: If True, load video settings from config.yaml
+# If False, use hardcoded settings above and write them to config.yaml
+USE_CONFIG_DIRECTLY = True
+
+
+def apply_cli_settings_to_config():
+    """Update config.yaml with CLI-mode hardcoded settings.
+
+    This function writes the hardcoded configuration variables to config.yaml,
+    ensuring the video maker uses the correct paths and settings.
+
+    Returns
+    -------
+    Config
+        The reloaded config object with updated settings
+    """
+    from pivtools_core.config import get_config, reload_config
+
+    config = get_config()
+
+    # Paths
+    config.data["paths"]["base_paths"] = [_BASE_DIR]
+    config.data["paths"]["camera_count"] = len(_CAMERA_NUMS)
+    config.data["paths"]["camera_numbers"] = _CAMERA_NUMS
+
+    # Video settings (using new single-dict format)
+    if "video" not in config.data:
+        config.data["video"] = {}
+
+    config.data["video"]["base_path_idx"] = 0
+    config.data["video"]["camera"] = _CAMERA_NUMS[0] if _CAMERA_NUMS else 1
+    config.data["video"]["data_source"] = _DATA_SOURCE
+    config.data["video"]["variable"] = _VARIABLE
+    config.data["video"]["run"] = _RUN
+    config.data["video"]["piv_type"] = "instantaneous"
+    config.data["video"]["cmap"] = _CMAP if _CMAP else "default"
+    config.data["video"]["lower"] = str(_LOWER_LIMIT) if _LOWER_LIMIT is not None else ""
+    config.data["video"]["upper"] = str(_UPPER_LIMIT) if _UPPER_LIMIT is not None else ""
+    config.data["video"]["fps"] = _FPS
+    config.data["video"]["crf"] = _CRF
+    if _RESOLUTION is not None:
+        if _RESOLUTION[0] >= 2160:
+            config.data["video"]["resolution"] = "4k"
+        else:
+            config.data["video"]["resolution"] = "1080p"
+    else:
+        config.data["video"]["resolution"] = "1080p"
+
+    # Save to disk
+    config.save()
+    logger.info("Updated config.yaml with CLI settings")
+
+    return reload_config()
 
 
 if __name__ == "__main__":
-    import argparse
     from pivtools_core.config import get_config
-
-    # Parse command-line arguments (optional overrides)
-    parser = argparse.ArgumentParser(description="Create PIV visualization videos")
-    parser.add_argument("--variable", "-v", type=str, help="Variable to visualize (default: from config)")
-    parser.add_argument("--run", "-r", type=int, default=1, help="Run number (default: 1)")
-    parser.add_argument("--data-source", "-d", type=str, default="calibrated",
-                        choices=["calibrated", "uncalibrated", "merged", "inst_stats"],
-                        help="Data source type (default: calibrated)")
-    parser.add_argument("--camera", "-c", type=int, help="Camera number (default: all from config)")
-    parser.add_argument("--test", action="store_true", help="Test mode (50 frames)")
-    parser.add_argument("--test-frames", type=int, default=50, help="Number of frames for test mode")
-    args = parser.parse_args()
 
     logger.info("=" * 60)
     logger.info("Video Maker - Starting")
     logger.info("=" * 60)
 
-    # Load settings from config.yaml
-    config = get_config()
-    base_dir = Path(config.base_paths[0])
-    camera_nums = [args.camera] if args.camera else config.camera_numbers
+    if USE_CONFIG_DIRECTLY:
+        # Load settings directly from existing config.yaml
+        logger.info("Loading settings directly from config.yaml (USE_CONFIG_DIRECTLY=True)")
+        config = get_config()
 
-    # Get video parameters from config with CLI overrides
-    variable = args.variable or config.video_variable
-    run = args.run
-    fps = config.video_fps
-    crf = config.video_crf
-    resolution = config.video_resolution
-    data_source = args.data_source
-    test_mode = args.test
-    test_frames = args.test_frames
+        # Extract settings from config
+        base_dir = Path(config.base_paths[config.video_base_path_idx])
+        camera_nums = [config.video_camera]
+        variable = config.video_variable
+        run = config.video_run
+        data_source = config.video_data_source
+        fps = config.video_fps
+        crf = config.video_crf
+        resolution = config.video_resolution
+        cmap = config.video_cmap if config.video_cmap != "default" else None
+        lower_limit = config.video_lower_limit
+        upper_limit = config.video_upper_limit
+        test_mode = _TEST_MODE
+        test_frames = _TEST_FRAMES
+    else:
+        # Apply CLI settings to config.yaml
+        config = apply_cli_settings_to_config()
+
+        # Use hardcoded settings
+        base_dir = Path(_BASE_DIR)
+        camera_nums = _CAMERA_NUMS
+        variable = _VARIABLE
+        run = _RUN
+        data_source = _DATA_SOURCE
+        fps = _FPS
+        crf = _CRF
+        resolution = _RESOLUTION
+        cmap = _CMAP
+        lower_limit = _LOWER_LIMIT
+        upper_limit = _UPPER_LIMIT
+        test_mode = _TEST_MODE
+        test_frames = _TEST_FRAMES
 
     logger.info(f"Base directory: {base_dir}")
     logger.info(f"Cameras: {camera_nums}")
     logger.info(f"Variable: {variable}, Run: {run}, Data source: {data_source}")
-    logger.info(f"FPS: {fps}, Resolution: {resolution}")
+    logger.info(f"FPS: {fps}, CRF: {crf}, Resolution: {resolution}")
+    logger.info(f"Colormap: {cmap or 'auto'}, Limits: [{lower_limit or 'auto'}, {upper_limit or 'auto'}]")
     if test_mode:
         logger.info(f"TEST MODE: {test_frames} frames")
 
@@ -1193,14 +1282,12 @@ if __name__ == "__main__":
         logger.info(f"\nProcessing Camera {camera_num}...")
 
         try:
-            # Create VideoMaker instance with new signature
             maker = VideoMaker(
                 base_dir=base_dir,
                 camera=camera_num,
                 config=config,
             )
 
-            # Create video using process_video
             result = maker.process_video(
                 variable=variable,
                 run=run,
@@ -1208,9 +1295,9 @@ if __name__ == "__main__":
                 fps=fps,
                 crf=crf,
                 resolution=resolution,
-                cmap=None,  # Auto
-                lower_limit=None,  # Auto
-                upper_limit=None,  # Auto
+                cmap=cmap,
+                lower_limit=lower_limit,
+                upper_limit=upper_limit,
                 test_mode=test_mode,
                 test_frames=test_frames,
             )
@@ -1219,6 +1306,7 @@ if __name__ == "__main__":
                 logger.info(f"Video created: {result['out_path']}")
                 logger.info(f"  Limits: {result['vmin']:.3f} to {result['vmax']:.3f}")
                 logger.info(f"  Frames: {result['frames']}, Time: {result['elapsed_sec']:.1f}s")
+                logger.info(f"  Effective run: {result['effective_run']}")
             else:
                 logger.error(f"Failed: {result.get('error')}")
                 failed_cameras.append(camera_num)

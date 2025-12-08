@@ -341,9 +341,10 @@ if __name__ == "__main__":
         logger.info("Loading settings from config.yaml")
         config = get_config()
 
-        base_dir = config.base_paths[0]
+        base_path_idx = config.transforms_base_path_idx
+        base_dir = config.base_paths[base_path_idx]
         camera_transforms = config.transforms_cameras
-        type_name = config.statistics_type_name
+        type_name = config.transforms_type_name
     else:
         logger.info("Using hardcoded settings")
         config = get_config()
@@ -352,6 +353,7 @@ if __name__ == "__main__":
         camera_transforms = CAMERA_TRANSFORMS
         type_name = TYPE_NAME
 
+    logger.info(f"Base path idx: {base_path_idx if USE_CONFIG_DIRECTLY else 'N/A'}")
     logger.info(f"Base dir: {base_dir}")
     logger.info(f"Camera transforms: {camera_transforms}")
     logger.info(f"Type: {type_name}")

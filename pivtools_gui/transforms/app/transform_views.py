@@ -233,7 +233,8 @@ def apply_transforms():
 
     Request JSON:
         cameras: list of camera numbers (optional, defaults to all with pending)
-        type_name: str (optional, default "instantaneous")
+        type_name: str (optional, defaults to config.transforms_type_name)
+        base_path_idx: int (optional, defaults to config.transforms_base_path_idx)
 
     NOTE: Statistics files are NOT transformed.
     Users must manually recalculate statistics after this operation.
@@ -244,9 +245,19 @@ def apply_transforms():
     try:
         data = request.get_json() or {}
         cameras = data.get("cameras")
-        type_name = data.get("type_name", "instantaneous")
 
         config = get_config()
+
+        # Get type_name and base_path_idx from request or config
+        type_name = data.get("type_name", config.transforms_type_name)
+        base_path_idx = int(data.get("base_path_idx", config.transforms_base_path_idx))
+
+        # Validate base_path_idx
+        if base_path_idx >= len(config.base_paths):
+            return jsonify({
+                "success": False,
+                "error": f"Invalid base_path_idx: {base_path_idx}. Only {len(config.base_paths)} base paths configured."
+            }), 400
 
         # Get cameras with pending transforms
         all_transforms = config.transforms_cameras
@@ -269,6 +280,7 @@ def apply_transforms():
             camera_transforms={str(k): v for k, v in camera_transforms.items()},
             processed_cameras=0,
             total_cameras=len(camera_transforms),
+            base_path_idx=base_path_idx,
         )
 
         def run_transforms():
@@ -276,7 +288,7 @@ def apply_transforms():
                 job_manager.update_job(job_id, status="running")
 
                 processor = TransformProcessor(
-                    base_dir=config.base_paths[0],
+                    base_dir=config.base_paths[base_path_idx],
                     camera_transforms=camera_transforms,
                     type_name=type_name,
                     config=config,

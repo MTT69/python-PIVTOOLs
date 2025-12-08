@@ -34,7 +34,6 @@ def merge_one_frame():
         - base_path_idx: Which base_path to use
         - cameras: Camera numbers to merge
         - type_name: Vector type (instantaneous, ensemble, etc.)
-        - endpoint: Optional endpoint specification
 
     Returns:
         JSON with status, frame, runs_merged, message
@@ -46,7 +45,6 @@ def merge_one_frame():
     base_path_idx = cfg.merging_base_path_idx
     cameras = [camera_number(c) for c in cfg.merging_cameras]
     type_name = cfg.merging_type_name
-    endpoint = cfg.merging_endpoint
 
     # Only frame_idx accepted from request (for single frame testing)
     frame_idx = int(data.get("frame_idx", 1))
@@ -61,7 +59,6 @@ def merge_one_frame():
             base_dir=base_dir,
             cameras=cameras,
             type_name=type_name,
-            endpoint=endpoint,
         )
 
         # Find valid runs
@@ -109,8 +106,6 @@ def merge_all_frames():
         - base_path_idx: Which base_path to use
         - cameras: Camera numbers to merge
         - type_name: Vector type (instantaneous, ensemble, etc.)
-        - endpoint: Optional endpoint specification
-        - max_workers: Number of parallel workers
 
     Returns:
         JSON with job_id, status, message
@@ -121,7 +116,6 @@ def merge_all_frames():
     base_path_idx = cfg.merging_base_path_idx
     cameras = [camera_number(c) for c in cfg.merging_cameras]
     type_name = cfg.merging_type_name
-    endpoint = cfg.merging_endpoint
 
     try:
         base_dir = Path(cfg.base_paths[base_path_idx])
@@ -143,7 +137,6 @@ def merge_all_frames():
                     base_dir=base_dir,
                     cameras=cameras,
                     type_name=type_name,
-                    endpoint=endpoint,
                 )
 
                 def progress_callback(progress_data):
@@ -154,10 +147,9 @@ def merge_all_frames():
                         message=progress_data.get("message", ""),
                     )
 
-                # Run merge with max_workers from config
+                # Run merge
                 result = merger.merge_all_frames(
                     progress_callback=progress_callback,
-                    max_workers=cfg.merging_max_workers,
                 )
 
                 if result["success"]:
@@ -221,7 +213,6 @@ def merge_validate():
         - base_path_idx: Which base_path to use
         - cameras: Camera numbers to check
         - type_name: Vector type (instantaneous, ensemble, etc.)
-        - endpoint: Optional endpoint specification
 
     Returns:
         JSON with valid, cameras_found, valid_runs, total_runs, num_frame_pairs
@@ -232,7 +223,6 @@ def merge_validate():
     base_path_idx = cfg.merging_base_path_idx
     cameras = [camera_number(c) for c in cfg.merging_cameras]
     type_name = cfg.merging_type_name
-    endpoint = cfg.merging_endpoint
 
     try:
         base_dir = Path(cfg.base_paths[base_path_idx])
@@ -245,7 +235,6 @@ def merge_validate():
                 num_frame_pairs=cfg.num_frame_pairs,
                 cam=camera,
                 type_name=type_name,
-                endpoint=endpoint,
             )
             if paths["data_dir"].exists():
                 cameras_found.append(camera)
@@ -263,7 +252,6 @@ def merge_validate():
             base_dir=base_dir,
             cameras=cameras_found,
             type_name=type_name,
-            endpoint=endpoint,
         )
         valid_runs, total_runs = merger.find_valid_runs()
 

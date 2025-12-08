@@ -126,6 +126,139 @@ def coords_to_structured_array(coords: np.ndarray) -> np.ndarray:
         return coords_struct
 
 
+# Standard PIV result fields that may exist in a piv_result struct
+PIV_RESULT_FIELDS = [
+    "ux", "uy", "b_mask", "nan_mask", "win_ctrs_x", "win_ctrs_y",
+    "peak_mag", "peak_choice", "n_windows", "predictor_field", "window_size",
+]
+
+
+def piv_result_to_structured_array(piv_result: np.ndarray) -> np.ndarray:
+    """
+    Convert piv_result loaded with struct_as_record=False back to structured array.
+
+    scipy.io.loadmat with struct_as_record=False creates Python objects with
+    attributes like .ux, .uy, etc. savemat() interprets these as cell arrays.
+    This function converts them back to proper MATLAB struct arrays.
+
+    Args:
+        piv_result: PIV result array (object array of structs or single struct)
+
+    Returns:
+        Structured numpy array compatible with MATLAB struct format
+    """
+    # Determine which fields exist by checking the first element
+    if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
+        sample = piv_result.flat[0] if piv_result.size > 0 else None
+        num_runs = piv_result.size
+    else:
+        sample = piv_result
+        num_runs = 1
+
+    if sample is None:
+        # Return empty struct with standard fields
+        dtype = [(f, object) for f in PIV_RESULT_FIELDS]
+        return np.empty((0,), dtype=dtype)
+
+    # Build dtype from fields that actually exist on the object
+    existing_fields = []
+    for field in PIV_RESULT_FIELDS:
+        if hasattr(sample, field):
+            existing_fields.append(field)
+
+    # Also check for any additional fields not in standard list
+    if hasattr(sample, "_fieldnames"):
+        for field in sample._fieldnames:
+            if field not in existing_fields:
+                existing_fields.append(field)
+
+    dtype = [(f, object) for f in existing_fields]
+    piv_struct = np.empty((num_runs,), dtype=dtype)
+
+    # Copy data from each run
+    if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
+        for i in range(num_runs):
+            run = piv_result.flat[i]
+            for field in existing_fields:
+                if hasattr(run, field):
+                    val = getattr(run, field)
+                    piv_struct[field][i] = np.asarray(val) if val is not None else np.array([])
+                else:
+                    piv_struct[field][i] = np.array([])
+    else:
+        # Single run case
+        for field in existing_fields:
+            if hasattr(piv_result, field):
+                val = getattr(piv_result, field)
+                piv_struct[field][0] = np.asarray(val) if val is not None else np.array([])
+            else:
+                piv_struct[field][0] = np.array([])
+
+    return piv_struct
+
+
+def mat_dict_to_saveable(mat: dict) -> dict:
+    """
+    Convert a loaded mat dictionary to a format suitable for saving.
+
+    When mat files are loaded with struct_as_record=False, structs become
+    Python objects that savemat interprets as cell arrays. This function
+    converts all struct arrays back to proper structured numpy arrays.
+
+    Args:
+        mat: Dictionary loaded from a .mat file
+
+    Returns:
+        Dictionary with all structs converted to structured arrays
+    """
+    result = {}
+
+    for key, value in mat.items():
+        # Skip MATLAB metadata keys
+        if key.startswith("__"):
+            continue
+
+        if key in ("piv_result", "piv_result_original"):
+            # Convert PIV result structs
+            result[key] = piv_result_to_structured_array(value)
+        elif key in ("coordinates", "coordinates_original"):
+            # Convert coordinate structs
+            result[key] = coords_to_structured_array(value)
+        elif key == "pending_transformations":
+            # Keep as list (will be saved as cell array, which is fine for strings)
+            result[key] = list(value) if not isinstance(value, list) else value
+        else:
+            # Keep other values as-is
+            result[key] = value
+
+    return result
+
+
+def coords_mat_to_saveable(coords_mat: dict) -> dict:
+    """
+    Convert a loaded coordinates mat dictionary to a format suitable for saving.
+
+    Args:
+        coords_mat: Dictionary loaded from coordinates.mat
+
+    Returns:
+        Dictionary with all structs converted to structured arrays
+    """
+    result = {}
+
+    for key, value in coords_mat.items():
+        # Skip MATLAB metadata keys
+        if key.startswith("__"):
+            continue
+
+        if key in ("coordinates", "coordinates_original"):
+            result[key] = coords_to_structured_array(value)
+        else:
+            result[key] = value
+
+    return result
+
+
 # Valid transformation names
 # Note: scale_velocity and scale_coords are parametric transforms
 # that require a :factor suffix (e.g., "scale_velocity:1000")
@@ -522,8 +655,8 @@ def process_frame_worker(
                 if coords is not None:
                     apply_transformation_to_coordinates(coords, 1, trans)
 
-        # Save back the mat file
-        save_mat_from_transform(mat_file, mat)
+        # Save back the mat file (convert structs to proper format)
+        save_mat_from_transform(mat_file, mat_dict_to_saveable(mat))
 
         # Save coordinates if they were loaded
         if coords is not None:

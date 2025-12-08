@@ -384,69 +384,150 @@ def available_variables():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@video_maker_bp.route("/video/config", methods=["POST"])
+def video_config():
+    """
+    Update video configuration in config.yaml.
+
+    This endpoint updates the video block in config.yaml before video creation,
+    following the calibration pattern where config is the source of truth.
+
+    Request JSON (all optional):
+        base_path_idx: int - Index into base_paths list
+        camera: int - Camera number (1-based)
+        data_source: str - 'calibrated', 'uncalibrated', 'merged', 'inst_stats'
+        variable: str - Variable name (ux, uy, mag, etc.)
+        run: int - Run number (1-based)
+        piv_type: str - 'instantaneous' or 'ensemble'
+        cmap: str - Colormap name ('default' for auto)
+        lower: str/float - Lower color limit ('' for auto)
+        upper: str/float - Upper color limit ('' for auto)
+        fps: int - Frame rate
+        crf: int - Quality factor
+        resolution: str - '1080p' or '4k'
+
+    Returns:
+        JSON with status, updated config values
+    """
+    data = request.get_json() or {}
+    cfg = get_config()
+
+    # Ensure video block exists
+    if "video" not in cfg.data:
+        cfg.data["video"] = {}
+
+    # Field mapping: json_key -> (config_key, type_converter)
+    field_mapping = {
+        "base_path_idx": ("base_path_idx", int),
+        "camera": ("camera", int),
+        "data_source": ("data_source", str),
+        "variable": ("variable", str),
+        "run": ("run", int),
+        "piv_type": ("piv_type", str),
+        "cmap": ("cmap", str),
+        "lower": ("lower", str),
+        "upper": ("upper", str),
+        "fps": ("fps", int),
+        "crf": ("crf", int),
+        "resolution": ("resolution", str),
+    }
+
+    updated = {}
+    for json_key, (config_key, type_fn) in field_mapping.items():
+        if json_key in data:
+            val = data[json_key]
+            # Handle special cases for lower/upper (keep as string for auto detection)
+            if json_key in ("lower", "upper"):
+                cfg.data["video"][config_key] = str(val) if val not in (None, "") else ""
+            else:
+                try:
+                    cfg.data["video"][config_key] = type_fn(val) if val is not None else None
+                except (ValueError, TypeError):
+                    cfg.data["video"][config_key] = val
+            updated[config_key] = cfg.data["video"][config_key]
+
+    # Save config to disk
+    cfg.save()
+    logger.info(f"[VIDEO] Updated config: {updated}")
+
+    return jsonify({
+        "status": "ok",
+        "updated": updated,
+        "video_config": cfg.data.get("video", {}),
+    })
+
+
 @video_maker_bp.route("/start_video", methods=["POST"])
 def start_video():
     """
-    Start video job with validation using job_manager.
+    Start video job using config.yaml as primary source.
 
-    Expected JSON parameters:
-    - base_path: str - Base directory path for data
-    - camera: int - Camera number (1-based)
-    - run: int - Run number (1-based)
-    - var: str - Variable to visualize ("ux", "uy", "mag", "u_prime", "vorticity", etc.)
-    - data_source: str - Data source type ("calibrated", "uncalibrated", "merged", "inst_stats")
-    - fps: int (optional) - Video frame rate (1-120, default from config)
-    - test_mode: bool (optional) - Create test video with limited frames
-    - test_frames: int (optional) - Number of frames for test mode (default: 50)
-    - lower/upper: float (optional) - Custom color scale limits
-    - cmap: str (optional) - Matplotlib colormap name
-    - resolution: str (optional) - Video resolution ("4k" or default)
-    - out_name: str (optional) - Custom output filename
+    The frontend should call /video/config first to update settings in config.yaml.
+    This endpoint reads parameters from config, with request params as optional overrides.
+
+    Request JSON (all optional - defaults from config.yaml):
+    - base_path_idx: int - Index into base_paths list (primary method)
+    - source_path_idx: int - Alias for base_path_idx (backward compat)
+    - base_path: str - Direct path override (backward compat)
+    - test_mode: bool - Create test video with limited frames
+    - test_frames: int - Number of frames for test mode (default: 50)
+    - out_name: str - Custom output filename
+
+    All other parameters (camera, run, var, data_source, fps, cmap, limits, resolution)
+    are read from config.yaml's video block.
     """
     data = request.get_json(silent=True) or {}
     cfg = get_config(refresh=True)
 
-    # Validate inputs
+    # Get base path from request or config
+    # Priority: base_path (direct) > base_path_idx > source_path_idx > config.video_base_path_idx
     base_path_str = data.get("base_path")
-    if not base_path_str:
-        return jsonify({"error": "base_path is required"}), 400
-    base = Path(base_path_str).expanduser()
-    if not base.exists():
-        return jsonify({"error": "Invalid base_path"}), 400
+    if base_path_str:
+        base = Path(base_path_str).expanduser()
+    else:
+        base_path_idx = data.get("base_path_idx", data.get("source_path_idx", cfg.video_base_path_idx))
+        try:
+            base_path_idx = int(base_path_idx)
+        except (ValueError, TypeError):
+            base_path_idx = 0
+        if base_path_idx >= len(cfg.base_paths):
+            return jsonify({"error": f"Invalid base_path_idx {base_path_idx}. Only {len(cfg.base_paths)} paths configured."}), 400
+        base = cfg.base_paths[base_path_idx]
 
-    cam_raw = data.get("camera")
-    if cam_raw is None:
-        return jsonify({"error": "camera is required"}), 400
+    if not base.exists():
+        return jsonify({"error": f"Base path does not exist: {base}"}), 400
+
+    # Read parameters from config (with request overrides for backward compat)
+    cam = data.get("camera", cfg.video_camera)
     try:
-        cam = int(cam_raw)
+        cam = int(cam)
         if cam < 1:
             raise ValueError
-    except ValueError:
+    except (ValueError, TypeError):
         return jsonify({"error": "Invalid camera number"}), 400
 
+    run = data.get("run", cfg.video_run)
+    try:
+        run = int(run)
+        if run < 1:
+            raise ValueError
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid run number"}), 400
+
+    data_source = data.get("data_source", cfg.video_data_source)
+    valid_sources = ("calibrated", "uncalibrated", "merged", "inst_stats")
+    if data_source not in valid_sources:
+        return jsonify({"error": f"Invalid data_source. Must be one of: {', '.join(valid_sources)}"}), 400
+
+    var = data.get("var", cfg.video_variable)
+
+    # Test mode params (not persisted to config)
     test_mode = data.get("test_mode", False)
     if not isinstance(test_mode, bool):
         return jsonify({"error": "test_mode must be boolean"}), 400
     test_frames = int(data.get("test_frames", 50))
     if test_frames < 1:
         return jsonify({"error": "test_frames must be positive"}), 400
-
-    # Parse run as the run number (1-based)
-    run_raw = data.get("run")
-    if run_raw is None:
-        return jsonify({"error": "run is required"}), 400
-    try:
-        run = int(run_raw)
-        if run < 1:
-            raise ValueError
-    except ValueError:
-        return jsonify({"error": "Invalid run number"}), 400
-
-    # Parse data source
-    data_source = data.get("data_source", "calibrated")
-    valid_sources = ("calibrated", "uncalibrated", "merged", "inst_stats")
-    if data_source not in valid_sources:
-        return jsonify({"error": f"Invalid data_source. Must be one of: {', '.join(valid_sources)}"}), 400
 
     # Check if data is available for the selected source
     available = check_video_data_availability(
@@ -457,7 +538,6 @@ def start_video():
     )
 
     # For stats variables, auto-switch to inst_stats source
-    var = data.get("var", "ux")
     STATS_VARIABLES = {"u_prime", "v_prime", "w_prime", "vorticity", "divergence", "gamma1", "gamma2"}
     if var in STATS_VARIABLES and data_source != "inst_stats":
         data_source = "inst_stats"
@@ -486,7 +566,7 @@ def start_video():
     if var not in VALID_VARIABLES:
         return jsonify({"error": f"Invalid var '{var}'. Valid options: {', '.join(sorted(VALID_VARIABLES))}"}), 400
 
-    # Parse FPS with validation (frames per second for video output)
+    # Get video parameters from config (with request overrides for backward compat)
     fps = data.get("fps", cfg.video_fps)
     try:
         fps = int(fps)
@@ -495,20 +575,27 @@ def start_video():
     except (ValueError, TypeError):
         return jsonify({"error": "Invalid FPS value"}), 400
 
-    # Get resolution and CRF from config or request
     crf = cfg.video_crf
-    resolution = (2160, 3840) if data.get("resolution") == "4k" else cfg.video_resolution
 
-    # Parse color limits
+    # Resolution: request override or config
+    resolution_str = data.get("resolution", cfg.video_resolution_str)
+    if resolution_str == "4k":
+        resolution = (2160, 3840)
+    else:
+        resolution = cfg.video_resolution
+
+    # Color limits: request override or config
+    lower = data.get("lower") if "lower" in data else cfg.video_lower_limit
+    upper = data.get("upper") if "upper" in data else cfg.video_upper_limit
     try:
-        lower = data.get("lower")
-        upper = data.get("upper")
         lower_limit = float(lower) if lower and str(lower).strip() else None
         upper_limit = float(upper) if upper and str(upper).strip() else None
-    except ValueError:
-        return jsonify({"error": "Invalid lower/upper limits"}), 400
+    except (ValueError, TypeError):
+        lower_limit = None
+        upper_limit = None
 
-    cmap = data.get("cmap")
+    # Colormap: request override or config
+    cmap = data.get("cmap") if "cmap" in data else cfg.video_cmap
     if cmap == "default":
         cmap = None
 
