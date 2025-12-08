@@ -10,6 +10,7 @@ from scipy.io import loadmat
 
 from pivtools_core.config import get_config
 from pivtools_core.paths import get_data_paths
+from pivtools_core.batch_utils import iter_batch_targets
 from pivtools_gui.calibration.services.job_manager import job_manager
 from pivtools_gui.video_maker.video_maker import (
     VideoMaker,
@@ -384,7 +385,7 @@ def available_variables():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@video_maker_bp.route("/video/config", methods=["POST"])
+@video_maker_bp.route("/config", methods=["POST"])
 def video_config():
     """
     Update video configuration in config.yaml.
@@ -701,6 +702,324 @@ def start_video():
     }), 202
 
 
+@video_maker_bp.route("/start_batch", methods=["POST"])
+def start_video_batch():
+    """
+    Start batch video creation with multi-path and multi-camera support.
+
+    Expects JSON with:
+        active_paths: list of path indices (default: from config or [0])
+        cameras: list of camera numbers
+        include_merged: bool
+        variable: str (ux, uy, mag, etc.)
+        run: int (1-based run number)
+        data_source: str (calibrated, uncalibrated, merged, inst_stats)
+        fps: int
+        cmap: str
+        lower: float/str (color limit)
+        upper: float/str (color limit)
+        resolution: str (1080p, 4k)
+        test_mode: bool
+        test_frames: int
+
+    Returns:
+        JSON with parent_job_id, sub_jobs list, status
+    """
+    data = request.get_json() or {}
+    logger.info(f"Received batch video request: {data}")
+
+    cfg = get_config(refresh=True)
+    base_paths = cfg.base_paths
+
+    # Get batch parameters - support both old (base_path_idx) and new (active_paths) API
+    active_paths = data.get("active_paths")
+    if active_paths is None:
+        base_path_idx = data.get("base_path_idx")
+        if base_path_idx is not None:
+            active_paths = [int(base_path_idx)]
+
+    cameras = data.get("cameras", [])
+    include_merged = bool(data.get("include_merged", False))
+
+    # Use config defaults if not provided in request
+    if active_paths is None:
+        active_paths = cfg.video_active_paths
+    if not cameras:
+        cameras = cfg.video_cameras
+
+    # Validate paths
+    valid_paths = [i for i in active_paths if 0 <= i < len(base_paths)]
+    if not valid_paths:
+        return jsonify({"error": "No valid path indices provided"}), 400
+
+    # Get video parameters from request or config
+    var = data.get("variable", cfg.video_variable)
+    run = data.get("run", cfg.video_run)
+    data_source = data.get("data_source", cfg.video_data_source)
+    fps = data.get("fps", cfg.video_fps)
+    crf = cfg.video_crf
+    cmap = data.get("cmap", cfg.video_cmap)
+    if cmap == "default":
+        cmap = None
+
+    resolution_str = data.get("resolution", cfg.video_resolution_str)
+    if resolution_str == "4k":
+        resolution = (2160, 3840)
+    else:
+        resolution = cfg.video_resolution
+
+    lower = data.get("lower", cfg.video_lower_limit)
+    upper = data.get("upper", cfg.video_upper_limit)
+    try:
+        lower_limit = float(lower) if lower and str(lower).strip() else None
+        upper_limit = float(upper) if upper and str(upper).strip() else None
+    except (ValueError, TypeError):
+        lower_limit = None
+        upper_limit = None
+
+    test_mode = bool(data.get("test_mode", False))
+    test_frames = int(data.get("test_frames", 50))
+
+    # For stats variables, auto-switch to inst_stats source
+    STATS_VARIABLES = {"u_prime", "v_prime", "w_prime", "vorticity", "divergence", "gamma1", "gamma2"}
+    if var in STATS_VARIABLES and data_source != "inst_stats":
+        data_source = "inst_stats"
+        logger.info(f"[VIDEO] Auto-switching to inst_stats for variable '{var}'")
+
+    try:
+        # Generate batch targets using unified utility
+        targets = iter_batch_targets(
+            base_paths=base_paths,
+            active_paths=valid_paths,
+            cameras=cameras,
+            include_merged=include_merged,
+        )
+
+        if not targets:
+            return jsonify({"error": "No targets to process"}), 400
+
+        # Create parent job to track all sub-jobs
+        parent_job_id = job_manager.create_job(
+            "video_parent",
+            total_targets=len(targets),
+        )
+        sub_jobs = []
+
+        # Launch a job for each target
+        for target in targets:
+            base_dir = target.base_path
+            use_merged = target.is_merged
+            cam_num = target.camera if target.camera else 1
+
+            # Check if data is available for this target
+            available = check_video_data_availability(
+                base_path=base_dir,
+                camera=cam_num,
+                num_frame_pairs=cfg.num_frame_pairs,
+                vector_format=cfg.vector_format,
+            )
+
+            # Determine effective data source for merged targets
+            effective_source = "merged" if use_merged else data_source
+
+            if not available.get(effective_source, {}).get("exists", False):
+                logger.warning(f"Data not found for {target.label} at path {target.path_idx}, skipping")
+                continue
+
+            # Create sub-job
+            job_id = job_manager.create_job(
+                "video",
+                camera=target.label,
+                path_idx=target.path_idx,
+                parent_job_id=parent_job_id,
+                variable=var,
+                data_source=effective_source,
+                run=run,
+            )
+            sub_jobs.append({
+                "job_id": job_id,
+                "type": "merged" if use_merged else f"camera_{cam_num}",
+                "path_idx": target.path_idx,
+                "label": target.label,
+            })
+
+            # Create cancel event for this job
+            cancel_event = threading.Event()
+            with _cancel_events_lock:
+                _cancel_events[job_id] = cancel_event
+
+            # Launch thread
+            thread = threading.Thread(
+                target=_run_video_job,
+                args=(
+                    job_id,
+                    base_dir,
+                    cam_num,
+                    cfg,
+                    var,
+                    run,
+                    effective_source,
+                    fps,
+                    crf,
+                    resolution,
+                    cmap,
+                    lower_limit,
+                    upper_limit,
+                    test_mode,
+                    test_frames,
+                    cancel_event,
+                ),
+            )
+            thread.daemon = True
+            thread.start()
+
+        # Update parent job with sub_jobs list
+        job_manager.update_job(parent_job_id, sub_jobs=sub_jobs, status="running")
+
+        return jsonify({
+            "parent_job_id": parent_job_id,
+            "sub_jobs": sub_jobs,
+            "total_targets": len(targets),
+            "processed_targets": len(sub_jobs),
+            "status": "starting",
+            "message": f"Video creation started for {len(sub_jobs)} target(s) "
+            f"across {len(valid_paths)} path(s)",
+        })
+
+    except Exception as e:
+        logger.error(f"Error starting batch video creation: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+def _run_video_job(
+    job_id: str,
+    base_dir: Path,
+    camera: int,
+    cfg,
+    var: str,
+    run: int,
+    data_source: str,
+    fps: int,
+    crf: int,
+    resolution: tuple,
+    cmap: Optional[str],
+    lower_limit: Optional[float],
+    upper_limit: Optional[float],
+    test_mode: bool,
+    test_frames: int,
+    cancel_event: threading.Event,
+):
+    """Run video creation in a background thread."""
+    try:
+        cam_folder = "Merged" if data_source == "merged" else f"Cam{camera}"
+        logger.info(f"[VIDEO] Starting job {job_id} for {cam_folder}")
+
+        job_manager.update_job(job_id, status="running")
+
+        # Create VideoMaker instance
+        maker = VideoMaker(
+            base_dir=base_dir,
+            camera=camera,
+            config=cfg,
+        )
+
+        def progress_cb(current, total, msg=""):
+            progress = int(current / max(total, 1) * 100)
+            job_manager.update_job(
+                job_id,
+                progress=progress,
+                current_frame=current,
+                total_frames=total,
+                message=f"Processing frame {current}/{total}" + (f" - {msg}" if msg else ""),
+            )
+
+        # Run video generation
+        result = maker.process_video(
+            variable=var,
+            run=run,
+            data_source=data_source,
+            fps=fps,
+            crf=crf,
+            resolution=resolution,
+            cmap=cmap,
+            lower_limit=lower_limit,
+            upper_limit=upper_limit,
+            test_mode=test_mode,
+            test_frames=test_frames,
+            progress_callback=progress_cb,
+            cancel_event=cancel_event,
+        )
+
+        if cancel_event.is_set():
+            job_manager.fail_job(job_id, "Cancelled by user")
+        elif result.get("success"):
+            job_manager.complete_job(
+                job_id,
+                out_path=result.get("out_path"),
+                vmin=result.get("vmin"),
+                vmax=result.get("vmax"),
+                frames=result.get("frames"),
+                elapsed_sec=result.get("elapsed_sec"),
+            )
+            logger.info(f"[VIDEO] Job {job_id} completed for {cam_folder}")
+        else:
+            job_manager.fail_job(job_id, result.get("error", "Unknown error"))
+            logger.error(f"[VIDEO] Job {job_id} failed: {result.get('error')}")
+
+    except Exception as e:
+        logger.error(f"[VIDEO] Job {job_id} error: {e}", exc_info=True)
+        job_manager.fail_job(job_id, str(e))
+    finally:
+        # Clean up cancel event
+        with _cancel_events_lock:
+            _cancel_events.pop(job_id, None)
+
+
+@video_maker_bp.route("/batch_status/<job_id>", methods=["GET"])
+def get_video_batch_status(job_id):
+    """Get batch video job status with aggregated sub-job info."""
+    job_data = job_manager.get_job(job_id)
+    if job_data is None:
+        return jsonify({"error": "Job not found"}), 404
+
+    # If parent job, aggregate sub-job status
+    if "sub_jobs" in job_data:
+        sub_job_statuses = []
+        all_completed = True
+        any_failed = False
+        total_progress = 0
+
+        for sub_job in job_data["sub_jobs"]:
+            sub_id = sub_job["job_id"]
+            sub_status = job_manager.get_job(sub_id)
+            if sub_status:
+                sub_status["type"] = sub_job["type"]
+                sub_status["label"] = sub_job.get("label", "")
+                sub_job_statuses.append(sub_status)
+
+                if sub_status["status"] != "completed":
+                    all_completed = False
+                if sub_status["status"] == "failed":
+                    any_failed = True
+
+                total_progress += sub_status.get("progress", 0)
+
+        job_data["sub_job_statuses"] = sub_job_statuses
+        job_data["overall_progress"] = total_progress / max(1, len(sub_job_statuses))
+
+        if any_failed:
+            job_data["status"] = "failed"
+        elif all_completed:
+            job_data["status"] = "completed"
+        else:
+            job_data["status"] = "running"
+
+    # Add timing info
+    job_data = job_manager.add_timing_info(job_data)
+
+    return jsonify(job_data)
+
+
 @video_maker_bp.route("/cancel_video", methods=["POST"])
 def cancel_video():
     """
@@ -735,7 +1054,7 @@ def cancel_video():
         return jsonify({"status": "idle", "message": "No running video jobs"}), 200
 
 
-@video_maker_bp.route("/video/job/<job_id>", methods=["GET"])
+@video_maker_bp.route("/job/<job_id>", methods=["GET"])
 def video_job_status(job_id: str):
     """
     Get video job status by ID (matches calibration pattern).

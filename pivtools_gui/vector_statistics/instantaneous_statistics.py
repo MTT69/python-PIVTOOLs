@@ -322,16 +322,18 @@ class VectorStatisticsProcessor:
         "mean_vorticity": ["vorticity"],
         "mean_divergence": ["divergence"],
         "mean_tke": ["tke"],
-        "reynolds_stress": ["uv"],
-        "normal_stress": ["uu", "vv"],
+        "mean_stresses": ["uu", "vv", "uv"],  # Full stress tensor (+ ww, uw, vw for stereo)
         # Instantaneous (per-frame) statistics
         "inst_velocity": ["ux", "uy"],  # Per-frame velocity
-        "inst_fluctuations": ["u_prime", "v_prime"],
+        "inst_stresses": ["uu_inst", "vv_inst", "uv_inst"],  # Per-frame stress tensor
         "inst_vorticity": ["vorticity"],
         "inst_divergence": ["divergence"],
         "inst_gamma": ["gamma1", "gamma2"],
         # Legacy/config names (for backwards compatibility)
-        "fluctuating_velocity": ["u_prime", "v_prime"],
+        "reynolds_stress": ["uv"],  # Legacy - maps to mean_stresses
+        "normal_stress": ["uu", "vv"],  # Legacy - maps to mean_stresses
+        "inst_fluctuations": ["u_prime", "v_prime"],  # Legacy - maps to inst_stresses
+        "fluctuating_velocity": ["u_prime", "v_prime"],  # Legacy
         "tke": ["tke"],
         "vorticity": ["vorticity"],
         "divergence": ["divergence"],
@@ -347,19 +349,21 @@ class VectorStatisticsProcessor:
         "mean_vorticity": "mean_vorticity",
         "mean_divergence": "mean_divergence",
         "mean_tke": "mean_tke",
-        "reynolds_stress": "reynolds_stress",
-        "normal_stress": "normal_stress",
+        "mean_stresses": "mean_stresses",  # New canonical name for stress tensor
         # Instantaneous (identity mappings)
         "inst_velocity": "inst_velocity",
-        "inst_fluctuations": "inst_fluctuations",
+        "inst_stresses": "inst_stresses",  # New canonical name for per-frame stresses
         "inst_vorticity": "inst_vorticity",
         "inst_divergence": "inst_divergence",
         "inst_gamma": "inst_gamma",
         # Legacy/backward compat mappings (old config keys -> new canonical names)
+        "reynolds_stress": "mean_stresses",  # Legacy -> mean_stresses
+        "normal_stress": "mean_stresses",  # Legacy -> mean_stresses
+        "inst_fluctuations": "inst_stresses",  # Legacy -> inst_stresses
+        "fluctuating_velocity": "inst_stresses",  # Legacy -> inst_stresses
         "tke": "mean_tke",
         "vorticity": "mean_vorticity",
         "divergence": "mean_divergence",
-        "fluctuating_velocity": "inst_fluctuations",
         "gamma1": "gamma1",
         "gamma2": "gamma2",
     }
@@ -600,18 +604,21 @@ class VectorStatisticsProcessor:
     def _determine_calc_flags(self, active_stats: set) -> dict:
         """Determine which calculations are needed based on requested statistics.
 
-        Supports both new canonical names (mean_tke, mean_vorticity, etc.) and
-        legacy names (tke, vorticity, etc.) for backward compatibility.
+        Supports both new canonical names (mean_tke, mean_stresses, etc.) and
+        legacy names (tke, reynolds_stress, normal_stress, etc.) for backward compatibility.
         """
-        # Mean statistics - check for reynolds/normal stress
-        calc_reynolds = "reynolds_stress" in active_stats
-        calc_normal = "normal_stress" in active_stats
+        # Mean stresses - check for new name or legacy names
+        calc_stresses = (
+            "mean_stresses" in active_stats
+            or "reynolds_stress" in active_stats
+            or "normal_stress" in active_stats
+        )
 
         # Mean TKE - check both new and legacy names
         calc_mean_tke = "mean_tke" in active_stats or "tke" in active_stats
 
-        # Second moments needed for reynolds, normal stress, or tke
-        calc_second_moments = calc_reynolds or calc_normal or calc_mean_tke
+        # Second moments needed for stresses or tke
+        calc_second_moments = calc_stresses or calc_mean_tke
 
         # Mean vorticity/divergence - check both new and legacy names
         calc_mean_vorticity = "mean_vorticity" in active_stats or "vorticity" in active_stats
@@ -619,7 +626,11 @@ class VectorStatisticsProcessor:
 
         # Instantaneous statistics - check both new and legacy names
         save_inst_velocity = "inst_velocity" in active_stats
-        save_fluctuations = "inst_fluctuations" in active_stats or "fluctuating_velocity" in active_stats
+        calc_inst_stresses = (
+            "inst_stresses" in active_stats
+            or "inst_fluctuations" in active_stats
+            or "fluctuating_velocity" in active_stats
+        )
         calc_inst_vorticity = "inst_vorticity" in active_stats
         calc_inst_divergence = "inst_divergence" in active_stats
         calc_inst_gamma = "inst_gamma" in active_stats
@@ -631,12 +642,13 @@ class VectorStatisticsProcessor:
         return {
             # Mean statistics flags
             "calc_second_moments": calc_second_moments,
+            "calc_stresses": calc_stresses,
             "calc_tke": calc_mean_tke,
             "calc_divergence": calc_divergence,
             "calc_vorticity": calc_vorticity,
             # Instantaneous statistics flags
             "save_inst_velocity": save_inst_velocity,
-            "save_fluctuations": save_fluctuations,
+            "calc_inst_stresses": calc_inst_stresses,
             "calc_inst_vorticity": calc_inst_vorticity,
             "calc_inst_divergence": calc_inst_divergence,
             "calc_gamma1": calc_inst_gamma or "gamma1" in active_stats,
@@ -655,11 +667,12 @@ class VectorStatisticsProcessor:
         inst_stats = {
             # New canonical names (frontend inst_* names)
             "inst_velocity",
-            "inst_fluctuations",
+            "inst_stresses",
             "inst_vorticity",
             "inst_divergence",
             "inst_gamma",
             # Legacy/config names for backward compat
+            "inst_fluctuations",
             "fluctuating_velocity",
             "gamma1",
             "gamma2",
@@ -949,8 +962,25 @@ class VectorStatisticsProcessor:
             if "mean_tke" in active_stats and "tke" in res:
                 save_field(res["tke"], "Mean_TKE", "m^2/s^2", cmap="viridis", symmetric=False)
 
-            if "reynolds_stress" in active_stats and "uv" in res:
-                save_field(res["uv"], "Reynolds_Stress_uv", "m^2/s^2", cmap="seismic", symmetric=True)
+            # Full stress tensor - new combined option or legacy names
+            if ("mean_stresses" in active_stats or "reynolds_stress" in active_stats
+                    or "normal_stress" in active_stats):
+                # Normal stresses (diagonal)
+                if "uu" in res:
+                    save_field(res["uu"], "Stress_uu", "m^2/s^2", cmap="viridis", symmetric=False)
+                if "vv" in res:
+                    save_field(res["vv"], "Stress_vv", "m^2/s^2", cmap="viridis", symmetric=False)
+                # Shear stress (off-diagonal)
+                if "uv" in res:
+                    save_field(res["uv"], "Stress_uv", "m^2/s^2", cmap="seismic", symmetric=True)
+                # 3D stress components for stereo
+                if res.get("stereo"):
+                    if "ww" in res:
+                        save_field(res["ww"], "Stress_ww", "m^2/s^2", cmap="viridis", symmetric=False)
+                    if "uw" in res:
+                        save_field(res["uw"], "Stress_uw", "m^2/s^2", cmap="seismic", symmetric=True)
+                    if "vw" in res:
+                        save_field(res["vw"], "Stress_vw", "m^2/s^2", cmap="seismic", symmetric=True)
 
     def _save_results(
         self,
@@ -1114,14 +1144,22 @@ def _process_frame_parallel(
                     if "uy" not in run_data and isinstance(v_t, np.ndarray):
                         run_data["uy"] = v_t
 
-                # Fluctuations (u' = u - u_mean)
-                if calc_flags.get("save_fluctuations", False):
-                    run_data["u_prime"] = u_t - mean_ux
-                    run_data["v_prime"] = v_t - mean_uy
+                # Instantaneous stresses (per-frame stress tensor products)
+                if calc_flags.get("calc_inst_stresses", False):
+                    u_prime = u_t - mean_ux
+                    v_prime = v_t - mean_uy
+                    # Per-frame stress tensor components (2D)
+                    run_data["uu_inst"] = u_prime * u_prime  # u'u'
+                    run_data["vv_inst"] = v_prime * v_prime  # v'v'
+                    run_data["uv_inst"] = u_prime * v_prime  # u'v'
+                    # 3D stress components for stereo
                     if stereo and w_t is not None:
                         mean_uz = means.get("mean_uz")
                         if mean_uz is not None:
-                            run_data["w_prime"] = w_t - mean_uz
+                            w_prime = w_t - mean_uz
+                            run_data["ww_inst"] = w_prime * w_prime  # w'w'
+                            run_data["uw_inst"] = u_prime * w_prime  # u'w'
+                            run_data["vw_inst"] = v_prime * w_prime  # v'w'
 
                 # Instantaneous vorticity and divergence
                 calc_inst_vorticity = calc_flags.get("calc_inst_vorticity", False)

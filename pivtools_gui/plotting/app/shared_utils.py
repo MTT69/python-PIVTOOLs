@@ -26,6 +26,29 @@ from ..plot_maker import make_scalar_settings
 from ...utils import camera_number
 
 
+# Unit mapping for different PIV variables
+# Used to automatically select correct units when plotting
+VARIABLE_UNITS = {
+    # Velocities (m/s)
+    "ux": "m/s", "uy": "m/s", "uz": "m/s",
+    "mean_ux": "m/s", "mean_uy": "m/s", "mean_uz": "m/s",
+    # Fluctuations (m/s)
+    "u_prime": "m/s", "v_prime": "m/s", "w_prime": "m/s",
+    # Mean stresses (m^2/s^2)
+    "uu": "m^2/s^2", "vv": "m^2/s^2", "ww": "m^2/s^2",
+    "uv": "m^2/s^2", "uw": "m^2/s^2", "vw": "m^2/s^2",
+    # Instantaneous stresses (m^2/s^2)
+    "uu_inst": "m^2/s^2", "vv_inst": "m^2/s^2", "ww_inst": "m^2/s^2",
+    "uv_inst": "m^2/s^2", "uw_inst": "m^2/s^2", "vw_inst": "m^2/s^2",
+    # Turbulent kinetic energy (m^2/s^2)
+    "tke": "m^2/s^2",
+    # Vorticity & Divergence (1/s)
+    "vorticity": "1/s", "divergence": "1/s",
+    # Gamma vortex criteria (dimensionless)
+    "gamma1": "-", "gamma2": "-",
+}
+
+
 def load_piv_result(mat_path: Path) -> Any:
     """
     Load a .mat file and return its piv_result.
@@ -384,7 +407,7 @@ def load_and_plot_data(
         variable=var,
         run_label=effective_run,
         save_basepath=save_basepath,
-        variable_units=plot_kwargs.get("variable_units", "m/s"),
+        variable_units=plot_kwargs.get("variable_units", VARIABLE_UNITS.get(var, "m/s")),
         length_units=plot_kwargs.get("length_units", "mm"),
         coords_x=cx,
         coords_y=cy,

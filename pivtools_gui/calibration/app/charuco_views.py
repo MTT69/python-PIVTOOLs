@@ -14,6 +14,7 @@ from flask import Blueprint, jsonify, request
 from loguru import logger
 
 from pivtools_core.config import get_config
+from pivtools_core.batch_utils import iter_batch_targets
 from pivtools_core.image_handling.calibration_loader import (
     read_calibration_image,
     validate_calibration_images,
@@ -515,3 +516,258 @@ def charuco_load_results():
     except Exception as e:
         logger.error(f"Error loading ChArUco calibration results: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+@charuco_bp.route("/calibration/charuco/calibrate_batch", methods=["POST"])
+def charuco_calibrate_batch():
+    """
+    Start ChArUco calibration job with batch processing support.
+
+    Request JSON:
+        active_paths: list of path indices (default: from config)
+        cameras: list of camera numbers (default: from config)
+
+    Board parameters are read from config.yaml.
+    Processes each (path, camera) combination as a separate sub-job.
+
+    Returns:
+        JSON with parent_job_id, sub_jobs list, status
+    """
+    data = request.get_json() or {}
+    logger.info(f"Received batch ChArUco calibration request: {data}")
+
+    try:
+        cfg = get_config()
+        base_paths = cfg.base_paths
+        source_paths = cfg.source_paths
+        charuco_cfg = cfg.charuco_calibration
+
+        # Get batch parameters
+        active_paths = data.get("active_paths")
+        if active_paths is None:
+            active_paths = cfg.calibration_active_paths
+
+        cameras = data.get("cameras")
+        if cameras is None:
+            cameras = cfg.calibration_cameras
+
+        # Validate paths
+        valid_paths = [i for i in active_paths if 0 <= i < len(base_paths)]
+        if not valid_paths:
+            return jsonify({"error": "No valid path indices provided"}), 400
+
+        if not cameras:
+            return jsonify({"error": "No cameras specified"}), 400
+
+        # Generate batch targets (no merged for calibration)
+        targets = iter_batch_targets(
+            base_paths=base_paths,
+            active_paths=valid_paths,
+            cameras=cameras,
+            include_merged=False,
+            source_paths=source_paths,
+        )
+
+        if not targets:
+            return jsonify({"error": "No targets to process"}), 400
+
+        # Create parent job
+        parent_job_id = job_manager.create_job(
+            "charuco_batch",
+            total_targets=len(targets),
+        )
+        sub_jobs = []
+
+        # Read charuco parameters
+        squares_h = int(charuco_cfg.get("squares_h", 10))
+        squares_v = int(charuco_cfg.get("squares_v", 9))
+        square_size = float(charuco_cfg.get("square_size", 0.03))
+        marker_ratio = float(charuco_cfg.get("marker_ratio", 0.5))
+        aruco_dict = charuco_cfg.get("aruco_dict", "DICT_4X4_1000")
+        min_corners = int(charuco_cfg.get("min_corners", 6))
+        dt = float(charuco_cfg.get("dt", 1.0))
+        file_pattern = cfg.calibration_image_format
+        calibration_subfolder = cfg.calibration_subfolder
+
+        # Launch a job for each target
+        for target in targets:
+            base_dir = target.base_path
+            source_dir = target.source_path or base_dir
+            cam_num = target.camera
+
+            # Create sub-job
+            job_id = job_manager.create_job(
+                "charuco",
+                camera=cam_num,
+                path_idx=target.path_idx,
+                parent_job_id=parent_job_id,
+                processed_images=0,
+                valid_images=0,
+                total_images=0,
+            )
+            sub_jobs.append({
+                "job_id": job_id,
+                "camera": cam_num,
+                "path_idx": target.path_idx,
+                "label": target.label,
+            })
+
+            # Launch thread
+            thread = threading.Thread(
+                target=_run_charuco_calibration_job,
+                args=(
+                    job_id,
+                    base_dir,
+                    source_dir,
+                    cam_num,
+                    target.path_idx,
+                    cfg,
+                    squares_h,
+                    squares_v,
+                    square_size,
+                    marker_ratio,
+                    aruco_dict,
+                    min_corners,
+                    dt,
+                    file_pattern,
+                    calibration_subfolder,
+                ),
+            )
+            thread.daemon = True
+            thread.start()
+
+        # Update parent job
+        job_manager.update_job(parent_job_id, sub_jobs=sub_jobs, status="running")
+
+        return jsonify({
+            "parent_job_id": parent_job_id,
+            "sub_jobs": sub_jobs,
+            "total_targets": len(targets),
+            "processed_targets": len(sub_jobs),
+            "status": "starting",
+            "message": f"ChArUco calibration started for {len(sub_jobs)} target(s) "
+            f"across {len(valid_paths)} path(s)",
+        })
+
+    except Exception as e:
+        logger.error(f"Error starting batch ChArUco calibration: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+def _run_charuco_calibration_job(
+    job_id: str,
+    base_dir: Path,
+    source_dir: Path,
+    camera: int,
+    path_idx: int,
+    cfg,
+    squares_h: int,
+    squares_v: int,
+    square_size: float,
+    marker_ratio: float,
+    aruco_dict: str,
+    min_corners: int,
+    dt: float,
+    file_pattern: str,
+    calibration_subfolder: str,
+):
+    """Run ChArUco calibration job in a background thread."""
+    try:
+        logger.info(f"[ChArUco] Starting job {job_id} for Cam{camera} at path {path_idx}")
+
+        job_manager.update_job(job_id, status="running")
+
+        # Build camera input path
+        cam_input_path = build_calibration_camera_path(cfg, path_idx, camera)
+
+        # Create calibrator
+        calibrator = ChArUcoCalibrator(
+            source_dir=source_dir,
+            base_dir=base_dir,
+            camera_count=1,
+            file_pattern=file_pattern,
+            squares_h=squares_h,
+            squares_v=squares_v,
+            square_size=square_size,
+            marker_ratio=marker_ratio,
+            aruco_dict=aruco_dict,
+            min_corners=min_corners,
+            dt=dt,
+            calibration_subfolder=calibration_subfolder,
+            calibration_input_path=cam_input_path,
+        )
+
+        def progress_callback(progress_data):
+            job_manager.update_job(
+                job_id,
+                processed_images=progress_data.get("processed_images", 0),
+                valid_images=progress_data.get("valid_images", 0),
+                total_images=progress_data.get("total_images", 0),
+                progress=progress_data.get("progress", 0),
+            )
+
+        # Run calibration
+        result = calibrator.process_camera(camera, progress_callback=progress_callback)
+
+        if result.get("success"):
+            job_manager.complete_job(
+                job_id,
+                camera_matrix=result.get("camera_matrix"),
+                dist_coeffs=result.get("dist_coeffs"),
+                rms_error=result.get("rms_error"),
+                num_images_used=result.get("num_images_used"),
+                model_path=result.get("model_path"),
+            )
+            logger.info(f"[ChArUco] Job {job_id} completed for Cam{camera}")
+        else:
+            job_manager.fail_job(job_id, result.get("error", "Calibration failed"))
+            logger.error(f"[ChArUco] Job {job_id} failed: {result.get('error')}")
+
+    except Exception as e:
+        logger.error(f"[ChArUco] Job {job_id} error: {e}", exc_info=True)
+        job_manager.fail_job(job_id, str(e))
+
+
+@charuco_bp.route("/calibration/charuco/batch_status/<job_id>", methods=["GET"])
+def charuco_batch_status(job_id: str):
+    """Get batch ChArUco calibration job status with aggregated sub-job info."""
+    job_data = job_manager.get_job(job_id)
+    if job_data is None:
+        return jsonify({"error": "Job not found"}), 404
+
+    # If parent job, aggregate sub-job status
+    if "sub_jobs" in job_data:
+        sub_job_statuses = []
+        all_completed = True
+        any_failed = False
+        total_progress = 0
+
+        for sub_job in job_data["sub_jobs"]:
+            sub_id = sub_job["job_id"]
+            sub_status = job_manager.get_job(sub_id)
+            if sub_status:
+                sub_status["camera"] = sub_job.get("camera")
+                sub_status["label"] = sub_job.get("label", "")
+                sub_job_statuses.append(sub_status)
+
+                if sub_status["status"] != "completed":
+                    all_completed = False
+                if sub_status["status"] == "failed":
+                    any_failed = True
+
+                total_progress += sub_status.get("progress", 0)
+
+        job_data["sub_job_statuses"] = sub_job_statuses
+        job_data["overall_progress"] = total_progress / max(1, len(sub_job_statuses))
+
+        if any_failed:
+            job_data["status"] = "failed"
+        elif all_completed:
+            job_data["status"] = "completed"
+        else:
+            job_data["status"] = "running"
+
+    # Add timing info
+    job_data = job_manager.add_timing_info(job_data)
+
+    return jsonify(job_data)

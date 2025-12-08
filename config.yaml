@@ -95,6 +95,9 @@ video:
   fps: 30
   crf: 15
   resolution: 1080p
+  active_paths: []
+  cameras: []
+  include_merged: false
 statistics:
   enabled_methods:
     mean_velocity: true
@@ -117,6 +120,9 @@ statistics:
   gamma_radius: 4
   save_figures: true
   type_name: instantaneous
+  active_paths: []
+  cameras: []
+  include_merged: false
 instantaneous_piv:
   window_size:
   - - 128
@@ -172,6 +178,8 @@ calibration:
   subfolder: enhanced
   active: scale_factor
   piv_type: instantaneous
+  active_paths: []
+  cameras: []
   scale_factor:
     dt: 0.56
     px_per_mm: 3.41
@@ -262,7 +270,10 @@ merging:
   type_name: instantaneous
   cameras: []
   base_path_idx: 0
+  active_paths: []
 transforms:
   base_path_idx: 0
   type_name: instantaneous
   cameras: {}
+  active_paths: []
+  include_merged: false

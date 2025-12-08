@@ -22,6 +22,7 @@ from loguru import logger
 from pivtools_core.config import get_config, reload_config
 from pivtools_core.paths import get_data_paths
 from pivtools_core.coordinate_utils import extract_coordinates
+from pivtools_core.batch_utils import iter_batch_targets
 from pivtools_gui.utils import camera_number
 from pivtools_gui.calibration.calibration_poly.polynomial_calibration_production import (
     read_calibration_xml,
@@ -694,3 +695,252 @@ def polynomial_set_datum():
     except Exception as e:
         logger.error(f"[set_datum] ERROR: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+# ============================================================================
+# ROUTE 8: Calibrate Batch (Multi-Path + Multi-Camera)
+# ============================================================================
+
+
+@polynomial_bp.route("/calibration/polynomial/calibrate_batch", methods=["POST"])
+def polynomial_calibrate_batch():
+    """
+    Run polynomial calibration with batch processing support.
+
+    Request JSON:
+        active_paths: list of path indices (default: from config)
+        cameras: list of camera numbers (default: from config)
+
+    All parameters (dt, coefficients, use_xml) read from config.
+
+    Returns:
+        JSON with parent_job_id, sub_jobs list, status
+    """
+    data = request.get_json() or {}
+    logger.info(f"Received batch polynomial calibration request: {data}")
+
+    try:
+        cfg = reload_config()
+        base_paths = cfg.base_paths
+        source_paths = cfg.source_paths
+        poly_cfg = cfg.polynomial_calibration
+
+        # Get batch parameters
+        active_paths = data.get("active_paths")
+        if active_paths is None:
+            active_paths = cfg.calibration_active_paths
+
+        cameras = data.get("cameras")
+        if cameras is None:
+            cameras = cfg.calibration_cameras
+
+        # Validate paths
+        valid_paths = [i for i in active_paths if 0 <= i < len(base_paths)]
+        if not valid_paths:
+            return jsonify({"error": "No valid path indices provided"}), 400
+
+        if not cameras:
+            return jsonify({"error": "No cameras specified"}), 400
+
+        # Generate batch targets (no merged for calibration)
+        targets = iter_batch_targets(
+            base_paths=base_paths,
+            active_paths=valid_paths,
+            cameras=cameras,
+            include_merged=False,
+            source_paths=source_paths,
+        )
+
+        if not targets:
+            return jsonify({"error": "No targets to process"}), 400
+
+        # Read polynomial config
+        dt = poly_cfg.get("dt", cfg.dt if hasattr(cfg, "dt") else 1.0)
+        use_xml = poly_cfg.get("use_xml", True)
+        xml_path = poly_cfg.get("xml_path", "")
+        type_name = poly_cfg.get("piv_type", "instantaneous")
+
+        # Get vector format
+        vec_fmt = cfg.vector_format
+        if isinstance(vec_fmt, list):
+            vec_fmt = vec_fmt[0]
+
+        # Create parent job
+        parent_job_id = job_manager.create_job(
+            "polynomial_batch",
+            total_targets=len(targets),
+        )
+        sub_jobs = []
+
+        # Launch a job for each target
+        for target in targets:
+            base_dir = target.base_path
+            source_dir = target.source_path or base_dir
+            cam_num = target.camera
+
+            # Create sub-job
+            job_id = job_manager.create_job(
+                "polynomial",
+                camera=cam_num,
+                path_idx=target.path_idx,
+                parent_job_id=parent_job_id,
+                progress=0,
+                processed_frames=0,
+                total_frames=cfg.num_frame_pairs,
+            )
+            sub_jobs.append({
+                "job_id": job_id,
+                "camera": cam_num,
+                "path_idx": target.path_idx,
+                "label": target.label,
+            })
+
+            # Launch thread
+            thread = threading.Thread(
+                target=_run_polynomial_calibration_job,
+                args=(
+                    job_id,
+                    base_dir,
+                    source_dir,
+                    cam_num,
+                    target.path_idx,
+                    dt,
+                    use_xml,
+                    xml_path,
+                    type_name,
+                    vec_fmt,
+                    cfg,
+                ),
+            )
+            thread.daemon = True
+            thread.start()
+
+        # Update parent job
+        job_manager.update_job(parent_job_id, sub_jobs=sub_jobs, status="running")
+
+        return jsonify({
+            "parent_job_id": parent_job_id,
+            "sub_jobs": sub_jobs,
+            "total_targets": len(targets),
+            "processed_targets": len(sub_jobs),
+            "status": "starting",
+            "message": f"Polynomial calibration started for {len(sub_jobs)} target(s) "
+            f"across {len(valid_paths)} path(s)",
+        })
+
+    except Exception as e:
+        logger.error(f"Error starting batch polynomial calibration: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+def _run_polynomial_calibration_job(
+    job_id: str,
+    base_dir: Path,
+    source_dir: Path,
+    camera: int,
+    path_idx: int,
+    dt: float,
+    use_xml: bool,
+    xml_path: str,
+    type_name: str,
+    vec_fmt: str,
+    cfg,
+):
+    """Run polynomial calibration job in a background thread."""
+    try:
+        logger.info(f"[Polynomial] Starting job {job_id} for Cam{camera} at path {path_idx}")
+
+        job_manager.update_job(job_id, status="running")
+
+        def progress_callback(prog_data):
+            job_manager.update_job(
+                job_id,
+                progress=prog_data.get("progress", 0),
+                processed_frames=prog_data.get("processed_frames", 0),
+                successful_frames=prog_data.get("successful_frames", 0),
+            )
+
+        # Read XML if needed
+        xml_data = None
+        if use_xml:
+            try:
+                xml_data = read_calibration_xml(
+                    source_path_idx=path_idx,
+                    xml_path=xml_path if xml_path else None,
+                    config=cfg,
+                )
+            except Exception as e:
+                logger.warning(f"Could not read XML for path {path_idx}: {e}")
+
+        # Create calibrator
+        calibrator = PolynomialVectorCalibrator(
+            base_dir=base_dir,
+            camera_num=camera,
+            dt=dt,
+            vector_pattern=vec_fmt,
+            type_name=type_name,
+            config=cfg,
+        )
+
+        # Run calibration
+        result = calibrator.process_vectors(progress_callback=progress_callback)
+
+        if result.get("success"):
+            job_manager.complete_job(
+                job_id,
+                processed_frames=result.get("processed_frames", 0),
+                successful_frames=result.get("successful_frames", 0),
+            )
+            logger.info(f"[Polynomial] Job {job_id} completed for Cam{camera}")
+        else:
+            job_manager.fail_job(job_id, result.get("error", "Calibration failed"))
+            logger.error(f"[Polynomial] Job {job_id} failed: {result.get('error')}")
+
+    except Exception as e:
+        logger.error(f"[Polynomial] Job {job_id} error: {e}", exc_info=True)
+        job_manager.fail_job(job_id, str(e))
+
+
+@polynomial_bp.route("/calibration/polynomial/batch_status/<job_id>", methods=["GET"])
+def polynomial_batch_status(job_id: str):
+    """Get batch polynomial calibration job status with aggregated sub-job info."""
+    job_data = job_manager.get_job(job_id)
+    if job_data is None:
+        return jsonify({"error": "Job not found"}), 404
+
+    # If parent job, aggregate sub-job status
+    if "sub_jobs" in job_data:
+        sub_job_statuses = []
+        all_completed = True
+        any_failed = False
+        total_progress = 0
+
+        for sub_job in job_data["sub_jobs"]:
+            sub_id = sub_job["job_id"]
+            sub_status = job_manager.get_job(sub_id)
+            if sub_status:
+                sub_status["camera"] = sub_job.get("camera")
+                sub_status["label"] = sub_job.get("label", "")
+                sub_job_statuses.append(sub_status)
+
+                if sub_status["status"] != "completed":
+                    all_completed = False
+                if sub_status["status"] == "failed":
+                    any_failed = True
+
+                total_progress += sub_status.get("progress", 0)
+
+        job_data["sub_job_statuses"] = sub_job_statuses
+        job_data["overall_progress"] = total_progress / max(1, len(sub_job_statuses))
+
+        if any_failed:
+            job_data["status"] = "failed"
+        elif all_completed:
+            job_data["status"] = "completed"
+        else:
+            job_data["status"] = "running"
+
+    # Add timing info
+    job_data = job_manager.add_timing_info(job_data)
+
+    return jsonify(job_data)

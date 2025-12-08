@@ -255,9 +255,12 @@ calibration:
   path_order: camera_first
   active: polynomial
   piv_type: instantaneous
+  active_paths: []
+  cameras: []
   scale_factor:
     dt: 0.56
     px_per_mm: 3.41
+    source_path_idx: 0
   pinhole:
     camera: 1
     pattern_cols: 10
@@ -268,6 +271,7 @@ calibration:
     grid_tolerance: 0.5
     ransac_threshold: 3
     dt: 0.0275
+    source_path_idx: 0
   charuco:
     camera: 1
     squares_h: 10
@@ -277,6 +281,7 @@ calibration:
     aruco_dict: DICT_4X4_1000
     min_corners: 6
     dt: 1
+    source_path_idx: 0
   stereo:
     camera_pair:
     - 1
@@ -304,6 +309,48 @@ merging:
   endpoint: ''
   max_workers: 8
   cameras: []
+  active_paths: []
+statistics:
+  active_paths: []
+  cameras: []
+  include_merged: false
+  gamma_radius: 5
+  save_figures: true
+  type_name: instantaneous
+  enabled_methods:
+    mean_velocity: true
+    reynolds_stress: true
+    normal_stress: true
+    mean_tke: true
+    mean_vorticity: true
+    mean_divergence: true
+    inst_velocity: true
+    inst_fluctuations: true
+    inst_vorticity: true
+    inst_divergence: true
+    inst_gamma: true
+transforms:
+  base_path_idx: 0
+  type_name: instantaneous
+  active_paths: []
+  include_merged: false
+  cameras: {}
+video:
+  base_path_idx: 0
+  camera: 1
+  data_source: calibrated
+  variable: ux
+  run: 1
+  piv_type: instantaneous
+  cmap: default
+  lower: ''
+  upper: ''
+  fps: 30
+  crf: 15
+  resolution: 1080p
+  active_paths: []
+  cameras: []
+  include_merged: false
 
 """
                 with open(cwd_config_path, 'w') as f:
@@ -2351,6 +2398,156 @@ merging:
             return ""
 
         return f"Cam{camera_num}"
+
+    # =========================================================================
+    # Batch Processing Properties
+    # =========================================================================
+    # These properties support multi-path + multi-camera batch processing
+    # across modules: calibration, statistics, transforms, video, merging
+
+    # --- Calibration batch properties ---
+    @property
+    def calibration_active_paths(self) -> list:
+        """Return list of path indices to process for calibration.
+
+        Returns
+        -------
+        list[int]
+            List of 0-indexed path indices. Defaults to all paths.
+        """
+        paths = self.calibration.get("active_paths")
+        if paths is None:
+            return list(range(len(self.base_paths)))
+        return [i for i in paths if 0 <= i < len(self.base_paths)]
+
+    @property
+    def calibration_cameras(self) -> list:
+        """Return list of cameras to calibrate.
+
+        Returns
+        -------
+        list[int]
+            List of camera numbers (1-based). Defaults to camera_numbers.
+        """
+        cameras = self.calibration.get("cameras")
+        return cameras if cameras else self.camera_numbers
+
+    # --- Statistics batch properties ---
+    @property
+    def statistics_active_paths(self) -> list:
+        """Return list of path indices to process for statistics.
+
+        Returns
+        -------
+        list[int]
+            List of 0-indexed path indices. Defaults to all paths.
+        """
+        paths = self.statistics.get("active_paths")
+        if paths is None:
+            return list(range(len(self.base_paths)))
+        return [i for i in paths if 0 <= i < len(self.base_paths)]
+
+    @property
+    def statistics_cameras(self) -> list:
+        """Return list of cameras for statistics processing.
+
+        Returns
+        -------
+        list[int]
+            List of camera numbers (1-based). Defaults to camera_numbers.
+        """
+        cameras = self.statistics.get("cameras")
+        return cameras if cameras else self.camera_numbers
+
+    @property
+    def statistics_include_merged(self) -> bool:
+        """Return whether to include merged data in statistics.
+
+        Returns
+        -------
+        bool
+            True to process merged data alongside cameras. Default False.
+        """
+        return self.statistics.get("include_merged", False)
+
+    # --- Transforms batch properties ---
+    @property
+    def transforms_active_paths(self) -> list:
+        """Return list of path indices to process for transforms.
+
+        Returns
+        -------
+        list[int]
+            List of 0-indexed path indices. Defaults to all paths.
+        """
+        paths = self.transforms.get("active_paths")
+        if paths is None:
+            return list(range(len(self.base_paths)))
+        return [i for i in paths if 0 <= i < len(self.base_paths)]
+
+    @property
+    def transforms_include_merged(self) -> bool:
+        """Return whether to transform merged data.
+
+        Returns
+        -------
+        bool
+            True to transform merged data alongside cameras. Default False.
+        """
+        return self.transforms.get("include_merged", False)
+
+    # --- Video batch properties ---
+    @property
+    def video_active_paths(self) -> list:
+        """Return list of path indices for video creation.
+
+        Returns
+        -------
+        list[int]
+            List of 0-indexed path indices. Defaults to [video_base_path_idx].
+        """
+        paths = self.video.get("active_paths")
+        if paths is None:
+            return [self.video_base_path_idx]
+        return [i for i in paths if 0 <= i < len(self.base_paths)]
+
+    @property
+    def video_cameras(self) -> list:
+        """Return list of cameras for video creation.
+
+        Returns
+        -------
+        list[int]
+            List of camera numbers (1-based). Defaults to [video_camera].
+        """
+        cameras = self.video.get("cameras")
+        return cameras if cameras else [self.video_camera]
+
+    @property
+    def video_include_merged(self) -> bool:
+        """Return whether to create video from merged data.
+
+        Returns
+        -------
+        bool
+            True to create video from merged data alongside cameras. Default False.
+        """
+        return self.video.get("include_merged", False)
+
+    # --- Merging batch properties ---
+    @property
+    def merging_active_paths(self) -> list:
+        """Return list of path indices for vector merging.
+
+        Returns
+        -------
+        list[int]
+            List of 0-indexed path indices. Defaults to [merging_base_path_idx].
+        """
+        paths = self.merging.get("active_paths")
+        if paths is None:
+            return [self.merging_base_path_idx]
+        return [i for i in paths if 0 <= i < len(self.base_paths)]
 
 
 def get_config(refresh: bool = False) -> Config:

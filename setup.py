@@ -214,6 +214,9 @@ class BuildCLib(build_ext):
             except RuntimeError as e:
                 print(f"WARNING: Failed to build libmarquadt: {e}")
                 print("Ensemble PIV will not be available.")
+        else:
+            print(f"WARNING: {marquadt_src} not found, skipping libmarquadt build")
+            print("Ensemble PIV will not be available.")
 
         # Clean up intermediate build files
         for pattern in ['*.obj', '*.exp', '*.lib']:
