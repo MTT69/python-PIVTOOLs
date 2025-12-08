@@ -904,8 +904,18 @@ def get_vector_at_position():
 
         paths = validate_and_get_paths(params)
         data_dir = Path(paths["data_dir"])
+        stats_dir = Path(paths["stats_dir"])
         vec_fmt = get_config().vector_format
-        mat_path = data_dir / (vec_fmt % params["frame"])
+
+        # Determine data source - matches plot_vector logic
+        var_source = request.args.get("var_source", default="inst", type=str)
+
+        if var_source == "mean":
+            mat_path = stats_dir / "mean_stats" / "mean_stats.mat"
+        elif var_source == "inst_stat":
+            mat_path = stats_dir / "instantaneous_stats" / (vec_fmt % params["frame"])
+        else:
+            mat_path = data_dir / (vec_fmt % params["frame"])
 
         if not mat_path.exists():
             raise ValueError(f"Vector mat not found: {mat_path}")
@@ -920,8 +930,13 @@ def get_vector_at_position():
             var_arr = var_arr.reshape(var_arr.shape[0], -1)
         H, W = var_arr.shape
 
-        # Load coordinates
-        coords_file = data_dir / "coordinates.mat"
+        # Load coordinates - check stats folder for mean, else use data_dir
+        if var_source == "mean":
+            coords_file = stats_dir / "mean_stats" / "coordinates.mat"
+            if not coords_file.exists():
+                coords_file = data_dir / "coordinates.mat"
+        else:
+            coords_file = data_dir / "coordinates.mat"
         cx_arr = cy_arr = None
         physical_coord_used = False
 

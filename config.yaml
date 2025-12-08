@@ -262,3 +262,5 @@ merging:
   max_workers: 8
   cameras: []
   base_path_idx: 0
+transforms:
+  cameras: {}

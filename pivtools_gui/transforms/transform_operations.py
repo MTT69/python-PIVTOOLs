@@ -91,7 +91,7 @@ def save_mat_from_transform(mat_file: Path, mat_dict: dict) -> None:
     """
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
-        savemat(str(mat_file), mat_dict, do_compression=True)
+        savemat(str(mat_file), mat_dict, oned_as="row", do_compression=True)
 
 
 # Valid transformation names

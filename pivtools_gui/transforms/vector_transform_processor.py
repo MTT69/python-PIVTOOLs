@@ -39,6 +39,7 @@ from .transform_operations import (
     process_frame_worker,
     restore_original_data,
     save_mat_from_transform,
+    simplify_transformations,
     validate_transformations,
 )
 
@@ -183,6 +184,8 @@ class VectorTransformProcessor:
                 mat["pending_transformations"] = list(mat["pending_transformations"])
 
             mat["pending_transformations"].append(trans)
+            # Simplify the transformation list (e.g., rotate_90_cw + rotate_90_ccw = [])
+            mat["pending_transformations"] = simplify_transformations(mat["pending_transformations"])
 
             # Apply transformation to all non-empty runs in piv_result
             if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
