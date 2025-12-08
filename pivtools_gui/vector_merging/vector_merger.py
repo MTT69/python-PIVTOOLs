@@ -26,6 +26,7 @@ from pivtools_core.paths import get_data_paths
 from pivtools_core.vector_loading import (
     find_valid_piv_runs,
     load_coords_from_directory,
+    read_mat_contents,
 )
 
 # ===================== CONFIGURATION =====================
@@ -549,23 +550,18 @@ class VectorMerger:
                 logger.error(f"Failed to load coordinates for camera {camera}: {e}")
                 continue
 
-            # Load vector file
+            # Load vector file using centralized utility
             vector_file = data_dir / (self.vector_format % frame_idx)
             if not vector_file.exists():
                 logger.warning(f"Vector file does not exist: {vector_file}")
                 continue
 
             try:
-                mat = scipy.io.loadmat(
-                    str(vector_file), struct_as_record=False, squeeze_me=True
-                )
-                if "piv_result" not in mat:
-                    logger.warning(f"No piv_result in {vector_file}")
-                    continue
-
-                piv_result = mat["piv_result"]
+                # Load all runs at once - returns shape (R, 3, H, W)
+                # where 3 channels are [ux, uy, b_mask]
+                all_runs_data = read_mat_contents(str(vector_file), return_all_runs=True)
                 camera_data[camera] = {
-                    "piv_result": piv_result,
+                    "vector_data": all_runs_data,  # (R, 3, H, W) or object array
                     "coords_x": coords_x_list,
                     "coords_y": coords_y_list,
                 }
@@ -586,32 +582,33 @@ class VectorMerger:
             run_data = {}
 
             for camera, data in camera_data.items():
-                piv_result = data["piv_result"]
+                vector_data = data["vector_data"]
+                array_idx = run_num - 1  # Convert 1-based run to 0-based index
 
-                if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
-                    # Multiple runs - run_num is 1-based, array is 0-based
-                    array_idx = run_num - 1
+                # Handle both regular arrays and object arrays from read_mat_contents
+                if vector_data.dtype == object:
+                    # Object array - each element is (3, H, W)
+                    if array_idx >= len(vector_data):
+                        continue
+                    run_arr = vector_data[array_idx]
+                    if run_arr.size == 0:
+                        continue
+                    ux = run_arr[0]
+                    uy = run_arr[1]
+                    b_mask = run_arr[2].astype(bool)
                     logger.debug(
-                        f"Camera {camera}: Accessing piv_result[{array_idx}] for run {run_num}"
+                        f"Camera {camera}: Loaded from object array, ux.shape={ux.shape}"
                     )
-                    if array_idx < len(piv_result):
-                        cell = piv_result[array_idx]
-                        ux = np.asarray(cell.ux)
-                        uy = np.asarray(cell.uy)
-                        b_mask = np.asarray(cell.b_mask).astype(bool)
-                        logger.debug(
-                            f"Camera {camera}: Loaded ux.shape={ux.shape}, uy.shape={uy.shape}"
-                        )
-                    else:
-                        continue
                 else:
-                    # Single run
-                    if run_idx == 0:
-                        ux = np.asarray(piv_result.ux)
-                        uy = np.asarray(piv_result.uy)
-                        b_mask = np.asarray(piv_result.b_mask).astype(bool)
-                    else:
+                    # Regular array shape (R, 3, H, W)
+                    if array_idx >= vector_data.shape[0]:
                         continue
+                    ux = vector_data[array_idx, 0]
+                    uy = vector_data[array_idx, 1]
+                    b_mask = vector_data[array_idx, 2].astype(bool)
+                    logger.debug(
+                        f"Camera {camera}: Loaded from regular array, ux.shape={ux.shape}"
+                    )
 
                 # Skip empty runs
                 if ux.size == 0 or uy.size == 0:
@@ -785,7 +782,7 @@ class VectorMerger:
     def merge_all_frames(
         self,
         progress_callback: Optional[Callable[[dict], None]] = None,
-        max_workers: int = 8,
+        max_workers: Optional[int] = None,
     ) -> dict:
         """
         Process all frames with multiprocessing support.
@@ -796,7 +793,7 @@ class VectorMerger:
                 - processed_frames: int
                 - total_frames: int
                 - message: str
-            max_workers: Maximum number of parallel workers
+            max_workers: Maximum number of parallel workers (default: from config)
 
         Returns:
             dict with:
@@ -806,6 +803,11 @@ class VectorMerger:
                 - valid_runs: list
                 - error: str (if failed)
         """
+        # Read max_workers from config if not provided
+        if max_workers is None:
+            cfg = get_config()
+            max_workers = cfg.merging_max_workers
+
         # Find valid runs
         valid_runs, total_runs = self.find_valid_runs()
 

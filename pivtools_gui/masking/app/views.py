@@ -51,6 +51,8 @@ def upload_mask():
         except Exception:
             camera_num = camera
         mask_path = cfg.get_mask_path(camera_num, basePathIdx)
+        # Ensure storage directory exists (especially for .set files with per-file storage)
+        mask_path.parent.mkdir(parents=True, exist_ok=True)
         save_mask_to_mat(mask_path, mask, np.asarray(polygons))
     except Exception:
         return jsonify({"error": "invalid or missing meta fields"}), 400

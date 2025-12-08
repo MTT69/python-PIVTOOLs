@@ -21,6 +21,7 @@ Parametric transformations (require :factor suffix, e.g., "scale_velocity:1000")
 
 import copy
 import warnings
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from typing_extensions import TypedDict
@@ -504,6 +505,93 @@ def process_frame_worker(
         return False
 
 
+# =============================================================================
+# Canonical State for Transform Simplification
+# =============================================================================
+
+
+@dataclass
+class TransformCanonicalState:
+    """Canonical state representation for transform simplification.
+
+    Transforms are represented in a canonical form that enables
+    simplification of non-adjacent operations. This uses algebraic
+    group properties:
+    - Rotations: cyclic group Z4 (mod 4 arithmetic)
+    - Flips: Z2 (even count = identity)
+    - Velocity ops: Z2 (even count = identity)
+    - Scaling: multiplicative accumulation
+    """
+
+    rotation: int = 0  # 0=none, 1=90cw, 2=180, 3=90ccw
+    flip_ud: bool = False
+    flip_lr: bool = False
+    swap_ux_uy: bool = False
+    invert_ux_uy: bool = False
+    velocity_scale: float = 1.0
+    coord_scale: float = 1.0
+
+    def apply_transform(self, transformation: str) -> None:
+        """Apply a transformation to update canonical state."""
+        base_name, param = parse_parametric_transform(transformation)
+
+        if base_name == "rotate_90_cw":
+            self.rotation = (self.rotation + 1) % 4
+        elif base_name == "rotate_90_ccw":
+            self.rotation = (self.rotation + 3) % 4  # -1 mod 4 = 3
+        elif base_name == "rotate_180":
+            self.rotation = (self.rotation + 2) % 4
+        elif base_name == "flip_ud":
+            self.flip_ud = not self.flip_ud
+        elif base_name == "flip_lr":
+            self.flip_lr = not self.flip_lr
+        elif base_name == "swap_ux_uy":
+            self.swap_ux_uy = not self.swap_ux_uy
+        elif base_name == "invert_ux_uy":
+            self.invert_ux_uy = not self.invert_ux_uy
+        elif base_name == "scale_velocity" and param is not None:
+            self.velocity_scale *= param
+        elif base_name == "scale_coords" and param is not None:
+            self.coord_scale *= param
+
+    def to_minimal_operations(self) -> List[str]:
+        """Convert canonical state to minimal list of operations.
+
+        Returns the shortest sequence of operations that achieves
+        the same result as the original transformation sequence.
+        """
+        result = []
+
+        # Emit rotation (prefer single operation over multiple)
+        if self.rotation == 1:
+            result.append("rotate_90_cw")
+        elif self.rotation == 2:
+            result.append("rotate_180")
+        elif self.rotation == 3:
+            result.append("rotate_90_ccw")
+        # rotation == 0 means no rotation needed
+
+        # Emit flips
+        if self.flip_ud:
+            result.append("flip_ud")
+        if self.flip_lr:
+            result.append("flip_lr")
+
+        # Emit velocity operations
+        if self.swap_ux_uy:
+            result.append("swap_ux_uy")
+        if self.invert_ux_uy:
+            result.append("invert_ux_uy")
+
+        # Emit scale operations (only if not identity)
+        if abs(self.velocity_scale - 1.0) > 1e-10:
+            result.append(f"scale_velocity:{self.velocity_scale}")
+        if abs(self.coord_scale - 1.0) > 1e-10:
+            result.append(f"scale_coords:{self.coord_scale}")
+
+        return result
+
+
 def validate_transformations(
     transformations: List[str], allow_empty: bool = False
 ) -> Tuple[bool, Optional[str]]:
@@ -547,95 +635,41 @@ def validate_transformations(
 
 def simplify_transformations(ops: List[str]) -> List[str]:
     """
-    Simplify a list of transformations by cancelling inverse operations.
+    Simplify a list of transformations using canonical state representation.
 
-    Rules:
-    - rotate_90_cw + rotate_90_ccw -> remove both (cancel)
-    - rotate_90_ccw + rotate_90_cw -> remove both (cancel)
-    - rotate_90_cw + rotate_90_cw -> rotate_180
-    - rotate_90_ccw + rotate_90_ccw -> rotate_180
-    - rotate_180 + rotate_180 -> remove both (cancel)
-    - flip_ud + flip_ud -> remove both (cancel)
-    - flip_lr + flip_lr -> remove both (cancel)
-    - invert_ux_uy + invert_ux_uy -> remove both (cancel)
-    - swap_ux_uy + swap_ux_uy -> remove both (cancel)
-    - scale_velocity:A + scale_velocity:B -> scale_velocity:(A*B)
-    - scale_coords:A + scale_coords:B -> scale_coords:(A*B)
+    This function reduces any sequence of transformations to a minimal
+    equivalent sequence by tracking cumulative state rather than
+    looking at adjacent pairs. This enables cancellation of non-adjacent
+    operations.
+
+    Examples:
+        >>> simplify_transformations(["rotate_90_cw", "rotate_90_ccw"])
+        []
+        >>> simplify_transformations(["rotate_90_cw", "flip_ud", "rotate_90_ccw"])
+        ["flip_ud"]
+        >>> simplify_transformations(["rotate_90_cw"] * 4)
+        []
+        >>> simplify_transformations(["flip_ud", "flip_ud"])
+        []
+        >>> simplify_transformations(["scale_velocity:2", "scale_velocity:0.5"])
+        []
 
     Args:
         ops: List of transformation operation names
 
     Returns:
-        Simplified list of transformations
+        Minimal equivalent list of transformations
     """
     if not ops:
         return []
 
-    # Define cancellation pairs (a, b) means a followed by b cancels
-    CANCEL_PAIRS = {
-        ("rotate_90_cw", "rotate_90_ccw"),
-        ("rotate_90_ccw", "rotate_90_cw"),
-        ("rotate_180", "rotate_180"),
-        ("flip_ud", "flip_ud"),
-        ("flip_lr", "flip_lr"),
-        ("invert_ux_uy", "invert_ux_uy"),
-        ("swap_ux_uy", "swap_ux_uy"),
-    }
+    # Build canonical state by applying all transforms
+    state = TransformCanonicalState()
+    for op in ops:
+        try:
+            state.apply_transform(op)
+        except ValueError:
+            # Unknown transform - log warning but continue
+            logger.warning(f"Unknown transformation during simplification: {op}")
 
-    # Define merge rules: (a, b) -> c
-    MERGE_RULES = {
-        ("rotate_90_cw", "rotate_90_cw"): "rotate_180",
-        ("rotate_90_ccw", "rotate_90_ccw"): "rotate_180",
-    }
-
-    result = list(ops)
-    changed = True
-
-    # Keep simplifying until no more changes
-    while changed:
-        changed = False
-        i = 0
-        while i < len(result) - 1:
-            curr = result[i]
-            next_t = result[i + 1]
-
-            # Parse both transforms to check for parametric combinations
-            try:
-                curr_base, curr_param = parse_parametric_transform(curr)
-                next_base, next_param = parse_parametric_transform(next_t)
-
-                # Merge consecutive scale operations of the same type
-                if (
-                    curr_base == next_base
-                    and curr_base in PARAMETRIC_TRANSFORMS
-                    and curr_param is not None
-                    and next_param is not None
-                ):
-                    combined_factor = curr_param * next_param
-                    result[i] = f"{curr_base}:{combined_factor}"
-                    result.pop(i + 1)
-                    changed = True
-                    continue
-            except ValueError:
-                # If parsing fails, continue with normal checks
-                pass
-
-            pair = (curr, next_t)
-
-            # Check for cancellation
-            if pair in CANCEL_PAIRS:
-                result.pop(i)
-                result.pop(i)
-                changed = True
-                continue
-
-            # Check for merge
-            if pair in MERGE_RULES:
-                result[i] = MERGE_RULES[pair]
-                result.pop(i + 1)
-                changed = True
-                continue
-
-            i += 1
-
-    return result
+    return state.to_minimal_operations()

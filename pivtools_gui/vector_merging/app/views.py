@@ -28,11 +28,13 @@ def merge_one_frame():
     Merge vectors for a single frame.
 
     Request JSON:
-        base_path_idx: int - Index into config's base_paths
-        cameras: list - Camera numbers to merge (default: from config)
         frame_idx: int - Frame number to merge (default: 1)
-        type_name: str - Vector type (default: from config)
-        endpoint: str - Optional endpoint specification (default: from config)
+
+    All other parameters read from config.yaml merging block:
+        - base_path_idx: Which base_path to use
+        - cameras: Camera numbers to merge
+        - type_name: Vector type (instantaneous, ensemble, etc.)
+        - endpoint: Optional endpoint specification
 
     Returns:
         JSON with status, frame, runs_merged, message
@@ -40,11 +42,14 @@ def merge_one_frame():
     data = request.get_json() or {}
     cfg = get_config()
 
-    base_path_idx = int(data.get("base_path_idx", 0))
-    cameras = [camera_number(c) for c in data.get("cameras", cfg.merging_cameras)]
+    # All config from config.yaml
+    base_path_idx = cfg.merging_base_path_idx
+    cameras = [camera_number(c) for c in cfg.merging_cameras]
+    type_name = cfg.merging_type_name
+    endpoint = cfg.merging_endpoint
+
+    # Only frame_idx accepted from request (for single frame testing)
     frame_idx = int(data.get("frame_idx", 1))
-    type_name = data.get("type_name", cfg.merging_type_name)
-    endpoint = data.get("endpoint", cfg.merging_endpoint)
 
     try:
         base_dir = Path(cfg.base_paths[base_path_idx])
@@ -100,22 +105,23 @@ def merge_all_frames():
     """
     Start vector merging job for all frames with multiprocessing.
 
-    Request JSON:
-        base_path_idx: int - Index into config's base_paths
-        cameras: list - Camera numbers to merge (default: from config)
-        type_name: str - Vector type (default: from config)
-        endpoint: str - Optional endpoint specification (default: from config)
+    All parameters read from config.yaml merging block:
+        - base_path_idx: Which base_path to use
+        - cameras: Camera numbers to merge
+        - type_name: Vector type (instantaneous, ensemble, etc.)
+        - endpoint: Optional endpoint specification
+        - max_workers: Number of parallel workers
 
     Returns:
         JSON with job_id, status, message
     """
-    data = request.get_json() or {}
     cfg = get_config()
 
-    base_path_idx = int(data.get("base_path_idx", 0))
-    cameras = [camera_number(c) for c in data.get("cameras", cfg.merging_cameras)]
-    type_name = data.get("type_name", cfg.merging_type_name)
-    endpoint = data.get("endpoint", cfg.merging_endpoint)
+    # All config from config.yaml
+    base_path_idx = cfg.merging_base_path_idx
+    cameras = [camera_number(c) for c in cfg.merging_cameras]
+    type_name = cfg.merging_type_name
+    endpoint = cfg.merging_endpoint
 
     try:
         base_dir = Path(cfg.base_paths[base_path_idx])
@@ -148,8 +154,11 @@ def merge_all_frames():
                         message=progress_data.get("message", ""),
                     )
 
-                # Run merge
-                result = merger.merge_all_frames(progress_callback=progress_callback)
+                # Run merge with max_workers from config
+                result = merger.merge_all_frames(
+                    progress_callback=progress_callback,
+                    max_workers=cfg.merging_max_workers,
+                )
 
                 if result["success"]:
                     job_manager.complete_job(
@@ -208,22 +217,22 @@ def merge_validate():
     """
     Validate that vector data exists for all cameras before merging.
 
-    Request JSON:
-        base_path_idx: int - Index into config's base_paths
-        cameras: list - Camera numbers to check (default: from config)
-        type_name: str - Vector type (default: from config)
-        endpoint: str - Optional endpoint specification (default: from config)
+    All parameters read from config.yaml merging block:
+        - base_path_idx: Which base_path to use
+        - cameras: Camera numbers to check
+        - type_name: Vector type (instantaneous, ensemble, etc.)
+        - endpoint: Optional endpoint specification
 
     Returns:
         JSON with valid, cameras_found, valid_runs, total_runs, num_frame_pairs
     """
-    data = request.get_json() or {}
     cfg = get_config()
 
-    base_path_idx = int(data.get("base_path_idx", 0))
-    cameras = [camera_number(c) for c in data.get("cameras", cfg.merging_cameras)]
-    type_name = data.get("type_name", cfg.merging_type_name)
-    endpoint = data.get("endpoint", cfg.merging_endpoint)
+    # All config from config.yaml
+    base_path_idx = cfg.merging_base_path_idx
+    cameras = [camera_number(c) for c in cfg.merging_cameras]
+    type_name = cfg.merging_type_name
+    endpoint = cfg.merging_endpoint
 
     try:
         base_dir = Path(cfg.base_paths[base_path_idx])

@@ -161,7 +161,9 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
 
     # Handle container formats (single file contains multiple frames/cameras)
     if image_type == "lavision_set":
-        set_file_path = camera_path / format_str
+        # For .set files, camera_path IS the .set file itself
+        # (source_path is the full path to the .set file)
+        set_file_path = camera_path
 
         if config.time_resolved:
             # Time-resolved: read two separate frames from container
@@ -305,7 +307,8 @@ def load_images(camera: int, config: Config, source: Path = None) -> da.Array:
     image_type = config.image_type
 
     if image_type == "lavision_set":
-        camera_path = source  # No camera subdirectory for set files
+        # For .set files, source IS the .set file itself (full path)
+        camera_path = source
     elif image_type == "lavision_im7":
         if config.images_use_camera_subfolders:
             # Single-camera IM7 files in camera subdirectories

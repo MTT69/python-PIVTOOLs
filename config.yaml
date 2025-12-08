@@ -256,3 +256,9 @@ masking:
     bottom: 64
     left: 0
     right: 0
+merging:
+  type_name: instantaneous
+  endpoint: ''
+  max_workers: 8
+  cameras: []
+  base_path_idx: 0

@@ -282,6 +282,8 @@ def _transform_vector_file_worker(mat_file_path: str, transforms: List[str]) -> 
     """Worker function for parallel vector file transformation."""
     from scipy.io import loadmat, savemat
     import warnings
+    # Import inside worker for multiprocessing compatibility
+    from pivtools_core.vector_loading import is_run_valid
 
     try:
         mat = loadmat(mat_file_path, struct_as_record=False, squeeze_me=True)
@@ -297,11 +299,16 @@ def _transform_vector_file_worker(mat_file_path: str, transforms: List[str]) -> 
         elif piv_result.ndim == 0:
             piv_result = np.array([piv_result.item()])
 
-        # Apply transforms to each run
+        # Apply transforms to each VALID run (use centralized validation)
         for run_idx in range(piv_result.size):
             pr = piv_result[run_idx]
-            for trans in transforms:
-                apply_transformation_to_piv_result(pr, trans)
+            try:
+                if is_run_valid(pr, fields=("ux",), require_2d=False, reject_all_nan=True):
+                    for trans in transforms:
+                        apply_transformation_to_piv_result(pr, trans)
+            except Exception as e:
+                logger.warning(f"Error validating run {run_idx + 1} in {mat_file_path}: {e}")
+                continue
 
         # Remove any legacy pending_transformations field
         if "pending_transformations" in mat:

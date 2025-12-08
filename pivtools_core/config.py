@@ -1328,6 +1328,17 @@ merging:
             return cameras
         return self.camera_numbers
 
+    @property
+    def merging_base_path_idx(self) -> int:
+        """Return default base path index for merging operations.
+
+        Returns
+        -------
+        int
+            Index into base_paths list (default 0)
+        """
+        return self.merging.get("base_path_idx", 0)
+
     # --- PIV-specific properties from pypivtools ---
     @property
     def window_sizes(self):
@@ -1992,9 +2003,9 @@ merging:
         """
         Get the full path to the mask file for a given camera.
 
-        For .set files, includes the set filename in the mask name to avoid
-        conflicts when multiple .set files exist in the same directory.
-        E.g., "experiment.set" -> "mask_experiment_Cam1.mat"
+        For .set files, masks are stored in a dedicated storage directory
+        (e.g., /path/to/file_data/) with the set filename in the mask name.
+        E.g., source_path="/data/experiment.set" -> "/data/experiment_data/mask_experiment_Cam1.mat"
 
         Parameters
         ----------
@@ -2009,17 +2020,18 @@ merging:
             Full path to the mask .mat file
         """
         base_pattern = self.mask_file_pattern % camera_num
+        storage_dir = self.get_storage_directory(source_path_idx)
 
         # For .set files, include the set filename to disambiguate
         if self.image_type == "lavision_set":
-            set_filename = self.image_format[0]  # e.g., "experiment.set"
-            set_stem = Path(set_filename).stem    # e.g., "experiment"
+            # source_path IS the .set file, so get stem from it directly
+            set_stem = self.source_paths[source_path_idx].stem  # e.g., "experiment"
             # Insert set name: "mask_Cam1.mat" -> "mask_experiment_Cam1.mat"
             mask_filename = base_pattern.replace("mask_", f"mask_{set_stem}_")
         else:
             mask_filename = base_pattern
 
-        return self.source_paths[source_path_idx] / mask_filename
+        return storage_dir / mask_filename
 
     @property
     def zero_based_indexing(self):
@@ -2063,6 +2075,74 @@ merging:
         # Validate indices
         max_idx = len(self.source_paths) - 1
         return [i for i in active if 0 <= i <= max_idx]
+
+    # --- .set file path helpers ---
+
+    def get_storage_directory(self, source_path_idx: int = 0) -> Path:
+        """Get storage directory for masks (per-.set-file storage).
+
+        For .set files: derives storage from filename (e.g., /path/to/file_data/)
+        For other formats: returns source_path itself
+
+        Parameters
+        ----------
+        source_path_idx : int, optional
+            Index into source_paths list, defaults to 0
+
+        Returns
+        -------
+        Path
+            Directory for storing masks and other per-dataset files
+        """
+        source_path = self.source_paths[source_path_idx]
+        if self.image_type == "lavision_set":
+            # .set files: storage is sibling directory named {stem}_data
+            return source_path.parent / f"{source_path.stem}_data"
+        return source_path
+
+    def get_source_directory(self, source_path_idx: int = 0) -> Path:
+        """Get source directory (parent for .set, same for directories).
+
+        Use this for calibration images and other assets relative to source.
+        For .set files: returns parent directory (e.g., /path/to/)
+        For other formats: returns source_path itself
+
+        Parameters
+        ----------
+        source_path_idx : int, optional
+            Index into source_paths list, defaults to 0
+
+        Returns
+        -------
+        Path
+            Base directory for calibration images and related assets
+        """
+        source_path = self.source_paths[source_path_idx]
+        if self.image_type == "lavision_set":
+            return source_path.parent
+        return source_path
+
+    def get_set_file_path(self, source_path_idx: int = 0) -> Path:
+        """Get the .set file path. For lavision_set, source_path IS the file.
+
+        Parameters
+        ----------
+        source_path_idx : int, optional
+            Index into source_paths list, defaults to 0
+
+        Returns
+        -------
+        Path
+            Full path to the .set file
+
+        Raises
+        ------
+        ValueError
+            If image_type is not lavision_set
+        """
+        if self.image_type != "lavision_set":
+            raise ValueError("get_set_file_path() only valid for lavision_set image_type")
+        return self.source_paths[source_path_idx]
 
     # --- Transform properties ---
 

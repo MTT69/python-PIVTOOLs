@@ -120,8 +120,9 @@ def cam_folder_key(camera, cfg):
 
 def make_raw_cache_key(source_path_idx: int, camera: int, idx: int, img_format: str, cfg) -> tuple:
     """Generate consistent cache key for raw images. Include all parameters that affect output."""
-    format_str = cfg.image_format[0]
-    if '.set' in str(format_str) or '.im7' in str(format_str):
+    image_type = cfg.image_type
+    # For .set files, source_path IS the .set file; for others, may need camera folder
+    if image_type in ("lavision_set", "lavision_im7"):
         source_path = cfg.source_paths[source_path_idx]
     else:
         folder = cfg.get_camera_folder(camera)
@@ -131,8 +132,9 @@ def make_raw_cache_key(source_path_idx: int, camera: int, idx: int, img_format: 
 
 def cache_key(source_path_idx, camera, cfg):
     """Generate cache key for processed images (no frame index - stores dict of frames)."""
-    format_str = cfg.image_format[0]
-    if '.set' in str(format_str) or '.im7' in str(format_str):
+    image_type = cfg.image_type
+    # For .set files, source_path IS the .set file; for others, may need camera folder
+    if image_type in ("lavision_set", "lavision_im7"):
         source_path = cfg.source_paths[source_path_idx]
     else:
         folder = cfg.get_camera_folder(camera_number(camera))
@@ -229,7 +231,8 @@ def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: 
     import time as time_module
     try:
         format_str = cfg.image_format[0]
-        if '.set' in str(format_str) or '.im7' in str(format_str):
+        image_type = cfg.image_type
+        if image_type in ("lavision_set", "lavision_im7"):
             source_path = cfg.source_paths[source_path_idx]
         else:
             folder = cfg.get_camera_folder(camera)
@@ -306,7 +309,8 @@ def get_frame_pair():
 
     # Determine source path for reading (if cache miss)
     format_str = cfg.image_format[0]
-    if '.set' in str(format_str) or '.im7' in str(format_str):
+    image_type = cfg.image_type
+    if image_type in ("lavision_set", "lavision_im7"):
         source_path = cfg.source_paths[source_path_idx]
     else:
         folder = cfg.get_camera_folder(camera)
@@ -465,8 +469,9 @@ def filter_images_endpoint():
     
     # For .set and .im7 files, don't append camera folder - all cameras are in the source directory
     format_str = cfg.image_format[0]
+    image_type = cfg.image_type
 
-    if '.set' in str(format_str) or '.im7' in str(format_str):
+    if image_type in ("lavision_set", "lavision_im7"):
         source_path = cfg.source_paths[source_path_idx]
     else:
         folder = cfg.get_camera_folder(camera_number(camera))
@@ -602,8 +607,9 @@ def filter_single_frame():
     
     # For .set and .im7 files, don't append camera folder
     format_str = cfg.image_format[0]
+    image_type = cfg.image_type
 
-    if '.set' in str(format_str) or '.im7' in str(format_str):
+    if image_type in ("lavision_set", "lavision_im7"):
         source_path = cfg.source_paths[source_path_idx]
     else:
         folder = cfg.get_camera_folder(camera_number(camera))
@@ -959,6 +965,26 @@ def update_config():
     camera_numbers_provided = "camera_numbers" in data.get("paths", {})
 
     recursive_update(cfg.data, data)
+
+    # Normalize camera keys in calibration.polynomial.cameras to integers
+    # (JSON keys are always strings, but we want integer keys in YAML)
+    poly_cameras = cfg.data.get("calibration", {}).get("polynomial", {}).get("cameras")
+    if poly_cameras and isinstance(poly_cameras, dict):
+        normalized = {}
+        for k, v in poly_cameras.items():
+            try:
+                int_key = int(k)
+                # If both string and int versions exist, prefer the one being updated
+                # (string key is the one just sent from frontend)
+                if int_key in normalized and isinstance(k, str):
+                    # String key is new data, overwrite
+                    normalized[int_key] = v
+                elif int_key not in normalized:
+                    normalized[int_key] = v
+            except (ValueError, TypeError):
+                # Keep non-numeric keys as-is (shouldn't happen)
+                normalized[k] = v
+        cfg.data["calibration"]["polynomial"]["cameras"] = normalized
 
     # Handle camera_numbers based on camera_count changes
     new_camera_count = cfg.data["paths"].get("camera_count", 1)
