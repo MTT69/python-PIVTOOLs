@@ -506,12 +506,13 @@ int fit_stacked_gaussian_batch_export(
 ) {
     int success_count = 0;
     size_t corr_size = 3 * n_per_window;  // AA + BB + AB per window
+    int num_windows_int = (int)num_windows;  // MSVC OpenMP requires signed int bounds
+    int i;  // Loop variable declared outside for MSVC OpenMP 2.0 compatibility
 
-    // MSVC OpenMP 2.0 requires signed integer loop counters
     #ifdef _OPENMP
     #pragma omp parallel for reduction(+:success_count) schedule(dynamic, 16)
     #endif
-    for (int i = 0; i < (int)num_windows; i++) {
+    for (i = 0; i < num_windows_int; i++) {
         // Pointers into the flattened arrays for this window
         const double *y_window = y_all + (size_t)i * corr_size;
         const double *guess_window = initial_guesses + (size_t)i * P_PARAMS;
