@@ -770,7 +770,7 @@ class UnifiedBatchPipeline:
                 self.config,
                 batch_idx,
                 None,  # output_path
-                None,  # pixel_mask
+                self.scattered_pixel_mask,  # pixel_mask
                 batch_idx == 0,  # is_first_batch - only first uses all cores
                 workers=[worker],
                 priority=10,

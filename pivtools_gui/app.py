@@ -18,8 +18,8 @@ from flask_cors import CORS
 from loguru import logger
 import os
 from pivtools_gui.calibration.app.views import calibration_bp
-from pivtools_core.config import get_config, reload_config
-from pivtools_core.image_handling.load_images import read_pair
+from pivtools_core.config import get_config, reload_config, Config
+from pivtools_core.image_handling.load_images import read_pair, load_mask_for_camera
 from pivtools_core.image_handling.path_utils import build_piv_camera_path, validate_images_generic
 from pivtools_gui.masking.app.views import masking_bp
 from pivtools_core.paths import get_data_paths
@@ -446,14 +446,27 @@ def preload_images():
 def filter_images_endpoint():
     global processing
     data = request.get_json() or {}
-    cfg = get_config()
+    # Use fresh config instance to avoid polluting global state with preview overrides
+    cfg = Config()
     camera = camera_number(data.get("camera"))
     start_idx = int(data.get("start_idx", 1))
     filters = data.get("filters", None)
+    masking = data.get("masking", None)
+    
+    # Handle source_path_idx safely (default to 0 if missing or None)
     source_path_idx = data.get("source_path_idx")
+    if source_path_idx is None:
+        source_path_idx = 0
+    source_path_idx = int(source_path_idx)
     
     if filters is not None:
         cfg.data["filters"] = filters
+
+    if masking is not None:
+        if "masking" not in cfg.data:
+            cfg.data["masking"] = {}
+        recursive_update(cfg.data["masking"], masking)
+        logger.info(f"Preview masking config: {cfg.data['masking']}")
 
     # Use batch size from config
     batch_length = cfg.data.get("batches", {}).get("size", 30)
@@ -508,6 +521,20 @@ def filter_images_endpoint():
             # Compute to numpy array first (required for apply_filters_to_batch)
             batch_np = dask.compute(darr, scheduler='threads')[0]
 
+            # Load mask
+            mask = load_mask_for_camera(camera, cfg, source_path_idx)
+            if mask is not None:
+                logger.info(f"Preview mask loaded: shape={mask.shape}, dtype={mask.dtype}")
+                if batch_np.shape[-2:] != mask.shape:
+                    logger.error(f"Mask shape mismatch! Batch: {batch_np.shape}, Mask: {mask.shape}")
+            else:
+                if not cfg.masking_enabled:
+                    logger.info("Masking is DISABLED in config.")
+                else:
+                    expected_path = cfg.get_mask_path(camera, source_path_idx)
+                    logger.info(f"Masking ENABLED. Expected mask path: {expected_path}. Exists: {expected_path.exists()}")
+                logger.info("No mask loaded for preview (masking disabled or file not found)")
+
             # Apply ALL filters (spatial + batch) using unified function
             processed_all = apply_filters_to_batch(
                 batch_np,
@@ -515,7 +542,7 @@ def filter_images_endpoint():
                 save_diagnostics=False,
                 output_dir=None,
                 batch_idx=0,
-                pixel_mask=None  # TODO: load mask if configured
+                pixel_mask=mask
             )
 
             # Store results

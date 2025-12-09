@@ -118,7 +118,11 @@ def validate_config(config: Config) -> tuple[bool, str, list[str]]:
         # Count files
         if '.set' in str(format_str):
             # Set files: single file
-            set_file = camera_path / format_str
+            if camera_path.is_file():
+                set_file = camera_path
+            else:
+                set_file = camera_path / format_str
+            
             if not set_file.exists():
                 errors.append(f"Camera {camera_num}: Set file not found: {set_file}")
         elif '.im7' in str(format_str):
