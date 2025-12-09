@@ -95,88 +95,135 @@ def pod_filter(images: da.Array) -> da.Array:
     return processed_images
 
 
-def _pod_filter_block(block):
+def _pod_filter_block(block, tile_size=2048):
     """
-    Apply POD filtering to a block of images.
-    
+    Memory-efficient POD filtering using spatial tiling.
+
+    This implementation uses the mathematical equivalence:
+        TC @ PHI.T = PSI @ PSI.T @ M
+
+    The singular values in TC (= PSI @ Sigma) and PHI (= M.T @ PSI @ Sigma^-1)
+    cancel out, allowing direct projection without storing the massive spatial
+    mode matrix PHI.
+
     For each frame (frame1 and frame2 separately):
-    - Reshapes images to vectors (N, H*W)
-    - Computes covariance matrix C = M @ M.T
-    - Performs SVD: C = PSI @ S @ PSI.T
-    - Identifies signal modes using automatic thresholding
-    - Reconstructs and subtracts signal modes from original images
-    
+    1. Computes temporal modes (PSI) via SVD of covariance matrix
+    2. Identifies signal modes using automatic thresholding (Mendez et al.)
+    3. Applies filtering using spatial tiling to minimize memory usage
+
+    Peak memory is dominated by the initial float32 conversion, not by the
+    number of modes removed. This scales safely to high-resolution images.
+
     Args:
         block: numpy array of shape (N, 2, H, W)
-    
+        tile_size: Size of spatial tiles for memory-efficient processing (default 2048)
+
     Returns:
         numpy array of same shape, filtered (signal removed, noise retained)
     """
-    N, _, H, W = block.shape
-    M1 = block[:, 0].reshape(N, -1).astype(np.float32)
-    M2 = block[:, 1].reshape(N, -1).astype(np.float32)
+    import gc
 
-    C1 = M1 @ M1.T
-    C2 = M2 @ M2.T
-    PSI1, S1, _ = np.linalg.svd(C1, full_matrices=False)
-    PSI2, S2, _ = np.linalg.svd(C2, full_matrices=False)
+    N, C, H, W = block.shape
+    output = np.empty_like(block)
 
+    # Process each channel (frame 0/1) sequentially to halve memory requirements
+    for frame_idx in range(C):
+        logging.debug(f"POD filter: Processing frame {frame_idx}...")
+
+        # Step 1: Compute Temporal Modes (PSI) on full resolution
+        # Reshape to (N, Pixels) and promote to float32
+        M_full = block[:, frame_idx].reshape(N, -1).astype(np.float32)
+
+        # Compute covariance matrix (N x N) - this is small and fast
+        Cov = M_full @ M_full.T
+        PSI, S, _ = np.linalg.svd(Cov, full_matrices=False)
+
+        # Identify noise floor using Mendez et al. criteria
+        n_remove = _find_pod_auto_mode(PSI, S, N)
+
+        logging.debug(f"POD filter: Frame {frame_idx} - found {n_remove} modes to remove")
+
+        if n_remove == 0:
+            output[:, frame_idx] = block[:, frame_idx]
+            del M_full, Cov, S, PSI
+            gc.collect()
+            continue
+
+        # Isolate the signal modes to remove (copy before deleting PSI)
+        PSI_bad = PSI[:, :n_remove].copy()
+
+        # Free memory - we don't need M_full or full PSI anymore
+        del M_full, Cov, S, PSI
+        gc.collect()
+
+        # Step 2: Apply filter using spatial tiling
+        # The projection PSI @ PSI.T @ M is equivalent to TC @ PHI.T
+        # but avoids storing the massive PHI matrix
+
+        for y in range(0, H, tile_size):
+            y_end = min(y + tile_size, H)
+            for x in range(0, W, tile_size):
+                x_end = min(x + tile_size, W)
+
+                # Extract tile from original block
+                tile = block[:, frame_idx, y:y_end, x:x_end]
+
+                # Reshape to matrix (N, P_tile) and promote to float32
+                M_tile = tile.reshape(N, -1).astype(np.float32)
+
+                # Project onto bad modes and subtract: M - PSI @ PSI.T @ M
+                # This is mathematically equivalent to the full POD reconstruction
+                t_coeffs = PSI_bad.T @ M_tile  # (n_remove, P_tile)
+                bad_signal = PSI_bad @ t_coeffs  # (N, P_tile)
+                M_tile -= bad_signal
+
+                # Store result
+                h_t, w_t = y_end - y, x_end - x
+                output[:, frame_idx, y:y_end, x:x_end] = M_tile.reshape(N, h_t, w_t)
+
+                del M_tile, t_coeffs, bad_signal
+
+        del PSI_bad
+        gc.collect()
+
+    return output.astype(block.dtype)
+
+
+def _find_pod_auto_mode(PSI, eigvals, N):
+    """
+    Find the first mode that meets noise criteria (Mendez et al.).
+
+    Returns the number of signal modes to remove (modes before the noise mode).
+    If no noise mode is found, returns 0 (no filtering applied).
+
+    The criteria for identifying a noise mode:
+    - Mean of eigenvector < eps_auto_psi (0.01)
+    - Eigenvalue difference < eps_auto_sigma * max_eigenvalue (0.01)
+
+    Args:
+        PSI: Eigenvectors from SVD of covariance matrix (N, N)
+        eigvals: Eigenvalues from SVD (N,)
+        N: Number of snapshots
+
+    Returns:
+        int: Number of signal modes to remove
+    """
     eps_auto_psi = 0.01
     eps_auto_sigma = 0.01
 
-    def _find_auto_mode(PSI, eigvals):
-        """
-        Find the first mode that meets noise criteria.
-        Returns the number of signal modes to keep (modes before the noise mode).
-        If no noise mode is found, returns 0 (no filtering applied).
-        """
-        for i in range(N - 1):
-            mean_psi = np.abs(np.mean(PSI[:, i]))
-            sig_diff = np.abs(eigvals[i] - eigvals[i + 1]) / eigvals[N // 2]
-            if mean_psi < eps_auto_psi and sig_diff < eps_auto_sigma * eigvals[0]:
-                # Found noise mode at index i, so keep modes 0 to i-1
-                return i
-        # No noise mode found, don't filter (return 0)
-        return 0
+    # Protect against division by zero
+    norm_factor = eigvals[N // 2] if eigvals[N // 2] > 1e-10 else 1.0
 
-    N1 = _find_auto_mode(PSI1, S1)
-    N2 = _find_auto_mode(PSI2, S2)
+    for i in range(N - 1):
+        mean_psi = np.abs(np.mean(PSI[:, i]))
+        sig_diff = np.abs(eigvals[i] - eigvals[i + 1]) / norm_factor
 
-    def _evaluate_phi_tcoeff(M, PSI, N_auto):
-        """
-        Compute spatial modes (PHI) and temporal coefficients (TCoeff) for POD.
-        
-        Args:
-            M: Data matrix (N_images, N_pixels)
-            PSI: Eigenvectors from SVD of covariance matrix
-            N_auto: Number of modes to compute
-            
-        Returns:
-            PHI: List of spatial modes (normalized)
-            TC: List of temporal coefficients for each mode
-        """
-        PHI = []
-        TC = []
-        for i in range(N_auto):
-            phi = M.T @ PSI[:, i]
-            phi /= np.linalg.norm(phi)
-            PHI.append(phi)
-            TC.append(M @ phi)
-        return PHI, TC
+        if mean_psi < eps_auto_psi and sig_diff < eps_auto_sigma * eigvals[0]:
+            # Found noise mode at index i, so remove modes 0 to i-1
+            return i
 
-    PHI1, TC1 = _evaluate_phi_tcoeff(M1, PSI1, N1)
-    PHI2, TC2 = _evaluate_phi_tcoeff(M2, PSI2, N2)
-
-    F1 = M1.copy()
-    F2 = M2.copy()
-    for j in range(N1):
-        F1 -= np.outer(TC1[j], PHI1[j])
-    for j in range(N2):
-        F2 -= np.outer(TC2[j], PHI2[j])
-
-    filtered = np.stack([F1.reshape(N, H, W), F2.reshape(N, H, W)], axis=1)
-
-    return filtered.astype(block.dtype)
+    # No noise mode found, don't filter
+    return 0
 
 
 def clip_filter(images: da.Array, threshold=None, n=2.0) -> da.Array:

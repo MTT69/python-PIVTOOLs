@@ -151,32 +151,52 @@ scattered_pairs = self.client.scatter(pairs, workers=self.corr_workers)
 
 **Key Point**: `workers=self.corr_workers` restricts data to correlation workers only, preventing unnecessary memory usage on filter workers.
 
-### Tree Reduction for Ensemble Results
+### Cross-Batch Tree Reduction for Ensemble Results
 
-Ensemble correlation results are accumulated using **tree reduction** on workers to minimize data transfer:
+Ensemble correlation results are accumulated using **cross-batch tree reduction** on workers to minimize data transfer:
 
 ```python
-# batch_pipeline.py - tree reduction pattern
-while len(corr_futures) > 1:
+# batch_pipeline.py - cross-batch reduction pattern
+
+# 1. Collect ALL correlation futures across ALL batches
+all_corr_futures = []
+for batch_idx in range(num_batches):
+    # Filter batch (sequential - RAM constraint)
+    filtered_batch = filter_future.result()
+
+    # Submit correlation tasks (parallel)
+    corr_futures = correlate_batch(filtered_batch, ...)
+
+    # Collect futures (don't reduce yet!)
+    all_corr_futures.extend(corr_futures)
+
+# 2. Single tree reduction across everything
+while len(all_corr_futures) > 1:
     new_futures = []
-    for i in range(0, len(corr_futures), 2):
-        if i + 1 < len(corr_futures):
+    for i in range(0, len(all_corr_futures), 2):
+        if i + 1 < len(all_corr_futures):
             combined = self.client.submit(
                 _reduce_ensemble_results,
-                corr_futures[i],
-                corr_futures[i + 1],
+                all_corr_futures[i],
+                all_corr_futures[i + 1],
                 workers=self.corr_workers,
             )
             new_futures.append(combined)
         else:
-            new_futures.append(corr_futures[i])
-    corr_futures = new_futures
+            new_futures.append(all_corr_futures[i])
+    all_corr_futures = new_futures
 
-# Only final accumulated result transferred to main
-batch_result = corr_futures[0].result()
+# 3. Only final accumulated result transferred to main
+pass_accumulated = all_corr_futures[0].result()
 ```
 
-**Key Point**: Instead of transferring ~900MB per pair to main process, correlation planes are accumulated on workers. Only the final sum (900MB total, not per-pair) is transferred.
+**Key Point**: Instead of transferring ~900MB per batch to main process, correlation planes are accumulated across ALL batches on workers. Only the final sum (900MB total, not 900MB × num_batches) is transferred.
+
+| Batches | Before (per-batch) | After (cross-batch) |
+|---------|-------------------|---------------------|
+| 4 | 3.6 GB | 900 MB |
+| 10 | 9 GB | 900 MB |
+| 20 | 18 GB | 900 MB |
 
 ---
 
