@@ -31,8 +31,8 @@ logging:
   level: INFO
   console: true
 processing:
-  instantaneous: true
-  ensemble: false
+  instantaneous: false
+  ensemble: true
   backend: cpu
   debug: false
   auto_compute_params: false

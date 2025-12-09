@@ -593,7 +593,11 @@ class SinglePassAccumulator:
         if self.vector_masks and pass_idx < len(self.vector_masks):
             vector_mask = self.vector_masks[pass_idx]
 
-            # Set all fitted values to ZERO for masked windows
+        # Ensure vector_mask is always an array (even if no masking enabled)
+        if vector_mask is None:
+            vector_mask = np.zeros((n_win_y, n_win_x), dtype=bool)
+
+        if vector_mask is not None:
             ux_mat[vector_mask] = 0.0
             uy_mat[vector_mask] = 0.0
             UU_stress[vector_mask] = 0.0

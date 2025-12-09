@@ -263,12 +263,30 @@ class UnifiedBatchPipeline:
                         pure=False,
                     )
 
-                # Wait for current correlation to complete and accumulate
-                results = self.client.gather(corr_futures)
-                for result in results:
-                    accumulator.accumulate_batch(result, pass_idx=pass_idx)
+                # Tree reduction on workers to accumulate correlation results
+                # This keeps large correlation planes on workers instead of
+                # transferring them all to main process
+                while len(corr_futures) > 1:
+                    new_futures = []
+                    for i in range(0, len(corr_futures), 2):
+                        if i + 1 < len(corr_futures):
+                            combined = self.client.submit(
+                                _reduce_ensemble_results,
+                                corr_futures[i],
+                                corr_futures[i + 1],
+                                workers=self.corr_workers,
+                                pure=False,
+                            )
+                            new_futures.append(combined)
+                        else:
+                            new_futures.append(corr_futures[i])
+                    corr_futures = new_futures
 
-                # Clean up futures (gather already retrieves results, just delete references)
+                # Single gather of final accumulated result (only one transfer)
+                batch_result = corr_futures[0].result()
+                accumulator.accumulate_batch(batch_result, pass_idx=pass_idx)
+
+                # Clean up
                 del corr_futures
 
                 logging.info(f"[Pass {pass_idx+1}, Batch {batch_idx+1}/{num_batches}] Correlation complete")
@@ -850,7 +868,44 @@ class UnifiedBatchPipeline:
 
         # Gather saved paths
         return futures
+
+
 # Worker functions
+
+def _reduce_ensemble_results(r1: dict, r2: dict) -> dict:
+    """
+    Combine two ensemble correlation results on a worker.
+
+    Used for tree reduction to accumulate results without
+    transferring large correlation planes to main process.
+
+    Parameters
+    ----------
+    r1, r2 : dict
+        Results from correlate_batch_for_accumulation containing:
+        - corr_AA_sum, corr_BB_sum, corr_AB_sum: Flattened correlation planes
+        - warp_A_sum, warp_B_sum: Warped image sums
+        - n_images: Image count
+        - n_win_x, n_win_y: Grid dimensions
+        - smoothed_predictor, vector_mask: Pass-level metadata
+
+    Returns
+    -------
+    dict
+        Combined result with summed arrays
+    """
+    return {
+        "corr_AA_sum": r1["corr_AA_sum"] + r2["corr_AA_sum"],
+        "corr_BB_sum": r1["corr_BB_sum"] + r2["corr_BB_sum"],
+        "corr_AB_sum": r1["corr_AB_sum"] + r2["corr_AB_sum"],
+        "warp_A_sum": r1["warp_A_sum"] + r2["warp_A_sum"],
+        "warp_B_sum": r1["warp_B_sum"] + r2["warp_B_sum"],
+        "n_images": r1["n_images"] + r2["n_images"],
+        "n_win_x": r1["n_win_x"],
+        "n_win_y": r1["n_win_y"],
+        "smoothed_predictor": r1.get("smoothed_predictor"),
+        "vector_mask": r1.get("vector_mask"),
+    }
 
 def _filter_batch_worker(
     batch_images: da.Array,
@@ -864,7 +919,7 @@ def _filter_batch_worker(
     Apply all filters to batch on filter worker.
 
     Uses multi-threading for CPU-intensive operations (POD SVD, etc.).
-    Thread count depends on whether this is the first batch or a pipelined batch.
+    Thread count is controlled by config.omp_threads for consistency.
 
     Args:
         batch_images: Dask array slice for this batch
@@ -872,17 +927,12 @@ def _filter_batch_worker(
         batch_idx: Batch index (for diagnostics)
         output_path: Output directory for diagnostic images
         pixel_mask: Boolean mask (H, W) where True = masked regions to zero
-        is_first_batch: If True, use all cores (no correlation running yet).
-                       If False, use config.filter_omp_threads to avoid oversubscription.
+        is_first_batch: Unused, kept for API compatibility.
     """
     import os
 
-    # First batch: use all cores (no correlation running yet)
-    # Subsequent batches: use config value to avoid oversubscription with correlation
-    if is_first_batch:
-        worker_cores = os.cpu_count() or 4
-    else:
-        worker_cores = config.filter_omp_threads
+    # Use config.omp_threads for all batches (consistent threading)
+    worker_cores = int(config.omp_threads)
 
     os.environ["OMP_NUM_THREADS"] = str(worker_cores)
     os.environ["MKL_NUM_THREADS"] = str(worker_cores)

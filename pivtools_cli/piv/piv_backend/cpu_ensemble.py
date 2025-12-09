@@ -646,7 +646,9 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 traceback.print_exc()
                 continue
 
-        # Copy buffers before returning (since they will be reused for next batch)
+        # Copy buffers before returning - required because pre-allocated buffers
+        # may be reused by subsequent correlation tasks before Dask finishes
+        # serializing this result for network transfer
         return {
             "corr_AA_sum": correl_AA_sum.copy(),
             "corr_BB_sum": correl_BB_sum.copy(),
