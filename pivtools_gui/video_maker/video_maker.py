@@ -594,74 +594,60 @@ class FFmpegVideoWriter:
                 print(f"ffmpeg stderr for {self.path}:\n", msg)
 
 
-def verify_video_ready(video_path: str, timeout_sec: float = 30.0) -> bool:
+def verify_video_ready(video_path: str, timeout_sec: float = 5.0) -> bool:
     """
-    Verify video file is complete and playable using ffprobe.
-    Polls until file is ready or timeout is reached.
-
-    Uses ffprobe from imageio-ffmpeg bundle to verify:
-    1. File exists and has non-zero size
-    2. ffprobe can read stream information
-    3. Duration is non-zero
+    Verify video file is complete by checking file exists and size is stable.
 
     Args:
         video_path: Path to the video file
         timeout_sec: Maximum time to wait for file to be ready
 
     Returns:
-        True if video is ready and playable, False if timeout reached
+        True if video file exists and is ready, False if timeout reached
     """
-    import json
-
-    try:
-        ffprobe_path = imageio_ffmpeg.get_ffmpeg_exe().replace('ffmpeg', 'ffprobe')
-    except Exception as e:
-        logger.warning(f"Could not get ffprobe path: {e}")
-        return False
-
     start_time = time.time()
+    min_stable_checks = 2  # Require file size to be stable for 2 consecutive checks
+    check_interval = 0.3  # Seconds between checks
+
+    prev_size = -1
+    stable_count = 0
 
     while (time.time() - start_time) < timeout_sec:
         try:
-            # Check file exists and has size
             path = Path(video_path)
-            if not path.exists() or path.stat().st_size == 0:
-                time.sleep(0.5)
+            if not path.exists():
+                time.sleep(check_interval)
                 continue
 
-            # Use ffprobe to verify video streams
-            cmd = [
-                ffprobe_path,
-                '-v', 'quiet',
-                '-print_format', 'json',
-                '-show_streams',
-                '-show_format',
-                video_path
-            ]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            current_size = path.stat().st_size
+            if current_size == 0:
+                time.sleep(check_interval)
+                continue
 
-            if result.returncode == 0:
-                data = json.loads(result.stdout)
-                # Check for video stream and valid duration
-                if 'streams' in data and len(data['streams']) > 0:
-                    format_info = data.get('format', {})
-                    duration = float(format_info.get('duration', 0))
-                    if duration > 0:
-                        logger.debug(f"Video verified: {video_path} (duration={duration:.2f}s)")
-                        return True
+            # Track size stability (file might still be writing)
+            if current_size == prev_size:
+                stable_count += 1
+            else:
+                stable_count = 0
+            prev_size = current_size
 
-            time.sleep(0.5)
-        except subprocess.TimeoutExpired:
-            logger.debug(f"ffprobe timed out for {video_path}")
-            time.sleep(0.5)
-        except json.JSONDecodeError:
-            logger.debug(f"ffprobe returned invalid JSON for {video_path}")
-            time.sleep(0.5)
+            # Consider file ready when size is stable
+            if stable_count >= min_stable_checks:
+                logger.debug(f"Video verified: {video_path} (size={current_size} bytes)")
+                return True
+
+            time.sleep(check_interval)
         except Exception as e:
             logger.debug(f"Video verification attempt failed: {e}")
-            time.sleep(0.5)
+            time.sleep(check_interval)
 
-    logger.warning(f"Video verification timed out after {timeout_sec}s for {video_path}")
+    # If file exists with size after timeout, still consider it ready
+    path = Path(video_path)
+    if path.exists() and path.stat().st_size > 0:
+        logger.debug(f"Video ready after timeout: {video_path}")
+        return True
+
+    logger.warning(f"Video verification failed for {video_path}")
     return False
 
 

@@ -794,7 +794,9 @@ video:
 
         # Construct file path based on image type
         if img_type == "lavision_set":
-            file_path = camera_path / format_str
+            # For .set files, source_path IS the .set file - use directly
+            # (don't append format_str as that would create invalid path)
+            file_path = camera_path
         elif img_type == "lavision_im7":
             file_path = camera_path / (format_str % start_idx)
         elif img_type == "cine":
