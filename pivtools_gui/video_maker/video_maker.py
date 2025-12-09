@@ -211,7 +211,11 @@ def _select_variable_from_arrs(
         var = str(var)
 
     # Define stats variables that are loaded from piv_result struct
-    STATS_VARIABLES = {"u_prime", "v_prime", "w_prime", "vorticity", "divergence", "gamma1", "gamma2"}
+    STATS_VARIABLES = {
+        "u_prime", "v_prime", "w_prime",  # Legacy fluctuations
+        "uu_inst", "vv_inst", "ww_inst", "uv_inst", "uw_inst", "vw_inst",  # Stress tensor components
+        "vorticity", "divergence", "gamma1", "gamma2",  # Derived stats
+    }
     
     # ndarray case (common path)
     if isinstance(arrs, np.ndarray):
@@ -306,9 +310,31 @@ def _select_variable_from_arrs(
         if var in STATS_VARIABLES:
             piv_result = mat.get("piv_result")
             if piv_result is not None:
-                # Handle object array wrapper
+                # Handle object array wrapper - select correct run
                 if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
-                    pr = piv_result.flat[0]
+                    # piv_result is array of runs, select the requested run
+                    # Find valid run with data (some runs may be empty)
+                    pr = None
+                    if 0 <= run_index < piv_result.size:
+                        candidate = piv_result.flat[run_index]
+                        if hasattr(candidate, var):
+                            arr_check = getattr(candidate, var, None)
+                            if arr_check is not None and np.asarray(arr_check).size > 0:
+                                pr = candidate
+
+                    # If requested run doesn't have data, find first valid run
+                    if pr is None:
+                        for i in range(piv_result.size):
+                            candidate = piv_result.flat[i]
+                            if hasattr(candidate, var):
+                                arr_check = getattr(candidate, var, None)
+                                if arr_check is not None and np.asarray(arr_check).size > 0:
+                                    pr = candidate
+                                    logger.debug(f"Stats var {var}: run {run_index} empty, using run {i}")
+                                    break
+
+                    if pr is None:
+                        raise ValueError(f"No valid run found with variable '{var}' in {filepath}")
                 else:
                     pr = piv_result
 
@@ -836,7 +862,11 @@ class VideoMaker:
     """
 
     # Variables that come from instantaneous stats files (not PIV files)
-    STATS_VARIABLES = {"u_prime", "v_prime", "w_prime", "vorticity", "divergence", "gamma1", "gamma2"}
+    STATS_VARIABLES = {
+        "u_prime", "v_prime", "w_prime",  # Legacy fluctuations
+        "uu_inst", "vv_inst", "ww_inst", "uv_inst", "uw_inst", "vw_inst",  # Stress tensor components
+        "vorticity", "divergence", "gamma1", "gamma2",  # Derived stats
+    }
 
     def __init__(
         self,

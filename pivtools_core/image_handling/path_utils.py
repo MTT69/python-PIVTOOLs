@@ -81,9 +81,9 @@ def build_calibration_camera_path(
         return camera_path
 
     # Determine if camera folder should be used
-    use_camera_folder = True
-    if cal_image_type == "lavision_im7":
-        use_camera_folder = config.calibration_use_camera_subfolders
+    # Standard and IM7 formats respect the use_camera_subfolders setting
+    # Container formats (SET, CINE) are handled above and never use camera subfolders
+    use_camera_folder = config.calibration_use_camera_subfolders
 
     # Get camera folder name
     camera_folder = config.get_calibration_camera_folder(camera) if use_camera_folder else ""

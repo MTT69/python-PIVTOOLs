@@ -341,10 +341,65 @@ if __name__ == "__main__":
         logger.info("Loading settings from config.yaml")
         config = get_config()
 
-        base_path_idx = config.transforms_base_path_idx
-        base_dir = config.base_paths[base_path_idx]
         camera_transforms = config.transforms_cameras
         type_name = config.transforms_type_name
+
+        if not camera_transforms:
+            logger.error("No transforms configured. Add transforms to config.yaml.")
+            exit(1)
+
+        # Loop through active_paths for batch processing
+        active_paths = config.active_paths
+        logger.info(f"Processing {len(active_paths)} active path(s)")
+        logger.info(f"Camera transforms: {camera_transforms}")
+        logger.info(f"Type: {type_name}")
+
+        results = []
+        for path_idx in active_paths:
+            base_dir = config.base_paths[path_idx]
+            logger.info("")
+            logger.info("=" * 40)
+            logger.info(f"Path {path_idx + 1}/{len(active_paths)}: {base_dir}")
+            logger.info("=" * 40)
+
+            processor = TransformProcessor(
+                base_dir=base_dir,
+                camera_transforms=camera_transforms,
+                type_name=type_name,
+                use_merged=USE_MERGED,
+                config=config,
+            )
+
+            result = processor.process_all_cameras()
+            result["path_idx"] = path_idx
+            result["base_dir"] = str(base_dir)
+            results.append(result)
+
+            if result["success"]:
+                for cam, res in result["camera_results"].items():
+                    logger.info(f"  Camera {cam}: {res.get('transformed_files', 0)} files")
+            else:
+                logger.error(f"Path {path_idx + 1}: FAILED")
+                for cam, res in result["camera_results"].items():
+                    if not res.get("success"):
+                        logger.error(f"    Camera {cam}: {res.get('error')}")
+
+        # Summary
+        logger.info("")
+        logger.info("=" * 60)
+        logger.info("SUMMARY")
+        logger.info("=" * 60)
+        success_count = sum(1 for r in results if r["success"])
+        for r in results:
+            status = "OK" if r["success"] else "FAILED"
+            logger.info(f"  Path {r['path_idx'] + 1}: {status}")
+        logger.info(f"Total: {success_count}/{len(results)} paths succeeded")
+        logger.info("")
+        logger.info("NOTE: Statistics files were NOT transformed.")
+        logger.info("Please recalculate statistics if needed.")
+
+        all_success = all(r["success"] for r in results)
+        exit(0 if all_success else 1)
     else:
         logger.info("Using hardcoded settings")
         config = get_config()
@@ -353,35 +408,36 @@ if __name__ == "__main__":
         camera_transforms = CAMERA_TRANSFORMS
         type_name = TYPE_NAME
 
-    logger.info(f"Base path idx: {base_path_idx if USE_CONFIG_DIRECTLY else 'N/A'}")
-    logger.info(f"Base dir: {base_dir}")
-    logger.info(f"Camera transforms: {camera_transforms}")
-    logger.info(f"Type: {type_name}")
+        logger.info(f"Base dir: {base_dir}")
+        logger.info(f"Camera transforms: {camera_transforms}")
+        logger.info(f"Type: {type_name}")
 
-    if not camera_transforms:
-        logger.error("No transforms configured. Add transforms to config.yaml or set CAMERA_TRANSFORMS.")
-        exit(1)
+        if not camera_transforms:
+            logger.error("No transforms configured. Set CAMERA_TRANSFORMS.")
+            exit(1)
 
-    processor = TransformProcessor(
-        base_dir=base_dir,
-        camera_transforms=camera_transforms,
-        type_name=type_name,
-        use_merged=USE_MERGED,
-        config=config,
-    )
+        processor = TransformProcessor(
+            base_dir=base_dir,
+            camera_transforms=camera_transforms,
+            type_name=type_name,
+            use_merged=USE_MERGED,
+            config=config,
+        )
 
-    result = processor.process_all_cameras()
+        result = processor.process_all_cameras()
 
-    logger.info("=" * 60)
-    if result["success"]:
-        logger.info("Transformation completed successfully")
-        for cam, res in result["camera_results"].items():
-            logger.info(f"  Camera {cam}: {res.get('transformed_files', 0)} files in {res.get('elapsed_time', 0):.2f}s")
-        logger.info("")
-        logger.info("NOTE: Statistics files were NOT transformed.")
-        logger.info("Please recalculate statistics if needed.")
-    else:
-        logger.error("Transformation failed for some cameras")
-        for cam, res in result["camera_results"].items():
-            if not res.get("success"):
-                logger.error(f"  Camera {cam}: {res.get('error')}")
+        logger.info("=" * 60)
+        if result["success"]:
+            logger.info("Transformation completed successfully")
+            for cam, res in result["camera_results"].items():
+                logger.info(f"  Camera {cam}: {res.get('transformed_files', 0)} files in {res.get('elapsed_time', 0):.2f}s")
+            logger.info("")
+            logger.info("NOTE: Statistics files were NOT transformed.")
+            logger.info("Please recalculate statistics if needed.")
+        else:
+            logger.error("Transformation failed for some cameras")
+            for cam, res in result["camera_results"].items():
+                if not res.get("success"):
+                    logger.error(f"  Camera {cam}: {res.get('error')}")
+
+        exit(0 if result["success"] else 1)

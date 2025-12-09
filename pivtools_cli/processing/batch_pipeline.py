@@ -929,10 +929,6 @@ def _correlate_ensemble_pair_worker(
     Returns correlation plane sums (AA, BB, AB) and warp sums.
     """
     import os
-
-    # Single thread per worker (parallelism across workers)
-    os.environ["OMP_NUM_THREADS"] = "1"
-
     from pivtools_cli.piv.piv_backend.cpu_ensemble import EnsembleCorrelatorCPU
 
     correlator = EnsembleCorrelatorCPU(

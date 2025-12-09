@@ -1,10 +1,19 @@
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Tuple
 import logging
 import os
 import shutil
 
 import yaml
+
+# ===================== ENDPOINT CONSTRAINTS =====================
+# Tool-specific endpoint constraints - defines what data sources each tool can use
+TOOL_ALLOWED_ENDPOINTS = {
+    "video": ["instantaneous", "merged"],  # No ensemble (no temporal sequence)
+    "merging": ["instantaneous", "ensemble"],  # No stereo (3D vectors can't merge)
+    "statistics": ["instantaneous", "ensemble", "merged", "stereo"],
+    "transforms": ["instantaneous", "ensemble", "merged", "stereo"],
+}
 
 _CONFIG = None  # singleton cache
 _LOGGING_INITIALIZED = False  # Track if logging has been set up
@@ -500,6 +509,41 @@ video:
             raise ValueError(f"Camera numbers {numbers} must be between 1 and {max_allowed}")
         return numbers
 
+    # ===================== STEREO PAIR PROPERTIES =====================
+
+    @property
+    def stereo_pairs(self) -> List[Tuple[int, int]]:
+        """Auto-derive stereo camera pairs from camera_numbers order.
+
+        Cameras are paired sequentially: [1,2,3,4] -> [(1,2), (3,4)]
+        This means cameras 1,2 form stereo pair 1, cameras 3,4 form stereo pair 2.
+
+        Returns
+        -------
+        List[Tuple[int, int]]
+            List of (cam1, cam2) tuples for stereo processing
+        """
+        cameras = self.camera_numbers
+        pairs = []
+        for i in range(0, len(cameras) - 1, 2):
+            if i + 1 < len(cameras):
+                pairs.append((cameras[i], cameras[i + 1]))
+        return pairs
+
+    @property
+    def is_stereo_setup(self) -> bool:
+        """Return True if this is a stereo PIV setup.
+
+        Determined by calibration.active being 'stereo' or 'stereo_charuco'.
+
+        Returns
+        -------
+        bool
+            True if stereo calibration is active
+        """
+        active = self.active_calibration_method
+        return active in ("stereo", "stereo_charuco")
+
     @property
     def camera_folders(self):
         return [self.get_camera_folder(n) for n in self.camera_numbers]
@@ -939,6 +983,39 @@ video:
         return self.statistics.get("type_name", "instantaneous")
 
     @property
+    def statistics_source_endpoint(self) -> str:
+        """Return source endpoint for statistics.
+
+        Determines what data type statistics are computed on:
+        - 'instantaneous': Single-frame PIV vectors
+        - 'ensemble': Ensemble-averaged vectors
+        - 'merged': Multi-camera merged vectors
+        - 'stereo': 3D stereo PIV vectors
+
+        Returns
+        -------
+        str
+            Source endpoint (default 'instantaneous')
+        """
+        return self.statistics.get("source_endpoint", "instantaneous")
+
+    @property
+    def statistics_workflow(self) -> str:
+        """Return statistics workflow preference.
+
+        Options:
+        - 'per_camera': Compute stats for each camera independently
+        - 'after_merge': Only compute stats on merged data
+        - 'both': Compute per-camera stats then merged stats
+
+        Returns
+        -------
+        str
+            Workflow preference (default 'per_camera')
+        """
+        return self.statistics.get("workflow", "per_camera")
+
+    @property
     def statistics_process_cameras(self) -> bool:
         """Return whether to process individual camera data.
 
@@ -1100,6 +1177,23 @@ video:
         return "1080p"
 
     @property
+    def video_source_endpoint(self) -> str:
+        """Return source endpoint for video creation.
+
+        Determines what data type to create video from:
+        - 'instantaneous': Single-frame PIV vectors (has temporal sequence)
+        - 'merged': Multi-camera merged vectors (has temporal sequence)
+
+        Note: 'ensemble' is not allowed (no temporal sequence - just mean field).
+
+        Returns
+        -------
+        str
+            Source endpoint (default 'instantaneous')
+        """
+        return self.video.get("source_endpoint", "instantaneous")
+
+    @property
     def videos(self):
         """DEPRECATED: Use video property instead. Returns list for backward compatibility."""
         # If old format exists, return it
@@ -1193,20 +1287,18 @@ video:
     def calibration_use_camera_subfolders(self) -> bool:
         """Return True if calibration images use camera subfolders (Cam1/, Cam2/).
 
-        For IM7 files, this controls whether each .im7 file contains only one
-        camera's data (True) or all cameras (False, default).
+        When True, calibration images are expected in camera subdirectories:
+        - source_path/Cam1/calibration_subfolder/image.tif
+        - source_path/Cam2/calibration_subfolder/image.tif
 
-        Can be set explicitly via calibration.use_camera_subfolders,
-        or derived from paths.camera_subfolders for backward compatibility.
+        When False (default), all calibration images are in a single directory:
+        - source_path/calibration_subfolder/image.tif
+
+        This applies to both standard formats (TIFF, PNG, etc.) and IM7 files.
+        Container formats (.set, .cine) never use camera subfolders.
         """
         calib_block = self.data.get("calibration", {}) or {}
-        # Check for explicit override first
-        explicit = calib_block.get("use_camera_subfolders")
-        if explicit is not None:
-            return explicit
-        # Fall back to paths.camera_subfolders for backward compatibility
-        subfolders = self.camera_subfolders
-        return bool(subfolders) and len(subfolders) > 0
+        return calib_block.get("use_camera_subfolders", False)
 
     @property
     def calibration_subfolder(self) -> str:
@@ -1250,8 +1342,8 @@ video:
     def get_calibration_camera_folder(self, camera_num: int) -> str:
         """Get the subfolder name for calibration images of a specific camera.
 
-        Container formats (.cine, .set) don't use camera subfolders.
-        IM7 depends on calibration_use_camera_subfolders setting.
+        Container formats (.cine, .set) never use camera subfolders.
+        Standard and IM7 formats respect the calibration_use_camera_subfolders setting.
 
         Uses calibration.camera_subfolders if set, otherwise falls back to
         default Cam{N} pattern for multi-camera setups.
@@ -1260,11 +1352,9 @@ video:
         if self.calibration_image_type in ("lavision_set", "cine"):
             return ""
 
-        # IM7: check calibration_use_camera_subfolders
-        if self.calibration_image_type == "lavision_im7":
-            if not self.calibration_use_camera_subfolders:
-                return ""  # Multi-camera file, no subfolder
-            # Fall through to use camera subfolders
+        # Standard and IM7 formats: check calibration_use_camera_subfolders
+        if not self.calibration_use_camera_subfolders:
+            return ""
 
         # Use calibration-specific camera subfolders if available
         subfolders = self.calibration_camera_subfolders
@@ -1466,6 +1556,23 @@ video:
             Index into base_paths list (default 0)
         """
         return self.merging.get("base_path_idx", 0)
+
+    @property
+    def merging_source_endpoint(self) -> str:
+        """Return source endpoint for vector merging.
+
+        Determines what data type to merge:
+        - 'instantaneous': Single-frame PIV vectors
+        - 'ensemble': Ensemble-averaged vectors
+
+        Note: 'stereo' and 'merged' are not allowed (3D vectors can't merge).
+
+        Returns
+        -------
+        str
+            Source endpoint (default 'instantaneous')
+        """
+        return self.merging.get("source_endpoint", "instantaneous")
 
     # --- PIV-specific properties from pypivtools ---
     @property
@@ -2366,6 +2473,25 @@ video:
         """
         return self.transforms.get("type_name", "instantaneous")
 
+    @property
+    def transforms_source_endpoint(self) -> str:
+        """Return source endpoint for transform operations.
+
+        Determines what data type to transform:
+        - 'instantaneous': Single-frame PIV vectors
+        - 'ensemble': Ensemble-averaged vectors
+        - 'merged': Multi-camera merged vectors
+        - 'stereo': 3D stereo PIV vectors
+
+        All endpoints are allowed for transforms.
+
+        Returns
+        -------
+        str
+            Source endpoint (default 'instantaneous')
+        """
+        return self.transforms.get("source_endpoint", "instantaneous")
+
     def get_camera_folder(self, camera_num: int) -> str:
         """Get the subfolder name for a specific camera.
 
@@ -2399,155 +2525,43 @@ video:
 
         return f"Cam{camera_num}"
 
-    # =========================================================================
-    # Batch Processing Properties
-    # =========================================================================
-    # These properties support multi-path + multi-camera batch processing
-    # across modules: calibration, statistics, transforms, video, merging
+    # ===================== ENDPOINT VALIDATION =====================
 
-    # --- Calibration batch properties ---
-    @property
-    def calibration_active_paths(self) -> list:
-        """Return list of path indices to process for calibration.
+    def get_allowed_endpoints(self, tool: str) -> List[str]:
+        """Get allowed source endpoints for a specific tool.
 
-        Returns
-        -------
-        list[int]
-            List of 0-indexed path indices. Defaults to all paths.
-        """
-        paths = self.calibration.get("active_paths")
-        if paths is None:
-            return list(range(len(self.base_paths)))
-        return [i for i in paths if 0 <= i < len(self.base_paths)]
-
-    @property
-    def calibration_cameras(self) -> list:
-        """Return list of cameras to calibrate.
+        Parameters
+        ----------
+        tool : str
+            Tool name: 'video', 'merging', 'statistics', 'transforms'
 
         Returns
         -------
-        list[int]
-            List of camera numbers (1-based). Defaults to camera_numbers.
+        List[str]
+            List of allowed endpoint names
         """
-        cameras = self.calibration.get("cameras")
-        return cameras if cameras else self.camera_numbers
+        return TOOL_ALLOWED_ENDPOINTS.get(tool, [])
 
-    # --- Statistics batch properties ---
-    @property
-    def statistics_active_paths(self) -> list:
-        """Return list of path indices to process for statistics.
+    def validate_endpoint_for_tool(self, tool: str, endpoint: str) -> Tuple[bool, str]:
+        """Validate that an endpoint is allowed for a tool.
+
+        Parameters
+        ----------
+        tool : str
+            Tool name: 'video', 'merging', 'statistics', 'transforms'
+        endpoint : str
+            Endpoint to validate: 'instantaneous', 'ensemble', 'merged', 'stereo'
 
         Returns
         -------
-        list[int]
-            List of 0-indexed path indices. Defaults to all paths.
+        Tuple[bool, str]
+            (is_valid, error_message)
+            If valid, error_message is empty string.
         """
-        paths = self.statistics.get("active_paths")
-        if paths is None:
-            return list(range(len(self.base_paths)))
-        return [i for i in paths if 0 <= i < len(self.base_paths)]
-
-    @property
-    def statistics_cameras(self) -> list:
-        """Return list of cameras for statistics processing.
-
-        Returns
-        -------
-        list[int]
-            List of camera numbers (1-based). Defaults to camera_numbers.
-        """
-        cameras = self.statistics.get("cameras")
-        return cameras if cameras else self.camera_numbers
-
-    @property
-    def statistics_include_merged(self) -> bool:
-        """Return whether to include merged data in statistics.
-
-        Returns
-        -------
-        bool
-            True to process merged data alongside cameras. Default False.
-        """
-        return self.statistics.get("include_merged", False)
-
-    # --- Transforms batch properties ---
-    @property
-    def transforms_active_paths(self) -> list:
-        """Return list of path indices to process for transforms.
-
-        Returns
-        -------
-        list[int]
-            List of 0-indexed path indices. Defaults to all paths.
-        """
-        paths = self.transforms.get("active_paths")
-        if paths is None:
-            return list(range(len(self.base_paths)))
-        return [i for i in paths if 0 <= i < len(self.base_paths)]
-
-    @property
-    def transforms_include_merged(self) -> bool:
-        """Return whether to transform merged data.
-
-        Returns
-        -------
-        bool
-            True to transform merged data alongside cameras. Default False.
-        """
-        return self.transforms.get("include_merged", False)
-
-    # --- Video batch properties ---
-    @property
-    def video_active_paths(self) -> list:
-        """Return list of path indices for video creation.
-
-        Returns
-        -------
-        list[int]
-            List of 0-indexed path indices. Defaults to [video_base_path_idx].
-        """
-        paths = self.video.get("active_paths")
-        if paths is None:
-            return [self.video_base_path_idx]
-        return [i for i in paths if 0 <= i < len(self.base_paths)]
-
-    @property
-    def video_cameras(self) -> list:
-        """Return list of cameras for video creation.
-
-        Returns
-        -------
-        list[int]
-            List of camera numbers (1-based). Defaults to [video_camera].
-        """
-        cameras = self.video.get("cameras")
-        return cameras if cameras else [self.video_camera]
-
-    @property
-    def video_include_merged(self) -> bool:
-        """Return whether to create video from merged data.
-
-        Returns
-        -------
-        bool
-            True to create video from merged data alongside cameras. Default False.
-        """
-        return self.video.get("include_merged", False)
-
-    # --- Merging batch properties ---
-    @property
-    def merging_active_paths(self) -> list:
-        """Return list of path indices for vector merging.
-
-        Returns
-        -------
-        list[int]
-            List of 0-indexed path indices. Defaults to [merging_base_path_idx].
-        """
-        paths = self.merging.get("active_paths")
-        if paths is None:
-            return [self.merging_base_path_idx]
-        return [i for i in paths if 0 <= i < len(self.base_paths)]
+        allowed = self.get_allowed_endpoints(tool)
+        if endpoint not in allowed:
+            return False, f"Endpoint '{endpoint}' not allowed for {tool}. Allowed: {allowed}"
+        return True, ""
 
 
 def get_config(refresh: bool = False) -> Config:

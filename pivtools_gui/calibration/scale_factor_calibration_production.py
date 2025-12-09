@@ -73,6 +73,8 @@ def _process_vector_file(args: Tuple) -> bool:
     Process a single vector file for scale factor calibration.
 
     This is a module-level function to enable multiprocessing.
+    Automatically detects ensemble data (with stress tensors) and calibrates
+    both velocities and stresses.
 
     Args:
         args: Tuple of (run, vector_file_uncal, vector_file_cal, px_per_mm, dt)
@@ -86,16 +88,46 @@ def _process_vector_file(args: Tuple) -> bool:
             str(vector_file_uncal), struct_as_record=False, squeeze_me=True
         )
 
-        if "piv_result" not in mat:
+        # Check for either piv_result (instantaneous) or ensemble_result (ensemble)
+        if "piv_result" in mat:
+            piv_result = mat["piv_result"]
+            result_key = "piv_result"
+        elif "ensemble_result" in mat:
+            piv_result = mat["ensemble_result"]
+            result_key = "ensemble_result"
+        else:
             loguru_logger.warning(
-                f"Vector file {vector_file_uncal} missing 'piv_result' field."
+                f"Vector file {vector_file_uncal} missing 'piv_result' or 'ensemble_result' field."
             )
             return False
 
-        piv_result = mat["piv_result"]
+        # Ensure piv_result is iterable (handle single-pass case)
+        if not hasattr(piv_result, '__len__') or isinstance(piv_result, np.void):
+            piv_result = [piv_result]
 
-        # Build output struct array
-        piv_dtype = np.dtype([("ux", "O"), ("uy", "O"), ("b_mask", "O")])
+        # Check if this is ensemble data with stress tensors (check first valid cell)
+        has_stresses = False
+        for cell in piv_result:
+            if hasattr(cell, 'UU_stress') or hasattr(cell, 'VV_stress') or hasattr(cell, 'UV_stress'):
+                has_stresses = True
+                break
+
+        # Compute stress calibration factor (velocity_scale²)
+        # velocity_scale = 1 / (px_per_mm * dt * 1000)
+        # stress_scale = velocity_scale² = 1 / (px_per_mm² * dt² * 10⁶)
+        stress_scale = 1.0 / (px_per_mm ** 2) / (dt ** 2) / 1e6
+
+        # Build output struct array with appropriate dtype
+        if has_stresses:
+            # Ensemble data with stress tensors
+            piv_dtype = np.dtype([
+                ("ux", "O"), ("uy", "O"), ("b_mask", "O"),
+                ("UU_stress", "O"), ("VV_stress", "O"), ("UV_stress", "O")
+            ])
+        else:
+            # Standard instantaneous data
+            piv_dtype = np.dtype([("ux", "O"), ("uy", "O"), ("b_mask", "O")])
+
         out_piv = np.empty(len(piv_result), dtype=piv_dtype)
 
         for idx, cell in enumerate(piv_result):
@@ -112,12 +144,30 @@ def _process_vector_file(args: Tuple) -> bool:
                 # Formula: (px/frame) / (px/mm) / (s/frame) / 1000 = m/s
                 ux_calib = ux / px_per_mm / dt / 1000
                 uy_calib = uy / px_per_mm / dt / 1000
-                out_piv[idx] = (ux_calib, uy_calib, b_mask)
+
+                if has_stresses:
+                    # Get and calibrate stress tensors
+                    UU_stress = getattr(cell, "UU_stress", None)
+                    VV_stress = getattr(cell, "VV_stress", None)
+                    UV_stress = getattr(cell, "UV_stress", None)
+
+                    # Calibrate stresses: pixels²/frame² -> m²/s²
+                    UU_calib = UU_stress * stress_scale if UU_stress is not None else np.array([])
+                    VV_calib = VV_stress * stress_scale if VV_stress is not None else np.array([])
+                    UV_calib = UV_stress * stress_scale if UV_stress is not None else np.array([])
+
+                    out_piv[idx] = (ux_calib, uy_calib, b_mask, UU_calib, VV_calib, UV_calib)
+                else:
+                    out_piv[idx] = (ux_calib, uy_calib, b_mask)
             else:
-                out_piv[idx] = (np.array([]), np.array([]), np.array([]))
+                if has_stresses:
+                    out_piv[idx] = (np.array([]), np.array([]), np.array([]),
+                                   np.array([]), np.array([]), np.array([]))
+                else:
+                    out_piv[idx] = (np.array([]), np.array([]), np.array([]))
 
         scipy.io.savemat(
-            str(vector_file_cal), {"piv_result": out_piv}, do_compression=True
+            str(vector_file_cal), {result_key: out_piv}, do_compression=True
         )
         return True
 
@@ -216,6 +266,29 @@ class ScaleFactorCalibrator:
         uy_ms = uy_px / self.px_per_mm / self.dt / 1000
         return ux_ms, uy_ms
 
+    def calibrate_stresses(self, stress_px: np.ndarray) -> np.ndarray:
+        """
+        Convert stress tensor from pixels²/frame² to m²/s².
+
+        For ensemble PIV, Reynolds stresses (UU, VV, UV) are computed before
+        calibration and have units of velocity². The calibration factor must
+        therefore be squared compared to velocity calibration.
+
+        Velocity:  (px/frame) / (px/mm) / (s/frame) / 1000 = m/s
+        Stress:    (px²/frame²) / (px²/mm²) / (s²/frame²) / 10⁶ = m²/s²
+
+        Args:
+            stress_px: Stress tensor in pixels²/frame²
+
+        Returns:
+            Stress tensor in m²/s²
+        """
+        # Stress has velocity² units, so square the calibration factor
+        # velocity_scale = 1 / (px_per_mm * dt * 1000)
+        # stress_scale = velocity_scale² = 1 / (px_per_mm² * dt² * 10⁶)
+        stress_scale = 1.0 / (self.px_per_mm ** 2) / (self.dt ** 2) / 1e6
+        return stress_px * stress_scale
+
     def process_camera(
         self,
         camera_num: int,
@@ -260,11 +333,22 @@ class ScaleFactorCalibrator:
         # Count files to process
         coords_exists = coords_path_uncal.exists()
         vector_files = []
-        for run in range(1, image_count + 1):
-            vector_file_uncal = data_dir_uncal / (cfg.vector_format % run)
-            vector_file_cal = data_dir_cal / (cfg.vector_format % run)
-            if vector_file_uncal.exists():
-                vector_files.append((run, vector_file_uncal, vector_file_cal))
+
+        # Check for ensemble data (single file) vs instantaneous (many files)
+        ensemble_file_uncal = data_dir_uncal / "ensemble_result.mat"
+        ensemble_file_cal = data_dir_cal / "ensemble_result.mat"
+        is_ensemble = self.type_name == "ensemble" or ensemble_file_uncal.exists()
+
+        if is_ensemble and ensemble_file_uncal.exists():
+            # Ensemble data: single file
+            vector_files.append((1, ensemble_file_uncal, ensemble_file_cal))
+        else:
+            # Instantaneous data: many files
+            for run in range(1, image_count + 1):
+                vector_file_uncal = data_dir_uncal / (cfg.vector_format % run)
+                vector_file_cal = data_dir_cal / (cfg.vector_format % run)
+                if vector_file_uncal.exists():
+                    vector_files.append((run, vector_file_uncal, vector_file_cal))
 
         total_files = (1 if coords_exists else 0) + len(vector_files)
 
@@ -275,9 +359,14 @@ class ScaleFactorCalibrator:
             "successful_files": 0,
             "failed_files": 0,
             "coords_processed": False,
+            "success": True,
+            "error": None,
         }
 
         if total_files == 0:
+            result["success"] = False
+            result["error"] = f"No files found to process for camera {camera_num}"
+            loguru_logger.warning(result["error"])
             return result
 
         processed = 0
@@ -456,9 +545,14 @@ class ScaleFactorCalibrator:
             "successful_files": 0,
             "failed_files": 0,
             "camera_results": {},
+            "success": True,
+            "error": None,
         }
 
         if total_files == 0:
+            overall_result["success"] = False
+            overall_result["error"] = "No files found to process across all cameras"
+            loguru_logger.warning(overall_result["error"])
             return overall_result
 
         # Process each camera
@@ -499,6 +593,17 @@ class ScaleFactorCalibrator:
             overall_result["successful_files"] += cam_result["successful_files"]
             overall_result["failed_files"] += cam_result["failed_files"]
             overall_result["processed_cameras"] = cam_idx + 1
+
+        # Aggregate success status
+        if overall_result["successful_files"] == 0:
+            overall_result["success"] = False
+            # Collect errors from camera results
+            errors = [
+                cam_result.get("error")
+                for cam_result in overall_result["camera_results"].values()
+                if cam_result.get("error")
+            ]
+            overall_result["error"] = "; ".join(errors) if errors else "No files were successfully processed"
 
         return overall_result
 

@@ -10,7 +10,6 @@ from scipy.io import loadmat
 
 from pivtools_core.config import get_config
 from pivtools_core.paths import get_data_paths
-from pivtools_core.batch_utils import iter_batch_targets
 from pivtools_gui.calibration.services.job_manager import job_manager
 from pivtools_gui.video_maker.video_maker import (
     VideoMaker,
@@ -22,6 +21,146 @@ video_maker_bp = Blueprint("video_maker", __name__)
 # Constants
 VIDEO_EXTENSIONS = (".mp4", ".avi", ".mov", ".mkv")
 MAX_DEPTH = 5  # For deep search
+
+# Excluded coordinate variables (not plottable as fields)
+EXCLUDED_VARS = {"x", "y"}
+
+# Label formatting for special variables (matching VectorViewer)
+VARIABLE_LABELS = {
+    # PIV base variables
+    "ux": "ux",
+    "uy": "uy",
+    "uz": "uz",
+    "mag": "Velocity Magnitude",
+    "b_mask": "Mask",
+    # Instantaneous stats - legacy fluctuations
+    "u_prime": "u'",
+    "v_prime": "v'",
+    "w_prime": "w'",
+    # Instantaneous stats - stress tensor components
+    "uu_inst": "u'u'",
+    "vv_inst": "v'v'",
+    "ww_inst": "w'w'",
+    "uv_inst": "u'v'",
+    "uw_inst": "u'w'",
+    "vw_inst": "v'w'",
+    # Other computed stats
+    "gamma1": "γ₁",
+    "gamma2": "γ₂",
+    "vorticity": "ω (Vorticity)",
+    "divergence": "∇·u (Divergence)",
+}
+
+
+def _extract_plottable_vars(mat_path: Path) -> list:
+    """
+    Extract plottable 2D variable names from a .mat file.
+    Copied from plotting_views.py for consistency.
+    """
+    if not mat_path.exists():
+        return []
+
+    try:
+        data_mat = loadmat(str(mat_path), struct_as_record=False, squeeze_me=True)
+        if "piv_result" not in data_mat:
+            return []
+
+        piv_result = data_mat["piv_result"]
+        pr = None
+
+        # Handle multiple runs (array of structs)
+        if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
+            for el in piv_result:
+                try:
+                    for candidate in ("ux", "uy", "b_mask", "uu", "u_prime", "uu_inst"):
+                        val = getattr(el, candidate, None)
+                        if val is not None and np.asarray(val).size > 0:
+                            pr = el
+                            break
+                    if pr:
+                        break
+                except Exception:
+                    continue
+            if not pr and piv_result.size > 0:
+                pr = piv_result.flat[0]
+        else:
+            pr = piv_result
+
+        if pr is None:
+            return []
+
+        # Get all field names
+        all_vars = []
+        dt = getattr(pr, "dtype", None)
+        if dt and getattr(dt, "names", None):
+            all_vars = list(dt.names)
+        else:
+            try:
+                if hasattr(pr, "dtype") and getattr(pr.dtype, "names", None):
+                    all_vars = list(pr.dtype.names)
+                elif hasattr(pr, "dtype") and getattr(pr.dtype, "fields", None):
+                    f = pr.dtype.fields
+                    if isinstance(f, dict):
+                        all_vars = list(f.keys())
+            except Exception:
+                pass
+            if not all_vars:
+                try:
+                    attrs = [
+                        n for n in dir(pr)
+                        if not n.startswith("_") and not callable(getattr(pr, n, None))
+                    ]
+                    all_vars = attrs
+                except Exception:
+                    all_vars = []
+
+        # Filter to plottable 2D arrays
+        plottable_vars = []
+
+        for var_name in all_vars:
+            if var_name in EXCLUDED_VARS:
+                continue
+            try:
+                val = getattr(pr, var_name, None)
+                if val is None:
+                    continue
+                arr = np.asarray(val)
+                if arr.ndim == 2 and arr.size > 0:
+                    plottable_vars.append(var_name)
+            except Exception:
+                continue
+
+        return plottable_vars
+    except Exception:
+        return []
+
+
+def _get_variable_label(var_name: str) -> str:
+    """Get display label for a variable, with unicode symbols for special vars."""
+    return VARIABLE_LABELS.get(var_name, var_name)
+
+
+@video_maker_bp.route("/constraints", methods=["GET"])
+def get_video_constraints():
+    """
+    Return constraints for video creation.
+
+    Used by frontend to disable options that are not valid.
+    Ensemble data cannot be used for video creation (no temporal sequence).
+
+    Returns:
+        JSON with allowed_source_endpoints, ensemble_blocked, ensemble_reason
+    """
+    cfg = get_config()
+
+    return jsonify({
+        "allowed_source_endpoints": cfg.get_allowed_endpoints("video"),
+        "ensemble_blocked": True,
+        "ensemble_reason": (
+            "Ensemble data has no temporal sequence. Videos can only be "
+            "created from instantaneous or merged data."
+        ),
+    })
 
 
 def check_video_data_availability(
@@ -253,7 +392,7 @@ def check_data_sources():
 def available_variables():
     """
     Check what variables are available for video creation.
-    Returns base PIV variables plus any computed instantaneous stats.
+    Returns variables grouped by source, matching VectorViewer's structure.
 
     Query params:
     - base_path: Base directory path
@@ -261,7 +400,8 @@ def available_variables():
     - data_source: Data source type (calibrated, uncalibrated, merged)
 
     Returns:
-    - variables: list of {name, label, group} for dropdown population
+    - grouped_variables: {instantaneous: [...], instantaneous_stats: [...]}
+    - variables: flat list of {name, label, group} for backward compatibility
     - has_stereo: whether uz (stereo) data is available
     - has_inst_stats: whether instantaneous statistics have been computed
     """
@@ -287,13 +427,6 @@ def available_variables():
 
         base_path = Path(base_path_str).expanduser()
 
-        # Build base variables (always available from PIV data)
-        variables = [
-            {"name": "ux", "label": "Velocity (x)", "group": "piv"},
-            {"name": "uy", "label": "Velocity (y)", "group": "piv"},
-            {"name": "mag", "label": "Velocity Magnitude", "group": "piv"},
-        ]
-
         # Determine flags based on data_source
         use_uncalibrated = data_source == "uncalibrated"
         use_merged = data_source == "merged"
@@ -311,71 +444,75 @@ def available_variables():
         data_dir = Path(paths["data_dir"])
         has_stereo = False
 
-        # Check for stereo (uz) in first PIV file
+        # Initialize grouped variables (matching VectorViewer structure)
+        grouped_variables = {
+            "instantaneous": [],
+            "instantaneous_stats": [],
+        }
+
+        # Extract instantaneous variables from first PIV frame file
         if data_dir.exists():
             mat_files = sorted(data_dir.glob("[0-9]*.mat"))
             mat_files = [f for f in mat_files if "coordinate" not in f.name.lower()][:1]
             if mat_files:
-                try:
-                    mat = loadmat(str(mat_files[0]), struct_as_record=False, squeeze_me=True)
-                    piv_result = mat.get("piv_result")
-                    if piv_result is not None:
-                        if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
-                            pr = piv_result[0]
-                        else:
-                            pr = piv_result
-                        has_stereo = hasattr(pr, "uz") and pr.uz is not None and np.asarray(pr.uz).size > 0
-                except Exception as e:
-                    logger.debug(f"Error checking stereo: {e}")
+                inst_vars = _extract_plottable_vars(mat_files[0])
+                grouped_variables["instantaneous"] = inst_vars
+                has_stereo = "uz" in inst_vars
 
-        if has_stereo:
-            variables.append({"name": "uz", "label": "Velocity (z)", "group": "piv"})
-
-        # Check for instantaneous statistics
+        # Check for instantaneous statistics (computed per-frame stats)
         # Stats path: {base_dir}/statistics/{num_frame_pairs}/{camera}/instantaneous/instantaneous_stats/
         stats_base = base_path / "statistics" / str(cfg.num_frame_pairs) / f"Cam{camera}" / "instantaneous"
         inst_stats_dir = stats_base / "instantaneous_stats"
         has_inst_stats = inst_stats_dir.exists() and any(inst_stats_dir.glob("*.mat"))
 
         if has_inst_stats:
-            # Check what fields are available in first stats file
-            inst_files = sorted(inst_stats_dir.glob("*.mat"))[:1]
-            if inst_files:
-                try:
-                    mat = loadmat(str(inst_files[0]), struct_as_record=False, squeeze_me=True)
-                    piv_result = mat.get("piv_result")
-                    if piv_result is not None:
-                        if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
-                            pr = piv_result[0]
-                        else:
-                            pr = piv_result
+            inst_stats_files = sorted(inst_stats_dir.glob("*.mat"))[:1]
+            if inst_stats_files:
+                stats_vars = _extract_plottable_vars(inst_stats_files[0])
+                # Filter out base instantaneous vars to avoid duplicates
+                base_vars = set(grouped_variables["instantaneous"])
+                # Keep stats-specific vars or known computed stats
+                known_stats = {
+                    "u_prime", "v_prime", "w_prime",
+                    "uu_inst", "vv_inst", "ww_inst", "uv_inst", "uw_inst", "vw_inst",
+                    "gamma1", "gamma2", "vorticity", "divergence",
+                }
+                grouped_variables["instantaneous_stats"] = [
+                    v for v in stats_vars
+                    if v not in base_vars or v in known_stats
+                ]
 
-                        # Check for each potential stat field
-                        stat_fields = [
-                            ("u_prime", "u' (fluctuation x)", "stats"),
-                            ("v_prime", "v' (fluctuation y)", "stats"),
-                            ("w_prime", "w' (fluctuation z)", "stats"),  # stereo only
-                            ("vorticity", "Vorticity", "stats"),
-                            ("divergence", "Divergence", "stats"),
-                            ("gamma1", "Gamma1 (vortex)", "stats"),
-                            ("gamma2", "Gamma2 (vortex)", "stats"),
-                        ]
+        # Build flat variables list for backward compatibility
+        variables = []
 
-                        for field_name, label, group in stat_fields:
-                            if hasattr(pr, field_name):
-                                arr = np.asarray(getattr(pr, field_name))
-                                if arr.size > 0 and not np.all(np.isnan(arr)):
-                                    variables.append({
-                                        "name": field_name,
-                                        "label": label,
-                                        "group": group
-                                    })
-                except Exception as e:
-                    logger.debug(f"Error checking stats fields: {e}")
+        # Add instantaneous variables
+        for var_name in grouped_variables["instantaneous"]:
+            variables.append({
+                "name": var_name,
+                "label": _get_variable_label(var_name),
+                "group": "piv",
+            })
+
+        # Always include mag (velocity magnitude) even if not in file
+        if "mag" not in grouped_variables["instantaneous"]:
+            variables.append({
+                "name": "mag",
+                "label": _get_variable_label("mag"),
+                "group": "piv",
+            })
+
+        # Add instantaneous stats variables
+        for var_name in grouped_variables["instantaneous_stats"]:
+            variables.append({
+                "name": var_name,
+                "label": _get_variable_label(var_name),
+                "group": "stats",
+            })
 
         return jsonify({
             "success": True,
             "variables": variables,
+            "grouped_variables": grouped_variables,
             "has_stereo": has_stereo,
             "has_inst_stats": has_inst_stats,
         })
@@ -480,6 +617,17 @@ def start_video():
     data = request.get_json(silent=True) or {}
     cfg = get_config(refresh=True)
 
+    # Check ensemble constraint - ensemble data has no temporal sequence
+    piv_type = cfg.video_piv_type
+    if piv_type == "ensemble":
+        return jsonify({
+            "error": (
+                "Cannot create video from ensemble data. Ensemble averaging "
+                "produces a single mean field with no temporal sequence."
+            ),
+            "constraint_violation": "ensemble_blocked",
+        }), 400
+
     # Get base path from request or config
     # Priority: base_path (direct) > base_path_idx > source_path_idx > config.video_base_path_idx
     base_path_str = data.get("base_path")
@@ -539,7 +687,11 @@ def start_video():
     )
 
     # For stats variables, auto-switch to inst_stats source
-    STATS_VARIABLES = {"u_prime", "v_prime", "w_prime", "vorticity", "divergence", "gamma1", "gamma2"}
+    STATS_VARIABLES = {
+        "u_prime", "v_prime", "w_prime",  # Legacy fluctuations
+        "uu_inst", "vv_inst", "ww_inst", "uv_inst", "uw_inst", "vw_inst",  # Stress tensor components
+        "vorticity", "divergence", "gamma1", "gamma2",  # Derived stats
+    }
     if var in STATS_VARIABLES and data_source != "inst_stats":
         data_source = "inst_stats"
         logger.info(f"[VIDEO] Auto-switching to inst_stats for variable '{var}'")
@@ -558,14 +710,19 @@ def start_video():
                 "selected_source": data_source
             }), 404
 
-    # Validate variable
+    # Validate variable - allow any plottable variable
+    # Instead of a hardcoded list, we allow any variable that was detected as plottable
+    # This includes dynamically computed statistics
     VALID_VARIABLES = {
-        "ux", "uy", "uz", "mag",  # PIV variables
-        "u_prime", "v_prime", "w_prime",  # Fluctuation stats
+        "ux", "uy", "uz", "mag", "b_mask",  # PIV variables
+        "u_prime", "v_prime", "w_prime",  # Legacy fluctuations
+        "uu_inst", "vv_inst", "ww_inst", "uv_inst", "uw_inst", "vw_inst",  # Stress tensor components
         "vorticity", "divergence", "gamma1", "gamma2",  # Derived stats
     }
+    # Note: We now accept any variable as the backend will try to load it dynamically
+    # This allows new computed statistics to work without code changes
     if var not in VALID_VARIABLES:
-        return jsonify({"error": f"Invalid var '{var}'. Valid options: {', '.join(sorted(VALID_VARIABLES))}"}), 400
+        logger.info(f"[VIDEO] Variable '{var}' not in known list, will attempt to load dynamically")
 
     # Get video parameters from config (with request overrides for backward compat)
     fps = data.get("fps", cfg.video_fps)
@@ -705,15 +862,14 @@ def start_video():
 @video_maker_bp.route("/start_batch", methods=["POST"])
 def start_video_batch():
     """
-    Start batch video creation with multi-path and multi-camera support.
+    Start batch video creation.
 
-    Expects JSON with:
-        active_paths: list of path indices (default: from config or [0])
-        cameras: list of camera numbers
-        include_merged: bool
+    Simplified API:
+        base_path_idx: int - Single path index (default: 0)
+        process_merged: bool - If true: merged only; if false: all cameras
         variable: str (ux, uy, mag, etc.)
         run: int (1-based run number)
-        data_source: str (calibrated, uncalibrated, merged, inst_stats)
+        data_source: str (calibrated, uncalibrated - only used when process_merged=false)
         fps: int
         cmap: str
         lower: float/str (color limit)
@@ -731,26 +887,14 @@ def start_video_batch():
     cfg = get_config(refresh=True)
     base_paths = cfg.base_paths
 
-    # Get batch parameters - support both old (base_path_idx) and new (active_paths) API
-    active_paths = data.get("active_paths")
-    if active_paths is None:
-        base_path_idx = data.get("base_path_idx")
-        if base_path_idx is not None:
-            active_paths = [int(base_path_idx)]
+    base_path_idx = int(data.get("base_path_idx", 0))
+    process_merged = bool(data.get("process_merged", False))
 
-    cameras = data.get("cameras", [])
-    include_merged = bool(data.get("include_merged", False))
+    # Validate path index
+    if base_path_idx < 0 or base_path_idx >= len(base_paths):
+        return jsonify({"error": f"Invalid base_path_idx: {base_path_idx}"}), 400
 
-    # Use config defaults if not provided in request
-    if active_paths is None:
-        active_paths = cfg.video_active_paths
-    if not cameras:
-        cameras = cfg.video_cameras
-
-    # Validate paths
-    valid_paths = [i for i in active_paths if 0 <= i < len(base_paths)]
-    if not valid_paths:
-        return jsonify({"error": "No valid path indices provided"}), 400
+    base_dir = base_paths[base_path_idx]
 
     # Get video parameters from request or config
     var = data.get("variable", cfg.video_variable)
@@ -781,19 +925,33 @@ def start_video_batch():
     test_frames = int(data.get("test_frames", 50))
 
     # For stats variables, auto-switch to inst_stats source
-    STATS_VARIABLES = {"u_prime", "v_prime", "w_prime", "vorticity", "divergence", "gamma1", "gamma2"}
+    STATS_VARIABLES = {
+        "u_prime", "v_prime", "w_prime",  # Legacy fluctuations
+        "uu_inst", "vv_inst", "ww_inst", "uv_inst", "uw_inst", "vw_inst",  # Stress tensor components
+        "vorticity", "divergence", "gamma1", "gamma2",  # Derived stats
+    }
     if var in STATS_VARIABLES and data_source != "inst_stats":
         data_source = "inst_stats"
         logger.info(f"[VIDEO] Auto-switching to inst_stats for variable '{var}'")
 
     try:
-        # Generate batch targets using unified utility
-        targets = iter_batch_targets(
-            base_paths=base_paths,
-            active_paths=valid_paths,
-            cameras=cameras,
-            include_merged=include_merged,
-        )
+        # Build targets based on process_merged flag
+        targets = []
+        if process_merged:
+            # Process merged data only
+            targets.append({
+                "camera": None,
+                "is_merged": True,
+                "label": "Merged",
+            })
+        else:
+            # Process all cameras from config.camera_numbers
+            for cam in cfg.camera_numbers:
+                targets.append({
+                    "camera": cam,
+                    "is_merged": False,
+                    "label": f"Cam{cam}",
+                })
 
         if not targets:
             return jsonify({"error": "No targets to process"}), 400
@@ -807,9 +965,8 @@ def start_video_batch():
 
         # Launch a job for each target
         for target in targets:
-            base_dir = target.base_path
-            use_merged = target.is_merged
-            cam_num = target.camera if target.camera else 1
+            use_merged = target["is_merged"]
+            cam_num = target["camera"] if target["camera"] else 1
 
             # Check if data is available for this target
             available = check_video_data_availability(
@@ -823,14 +980,14 @@ def start_video_batch():
             effective_source = "merged" if use_merged else data_source
 
             if not available.get(effective_source, {}).get("exists", False):
-                logger.warning(f"Data not found for {target.label} at path {target.path_idx}, skipping")
+                logger.warning(f"Data not found for {target['label']}, skipping")
                 continue
 
             # Create sub-job
             job_id = job_manager.create_job(
                 "video",
-                camera=target.label,
-                path_idx=target.path_idx,
+                camera=target["label"],
+                path_idx=base_path_idx,
                 parent_job_id=parent_job_id,
                 variable=var,
                 data_source=effective_source,
@@ -839,8 +996,8 @@ def start_video_batch():
             sub_jobs.append({
                 "job_id": job_id,
                 "type": "merged" if use_merged else f"camera_{cam_num}",
-                "path_idx": target.path_idx,
-                "label": target.label,
+                "path_idx": base_path_idx,
+                "label": target["label"],
             })
 
             # Create cancel event for this job
@@ -882,8 +1039,7 @@ def start_video_batch():
             "total_targets": len(targets),
             "processed_targets": len(sub_jobs),
             "status": "starting",
-            "message": f"Video creation started for {len(sub_jobs)} target(s) "
-            f"across {len(valid_paths)} path(s)",
+            "message": f"Video creation started for {len(sub_jobs)} target(s)",
         })
 
     except Exception as e:
@@ -1197,7 +1353,11 @@ def check_runs():
             }), 404
 
         # For stats variables, auto-switch to inst_stats
-        STATS_VARIABLES = {"u_prime", "v_prime", "w_prime", "vorticity", "divergence", "gamma1", "gamma2"}
+        STATS_VARIABLES = {
+            "u_prime", "v_prime", "w_prime",  # Legacy fluctuations
+            "uu_inst", "vv_inst", "ww_inst", "uv_inst", "uw_inst", "vw_inst",  # Stress tensor components
+            "vorticity", "divergence", "gamma1", "gamma2",  # Derived stats
+        }
         if var in STATS_VARIABLES:
             data_source = "inst_stats"
 

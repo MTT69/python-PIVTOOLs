@@ -946,37 +946,81 @@ if __name__ == "__main__":
         config = get_config()
 
         # Extract settings from config (all from merging section)
-        base_dir = Path(config.base_paths[0])
         cameras = config.merging_cameras
         type_name = config.merging_type_name
+
+        # Loop through active_paths for batch processing
+        active_paths = config.active_paths
+        logger.info(f"Processing {len(active_paths)} active path(s)")
+        logger.info(f"Cameras: {cameras}")
+        logger.info(f"Type: {type_name}")
+
+        results = []
+        for path_idx in active_paths:
+            base_dir = Path(config.base_paths[path_idx])
+            logger.info("")
+            logger.info("=" * 40)
+            logger.info(f"Path {path_idx + 1}/{len(active_paths)}: {base_dir}")
+            logger.info("=" * 40)
+
+            # Run merging for this path
+            merger = VectorMerger(
+                base_dir=base_dir,
+                cameras=cameras,
+                type_name=type_name,
+            )
+
+            result = merger.merge_all_frames()
+            result["path_idx"] = path_idx
+            result["base_dir"] = str(base_dir)
+            results.append(result)
+
+            if result["success"]:
+                logger.info(f"Path {path_idx + 1}: Merged {result['processed_count']} frames")
+            else:
+                logger.error(f"Path {path_idx + 1}: FAILED - {result.get('error')}")
+
+        # Summary
+        logger.info("")
+        logger.info("=" * 60)
+        logger.info("SUMMARY")
+        logger.info("=" * 60)
+        success_count = sum(1 for r in results if r["success"])
+        for r in results:
+            status = "OK" if r["success"] else "FAILED"
+            logger.info(f"  Path {r['path_idx'] + 1}: {status}")
+        logger.info(f"Total: {success_count}/{len(results)} paths succeeded")
+
+        all_success = all(r["success"] for r in results)
+        exit(0 if all_success else 1)
     else:
         # Apply CLI settings to config.yaml so centralized loaders work correctly
         config = apply_cli_settings_to_config()
 
-        # Use hardcoded settings
+        # Use hardcoded settings (single path)
         base_dir = Path(BASE_DIR)
         cameras = CAMERAS
         type_name = TYPE_NAME
 
-    logger.info(f"Base directory: {base_dir}")
-    logger.info(f"Cameras: {cameras}")
-    logger.info(f"Type: {type_name}")
+        logger.info(f"Base directory: {base_dir}")
+        logger.info(f"Cameras: {cameras}")
+        logger.info(f"Type: {type_name}")
 
-    # Run merging
-    merger = VectorMerger(
-        base_dir=base_dir,
-        cameras=cameras,
-        type_name=type_name,
-    )
+        # Run merging
+        merger = VectorMerger(
+            base_dir=base_dir,
+            cameras=cameras,
+            type_name=type_name,
+        )
 
-    result = merger.merge_all_frames()
+        result = merger.merge_all_frames()
 
-    logger.info("=" * 60)
-    if result["success"]:
-        logger.info(f"Merge complete: {result['processed_count']} frames")
-        logger.info(f"Output: {result['output_dir']}")
-        logger.info("Vector merging completed successfully")
-    else:
-        logger.error(f"Merge failed: {result.get('error', 'Unknown error')}")
+        logger.info("=" * 60)
+        if result["success"]:
+            logger.info(f"Merge complete: {result['processed_count']} frames")
+            logger.info(f"Output: {result['output_dir']}")
+            logger.info("Vector merging completed successfully")
+        else:
+            logger.error(f"Merge failed: {result.get('error', 'Unknown error')}")
 
-    exit(0 if result["success"] else 1)
+        exit(0 if result["success"] else 1)

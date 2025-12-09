@@ -4,13 +4,12 @@ Vector Statistics API views
 Provides endpoints for computing instantaneous statistics (mean and Reynolds stresses)
 with progress tracking.
 
-Supports batch processing: multi-path + multi-camera + optional merged data.
-
-Pattern matches: pinhole_views.py
+Simplified API: single base_path_idx + process_merged boolean.
+- process_merged=False: Processes all cameras from config.camera_numbers
+- process_merged=True: Processes merged data only
 """
 
 import threading
-import time
 from pathlib import Path
 
 from flask import Blueprint, jsonify, request
@@ -18,28 +17,60 @@ from loguru import logger
 
 from pivtools_core.config import get_config
 from pivtools_core.paths import get_data_paths
-from pivtools_core.batch_utils import iter_batch_targets
 from ...calibration.services.job_manager import job_manager
-from ...utils import camera_number
 from ..instantaneous_statistics import VectorStatisticsProcessor
 
 statistics_bp = Blueprint("statistics", __name__)
 
 
+@statistics_bp.route("/statistics/constraints", methods=["GET"])
+def get_statistics_constraints():
+    """
+    Return constraints for statistics calculation.
+
+    Used by frontend to show allowed source endpoints and workflow options.
+    Statistics have no blocking constraints - all endpoints allowed.
+
+    For stereo setups:
+    - is_stereo=True indicates two cameras combined into single 3D field
+    - Only "stereo" workflow option available (processes single stereo result)
+
+    Returns:
+        JSON with allowed_source_endpoints, workflow_options, is_stereo
+    """
+    cfg = get_config()
+    is_stereo = cfg.is_stereo_setup
+
+    # For stereo, only stereo workflow available (single combined result)
+    # For planar, per_camera/after_merge/both options available
+    if is_stereo:
+        workflow_options = ["stereo"]
+    else:
+        workflow_options = ["per_camera", "after_merge", "both"]
+
+    return jsonify({
+        "allowed_source_endpoints": cfg.get_allowed_endpoints("statistics"),
+        "workflow_options": workflow_options,
+        "current_workflow": cfg.statistics_workflow,
+        "current_source_endpoint": cfg.statistics_source_endpoint,
+        "is_stereo": is_stereo,
+    })
+
+
 @statistics_bp.route("/statistics/calculate", methods=["POST"])
 def calculate_statistics():
     """
-    Start statistics calculation job with batch processing support.
+    Start statistics calculation job.
 
-    Expects JSON with:
-        active_paths: list of path indices (default: from config or [0])
-        cameras: list of camera numbers
-        include_merged: bool
+    API:
+        base_path_idx: int - Single path index (default: 0)
+        workflow: str - Workflow mode (default: from config)
+            - "per_camera": Process all cameras from config.camera_numbers
+            - "after_merge": Process merged data only
+            - "both": Process all cameras then merged data
+        process_merged: bool - DEPRECATED, use workflow instead
         type_name: str (default: "instantaneous")
         requested_statistics: list of statistic names (optional)
-
-    Supports multi-path batch processing: for each path, processes all cameras
-    and optionally merged data.
 
     Returns:
         JSON with parent_job_id, sub_jobs list, status
@@ -47,16 +78,7 @@ def calculate_statistics():
     data = request.get_json() or {}
     logger.info(f"Received statistics calculation request: {data}")
 
-    # Get parameters - support both old (base_path_idx) and new (active_paths) API
-    active_paths = data.get("active_paths")
-    if active_paths is None:
-        # Backward compatibility: convert single base_path_idx to list
-        base_path_idx = data.get("base_path_idx")
-        if base_path_idx is not None:
-            active_paths = [int(base_path_idx)]
-
-    cameras = data.get("cameras", [])
-    include_merged = bool(data.get("include_merged", False))
+    base_path_idx = int(data.get("base_path_idx", 0))
     type_name = data.get("type_name", "instantaneous")
     requested_statistics = data.get("requested_statistics", None)
 
@@ -64,27 +86,77 @@ def calculate_statistics():
         cfg = get_config()
         base_paths = cfg.base_paths
 
-        # Use config defaults if not provided in request
-        if active_paths is None:
-            active_paths = cfg.statistics_active_paths
-        if not cameras:
-            cameras = cfg.statistics_cameras
+        # Get workflow - support both new workflow param and deprecated process_merged
+        workflow = data.get("workflow")
+        if workflow is None:
+            # Check deprecated process_merged for backward compat
+            if "process_merged" in data:
+                process_merged = bool(data.get("process_merged", False))
+                workflow = "after_merge" if process_merged else "per_camera"
+            else:
+                workflow = cfg.statistics_workflow
 
-        # Validate paths
-        valid_paths = [i for i in active_paths if 0 <= i < len(base_paths)]
-        if not valid_paths:
-            return jsonify({"error": "No valid path indices provided"}), 400
+        # Check if stereo setup
+        is_stereo = cfg.is_stereo_setup
 
+        # Validate workflow
+        if is_stereo:
+            valid_workflows = ("stereo",)
+            # Force stereo workflow for stereo setups
+            workflow = "stereo"
+        else:
+            valid_workflows = ("per_camera", "after_merge", "both")
+
+        if workflow not in valid_workflows:
+            return jsonify({
+                "error": f"Invalid workflow '{workflow}'. Must be one of: {valid_workflows}"
+            }), 400
+
+        # Validate path index
+        if base_path_idx < 0 or base_path_idx >= len(base_paths):
+            return jsonify({"error": f"Invalid base_path_idx: {base_path_idx}"}), 400
+
+        base_dir = base_paths[base_path_idx]
         vector_format = cfg.vector_format
         num_frame_pairs = cfg.num_frame_pairs
 
-        # Generate batch targets using unified utility
-        targets = iter_batch_targets(
-            base_paths=base_paths,
-            active_paths=valid_paths,
-            cameras=cameras,
-            include_merged=include_merged,
-        )
+        # Build targets based on workflow
+        targets = []
+        if workflow == "stereo":
+            # Stereo: single combined 3D result, use camera 1 path
+            targets.append({
+                "camera": 1,
+                "is_merged": False,
+                "label": "Stereo",
+            })
+        elif workflow == "after_merge":
+            # Process merged data only
+            targets.append({
+                "camera": None,
+                "is_merged": True,
+                "label": "Merged",
+            })
+        elif workflow == "both":
+            # Process all cameras first, then merged
+            for cam in cfg.camera_numbers:
+                targets.append({
+                    "camera": cam,
+                    "is_merged": False,
+                    "label": f"Cam{cam}",
+                })
+            targets.append({
+                "camera": None,
+                "is_merged": True,
+                "label": "Merged",
+            })
+        else:  # per_camera (default)
+            # Process all cameras from config.camera_numbers
+            for cam in cfg.camera_numbers:
+                targets.append({
+                    "camera": cam,
+                    "is_merged": False,
+                    "label": f"Cam{cam}",
+                })
 
         if not targets:
             return jsonify({"error": "No targets to process"}), 400
@@ -98,11 +170,8 @@ def calculate_statistics():
 
         # Launch a job for each target
         for target in targets:
-            base_dir = target.base_path
-
-            # Determine data directory for this target
-            use_merged = target.is_merged
-            cam_num = target.camera if target.camera else 1
+            use_merged = target["is_merged"]
+            cam_num = target["camera"] if target["camera"] else 1
 
             target_paths = get_data_paths(
                 base_dir=base_dir,
@@ -122,15 +191,15 @@ def calculate_statistics():
             # Create sub-job
             job_id = job_manager.create_job(
                 "statistics",
-                camera=target.label,
-                path_idx=target.path_idx,
+                camera=target["label"],
+                path_idx=base_path_idx,
                 parent_job_id=parent_job_id,
             )
             sub_jobs.append({
                 "job_id": job_id,
                 "type": "merged" if use_merged else f"camera_{cam_num}",
-                "path_idx": target.path_idx,
-                "label": target.label,
+                "path_idx": base_path_idx,
+                "label": target["label"],
             })
 
             # Launch thread
@@ -160,8 +229,7 @@ def calculate_statistics():
             "total_targets": len(targets),
             "processed_targets": len(sub_jobs),
             "status": "starting",
-            "message": f"Statistics calculation started for {len(sub_jobs)} target(s) "
-            f"across {len(valid_paths)} path(s)",
+            "message": f"Statistics calculation started for {len(sub_jobs)} target(s)",
         })
 
     except Exception as e:

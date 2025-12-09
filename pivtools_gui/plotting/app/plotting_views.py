@@ -20,7 +20,7 @@ from scipy.io import loadmat
 from pivtools_core.config import get_config
 from pivtools_core.coordinate_utils import extract_coordinates
 from pivtools_core.paths import get_data_paths
-from pivtools_core.vector_loading import find_non_empty_run
+from pivtools_core.vector_loading import find_non_empty_run, get_plottable_vars
 
 from ..plot_maker import make_scalar_settings
 from ...utils import camera_number
@@ -157,6 +157,12 @@ def plot_ensemble():
         params = parse_plot_params(request)
         params["type_name"] = "ensemble"  # Override type
 
+        # Strip variable prefix (inst:, mean:, inst_stat:) if present
+        # Frontend sends prefixed names like "inst:ux" but ensemble structs use raw names like "ux"
+        raw_var = params["var"]
+        if ':' in raw_var:
+            _, raw_var = raw_var.split(':', 1)
+
         paths = validate_and_get_paths(params)
         data_dir = Path(paths["data_dir"])
 
@@ -171,36 +177,16 @@ def plot_ensemble():
             return jsonify({"success": False, "error": "Variable 'ensemble_result' not found in mat"}), 400
 
         ensemble_result = mat["ensemble_result"]
-        pr = None
-        effective_run = params["run"]
 
-        if isinstance(ensemble_result, np.ndarray) and ensemble_result.dtype == object:
-            max_runs = ensemble_result.size
-            current_run = params["run"]
-            while current_run <= max_runs:
-                pr_candidate = ensemble_result[current_run - 1]
-                try:
-                    var_arr = np.asarray(getattr(pr_candidate, params["var"]))
-                    if var_arr.size > 0 and not np.all(np.isnan(var_arr)):
-                        pr = pr_candidate
-                        effective_run = current_run
-                        break
-                except Exception:
-                    pass
-                current_run += 1
-        else:
-            try:
-                var_arr = np.asarray(getattr(ensemble_result, params["var"]))
-                if var_arr.size > 0 and not np.all(np.isnan(var_arr)):
-                    pr = ensemble_result
-                    effective_run = 1
-            except Exception:
-                pass
+        # Use centralized helper from vector_loading (same as instantaneous data)
+        pr, effective_run = find_non_empty_run(
+            ensemble_result, raw_var, run=params["run"], require_2d=False, reject_all_nan=True
+        )
 
         if pr is None:
-            return jsonify({"success": False, "error": f"No valid data found for variable '{params['var']}'"}), 404
+            return jsonify({"success": False, "error": f"No valid data found for variable '{raw_var}'"}), 404
 
-        var_arr = np.asarray(getattr(pr, params["var"]))
+        var_arr = np.asarray(getattr(pr, raw_var))
         try:
             mask_arr = np.asarray(getattr(pr, "b_mask")).astype(bool)
         except Exception:
@@ -215,7 +201,7 @@ def plot_ensemble():
 
         settings = make_scalar_settings(
             get_config(),
-            variable=params["var"],
+            variable=raw_var,
             run_label=effective_run,
             save_basepath=Path("plot_ensemble_tmp"),
             variable_units="m/s",
@@ -231,7 +217,7 @@ def plot_ensemble():
         )
 
         b64_img, W, H, extra = create_and_return_plot(var_arr, mask_arr, settings, raw=params["raw"])
-        meta = build_response_meta(effective_run, params["var"], W, H, extra)
+        meta = build_response_meta(effective_run, raw_var, W, H, extra)
 
         return jsonify({"success": True, "image": b64_img, "meta": meta})
 
@@ -441,6 +427,7 @@ def check_all_vars():
             "instantaneous": ["ux", "uy", ...],      # From frame .mat files
             "instantaneous_stats": ["u_prime", ...], # From instantaneous_stats folder
             "mean_stats": ["ux", "uu", "tke", ...]   # From mean_stats.mat
+            "ensemble": ["ux", "uy", "UU_stress", ...] # From ensemble_result.mat
         }
     """
     try:
@@ -457,12 +444,13 @@ def check_all_vars():
             "instantaneous": [],
             "instantaneous_stats": [],
             "mean_stats": [],
+            "ensemble": [],
         }
 
         # 1. Check instantaneous frame file
         vec_fmt = get_config().vector_format
         frame_path = data_dir / (vec_fmt % frame)
-        result["instantaneous"] = _extract_plottable_vars(frame_path)
+        result["instantaneous"] = get_plottable_vars(frame_path, var_name="piv_result")
 
         # 2. Check instantaneous_stats folder (per-frame calculated stats)
         if inst_stats_dir.exists():
@@ -470,7 +458,7 @@ def check_all_vars():
             inst_stat_files = sorted(inst_stats_dir.glob("*.mat"))
             if inst_stat_files:
                 inst_stat_path = inst_stat_files[0]
-                inst_vars = _extract_plottable_vars(inst_stat_path)
+                inst_vars = get_plottable_vars(inst_stat_path, var_name="piv_result")
                 # Filter to only include calculated stats (not duplicates of base vars)
                 base_vars = set(result["instantaneous"])
                 result["instantaneous_stats"] = [
@@ -482,7 +470,22 @@ def check_all_vars():
         # 3. Check mean_stats.mat
         mean_stats_path = mean_stats_dir / "mean_stats.mat"
         if mean_stats_path.exists():
-            result["mean_stats"] = _extract_plottable_vars(mean_stats_path)
+            result["mean_stats"] = get_plottable_vars(mean_stats_path, var_name="piv_result")
+
+        # 4. Check ensemble_result.mat
+        try:
+            ens_paths = get_data_paths(
+                base_dir=params["base_path"],
+                num_frame_pairs=get_config().num_frame_pairs,
+                cam=params["camera"],
+                type_name="ensemble",
+                use_uncalibrated=params["use_uncalibrated"],
+                use_merged=params["use_merged"],
+            )
+            ensemble_file = Path(ens_paths["data_dir"]) / "ensemble_result.mat"
+            result["ensemble"] = get_plottable_vars(ensemble_file, var_name="ensemble_result")
+        except Exception as e:
+            logger.debug(f"check_all_vars: could not check ensemble vars: {e}")
 
         return jsonify({"success": True, **result})
 

@@ -20,7 +20,6 @@ from flask import Blueprint, jsonify, request
 from loguru import logger
 
 from pivtools_core.config import get_config
-from pivtools_core.batch_utils import iter_batch_targets
 from pivtools_gui.calibration.services.job_manager import job_manager
 from pivtools_gui.transforms import VALID_TRANSFORMATIONS
 from pivtools_gui.transforms.transform_operations import simplify_transformations
@@ -28,6 +27,31 @@ from pivtools_gui.transforms.transform_production import TransformProcessor
 from pivtools_gui.utils import camera_number
 
 transform_bp = Blueprint("transform", __name__)
+
+
+# =============================================================================
+# Constraints Endpoint
+# =============================================================================
+
+
+@transform_bp.route("/transform/constraints", methods=["GET"])
+def get_transform_constraints():
+    """
+    Return constraints for transform operations.
+
+    Used by frontend to show allowed source endpoints.
+    Transforms have no constraints - all data types can be transformed.
+
+    Returns:
+        JSON with allowed_source_endpoints, is_stereo
+    """
+    cfg = get_config()
+
+    return jsonify({
+        "allowed_source_endpoints": cfg.get_allowed_endpoints("transforms"),
+        "is_stereo": cfg.is_stereo_setup,
+        # No blocking constraints for transforms - all endpoints allowed
+    })
 
 
 # =============================================================================
@@ -349,21 +373,18 @@ def transform_job_status(job_id: str):
 
 
 # =============================================================================
-# Apply Transforms (Batch - Multi-Path + Merged)
+# Apply Transforms (Batch)
 # =============================================================================
 
 
 @transform_bp.route("/transform/apply_batch", methods=["POST"])
 def apply_transforms_batch():
     """
-    Apply all pending transformations with batch processing support.
+    Apply all pending transformations.
 
-    Supports multi-path and merged data processing.
-
-    Request JSON:
-        active_paths: list of path indices (default: from config)
-        cameras: list of camera numbers (optional, defaults to all with pending)
-        include_merged: bool (default: from config)
+    Simplified API:
+        base_path_idx: int - Single path index (default: 0)
+        process_merged: bool - If true: merged only; if false: all cameras with pending transforms
         type_name: str (optional, defaults to config.transforms_type_name)
 
     NOTE: Statistics files are NOT transformed.
@@ -379,29 +400,19 @@ def apply_transforms_batch():
         config = get_config()
         base_paths = config.base_paths
 
-        # Get batch parameters
-        active_paths = data.get("active_paths")
-        if active_paths is None:
-            active_paths = config.transforms_active_paths
-
-        cameras = data.get("cameras")
-        include_merged = data.get("include_merged")
-        if include_merged is None:
-            include_merged = config.transforms_include_merged
-
+        base_path_idx = int(data.get("base_path_idx", 0))
+        process_merged = bool(data.get("process_merged", False))
         type_name = data.get("type_name", config.transforms_type_name)
 
-        # Validate paths
-        valid_paths = [i for i in active_paths if 0 <= i < len(base_paths)]
-        if not valid_paths:
-            return jsonify({"error": "No valid path indices provided"}), 400
+        # Validate path index
+        if base_path_idx < 0 or base_path_idx >= len(base_paths):
+            return jsonify({"error": f"Invalid base_path_idx: {base_path_idx}"}), 400
+
+        base_dir = base_paths[base_path_idx]
 
         # Get cameras with pending transforms
         all_transforms = config.transforms_cameras
-        if cameras:
-            camera_transforms = {c: all_transforms.get(c, []) for c in cameras if all_transforms.get(c)}
-        else:
-            camera_transforms = {c: ops for c, ops in all_transforms.items() if ops}
+        camera_transforms = {c: ops for c, ops in all_transforms.items() if ops}
 
         if not camera_transforms:
             return jsonify({
@@ -409,16 +420,26 @@ def apply_transforms_batch():
                 "error": "No pending transformations to apply"
             }), 400
 
-        # Build camera list from those with transforms
-        cameras_with_ops = list(camera_transforms.keys())
-
-        # Generate batch targets
-        targets = iter_batch_targets(
-            base_paths=base_paths,
-            active_paths=valid_paths,
-            cameras=cameras_with_ops,
-            include_merged=include_merged,
-        )
+        # Build targets based on process_merged flag
+        targets = []
+        if process_merged:
+            # Process merged data only - use first camera's transforms
+            cam_transforms = list(camera_transforms.values())[0]
+            targets.append({
+                "camera": None,
+                "is_merged": True,
+                "label": "Merged",
+                "operations": cam_transforms,
+            })
+        else:
+            # Process all cameras with pending transforms
+            for cam_num, cam_transforms in camera_transforms.items():
+                targets.append({
+                    "camera": cam_num,
+                    "is_merged": False,
+                    "label": f"Cam{cam_num}",
+                    "operations": cam_transforms,
+                })
 
         if not targets:
             return jsonify({"error": "No targets to process"}), 400
@@ -432,35 +453,23 @@ def apply_transforms_batch():
 
         # Launch a job for each target
         for target in targets:
-            base_dir = target.base_path
-            use_merged = target.is_merged
-            cam_num = target.camera if target.camera else 1
-
-            # Get transforms for this camera
-            cam_transforms = camera_transforms.get(cam_num, [])
-            if not cam_transforms and not use_merged:
-                continue
-
-            # For merged data, apply transforms from first camera (or skip if none)
-            if use_merged:
-                # Use first camera's transforms for merged data
-                cam_transforms = list(camera_transforms.values())[0] if camera_transforms else []
-                if not cam_transforms:
-                    continue
+            use_merged = target["is_merged"]
+            cam_num = target["camera"] if target["camera"] else 1
+            cam_transforms = target["operations"]
 
             # Create sub-job
             job_id = job_manager.create_job(
                 "transform",
-                camera=target.label,
-                path_idx=target.path_idx,
+                camera=target["label"],
+                path_idx=base_path_idx,
                 parent_job_id=parent_job_id,
                 operations=cam_transforms,
             )
             sub_jobs.append({
                 "job_id": job_id,
                 "type": "merged" if use_merged else f"camera_{cam_num}",
-                "path_idx": target.path_idx,
-                "label": target.label,
+                "path_idx": base_path_idx,
+                "label": target["label"],
             })
 
             # Launch thread
