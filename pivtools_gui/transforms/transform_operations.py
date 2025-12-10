@@ -218,8 +218,8 @@ def mat_dict_to_saveable(mat: dict) -> dict:
         if key.startswith("__"):
             continue
 
-        if key in ("piv_result", "piv_result_original"):
-            # Convert PIV result structs
+        if key in ("piv_result", "piv_result_original", "ensemble_result", "ensemble_result_original"):
+            # Convert PIV/ensemble result structs
             result[key] = piv_result_to_structured_array(value)
         elif key in ("coordinates", "coordinates_original"):
             # Convert coordinate structs
@@ -528,25 +528,40 @@ def apply_transformation_to_coordinates(
     # swap_ux_uy and invert_ux_uy don't affect coordinates
 
 
+def _get_result_key(mat: Dict) -> str:
+    """
+    Determine the result key name based on what's in the mat file.
+
+    Returns 'ensemble_result' if present, otherwise 'piv_result'.
+    """
+    if "ensemble_result" in mat:
+        return "ensemble_result"
+    return "piv_result"
+
+
 def backup_original_data(
     mat: Dict, coords_mat: Optional[Dict] = None
 ) -> Tuple[Dict, Optional[Dict]]:
     """
-    Create backup copies of piv_result and coordinates as _original.
+    Create backup copies of piv_result/ensemble_result and coordinates as _original.
 
     Only creates backups if they don't already exist.
 
     Args:
-        mat: Dictionary containing piv_result from loadmat
+        mat: Dictionary containing piv_result or ensemble_result from loadmat
         coords_mat: Optional dictionary containing coordinates from loadmat
 
     Returns:
         Tuple of (updated_mat, updated_coords_mat) with _original fields added
     """
-    # Backup piv_result if not already backed up
-    if "piv_result_original" not in mat:
-        logger.debug("Creating backup: piv_result -> piv_result_original")
-        mat["piv_result_original"] = copy.deepcopy(mat["piv_result"])
+    # Determine which result key is present
+    result_key = _get_result_key(mat)
+    backup_key = f"{result_key}_original"
+
+    # Backup result if not already backed up
+    if backup_key not in mat:
+        logger.debug(f"Creating backup: {result_key} -> {backup_key}")
+        mat[backup_key] = copy.deepcopy(mat[result_key])
 
     # Backup coordinates if provided and not already backed up
     if coords_mat is not None and "coordinates_original" not in coords_mat:
@@ -560,20 +575,24 @@ def restore_original_data(
     mat: Dict, coords_mat: Optional[Dict] = None
 ) -> Tuple[Dict, Optional[Dict]]:
     """
-    Restore piv_result and coordinates from _original backups and remove backups.
+    Restore piv_result/ensemble_result and coordinates from _original backups and remove backups.
 
     Args:
-        mat: Dictionary containing piv_result and piv_result_original
+        mat: Dictionary containing piv_result/ensemble_result and _original backup
         coords_mat: Optional dictionary containing coordinates
 
     Returns:
         Tuple of (updated_mat, updated_coords_mat) with original data restored
     """
-    # Restore piv_result from backup
-    if "piv_result_original" in mat:
-        logger.debug("Restoring: piv_result_original -> piv_result")
-        mat["piv_result"] = mat["piv_result_original"]
-        del mat["piv_result_original"]
+    # Determine which result key is present
+    result_key = _get_result_key(mat)
+    backup_key = f"{result_key}_original"
+
+    # Restore result from backup
+    if backup_key in mat:
+        logger.debug(f"Restoring: {backup_key} -> {result_key}")
+        mat[result_key] = mat[backup_key]
+        del mat[backup_key]
         # Clear transformation list
         mat["pending_transformations"] = []
 
@@ -591,12 +610,12 @@ def has_original_backup(mat: Dict) -> bool:
     Check if original backup exists for this frame.
 
     Args:
-        mat: Dictionary containing piv_result data
+        mat: Dictionary containing piv_result or ensemble_result data
 
     Returns:
-        True if piv_result_original exists in mat
+        True if _original backup exists in mat
     """
-    return "piv_result_original" in mat
+    return "piv_result_original" in mat or "ensemble_result_original" in mat
 
 
 def process_frame_worker(
@@ -613,7 +632,7 @@ def process_frame_worker(
 
     Args:
         frame: Frame number (for logging)
-        mat_file: Path to the .mat file containing piv_result
+        mat_file: Path to the .mat file containing piv_result or ensemble_result
         coords_file: Optional path to coordinates.mat
         transformations: List of transformations to apply in order
 
@@ -622,7 +641,8 @@ def process_frame_worker(
     """
     try:
         mat = load_mat_for_transform(mat_file)
-        piv_result = mat["piv_result"]
+        result_key = _get_result_key(mat)
+        piv_result = mat[result_key]
 
         # Load coordinates if they exist
         coords = None

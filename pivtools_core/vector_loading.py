@@ -170,20 +170,23 @@ def get_highest_valid_run(
 
 
 def find_valid_piv_runs(
-    file_path: Union[str, Path], one_based: bool = False
+    file_path: Union[str, Path],
+    one_based: bool = False,
+    result_key: str = "piv_result",
 ) -> RunValidationResult:
     """
-    Find valid runs in a piv_result file (checks ux, uy).
+    Find valid runs in a piv_result or ensemble_result file (checks ux, uy).
 
     Args:
-        file_path: Path to .mat file containing piv_result
+        file_path: Path to .mat file containing piv_result or ensemble_result
         one_based: If True, return 1-based indices; if False, 0-based
+        result_key: Key name in mat file ("piv_result" or "ensemble_result")
 
     Returns:
         RunValidationResult with valid_runs list, total_runs count, and single_run flag
     """
     return find_valid_runs(
-        file_path, var_name="piv_result", fields=("ux", "uy"), one_based=one_based
+        file_path, var_name=result_key, fields=("ux", "uy"), one_based=one_based
     )
 
 
@@ -293,17 +296,28 @@ def find_non_empty_run(
 
 
 def read_mat_contents(
-    file_path: str, run_index: Optional[int] = None, return_all_runs: bool = False
+    file_path: str,
+    run_index: Optional[int] = None,
+    return_all_runs: bool = False,
+    var_name: str = "piv_result",
 ) -> np.ndarray:
     """
-    Reads piv_result from a .mat file.
+    Reads piv_result or ensemble_result from a .mat file.
     If multiple runs are present, selects the specified run_index (0-based).
     If run_index is None, selects the first run with valid (non-empty) data.
     If return_all_runs is True, returns all runs in shape (R, 3, H, W).
     Otherwise returns shape (1, 3, H, W) for the selected run.
+
+    Args:
+        file_path: Path to the .mat file
+        run_index: Optional specific run to load (0-based)
+        return_all_runs: If True, return all runs
+        var_name: Key name in mat file ("piv_result" or "ensemble_result")
     """
     mat = scipy.io.loadmat(file_path, struct_as_record=False, squeeze_me=True)
-    piv_result = mat["piv_result"]
+    if var_name not in mat:
+        raise KeyError(f"'{var_name}' not found in {file_path}")
+    piv_result = mat[var_name]
 
     # Multiple runs case: numpy array of structs
     if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:

@@ -201,6 +201,93 @@ class VectorMerger:
         )
         self.output_dir = self.output_paths["data_dir"]
 
+    @property
+    def is_ensemble(self) -> bool:
+        """Check if this merger is processing ensemble data."""
+        return self.type_name == "ensemble"
+
+    def _get_vector_file_path(self, data_dir: Path, frame_idx: int) -> Path:
+        """
+        Get the correct vector file path based on type_name.
+
+        For ensemble data, returns ensemble_result.mat.
+        For instantaneous data, returns the frame-numbered file.
+        """
+        if self.is_ensemble:
+            return data_dir / "ensemble_result.mat"
+        else:
+            return data_dir / (self.vector_format % frame_idx)
+
+    def _get_result_key(self) -> str:
+        """Get the key name for the result based on type_name."""
+        if self.is_ensemble:
+            return "ensemble_result"
+        else:
+            return "piv_result"
+
+    def _load_ensemble_run_data(self, mat_file: Path, run_idx: int) -> Optional[dict]:
+        """
+        Load ensemble data for a specific run, including stress fields.
+
+        Args:
+            mat_file: Path to ensemble_result.mat
+            run_idx: 0-based run index
+
+        Returns:
+            Dict with ux, uy, b_mask, and optional stress fields, or None if invalid
+        """
+        mat = scipy.io.loadmat(str(mat_file), struct_as_record=False, squeeze_me=True)
+        result_key = self._get_result_key()
+
+        if result_key not in mat:
+            logger.warning(f"'{result_key}' not found in {mat_file}")
+            return None
+
+        result = mat[result_key]
+
+        # Handle array of structs
+        if isinstance(result, np.ndarray) and result.dtype == object:
+            if run_idx >= result.size:
+                return None
+            run = result[run_idx]
+        else:
+            if run_idx != 0:
+                return None
+            run = result
+
+        # Extract required fields
+        ux = getattr(run, "ux", None)
+        uy = getattr(run, "uy", None)
+        b_mask = getattr(run, "b_mask", None)
+
+        if ux is None or uy is None:
+            return None
+
+        ux = np.asarray(ux)
+        uy = np.asarray(uy)
+
+        if ux.size == 0 or uy.size == 0:
+            return None
+
+        if b_mask is None:
+            b_mask = np.zeros_like(ux, dtype=bool)
+        else:
+            b_mask = np.asarray(b_mask).astype(bool)
+
+        data = {
+            "ux": ux,
+            "uy": uy,
+            "b_mask": b_mask,
+        }
+
+        # Extract stress fields if present (ensemble data)
+        for stress_field in ["UU_stress", "VV_stress", "UV_stress"]:
+            val = getattr(run, stress_field, None)
+            if val is not None:
+                data[stress_field] = np.asarray(val)
+
+        return data
+
     def find_valid_runs(self) -> tuple:
         """
         Find which runs have valid (non-empty) vector data.
@@ -220,12 +307,17 @@ class VectorMerger:
         if not data_dir.exists():
             return [], 0
 
-        first_file = data_dir / (self.vector_format % 1)
+        # Use helper to get correct file path for ensemble vs instantaneous
+        first_file = self._get_vector_file_path(data_dir, 1)
         if not first_file.exists():
             return [], 0
 
         try:
-            result = find_valid_piv_runs(first_file, one_based=True)
+            result = find_valid_piv_runs(
+                first_file,
+                one_based=True,
+                result_key=self._get_result_key(),
+            )
             return result.valid_runs, result.total_runs
         except Exception as e:
             logger.error(f"Error checking runs in {first_file}: {e}")
@@ -542,21 +634,34 @@ class VectorMerger:
                 logger.error(f"Failed to load coordinates for camera {camera}: {e}")
                 continue
 
-            # Load vector file using centralized utility
-            vector_file = data_dir / (self.vector_format % frame_idx)
+            # Load vector file
+            vector_file = self._get_vector_file_path(data_dir, frame_idx)
             if not vector_file.exists():
                 logger.warning(f"Vector file does not exist: {vector_file}")
                 continue
 
             try:
-                # Load all runs at once - returns shape (R, 3, H, W)
-                # where 3 channels are [ux, uy, b_mask]
-                all_runs_data = read_mat_contents(str(vector_file), return_all_runs=True)
-                camera_data[camera] = {
-                    "vector_data": all_runs_data,  # (R, 3, H, W) or object array
-                    "coords_x": coords_x_list,
-                    "coords_y": coords_y_list,
-                }
+                if self.is_ensemble:
+                    # Ensemble: store file path for on-demand loading with stress fields
+                    camera_data[camera] = {
+                        "vector_file": vector_file,
+                        "coords_x": coords_x_list,
+                        "coords_y": coords_y_list,
+                        "is_ensemble": True,
+                    }
+                else:
+                    # Instantaneous: load all runs at once - returns shape (R, 3, H, W)
+                    all_runs_data = read_mat_contents(
+                        str(vector_file),
+                        return_all_runs=True,
+                        var_name=self._get_result_key(),
+                    )
+                    camera_data[camera] = {
+                        "vector_data": all_runs_data,
+                        "coords_x": coords_x_list,
+                        "coords_y": coords_y_list,
+                        "is_ensemble": False,
+                    }
             except Exception as e:
                 logger.error(f"Failed to load vector file {vector_file}: {e}")
                 continue
@@ -568,38 +673,61 @@ class VectorMerger:
 
         # Merge data for each run
         merged_runs = {}
+        has_stress_fields = False  # Track if ensemble with stress data
 
         for run_idx, run_num in enumerate(valid_runs):
             logger.debug(f"Processing run {run_num} (index {run_idx})")
             run_data = {}
+            run_stress_data = {}  # Stress fields for ensemble
 
             for camera, data in camera_data.items():
-                vector_data = data["vector_data"]
                 array_idx = run_num - 1  # Convert 1-based run to 0-based index
 
-                # Handle both regular arrays and object arrays from read_mat_contents
-                if vector_data.dtype == object:
-                    # Object array - each element is (3, H, W)
-                    if array_idx >= len(vector_data):
+                if data.get("is_ensemble"):
+                    # Ensemble mode: load with stress fields
+                    vec_data = self._load_ensemble_run_data(data["vector_file"], array_idx)
+                    if vec_data is None:
                         continue
-                    run_arr = vector_data[array_idx]
-                    if run_arr.size == 0:
-                        continue
-                    ux = run_arr[0]
-                    uy = run_arr[1]
-                    b_mask = run_arr[2].astype(bool)
+
+                    ux = vec_data["ux"]
+                    uy = vec_data["uy"]
+                    b_mask = vec_data["b_mask"]
+
+                    # Extract stress fields if present
+                    stress_fields = {}
+                    for sf in ["UU_stress", "VV_stress", "UV_stress"]:
+                        if sf in vec_data:
+                            stress_fields[sf] = vec_data[sf]
+                            has_stress_fields = True
+
                     logger.debug(
-                        f"Camera {camera}: Loaded from object array, ux.shape={ux.shape}"
+                        f"Camera {camera}: Loaded ensemble data, ux.shape={ux.shape}, "
+                        f"stress fields: {list(stress_fields.keys())}"
                     )
                 else:
-                    # Regular array shape (R, 3, H, W)
-                    if array_idx >= vector_data.shape[0]:
-                        continue
-                    ux = vector_data[array_idx, 0]
-                    uy = vector_data[array_idx, 1]
-                    b_mask = vector_data[array_idx, 2].astype(bool)
+                    # Instantaneous mode: use preloaded data
+                    vector_data = data["vector_data"]
+
+                    # Handle both regular arrays and object arrays from read_mat_contents
+                    if vector_data.dtype == object:
+                        if array_idx >= len(vector_data):
+                            continue
+                        run_arr = vector_data[array_idx]
+                        if run_arr.size == 0:
+                            continue
+                        ux = run_arr[0]
+                        uy = run_arr[1]
+                        b_mask = run_arr[2].astype(bool)
+                    else:
+                        if array_idx >= vector_data.shape[0]:
+                            continue
+                        ux = vector_data[array_idx, 0]
+                        uy = vector_data[array_idx, 1]
+                        b_mask = vector_data[array_idx, 2].astype(bool)
+
+                    stress_fields = {}
                     logger.debug(
-                        f"Camera {camera}: Loaded from regular array, ux.shape={ux.shape}"
+                        f"Camera {camera}: Loaded instantaneous data, ux.shape={ux.shape}"
                     )
 
                 # Skip empty runs
@@ -622,6 +750,15 @@ class VectorMerger:
                     "uy": uy_masked,
                     "mask": b_mask,
                 }
+
+                # Store stress fields if present
+                if stress_fields:
+                    run_stress_data[camera] = {
+                        "x": x_coords,
+                        "y": y_coords,
+                        "mask": b_mask,
+                        **{sf: np.where(b_mask, np.nan, v) for sf, v in stress_fields.items()},
+                    }
 
             # Merge the fields for this run - need at least 2 cameras
             if len(run_data) < 2:
@@ -677,6 +814,30 @@ class VectorMerger:
                 "y": Y_merged,
             }
 
+            # Merge stress fields if present (ensemble data)
+            if run_stress_data and len(run_stress_data) >= 2:
+                logger.debug(f"Merging stress fields for run {run_num}")
+
+                # Use the same merging approach for each stress field
+                for stress_name in ["UU_stress", "VV_stress", "UV_stress"]:
+                    # Build camera data dict for this stress field (treating it as ux)
+                    stress_camera_data = {}
+                    for camera, sdata in run_stress_data.items():
+                        if stress_name in sdata:
+                            stress_camera_data[camera] = {
+                                "x": sdata["x"],
+                                "y": sdata["y"],
+                                "ux": sdata[stress_name],  # Use stress as ux
+                                "uy": np.zeros_like(sdata[stress_name]),  # Dummy uy
+                                "mask": sdata["mask"],
+                            }
+
+                    if len(stress_camera_data) >= 2:
+                        _, _, stress_merged, _, _ = self.merge_n_camera_fields(stress_camera_data)
+                        stress_merged_save = np.nan_to_num(stress_merged, nan=0.0)
+                        stress_merged_save = stress_merged_save[::-1, :]  # Flip
+                        merged_runs[run_num][stress_name] = stress_merged_save
+
         return merged_runs
 
     def save_frame_result(
@@ -697,12 +858,26 @@ class VectorMerger:
             Path to saved file
         """
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        output_file = self.output_dir / (self.vector_format % frame_idx)
+        output_file = self._get_vector_file_path(self.output_dir, frame_idx)
+        result_key = self._get_result_key()
 
-        # Create piv_result structure preserving run indices
-        piv_dtype = np.dtype(
-            [("ux", "O"), ("uy", "O"), ("uz", "O"), ("b_mask", "O")]
+        # Check if stress fields are present (ensemble data)
+        has_stresses = any(
+            "UU_stress" in run_data
+            for run_data in merged_runs.values()
         )
+
+        # Create result structure with appropriate dtype
+        if has_stresses:
+            piv_dtype = np.dtype([
+                ("ux", "O"), ("uy", "O"), ("uz", "O"), ("b_mask", "O"),
+                ("UU_stress", "O"), ("VV_stress", "O"), ("UV_stress", "O"),
+            ])
+        else:
+            piv_dtype = np.dtype(
+                [("ux", "O"), ("uy", "O"), ("uz", "O"), ("b_mask", "O")]
+            )
+
         piv_result = np.empty(total_runs, dtype=piv_dtype)
 
         # Fill all runs (0-based array indices)
@@ -714,6 +889,11 @@ class VectorMerger:
                 piv_result[run_idx]["uy"] = run_data["uy"]
                 piv_result[run_idx]["uz"] = run_data["uz"]
                 piv_result[run_idx]["b_mask"] = run_data["b_mask"]
+
+                if has_stresses:
+                    piv_result[run_idx]["UU_stress"] = run_data.get("UU_stress", np.array([]))
+                    piv_result[run_idx]["VV_stress"] = run_data.get("VV_stress", np.array([]))
+                    piv_result[run_idx]["UV_stress"] = run_data.get("UV_stress", np.array([]))
             else:
                 # Empty run - preserve structure
                 piv_result[run_idx]["ux"] = np.array([])
@@ -721,9 +901,14 @@ class VectorMerger:
                 piv_result[run_idx]["uz"] = np.array([])
                 piv_result[run_idx]["b_mask"] = np.array([])
 
+                if has_stresses:
+                    piv_result[run_idx]["UU_stress"] = np.array([])
+                    piv_result[run_idx]["VV_stress"] = np.array([])
+                    piv_result[run_idx]["UV_stress"] = np.array([])
+
         scipy.io.savemat(
             str(output_file),
-            {"piv_result": piv_result},
+            {result_key: piv_result},
             do_compression=True,
         )
 
@@ -808,12 +993,16 @@ class VectorMerger:
             f"Found {len(valid_runs)} valid runs: {valid_runs} (total: {total_runs})"
         )
 
+        # For ensemble mode, there's only one file to process (ensemble_result.mat)
+        # For instantaneous mode, process num_frame_pairs files (00001.mat, etc.)
+        num_files_to_process = 1 if self.is_ensemble else self.num_frame_pairs
+
         # Report initial progress
         if progress_callback:
             progress_callback({
                 "progress": 2,
                 "processed_frames": 0,
-                "total_frames": self.num_frame_pairs,
+                "total_frames": num_files_to_process,
                 "message": "Initializing merge operation...",
             })
 
@@ -824,7 +1013,8 @@ class VectorMerger:
         # Limit workers
         max_workers = min(os.cpu_count() or 4, max_workers, 8)
 
-        # Prepare arguments for all frames
+        # Prepare arguments for all frames (or single file for ensemble)
+        frame_indices = [1] if self.is_ensemble else list(range(1, self.num_frame_pairs + 1))
         frame_args = [
             (
                 frame_idx,
@@ -837,7 +1027,7 @@ class VectorMerger:
                 valid_runs,
                 total_runs,
             )
-            for frame_idx in range(1, self.num_frame_pairs + 1)
+            for frame_idx in frame_indices
         ]
 
         # Process frames in parallel
@@ -848,7 +1038,7 @@ class VectorMerger:
             progress_callback({
                 "progress": 5,
                 "processed_frames": 0,
-                "total_frames": self.num_frame_pairs,
+                "total_frames": num_files_to_process,
                 "message": f"Merging with {max_workers} workers...",
             })
 
@@ -869,18 +1059,18 @@ class VectorMerger:
                     # Update progress
                     if progress_callback:
                         progress = int(
-                            (processed_count / self.num_frame_pairs) * 90
+                            (processed_count / num_files_to_process) * 90
                         ) + 5
                         progress_callback({
                             "progress": min(progress, 95),
                             "processed_frames": processed_count,
-                            "total_frames": self.num_frame_pairs,
-                            "message": f"Merged {processed_count}/{self.num_frame_pairs} frames",
+                            "total_frames": num_files_to_process,
+                            "message": f"Merged {processed_count}/{num_files_to_process} files",
                         })
 
                     if processed_count % 10 == 0:
                         logger.info(
-                            f"Merged {processed_count}/{self.num_frame_pairs} frames"
+                            f"Merged {processed_count}/{num_files_to_process} files"
                         )
 
             # Save coordinates
@@ -891,8 +1081,8 @@ class VectorMerger:
                 progress_callback({
                     "progress": 100,
                     "processed_frames": processed_count,
-                    "total_frames": self.num_frame_pairs,
-                    "message": f"Complete: merged {processed_count} frames",
+                    "total_frames": num_files_to_process,
+                    "message": f"Complete: merged {processed_count} files",
                 })
 
             return {

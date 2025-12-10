@@ -13,6 +13,7 @@ import threading
 from flask import Blueprint, jsonify, request
 from loguru import logger
 
+from pivtools_core.config import get_config
 from pivtools_gui.calibration.services.job_manager import job_manager
 from pivtools_gui.transforms import (
     VALID_TRANSFORMATIONS,
@@ -48,13 +49,14 @@ def transform_frame():
     logger.info("transform_frame endpoint called")
     try:
         data = request.get_json() or {}
+        config = get_config()
         base_path = data.get("base_path", "")
         camera = camera_number(data.get("camera", 1))
         frame = int(data.get("frame", 1))
         transformation = data.get("transformation", "")
         merged_raw = data.get("merged", False)
         merged = bool(merged_raw)
-        type_name = data.get("type_name", "instantaneous")
+        type_name = data.get("type_name", config.transforms_type_name)
 
         logger.info(
             f"transform_frame: base_path={base_path}, camera={camera}, "
@@ -126,12 +128,13 @@ def clear_transform():
     logger.info("clear_transform endpoint called")
     try:
         data = request.get_json() or {}
+        config = get_config()
         base_path = data.get("base_path", "")
         camera = camera_number(data.get("camera", 1))
         frame = int(data.get("frame", 1))
         merged_raw = data.get("merged", False)
         merged = bool(merged_raw)
-        type_name = data.get("type_name", "instantaneous")
+        type_name = data.get("type_name", config.transforms_type_name)
 
         logger.info(f"clear_transform: base_path={base_path}, camera={camera}, frame={frame}")
 
@@ -245,12 +248,13 @@ def transform_all_frames():
     """
     logger.info("transform_all_frames endpoint called")
     data = request.get_json() or {}
+    config = get_config()
     base_path = data.get("base_path", "")
     source_camera = camera_number(data.get("camera", 1))
     source_frame = int(data.get("frame", 1))
     merged_raw = data.get("merged", False)
     merged = bool(merged_raw)
-    type_name = data.get("type_name", "instantaneous")
+    type_name = data.get("type_name", config.transforms_type_name)
 
     logger.info(
         f"transform_all_frames: base_path={base_path}, "

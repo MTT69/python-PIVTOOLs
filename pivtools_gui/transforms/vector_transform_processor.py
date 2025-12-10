@@ -125,6 +125,32 @@ class VectorTransformProcessor:
             use_merged=self.use_merged,
         )
 
+    def _get_mat_file_path(self, data_dir: Path, frame: int) -> Path:
+        """
+        Get the correct mat file path based on type_name.
+
+        For ensemble data, returns ensemble_result.mat.
+        For instantaneous data, returns the frame-numbered file.
+
+        Args:
+            data_dir: Directory containing the mat files
+            frame: Frame number (ignored for ensemble)
+
+        Returns:
+            Path to the mat file
+        """
+        if self.type_name == "ensemble":
+            return data_dir / "ensemble_result.mat"
+        else:
+            return data_dir / (self.config.vector_format % frame)
+
+    def _get_piv_result_key(self) -> str:
+        """Get the key name for piv_result based on type_name."""
+        if self.type_name == "ensemble":
+            return "ensemble_result"
+        else:
+            return "piv_result"
+
     def transform_single_frame(
         self,
         frame: int,
@@ -161,13 +187,16 @@ class VectorTransformProcessor:
             paths = self._get_data_paths(camera)
             data_dir = Path(paths["data_dir"])
 
-            # Load the mat file
-            mat_file = data_dir / (self.config.vector_format % frame)
+            # Load the mat file (handles ensemble vs instantaneous)
+            mat_file = self._get_mat_file_path(data_dir, frame)
             if not mat_file.exists():
-                return {"success": False, "error": f"Frame file not found: {mat_file}"}
+                return {"success": False, "error": f"Data file not found: {mat_file}"}
 
             mat = load_mat_for_transform(mat_file)
-            piv_result = mat["piv_result"]
+            piv_result_key = self._get_piv_result_key()
+            if piv_result_key not in mat:
+                return {"success": False, "error": f"'{piv_result_key}' not found in {mat_file.name}"}
+            piv_result = mat[piv_result_key]
 
             # Load coordinates if they exist
             coords_file = data_dir / COORDINATES_FILENAME
@@ -266,9 +295,10 @@ class VectorTransformProcessor:
             paths = self._get_data_paths(camera)
             data_dir = Path(paths["data_dir"])
 
-            mat_file = data_dir / (self.config.vector_format % frame)
+            # Load the mat file (handles ensemble vs instantaneous)
+            mat_file = self._get_mat_file_path(data_dir, frame)
             if not mat_file.exists():
-                return {"success": False, "error": f"Frame file not found: {mat_file}"}
+                return {"success": False, "error": f"Data file not found: {mat_file}"}
 
             mat = load_mat_for_transform(mat_file)
 
@@ -320,9 +350,10 @@ class VectorTransformProcessor:
             paths = self._get_data_paths(camera)
             data_dir = Path(paths["data_dir"])
 
-            mat_file = data_dir / (self.config.vector_format % frame)
+            # Load the mat file (handles ensemble vs instantaneous)
+            mat_file = self._get_mat_file_path(data_dir, frame)
             if not mat_file.exists():
-                return {"success": False, "error": f"Frame file not found"}
+                return {"success": False, "error": f"Data file not found: {mat_file.name}"}
 
             mat = load_mat_for_transform(mat_file)
 
@@ -386,10 +417,10 @@ class VectorTransformProcessor:
             # Load source frame to get pending transformations
             source_paths = self._get_data_paths(source_camera)
             source_data_dir = Path(source_paths["data_dir"])
-            source_mat_file = source_data_dir / (self.config.vector_format % source_frame)
+            source_mat_file = self._get_mat_file_path(source_data_dir, source_frame)
 
             if not source_mat_file.exists():
-                return {"success": False, "error": f"Source frame file not found: {source_mat_file}"}
+                return {"success": False, "error": f"Source data file not found: {source_mat_file}"}
 
             source_mat = load_mat_for_transform(source_mat_file)
 
@@ -414,8 +445,11 @@ class VectorTransformProcessor:
             logger.info(f"Applying transformations: {transformations}")
 
             # Remove backups from source frame (it's already transformed)
+            # Handle both piv_result and ensemble_result
             if "piv_result_original" in source_mat:
                 del source_mat["piv_result_original"]
+            if "ensemble_result_original" in source_mat:
+                del source_mat["ensemble_result_original"]
             source_mat["pending_transformations"] = []
 
             save_mat_from_transform(source_mat_file, mat_dict_to_saveable(source_mat))
@@ -440,14 +474,23 @@ class VectorTransformProcessor:
                 data_dir = Path(paths["data_dir"])
 
                 vector_files = []
-                for frame in range(1, self.config.num_frame_pairs + 1):
-                    # Skip source frame for source camera (already transformed)
-                    if cam == source_camera and frame == source_frame:
-                        continue
 
-                    mat_file = data_dir / (self.config.vector_format % frame)
-                    if mat_file.exists():
-                        vector_files.append((frame, mat_file))
+                if self.type_name == "ensemble":
+                    # Ensemble has a single file - only process other cameras
+                    if cam != source_camera:
+                        mat_file = self._get_mat_file_path(data_dir, 1)  # frame ignored for ensemble
+                        if mat_file.exists():
+                            vector_files.append((1, mat_file))
+                else:
+                    # Instantaneous - process all frames
+                    for frame in range(1, self.config.num_frame_pairs + 1):
+                        # Skip source frame for source camera (already transformed)
+                        if cam == source_camera and frame == source_frame:
+                            continue
+
+                        mat_file = self._get_mat_file_path(data_dir, frame)
+                        if mat_file.exists():
+                            vector_files.append((frame, mat_file))
 
                 camera_frame_map[cam] = {
                     "data_dir": data_dir,

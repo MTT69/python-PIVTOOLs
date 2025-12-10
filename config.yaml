@@ -1,20 +1,19 @@
 paths:
   base_paths:
-  - F:\Processed_PIV
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/test
   source_paths:
-  - G:\Outwash_PIV_16_55\Clean_Phase_000.set
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images
   active_paths:
   - 0
   camera_numbers:
   - 1
-  - 2
-  - 3
-  camera_count: 3
+  camera_count: 1
   camera_subfolders: []
 images:
-  num_images: 50
+  num_images: 100
   image_format:
-  - data.set
+  - B%05d_A.tif
+  - B%05d_B.tif
   vector_format:
   - '%05d.mat'
   time_resolved: false
@@ -22,11 +21,11 @@ images:
   zero_based_indexing: false
   pairing_mode: sequential
   pairing_skip: 0
-  num_frame_pairs: 50
-  image_type: lavision_set
+  num_frame_pairs: 100
+  image_type: standard
   use_camera_subfolders: false
 batches:
-  size: 15
+  size: 25
 logging:
   file: pypiv.log
   level: INFO
@@ -38,9 +37,9 @@ processing:
   debug: false
   auto_compute_params: false
   omp_threads: 2
-  dask_workers_per_node: 1
+  dask_workers_per_node: 4
   dask_threads_per_worker: 1
-  dask_memory_limit: 30GB
+  dask_memory_limit: 3GB
   filter_worker_count: 1
   filter_omp_threads: 2
   always_batch: true
@@ -90,7 +89,7 @@ video:
   variable: uu_inst
   run: 4
   piv_type: instantaneous
-  cmap: default
+  cmap: viridis
   lower: ''
   upper: ''
   fps: 30
@@ -119,7 +118,7 @@ statistics:
     inst_stresses: true
   gamma_radius: 4
   save_figures: true
-  type_name: instantaneous
+  type_name: ensemble
 instantaneous_piv:
   window_size:
   - - 128
@@ -163,19 +162,18 @@ ensemble_piv:
   - 16
   resume_from_pass: 0
 calibration:
-  image_format: B00001.im7
-  num_images: 1
-  image_type: lavision_im7
+  image_format: planar_calibration_plate_%02d.tif
+  num_images: 19
+  image_type: standard
   zero_based_indexing: false
-  use_camera_subfolders: true
-  subfolder: G:\Outwash_PIV_16_55\Properties\Calibration\
+  use_camera_subfolders: false
+  subfolder: enhanced
   camera_subfolders:
-  - camera1
-  - camera2
-  - camera3
-  path_order: calibration_first
+  - Cam1
+  - Cam2
+  path_order: camera_first
   active: pinhole
-  piv_type: instantaneous
+  piv_type: ensemble
   scale_factor:
     dt: 0.56
     px_per_mm: 3.41
@@ -184,12 +182,12 @@ calibration:
     camera: 1
     pattern_cols: 10
     pattern_rows: 10
-    dot_spacing_mm: 28.89
-    enhance_dots: true
+    dot_spacing_mm: 12.22
+    enhance_dots: false
     asymmetric: false
     grid_tolerance: 0.5
     ransac_threshold: 3
-    dt: 1
+    dt: 0.0057553
     source_path_idx: 0
     image_index: 0
   charuco:
@@ -251,24 +249,24 @@ calibration:
     aruco_dict: DICT_4X4_1000
     min_corners: 6
     dt: 0.0057553
-filters:
-- type: pod
+filters: []
 masking:
-  enabled: true
+  enabled: false
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
   mode: file
   rectangular:
-    top: 0
-    bottom: 420
+    top: 64
+    bottom: 64
     left: 0
     right: 0
 merging:
-  type_name: instantaneous
+  type_name: ensemble
   base_path_idx: 0
 transforms:
   base_path_idx: 0
-  type_name: instantaneous
+  type_name: ensemble
   cameras:
     1:
-      operations: []
+      operations:
+      - rotate_90_cw

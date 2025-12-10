@@ -590,6 +590,44 @@ def check_runs():
         params = parse_plot_params(request)
         paths = validate_and_get_paths(params)
         data_dir = Path(paths["data_dir"])
+
+        # Handle ensemble mode separately - uses ensemble_result.mat instead of frame files
+        is_ensemble = params.get("type_name", "instantaneous") == "ensemble"
+
+        if is_ensemble:
+            ensemble_file = data_dir / "ensemble_result.mat"
+            if not ensemble_file.exists():
+                return jsonify({"success": False, "error": f"Ensemble file not found: {ensemble_file}"}), 404
+
+            mat = loadmat(str(ensemble_file), struct_as_record=False, squeeze_me=True)
+            if "ensemble_result" not in mat:
+                return jsonify({"success": False, "error": "Variable 'ensemble_result' not found"}), 400
+
+            ensemble_result = mat["ensemble_result"]
+            runs = []
+            # Use default var for run check (ux is typically available)
+            check_var = "ux"
+
+            if isinstance(ensemble_result, np.ndarray) and ensemble_result.dtype == object:
+                for i in range(ensemble_result.size):
+                    try:
+                        pr_candidate = ensemble_result.flat[i]
+                        var_arr = np.asarray(getattr(pr_candidate, check_var, None))
+                        if var_arr is not None and var_arr.size > 0 and not np.all(np.isnan(var_arr)):
+                            runs.append(i + 1)
+                    except Exception:
+                        continue
+            else:
+                try:
+                    var_arr = np.asarray(getattr(ensemble_result, check_var, None))
+                    if var_arr is not None and var_arr.size > 0 and not np.all(np.isnan(var_arr)):
+                        runs = [1]
+                except Exception:
+                    runs = []
+
+            return jsonify({"success": True, "runs": runs})
+
+        # Standard instantaneous mode - check frame files
         vec_fmt = get_config().vector_format
         mat_path = data_dir / (vec_fmt % frame)
 
