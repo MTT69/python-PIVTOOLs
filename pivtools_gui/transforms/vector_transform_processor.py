@@ -16,14 +16,12 @@ Usage (CLI):
 
 import os
 import time
-import warnings
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 import numpy as np
 from loguru import logger
-from scipy.io import loadmat, savemat
 
 from pivtools_core.config import Config, get_config
 from pivtools_core.coordinate_utils import extract_coordinates
@@ -31,13 +29,20 @@ from pivtools_core.paths import get_data_paths
 from pivtools_core.vector_loading import is_run_valid
 
 from .transform_operations import (
+    COORDINATES_FILENAME,
     VALID_TRANSFORMATIONS,
     apply_transformation_to_coordinates,
     apply_transformation_to_piv_result,
     backup_original_data,
+    coords_mat_to_saveable,
+    coords_to_structured_array,
     has_original_backup,
+    load_mat_for_transform,
+    mat_dict_to_saveable,
     process_frame_worker,
     restore_original_data,
+    save_mat_from_transform,
+    simplify_transformations,
     validate_transformations,
 )
 
@@ -98,10 +103,17 @@ class VectorTransformProcessor:
         self.use_merged = use_merged
         self.config = config or get_config()
 
-        # Validate transformations on init
-        is_valid, error = validate_transformations(transformations)
-        if not is_valid:
-            raise ValueError(error)
+        # Validate transformations on init (allow empty for status/clear operations)
+        if transformations:
+            is_valid, error = validate_transformations(transformations)
+            if not is_valid:
+                raise ValueError(error)
+
+        # Validate config has required keys
+        if not hasattr(self.config, 'vector_format') or not self.config.vector_format:
+            raise ValueError("Config missing required 'vector_format'")
+        if not hasattr(self.config, 'num_frame_pairs') or self.config.num_frame_pairs <= 0:
+            raise ValueError("Config missing or invalid 'num_frame_pairs'")
 
     def _get_data_paths(self, camera: int) -> Dict:
         """Get data paths for a specific camera."""
@@ -112,6 +124,32 @@ class VectorTransformProcessor:
             type_name=self.type_name,
             use_merged=self.use_merged,
         )
+
+    def _get_mat_file_path(self, data_dir: Path, frame: int) -> Path:
+        """
+        Get the correct mat file path based on type_name.
+
+        For ensemble data, returns ensemble_result.mat.
+        For instantaneous data, returns the frame-numbered file.
+
+        Args:
+            data_dir: Directory containing the mat files
+            frame: Frame number (ignored for ensemble)
+
+        Returns:
+            Path to the mat file
+        """
+        if self.type_name == "ensemble":
+            return data_dir / "ensemble_result.mat"
+        else:
+            return data_dir / (self.config.vector_format % frame)
+
+    def _get_piv_result_key(self) -> str:
+        """Get the key name for piv_result based on type_name."""
+        if self.type_name == "ensemble":
+            return "ensemble_result"
+        else:
+            return "piv_result"
 
     def transform_single_frame(
         self,
@@ -149,32 +187,52 @@ class VectorTransformProcessor:
             paths = self._get_data_paths(camera)
             data_dir = Path(paths["data_dir"])
 
-            # Load the mat file
-            mat_file = data_dir / (self.config.vector_format % frame)
+            # Load the mat file (handles ensemble vs instantaneous)
+            mat_file = self._get_mat_file_path(data_dir, frame)
             if not mat_file.exists():
-                return {"success": False, "error": f"Frame file not found: {mat_file}"}
+                return {"success": False, "error": f"Data file not found: {mat_file}"}
 
-            mat = loadmat(str(mat_file), struct_as_record=False, squeeze_me=True)
-            piv_result = mat["piv_result"]
+            mat = load_mat_for_transform(mat_file)
+            piv_result_key = self._get_piv_result_key()
+            if piv_result_key not in mat:
+                return {"success": False, "error": f"'{piv_result_key}' not found in {mat_file.name}"}
+            piv_result = mat[piv_result_key]
 
             # Load coordinates if they exist
-            coords_file = data_dir / "coordinates.mat"
+            coords_file = data_dir / COORDINATES_FILENAME
             coords_mat = None
             coords = None
             if coords_file.exists():
-                coords_mat = loadmat(str(coords_file), struct_as_record=False, squeeze_me=True)
+                coords_mat = load_mat_for_transform(coords_file)
                 coords = coords_mat["coordinates"]
 
             # Create backups on first transformation
             mat, coords_mat = backup_original_data(mat, coords_mat)
 
-            # Initialize or update pending transformations list
+            # Initialize or update pending transformations list with robust conversion
             if "pending_transformations" not in mat:
                 mat["pending_transformations"] = []
-            if not isinstance(mat["pending_transformations"], list):
-                mat["pending_transformations"] = list(mat["pending_transformations"])
+            else:
+                pt = mat["pending_transformations"]
+                if isinstance(pt, np.ndarray):
+                    # Handle numpy arrays (may be object array of strings)
+                    if pt.ndim == 0:
+                        # Scalar array (single element)
+                        item = pt.item()
+                        mat["pending_transformations"] = [str(item)] if item else []
+                    else:
+                        # Multi-element array
+                        mat["pending_transformations"] = [str(x) for x in pt.flatten().tolist()]
+                elif isinstance(pt, str):
+                    # Single string
+                    mat["pending_transformations"] = [pt]
+                elif not isinstance(pt, list):
+                    # Other iterable
+                    mat["pending_transformations"] = list(pt) if pt else []
 
             mat["pending_transformations"].append(trans)
+            # Simplify the transformation list (e.g., rotate_90_cw + rotate_90_ccw = [])
+            mat["pending_transformations"] = simplify_transformations(mat["pending_transformations"])
 
             # Apply transformation to all non-empty runs in piv_result
             if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
@@ -182,14 +240,13 @@ class VectorTransformProcessor:
                 for run_idx in range(num_runs):
                     pr = piv_result[run_idx]
                     try:
-                        if hasattr(pr, "ux"):
-                            ux = np.asarray(pr.ux)
-                            if ux.size > 0 and not np.all(np.isnan(ux)):
-                                apply_transformation_to_piv_result(pr, trans)
-                                if coords is not None:
-                                    apply_transformation_to_coordinates(
-                                        coords, run_idx + 1, trans
-                                    )
+                        # Use centralized validation from vector_loading
+                        if is_run_valid(pr, fields=("ux",), require_2d=False, reject_all_nan=True):
+                            apply_transformation_to_piv_result(pr, trans)
+                            if coords is not None:
+                                apply_transformation_to_coordinates(
+                                    coords, run_idx + 1, trans
+                                )
                     except Exception as e:
                         logger.warning(f"Error transforming run {run_idx + 1}: {e}")
             else:
@@ -198,16 +255,17 @@ class VectorTransformProcessor:
                 if coords is not None:
                     apply_transformation_to_coordinates(coords, 1, trans)
 
-            # Save back the mat file
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", UserWarning)
-                savemat(str(mat_file), mat, do_compression=True)
+            # Save back the mat file (convert structs to proper format)
+            save_mat_from_transform(mat_file, mat_dict_to_saveable(mat))
 
             # Save coordinates if they were loaded
             if coords_mat is not None:
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore", UserWarning)
-                    savemat(str(coords_file), coords_mat, do_compression=True)
+                save_mat_from_transform(coords_file, coords_mat_to_saveable(coords_mat))
+
+            # Also save to config.yaml for CLI integration
+            config = get_config()
+            config.set_camera_transforms(camera, mat["pending_transformations"])
+            config.save()
 
             return {
                 "success": True,
@@ -237,33 +295,35 @@ class VectorTransformProcessor:
             paths = self._get_data_paths(camera)
             data_dir = Path(paths["data_dir"])
 
-            mat_file = data_dir / (self.config.vector_format % frame)
+            # Load the mat file (handles ensemble vs instantaneous)
+            mat_file = self._get_mat_file_path(data_dir, frame)
             if not mat_file.exists():
-                return {"success": False, "error": f"Frame file not found: {mat_file}"}
+                return {"success": False, "error": f"Data file not found: {mat_file}"}
 
-            mat = loadmat(str(mat_file), struct_as_record=False, squeeze_me=True)
+            mat = load_mat_for_transform(mat_file)
 
             if not has_original_backup(mat):
                 return {"success": False, "error": "No original backup found for this frame"}
 
             # Load coordinates if they exist
-            coords_file = data_dir / "coordinates.mat"
+            coords_file = data_dir / COORDINATES_FILENAME
             coords_mat = None
             if coords_file.exists():
-                coords_mat = loadmat(str(coords_file), struct_as_record=False, squeeze_me=True)
+                coords_mat = load_mat_for_transform(coords_file)
 
             # Restore from backups
             mat, coords_mat = restore_original_data(mat, coords_mat)
 
-            # Save back
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", UserWarning)
-                savemat(str(mat_file), mat, do_compression=True)
+            # Save back (convert structs to proper format)
+            save_mat_from_transform(mat_file, mat_dict_to_saveable(mat))
 
             if coords_mat is not None:
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore", UserWarning)
-                    savemat(str(coords_file), coords_mat, do_compression=True)
+                save_mat_from_transform(coords_file, coords_mat_to_saveable(coords_mat))
+
+            # Clear transforms from config.yaml
+            config = get_config()
+            config.clear_camera_transforms(camera)
+            config.save()
 
             return {"success": True, "has_original": False}
 
@@ -290,11 +350,12 @@ class VectorTransformProcessor:
             paths = self._get_data_paths(camera)
             data_dir = Path(paths["data_dir"])
 
-            mat_file = data_dir / (self.config.vector_format % frame)
+            # Load the mat file (handles ensemble vs instantaneous)
+            mat_file = self._get_mat_file_path(data_dir, frame)
             if not mat_file.exists():
-                return {"success": False, "error": f"Frame file not found"}
+                return {"success": False, "error": f"Data file not found: {mat_file.name}"}
 
-            mat = loadmat(str(mat_file), struct_as_record=False, squeeze_me=True)
+            mat = load_mat_for_transform(mat_file)
 
             has_backup = has_original_backup(mat)
             pending_transforms = []
@@ -356,12 +417,12 @@ class VectorTransformProcessor:
             # Load source frame to get pending transformations
             source_paths = self._get_data_paths(source_camera)
             source_data_dir = Path(source_paths["data_dir"])
-            source_mat_file = source_data_dir / (self.config.vector_format % source_frame)
+            source_mat_file = self._get_mat_file_path(source_data_dir, source_frame)
 
             if not source_mat_file.exists():
-                return {"success": False, "error": f"Source frame file not found: {source_mat_file}"}
+                return {"success": False, "error": f"Source data file not found: {source_mat_file}"}
 
-            source_mat = loadmat(str(source_mat_file), struct_as_record=False, squeeze_me=True)
+            source_mat = load_mat_for_transform(source_mat_file)
 
             # Get pending transformations
             if "pending_transformations" not in source_mat:
@@ -384,23 +445,22 @@ class VectorTransformProcessor:
             logger.info(f"Applying transformations: {transformations}")
 
             # Remove backups from source frame (it's already transformed)
+            # Handle both piv_result and ensemble_result
             if "piv_result_original" in source_mat:
                 del source_mat["piv_result_original"]
+            if "ensemble_result_original" in source_mat:
+                del source_mat["ensemble_result_original"]
             source_mat["pending_transformations"] = []
 
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", UserWarning)
-                savemat(str(source_mat_file), source_mat, do_compression=True)
+            save_mat_from_transform(source_mat_file, mat_dict_to_saveable(source_mat))
 
             # Remove original from source coordinates
-            source_coords_file = source_data_dir / "coordinates.mat"
+            source_coords_file = source_data_dir / COORDINATES_FILENAME
             if source_coords_file.exists():
-                coords_mat = loadmat(str(source_coords_file), struct_as_record=False, squeeze_me=True)
+                coords_mat = load_mat_for_transform(source_coords_file)
                 if "coordinates_original" in coords_mat:
                     del coords_mat["coordinates_original"]
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore", UserWarning)
-                        savemat(str(source_coords_file), coords_mat, do_compression=True)
+                    save_mat_from_transform(source_coords_file, coords_mat_to_saveable(coords_mat))
 
             # Get cameras to process
             all_cameras = self.config.camera_numbers if self.camera is None else [self.camera]
@@ -414,14 +474,23 @@ class VectorTransformProcessor:
                 data_dir = Path(paths["data_dir"])
 
                 vector_files = []
-                for frame in range(1, self.config.num_frame_pairs + 1):
-                    # Skip source frame for source camera (already transformed)
-                    if cam == source_camera and frame == source_frame:
-                        continue
 
-                    mat_file = data_dir / (self.config.vector_format % frame)
-                    if mat_file.exists():
-                        vector_files.append((frame, mat_file))
+                if self.type_name == "ensemble":
+                    # Ensemble has a single file - only process other cameras
+                    if cam != source_camera:
+                        mat_file = self._get_mat_file_path(data_dir, 1)  # frame ignored for ensemble
+                        if mat_file.exists():
+                            vector_files.append((1, mat_file))
+                else:
+                    # Instantaneous - process all frames
+                    for frame in range(1, self.config.num_frame_pairs + 1):
+                        # Skip source frame for source camera (already transformed)
+                        if cam == source_camera and frame == source_frame:
+                            continue
+
+                        mat_file = self._get_mat_file_path(data_dir, frame)
+                        if mat_file.exists():
+                            vector_files.append((frame, mat_file))
 
                 camera_frame_map[cam] = {
                     "data_dir": data_dir,
@@ -451,11 +520,11 @@ class VectorTransformProcessor:
                     continue
 
                 # Process coordinates for this camera
-                coords_file = data_dir / "coordinates.mat"
+                coords_file = data_dir / COORDINATES_FILENAME
 
                 if coords_file.exists():
                     logger.info(f"Transforming coordinates for camera {cam}")
-                    coords_mat = loadmat(str(coords_file), struct_as_record=False, squeeze_me=True)
+                    coords_mat = load_mat_for_transform(coords_file)
                     coords = coords_mat["coordinates"]
 
                     # Apply transformations to all runs in coordinates
@@ -468,9 +537,8 @@ class VectorTransformProcessor:
                         for trans in transformations:
                             apply_transformation_to_coordinates(coords, 1, trans)
 
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore", UserWarning)
-                        savemat(str(coords_file), {"coordinates": coords}, do_compression=True)
+                    coords_struct = coords_to_structured_array(coords)
+                    save_mat_from_transform(coords_file, {"coordinates": coords_struct})
 
                 # Process frames in parallel
                 num_workers = min(os.cpu_count() or 1, len(vector_files), max_workers)

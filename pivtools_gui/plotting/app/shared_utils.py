@@ -26,6 +26,29 @@ from ..plot_maker import make_scalar_settings
 from ...utils import camera_number
 
 
+# Unit mapping for different PIV variables
+# Used to automatically select correct units when plotting
+VARIABLE_UNITS = {
+    # Velocities (m/s)
+    "ux": "m/s", "uy": "m/s", "uz": "m/s",
+    "mean_ux": "m/s", "mean_uy": "m/s", "mean_uz": "m/s",
+    # Fluctuations (m/s)
+    "u_prime": "m/s", "v_prime": "m/s", "w_prime": "m/s",
+    # Mean stresses (m^2/s^2)
+    "uu": "m^2/s^2", "vv": "m^2/s^2", "ww": "m^2/s^2",
+    "uv": "m^2/s^2", "uw": "m^2/s^2", "vw": "m^2/s^2",
+    # Instantaneous stresses (m^2/s^2)
+    "uu_inst": "m^2/s^2", "vv_inst": "m^2/s^2", "ww_inst": "m^2/s^2",
+    "uv_inst": "m^2/s^2", "uw_inst": "m^2/s^2", "vw_inst": "m^2/s^2",
+    # Turbulent kinetic energy (m^2/s^2)
+    "tke": "m^2/s^2",
+    # Vorticity & Divergence (1/s)
+    "vorticity": "1/s", "divergence": "1/s",
+    # Gamma vortex criteria (dimensionless)
+    "gamma1": "-", "gamma2": "-",
+}
+
+
 def load_piv_result(mat_path: Path) -> Any:
     """
     Load a .mat file and return its piv_result.
@@ -136,6 +159,8 @@ def create_and_return_plot(
         plt.close(fig)
 
         # For raw mode, axes_bbox covers the entire image
+        # Include data limits for cursor position mapping (raw mode uses pixel indices)
+        # Normalize ylim to [0, H] for consistent cursor mapping
         axes_bbox = {
             "left": 0,
             "top": 0,
@@ -143,6 +168,8 @@ def create_and_return_plot(
             "height": H,
             "png_width": W,
             "png_height": H,
+            "xlim": [0, W],
+            "ylim": [0, H],
         }
         return b64_img, W, H, {"axes_bbox": axes_bbox, "raw": True, "grid_dims": {"nx": W, "ny": H}}
 
@@ -155,26 +182,47 @@ def create_and_return_plot(
     if hasattr(settings, "ylim") and settings.ylim is not None:
         ax.set_ylim(settings.ylim)
 
+    # Capture visible axis limits for cursor position mapping
+    # Use matplotlib's actual axis limits which reflect user-set xlim/ylim or auto-scaling
+    actual_xlim = ax.get_xlim()
+    actual_ylim = ax.get_ylim()
+
     # Compute axes bounding box in PNG pixel coordinates
+    # Draw canvas first to finalize layout before getting accurate pixel bounds
+    fig.canvas.draw()
+
     dpi = fig.dpi
     fig_width, fig_height = fig.get_size_inches()
     png_width = int(fig_width * dpi)
     png_height = int(fig_height * dpi)
-    bbox = ax.get_position()
+
+    # Use get_window_extent for accurate pixel coordinates after layout
+    renderer = fig.canvas.get_renderer()
+    ax_bbox_display = ax.get_window_extent(renderer=renderer)
+
+    # Convert from display coords (origin bottom-left) to PNG coords (origin top-left)
+    axes_left = int(round(ax_bbox_display.x0))
+    axes_top = int(round(png_height - ax_bbox_display.y1))
+    axes_width = int(round(ax_bbox_display.width))
+    axes_height = int(round(ax_bbox_display.height))
 
     def clamp(v, lo, hi):
         return max(lo, min(v, hi))
 
-    axes_left = clamp(int(bbox.x0 * png_width), 0, png_width)
-    axes_top = clamp(int((1.0 - bbox.y1) * png_height), 0, png_height)
-    axes_width = clamp(int(bbox.width * png_width), 0, png_width - axes_left)
-    axes_height = clamp(int(bbox.height * png_height), 0, png_height - axes_top)
+    axes_left = clamp(axes_left, 0, png_width)
+    axes_top = clamp(axes_top, 0, png_height)
+    axes_width = clamp(axes_width, 0, png_width - axes_left)
+    axes_height = clamp(axes_height, 0, png_height - axes_top)
 
     buf = BytesIO()
     fig.savefig(buf, format="png", dpi=dpi, facecolor="white")
     buf.seek(0)
     b64_img = base64.b64encode(buf.read()).decode("utf-8")
     plt.close(fig)
+
+    # Normalize limits for consistent cursor mapping (always min, max order)
+    xlim_normalized = (min(actual_xlim), max(actual_xlim))
+    ylim_normalized = (min(actual_ylim), max(actual_ylim))
 
     axes_bbox = {
         "left": axes_left,
@@ -183,6 +231,8 @@ def create_and_return_plot(
         "height": axes_height,
         "png_width": png_width,
         "png_height": png_height,
+        "xlim": [float(xlim_normalized[0]), float(xlim_normalized[1])],
+        "ylim": [float(ylim_normalized[0]), float(ylim_normalized[1])],
     }
     return b64_img, W, H, {"axes_bbox": axes_bbox}
 
@@ -357,7 +407,7 @@ def load_and_plot_data(
         variable=var,
         run_label=effective_run,
         save_basepath=save_basepath,
-        variable_units=plot_kwargs.get("variable_units", "m/s"),
+        variable_units=plot_kwargs.get("variable_units", VARIABLE_UNITS.get(var, "m/s")),
         length_units=plot_kwargs.get("length_units", "mm"),
         coords_x=cx,
         coords_y=cy,

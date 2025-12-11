@@ -7,7 +7,8 @@ It imports and aggregates blueprints from modular view files:
 - scale_factor_views: Scale factor calibration (pixel to physical units)
 - pinhole_views: Pinhole/planar calibration (grid detection, camera model)
 - shared_views: Shared utilities (datum setting, status)
-- charuco_views: ChArUco board calibration (when available)
+- charuco_views: ChArUco board calibration
+- polynomial_views: Polynomial/DaVis XML calibration
 
 Each sub-module uses the unified JobManager for background task tracking.
 """
@@ -19,6 +20,7 @@ from pivtools_gui.calibration.app.scale_factor_views import scale_factor_bp
 from pivtools_gui.calibration.app.shared_views import calibration_shared_bp
 from pivtools_gui.calibration.app.stereo_pinhole_views import stereo_pinhole_bp
 from pivtools_gui.calibration.app.stereo_charuco_views import stereo_charuco_bp
+from pivtools_gui.calibration.app.polynomial_views import polynomial_bp
 
 # Main calibration blueprint that aggregates all sub-blueprints
 calibration_bp = Blueprint("calibration", __name__)
@@ -30,6 +32,7 @@ calibration_bp.register_blueprint(pinhole_bp)
 calibration_bp.register_blueprint(stereo_pinhole_bp)
 calibration_bp.register_blueprint(stereo_charuco_bp)
 calibration_bp.register_blueprint(calibration_shared_bp)
+calibration_bp.register_blueprint(polynomial_bp)
 
 # Try to import charuco views if available
 try:

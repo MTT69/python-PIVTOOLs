@@ -510,3 +510,5 @@ def planar_generate_model_all():
     except Exception as e:
         logger.error(f"Error starting multi-camera calibration: {e}")
         return jsonify({"error": str(e)}), 500
+
+

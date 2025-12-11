@@ -11,6 +11,15 @@
 #include <gsl/gsl_multifit_nlinear.h>
 #include <gsl/gsl_blas.h>
 
+/* Export Macro for Windows/Linux compatibility */
+#if defined(_WIN32) || defined(__WIN32__)
+  #define PIV_EXPORT __declspec(dllexport)
+#elif defined(__GNUC__)
+  #define PIV_EXPORT __attribute__((visibility("default")))
+#else
+  #define PIV_EXPORT
+#endif
+
 /* number of model parameters: 3 amplitudes + 3 offsets + 6 sigmas + 4 positions */
 static const size_t P_PARAMS = 16;
 
@@ -460,10 +469,7 @@ int fit_stacked_gaussian(
 /* * Export wrapper for Python (ctypes), MATLAB, etc.
  * Ensures correct symbol visibility.
  */
-#ifdef __GNUC__
-__attribute__((visibility("default")))
-#endif
-int fit_stacked_gaussian_export(size_t n, const double *X1, const double *X2, const double *y, const double *initial_guess, double *out_params, int *out_status) {
+PIV_EXPORT int fit_stacked_gaussian_export(size_t n, const double *X1, const double *X2, const double *y, const double *initial_guess, double *out_params, int *out_status) {
     return fit_stacked_gaussian(n, X1, X2, y, initial_guess, out_params, out_status);
 }
 
@@ -491,10 +497,7 @@ int fit_stacked_gaussian_export(size_t n, const double *X1, const double *X2, co
  * Returns:
  *   Number of successfully fitted windows
  */
-#ifdef __GNUC__
-__attribute__((visibility("default")))
-#endif
-int fit_stacked_gaussian_batch_export(
+PIV_EXPORT int fit_stacked_gaussian_batch_export(
     size_t num_windows,
     size_t n_per_window,
     const double *X1,
@@ -506,15 +509,17 @@ int fit_stacked_gaussian_batch_export(
 ) {
     int success_count = 0;
     size_t corr_size = 3 * n_per_window;  // AA + BB + AB per window
+    int num_windows_int = (int)num_windows;  // MSVC OpenMP requires signed int bounds
+    int i;  // Loop variable declared outside for MSVC OpenMP 2.0 compatibility
 
     #ifdef _OPENMP
     #pragma omp parallel for reduction(+:success_count) schedule(dynamic, 16)
     #endif
-    for (size_t i = 0; i < num_windows; i++) {
+    for (i = 0; i < num_windows_int; i++) {
         // Pointers into the flattened arrays for this window
-        const double *y_window = y_all + i * corr_size;
-        const double *guess_window = initial_guesses + i * P_PARAMS;
-        double *params_window = out_params + i * P_PARAMS;
+        const double *y_window = y_all + (size_t)i * corr_size;
+        const double *guess_window = initial_guesses + (size_t)i * P_PARAMS;
+        double *params_window = out_params + (size_t)i * P_PARAMS;
         int *status_window = out_statuses + i;
 
         int ret = fit_stacked_gaussian(

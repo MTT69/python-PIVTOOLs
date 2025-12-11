@@ -104,11 +104,11 @@ def find_valid_runs(
     offset = 1 if one_based else 0
 
     # Check if multi-run (object array) or single-run
-    if isinstance(data, np.ndarray) and data.dtype == object:
-        # Multiple runs
+    if isinstance(data, np.ndarray) and data.dtype == object and data.size > 0:
+        # Multiple runs - use .flat for consistent access
         total_runs = data.size
         for run_idx in range(total_runs):
-            struct = data[run_idx]
+            struct = data.flat[run_idx]
             if is_run_valid(struct, fields, require_2d, reject_all_nan):
                 valid_runs.append(run_idx + offset)
         return RunValidationResult(
@@ -170,20 +170,23 @@ def get_highest_valid_run(
 
 
 def find_valid_piv_runs(
-    file_path: Union[str, Path], one_based: bool = False
+    file_path: Union[str, Path],
+    one_based: bool = False,
+    result_key: str = "piv_result",
 ) -> RunValidationResult:
     """
-    Find valid runs in a piv_result file (checks ux, uy).
+    Find valid runs in a piv_result or ensemble_result file (checks ux, uy).
 
     Args:
-        file_path: Path to .mat file containing piv_result
+        file_path: Path to .mat file containing piv_result or ensemble_result
         one_based: If True, return 1-based indices; if False, 0-based
+        result_key: Key name in mat file ("piv_result" or "ensemble_result")
 
     Returns:
         RunValidationResult with valid_runs list, total_runs count, and single_run flag
     """
     return find_valid_runs(
-        file_path, var_name="piv_result", fields=("ux", "uy"), one_based=one_based
+        file_path, var_name=result_key, fields=("ux", "uy"), one_based=one_based
     )
 
 
@@ -249,12 +252,21 @@ def find_non_empty_run(
     """
     pr = None
 
-    if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
-        # Multi-run case
+    # Check if multi-run: must be ndarray with dtype=object (array of mat_struct objects)
+    # scipy.io with struct_as_record=False returns mat_struct objects accessed via getattr()
+    is_multi_run = (
+        isinstance(piv_result, np.ndarray) and
+        piv_result.dtype == object and
+        piv_result.size > 0
+    )
+
+    if is_multi_run:
+        # Multi-run case - iterate through runs
         max_runs = piv_result.size
         current_run = run
         while current_run <= max_runs:
-            pr_candidate = piv_result[current_run - 1]
+            # Use .flat for consistent access regardless of array shape
+            pr_candidate = piv_result.flat[current_run - 1]
             if is_run_valid(
                 pr_candidate,
                 fields=(var,),
@@ -266,7 +278,7 @@ def find_non_empty_run(
                 break
             current_run += 1
     else:
-        # Single-run case
+        # Single-run case (scalar struct or squeezed single-element array)
         if run != 1:
             raise ValueError("piv_result contains a single run; use run=1")
         if is_run_valid(
@@ -284,17 +296,28 @@ def find_non_empty_run(
 
 
 def read_mat_contents(
-    file_path: str, run_index: Optional[int] = None, return_all_runs: bool = False
+    file_path: str,
+    run_index: Optional[int] = None,
+    return_all_runs: bool = False,
+    var_name: str = "piv_result",
 ) -> np.ndarray:
     """
-    Reads piv_result from a .mat file.
+    Reads piv_result or ensemble_result from a .mat file.
     If multiple runs are present, selects the specified run_index (0-based).
     If run_index is None, selects the first run with valid (non-empty) data.
     If return_all_runs is True, returns all runs in shape (R, 3, H, W).
     Otherwise returns shape (1, 3, H, W) for the selected run.
+
+    Args:
+        file_path: Path to the .mat file
+        run_index: Optional specific run to load (0-based)
+        return_all_runs: If True, return all runs
+        var_name: Key name in mat file ("piv_result" or "ensemble_result")
     """
     mat = scipy.io.loadmat(file_path, struct_as_record=False, squeeze_me=True)
-    piv_result = mat["piv_result"]
+    if var_name not in mat:
+        raise KeyError(f"'{var_name}' not found in {file_path}")
+    piv_result = mat[var_name]
 
     # Multiple runs case: numpy array of structs
     if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
@@ -485,6 +508,112 @@ def load_coords_from_directory(
         y_list.append(y)
 
     return x_list, y_list
+
+
+# =============================================================================
+# Variable Extraction API
+# =============================================================================
+
+
+# Variables to exclude from plotting (metadata, not 2D plottable)
+EXCLUDED_VARS = {"win_ctrs_x", "win_ctrs_y", "window_size", "n_windows", "predictor_field"}
+
+
+def get_plottable_vars(
+    file_path: Union[str, Path],
+    var_name: str = "piv_result",
+    fields_to_check: Sequence[str] = ("ux", "uy"),
+) -> List[str]:
+    """
+    Extract names of 2D plottable variables from a .mat file.
+
+    Args:
+        file_path: Path to .mat file
+        var_name: Variable name in mat file ("piv_result" or "ensemble_result")
+        fields_to_check: Fields to use for finding valid struct element
+
+    Returns:
+        List of variable names that are 2D arrays suitable for plotting
+    """
+    file_path = Path(file_path)
+    if not file_path.exists():
+        return []
+
+    mat = scipy.io.loadmat(str(file_path), struct_as_record=False, squeeze_me=True)
+    if var_name not in mat:
+        return []
+
+    data = mat[var_name]
+
+    # Get first valid struct element
+    if isinstance(data, np.ndarray) and data.dtype == object and data.size > 0:
+        struct = None
+        for el in data.flat:
+            if is_run_valid(el, fields=fields_to_check, require_2d=False, reject_all_nan=False):
+                struct = el
+                break
+        if struct is None and data.size > 0:
+            struct = data.flat[0]
+    else:
+        struct = data
+
+    return get_plottable_vars_from_struct(struct)
+
+
+def get_plottable_vars_from_struct(struct: Any) -> List[str]:
+    """
+    Extract names of 2D plottable variables from a loaded struct.
+
+    Args:
+        struct: A loaded MATLAB struct with field attributes
+
+    Returns:
+        List of variable names that are 2D arrays suitable for plotting
+    """
+    if struct is None:
+        return []
+
+    # Get all attribute names
+    all_vars = [n for n in dir(struct) if not n.startswith("_") and not callable(getattr(struct, n, None))]
+
+    plottable = []
+    for var_name in all_vars:
+        if var_name in EXCLUDED_VARS:
+            continue
+        try:
+            val = getattr(struct, var_name, None)
+            if val is None:
+                continue
+            arr = np.asarray(val)
+            if arr.ndim == 2 and arr.size > 0:
+                plottable.append(var_name)
+        except Exception:
+            continue
+
+    return plottable
+
+
+def find_valid_ensemble_runs(
+    file_path: Union[str, Path], one_based: bool = False
+) -> RunValidationResult:
+    """
+    Find valid runs in an ensemble_result file (checks ux, uy).
+
+    Args:
+        file_path: Path to .mat file containing ensemble_result
+        one_based: If True, return 1-based indices; if False, 0-based
+
+    Returns:
+        RunValidationResult with valid_runs list, total_runs count, and single_run flag
+    """
+    return find_valid_runs(
+        file_path, var_name="ensemble_result", fields=("ux", "uy"), one_based=one_based
+    )
+
+
+# =============================================================================
+# Mask I/O
+# =============================================================================
 
 
 def save_mask_to_mat(file_path: str, mask: np.ndarray, polygons):

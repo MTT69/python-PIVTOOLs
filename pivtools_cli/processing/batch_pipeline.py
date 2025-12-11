@@ -117,7 +117,15 @@ class UnifiedBatchPipeline:
         output_path: Path,
         vector_masks: Optional[List[np.ndarray]],
     ):
-        """Ensemble PIV with single-pass correlation accumulation and multi-pass support."""
+        """
+        Ensemble PIV with cross-batch tree reduction.
+
+        Architecture:
+        - 1 filter worker (temporal filters need full batch in RAM)
+        - N-1 correlation workers (embarrassingly parallel)
+        - Tree reduction across ALL batches (not per-batch)
+        - Only final accumulated result transferred to main
+        """
         from pivtools_cli.piv.piv_backend.single_pass_accumulator import (
             SinglePassAccumulator,
         )
@@ -184,9 +192,7 @@ class UnifiedBatchPipeline:
 
         logging.info(f"Processing passes {start_pass_idx + 1}-{num_passes} with {num_batches} batches each for ensemble PIV")
 
-        # Multi-pass loop with pipelined batch processing
-        # predictor_field is already initialized: None if fresh start, or loaded from resume file
-
+        # Multi-pass loop with cross-batch tree reduction
         for pass_idx in range(start_pass_idx, num_passes):
             logging.info("")
             logging.info(f"======== PASS {pass_idx + 1}/{num_passes} ========")
@@ -197,83 +203,98 @@ class UnifiedBatchPipeline:
                 scattered_predictor = self.client.scatter(predictor_field, broadcast=True)
                 logging.info(f"[Pass {pass_idx + 1}] Broadcast predictor field from previous pass")
 
-            # === PIPELINED BATCH PROCESSING ===
-            # Initialize first batch
-            batch_idx = 0
-            batch_slice = images[0:min(self.batch_size, images.shape[0])]
-            worker = self.filter_workers[0]
-            logging.info(f"[Pass {pass_idx+1}] Initializing pipeline: batch 0 -> filter worker {worker}")
+            # === CROSS-BATCH PROCESSING WITH INCREMENTAL REDUCTION ===
+            # Process batches and reduce incrementally to bound memory usage
+            # Instead of holding all futures, we reduce each batch's results
+            # with the running accumulator future
+            running_accumulated = None  # Future holding accumulated result so far
 
-            filter_future = self.client.submit(
-                _filter_batch_worker,
-                batch_slice,
-                self.config,
-                batch_idx,
-                output_path,  # Pass output_path for diagnostics
-                self.scattered_pixel_mask,  # Pass pixel mask for preprocessing
-                True,  # is_first_batch=True: use all cores (no correlation yet)
-                workers=[worker],
-                priority=10,
-                pure=False,
-            )
+            for batch_idx in range(num_batches):
+                # Determine batch slice
+                batch_start = batch_idx * self.batch_size
+                batch_end = min(batch_start + self.batch_size, images.shape[0])
+                batch_slice = images[batch_start:batch_end]
 
-            # Process batches with overlapping filter/correlation
-            while batch_idx < num_batches:
-                # Wait for current filter to complete
+                worker = self.filter_workers[batch_idx % len(self.filter_workers)]
+                is_first_batch = (batch_idx == 0)
+
+                # Submit filter task
+                logging.info(f"[Pass {pass_idx+1}, Batch {batch_idx+1}/{num_batches}] Submitting filter -> {worker}")
+                filter_future = self.client.submit(
+                    _filter_batch_worker,
+                    batch_slice,
+                    self.config,
+                    batch_idx,
+                    output_path,
+                    self.scattered_pixel_mask,
+                    is_first_batch,
+                    workers=[worker],
+                    priority=10,
+                    pure=False,
+                )
+
+                # Wait for filter to complete (sequential filtering due to RAM constraints)
                 filtered_batch = filter_future.result()
                 logging.info(f"[Pass {pass_idx+1}, Batch {batch_idx+1}/{num_batches}] Filter complete")
 
-                # Determine if this is the first batch (for diagnostic saving)
-                is_first_batch = (batch_idx == 0)
-
-                # Start correlation for THIS batch (non-blocking)
-                corr_futures = self._correlate_ensemble_batch_async(
+                # Submit CHUNKED correlation tasks (one chunk per worker)
+                # This replaces per-pair mapping with local accumulation on workers
+                chunk_futures = self._correlate_ensemble_batch_chunked(
                     filtered_batch,
                     scattered_cache,
                     scattered_masks,
                     scattered_predictor,
                     pass_idx,
                     output_path=output_path,
-                    is_first_batch=is_first_batch,
+                    batch_start_index=batch_idx * self.batch_size,
                 )
 
-                # OVERLAP: Submit NEXT filter while THIS batch correlates
-                next_batch_idx = batch_idx + 1
-                if next_batch_idx < num_batches:
-                    next_start = next_batch_idx * self.batch_size
-                    next_end = min(next_start + self.batch_size, images.shape[0])
-                    next_slice = images[next_start:next_end]
-                    next_worker = self.filter_workers[next_batch_idx % len(self.filter_workers)]
+                # Gather chunk results (small number = num_corr_workers)
+                # Network traffic reduced from O(N) to O(num_workers)
+                logging.info(
+                    f"[Pass {pass_idx+1}, Batch {batch_idx+1}/{num_batches}] "
+                    f"Gathering {len(chunk_futures)} chunk results"
+                )
+                chunk_results = self.client.gather(chunk_futures)
 
-                    logging.info(
-                        f"[Pass {pass_idx+1}] Pipeline: batch {next_batch_idx} -> "
-                        f"filter worker {next_worker} (while batch {batch_idx+1} correlates)"
+                # Local reduction on main process (fast - only num_workers results)
+                batch_reduced = chunk_results[0]
+                for i in range(1, len(chunk_results)):
+                    batch_reduced = _reduce_ensemble_results(batch_reduced, chunk_results[i])
+
+                del chunk_futures
+                del chunk_results
+
+                # Merge with running accumulator
+                if running_accumulated is None:
+                    running_accumulated = batch_reduced
+                else:
+                    running_accumulated = _reduce_ensemble_results(
+                        running_accumulated, batch_reduced
                     )
+                del batch_reduced
 
-                    filter_future = self.client.submit(
-                        _filter_batch_worker,
-                        next_slice,
-                        self.config,
-                        next_batch_idx,
-                        output_path,  # Pass output_path for diagnostics
-                        self.scattered_pixel_mask,  # Pass pixel mask for preprocessing
-                        False,  # is_first_batch=False: use reduced cores (pipelined with correlation)
-                        workers=[next_worker],
-                        priority=10,
-                        pure=False,
-                    )
+                logging.info(
+                    f"[Pass {pass_idx+1}, Batch {batch_idx+1}/{num_batches}] "
+                    f"Batch reduced and merged"
+                )
 
-                # Wait for current correlation to complete and accumulate
-                results = self.client.gather(corr_futures)
-                for result in results:
-                    accumulator.accumulate_batch(result, pass_idx=pass_idx)
+                # Periodic garbage collection to release worker memory
+                # Every 2 batches to avoid too much overhead
+                if batch_idx % 2 == 1:
+                    self.client.run(gc.collect)
 
-                # Clean up futures (gather already retrieves results, just delete references)
-                del corr_futures
+            # Final accumulated result is already on main process (no .result() needed)
+            # The chunked approach gathers after each batch, so no deferred transfer
+            assert running_accumulated is not None, "No batches processed - running_accumulated is None"
+            pass_accumulated = running_accumulated
 
-                logging.info(f"[Pass {pass_idx+1}, Batch {batch_idx+1}/{num_batches}] Correlation complete")
+            # Clean up worker memory
+            del running_accumulated
+            self.client.run(gc.collect)
+            logging.debug(f"[Pass {pass_idx + 1}] Released worker memory")
 
-                batch_idx += 1
+            accumulator.accumulate_batch(pass_accumulated, pass_idx=pass_idx)
 
             # Finalize this pass
             logging.info(f"[Pass {pass_idx + 1}] Finalizing pass (single-pass optimization)")
@@ -290,8 +311,14 @@ class UnifiedBatchPipeline:
             if scattered_predictor is not None:
                 del scattered_predictor
                 scattered_predictor = None
-                gc.collect()
-                logging.debug(f"[Pass {pass_idx + 1}] Cleaned up scattered predictor")
+
+            # Force garbage collection on main process
+            gc.collect()
+
+            # Force garbage collection on ALL workers to release unmanaged memory
+            # This is critical between passes to prevent OOM
+            self.client.run(gc.collect)
+            logging.info(f"[Pass {pass_idx + 1}] Triggered garbage collection on all workers")
 
             # Extract predictor field for next pass
             if pass_idx < num_passes - 1:
@@ -743,7 +770,7 @@ class UnifiedBatchPipeline:
                 self.config,
                 batch_idx,
                 None,  # output_path
-                None,  # pixel_mask
+                self.scattered_pixel_mask,  # pixel_mask
                 batch_idx == 0,  # is_first_batch - only first uses all cores
                 workers=[worker],
                 priority=10,
@@ -753,7 +780,7 @@ class UnifiedBatchPipeline:
 
         return filter_futures
 
-    def _correlate_ensemble_batch_async(
+    def _correlate_ensemble_batch_chunked(
         self,
         filtered_batch: np.ndarray,
         scattered_cache,
@@ -761,17 +788,19 @@ class UnifiedBatchPipeline:
         scattered_predictor,
         pass_idx: int,
         output_path: Optional[Path] = None,
-        is_first_batch: bool = False,
+        batch_start_index: int = 0,
     ) -> List:
         """
-        Submit correlation tasks and return futures (non-blocking).
+        Submit correlation tasks in CHUNKS (one chunk per worker).
 
-        Returns futures instead of blocking on gather, allowing filter/correlation overlap.
+        Instead of mapping individual pairs (O(N) network transfers), this method
+        splits the batch into chunks where each worker processes multiple pairs
+        locally and returns a single accumulated result.
 
         Parameters
         ----------
         filtered_batch : np.ndarray
-            Filtered image batch
+            Filtered image batch of shape (N, 2, H, W)
         scattered_cache : dict
             Pre-scattered correlator cache
         scattered_masks : Optional
@@ -782,38 +811,59 @@ class UnifiedBatchPipeline:
             Current pass index
         output_path : Optional[Path]
             Output directory for diagnostic images
-        is_first_batch : bool
-            Whether this is the first batch (for diagnostics)
+        batch_start_index : int
+            Global index of first pair in this batch (for diagnostics)
 
         Returns
         -------
         List
-            List of futures for correlation results
+            List of futures for chunk results (length <= num_corr_workers)
         """
-        # Split into individual pairs
-        pairs = [filtered_batch[i] for i in range(filtered_batch.shape[0])]
-        pair_indices = list(range(len(pairs)))
+        n_images = filtered_batch.shape[0]
+        n_workers = len(self.corr_workers)
 
-        # Scatter pairs to correlation workers
-        scattered_pairs = self.client.scatter(pairs, workers=self.corr_workers)
+        # Calculate chunk size: each worker gets roughly equal work
+        # ceil division ensures all pairs are covered
+        chunk_size = max(1, (n_images + n_workers - 1) // n_workers)
 
-        # Submit correlation tasks (returns futures immediately)
-        corr_futures = self.client.map(
-            _correlate_ensemble_pair_worker,
-            scattered_pairs,
-            pair_indices,  # Pass pair index for diagnostic check
-            config=self.config,
-            scattered_cache=scattered_cache,
-            scattered_masks=scattered_masks,
-            scattered_predictor=scattered_predictor,
-            pass_idx=pass_idx,
-            output_path=output_path,
-            is_first_batch=is_first_batch,
-            workers=self.corr_workers,
-            pure=False,
+        # Split into chunks and scatter to workers FIRST
+        # This avoids embedding large arrays in the task graph (72MB+ warning)
+        chunks = []
+        chunk_start_indices = []
+        for i in range(0, n_images, chunk_size):
+            chunks.append(filtered_batch[i : i + chunk_size])
+            chunk_start_indices.append(batch_start_index + i)
+
+        # Scatter chunks to workers (efficient transfer, not embedded in graph)
+        scattered_chunks = self.client.scatter(chunks, workers=self.corr_workers)
+
+        # Submit tasks using scattered references
+        futures = []
+        for idx, scattered_chunk in enumerate(scattered_chunks):
+            worker_idx = idx % n_workers
+            worker = self.corr_workers[worker_idx]
+
+            future = self.client.submit(
+                _correlate_chunk_sum_worker,
+                scattered_chunk,  # Reference to scattered data, not raw array
+                chunk_start_indices[idx],
+                self.config,
+                scattered_cache,
+                scattered_masks,
+                scattered_predictor,
+                pass_idx,
+                output_path,
+                workers=[worker],
+                pure=False
+            )
+            futures.append(future)
+
+        logging.debug(
+            f"[Pass {pass_idx+1}] Submitted {len(futures)} chunk tasks "
+            f"({n_images} pairs / {chunk_size} per chunk)"
         )
 
-        return corr_futures
+        return futures
 
     def _process_instantaneous_batch(
         self,
@@ -850,7 +900,44 @@ class UnifiedBatchPipeline:
 
         # Gather saved paths
         return futures
+
+
 # Worker functions
+
+def _reduce_ensemble_results(r1: dict, r2: dict) -> dict:
+    """
+    Combine two ensemble correlation results on a worker.
+
+    Used for tree reduction to accumulate results without
+    transferring large correlation planes to main process.
+
+    Parameters
+    ----------
+    r1, r2 : dict
+        Results from correlate_batch_for_accumulation containing:
+        - corr_AA_sum, corr_BB_sum, corr_AB_sum: Flattened correlation planes
+        - warp_A_sum, warp_B_sum: Warped image sums
+        - n_images: Image count
+        - n_win_x, n_win_y: Grid dimensions
+        - smoothed_predictor, vector_mask: Pass-level metadata
+
+    Returns
+    -------
+    dict
+        Combined result with summed arrays
+    """
+    return {
+        "corr_AA_sum": r1["corr_AA_sum"] + r2["corr_AA_sum"],
+        "corr_BB_sum": r1["corr_BB_sum"] + r2["corr_BB_sum"],
+        "corr_AB_sum": r1["corr_AB_sum"] + r2["corr_AB_sum"],
+        "warp_A_sum": r1["warp_A_sum"] + r2["warp_A_sum"],
+        "warp_B_sum": r1["warp_B_sum"] + r2["warp_B_sum"],
+        "n_images": r1["n_images"] + r2["n_images"],
+        "n_win_x": r1["n_win_x"],
+        "n_win_y": r1["n_win_y"],
+        "smoothed_predictor": r1.get("smoothed_predictor"),
+        "vector_mask": r1.get("vector_mask"),
+    }
 
 def _filter_batch_worker(
     batch_images: da.Array,
@@ -864,7 +951,7 @@ def _filter_batch_worker(
     Apply all filters to batch on filter worker.
 
     Uses multi-threading for CPU-intensive operations (POD SVD, etc.).
-    Thread count depends on whether this is the first batch or a pipelined batch.
+    Thread count is controlled by config.omp_threads for consistency.
 
     Args:
         batch_images: Dask array slice for this batch
@@ -872,17 +959,12 @@ def _filter_batch_worker(
         batch_idx: Batch index (for diagnostics)
         output_path: Output directory for diagnostic images
         pixel_mask: Boolean mask (H, W) where True = masked regions to zero
-        is_first_batch: If True, use all cores (no correlation running yet).
-                       If False, use config.filter_omp_threads to avoid oversubscription.
+        is_first_batch: Unused, kept for API compatibility.
     """
     import os
 
-    # First batch: use all cores (no correlation running yet)
-    # Subsequent batches: use config value to avoid oversubscription with correlation
-    if is_first_batch:
-        worker_cores = os.cpu_count() or 4
-    else:
-        worker_cores = config.filter_omp_threads
+    # Use config.omp_threads for all batches (consistent threading)
+    worker_cores = int(config.omp_threads)
 
     os.environ["OMP_NUM_THREADS"] = str(worker_cores)
     os.environ["MKL_NUM_THREADS"] = str(worker_cores)
@@ -912,27 +994,51 @@ def _filter_batch_worker(
     return batch_filtered
 
 
-def _correlate_ensemble_pair_worker(
-    image_pair: np.ndarray,
-    pair_idx: int,
+def _correlate_chunk_sum_worker(
+    image_chunk: np.ndarray,
+    chunk_start_idx: int,
     config: Config,
     scattered_cache: dict,
     scattered_masks: Optional[List[np.ndarray]],
     scattered_predictor: Optional[np.ndarray],
     pass_idx: int,
     output_path: Optional[Path] = None,
-    is_first_batch: bool = False,
 ) -> dict:
     """
-    Correlate single pair for ensemble accumulation.
+    Process a CHUNK of images and return SUMMED correlation planes.
 
-    Returns correlation plane sums (AA, BB, AB) and warp sums.
+    Keeps summation local to worker RAM, minimizing network traffic.
+    Each worker processes multiple pairs and returns a single accumulated result.
+
+    Parameters
+    ----------
+    image_chunk : np.ndarray
+        Chunk of image pairs, shape (N_chunk, 2, H, W)
+    chunk_start_idx : int
+        Global index of first pair in this chunk (for diagnostics)
+    config : Config
+        Configuration object
+    scattered_cache : dict
+        Pre-scattered correlator cache
+    scattered_masks : Optional[List[np.ndarray]]
+        Pre-scattered vector masks
+    scattered_predictor : Optional[np.ndarray]
+        Pre-scattered predictor field
+    pass_idx : int
+        Current pass index
+    output_path : Optional[Path]
+        Output directory for diagnostic images
+
+    Returns
+    -------
+    dict
+        Accumulated correlation results with keys:
+        - corr_AA_sum, corr_BB_sum, corr_AB_sum: Summed correlation planes
+        - warp_A_sum, warp_B_sum: Summed warped images
+        - n_images: Total image count in chunk
+        - n_win_x, n_win_y: Grid dimensions
+        - smoothed_predictor, vector_mask: Metadata
     """
-    import os
-
-    # Single thread per worker (parallelism across workers)
-    os.environ["OMP_NUM_THREADS"] = "1"
-
     from pivtools_cli.piv.piv_backend.cpu_ensemble import EnsembleCorrelatorCPU
 
     correlator = EnsembleCorrelatorCPU(
@@ -941,23 +1047,40 @@ def _correlate_ensemble_pair_worker(
         vector_masks=scattered_masks,
     )
 
-    # Determine if we should save diagnostics (first pair of first batch)
-    save_diagnostics = (
-        hasattr(config, 'ensemble_save_diagnostics') and
-        config.ensemble_save_diagnostics and
-        is_first_batch and
-        pair_idx == 0
-    )
+    accumulated_result = None
 
-    # Correlate and return sums (for accumulation)
-    result = correlator.correlate_batch_for_accumulation(
-        image_pair[np.newaxis, ...],  # Add batch dimension
-        config,
-        pass_idx=pass_idx,
-        predictor_field=scattered_predictor,
-        save_diagnostics=save_diagnostics,
-        output_path=str(output_path) if output_path else None,
-        is_first_batch=is_first_batch,
-    )
+    # Process each pair in the chunk LOCALLY (no network transfer)
+    for local_i in range(image_chunk.shape[0]):
+        pair = image_chunk[local_i : local_i + 1]  # Shape (1, 2, H, W)
+        global_idx = chunk_start_idx + local_i
 
-    return result
+        # Save diagnostics only for first pair of entire batch
+        save_diagnostics = (
+            hasattr(config, 'ensemble_save_diagnostics') and
+            config.ensemble_save_diagnostics and
+            pass_idx == 0 and
+            global_idx == 0
+        )
+
+        result = correlator.correlate_batch_for_accumulation(
+            pair,
+            config,
+            pass_idx=pass_idx,
+            predictor_field=scattered_predictor,
+            save_diagnostics=save_diagnostics,
+            output_path=str(output_path) if output_path else None,
+            is_first_batch=(global_idx == 0),
+        )
+
+        if accumulated_result is None:
+            accumulated_result = result
+        else:
+            # In-place summation to minimize memory allocations
+            accumulated_result["corr_AA_sum"] += result["corr_AA_sum"]
+            accumulated_result["corr_BB_sum"] += result["corr_BB_sum"]
+            accumulated_result["corr_AB_sum"] += result["corr_AB_sum"]
+            accumulated_result["warp_A_sum"] += result["warp_A_sum"]
+            accumulated_result["warp_B_sum"] += result["warp_B_sum"]
+            accumulated_result["n_images"] += result["n_images"]
+
+    return accumulated_result

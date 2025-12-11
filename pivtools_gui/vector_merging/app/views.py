@@ -4,6 +4,8 @@ Vector Merging API views.
 Thin route handlers that delegate to VectorMerger class.
 Provides endpoints for merging vector fields from multiple cameras
 with progress tracking and multiprocessing support.
+
+Simplified: Merging always uses all cameras from config.camera_numbers.
 """
 
 import threading
@@ -13,6 +15,7 @@ from flask import Blueprint, jsonify, request
 from loguru import logger
 
 from pivtools_core.config import get_config
+from pivtools_core.paths import get_data_paths
 
 from ...calibration.services.job_manager import job_manager
 from ...utils import camera_number
@@ -21,30 +24,64 @@ from ..vector_merger import VectorMerger
 merging_bp = Blueprint("merging", __name__)
 
 
+@merging_bp.route("/merge_vectors/constraints", methods=["GET"])
+def get_merge_constraints():
+    """
+    Return constraints for vector merging.
+
+    Used by frontend to disable options that are not valid.
+    Stereo 3D vector data cannot be merged (uz component present).
+
+    Returns:
+        JSON with allowed_source_endpoints, is_stereo_setup, stereo_blocked, stereo_reason
+    """
+    cfg = get_config()
+
+    is_stereo = cfg.is_stereo_setup
+    stereo_reason = None
+    if is_stereo:
+        stereo_reason = (
+            "3D stereo vectors cannot be merged. Vector merging is only "
+            "supported for planar 2D PIV data."
+        )
+
+    return jsonify({
+        "allowed_source_endpoints": cfg.get_allowed_endpoints("merging"),
+        "is_stereo_setup": is_stereo,
+        "stereo_blocked": is_stereo,
+        "stereo_reason": stereo_reason,
+    })
+
+
 @merging_bp.route("/merge_vectors/merge_one", methods=["POST"])
 def merge_one_frame():
     """
     Merge vectors for a single frame.
 
     Request JSON:
-        base_path_idx: int - Index into config's base_paths
-        cameras: list - Camera numbers to merge (default: [1, 2])
         frame_idx: int - Frame number to merge (default: 1)
-        type_name: str - Vector type (default: "instantaneous")
-        endpoint: str - Optional endpoint specification
+
+    All other parameters read from config.yaml merging block:
+        - base_path_idx: Which base_path to use
+        - cameras: Camera numbers to merge
+        - type_name: Vector type (instantaneous, ensemble, etc.)
 
     Returns:
         JSON with status, frame, runs_merged, message
     """
     data = request.get_json() or {}
-    base_path_idx = int(data.get("base_path_idx", 0))
-    cameras = [camera_number(c) for c in data.get("cameras", [1, 2])]
+    cfg = get_config()
+
+    # All config from config.yaml
+    base_path_idx = cfg.merging_base_path_idx
+    # Always use all cameras from config.camera_numbers
+    cameras = [camera_number(c) for c in cfg.camera_numbers]
+    type_name = cfg.merging_type_name
+
+    # Only frame_idx accepted from request (for single frame testing)
     frame_idx = int(data.get("frame_idx", 1))
-    type_name = data.get("type_name", "instantaneous")
-    endpoint = data.get("endpoint", "")
 
     try:
-        cfg = get_config()
         base_dir = Path(cfg.base_paths[base_path_idx])
 
         logger.info(f"Merging frame {frame_idx} for cameras {cameras}")
@@ -54,7 +91,6 @@ def merge_one_frame():
             base_dir=base_dir,
             cameras=cameras,
             type_name=type_name,
-            endpoint=endpoint,
         )
 
         # Find valid runs
@@ -98,23 +134,40 @@ def merge_all_frames():
     """
     Start vector merging job for all frames with multiprocessing.
 
-    Request JSON:
-        base_path_idx: int - Index into config's base_paths
-        cameras: list - Camera numbers to merge (default: [1, 2])
-        type_name: str - Vector type (default: "instantaneous")
-        endpoint: str - Optional endpoint specification
+    Simplified API:
+        base_path_idx: int - Single path index (default: from config)
+        type_name: str - Vector type (default: from config)
+
+    Always merges all cameras from config.camera_numbers.
 
     Returns:
         JSON with job_id, status, message
     """
     data = request.get_json() or {}
-    base_path_idx = int(data.get("base_path_idx", 0))
-    cameras = [camera_number(c) for c in data.get("cameras", [1, 2])]
-    type_name = data.get("type_name", "instantaneous")
-    endpoint = data.get("endpoint", "")
+    cfg = get_config()
+
+    # Check stereo constraint first
+    if cfg.is_stereo_setup:
+        return jsonify({
+            "error": (
+                "Cannot merge stereo 3D vector data. Vector merging is only "
+                "supported for planar 2D PIV data."
+            ),
+            "is_stereo_blocked": True,
+        }), 400
+
+    # Get parameters from request or config
+    base_path_idx = int(data.get("base_path_idx", cfg.merging_base_path_idx))
+    type_name = data.get("type_name", cfg.merging_type_name)
+
+    # Always use all cameras from config.camera_numbers
+    cameras = [camera_number(c) for c in cfg.camera_numbers]
+
+    # Need at least 2 cameras for merging
+    if len(cameras) < 2:
+        return jsonify({"error": "Need at least 2 cameras for merging"}), 400
 
     try:
-        cfg = get_config()
         base_dir = Path(cfg.base_paths[base_path_idx])
 
         # Create job
@@ -134,7 +187,6 @@ def merge_all_frames():
                     base_dir=base_dir,
                     cameras=cameras,
                     type_name=type_name,
-                    endpoint=endpoint,
                 )
 
                 def progress_callback(progress_data):
@@ -146,7 +198,9 @@ def merge_all_frames():
                     )
 
                 # Run merge
-                result = merger.merge_all_frames(progress_callback=progress_callback)
+                result = merger.merge_all_frames(
+                    progress_callback=progress_callback,
+                )
 
                 if result["success"]:
                     job_manager.complete_job(
@@ -198,3 +252,84 @@ def merge_status(job_id: str):
         return jsonify({"error": "Job not found"}), 404
 
     return jsonify(job_data)
+
+
+@merging_bp.route("/merge_vectors/validate", methods=["POST"])
+def merge_validate():
+    """
+    Validate that vector data exists for all cameras before merging.
+
+    All parameters read from config.yaml merging block:
+        - base_path_idx: Which base_path to use
+        - cameras: Camera numbers to check
+        - type_name: Vector type (instantaneous, ensemble, etc.)
+
+    Returns:
+        JSON with valid, cameras_found, valid_runs, total_runs, num_frame_pairs
+    """
+    cfg = get_config()
+
+    # Check stereo constraint first
+    if cfg.is_stereo_setup:
+        return jsonify({
+            "valid": False,
+            "error": (
+                "Cannot merge stereo 3D vector data. Vector merging is only "
+                "supported for planar 2D PIV data."
+            ),
+            "is_stereo_blocked": True,
+        }), 400
+
+    # All config from config.yaml
+    base_path_idx = cfg.merging_base_path_idx
+    # Always use all cameras from config.camera_numbers
+    cameras = [camera_number(c) for c in cfg.camera_numbers]
+    type_name = cfg.merging_type_name
+
+    try:
+        base_dir = Path(cfg.base_paths[base_path_idx])
+
+        # Check which cameras have valid data directories
+        cameras_found = []
+        for camera in cameras:
+            paths = get_data_paths(
+                base_dir=base_dir,
+                num_frame_pairs=cfg.num_frame_pairs,
+                cam=camera,
+                type_name=type_name,
+            )
+            if paths["data_dir"].exists():
+                cameras_found.append(camera)
+
+        if len(cameras_found) < 2:
+            return jsonify({
+                "valid": False,
+                "cameras_found": cameras_found,
+                "cameras_requested": cameras,
+                "error": f"Need at least 2 cameras with data, found {len(cameras_found)}",
+            })
+
+        # Create merger to find valid runs
+        merger = VectorMerger(
+            base_dir=base_dir,
+            cameras=cameras_found,
+            type_name=type_name,
+        )
+        valid_runs, total_runs = merger.find_valid_runs()
+
+        return jsonify({
+            "valid": len(valid_runs) > 0,
+            "cameras_found": cameras_found,
+            "cameras_requested": cameras,
+            "valid_runs": valid_runs,
+            "total_runs": total_runs,
+            "num_frame_pairs": cfg.num_frame_pairs,
+            "output_dir": str(merger.output_dir),
+        })
+
+    except Exception as e:
+        logger.error(f"Validation error: {e}", exc_info=True)
+        return jsonify({
+            "valid": False,
+            "error": str(e),
+        }), 500

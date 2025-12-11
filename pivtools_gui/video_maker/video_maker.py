@@ -94,11 +94,6 @@ class PlotSettings:
     test_mode: bool = False
     test_frames: Optional[int] = None
 
-    # Noise reduction options - reduced by default to preserve sharpness
-    apply_smoothing: bool = False  # Disabled by default to preserve data sharpness
-    smoothing_sigma: float = 0.5  # Light Gaussian smoothing when enabled
-    median_filter_size: int = 0  # Disabled by default (set to 3 for salt-and-pepper noise)
-
     @property
     def xlabel(self):
         if self.length_units:
@@ -197,8 +192,14 @@ def find_all_valid_runs(arrs: np.ndarray, var: str) -> List[int]:
 def _select_variable_from_arrs(
     arrs: np.ndarray, filepath: str, var: str, run_index: int = 0
 ) -> Tuple[np.ndarray, Optional[np.ndarray]]:
-    """Extract variable and mask from arrays or MAT file, selecting the specified run index for multi-run data."""
-    
+    """
+    Extract variable and mask from arrays or MAT file, selecting the specified run index for multi-run data.
+
+    Supports:
+    - PIV variables: ux, uy, uz, mag
+    - Instantaneous stats: u_prime, v_prime, w_prime, vorticity, divergence, gamma1, gamma2
+    """
+
     # Debug: Check if var is actually a numpy array (which would be an error in calling code)
     if isinstance(var, np.ndarray):
         logger.error(f"ERROR: var parameter is a numpy array instead of string! var.shape={var.shape}, var.dtype={var.dtype}")
@@ -208,6 +209,13 @@ def _select_variable_from_arrs(
         logger.error(f"ERROR: var parameter has unexpected type {type(var)}: {var}")
         logger.error(f"Converting to string as fallback")
         var = str(var)
+
+    # Define stats variables that are loaded from piv_result struct
+    STATS_VARIABLES = {
+        "u_prime", "v_prime", "w_prime",  # Legacy fluctuations
+        "uu_inst", "vv_inst", "ww_inst", "uv_inst", "uw_inst", "vw_inst",  # Stress tensor components
+        "vorticity", "divergence", "gamma1", "gamma2",  # Derived stats
+    }
     
     # ndarray case (common path)
     if isinstance(arrs, np.ndarray):
@@ -297,6 +305,53 @@ def _select_variable_from_arrs(
     # dict-like or unknown: try loadmat to find a variable by name
     try:
         mat = loadmat(filepath, squeeze_me=True, struct_as_record=False)
+
+        # Check for stats variables in piv_result struct (instantaneous stats files)
+        if var in STATS_VARIABLES:
+            piv_result = mat.get("piv_result")
+            if piv_result is not None:
+                # Handle object array wrapper - select correct run
+                if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
+                    # piv_result is array of runs, select the requested run
+                    # Find valid run with data (some runs may be empty)
+                    pr = None
+                    if 0 <= run_index < piv_result.size:
+                        candidate = piv_result.flat[run_index]
+                        if hasattr(candidate, var):
+                            arr_check = getattr(candidate, var, None)
+                            if arr_check is not None and np.asarray(arr_check).size > 0:
+                                pr = candidate
+
+                    # If requested run doesn't have data, find first valid run
+                    if pr is None:
+                        for i in range(piv_result.size):
+                            candidate = piv_result.flat[i]
+                            if hasattr(candidate, var):
+                                arr_check = getattr(candidate, var, None)
+                                if arr_check is not None and np.asarray(arr_check).size > 0:
+                                    pr = candidate
+                                    logger.debug(f"Stats var {var}: run {run_index} empty, using run {i}")
+                                    break
+
+                    if pr is None:
+                        raise ValueError(f"No valid run found with variable '{var}' in {filepath}")
+                else:
+                    pr = piv_result
+
+                if hasattr(pr, var):
+                    arr = np.asarray(getattr(pr, var))
+                    if arr.ndim != 2:
+                        raise ValueError(f"Expected 2D array for {var} in {filepath}, got {arr.ndim}D with shape {arr.shape}")
+                    # Try to get mask from piv_result
+                    b_mask = None
+                    for mask_attr in ("b_mask", "bmask", "mask", "valid_mask"):
+                        if hasattr(pr, mask_attr):
+                            b_mask = np.asarray(getattr(pr, mask_attr))
+                            break
+                    return arr, b_mask
+                else:
+                    raise ValueError(f"Stats variable '{var}' not found in piv_result struct in {filepath}")
+
         if var in mat:
             arr = np.asarray(mat[var])
             b_mask = None
@@ -440,20 +495,6 @@ def _to_uint16_var(frame: np.ndarray, vmin: float, vmax: float) -> np.ndarray:
     return np.clip((norm * (LUT_SIZE - 1)).round(), 0, LUT_SIZE - 1).astype(np.uint16)
 
 
-def _apply_noise_reduction(field: np.ndarray, settings: PlotSettings) -> np.ndarray:
-    """Apply smoothing and filtering efficiently. Disabled by default for maximum sharpness."""
-    if not getattr(settings, "apply_smoothing", False):
-        return field
-    field_smooth = field.astype(np.float32)
-    median_size = getattr(settings, "median_filter_size", 0)
-    if median_size >= 3:  # Median filter requires size >= 3
-        field_smooth = cv2.medianBlur(field_smooth, median_size)
-    sigma = getattr(settings, "smoothing_sigma", 0.5)
-    if sigma > 0:
-        field_smooth = cv2.GaussianBlur(field_smooth, (0, 0), sigma)
-    return field_smooth
-
-
 # ------------------------- Writers (FFmpeg + fallback OpenCV) -------------------------
 
 
@@ -551,6 +592,63 @@ class FFmpegVideoWriter:
                 msg = str(stderr)
             if msg:
                 print(f"ffmpeg stderr for {self.path}:\n", msg)
+
+
+def verify_video_ready(video_path: str, timeout_sec: float = 5.0) -> bool:
+    """
+    Verify video file is complete by checking file exists and size is stable.
+
+    Args:
+        video_path: Path to the video file
+        timeout_sec: Maximum time to wait for file to be ready
+
+    Returns:
+        True if video file exists and is ready, False if timeout reached
+    """
+    start_time = time.time()
+    min_stable_checks = 2  # Require file size to be stable for 2 consecutive checks
+    check_interval = 0.3  # Seconds between checks
+
+    prev_size = -1
+    stable_count = 0
+
+    while (time.time() - start_time) < timeout_sec:
+        try:
+            path = Path(video_path)
+            if not path.exists():
+                time.sleep(check_interval)
+                continue
+
+            current_size = path.stat().st_size
+            if current_size == 0:
+                time.sleep(check_interval)
+                continue
+
+            # Track size stability (file might still be writing)
+            if current_size == prev_size:
+                stable_count += 1
+            else:
+                stable_count = 0
+            prev_size = current_size
+
+            # Consider file ready when size is stable
+            if stable_count >= min_stable_checks:
+                logger.debug(f"Video verified: {video_path} (size={current_size} bytes)")
+                return True
+
+            time.sleep(check_interval)
+        except Exception as e:
+            logger.debug(f"Video verification attempt failed: {e}")
+            time.sleep(check_interval)
+
+    # If file exists with size after timeout, still consider it ready
+    path = Path(video_path)
+    if path.exists() and path.stat().st_size > 0:
+        logger.debug(f"Video ready after timeout: {video_path}")
+        return True
+
+    logger.warning(f"Video verification failed for {video_path}")
+    return False
 
 
 # ------------------------- Core: high-quality renderer -------------------------
@@ -676,7 +774,6 @@ def make_video_from_scalar(
             try:
                 arrs = read_mat_contents(str(f), run_index=run_index)
                 field, b_mask = _select_variable_from_arrs(arrs, str(f), var, 0)  # Run already selected by read_mat_contents
-                field = _apply_noise_reduction(field, settings)
                 field_indices = _to_uint16_var(field, vmin, vmax)
                 rgb = lut[field_indices]
                 if Hout != H or Wout != W:
@@ -727,3 +824,517 @@ def make_video_from_scalar(
         "codec": getattr(settings, "codec", None),
         "effective_run": run_index + 1,  # Return 1-based run number that was actually used
     }
+
+
+# ===================== VideoMaker CLASS =====================
+
+
+class VideoMaker:
+    """
+    Production class for creating PIV visualization videos.
+
+    Designed for:
+    - GUI integration with progress callbacks
+    - Command-line execution via __main__
+    - Frame-level parallelism for color limit computation
+
+    Pattern matches: planar_calibration_production.py
+
+    Supported data sources:
+    - calibrated: Calibrated instantaneous PIV frames
+    - uncalibrated: Uncalibrated instantaneous PIV frames
+    - merged: Merged stereo PIV frames
+    - inst_stats: Per-frame instantaneous statistics (u_prime, vorticity, etc.)
+    """
+
+    # Variables that come from instantaneous stats files (not PIV files)
+    STATS_VARIABLES = {
+        "u_prime", "v_prime", "w_prime",  # Legacy fluctuations
+        "uu_inst", "vv_inst", "ww_inst", "uv_inst", "uw_inst", "vw_inst",  # Stress tensor components
+        "vorticity", "divergence", "gamma1", "gamma2",  # Derived stats
+    }
+
+    def __init__(
+        self,
+        base_dir: Path,
+        camera: int = 1,
+        config=None,
+    ):
+        """
+        Initialize the video maker.
+
+        Parameters
+        ----------
+        base_dir : Path
+            Base directory for output (calibrated_piv, videos, statistics will be relative to this)
+        camera : int
+            Camera number (1-based)
+        config : Config, optional
+            Config object for additional settings
+        """
+        self.base_dir = Path(base_dir)
+        self.camera = camera
+        self._config = config
+
+    def _get_data_dir(self, data_source: str, num_frame_pairs: int) -> Path:
+        """
+        Get the data directory for a given data source.
+
+        Parameters
+        ----------
+        data_source : str
+            One of: 'calibrated', 'uncalibrated', 'merged', 'inst_stats'
+        num_frame_pairs : int
+            Number of frame pairs (for path construction)
+
+        Returns
+        -------
+        Path
+            Directory containing the data files
+        """
+        num_str = str(num_frame_pairs)
+
+        if data_source == "calibrated":
+            return self.base_dir / "calibrated_piv" / num_str / f"Cam{self.camera}" / "instantaneous"
+        elif data_source == "uncalibrated":
+            return self.base_dir / "uncalibrated_piv" / num_str / f"Cam{self.camera}" / "instantaneous"
+        elif data_source == "merged":
+            return self.base_dir / "merged" / num_str / "instantaneous"
+        elif data_source == "inst_stats":
+            return self.base_dir / "statistics" / num_str / f"Cam{self.camera}" / "instantaneous" / "instantaneous_stats"
+        else:
+            raise ValueError(f"Unknown data_source: {data_source}. Must be one of: calibrated, uncalibrated, merged, inst_stats")
+
+    def _get_video_dir(self, data_source: str, num_frame_pairs: int) -> Path:
+        """
+        Get the video output directory for a given data source.
+
+        Parameters
+        ----------
+        data_source : str
+            One of: 'calibrated', 'uncalibrated', 'merged', 'inst_stats'
+        num_frame_pairs : int
+            Number of frame pairs (for path construction)
+
+        Returns
+        -------
+        Path
+            Directory for video output
+        """
+        num_str = str(num_frame_pairs)
+
+        if data_source == "merged":
+            return self.base_dir / "videos" / num_str / "merged"
+        elif data_source == "inst_stats":
+            return self.base_dir / "videos" / num_str / f"Cam{self.camera}" / "stats"
+        elif data_source == "uncalibrated":
+            return self.base_dir / "videos" / num_str / f"Cam{self.camera}" / "uncalibrated"
+        else:
+            return self.base_dir / "videos" / num_str / f"Cam{self.camera}"
+
+    def process_video(
+        self,
+        variable: str = "ux",
+        run: int = 1,
+        data_source: str = "calibrated",
+        fps: int = 30,
+        crf: int = 15,
+        resolution: Optional[Tuple[int, int]] = (1080, 1920),
+        cmap: Optional[str] = None,
+        lower_limit: Optional[float] = None,
+        upper_limit: Optional[float] = None,
+        test_mode: bool = False,
+        test_frames: int = 50,
+        out_name: Optional[str] = None,
+        progress_callback: Optional[Callable[[int, int, str], None]] = None,
+        cancel_event=None,
+    ) -> dict:
+        """
+        Process and create a video for the specified variable and data source.
+
+        This is the main entry point for GUI integration, handling data source
+        routing and progress callbacks compatible with job_manager.
+
+        Parameters
+        ----------
+        variable : str
+            Variable to visualize (ux, uy, uz, mag, u_prime, vorticity, etc.)
+        run : int
+            Run number (1-based)
+        data_source : str
+            Data source type: 'calibrated', 'uncalibrated', 'merged', 'inst_stats'
+        fps : int
+            Video frame rate
+        crf : int
+            FFmpeg CRF quality (lower = higher quality)
+        resolution : tuple, optional
+            Output resolution as (height, width)
+        cmap : str, optional
+            Matplotlib colormap name
+        lower_limit : float, optional
+            Lower color scale limit (None = auto)
+        upper_limit : float, optional
+            Upper color scale limit (None = auto)
+        test_mode : bool
+            If True, only process test_frames frames
+        test_frames : int
+            Number of frames for test mode
+        out_name : str, optional
+            Custom output filename
+        progress_callback : callable, optional
+            Function called with (current_frame, total_frames, message)
+            Compatible with job_manager.update_job pattern
+        cancel_event : threading.Event, optional
+            Event to signal cancellation
+
+        Returns
+        -------
+        dict
+            success: bool
+            out_path: str (path to created video)
+            error: str (if failed)
+            vmin, vmax: float (computed color limits)
+            effective_run: int (run number actually used)
+            data_source: str (data source used)
+        """
+        try:
+            # Get num_frame_pairs from config
+            num_frame_pairs = self._config.num_frame_pairs if self._config else 100
+
+            # Validate data_source and variable compatibility
+            if variable in self.STATS_VARIABLES and data_source != "inst_stats":
+                # Auto-switch to inst_stats for stats variables
+                logger.info(f"Variable '{variable}' requires inst_stats data source, switching from '{data_source}'")
+                data_source = "inst_stats"
+
+            # Get appropriate directories
+            data_dir = self._get_data_dir(data_source, num_frame_pairs)
+            video_dir = self._get_video_dir(data_source, num_frame_pairs)
+
+            # Ensure video directory exists
+            video_dir.mkdir(parents=True, exist_ok=True)
+
+            # Validate data directory exists
+            if not data_dir.exists():
+                return {
+                    "success": False,
+                    "error": f"Data directory does not exist: {data_dir}",
+                    "data_source": data_source,
+                }
+
+            # Determine output filename
+            if out_name is None:
+                source_suffix = f"_{data_source}" if data_source != "calibrated" else ""
+                out_name = f"run{run}_Cam{self.camera}_{variable}{source_suffix}{'_test' if test_mode else ''}.mp4"
+
+            out_path = str(video_dir / out_name)
+
+            # Create settings
+            settings = PlotSettings(
+                fps=fps,
+                crf=crf,
+                upscale=resolution,
+                cmap=cmap,
+                lower_limit=lower_limit,
+                upper_limit=upper_limit,
+                out_path=out_path,
+                progress_callback=progress_callback,
+                test_mode=test_mode,
+                test_frames=test_frames if test_mode else None,
+            )
+
+            logger.info(f"Creating video: var={variable}, run={run}, source={data_source}, data_dir={data_dir}")
+
+            # Call core video generation
+            result = make_video_from_scalar(
+                folder=data_dir,
+                var=variable,
+                pattern="[0-9]*.mat",
+                settings=settings,
+                cancel_event=cancel_event,
+                run_index=run - 1,  # Convert to 0-based
+            )
+
+            # Verify video is ready
+            if not verify_video_ready(out_path, timeout_sec=30.0):
+                logger.warning(f"Video verification timed out for {out_path}")
+
+            return {
+                "success": True,
+                "out_path": result["out_path"],
+                "vmin": result["vmin"],
+                "vmax": result["vmax"],
+                "actual_min": result["actual_min"],
+                "actual_max": result["actual_max"],
+                "effective_run": result["effective_run"],
+                "frames": result["frames"],
+                "elapsed_sec": result["elapsed_sec"],
+                "data_source": data_source,
+                "variable": variable,
+            }
+
+        except Exception as e:
+            logger.error(f"Video creation failed: {e}", exc_info=True)
+            return {"success": False, "error": str(e), "data_source": data_source}
+
+    def create_video(
+        self,
+        variable: str = "ux",
+        run: int = 1,
+        fps: int = 30,
+        crf: int = 15,
+        resolution: Optional[Tuple[int, int]] = (1080, 1920),
+        cmap: Optional[str] = None,
+        lower_limit: Optional[float] = None,
+        upper_limit: Optional[float] = None,
+        test_mode: bool = False,
+        test_frames: int = 50,
+        out_name: Optional[str] = None,
+        progress_callback: Optional[Callable[[int, int, str], None]] = None,
+        cancel_event=None,
+        data_source: str = "calibrated",
+    ) -> dict:
+        """
+        Create a video for the specified variable and run.
+
+        This is a convenience wrapper around process_video() for backward compatibility.
+        For new code, prefer using process_video() directly.
+
+        Parameters
+        ----------
+        variable : str
+            Variable to visualize (ux, uy, uz, mag, u_prime, vorticity, etc.)
+        run : int
+            Run number (1-based)
+        fps : int
+            Video frame rate
+        crf : int
+            FFmpeg CRF quality (lower = higher quality)
+        resolution : tuple, optional
+            Output resolution as (height, width)
+        cmap : str, optional
+            Matplotlib colormap name
+        lower_limit : float, optional
+            Lower color scale limit (None = auto)
+        upper_limit : float, optional
+            Upper color scale limit (None = auto)
+        test_mode : bool
+            If True, only process test_frames frames
+        test_frames : int
+            Number of frames for test mode
+        out_name : str, optional
+            Custom output filename
+        progress_callback : callable, optional
+            Function called with (current_frame, total_frames, message)
+        cancel_event : threading.Event, optional
+            Event to signal cancellation
+        data_source : str
+            Data source type (default: 'calibrated')
+
+        Returns
+        -------
+        dict
+            success: bool
+            out_path: str (path to created video)
+            error: str (if failed)
+            vmin, vmax: float (computed color limits)
+            effective_run: int (run number actually used)
+        """
+        return self.process_video(
+            variable=variable,
+            run=run,
+            data_source=data_source,
+            fps=fps,
+            crf=crf,
+            resolution=resolution,
+            cmap=cmap,
+            lower_limit=lower_limit,
+            upper_limit=upper_limit,
+            test_mode=test_mode,
+            test_frames=test_frames,
+            out_name=out_name,
+            progress_callback=progress_callback,
+            cancel_event=cancel_event,
+        )
+
+
+# ===================== PRODUCTION SCRIPT =====================
+
+# Hardcoded configuration for standalone execution
+# These are used when USE_CONFIG_DIRECTLY = False
+
+# BASE_DIR: Base directory containing PIV data
+_BASE_DIR = "/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images"
+
+# CAMERA_NUMS: List of camera numbers to process (1-based)
+_CAMERA_NUMS = [1]
+
+# VIDEO PARAMETERS
+_VARIABLE = "ux"  # Variable to visualize: ux, uy, mag, u_prime, vorticity, etc.
+_RUN = 1  # Run number (1-based)
+_DATA_SOURCE = "calibrated"  # calibrated, uncalibrated, merged, inst_stats
+_FPS = 30  # Video frame rate
+_CRF = 15  # FFmpeg CRF quality (lower = higher quality)
+_RESOLUTION = (1080, 1920)  # Output resolution (height, width) or None for native
+_CMAP = None  # Colormap name or None for auto
+_LOWER_LIMIT = None  # Lower color limit or None for auto
+_UPPER_LIMIT = None  # Upper color limit or None for auto
+
+# TEST MODE
+_TEST_MODE = False  # If True, only process _TEST_FRAMES frames
+_TEST_FRAMES = 50  # Number of frames for test mode
+
+# USE_CONFIG_DIRECTLY: If True, load video settings from config.yaml
+# If False, use hardcoded settings above and write them to config.yaml
+USE_CONFIG_DIRECTLY = True
+
+
+def apply_cli_settings_to_config():
+    """Update config.yaml with CLI-mode hardcoded settings.
+
+    This function writes the hardcoded configuration variables to config.yaml,
+    ensuring the video maker uses the correct paths and settings.
+
+    Returns
+    -------
+    Config
+        The reloaded config object with updated settings
+    """
+    from pivtools_core.config import get_config, reload_config
+
+    config = get_config()
+
+    # Paths
+    config.data["paths"]["base_paths"] = [_BASE_DIR]
+    config.data["paths"]["camera_count"] = len(_CAMERA_NUMS)
+    config.data["paths"]["camera_numbers"] = _CAMERA_NUMS
+
+    # Video settings (using new single-dict format)
+    if "video" not in config.data:
+        config.data["video"] = {}
+
+    config.data["video"]["base_path_idx"] = 0
+    config.data["video"]["camera"] = _CAMERA_NUMS[0] if _CAMERA_NUMS else 1
+    config.data["video"]["data_source"] = _DATA_SOURCE
+    config.data["video"]["variable"] = _VARIABLE
+    config.data["video"]["run"] = _RUN
+    config.data["video"]["piv_type"] = "instantaneous"
+    config.data["video"]["cmap"] = _CMAP if _CMAP else "default"
+    config.data["video"]["lower"] = str(_LOWER_LIMIT) if _LOWER_LIMIT is not None else ""
+    config.data["video"]["upper"] = str(_UPPER_LIMIT) if _UPPER_LIMIT is not None else ""
+    config.data["video"]["fps"] = _FPS
+    config.data["video"]["crf"] = _CRF
+    if _RESOLUTION is not None:
+        if _RESOLUTION[0] >= 2160:
+            config.data["video"]["resolution"] = "4k"
+        else:
+            config.data["video"]["resolution"] = "1080p"
+    else:
+        config.data["video"]["resolution"] = "1080p"
+
+    # Save to disk
+    config.save()
+    logger.info("Updated config.yaml with CLI settings")
+
+    return reload_config()
+
+
+if __name__ == "__main__":
+    from pivtools_core.config import get_config
+
+    logger.info("=" * 60)
+    logger.info("Video Maker - Starting")
+    logger.info("=" * 60)
+
+    if USE_CONFIG_DIRECTLY:
+        # Load settings directly from existing config.yaml
+        logger.info("Loading settings directly from config.yaml (USE_CONFIG_DIRECTLY=True)")
+        config = get_config()
+
+        # Extract settings from config
+        base_dir = Path(config.base_paths[config.video_base_path_idx])
+        camera_nums = [config.video_camera]
+        variable = config.video_variable
+        run = config.video_run
+        data_source = config.video_data_source
+        fps = config.video_fps
+        crf = config.video_crf
+        resolution = config.video_resolution
+        cmap = config.video_cmap if config.video_cmap != "default" else None
+        lower_limit = config.video_lower_limit
+        upper_limit = config.video_upper_limit
+        test_mode = _TEST_MODE
+        test_frames = _TEST_FRAMES
+    else:
+        # Apply CLI settings to config.yaml
+        config = apply_cli_settings_to_config()
+
+        # Use hardcoded settings
+        base_dir = Path(_BASE_DIR)
+        camera_nums = _CAMERA_NUMS
+        variable = _VARIABLE
+        run = _RUN
+        data_source = _DATA_SOURCE
+        fps = _FPS
+        crf = _CRF
+        resolution = _RESOLUTION
+        cmap = _CMAP
+        lower_limit = _LOWER_LIMIT
+        upper_limit = _UPPER_LIMIT
+        test_mode = _TEST_MODE
+        test_frames = _TEST_FRAMES
+
+    logger.info(f"Base directory: {base_dir}")
+    logger.info(f"Cameras: {camera_nums}")
+    logger.info(f"Variable: {variable}, Run: {run}, Data source: {data_source}")
+    logger.info(f"FPS: {fps}, CRF: {crf}, Resolution: {resolution}")
+    logger.info(f"Colormap: {cmap or 'auto'}, Limits: [{lower_limit or 'auto'}, {upper_limit or 'auto'}]")
+    if test_mode:
+        logger.info(f"TEST MODE: {test_frames} frames")
+
+    failed_cameras = []
+
+    for camera_num in camera_nums:
+        logger.info(f"\nProcessing Camera {camera_num}...")
+
+        try:
+            maker = VideoMaker(
+                base_dir=base_dir,
+                camera=camera_num,
+                config=config,
+            )
+
+            result = maker.process_video(
+                variable=variable,
+                run=run,
+                data_source=data_source,
+                fps=fps,
+                crf=crf,
+                resolution=resolution,
+                cmap=cmap,
+                lower_limit=lower_limit,
+                upper_limit=upper_limit,
+                test_mode=test_mode,
+                test_frames=test_frames,
+            )
+
+            if result["success"]:
+                logger.info(f"Video created: {result['out_path']}")
+                logger.info(f"  Limits: {result['vmin']:.3f} to {result['vmax']:.3f}")
+                logger.info(f"  Frames: {result['frames']}, Time: {result['elapsed_sec']:.1f}s")
+                logger.info(f"  Effective run: {result['effective_run']}")
+            else:
+                logger.error(f"Failed: {result.get('error')}")
+                failed_cameras.append(camera_num)
+
+        except Exception as e:
+            logger.error(f"Camera {camera_num} failed: {e}")
+            import traceback
+            traceback.print_exc()
+            failed_cameras.append(camera_num)
+
+    logger.info("=" * 60)
+    if failed_cameras:
+        logger.error(f"Video creation failed for cameras: {failed_cameras}")
+    else:
+        logger.info("Video creation completed successfully for all cameras")

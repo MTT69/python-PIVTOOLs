@@ -26,7 +26,24 @@ def build_calibration_camera_path(
 ) -> Path:
     """Build the path to calibration images for a specific camera.
 
-    Path structure: source_path / camera_folder / calibration_subfolder
+    Path structure depends on calibration_image_type, use_camera_subfolders,
+    and calibration_path_order:
+
+    path_order='camera_first' (default):
+    - Container formats (.set, .cine): source_directory / calibration_subfolder
+    - IM7 with use_camera_subfolders=False: source_directory / calibration_subfolder
+    - IM7 with use_camera_subfolders=True: source_directory / camera_folder / calibration_subfolder
+    - Standard formats: source_directory / camera_folder / calibration_subfolder
+
+    path_order='calibration_first':
+    - Container formats (.set, .cine): source_directory / calibration_subfolder
+    - IM7 with use_camera_subfolders=False: source_directory / calibration_subfolder
+    - IM7 with use_camera_subfolders=True: source_directory / calibration_subfolder / camera_folder
+    - Standard formats: source_directory / calibration_subfolder / camera_folder
+
+    Note: For .set PIV files, source_path is the file itself, so we use
+    get_source_directory() to get the parent directory for calibration images.
+    This allows calibration images to be in a different format (e.g., .tif).
 
     This is the single source of truth for calibration path building,
     used by calibration_loader.py and the Flask calibration views.
@@ -41,21 +58,51 @@ def build_calibration_camera_path(
     Returns:
         Path: Full path to calibration image directory
 
-    Example:
+    Examples:
+        >>> # camera_first (default): source/Cam1/calibration/
         >>> path = build_calibration_camera_path(config, 0, 1)
-        >>> # Returns: /data/source/Cam1/calibration/
+
+        >>> # calibration_first: source/calibration/Cam1/
+        >>> # (when config.calibration_path_order = 'calibration_first')
+        >>> path = build_calibration_camera_path(config, 0, 1)
     """
-    source_path = config.source_paths[source_path_idx]
-    camera_folder = config.get_calibration_camera_folder(camera)
-
-    if camera_folder:
-        camera_path = source_path / camera_folder
-    else:
-        camera_path = source_path
-
+    # Use get_source_directory() which returns parent for .set files
+    # This allows calibration images to be in a different format than PIV
+    source_dir = config.get_source_directory(source_path_idx)
+    cal_image_type = config.calibration_image_type
+    path_order = config.calibration_path_order
     subfolder = subfolder_override if subfolder_override is not None else config.calibration_subfolder
-    if subfolder:
-        camera_path = camera_path / subfolder
+
+    # Container formats (SET, CINE) never use camera subfolders
+    if cal_image_type in ("lavision_set", "cine"):
+        camera_path = source_dir
+        if subfolder:
+            camera_path = camera_path / subfolder
+        return camera_path
+
+    # Determine if camera folder should be used
+    # Standard and IM7 formats respect the use_camera_subfolders setting
+    # Container formats (SET, CINE) are handled above and never use camera subfolders
+    use_camera_folder = config.calibration_use_camera_subfolders
+
+    # Get camera folder name
+    camera_folder = config.get_calibration_camera_folder(camera) if use_camera_folder else ""
+
+    # Build path based on order preference
+    if path_order == "calibration_first":
+        # source_dir / calibration_subfolder / camera_folder
+        camera_path = source_dir
+        if subfolder:
+            camera_path = camera_path / subfolder
+        if camera_folder:
+            camera_path = camera_path / camera_folder
+    else:
+        # camera_first (default): source_dir / camera_folder / calibration_subfolder
+        camera_path = source_dir
+        if camera_folder:
+            camera_path = camera_path / camera_folder
+        if subfolder:
+            camera_path = camera_path / subfolder
 
     return camera_path
 
@@ -67,8 +114,11 @@ def build_piv_camera_path(
 ) -> Path:
     """Build the path to PIV images for a specific camera.
 
-    Path structure depends on image type:
-    - Container formats (.set, .im7, .cine): source_path (no camera subfolder)
+    Path structure depends on image type and use_camera_subfolders setting:
+    - .set files: source_path IS the .set file (return it directly)
+    - .cine files: source_path directory (no camera subfolder)
+    - IM7 with use_camera_subfolders=False: source_path (all cameras in file)
+    - IM7 with use_camera_subfolders=True: source_path / camera_folder
     - Standard formats: source_path / camera_folder
 
     Args:
@@ -77,13 +127,27 @@ def build_piv_camera_path(
         camera: Camera number (1-based, default: 1)
 
     Returns:
-        Path: Path to PIV image directory or source directory for containers
+        Path: Path to PIV image file (.set) or directory for other formats
     """
     source_path = config.source_paths[source_path_idx]
     image_type = config.image_type
 
-    # Container formats don't use camera subdirectories
-    if image_type in ("lavision_set", "lavision_im7", "cine"):
+    # SET: source_path IS the .set file - return it directly
+    if image_type == "lavision_set":
+        return source_path
+
+    # CINE: source_path is directory containing .cine files
+    if image_type == "cine":
+        return source_path
+
+    # IM7: check if using camera subfolders
+    if image_type == "lavision_im7":
+        if config.images_use_camera_subfolders:
+            # Single-camera IM7 files in camera subdirectories
+            camera_folder = config.get_camera_folder(camera)
+            if camera_folder:
+                return source_path / camera_folder
+        # Multi-camera IM7 files (default): no subdirectory
         return source_path
 
     # Standard formats use camera subdirectories
@@ -104,13 +168,13 @@ def resolve_file_path(
     """Resolve the file path for a specific frame.
 
     Handles the different file path patterns for each image type:
-    - lavision_set: camera_path / format_pattern (container file)
+    - lavision_set: camera_path IS the .set file (return directly)
     - lavision_im7: camera_path / (format_pattern % frame_idx)
     - cine: camera_path / (format_pattern % camera)
     - standard: camera_path / (format_pattern % frame_idx)
 
     Args:
-        camera_path: Base path to camera directory or source
+        camera_path: Base path - for .set this IS the file, otherwise directory
         camera: Camera number (1-based)
         frame_idx: Frame index (1-based)
         format_pattern: File format pattern (e.g., "%05d.tif", "Camera%d.cine")
@@ -124,8 +188,9 @@ def resolve_file_path(
     file_idx = frame_idx - 1 if zero_based_indexing else frame_idx
 
     if image_type == "lavision_set":
-        # Container file - format_pattern is the filename
-        return camera_path / format_pattern
+        # For .set files, camera_path IS the .set file - return directly
+        # (format_pattern is ignored as source_path contains the full file path)
+        return camera_path
 
     elif image_type == "cine":
         # .cine files: pattern uses camera number
@@ -302,29 +367,31 @@ def validate_images_generic(
         "suggested_pattern": None,
     }
 
-    # Check if camera path exists
-    if not camera_path.exists():
-        result["error"] = f"Camera path does not exist: {camera_path}"
-        return result
-
     start_idx = 0 if zero_based_indexing else 1
 
     # Handle container formats
     if image_type == "lavision_set":
-        set_file = camera_path / image_format
+        # For .set files, camera_path IS the .set file itself
+        set_file = camera_path
         if not set_file.exists():
             result["error"] = f"Set file not found: {set_file}"
-            # Try to find .set files and suggest
-            set_files = list(camera_path.glob("*.set"))
-            if set_files:
-                result["suggested_pattern"] = set_files[0].name
-                result["sample_files"] = [f.name for f in set_files[:5]]
+            # Try to find .set files in parent directory and suggest
+            parent_dir = set_file.parent
+            if parent_dir.exists():
+                set_files = list(parent_dir.glob("*.set"))
+                if set_files:
+                    result["suggested_pattern"] = str(set_files[0])
+                    result["sample_files"] = [f.name for f in set_files[:5]]
+            return result
+
+        if not set_file.suffix.lower() == ".set":
+            result["error"] = f"Expected .set file but got: {set_file}"
             return result
 
         result["valid"] = True
         result["found_count"] = "container"
         result["format_detected"] = "set"
-        result["sample_files"] = [image_format]
+        result["sample_files"] = [set_file.name]
 
         # Try to read first frame for preview
         try:
@@ -336,7 +403,12 @@ def validate_images_generic(
 
         return result
 
-    elif image_type == "cine":
+    # For non-.set types, camera_path must be a directory
+    if not camera_path.exists():
+        result["error"] = f"Camera path does not exist: {camera_path}"
+        return result
+
+    if image_type == "cine":
         if "%" in image_format:
             cine_filename = image_format % camera
         else:

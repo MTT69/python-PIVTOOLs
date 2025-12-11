@@ -1,9 +1,19 @@
 from pathlib import Path
+from typing import List, Optional, Tuple
 import logging
 import os
 import shutil
 
 import yaml
+
+# ===================== ENDPOINT CONSTRAINTS =====================
+# Tool-specific endpoint constraints - defines what data sources each tool can use
+TOOL_ALLOWED_ENDPOINTS = {
+    "video": ["instantaneous", "merged"],  # No ensemble (no temporal sequence)
+    "merging": ["instantaneous", "ensemble"],  # No stereo (3D vectors can't merge)
+    "statistics": ["instantaneous", "ensemble", "merged", "stereo"],
+    "transforms": ["instantaneous", "ensemble", "merged", "stereo"],
+}
 
 _CONFIG = None  # singleton cache
 _LOGGING_INITIALIZED = False  # Track if logging has been set up
@@ -40,8 +50,66 @@ class Config:
 
     def save(self):
         """Save current config state to YAML file."""
+        self._normalize_calibration_block()
         with open(self._config_path, 'w') as f:
             yaml.dump(self.data, f, default_flow_style=False, sort_keys=False)
+
+    def _normalize_calibration_block(self):
+        """Reorder calibration block keys for consistent organization.
+
+        Groups image-related settings together at the top, followed by
+        active method selection, then method-specific configs.
+        """
+        if "calibration" not in self.data:
+            return
+
+        cal = self.data["calibration"]
+
+        # Define desired key order: image settings first, then method configs
+        image_settings = [
+            "image_format",
+            "num_images",
+            "image_type",
+            "zero_based_indexing",
+            "use_camera_subfolders",
+            "subfolder",
+            "camera_subfolders",
+            "path_order",
+        ]
+        meta_settings = ["active", "piv_type"]
+        method_configs = [
+            "scale_factor",
+            "pinhole",
+            "charuco",
+            "stereo",
+            "polynomial",
+            "stereo_charuco",
+        ]
+
+        # Build ordered dict
+        ordered = {}
+
+        # Add image settings first
+        for key in image_settings:
+            if key in cal:
+                ordered[key] = cal[key]
+
+        # Add meta settings
+        for key in meta_settings:
+            if key in cal:
+                ordered[key] = cal[key]
+
+        # Add method configs
+        for key in method_configs:
+            if key in cal:
+                ordered[key] = cal[key]
+
+        # Add any remaining keys not in our lists
+        for key, value in cal.items():
+            if key not in ordered:
+                ordered[key] = value
+
+        self.data["calibration"] = ordered
 
     def _get_config_path(self):
         """Get the path to the config file in the current working directory."""
@@ -192,10 +260,16 @@ calibration:
   zero_based_indexing: false
   use_camera_subfolders: false
   subfolder: ''
+  camera_subfolders: []
+  path_order: camera_first
   active: polynomial
+  piv_type: instantaneous
+  active_paths: []
+  cameras: []
   scale_factor:
     dt: 0.56
     px_per_mm: 3.41
+    source_path_idx: 0
   pinhole:
     camera: 1
     pattern_cols: 10
@@ -206,6 +280,7 @@ calibration:
     grid_tolerance: 0.5
     ransac_threshold: 3
     dt: 0.0275
+    source_path_idx: 0
   charuco:
     camera: 1
     squares_h: 10
@@ -215,6 +290,7 @@ calibration:
     aruco_dict: DICT_4X4_1000
     min_corners: 6
     dt: 1
+    source_path_idx: 0
   stereo:
     camera_pair:
     - 1
@@ -237,6 +313,53 @@ masking:
     bottom: 0
     left: 0
     right: 0
+merging:
+  type_name: instantaneous
+  endpoint: ''
+  max_workers: 8
+  cameras: []
+  active_paths: []
+statistics:
+  active_paths: []
+  cameras: []
+  include_merged: false
+  gamma_radius: 5
+  save_figures: true
+  type_name: instantaneous
+  enabled_methods:
+    mean_velocity: true
+    reynolds_stress: true
+    normal_stress: true
+    mean_tke: true
+    mean_vorticity: true
+    mean_divergence: true
+    inst_velocity: true
+    inst_fluctuations: true
+    inst_vorticity: true
+    inst_divergence: true
+    inst_gamma: true
+transforms:
+  base_path_idx: 0
+  type_name: instantaneous
+  active_paths: []
+  include_merged: false
+  cameras: {}
+video:
+  base_path_idx: 0
+  camera: 1
+  data_source: calibrated
+  variable: ux
+  run: 1
+  piv_type: instantaneous
+  cmap: default
+  lower: ''
+  upper: ''
+  fps: 30
+  crf: 15
+  resolution: 1080p
+  active_paths: []
+  cameras: []
+  include_merged: false
 
 """
                 with open(cwd_config_path, 'w') as f:
@@ -340,8 +463,29 @@ masking:
 
         .set and .im7 files store data from all cameras in a single file,
         with camera_no parameter used to extract specific camera data.
+
+        For IM7: Returns False if images_use_camera_subfolders is True,
+        since each file contains only one camera's data in that case.
         """
+        if self.image_type == "lavision_im7" and self.images_use_camera_subfolders:
+            return False  # Single-camera files when using subfolders
         return self.image_type in ("lavision_set", "lavision_im7")
+
+    @property
+    def images_use_camera_subfolders(self) -> bool:
+        """Return True if PIV images use camera subfolders for IM7 files.
+
+        When True, IM7 files are expected in camera subdirectories:
+        - source_path/Cam1/B00001.im7
+        - source_path/Cam2/B00001.im7
+
+        Each file contains only ONE camera's data (no camera_no parameter needed).
+
+        When False (default), all cameras are in one IM7 file per time instance:
+        - source_path/B00001.im7 contains all cameras
+        - camera_no parameter is used to extract specific camera data.
+        """
+        return self.data.get("images", {}).get("use_camera_subfolders", False)
 
     @property
     def base_paths(self):
@@ -364,6 +508,41 @@ masking:
         if any(n > max_allowed or n < 1 for n in numbers):
             raise ValueError(f"Camera numbers {numbers} must be between 1 and {max_allowed}")
         return numbers
+
+    # ===================== STEREO PAIR PROPERTIES =====================
+
+    @property
+    def stereo_pairs(self) -> List[Tuple[int, int]]:
+        """Auto-derive stereo camera pairs from camera_numbers order.
+
+        Cameras are paired sequentially: [1,2,3,4] -> [(1,2), (3,4)]
+        This means cameras 1,2 form stereo pair 1, cameras 3,4 form stereo pair 2.
+
+        Returns
+        -------
+        List[Tuple[int, int]]
+            List of (cam1, cam2) tuples for stereo processing
+        """
+        cameras = self.camera_numbers
+        pairs = []
+        for i in range(0, len(cameras) - 1, 2):
+            if i + 1 < len(cameras):
+                pairs.append((cameras[i], cameras[i + 1]))
+        return pairs
+
+    @property
+    def is_stereo_setup(self) -> bool:
+        """Return True if this is a stereo PIV setup.
+
+        Determined by calibration.active being 'stereo' or 'stereo_charuco'.
+
+        Returns
+        -------
+        bool
+            True if stereo calibration is active
+        """
+        active = self.active_calibration_method
+        return active in ("stereo", "stereo_charuco")
 
     @property
     def camera_folders(self):
@@ -615,7 +794,9 @@ masking:
 
         # Construct file path based on image type
         if img_type == "lavision_set":
-            file_path = camera_path / format_str
+            # For .set files, source_path IS the .set file - use directly
+            # (don't append format_str as that would create invalid path)
+            file_path = camera_path
         elif img_type == "lavision_im7":
             file_path = camera_path / (format_str % start_idx)
         elif img_type == "cine":
@@ -640,8 +821,13 @@ masking:
                 # For .set files, must provide camera_no and im_no
                 img = read_image(str(file_path), camera_no=camera_num, im_no=1)
             elif img_type == "lavision_im7":
-                # For .im7 files, must provide camera_no
-                img = read_image(str(file_path), camera_no=camera_num)
+                # For .im7 files, check if single-camera or multi-camera
+                if self.images_use_camera_subfolders:
+                    # Single-camera file: don't pass camera_no
+                    img = read_image(str(file_path))
+                else:
+                    # Multi-camera file: pass camera_no
+                    img = read_image(str(file_path), camera_no=camera_num)
             elif img_type == "cine":
                 # For .cine files, read first frame (idx=1)
                 img = read_image(str(file_path), idx=1, frames=2)
@@ -716,6 +902,143 @@ masking:
         # Returns the statistics_extraction block as a list, or empty list if not present
         return self.data.get("statistics_extraction", [])
 
+    # --- Statistics properties ---
+    @property
+    def statistics(self) -> dict:
+        """Return full statistics configuration block."""
+        return self.data.get("statistics", {})
+
+    @property
+    def statistics_enabled_methods(self) -> dict:
+        """Return dictionary of enabled statistics methods.
+
+        Returns
+        -------
+        dict
+            Dictionary with method names as keys and booleans as values.
+            Keys match frontend IDs for 1:1 mapping.
+            E.g., {'mean_velocity': True, 'reynolds_stress': True, ...}
+        """
+        default_methods = {
+            # Mean/time-averaged statistics
+            "mean_velocity": True,
+            "reynolds_stress": True,
+            "normal_stress": True,
+            "mean_tke": True,
+            "mean_vorticity": True,
+            "mean_divergence": True,
+            # Instantaneous (per-frame) statistics
+            "inst_velocity": True,
+            "inst_fluctuations": True,
+            "inst_vorticity": True,
+            "inst_divergence": True,
+            "inst_gamma": True,
+        }
+        return self.statistics.get("enabled_methods", default_methods)
+
+    @property
+    def statistics_enabled_list(self) -> list:
+        """Return list of enabled statistics method names.
+
+        Returns
+        -------
+        list
+            List of method names that are enabled (True).
+            E.g., ['mean_velocity', 'reynolds_stress', 'tke']
+        """
+        methods = self.statistics_enabled_methods
+        return [name for name, enabled in methods.items() if enabled]
+
+    @property
+    def statistics_gamma_radius(self) -> int:
+        """Return gamma function radius parameter.
+
+        Used for gamma1 and gamma2 vortex identification.
+
+        Returns
+        -------
+        int
+            Radius in grid points (default 5)
+        """
+        return self.statistics.get("gamma_radius", 5)
+
+    @property
+    def statistics_save_figures(self) -> bool:
+        """Return whether to save statistics figures.
+
+        Returns
+        -------
+        bool
+            True to save figures (default True)
+        """
+        return self.statistics.get("save_figures", True)
+
+    @property
+    def statistics_type_name(self) -> str:
+        """Return statistics type name for folder organization.
+
+        Returns
+        -------
+        str
+            Type name (default 'instantaneous')
+        """
+        return self.statistics.get("type_name", "instantaneous")
+
+    @property
+    def statistics_source_endpoint(self) -> str:
+        """Return source endpoint for statistics.
+
+        Determines what data type statistics are computed on:
+        - 'instantaneous': Single-frame PIV vectors
+        - 'ensemble': Ensemble-averaged vectors
+        - 'merged': Multi-camera merged vectors
+        - 'stereo': 3D stereo PIV vectors
+
+        Returns
+        -------
+        str
+            Source endpoint (default 'instantaneous')
+        """
+        return self.statistics.get("source_endpoint", "instantaneous")
+
+    @property
+    def statistics_workflow(self) -> str:
+        """Return statistics workflow preference.
+
+        Options:
+        - 'per_camera': Compute stats for each camera independently
+        - 'after_merge': Only compute stats on merged data
+        - 'both': Compute per-camera stats then merged stats
+
+        Returns
+        -------
+        str
+            Workflow preference (default 'per_camera')
+        """
+        return self.statistics.get("workflow", "per_camera")
+
+    @property
+    def statistics_process_cameras(self) -> bool:
+        """Return whether to process individual camera data.
+
+        Returns
+        -------
+        bool
+            True to process individual cameras (default True)
+        """
+        return self.statistics.get("process_cameras", True)
+
+    @property
+    def statistics_process_merged(self) -> bool:
+        """Return whether to process merged camera data.
+
+        Returns
+        -------
+        bool
+            True to process merged data (default False)
+        """
+        return self.statistics.get("process_merged", False)
+
     @property
     def instantaneous_runs(self):
         return self.data.get("instantaneous_piv", {}).get("runs", [])
@@ -758,18 +1081,136 @@ masking:
     def plot_title_fontsize(self):
         return self.plots.get("title_fontsize", 16)
 
+    # --- Video properties (single dict format) ---
+
+    @property
+    def video(self) -> dict:
+        """Return full video configuration block."""
+        return self.data.get("video", {})
+
+    @property
+    def video_base_path_idx(self) -> int:
+        """Return base path index for video operations."""
+        return self.video.get("base_path_idx", 0)
+
+    @property
+    def video_camera(self) -> int:
+        """Return camera number for video (1-based)."""
+        return self.video.get("camera", 1)
+
+    @property
+    def video_data_source(self) -> str:
+        """Return data source: 'calibrated', 'uncalibrated', 'merged', 'inst_stats'."""
+        return self.video.get("data_source", "calibrated")
+
+    @property
+    def video_variable(self) -> str:
+        """Return variable name for video."""
+        return self.video.get("variable", "ux")
+
+    @property
+    def video_run(self) -> int:
+        """Return run number (1-based)."""
+        return self.video.get("run", 1)
+
+    @property
+    def video_piv_type(self) -> str:
+        """Return PIV type: 'instantaneous' or 'ensemble'."""
+        return self.video.get("piv_type", "instantaneous")
+
+    @property
+    def video_cmap(self) -> str:
+        """Return colormap name. 'default' means auto-select."""
+        return self.video.get("cmap", "default")
+
+    @property
+    def video_lower_limit(self) -> Optional[float]:
+        """Return lower color limit. None or '' means auto."""
+        val = self.video.get("lower", "")
+        if val == "" or val is None:
+            return None
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return None
+
+    @property
+    def video_upper_limit(self) -> Optional[float]:
+        """Return upper color limit. None or '' means auto."""
+        val = self.video.get("upper", "")
+        if val == "" or val is None:
+            return None
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return None
+
+    @property
+    def video_fps(self) -> int:
+        """Return video frame rate."""
+        return self.video.get("fps", 30)
+
+    @property
+    def video_crf(self) -> int:
+        """Return video CRF quality (lower = higher quality)."""
+        return self.video.get("crf", 15)
+
+    @property
+    def video_resolution(self) -> tuple:
+        """Return video resolution as (height, width) tuple."""
+        res = self.video.get("resolution", "1080p")
+        if isinstance(res, str):
+            if res == "4k":
+                return (2160, 3840)
+            return (1080, 1920)
+        elif isinstance(res, (list, tuple)) and len(res) >= 2:
+            return (res[0], res[1])
+        return (1080, 1920)
+
+    @property
+    def video_resolution_str(self) -> str:
+        """Return resolution as string: '1080p' or '4k'."""
+        res = self.video.get("resolution", "1080p")
+        if isinstance(res, str):
+            return res
+        elif isinstance(res, (list, tuple)):
+            if res[0] >= 2160:
+                return "4k"
+        return "1080p"
+
+    @property
+    def video_source_endpoint(self) -> str:
+        """Return source endpoint for video creation.
+
+        Determines what data type to create video from:
+        - 'instantaneous': Single-frame PIV vectors (has temporal sequence)
+        - 'merged': Multi-camera merged vectors (has temporal sequence)
+
+        Note: 'ensemble' is not allowed (no temporal sequence - just mean field).
+
+        Returns
+        -------
+        str
+            Source endpoint (default 'instantaneous')
+        """
+        return self.video.get("source_endpoint", "instantaneous")
+
     @property
     def videos(self):
-        """
-        Returns the 'videos' list from config.yaml. Ensures a list is returned.
-        Each entry may contain: type, endpoint, use_merged, video_length, variable.
-        """
-        vids = self.data.get("videos", [])
-        if vids is None:
-            return []
-        if isinstance(vids, dict):
-            return [vids]
-        return list(vids)
+        """DEPRECATED: Use video property instead. Returns list for backward compatibility."""
+        # If old format exists, return it
+        vids = self.data.get("videos", None)
+        if vids is not None:
+            if vids is None:
+                return []
+            if isinstance(vids, dict):
+                return [vids]
+            return list(vids)
+        # Otherwise, return new format as single-item list
+        vid = self.data.get("video", {})
+        if vid:
+            return [vid]
+        return []
 
     @property
     def post_processing(self):
@@ -846,45 +1287,89 @@ masking:
 
     @property
     def calibration_use_camera_subfolders(self) -> bool:
-        """Return True if calibration images use camera subfolders (Cam1/, Cam2/)."""
+        """Return True if calibration images use camera subfolders (Cam1/, Cam2/).
+
+        When True, calibration images are expected in camera subdirectories:
+        - source_path/Cam1/calibration_subfolder/image.tif
+        - source_path/Cam2/calibration_subfolder/image.tif
+
+        When False (default), all calibration images are in a single directory:
+        - source_path/calibration_subfolder/image.tif
+
+        This applies to both standard formats (TIFF, PNG, etc.) and IM7 files.
+        Container formats (.set, .cine) never use camera subfolders.
+        """
         calib_block = self.data.get("calibration", {}) or {}
-        default = self.camera_count > 1
-        return calib_block.get("use_camera_subfolders", default)
+        return calib_block.get("use_camera_subfolders", False)
 
     @property
     def calibration_subfolder(self) -> str:
-        """Return subfolder under camera folder for calibration images.
+        """Return subfolder for calibration images.
 
-        Path structure: source_path / camera_subfolder / calibration_subfolder / image_file
+        Path structure depends on calibration_path_order:
+        - camera_first: source_path / camera_subfolder / calibration_subfolder / image_file
+        - calibration_first: source_path / calibration_subfolder / camera_subfolder / image_file
         """
         calib_block = self.data.get("calibration", {}) or {}
         return calib_block.get("subfolder", "")
 
+    @property
+    def calibration_camera_subfolders(self) -> list:
+        """Return custom camera subfolder names for calibration images.
+
+        Independent from paths.camera_subfolders - specifically for calibration.
+        If not set, returns empty list (will use default Cam1, Cam2... pattern).
+
+        Example: ["camera1", "camera2"] for cameras in folders named camera1/, camera2/
+        """
+        calib_block = self.data.get("calibration", {}) or {}
+        return calib_block.get("camera_subfolders", [])
+
+    @property
+    def calibration_path_order(self) -> str:
+        """Return path order for calibration images.
+
+        Controls the order of camera folder and calibration subfolder in the path:
+        - 'camera_first': source/camera_folder/calibration_subfolder/file (default)
+        - 'calibration_first': source/calibration_subfolder/camera_folder/file
+
+        Returns
+        -------
+        str
+            Path order: 'camera_first' or 'calibration_first'
+        """
+        calib_block = self.data.get("calibration", {}) or {}
+        return calib_block.get("path_order", "camera_first")
+
     def get_calibration_camera_folder(self, camera_num: int) -> str:
         """Get the subfolder name for calibration images of a specific camera.
 
-        Container formats (.cine, .set, .im7) don't use camera subfolders.
-        Returns empty string for single-camera setups or container formats.
+        Container formats (.cine, .set) never use camera subfolders.
+        Standard and IM7 formats respect the calibration_use_camera_subfolders setting.
+
+        Uses calibration.camera_subfolders if set, otherwise falls back to
+        default Cam{N} pattern for multi-camera setups.
         """
-        # Container formats don't use camera subfolders
-        if self.calibration_is_container_format:
+        # SET and CINE never use camera subfolders
+        if self.calibration_image_type in ("lavision_set", "cine"):
             return ""
 
-        # Check if camera subfolders are enabled
+        # Standard and IM7 formats: check calibration_use_camera_subfolders
         if not self.calibration_use_camera_subfolders:
             return ""
 
-        # Use same camera subfolders as PIV images if configured
-        subfolders = self.camera_subfolders
-        idx = camera_num - 1  # camera_num is 1-based
+        # Use calibration-specific camera subfolders if available
+        subfolders = self.calibration_camera_subfolders
+        if subfolders:
+            idx = camera_num - 1  # camera_num is 1-based
+            if idx < len(subfolders) and subfolders[idx]:
+                return subfolders[idx]
 
-        if subfolders and idx < len(subfolders) and subfolders[idx]:
-            return subfolders[idx]
+        # Generate default folder name for multi-camera setups
+        if self.camera_count > 1:
+            return f"Cam{camera_num}"
 
-        if self.camera_count == 1:
-            return ""
-
-        return f"Cam{camera_num}"
+        return ""
 
     def get_calibration_image_path(self, camera: int, index: int, source_path_idx: int = 0) -> Path:
         """Build full path to a calibration image.
@@ -978,16 +1463,118 @@ masking:
         """Return ChArUco board calibration parameters."""
         return self.calibration.get("charuco", {})
 
+    @property
+    def polynomial_calibration(self):
+        """Return polynomial calibration parameters."""
+        return self.calibration.get("polynomial", {})
+
+    def get_polynomial_camera_params(self, camera_num: int) -> dict:
+        """Get polynomial parameters for a specific camera.
+
+        Parameters
+        ----------
+        camera_num : int
+            Camera number (1-based)
+
+        Returns
+        -------
+        dict
+            Camera-specific polynomial parameters including:
+            - origin: {x, y} - pixel origin for normalization
+            - normalisation: {nx, ny} - normalization factors
+            - mm_per_pixel: float - scale factor
+            - coefficients_x: list[float] - 10 polynomial coefficients for X
+            - coefficients_y: list[float] - 10 polynomial coefficients for Y
+        """
+        cameras = self.polynomial_calibration.get("cameras", {})
+        # Try both string and int keys for compatibility
+        return cameras.get(str(camera_num), cameras.get(camera_num, {}))
+
+    @property
+    def stereo_charuco_calibration(self):
+        """Return stereo ChArUco calibration parameters."""
+        return self.calibration.get("stereo_charuco", {})
+
+    @property
+    def calibration_piv_type(self) -> str:
+        """Return PIV type for calibration: 'instantaneous' or 'ensemble'.
+
+        This determines which vector data directory to use when calibrating vectors.
+        """
+        calib_block = self.data.get("calibration", {}) or {}
+        return calib_block.get("piv_type", "instantaneous")
+
     def get_calibration_method_params(self, method: str):
         """Get parameters for a specific calibration method."""
         return self.calibration.get(method, {})
 
     def set_active_calibration_method(self, method: str):
         """Set the active calibration method."""
-        if method in ["scale_factor", "pinhole", "stereo", "charuco"]:
+        if method in ["scale_factor", "pinhole", "stereo", "charuco", "polynomial", "stereo_charuco"]:
             self.data["calibration"]["active"] = method
         else:
             raise ValueError(f"Unknown calibration method: {method}")
+
+    # --- Merging properties ---
+    @property
+    def merging(self) -> dict:
+        """Return full merging configuration block."""
+        return self.data.get("merging", {})
+
+    @property
+    def merging_type_name(self) -> str:
+        """Return default vector type for merging.
+
+        Returns
+        -------
+        str
+            Vector type: 'instantaneous', 'ensemble', etc.
+        """
+        return self.merging.get("type_name", "instantaneous")
+
+    @property
+    def merging_cameras(self) -> list:
+        """Return default cameras to merge.
+
+        Falls back to camera_numbers if not explicitly set.
+
+        Returns
+        -------
+        list
+            List of camera numbers to merge (e.g., [1, 2])
+        """
+        cameras = self.merging.get("cameras")
+        if cameras:
+            return cameras
+        return self.camera_numbers
+
+    @property
+    def merging_base_path_idx(self) -> int:
+        """Return default base path index for merging operations.
+
+        Returns
+        -------
+        int
+            Index into base_paths list (default 0)
+        """
+        return self.merging.get("base_path_idx", 0)
+
+    @property
+    def merging_source_endpoint(self) -> str:
+        """Return source endpoint for vector merging.
+
+        Determines what data type to merge:
+        - 'instantaneous': Single-frame PIV vectors
+        - 'ensemble': Ensemble-averaged vectors
+
+        Note: 'stereo' and 'merged' are not allowed (3D vectors can't merge).
+
+        Returns
+        -------
+        str
+            Source endpoint (default 'instantaneous')
+        """
+        return self.merging.get("source_endpoint", "instantaneous")
 
     # --- PIV-specific properties from pypivtools ---
     @property
@@ -1653,9 +2240,9 @@ masking:
         """
         Get the full path to the mask file for a given camera.
 
-        For .set files, includes the set filename in the mask name to avoid
-        conflicts when multiple .set files exist in the same directory.
-        E.g., "experiment.set" -> "mask_experiment_Cam1.mat"
+        For .set files, masks are stored in a dedicated storage directory
+        (e.g., /path/to/file_data/) with the set filename in the mask name.
+        E.g., source_path="/data/experiment.set" -> "/data/experiment_data/mask_experiment_Cam1.mat"
 
         Parameters
         ----------
@@ -1670,17 +2257,18 @@ masking:
             Full path to the mask .mat file
         """
         base_pattern = self.mask_file_pattern % camera_num
+        storage_dir = self.get_storage_directory(source_path_idx)
 
         # For .set files, include the set filename to disambiguate
         if self.image_type == "lavision_set":
-            set_filename = self.image_format[0]  # e.g., "experiment.set"
-            set_stem = Path(set_filename).stem    # e.g., "experiment"
+            # source_path IS the .set file, so get stem from it directly
+            set_stem = self.source_paths[source_path_idx].stem  # e.g., "experiment"
             # Insert set name: "mask_Cam1.mat" -> "mask_experiment_Cam1.mat"
             mask_filename = base_pattern.replace("mask_", f"mask_{set_stem}_")
         else:
             mask_filename = base_pattern
 
-        return self.source_paths[source_path_idx] / mask_filename
+        return storage_dir / mask_filename
 
     @property
     def zero_based_indexing(self):
@@ -1725,16 +2313,207 @@ masking:
         max_idx = len(self.source_paths) - 1
         return [i for i in active if 0 <= i <= max_idx]
 
+    # --- .set file path helpers ---
+
+    def get_storage_directory(self, source_path_idx: int = 0) -> Path:
+        """Get storage directory for masks (per-.set-file storage).
+
+        For .set files: derives storage from filename (e.g., /path/to/file_data/)
+        For other formats: returns source_path itself
+
+        Parameters
+        ----------
+        source_path_idx : int, optional
+            Index into source_paths list, defaults to 0
+
+        Returns
+        -------
+        Path
+            Directory for storing masks and other per-dataset files
+        """
+        source_path = self.source_paths[source_path_idx]
+        if self.image_type == "lavision_set":
+            # .set files: storage is sibling directory named {stem}_data
+            return source_path.parent / f"{source_path.stem}_data"
+        return source_path
+
+    def get_source_directory(self, source_path_idx: int = 0) -> Path:
+        """Get source directory (parent for .set, same for directories).
+
+        Use this for calibration images and other assets relative to source.
+        For .set files: returns parent directory (e.g., /path/to/)
+        For other formats: returns source_path itself
+
+        Parameters
+        ----------
+        source_path_idx : int, optional
+            Index into source_paths list, defaults to 0
+
+        Returns
+        -------
+        Path
+            Base directory for calibration images and related assets
+        """
+        source_path = self.source_paths[source_path_idx]
+        if self.image_type == "lavision_set":
+            return source_path.parent
+        return source_path
+
+    def get_set_file_path(self, source_path_idx: int = 0) -> Path:
+        """Get the .set file path. For lavision_set, source_path IS the file.
+
+        Parameters
+        ----------
+        source_path_idx : int, optional
+            Index into source_paths list, defaults to 0
+
+        Returns
+        -------
+        Path
+            Full path to the .set file
+
+        Raises
+        ------
+        ValueError
+            If image_type is not lavision_set
+        """
+        if self.image_type != "lavision_set":
+            raise ValueError("get_set_file_path() only valid for lavision_set image_type")
+        return self.source_paths[source_path_idx]
+
+    # --- Transform properties ---
+
+    @property
+    def transforms(self) -> dict:
+        """Return full transforms configuration block."""
+        return self.data.get("transforms", {})
+
+    @property
+    def transforms_cameras(self) -> dict:
+        """Return per-camera transform operations.
+
+        Returns
+        -------
+        dict
+            Dictionary with camera numbers (int) as keys and operation lists as values.
+            E.g., {1: ['flip_ud', 'rotate_90_cw'], 2: ['flip_lr']}
+        """
+        cameras = self.transforms.get("cameras", {})
+        # Normalize keys to integers and extract operations
+        return {int(k): v.get("operations", []) if isinstance(v, dict) else v
+                for k, v in cameras.items()}
+
+    def get_camera_transforms(self, camera: int) -> list:
+        """Get transform operations for a specific camera.
+
+        Parameters
+        ----------
+        camera : int
+            Camera number (1-based)
+
+        Returns
+        -------
+        list
+            List of transformation operation names (already simplified)
+        """
+        cameras = self.transforms_cameras
+        return cameras.get(camera, [])
+
+    def set_camera_transforms(self, camera: int, operations: list):
+        """Set transform operations for a specific camera.
+
+        Parameters
+        ----------
+        camera : int
+            Camera number (1-based)
+        operations : list
+            List of transformation operation names
+        """
+        if "transforms" not in self.data:
+            self.data["transforms"] = {"cameras": {}}
+        if "cameras" not in self.data["transforms"]:
+            self.data["transforms"]["cameras"] = {}
+
+        # Use integer key - YAML handles this correctly
+        self.data["transforms"]["cameras"][camera] = {"operations": operations}
+
+    def clear_camera_transforms(self, camera: int):
+        """Clear all transforms for a specific camera.
+
+        Parameters
+        ----------
+        camera : int
+            Camera number (1-based)
+        """
+        if "transforms" in self.data and "cameras" in self.data["transforms"]:
+            # Check for both int and string keys (backwards compatibility)
+            cameras = self.data["transforms"]["cameras"]
+            if camera in cameras:
+                cameras[camera]["operations"] = []
+            elif str(camera) in cameras:
+                cameras[str(camera)]["operations"] = []
+
+    @property
+    def transforms_base_path_idx(self) -> int:
+        """Return base path index for transform operations.
+
+        Returns
+        -------
+        int
+            Index into base_paths list (default 0)
+        """
+        return self.transforms.get("base_path_idx", 0)
+
+    @property
+    def transforms_type_name(self) -> str:
+        """Return data type name for transform operations.
+
+        Returns
+        -------
+        str
+            Either 'instantaneous' or 'ensemble' (default 'instantaneous')
+        """
+        return self.transforms.get("type_name", "instantaneous")
+
+    @property
+    def transforms_source_endpoint(self) -> str:
+        """Return source endpoint for transform operations.
+
+        Determines what data type to transform:
+        - 'instantaneous': Single-frame PIV vectors
+        - 'ensemble': Ensemble-averaged vectors
+        - 'merged': Multi-camera merged vectors
+        - 'stereo': 3D stereo PIV vectors
+
+        All endpoints are allowed for transforms.
+
+        Returns
+        -------
+        str
+            Source endpoint (default 'instantaneous')
+        """
+        return self.transforms.get("source_endpoint", "instantaneous")
+
     def get_camera_folder(self, camera_num: int) -> str:
         """Get the subfolder name for a specific camera.
 
-        Container formats (.cine, .set, .im7) don't use camera subfolders:
-        - .set/.im7: All cameras in one file
+        Container formats (.cine, .set) don't use camera subfolders:
+        - .set: All cameras in one file
         - .cine: Separate files per camera in source dir (uses %d in pattern)
+
+        IM7 depends on images_use_camera_subfolders:
+        - False (default): All cameras in one .im7 file, no subfolder
+        - True: Single-camera .im7 files in camera subfolders
         """
-        # Container formats don't use camera subfolders
-        if self.is_container_format:
+        # SET and CINE never use camera subfolders
+        if self.image_type in ("lavision_set", "cine"):
             return ""
+
+        # IM7: check images_use_camera_subfolders
+        if self.image_type == "lavision_im7":
+            if not self.images_use_camera_subfolders:
+                return ""  # Multi-camera file, no subfolder
+            # Fall through to use camera subfolders
 
         subfolders = self.camera_subfolders
         # camera_num is 1-based
@@ -1747,6 +2526,44 @@ masking:
             return ""
 
         return f"Cam{camera_num}"
+
+    # ===================== ENDPOINT VALIDATION =====================
+
+    def get_allowed_endpoints(self, tool: str) -> List[str]:
+        """Get allowed source endpoints for a specific tool.
+
+        Parameters
+        ----------
+        tool : str
+            Tool name: 'video', 'merging', 'statistics', 'transforms'
+
+        Returns
+        -------
+        List[str]
+            List of allowed endpoint names
+        """
+        return TOOL_ALLOWED_ENDPOINTS.get(tool, [])
+
+    def validate_endpoint_for_tool(self, tool: str, endpoint: str) -> Tuple[bool, str]:
+        """Validate that an endpoint is allowed for a tool.
+
+        Parameters
+        ----------
+        tool : str
+            Tool name: 'video', 'merging', 'statistics', 'transforms'
+        endpoint : str
+            Endpoint to validate: 'instantaneous', 'ensemble', 'merged', 'stereo'
+
+        Returns
+        -------
+        Tuple[bool, str]
+            (is_valid, error_message)
+            If valid, error_message is empty string.
+        """
+        allowed = self.get_allowed_endpoints(tool)
+        if endpoint not in allowed:
+            return False, f"Endpoint '{endpoint}' not allowed for {tool}. Allowed: {allowed}"
+        return True, ""
 
 
 def get_config(refresh: bool = False) -> Config:

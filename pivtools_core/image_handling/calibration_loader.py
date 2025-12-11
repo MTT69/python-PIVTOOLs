@@ -85,7 +85,15 @@ def read_calibration_image(
         zero_based_indexing=config.calibration_zero_based_indexing,
     )
 
-    # Use the unified core reader
+    # For IM7 with camera subfolders, each file is single-camera - don't pass camera_no
+    if cal_image_type == "lavision_im7" and config.calibration_use_camera_subfolders:
+        from .load_images import read_image
+        img = read_image(str(file_path))
+        if img.ndim == 3:
+            img = img[0]  # Extract single frame
+        return img
+
+    # Use the unified core reader (passes camera_no for multi-camera containers)
     return read_single_frame(
         file_path=file_path,
         camera=camera,

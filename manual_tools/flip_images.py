@@ -1,7 +1,7 @@
 import os
 from PIL import Image
 
-directory = 'particle_positions/planar'
+directory = '/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/stereo/Cam2/calibration'
 
 for filename in os.listdir(directory):
     if filename.endswith('.tif'):

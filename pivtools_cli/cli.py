@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 """
 PIVTOOLs CLI - Command line interface for PIVTOOLs
+
+Commands:
+  init       - Initialize a new PIVTOOLs workspace
+  run        - Run PIV analysis
+  calibrate  - Calibrate vectors (pixels to m/s)
+  transform  - Apply geometric transforms to vectors
+  merge      - Merge multi-camera vector fields
+  statistics - Compute PIV statistics
+  video      - Create visualization videos
 """
 
 import argparse
@@ -8,6 +17,404 @@ import os
 import shutil
 import sys
 from pathlib import Path
+
+
+# =============================================================================
+# CALIBRATE COMMAND
+# =============================================================================
+
+def calibrate_command(args):
+    """Calibrate PIV vectors from pixels to physical units (m/s)."""
+    from pivtools_core.config import get_config
+    from pivtools_gui.calibration.vector_calibration_production import VectorCalibrator
+
+    config = get_config()
+
+    # Apply CLI overrides
+    cameras = [args.camera] if args.camera else config.camera_numbers
+    type_name = args.type_name or "instantaneous"
+    runs_to_process = None
+    if args.runs:
+        runs_to_process = [int(r) for r in args.runs.split(",")]
+
+    # Get active paths
+    active_paths = config.active_paths
+    if not active_paths:
+        print("Error: No active paths configured in config.yaml")
+        sys.exit(1)
+
+    print("=" * 60)
+    print("Vector Calibration - Starting")
+    print("=" * 60)
+    print(f"Active paths: {len(active_paths)}")
+    print(f"Cameras: {cameras}")
+    print(f"Type: {type_name}")
+    print(f"Runs: {runs_to_process or 'all'}")
+
+    results = []
+    for path_idx in active_paths:
+        base_dir = Path(config.base_paths[path_idx])
+        print(f"\nPath {path_idx + 1}/{len(active_paths)}: {base_dir}")
+        print("-" * 40)
+
+        for camera in cameras:
+            try:
+                calibrator = VectorCalibrator(
+                    base_dir=base_dir,
+                    camera_num=camera,
+                    type_name=type_name,
+                    runs=runs_to_process,
+                )
+                result = calibrator.run()
+                result["path_idx"] = path_idx
+                result["camera"] = camera
+                results.append(result)
+
+                if result.get("success"):
+                    print(f"  Camera {camera}: OK - {result.get('calibrated_count', 0)} files")
+                else:
+                    print(f"  Camera {camera}: FAILED - {result.get('error', 'Unknown')}")
+            except Exception as e:
+                print(f"  Camera {camera}: FAILED - {e}")
+                results.append({"success": False, "error": str(e), "path_idx": path_idx, "camera": camera})
+
+    # Summary
+    print("\n" + "=" * 60)
+    print("SUMMARY")
+    print("=" * 60)
+    success_count = sum(1 for r in results if r.get("success"))
+    print(f"Total: {success_count}/{len(results)} operations succeeded")
+
+    sys.exit(0 if success_count == len(results) else 1)
+
+
+# =============================================================================
+# TRANSFORM COMMAND
+# =============================================================================
+
+def transform_command(args):
+    """Apply geometric transforms to PIV vector fields."""
+    from pivtools_core.config import get_config
+    from pivtools_gui.transforms.transform_production import TransformProcessor
+
+    config = get_config()
+
+    # Get camera transforms from config or CLI
+    if args.operations:
+        # Parse CLI operations: "flip_ud,rotate_90_cw"
+        ops = [op.strip() for op in args.operations.split(",")]
+        cameras = [args.camera] if args.camera else config.camera_numbers
+        camera_transforms = {cam: ops for cam in cameras}
+    else:
+        # Use transforms from config
+        camera_transforms = config.transforms_cameras or {}
+        if not camera_transforms:
+            print("Error: No transforms configured. Use --operations or set transforms.cameras in config.yaml")
+            sys.exit(1)
+
+    type_name = args.type_name or config.transforms_type_name or "instantaneous"
+    use_merged = args.merged if args.merged else False
+
+    active_paths = config.active_paths
+    if not active_paths:
+        print("Error: No active paths configured in config.yaml")
+        sys.exit(1)
+
+    print("=" * 60)
+    print("Vector Transform - Starting")
+    print("=" * 60)
+    print(f"Active paths: {len(active_paths)}")
+    print(f"Camera transforms: {camera_transforms}")
+    print(f"Type: {type_name}")
+    print(f"Use merged: {use_merged}")
+
+    results = []
+    for path_idx in active_paths:
+        base_dir = Path(config.base_paths[path_idx])
+        print(f"\nPath {path_idx + 1}/{len(active_paths)}: {base_dir}")
+        print("-" * 40)
+
+        try:
+            processor = TransformProcessor(
+                base_dir=base_dir,
+                camera_transforms=camera_transforms,
+                type_name=type_name,
+                use_merged=use_merged,
+                config=config,
+            )
+            result = processor.process_all_cameras()
+            result["path_idx"] = path_idx
+            results.append(result)
+
+            if result.get("success"):
+                for cam, res in result.get("camera_results", {}).items():
+                    print(f"  Camera {cam}: {res.get('transformed_files', 0)} files")
+            else:
+                print(f"  FAILED")
+        except Exception as e:
+            print(f"  FAILED - {e}")
+            results.append({"success": False, "error": str(e), "path_idx": path_idx})
+
+    # Summary
+    print("\n" + "=" * 60)
+    print("SUMMARY")
+    print("=" * 60)
+    success_count = sum(1 for r in results if r.get("success"))
+    print(f"Total: {success_count}/{len(results)} paths succeeded")
+    print("\nNOTE: Statistics files were NOT transformed. Recalculate if needed.")
+
+    sys.exit(0 if success_count == len(results) else 1)
+
+
+# =============================================================================
+# MERGE COMMAND
+# =============================================================================
+
+def merge_command(args):
+    """Merge multi-camera vector fields using Hanning blend."""
+    from pivtools_core.config import get_config
+    from pivtools_gui.vector_merging.vector_merger import VectorMerger
+
+    config = get_config()
+
+    # Apply CLI overrides
+    if args.cameras:
+        cameras = [int(c) for c in args.cameras.split(",")]
+    else:
+        cameras = config.merging_cameras or config.camera_numbers
+    type_name = args.type_name or config.merging_type_name or "instantaneous"
+
+    active_paths = config.active_paths
+    if not active_paths:
+        print("Error: No active paths configured in config.yaml")
+        sys.exit(1)
+
+    if len(cameras) < 2:
+        print("Error: Merging requires at least 2 cameras")
+        sys.exit(1)
+
+    print("=" * 60)
+    print("Vector Merging - Starting")
+    print("=" * 60)
+    print(f"Active paths: {len(active_paths)}")
+    print(f"Cameras: {cameras}")
+    print(f"Type: {type_name}")
+
+    results = []
+    for path_idx in active_paths:
+        base_dir = Path(config.base_paths[path_idx])
+        print(f"\nPath {path_idx + 1}/{len(active_paths)}: {base_dir}")
+        print("-" * 40)
+
+        try:
+            merger = VectorMerger(
+                base_dir=base_dir,
+                cameras=cameras,
+                type_name=type_name,
+            )
+            result = merger.merge_all_frames()
+            result["path_idx"] = path_idx
+            results.append(result)
+
+            if result.get("success"):
+                print(f"  Merged {result.get('processed_count', 0)} frames")
+                print(f"  Output: {result.get('output_dir', '')}")
+            else:
+                print(f"  FAILED - {result.get('error', 'Unknown')}")
+        except Exception as e:
+            print(f"  FAILED - {e}")
+            results.append({"success": False, "error": str(e), "path_idx": path_idx})
+
+    # Summary
+    print("\n" + "=" * 60)
+    print("SUMMARY")
+    print("=" * 60)
+    success_count = sum(1 for r in results if r.get("success"))
+    print(f"Total: {success_count}/{len(results)} paths succeeded")
+
+    sys.exit(0 if success_count == len(results) else 1)
+
+
+# =============================================================================
+# STATISTICS COMMAND
+# =============================================================================
+
+def statistics_command(args):
+    """Compute PIV statistics (mean, Reynolds stresses, TKE, vorticity, etc.)."""
+    from pivtools_core.config import get_config
+    from pivtools_gui.vector_statistics.instantaneous_statistics import VectorStatisticsProcessor
+
+    config = get_config()
+
+    # Apply CLI overrides
+    cameras = [args.camera] if args.camera else config.camera_numbers
+    type_name = args.type_name or "instantaneous"
+    use_merged = args.merged if args.merged else False
+
+    active_paths = config.active_paths
+    if not active_paths:
+        print("Error: No active paths configured in config.yaml")
+        sys.exit(1)
+
+    print("=" * 60)
+    print("Vector Statistics - Starting")
+    print("=" * 60)
+    print(f"Active paths: {len(active_paths)}")
+    print(f"Cameras: {cameras}")
+    print(f"Type: {type_name}")
+    print(f"Use merged: {use_merged}")
+
+    results = []
+    for path_idx in active_paths:
+        base_dir = Path(config.base_paths[path_idx])
+        print(f"\nPath {path_idx + 1}/{len(active_paths)}: {base_dir}")
+        print("-" * 40)
+
+        targets = ["merged"] if use_merged else cameras
+        for target in targets:
+            try:
+                if target == "merged":
+                    processor = VectorStatisticsProcessor(
+                        base_dir=base_dir,
+                        camera=1,  # Merged uses camera 1 path structure
+                        type_name=type_name,
+                        use_merged=True,
+                    )
+                else:
+                    processor = VectorStatisticsProcessor(
+                        base_dir=base_dir,
+                        camera=target,
+                        type_name=type_name,
+                        use_merged=False,
+                    )
+                result = processor.process()
+                result["path_idx"] = path_idx
+                result["target"] = target
+                results.append(result)
+
+                if result.get("success"):
+                    print(f"  {'Merged' if target == 'merged' else f'Camera {target}'}: OK")
+                else:
+                    print(f"  {'Merged' if target == 'merged' else f'Camera {target}'}: FAILED - {result.get('error', 'Unknown')}")
+            except Exception as e:
+                print(f"  {'Merged' if target == 'merged' else f'Camera {target}'}: FAILED - {e}")
+                results.append({"success": False, "error": str(e), "path_idx": path_idx, "target": target})
+
+    # Summary
+    print("\n" + "=" * 60)
+    print("SUMMARY")
+    print("=" * 60)
+    success_count = sum(1 for r in results if r.get("success"))
+    print(f"Total: {success_count}/{len(results)} operations succeeded")
+
+    sys.exit(0 if success_count == len(results) else 1)
+
+
+# =============================================================================
+# VIDEO COMMAND
+# =============================================================================
+
+def video_command(args):
+    """Create visualization video from PIV data."""
+    from pivtools_core.config import get_config
+    from pivtools_gui.video_maker.video_maker import VideoMaker
+
+    config = get_config()
+
+    # Apply CLI overrides (use config values as defaults)
+    camera = args.camera if args.camera else config.video_camera
+    variable = args.variable if args.variable else config.video_variable
+    run = args.run if args.run else config.video_run
+    data_source = args.data_source if args.data_source else config.video_data_source
+    fps = args.fps if args.fps else config.video_fps
+    crf = args.crf if args.crf else config.video_crf
+    test_mode = args.test if args.test else False
+
+    # Parse resolution
+    if args.resolution:
+        parts = args.resolution.lower().split("x")
+        if len(parts) == 2:
+            resolution = (int(parts[1]), int(parts[0]))  # (height, width)
+        elif args.resolution == "4k":
+            resolution = (2160, 3840)
+        else:
+            resolution = (1080, 1920)
+    else:
+        resolution = config.video_resolution
+
+    # Parse color limits
+    lower_limit = args.lower if args.lower is not None else config.video_lower_limit
+    upper_limit = args.upper if args.upper is not None else config.video_upper_limit
+    cmap = args.cmap if args.cmap else (config.video_cmap if config.video_cmap != "default" else None)
+
+    active_paths = config.active_paths
+    if not active_paths:
+        print("Error: No active paths configured in config.yaml")
+        sys.exit(1)
+
+    print("=" * 60)
+    print("Video Creation - Starting")
+    print("=" * 60)
+    print(f"Active paths: {len(active_paths)}")
+    print(f"Camera: {camera}")
+    print(f"Variable: {variable}")
+    print(f"Run: {run}")
+    print(f"Data source: {data_source}")
+    print(f"FPS: {fps}, CRF: {crf}")
+    print(f"Resolution: {resolution[1]}x{resolution[0]}")
+    print(f"Test mode: {test_mode}")
+
+    results = []
+    for path_idx in active_paths:
+        base_dir = Path(config.base_paths[path_idx])
+        print(f"\nPath {path_idx + 1}/{len(active_paths)}: {base_dir}")
+        print("-" * 40)
+
+        try:
+            maker = VideoMaker(
+                base_dir=base_dir,
+                camera=camera,
+                type_name="instantaneous",  # Video always from instantaneous
+            )
+
+            result = maker.create_video(
+                variable=variable,
+                run=run,
+                fps=fps,
+                crf=crf,
+                resolution=resolution,
+                cmap=cmap,
+                lower_limit=lower_limit,
+                upper_limit=upper_limit,
+                test_mode=test_mode,
+                test_frames=50 if test_mode else None,
+                data_source=data_source,
+            )
+            result["path_idx"] = path_idx
+            results.append(result)
+
+            if result.get("success"):
+                print(f"  Created: {result.get('out_path', '')}")
+                print(f"  Frames: {result.get('frames', 0)}, Time: {result.get('elapsed_sec', 0):.1f}s")
+            else:
+                print(f"  FAILED - {result.get('error', 'Unknown')}")
+        except Exception as e:
+            print(f"  FAILED - {e}")
+            results.append({"success": False, "error": str(e), "path_idx": path_idx})
+
+    # Summary
+    print("\n" + "=" * 60)
+    print("SUMMARY")
+    print("=" * 60)
+    success_count = sum(1 for r in results if r.get("success"))
+    print(f"Total: {success_count}/{len(results)} videos created")
+
+    sys.exit(0 if success_count == len(results) else 1)
+
+
+# =============================================================================
+# INIT COMMAND
+# =============================================================================
 
 def init_command(args):
     """Initialize a new PIVTOOLs workspace with default config.yaml"""
@@ -99,13 +506,40 @@ plots:
   save_pickle: true
   fontsize: 14
   title_fontsize: 16
-videos:
-- endpoint: ''
-  type: instantaneous
-  use_merged: false
+video:
+  camera: 1
   variable: ux
-  video_length: 100
-statistics_extraction: null
+  run: 1
+  data_source: calibrated
+  piv_type: instantaneous
+  cmap: default
+  lower: ''
+  upper: ''
+  fps: 30
+  crf: 15
+  resolution: 1080p
+statistics:
+  enabled_methods:
+    mean_velocity: true
+    reynolds_stress: true
+    normal_stress: true
+    mean_tke: true
+    mean_vorticity: true
+    mean_divergence: true
+    inst_velocity: true
+    inst_fluctuations: true
+    inst_vorticity: true
+    inst_divergence: true
+    inst_gamma: true
+  gamma_radius: 5
+  save_figures: false
+  type_name: instantaneous
+transforms:
+  type_name: instantaneous
+  cameras: {}
+merging:
+  type_name: instantaneous
+  cameras: []
 instantaneous_piv:
   window_size:
   - - 128
@@ -219,6 +653,138 @@ def main():
         help="Run PIV analysis using config.yaml"
     )
     run_parser.set_defaults(func=run_command)
+
+    # calibrate command
+    calibrate_parser = subparsers.add_parser(
+        "calibrate",
+        help="Calibrate PIV vectors from pixels to physical units (m/s)"
+    )
+    calibrate_parser.add_argument(
+        "--camera", "-c", type=int, default=None,
+        help="Camera number to process (default: all from config)"
+    )
+    calibrate_parser.add_argument(
+        "--type-name", "-t", default=None,
+        choices=["instantaneous", "ensemble"],
+        help="Data type (default: instantaneous)"
+    )
+    calibrate_parser.add_argument(
+        "--runs", "-r", default=None,
+        help="Comma-separated run numbers to process (default: all)"
+    )
+    calibrate_parser.set_defaults(func=calibrate_command)
+
+    # transform command
+    transform_parser = subparsers.add_parser(
+        "transform",
+        help="Apply geometric transforms to PIV vector fields"
+    )
+    transform_parser.add_argument(
+        "--camera", "-c", type=int, default=None,
+        help="Camera number (default: all from config)"
+    )
+    transform_parser.add_argument(
+        "--type-name", "-t", default=None,
+        choices=["instantaneous", "ensemble"],
+        help="Data type (default: from config or instantaneous)"
+    )
+    transform_parser.add_argument(
+        "--operations", "-o", default=None,
+        help="Comma-separated transforms: flip_ud,flip_lr,rotate_90_cw,rotate_90_ccw,rotate_180"
+    )
+    transform_parser.add_argument(
+        "--merged", "-m", action="store_true",
+        help="Transform merged data instead of per-camera"
+    )
+    transform_parser.set_defaults(func=transform_command)
+
+    # merge command
+    merge_parser = subparsers.add_parser(
+        "merge",
+        help="Merge multi-camera vector fields using Hanning blend"
+    )
+    merge_parser.add_argument(
+        "--cameras", "-c", default=None,
+        help="Comma-separated camera numbers to merge (default: from config)"
+    )
+    merge_parser.add_argument(
+        "--type-name", "-t", default=None,
+        choices=["instantaneous", "ensemble"],
+        help="Data type (default: from config or instantaneous)"
+    )
+    merge_parser.set_defaults(func=merge_command)
+
+    # statistics command
+    statistics_parser = subparsers.add_parser(
+        "statistics",
+        help="Compute PIV statistics (mean, Reynolds stresses, TKE, vorticity)"
+    )
+    statistics_parser.add_argument(
+        "--camera", "-c", type=int, default=None,
+        help="Camera number to process (default: all from config)"
+    )
+    statistics_parser.add_argument(
+        "--type-name", "-t", default=None,
+        choices=["instantaneous", "ensemble"],
+        help="Data type (default: instantaneous)"
+    )
+    statistics_parser.add_argument(
+        "--merged", "-m", action="store_true",
+        help="Process merged data instead of per-camera"
+    )
+    statistics_parser.set_defaults(func=statistics_command)
+
+    # video command
+    video_parser = subparsers.add_parser(
+        "video",
+        help="Create visualization video from PIV data"
+    )
+    video_parser.add_argument(
+        "--camera", "-c", type=int, default=None,
+        help="Camera number (default: from config)"
+    )
+    video_parser.add_argument(
+        "--variable", "-v", default=None,
+        help="Variable to visualize: ux, uy, uz, mag, vorticity, divergence, u_prime, etc."
+    )
+    video_parser.add_argument(
+        "--run", "-r", type=int, default=None,
+        help="Run number (default: 1)"
+    )
+    video_parser.add_argument(
+        "--data-source", "-d", default=None,
+        choices=["calibrated", "uncalibrated", "merged", "inst_stats"],
+        help="Data source (default: calibrated)"
+    )
+    video_parser.add_argument(
+        "--fps", type=int, default=None,
+        help="Frame rate (default: 30)"
+    )
+    video_parser.add_argument(
+        "--crf", type=int, default=None,
+        help="Video quality 0-51, lower=better (default: 15)"
+    )
+    video_parser.add_argument(
+        "--resolution", default=None,
+        help="Output resolution: WIDTHxHEIGHT or '4k' (default: 1920x1080)"
+    )
+    video_parser.add_argument(
+        "--cmap", default=None,
+        help="Colormap name (default: auto)"
+    )
+    video_parser.add_argument(
+        "--lower", type=float, default=None,
+        help="Lower color limit (default: auto)"
+    )
+    video_parser.add_argument(
+        "--upper", type=float, default=None,
+        help="Upper color limit (default: auto)"
+    )
+    video_parser.add_argument(
+        "--test", action="store_true",
+        help="Test mode: only process 50 frames"
+    )
+    video_parser.set_defaults(func=video_command)
 
     args = parser.parse_args()
 

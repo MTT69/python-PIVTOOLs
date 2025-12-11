@@ -85,6 +85,8 @@ exclude = ["tests*", "manual_tools*", "logs*", "env*"]
     "lib/xcorr_cache.c",
     "lib/xcorr_cache.h",
     "lib/common.h",
+    "lib/marquadt_gaussian.c",
+    "lib/marquadt_gaussian.h",
     "lib/libbulkxcorr2d.*",
     "lib/libinterp2custom.*",
     "lib/libmarquadt.*"

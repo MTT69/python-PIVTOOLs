@@ -36,9 +36,10 @@ def get_data_paths(
         video_dir = base_dir / "videos" / "uncalibrated" / num_str / cam
     # Merged data
     elif use_merged:
-        data_dir = base_dir / "merged" / str(num_frame_pairs) / cam / type_name
-        stats_dir = base_dir / "statistics" / "merged" / cam / type_name
-        video_dir = base_dir / "videos" / "merged" / cam / type_name
+        num_str = str(num_frame_pairs)
+        data_dir = base_dir / "merged" / num_str / cam / type_name
+        stats_dir = base_dir / "statistics" / num_str / "merged" / cam / type_name
+        video_dir = base_dir / "videos" / num_str / "merged" / cam / type_name
     # Regular calibrated data
     else:
         num_str = str(num_frame_pairs)

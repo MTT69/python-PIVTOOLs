@@ -161,7 +161,9 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
 
     # Handle container formats (single file contains multiple frames/cameras)
     if image_type == "lavision_set":
-        set_file_path = camera_path / format_str
+        # For .set files, camera_path IS the .set file itself
+        # (source_path is the full path to the .set file)
+        set_file_path = camera_path
 
         if config.time_resolved:
             # Time-resolved: read two separate frames from container
@@ -173,17 +175,37 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
             return read_image(str(set_file_path), camera_no=camera, im_no=idx)
 
     elif image_type == "lavision_im7":
+        # Check if single-camera or multi-camera IM7 files
+        single_camera_im7 = config.images_use_camera_subfolders
+
         if config.time_resolved:
             # Time-resolved: each file has one frame, read two files
             im7_file_a = camera_path / (format_str % frame_a_idx)
             im7_file_b = camera_path / (format_str % frame_b_idx)
-            frame_a = read_single_frame(im7_file_a, camera, frame_a_idx, image_type)
-            frame_b = read_single_frame(im7_file_b, camera, frame_b_idx, image_type)
+
+            if single_camera_im7:
+                # Single-camera file: don't pass camera_no
+                frame_a = read_image(str(im7_file_a), frames=1, frames_per_camera=1)
+                frame_b = read_image(str(im7_file_b), frames=1, frames_per_camera=1)
+                # Handle shape (returns (frames, H, W) for single frame)
+                if frame_a.ndim == 3:
+                    frame_a = frame_a[0]
+                if frame_b.ndim == 3:
+                    frame_b = frame_b[0]
+            else:
+                # Multi-camera file: pass camera_no to extract specific camera
+                frame_a = read_single_frame(im7_file_a, camera, frame_a_idx, image_type)
+                frame_b = read_single_frame(im7_file_b, camera, frame_b_idx, image_type)
             return np.stack([frame_a, frame_b], axis=0)
         else:
             # Non-time-resolved: each file contains A+B pair
             im7_file_path = camera_path / (format_str % frame_a_idx)
-            return read_image(str(im7_file_path), camera_no=camera)
+            if single_camera_im7:
+                # Single-camera file: don't pass camera_no
+                return read_image(str(im7_file_path))
+            else:
+                # Multi-camera file: pass camera_no
+                return read_image(str(im7_file_path), camera_no=camera)
 
     elif image_type == "cine":
         # .cine: one video file per camera, frames extracted by index
@@ -279,14 +301,22 @@ def load_images(camera: int, config: Config, source: Path = None) -> da.Array:
 
     # Determine camera_path based on image type
     # Container formats don't use camera subdirectories:
-    # - .set/.im7: all cameras in one file
+    # - .set: all cameras in one file
     # - .cine: separate files per camera, but in source directory (not subdirs)
+    # - .im7: depends on images_use_camera_subfolders setting
     image_type = config.image_type
 
     if image_type == "lavision_set":
-        camera_path = source  # No camera subdirectory for set files
+        # For .set files, source IS the .set file itself (full path)
+        camera_path = source
     elif image_type == "lavision_im7":
-        camera_path = source  # No camera subdirectory for im7 files
+        if config.images_use_camera_subfolders:
+            # Single-camera IM7 files in camera subdirectories
+            folder = config.get_camera_folder(camera)
+            camera_path = source / folder if folder else source
+        else:
+            # Multi-camera IM7 files in source directory (default)
+            camera_path = source
     elif image_type == "cine":
         camera_path = source  # .cine files in source directory (no subdirs)
     else:
@@ -408,12 +438,12 @@ def load_mask_for_camera(
             
             if not mask_path.exists():
                 logging.warning(
-                    "Mask file not found for Cam{} at {}. Proceeding without mask.",
+                    "Mask file not found for Cam%s at %s. Proceeding without mask.",
                     camera_num, mask_path
                 )
                 return None
-            
-            logging.debug("Loading mask for Cam{} from {}", camera_num, mask_path)
+
+            logging.debug("Loading mask for Cam%s from %s", camera_num, mask_path)
             mask, polygons = read_mask_from_mat(str(mask_path))
             
             # Ensure mask is boolean

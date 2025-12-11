@@ -210,10 +210,20 @@ class BuildCLib(build_ext):
                 if (build_dir / f"libmarquadt{lib_ext}").exists():
                     print(f"Successfully built libmarquadt{lib_ext}")
                 else:
-                    print(f"WARNING: libmarquadt{lib_ext} build may have failed")
+                    print(f"WARNING: libmarquadt{lib_ext} build may have failed (no output file)")
+                    print("Ensemble PIV will not be available.")
+            except FileNotFoundError as e:
+                print(f"WARNING: Compiler not found for libmarquadt: {e}")
+                print("Ensemble PIV will not be available.")
             except RuntimeError as e:
                 print(f"WARNING: Failed to build libmarquadt: {e}")
                 print("Ensemble PIV will not be available.")
+            except Exception as e:
+                print(f"WARNING: Unexpected error building libmarquadt: {type(e).__name__}: {e}")
+                print("Ensemble PIV will not be available.")
+        else:
+            print(f"WARNING: {marquadt_src} not found, skipping libmarquadt build")
+            print("Ensemble PIV will not be available.")
 
         # Clean up intermediate build files
         for pattern in ['*.obj', '*.exp', '*.lib']:

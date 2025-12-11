@@ -18,14 +18,17 @@ from flask_cors import CORS
 from loguru import logger
 import os
 from pivtools_gui.calibration.app.views import calibration_bp
-from pivtools_gui.calibration_poly.app.views import calibration_poly_bp
-from pivtools_core.config import get_config, reload_config
-from pivtools_core.image_handling.load_images import read_pair
+from pivtools_core.config import get_config, reload_config, Config
+from pivtools_core.image_handling.load_images import read_pair, load_mask_for_camera
 from pivtools_core.image_handling.path_utils import build_piv_camera_path, validate_images_generic
 from pivtools_gui.masking.app.views import masking_bp
 from pivtools_core.paths import get_data_paths
 from pivtools_gui.piv_runner import get_runner
 from pivtools_gui.plotting.app.plotting_views import vector_plot_bp
+# Old per-file transform storage (kept for backwards compatibility)
+from pivtools_gui.plotting.app.transform_views import transform_bp
+# New config-based transform storage
+from pivtools_gui.transforms.app.transform_views import transform_bp as transform_new_bp
 from pivtools_cli.preprocessing.preprocess import preprocess_images, apply_filters_to_batch
 # from pivtools_gui.stereo_reconstruction.app.views import stereo_bp
 from pivtools_gui.utils import camera_folder, camera_number, numpy_to_png_base64, numpy_to_base64
@@ -42,14 +45,13 @@ api_bp = Blueprint('api', __name__, url_prefix='/backend')
 
 # Register existing blueprints with /backend prefix
 app.register_blueprint(vector_plot_bp, url_prefix='/backend/plot')
+app.register_blueprint(transform_bp, url_prefix='/backend/plot')
 app.register_blueprint(masking_bp, url_prefix='/backend')
 app.register_blueprint(calibration_bp, url_prefix='/backend')
-app.register_blueprint(calibration_poly_bp, url_prefix='/backend')
 app.register_blueprint(video_maker_bp, url_prefix='/backend/video')
 # app.register_blueprint(stereo_bp, url_prefix='/backend')
 app.register_blueprint(statistics_bp, url_prefix='/backend')
 app.register_blueprint(merging_bp, url_prefix='/backend')
-
 # --- In-memory stores ---
 processed_store = {"processed": {}}
 processing = False
@@ -118,8 +120,9 @@ def cam_folder_key(camera, cfg):
 
 def make_raw_cache_key(source_path_idx: int, camera: int, idx: int, img_format: str, cfg) -> tuple:
     """Generate consistent cache key for raw images. Include all parameters that affect output."""
-    format_str = cfg.image_format[0]
-    if '.set' in str(format_str) or '.im7' in str(format_str):
+    image_type = cfg.image_type
+    # For .set files, source_path IS the .set file; for others, may need camera folder
+    if image_type in ("lavision_set", "lavision_im7"):
         source_path = cfg.source_paths[source_path_idx]
     else:
         folder = cfg.get_camera_folder(camera)
@@ -129,8 +132,9 @@ def make_raw_cache_key(source_path_idx: int, camera: int, idx: int, img_format: 
 
 def cache_key(source_path_idx, camera, cfg):
     """Generate cache key for processed images (no frame index - stores dict of frames)."""
-    format_str = cfg.image_format[0]
-    if '.set' in str(format_str) or '.im7' in str(format_str):
+    image_type = cfg.image_type
+    # For .set files, source_path IS the .set file; for others, may need camera folder
+    if image_type in ("lavision_set", "lavision_im7"):
         source_path = cfg.source_paths[source_path_idx]
     else:
         folder = cfg.get_camera_folder(camera_number(camera))
@@ -227,7 +231,8 @@ def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: 
     import time as time_module
     try:
         format_str = cfg.image_format[0]
-        if '.set' in str(format_str) or '.im7' in str(format_str):
+        image_type = cfg.image_type
+        if image_type in ("lavision_set", "lavision_im7"):
             source_path = cfg.source_paths[source_path_idx]
         else:
             folder = cfg.get_camera_folder(camera)
@@ -304,7 +309,8 @@ def get_frame_pair():
 
     # Determine source path for reading (if cache miss)
     format_str = cfg.image_format[0]
-    if '.set' in str(format_str) or '.im7' in str(format_str):
+    image_type = cfg.image_type
+    if image_type in ("lavision_set", "lavision_im7"):
         source_path = cfg.source_paths[source_path_idx]
     else:
         folder = cfg.get_camera_folder(camera)
@@ -440,14 +446,27 @@ def preload_images():
 def filter_images_endpoint():
     global processing
     data = request.get_json() or {}
-    cfg = get_config()
+    # Use fresh config instance to avoid polluting global state with preview overrides
+    cfg = Config()
     camera = camera_number(data.get("camera"))
     start_idx = int(data.get("start_idx", 1))
     filters = data.get("filters", None)
+    masking = data.get("masking", None)
+    
+    # Handle source_path_idx safely (default to 0 if missing or None)
     source_path_idx = data.get("source_path_idx")
+    if source_path_idx is None:
+        source_path_idx = 0
+    source_path_idx = int(source_path_idx)
     
     if filters is not None:
         cfg.data["filters"] = filters
+
+    if masking is not None:
+        if "masking" not in cfg.data:
+            cfg.data["masking"] = {}
+        recursive_update(cfg.data["masking"], masking)
+        logger.info(f"Preview masking config: {cfg.data['masking']}")
 
     # Use batch size from config
     batch_length = cfg.data.get("batches", {}).get("size", 30)
@@ -463,8 +482,9 @@ def filter_images_endpoint():
     
     # For .set and .im7 files, don't append camera folder - all cameras are in the source directory
     format_str = cfg.image_format[0]
+    image_type = cfg.image_type
 
-    if '.set' in str(format_str) or '.im7' in str(format_str):
+    if image_type in ("lavision_set", "lavision_im7"):
         source_path = cfg.source_paths[source_path_idx]
     else:
         folder = cfg.get_camera_folder(camera_number(camera))
@@ -501,6 +521,20 @@ def filter_images_endpoint():
             # Compute to numpy array first (required for apply_filters_to_batch)
             batch_np = dask.compute(darr, scheduler='threads')[0]
 
+            # Load mask
+            mask = load_mask_for_camera(camera, cfg, source_path_idx)
+            if mask is not None:
+                logger.info(f"Preview mask loaded: shape={mask.shape}, dtype={mask.dtype}")
+                if batch_np.shape[-2:] != mask.shape:
+                    logger.error(f"Mask shape mismatch! Batch: {batch_np.shape}, Mask: {mask.shape}")
+            else:
+                if not cfg.masking_enabled:
+                    logger.info("Masking is DISABLED in config.")
+                else:
+                    expected_path = cfg.get_mask_path(camera, source_path_idx)
+                    logger.info(f"Masking ENABLED. Expected mask path: {expected_path}. Exists: {expected_path.exists()}")
+                logger.info("No mask loaded for preview (masking disabled or file not found)")
+
             # Apply ALL filters (spatial + batch) using unified function
             processed_all = apply_filters_to_batch(
                 batch_np,
@@ -508,7 +542,7 @@ def filter_images_endpoint():
                 save_diagnostics=False,
                 output_dir=None,
                 batch_idx=0,
-                pixel_mask=None  # TODO: load mask if configured
+                pixel_mask=mask
             )
 
             # Store results
@@ -600,8 +634,9 @@ def filter_single_frame():
     
     # For .set and .im7 files, don't append camera folder
     format_str = cfg.image_format[0]
+    image_type = cfg.image_type
 
-    if '.set' in str(format_str) or '.im7' in str(format_str):
+    if image_type in ("lavision_set", "lavision_im7"):
         source_path = cfg.source_paths[source_path_idx]
     else:
         folder = cfg.get_camera_folder(camera_number(camera))
@@ -958,6 +993,41 @@ def update_config():
 
     recursive_update(cfg.data, data)
 
+    # Normalize camera keys in calibration.polynomial.cameras to integers
+    # (JSON keys are always strings, but we want integer keys in YAML)
+    poly_cameras = cfg.data.get("calibration", {}).get("polynomial", {}).get("cameras")
+    if poly_cameras and isinstance(poly_cameras, dict):
+        normalized = {}
+        for k, v in poly_cameras.items():
+            try:
+                int_key = int(k)
+                # If both string and int versions exist, prefer the one being updated
+                # (string key is the one just sent from frontend)
+                if int_key in normalized and isinstance(k, str):
+                    # String key is new data, overwrite
+                    normalized[int_key] = v
+                elif int_key not in normalized:
+                    normalized[int_key] = v
+            except (ValueError, TypeError):
+                # Keep non-numeric keys as-is (shouldn't happen)
+                normalized[k] = v
+        cfg.data["calibration"]["polynomial"]["cameras"] = normalized
+
+    # Normalize camera keys in transforms.cameras to integers
+    transforms_cameras = cfg.data.get("transforms", {}).get("cameras")
+    if transforms_cameras and isinstance(transforms_cameras, dict):
+        normalized = {}
+        for k, v in transforms_cameras.items():
+            try:
+                int_key = int(k)
+                if int_key in normalized and isinstance(k, str):
+                    normalized[int_key] = v
+                elif int_key not in normalized:
+                    normalized[int_key] = v
+            except (ValueError, TypeError):
+                normalized[k] = v
+        cfg.data["transforms"]["cameras"] = normalized
+
     # Handle camera_numbers based on camera_count changes
     new_camera_count = cfg.data["paths"].get("camera_count", 1)
 
@@ -1128,12 +1198,82 @@ def get_piv_logs():
         return jsonify({"error": f"Failed to read log file: {str(e)}"}), 500
 
 
+def get_ensemble_progress_from_logs(job_id: str, cfg) -> dict:
+    """Parse logs to determine ensemble progress."""
+    import re
+
+    runner = get_runner()
+    status = runner.get_job_status(job_id)
+
+    if not status:
+        return {"percent": 0, "error": "Job not found", "running": False}
+
+    # Read the full log file for parsing
+    log_file = Path(status.get("log_file", ""))
+    log_text = ""
+    if log_file.exists():
+        try:
+            with open(log_file, "r", encoding="utf-8", errors="replace") as f:
+                log_text = f.read()
+        except Exception:
+            pass
+
+    # Parse pass progress: "======== PASS 2/4 ========"
+    pass_matches = re.findall(r"PASS (\d+)/(\d+)", log_text)
+    current_pass = 1
+    total_passes = cfg.ensemble_num_passes or 1
+
+    if pass_matches:
+        # Get the last match (most recent pass)
+        current_pass = int(pass_matches[-1][0])
+        total_passes = int(pass_matches[-1][1])
+
+    # Parse batch progress within pass: "[Pass 2, Batch 5/10]" or similar patterns
+    batch_matches = re.findall(r"\[Pass \d+,?\s*Batch (\d+)/(\d+)\]", log_text)
+    current_batch = 0
+    total_batches = 1
+
+    if batch_matches:
+        # Get the last batch match
+        current_batch = int(batch_matches[-1][0])
+        total_batches = int(batch_matches[-1][1])
+
+    # Calculate overall progress
+    # Progress = (completed_passes * 100 + current_pass_progress) / total_passes
+    pass_progress = (current_batch / total_batches) * 100 if total_batches > 0 else 0
+    overall_progress = ((current_pass - 1) * 100 + pass_progress) / total_passes
+
+    # Check if complete
+    is_running = status.get("running", True)
+    return_code = status.get("return_code")
+    if not is_running and return_code == 0:
+        overall_progress = 100
+
+    return {
+        "percent": int(overall_progress),
+        "mode": "ensemble",
+        "current_pass": current_pass,
+        "total_passes": total_passes,
+        "current_batch": current_batch,
+        "total_batches": total_batches,
+        "running": is_running,
+    }
+
+
 @api_bp.route("/get_uncalibrated_count", methods=["GET"])
 def get_uncalibrated_count():
     cfg = get_config()
     basepath_idx = request.args.get("basepath_idx", default=0, type=int)
     cam = camera_number(request.args.get("camera", default=1, type=int))
     type_name = request.args.get("type", default="instantaneous")
+    job_id = request.args.get("job_id")  # NEW: accept job_id for log-based progress
+
+    # Check if ensemble mode - use log-based progress if job_id provided
+    is_ensemble = cfg.data.get("processing", {}).get("ensemble", False)
+    if is_ensemble and job_id:
+        progress_data = get_ensemble_progress_from_logs(job_id, cfg)
+        return jsonify(progress_data)
+
     base_paths = cfg.base_paths
     base = base_paths[basepath_idx]
     num_pairs = cfg.num_frame_pairs  # Vector files correspond to frame pairs
@@ -1149,7 +1289,7 @@ def get_uncalibrated_count():
 
     vector_fmt = cfg.vector_format
     expected_names = set([vector_fmt % i for i in range(1, num_pairs + 1)])
-    
+
     # Count files for each camera and collect all available files
     all_files = []
     for camera_num in camera_numbers:
@@ -1161,7 +1301,7 @@ def get_uncalibrated_count():
             use_uncalibrated=True,
         )
         folder_uncal = paths["data_dir"]
-        
+
         found = (
             [
                 p.name
@@ -1171,20 +1311,20 @@ def get_uncalibrated_count():
             if folder_uncal.exists() and folder_uncal.is_dir()
             else []
         )
-        
+
         # If this is the requested camera, add its files to the list
         if camera_num == cam:
             all_files = found
-        
+
         camera_progress[f"Cam{camera_num}"] = {
             "count": len(found),
             "percent": int((len(found) / num_pairs) * 100) if num_pairs else 0
         }
         total_found_files += len(found)
-    
+
     # Calculate overall progress across all cameras
     percent = int((total_found_files / total_expected_files) * 100) if total_expected_files else 0
-    
+
     return jsonify({
         "count": total_found_files,
         "percent": percent,
@@ -1192,6 +1332,106 @@ def get_uncalibrated_count():
         "camera_progress": camera_progress,
         "cameras": camera_numbers,
         "files": all_files,
+    })
+
+
+@api_bp.route("/check_output_exists", methods=["GET"])
+def check_output_exists():
+    """Check if output data exists for given paths/cameras."""
+    cfg = get_config()
+    active_paths_str = request.args.get("active_paths", "")
+    active_paths = [int(p) for p in active_paths_str.split(",") if p.strip()]
+
+    logger.info(f"[check_output_exists] Checking paths: {active_paths}")
+
+    if not active_paths:
+        logger.info("[check_output_exists] No active paths provided")
+        return jsonify({"exists": False, "details": {}})
+
+    exists = False
+    details = {}
+
+    for path_idx in active_paths:
+        if path_idx >= len(cfg.base_paths):
+            logger.warning(f"[check_output_exists] Path index {path_idx} out of range")
+            continue
+        base = cfg.base_paths[path_idx]
+        path_key = f"path_{path_idx}"
+        details[path_key] = {}
+        logger.info(f"[check_output_exists] Checking base path: {base}")
+
+        for cam_num in cfg.camera_numbers:
+            cam_key = f"Cam{cam_num}"
+            details[path_key][cam_key] = {"instantaneous": False, "ensemble": False}
+
+            # Check instantaneous output
+            inst_paths = get_data_paths(base, cfg.num_frame_pairs, cam_num, "instantaneous", True)
+            inst_dir = inst_paths["data_dir"]
+            logger.info(f"[check_output_exists] Instantaneous dir: {inst_dir}, exists: {inst_dir.exists()}")
+            if inst_dir.exists():
+                try:
+                    files = list(inst_dir.iterdir())
+                    logger.info(f"[check_output_exists] Found {len(files)} files in instantaneous dir")
+                    if files:
+                        exists = True
+                        details[path_key][cam_key]["instantaneous"] = True
+                except Exception as e:
+                    logger.error(f"[check_output_exists] Error listing instantaneous dir: {e}")
+
+            # Check ensemble output
+            ens_paths = get_data_paths(base, cfg.num_frame_pairs, cam_num, "ensemble", True)
+            ens_dir = ens_paths["data_dir"]
+            logger.info(f"[check_output_exists] Ensemble dir: {ens_dir}, exists: {ens_dir.exists()}")
+            if ens_dir.exists():
+                try:
+                    files = list(ens_dir.iterdir())
+                    logger.info(f"[check_output_exists] Found {len(files)} files in ensemble dir")
+                    if files:
+                        exists = True
+                        details[path_key][cam_key]["ensemble"] = True
+                except Exception as e:
+                    logger.error(f"[check_output_exists] Error listing ensemble dir: {e}")
+
+    logger.info(f"[check_output_exists] Final result: exists={exists}")
+    return jsonify({"exists": exists, "details": details})
+
+
+@api_bp.route("/clear_output", methods=["POST"])
+def clear_output():
+    """Clear output data for given paths/cameras."""
+    import shutil
+
+    data = request.get_json() or {}
+    active_paths = data.get("active_paths", [])
+    camera_numbers = data.get("camera_numbers", [])
+
+    cfg = get_config()
+    cleared = []
+    errors = []
+
+    for path_idx in active_paths:
+        if path_idx >= len(cfg.base_paths):
+            continue
+        base = cfg.base_paths[path_idx]
+
+        for cam_num in camera_numbers:
+            for type_name in ["instantaneous", "ensemble"]:
+                try:
+                    paths = get_data_paths(base, cfg.num_frame_pairs, cam_num, type_name, True)
+                    data_dir = paths["data_dir"]
+                    if data_dir.exists():
+                        shutil.rmtree(data_dir)
+                        data_dir.mkdir(parents=True, exist_ok=True)
+                        cleared.append(str(data_dir))
+                        logger.info(f"Cleared output directory: {data_dir}")
+                except Exception as e:
+                    errors.append(f"Failed to clear {type_name} for path {path_idx}, cam {cam_num}: {str(e)}")
+                    logger.error(f"Error clearing output: {e}")
+
+    return jsonify({
+        "status": "cleared" if not errors else "partial",
+        "directories": cleared,
+        "errors": errors
     })
 
 # Register the main API blueprint

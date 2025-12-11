@@ -20,7 +20,7 @@ from scipy.io import loadmat
 from pivtools_core.config import get_config
 from pivtools_core.coordinate_utils import extract_coordinates
 from pivtools_core.paths import get_data_paths
-from pivtools_core.vector_loading import find_non_empty_run
+from pivtools_core.vector_loading import find_non_empty_run, get_plottable_vars
 
 from ..plot_maker import make_scalar_settings
 from ...utils import camera_number
@@ -45,19 +45,50 @@ vector_plot_bp = Blueprint("vector_plot", __name__)
 
 @vector_plot_bp.route("/plot_vector", methods=["GET"])
 def plot_vector():
-    """Plot instantaneous vector data."""
+    """Plot vector data from various sources.
+
+    Query params:
+        var_source: "inst" (default), "inst_stat", or "mean"
+            - inst: frame .mat file
+            - inst_stat: instantaneous_stats/NNNNN.mat
+            - mean: mean_stats/mean_stats.mat
+    """
     try:
         logger.info("plot_vector: received request")
         params = parse_plot_params(request)
         paths = validate_and_get_paths(params)
+
         data_dir = Path(paths["data_dir"])
+        stats_dir = Path(paths["stats_dir"])
         vector_fmt = get_config().vector_format
-        data_path = data_dir / (vector_fmt % params["frame"])
-        coords_path = (
-            data_dir / "coordinates.mat"
-            if (data_dir / "coordinates.mat").exists()
-            else None
-        )
+
+        # Determine data source
+        var_source = request.args.get("var_source", default="inst", type=str)
+
+        if var_source == "mean":
+            # Mean statistics - no frame needed
+            data_path = stats_dir / "mean_stats" / "mean_stats.mat"
+            coords_path = stats_dir / "mean_stats" / "coordinates.mat"
+            if not coords_path.exists():
+                coords_path = data_dir / "coordinates.mat" if (data_dir / "coordinates.mat").exists() else None
+        elif var_source == "inst_stat":
+            # Per-frame calculated statistics
+            inst_stats_dir = stats_dir / "instantaneous_stats"
+            data_path = inst_stats_dir / (vector_fmt % params["frame"])
+            coords_path = (
+                data_dir / "coordinates.mat"
+                if (data_dir / "coordinates.mat").exists()
+                else None
+            )
+        else:
+            # Default: instantaneous frame data
+            data_path = data_dir / (vector_fmt % params["frame"])
+            coords_path = (
+                data_dir / "coordinates.mat"
+                if (data_dir / "coordinates.mat").exists()
+                else None
+            )
+
         b64_img, W, H, extra, effective_run = load_and_plot_data(
             mat_path=data_path,
             coords_path=coords_path,
@@ -126,6 +157,12 @@ def plot_ensemble():
         params = parse_plot_params(request)
         params["type_name"] = "ensemble"  # Override type
 
+        # Strip variable prefix (inst:, mean:, inst_stat:) if present
+        # Frontend sends prefixed names like "inst:ux" but ensemble structs use raw names like "ux"
+        raw_var = params["var"]
+        if ':' in raw_var:
+            _, raw_var = raw_var.split(':', 1)
+
         paths = validate_and_get_paths(params)
         data_dir = Path(paths["data_dir"])
 
@@ -140,36 +177,16 @@ def plot_ensemble():
             return jsonify({"success": False, "error": "Variable 'ensemble_result' not found in mat"}), 400
 
         ensemble_result = mat["ensemble_result"]
-        pr = None
-        effective_run = params["run"]
 
-        if isinstance(ensemble_result, np.ndarray) and ensemble_result.dtype == object:
-            max_runs = ensemble_result.size
-            current_run = params["run"]
-            while current_run <= max_runs:
-                pr_candidate = ensemble_result[current_run - 1]
-                try:
-                    var_arr = np.asarray(getattr(pr_candidate, params["var"]))
-                    if var_arr.size > 0 and not np.all(np.isnan(var_arr)):
-                        pr = pr_candidate
-                        effective_run = current_run
-                        break
-                except Exception:
-                    pass
-                current_run += 1
-        else:
-            try:
-                var_arr = np.asarray(getattr(ensemble_result, params["var"]))
-                if var_arr.size > 0 and not np.all(np.isnan(var_arr)):
-                    pr = ensemble_result
-                    effective_run = 1
-            except Exception:
-                pass
+        # Use centralized helper from vector_loading (same as instantaneous data)
+        pr, effective_run = find_non_empty_run(
+            ensemble_result, raw_var, run=params["run"], require_2d=False, reject_all_nan=True
+        )
 
         if pr is None:
-            return jsonify({"success": False, "error": f"No valid data found for variable '{params['var']}'"}), 404
+            return jsonify({"success": False, "error": f"No valid data found for variable '{raw_var}'"}), 404
 
-        var_arr = np.asarray(getattr(pr, params["var"]))
+        var_arr = np.asarray(getattr(pr, raw_var))
         try:
             mask_arr = np.asarray(getattr(pr, "b_mask")).astype(bool)
         except Exception:
@@ -184,7 +201,7 @@ def plot_ensemble():
 
         settings = make_scalar_settings(
             get_config(),
-            variable=params["var"],
+            variable=raw_var,
             run_label=effective_run,
             save_basepath=Path("plot_ensemble_tmp"),
             variable_units="m/s",
@@ -200,7 +217,7 @@ def plot_ensemble():
         )
 
         b64_img, W, H, extra = create_and_return_plot(var_arr, mask_arr, settings, raw=params["raw"])
-        meta = build_response_meta(effective_run, params["var"], W, H, extra)
+        meta = build_response_meta(effective_run, raw_var, W, H, extra)
 
         return jsonify({"success": True, "image": b64_img, "meta": meta})
 
@@ -319,6 +336,167 @@ def check_vars():
         return jsonify({"success": False, "error": "Internal server error"}), 500
 
 
+def _extract_plottable_vars(mat_path: Path) -> list:
+    """Extract plottable 2D variable names from a .mat file."""
+    if not mat_path.exists():
+        return []
+
+    try:
+        data_mat = loadmat(str(mat_path), struct_as_record=False, squeeze_me=True)
+        if "piv_result" not in data_mat:
+            return []
+
+        piv_result = data_mat["piv_result"]
+        pr = None
+
+        # Handle multiple runs (array of structs)
+        if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
+            for el in piv_result:
+                try:
+                    for candidate in ("ux", "uy", "b_mask", "uu", "u_prime"):
+                        val = getattr(el, candidate, None)
+                        if val is not None and np.asarray(val).size > 0:
+                            pr = el
+                            break
+                    if pr:
+                        break
+                except Exception:
+                    continue
+            if not pr and piv_result.size > 0:
+                pr = piv_result.flat[0]
+        else:
+            pr = piv_result
+
+        if pr is None:
+            return []
+
+        # Get all field names
+        all_vars = []
+        dt = getattr(pr, "dtype", None)
+        if dt and getattr(dt, "names", None):
+            all_vars = list(dt.names)
+        else:
+            try:
+                if hasattr(pr, "dtype") and getattr(pr.dtype, "names", None):
+                    all_vars = list(pr.dtype.names)
+                elif hasattr(pr, "dtype") and getattr(pr.dtype, "fields", None):
+                    f = pr.dtype.fields
+                    if isinstance(f, dict):
+                        all_vars = list(f.keys())
+            except Exception:
+                pass
+            if not all_vars:
+                try:
+                    attrs = [
+                        n for n in dir(pr)
+                        if not n.startswith("_") and not callable(getattr(pr, n, None))
+                    ]
+                    all_vars = attrs
+                except Exception:
+                    all_vars = []
+
+        # Filter to plottable 2D arrays
+        EXCLUDED_VARS = {"x", "y"}
+        plottable_vars = []
+
+        for var_name in all_vars:
+            if var_name in EXCLUDED_VARS:
+                continue
+            try:
+                val = getattr(pr, var_name, None)
+                if val is None:
+                    continue
+                arr = np.asarray(val)
+                if arr.ndim == 2:
+                    plottable_vars.append(var_name)
+            except Exception:
+                continue
+
+        return plottable_vars
+    except Exception:
+        return []
+
+
+@vector_plot_bp.route("/check_all_vars", methods=["GET"])
+def check_all_vars():
+    """
+    Return all available variables grouped by source.
+
+    Returns:
+        {
+            "instantaneous": ["ux", "uy", ...],      # From frame .mat files
+            "instantaneous_stats": ["u_prime", ...], # From instantaneous_stats folder
+            "mean_stats": ["ux", "uu", "tke", ...]   # From mean_stats.mat
+            "ensemble": ["ux", "uy", "UU_stress", ...] # From ensemble_result.mat
+        }
+    """
+    try:
+        frame = request.args.get("frame", default=1, type=int)
+        params = parse_plot_params(request)
+        paths = validate_and_get_paths(params)
+
+        data_dir = Path(paths["data_dir"])
+        stats_dir = Path(paths["stats_dir"])
+        mean_stats_dir = stats_dir / "mean_stats"
+        inst_stats_dir = stats_dir / "instantaneous_stats"
+
+        result = {
+            "instantaneous": [],
+            "instantaneous_stats": [],
+            "mean_stats": [],
+            "ensemble": [],
+        }
+
+        # 1. Check instantaneous frame file
+        vec_fmt = get_config().vector_format
+        frame_path = data_dir / (vec_fmt % frame)
+        result["instantaneous"] = get_plottable_vars(frame_path, var_name="piv_result")
+
+        # 2. Check instantaneous_stats folder (per-frame calculated stats)
+        if inst_stats_dir.exists():
+            # Check first file in inst_stats folder
+            inst_stat_files = sorted(inst_stats_dir.glob("*.mat"))
+            if inst_stat_files:
+                inst_stat_path = inst_stat_files[0]
+                inst_vars = get_plottable_vars(inst_stat_path, var_name="piv_result")
+                # Filter to only include calculated stats (not duplicates of base vars)
+                base_vars = set(result["instantaneous"])
+                result["instantaneous_stats"] = [
+                    v for v in inst_vars
+                    if v not in base_vars or v in ("u_prime", "v_prime", "w_prime",
+                                                    "gamma1", "gamma2", "vorticity", "divergence")
+                ]
+
+        # 3. Check mean_stats.mat
+        mean_stats_path = mean_stats_dir / "mean_stats.mat"
+        if mean_stats_path.exists():
+            result["mean_stats"] = get_plottable_vars(mean_stats_path, var_name="piv_result")
+
+        # 4. Check ensemble_result.mat
+        try:
+            ens_paths = get_data_paths(
+                base_dir=params["base_path"],
+                num_frame_pairs=get_config().num_frame_pairs,
+                cam=params["camera"],
+                type_name="ensemble",
+                use_uncalibrated=params["use_uncalibrated"],
+                use_merged=params["use_merged"],
+            )
+            ensemble_file = Path(ens_paths["data_dir"]) / "ensemble_result.mat"
+            result["ensemble"] = get_plottable_vars(ensemble_file, var_name="ensemble_result")
+        except Exception as e:
+            logger.debug(f"check_all_vars: could not check ensemble vars: {e}")
+
+        return jsonify({"success": True, **result})
+
+    except ValueError as e:
+        logger.warning(f"check_all_vars: validation error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception:
+        logger.exception("check_all_vars: unexpected error")
+        return jsonify({"success": False, "error": "Internal server error"}), 500
+
+
 @vector_plot_bp.route("/check_limits", methods=["GET"])
 def check_limits():
     """Sample .mat files to estimate min/max limits for a variable."""
@@ -412,6 +590,44 @@ def check_runs():
         params = parse_plot_params(request)
         paths = validate_and_get_paths(params)
         data_dir = Path(paths["data_dir"])
+
+        # Handle ensemble mode separately - uses ensemble_result.mat instead of frame files
+        is_ensemble = params.get("type_name", "instantaneous") == "ensemble"
+
+        if is_ensemble:
+            ensemble_file = data_dir / "ensemble_result.mat"
+            if not ensemble_file.exists():
+                return jsonify({"success": False, "error": f"Ensemble file not found: {ensemble_file}"}), 404
+
+            mat = loadmat(str(ensemble_file), struct_as_record=False, squeeze_me=True)
+            if "ensemble_result" not in mat:
+                return jsonify({"success": False, "error": "Variable 'ensemble_result' not found"}), 400
+
+            ensemble_result = mat["ensemble_result"]
+            runs = []
+            # Use default var for run check (ux is typically available)
+            check_var = "ux"
+
+            if isinstance(ensemble_result, np.ndarray) and ensemble_result.dtype == object:
+                for i in range(ensemble_result.size):
+                    try:
+                        pr_candidate = ensemble_result.flat[i]
+                        var_arr = np.asarray(getattr(pr_candidate, check_var, None))
+                        if var_arr is not None and var_arr.size > 0 and not np.all(np.isnan(var_arr)):
+                            runs.append(i + 1)
+                    except Exception:
+                        continue
+            else:
+                try:
+                    var_arr = np.asarray(getattr(ensemble_result, check_var, None))
+                    if var_arr is not None and var_arr.size > 0 and not np.all(np.isnan(var_arr)):
+                        runs = [1]
+                except Exception:
+                    runs = []
+
+            return jsonify({"success": True, "runs": runs})
+
+        # Standard instantaneous mode - check frame files
         vec_fmt = get_config().vector_format
         mat_path = data_dir / (vec_fmt % frame)
 
@@ -729,8 +945,18 @@ def get_vector_at_position():
 
         paths = validate_and_get_paths(params)
         data_dir = Path(paths["data_dir"])
+        stats_dir = Path(paths["stats_dir"])
         vec_fmt = get_config().vector_format
-        mat_path = data_dir / (vec_fmt % params["frame"])
+
+        # Determine data source - matches plot_vector logic
+        var_source = request.args.get("var_source", default="inst", type=str)
+
+        if var_source == "mean":
+            mat_path = stats_dir / "mean_stats" / "mean_stats.mat"
+        elif var_source == "inst_stat":
+            mat_path = stats_dir / "instantaneous_stats" / (vec_fmt % params["frame"])
+        else:
+            mat_path = data_dir / (vec_fmt % params["frame"])
 
         if not mat_path.exists():
             raise ValueError(f"Vector mat not found: {mat_path}")
@@ -745,8 +971,13 @@ def get_vector_at_position():
             var_arr = var_arr.reshape(var_arr.shape[0], -1)
         H, W = var_arr.shape
 
-        # Load coordinates
-        coords_file = data_dir / "coordinates.mat"
+        # Load coordinates - check stats folder for mean, else use data_dir
+        if var_source == "mean":
+            coords_file = stats_dir / "mean_stats" / "coordinates.mat"
+            if not coords_file.exists():
+                coords_file = data_dir / "coordinates.mat"
+        else:
+            coords_file = data_dir / "coordinates.mat"
         cx_arr = cy_arr = None
         physical_coord_used = False
 
@@ -769,13 +1000,16 @@ def get_vector_at_position():
             full_x_min, full_x_max = float(np.nanmin(cx_arr)), float(np.nanmax(cx_arr))
             full_y_min, full_y_max = float(np.nanmin(cy_arr)), float(np.nanmax(cy_arr))
 
+            # Normalize limits to ensure vis_min < vis_max regardless of axis orientation
             if xlim is not None:
-                vis_x_min, vis_x_max = xlim
+                vis_x_min = min(xlim[0], xlim[1])
+                vis_x_max = max(xlim[0], xlim[1])
             else:
                 vis_x_min, vis_x_max = full_x_min, full_x_max
 
             if ylim is not None:
-                vis_y_min, vis_y_max = ylim
+                vis_y_min = min(ylim[0], ylim[1])
+                vis_y_max = max(ylim[0], ylim[1])
             else:
                 vis_y_min, vis_y_max = full_y_min, full_y_max
 
@@ -879,13 +1113,16 @@ def get_stats_value_at_position():
             full_x_min, full_x_max = float(np.nanmin(cx_arr)), float(np.nanmax(cx_arr))
             full_y_min, full_y_max = float(np.nanmin(cy_arr)), float(np.nanmax(cy_arr))
 
+            # Normalize limits to ensure vis_min < vis_max regardless of axis orientation
             if xlim is not None:
-                vis_x_min, vis_x_max = xlim
+                vis_x_min = min(xlim[0], xlim[1])
+                vis_x_max = max(xlim[0], xlim[1])
             else:
                 vis_x_min, vis_x_max = full_x_min, full_x_max
 
             if ylim is not None:
-                vis_y_min, vis_y_max = ylim
+                vis_y_min = min(ylim[0], ylim[1])
+                vis_y_max = max(ylim[0], ylim[1])
             else:
                 vis_y_min, vis_y_max = full_y_min, full_y_max
 

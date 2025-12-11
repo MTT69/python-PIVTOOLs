@@ -20,6 +20,7 @@ from scipy.io import loadmat, savemat
 
 sys.path.append(str(Path(__file__).parent.parent))
 from pivtools_core.config import get_config, reload_config
+from pivtools_core.coordinate_utils import extract_coordinates, get_num_coordinate_runs
 from pivtools_core.paths import get_data_paths
 from pivtools_core.vector_loading import load_coords_from_directory, read_mat_contents
 
@@ -35,6 +36,10 @@ VECTOR_PATTERN = "%05d.mat"  # Pattern for vector files (e.g. "B%05d.mat", "%05d
 TYPE_NAME = "instantaneous"  # Type name for data directory (e.g. "instantaneous", "ensemble")
 RUNS_TO_PROCESS = None  # List of 1-indexed runs to process, or None for all (e.g. [1, 2, 3])
 NUM_WORKERS = None  # Number of parallel workers, None = os.cpu_count()
+
+# USE_CONFIG_DIRECTLY: If True, skip updating config.yaml with above parameters
+# and load calibration settings directly from the existing config.yaml
+USE_CONFIG_DIRECTLY = True
 # ===================================================================
 
 
@@ -164,6 +169,8 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
     Process a single vector file for calibration.
 
     Module-level function for multiprocessing compatibility.
+    Automatically detects ensemble data (with stress tensors) and calibrates
+    both velocities and stresses using spatially-varying pinhole model.
 
     Args:
         args: Tuple of (file_idx, vector_file_path, output_file_path,
@@ -189,70 +196,175 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
     ) = args
 
     try:
-        # Load uncalibrated vectors
-        vector_data = read_mat_contents(str(vector_file_path))
+        # Try loading as structured .mat file first (for ensemble data)
+        mat = loadmat(str(vector_file_path), struct_as_record=False, squeeze_me=True)
 
-        # Handle different vector data formats
-        if vector_data.ndim == 4 and vector_data.shape[0] == 1:
-            # Single run format: (1, 3, H, W)
-            ux_px = vector_data[0, 0, :, :]
-            uy_px = vector_data[0, 1, :, :]
-            b_mask = vector_data[0, 2, :, :]
-        elif vector_data.ndim == 3 and vector_data.shape[0] == 3:
-            # Single run format: (3, H, W)
-            ux_px = vector_data[0, :, :]
-            uy_px = vector_data[1, :, :]
-            b_mask = vector_data[2, :, :]
+        # Check for ensemble_result (ensemble data) or piv_result (instantaneous)
+        is_ensemble = False
+        has_stresses = False
+
+        if "ensemble_result" in mat:
+            piv_result_raw = mat["ensemble_result"]
+            result_key = "ensemble_result"
+            is_ensemble = True
+        elif "piv_result" in mat:
+            piv_result_raw = mat["piv_result"]
+            result_key = "piv_result"
         else:
-            return None
+            # Fall back to read_mat_contents for simple array format
+            vector_data = read_mat_contents(str(vector_file_path))
 
-        # Calibrate vectors using pinhole model
-        # Stack original coordinates
-        coords_flat = np.stack(
-            [coords_x_px.flatten(), coords_y_px.flatten()], axis=-1
-        ).astype(np.float32)
-
-        if coords_flat.size == 0 or ux_px.size == 0:
-            return None
-
-        # Project original positions to world (mm)
-        coords_world = _pixels_to_world_mm(
-            coords_flat, camera_matrix, dist_coeffs, rvec, tvec
-        )
-
-        # Displaced positions in pixels
-        disp_px = coords_flat + np.stack(
-            [ux_px.flatten(), uy_px.flatten()], axis=-1
-        ).astype(np.float32)
-
-        # Project displaced positions to world (mm)
-        disp_world = _pixels_to_world_mm(
-            disp_px, camera_matrix, dist_coeffs, rvec, tvec
-        )
-
-        # Compute displacement in mm
-        delta_mm = disp_world - coords_world
-
-        # Convert to m/s: mm -> m (/1000), per frame -> per second (/dt)
-        ux_ms = (delta_mm[:, 0] / 1000.0) / dt
-        uy_ms = (delta_mm[:, 1] / 1000.0) / dt
-
-        # Reshape back to original grid shape
-        ux_ms = ux_ms.reshape(ux_px.shape)
-        uy_ms = uy_ms.reshape(uy_px.shape)
-
-        # Create piv_result structure array
-        piv_dtype = np.dtype([("ux", "O"), ("uy", "O"), ("b_mask", "O")])
-        piv_result = np.empty(max_run, dtype=piv_dtype)
-
-        for run_num in range(1, max_run + 1):
-            if run_num in valid_run_nums:
-                piv_result[run_num - 1] = (ux_ms, uy_ms, b_mask)
+            # Handle different vector data formats
+            if vector_data.ndim == 4 and vector_data.shape[0] == 1:
+                ux_px = vector_data[0, 0, :, :]
+                uy_px = vector_data[0, 1, :, :]
+                b_mask = vector_data[0, 2, :, :]
+            elif vector_data.ndim == 3 and vector_data.shape[0] == 3:
+                ux_px = vector_data[0, :, :]
+                uy_px = vector_data[1, :, :]
+                b_mask = vector_data[2, :, :]
             else:
-                piv_result[run_num - 1] = (np.array([]), np.array([]), np.array([]))
+                return None
+
+            # Simple array format - proceed with basic calibration
+            coords_flat = np.stack(
+                [coords_x_px.flatten(), coords_y_px.flatten()], axis=-1
+            ).astype(np.float32)
+
+            if coords_flat.size == 0 or ux_px.size == 0:
+                return None
+
+            coords_world = _pixels_to_world_mm(
+                coords_flat, camera_matrix, dist_coeffs, rvec, tvec
+            )
+            disp_px = coords_flat + np.stack(
+                [ux_px.flatten(), uy_px.flatten()], axis=-1
+            ).astype(np.float32)
+            disp_world = _pixels_to_world_mm(
+                disp_px, camera_matrix, dist_coeffs, rvec, tvec
+            )
+            delta_mm = disp_world - coords_world
+            ux_ms = (delta_mm[:, 0] / 1000.0) / dt
+            uy_ms = (delta_mm[:, 1] / 1000.0) / dt
+            ux_ms = ux_ms.reshape(ux_px.shape)
+            uy_ms = uy_ms.reshape(uy_px.shape)
+
+            piv_dtype = np.dtype([("ux", "O"), ("uy", "O"), ("b_mask", "O")])
+            piv_result = np.empty(max_run, dtype=piv_dtype)
+            for run_num in range(1, max_run + 1):
+                if run_num in valid_run_nums:
+                    piv_result[run_num - 1] = (ux_ms, uy_ms, b_mask)
+                else:
+                    piv_result[run_num - 1] = (np.array([]), np.array([]), np.array([]))
+
+            savemat(str(output_file_path), {"piv_result": piv_result})
+            return {"frame": file_idx, "success": True}
+
+        # Handle structured .mat format (piv_result or ensemble_result)
+        # Ensure result is iterable
+        if not hasattr(piv_result_raw, '__len__') or isinstance(piv_result_raw, np.void):
+            piv_result_raw = [piv_result_raw]
+
+        # Check if this is ensemble data with stress tensors
+        for cell in piv_result_raw:
+            if hasattr(cell, 'UU_stress') or hasattr(cell, 'VV_stress') or hasattr(cell, 'UV_stress'):
+                has_stresses = True
+                break
+
+        # Compute local stress scale factors if needed (only once per grid)
+        stress_scale = None
+        if has_stresses:
+            # Compute local velocity scaling factor at each grid point
+            delta_px = 1.0
+            coords_flat = np.stack(
+                [coords_x_px.flatten(), coords_y_px.flatten()], axis=-1
+            ).astype(np.float32)
+
+            if coords_flat.size > 0:
+                coords_world = _pixels_to_world_mm(
+                    coords_flat, camera_matrix, dist_coeffs, rvec, tvec
+                )
+                coords_disp_x = coords_flat + np.array([delta_px, 0.0], dtype=np.float32)
+                world_disp_x = _pixels_to_world_mm(
+                    coords_disp_x, camera_matrix, dist_coeffs, rvec, tvec
+                )
+                coords_disp_y = coords_flat + np.array([0.0, delta_px], dtype=np.float32)
+                world_disp_y = _pixels_to_world_mm(
+                    coords_disp_y, camera_matrix, dist_coeffs, rvec, tvec
+                )
+
+                delta_world_x = np.linalg.norm(world_disp_x - coords_world, axis=1)
+                delta_world_y = np.linalg.norm(world_disp_y - coords_world, axis=1)
+                delta_world_avg = (delta_world_x + delta_world_y) / 2.0
+
+                # Velocity scale factor: mm/pixel * (m/mm) / dt
+                velocity_scale = (delta_world_avg / delta_px) / 1000.0 / dt
+                # Stress scale factor = velocity_scale²
+                stress_scale = (velocity_scale ** 2).reshape(coords_x_px.shape)
+
+        # Build output struct array with appropriate dtype
+        if has_stresses:
+            piv_dtype = np.dtype([
+                ("ux", "O"), ("uy", "O"), ("b_mask", "O"),
+                ("UU_stress", "O"), ("VV_stress", "O"), ("UV_stress", "O")
+            ])
+        else:
+            piv_dtype = np.dtype([("ux", "O"), ("uy", "O"), ("b_mask", "O")])
+
+        piv_result = np.empty(len(piv_result_raw), dtype=piv_dtype)
+
+        for idx, cell in enumerate(piv_result_raw):
+            ux_px = getattr(cell, "ux", None)
+            uy_px = getattr(cell, "uy", None)
+            b_mask = getattr(cell, "b_mask", None)
+            if b_mask is None and ux_px is not None:
+                b_mask = np.zeros_like(ux_px)
+            elif b_mask is None:
+                b_mask = np.array([])
+
+            if ux_px is not None and uy_px is not None and ux_px.size > 0:
+                # Calibrate velocities using pinhole model
+                coords_flat = np.stack(
+                    [coords_x_px.flatten(), coords_y_px.flatten()], axis=-1
+                ).astype(np.float32)
+
+                coords_world = _pixels_to_world_mm(
+                    coords_flat, camera_matrix, dist_coeffs, rvec, tvec
+                )
+                disp_px = coords_flat + np.stack(
+                    [ux_px.flatten(), uy_px.flatten()], axis=-1
+                ).astype(np.float32)
+                disp_world = _pixels_to_world_mm(
+                    disp_px, camera_matrix, dist_coeffs, rvec, tvec
+                )
+                delta_mm = disp_world - coords_world
+                ux_ms = (delta_mm[:, 0] / 1000.0) / dt
+                uy_ms = (delta_mm[:, 1] / 1000.0) / dt
+                ux_ms = ux_ms.reshape(ux_px.shape)
+                uy_ms = uy_ms.reshape(uy_px.shape)
+
+                if has_stresses:
+                    UU_stress = getattr(cell, "UU_stress", None)
+                    VV_stress = getattr(cell, "VV_stress", None)
+                    UV_stress = getattr(cell, "UV_stress", None)
+
+                    # Calibrate stresses: pixels²/frame² -> m²/s²
+                    UU_calib = UU_stress * stress_scale if UU_stress is not None else np.array([])
+                    VV_calib = VV_stress * stress_scale if VV_stress is not None else np.array([])
+                    UV_calib = UV_stress * stress_scale if UV_stress is not None else np.array([])
+
+                    piv_result[idx] = (ux_ms, uy_ms, b_mask, UU_calib, VV_calib, UV_calib)
+                else:
+                    piv_result[idx] = (ux_ms, uy_ms, b_mask)
+            else:
+                if has_stresses:
+                    piv_result[idx] = (np.array([]), np.array([]), np.array([]),
+                                      np.array([]), np.array([]), np.array([]))
+                else:
+                    piv_result[idx] = (np.array([]), np.array([]), np.array([]))
 
         # Save calibrated result
-        savemat(str(output_file_path), {"piv_result": piv_result})
+        savemat(str(output_file_path), {result_key: piv_result})
 
         return {"frame": file_idx, "success": True}
 
@@ -521,6 +633,95 @@ class VectorCalibrator:
 
         return ux_ms, uy_ms
 
+    def _compute_local_scale_factor(
+        self,
+        coords_x_px: np.ndarray,
+        coords_y_px: np.ndarray,
+    ) -> np.ndarray:
+        """
+        Compute local velocity scaling factor at each grid point.
+
+        For pinhole calibration, the scaling factor varies spatially due to
+        lens distortion and perspective effects. This method computes the
+        local scaling factor by projecting a small pixel displacement to
+        world coordinates and measuring the resulting world displacement.
+
+        Args:
+            coords_x_px, coords_y_px: Grid coordinates in pixels
+
+        Returns:
+            scale_factor: 2D array of local scaling factors (m/s per pixel/frame)
+        """
+        delta_px = 1.0  # Small pixel displacement for computing local scale
+
+        # Stack coordinates
+        coords_flat = np.stack(
+            [coords_x_px.flatten(), coords_y_px.flatten()], axis=-1
+        ).astype(np.float32)
+
+        if coords_flat.size == 0:
+            return np.ones_like(coords_x_px)
+
+        # Project original positions to world (mm)
+        coords_world = _pixels_to_world_mm(
+            coords_flat, self.camera_matrix, self.dist_coeffs, self.rvec, self.tvec
+        )
+
+        # Project positions displaced by delta_px in x direction
+        coords_disp_x = coords_flat + np.array([delta_px, 0.0], dtype=np.float32)
+        world_disp_x = _pixels_to_world_mm(
+            coords_disp_x, self.camera_matrix, self.dist_coeffs, self.rvec, self.tvec
+        )
+
+        # Project positions displaced by delta_px in y direction
+        coords_disp_y = coords_flat + np.array([0.0, delta_px], dtype=np.float32)
+        world_disp_y = _pixels_to_world_mm(
+            coords_disp_y, self.camera_matrix, self.dist_coeffs, self.rvec, self.tvec
+        )
+
+        # Compute displacement magnitudes in world coordinates (mm)
+        # Average the x and y displacement magnitudes for isotropic scaling
+        delta_world_x = np.linalg.norm(world_disp_x - coords_world, axis=1)
+        delta_world_y = np.linalg.norm(world_disp_y - coords_world, axis=1)
+        delta_world_avg = (delta_world_x + delta_world_y) / 2.0
+
+        # Convert to velocity scaling factor: mm/pixel * (m/mm) / dt = m/s per pixel/frame
+        # scale_factor = (delta_world_mm / delta_px) / 1000 / dt
+        scale_factor = (delta_world_avg / delta_px) / 1000.0 / self.dt
+
+        return scale_factor.reshape(coords_x_px.shape)
+
+    def calibrate_stresses(
+        self,
+        stress_px: np.ndarray,
+        coords_x_px: np.ndarray,
+        coords_y_px: np.ndarray,
+    ) -> np.ndarray:
+        """
+        Calibrate stress tensor using spatially-varying scaling factor.
+
+        For ensemble PIV, Reynolds stresses (UU, VV, UV) are computed before
+        calibration and have units of velocity². The calibration factor must
+        be squared compared to velocity calibration.
+
+        Since pinhole calibration is spatially-varying, we compute the local
+        velocity scaling factor at each grid point and square it for stress.
+
+        Args:
+            stress_px: Stress tensor in pixels²/frame²
+            coords_x_px, coords_y_px: Grid coordinates in pixels
+
+        Returns:
+            Stress tensor in m²/s²
+        """
+        # Get local velocity scale factor at each grid point
+        scale_factor = self._compute_local_scale_factor(coords_x_px, coords_y_px)
+
+        # Stress scaling is velocity scaling squared
+        stress_scale = scale_factor ** 2
+
+        return stress_px * stress_scale
+
     def process_run(
         self,
         num_frame_pairs: Optional[int] = None,
@@ -640,18 +841,84 @@ class VectorCalibrator:
             y_coords_for_vectors = first_run_data[4]
             valid_run_nums = set(r[1] for r in valid_runs)
 
-            self._process_vector_files_parallel(
-                uncalib_data_dir,
-                calib_data_dir,
-                num_frame_pairs,
-                x_coords_for_vectors,
-                y_coords_for_vectors,
-                max_run,
-                valid_run_nums,
-                progress_cb,
-            )
+            # Check if this is ensemble data (single file) vs instantaneous (many files)
+            ensemble_file = uncalib_data_dir / "ensemble_result.mat"
+            if self.type_name == "ensemble" or ensemble_file.exists():
+                # Ensemble data: single file
+                self._process_ensemble_file(
+                    uncalib_data_dir,
+                    calib_data_dir,
+                    x_coords_for_vectors,
+                    y_coords_for_vectors,
+                    max_run,
+                    valid_run_nums,
+                    progress_cb,
+                )
+            else:
+                # Instantaneous data: many files
+                self._process_vector_files_parallel(
+                    uncalib_data_dir,
+                    calib_data_dir,
+                    num_frame_pairs,
+                    x_coords_for_vectors,
+                    y_coords_for_vectors,
+                    max_run,
+                    valid_run_nums,
+                    progress_cb,
+                )
         else:
             logger.error("No valid runs found for vector processing")
+
+    def _process_ensemble_file(
+        self,
+        uncalib_dir: Path,
+        calib_dir: Path,
+        coords_x_px: np.ndarray,
+        coords_y_px: np.ndarray,
+        max_run: int,
+        valid_run_nums: set,
+        progress_cb: Optional[Callable[[Dict[str, Any]], None]],
+    ):
+        """Process single ensemble_result.mat file."""
+        logger.info("Processing ensemble result file...")
+
+        ensemble_file = uncalib_dir / "ensemble_result.mat"
+        output_file = calib_dir / "ensemble_result.mat"
+
+        if not ensemble_file.exists():
+            logger.error(f"Ensemble result file not found: {ensemble_file}")
+            raise FileNotFoundError(f"Ensemble result file not found: {ensemble_file}")
+
+        # Process the single ensemble file
+        result = _process_single_vector_file((
+            1,  # file_idx
+            str(ensemble_file),
+            str(output_file),
+            coords_x_px,
+            coords_y_px,
+            self.camera_matrix,
+            self.dist_coeffs,
+            self.rvec,
+            self.tvec,
+            self.dt,
+            max_run,
+            valid_run_nums,
+        ))
+
+        if result and result.get("success"):
+            logger.info(f"Successfully calibrated ensemble result: {output_file}")
+            if progress_cb:
+                progress_cb({
+                    "processed_frames": 1,
+                    "total_frames": 1,
+                    "progress": 100,
+                    "successful_frames": 1,
+                    "failed_frames": 0,
+                })
+        else:
+            error_msg = result.get("error", "Unknown error") if result else "Processing returned None"
+            logger.error(f"Failed to calibrate ensemble result: {error_msg}")
+            raise RuntimeError(f"Failed to calibrate ensemble result: {error_msg}")
 
     def _process_vector_files_parallel(
         self,
@@ -693,8 +960,9 @@ class VectorCalibrator:
             )
 
         if not tasks:
-            logger.warning("No vector files found to process")
-            return
+            error_msg = f"No vector files found to process in {uncalib_dir}"
+            logger.error(error_msg)
+            raise FileNotFoundError(error_msg)
 
         logger.info(f"Found {len(tasks)} vector files to process")
 
@@ -735,26 +1003,51 @@ class VectorCalibrator:
 
 
 def main():
-    """Main entry point for vector calibration."""
+    """Main entry point for vector calibration.
+
+    When USE_CONFIG_DIRECTLY=True, loads settings from existing config.yaml instead
+    of applying the hardcoded CLI settings.
+    """
     logger.info("=" * 60)
     logger.info("Vector Calibration - Starting")
     logger.info("=" * 60)
-    logger.info(f"Base directory: {BASE_DIR}")
-    logger.info(f"Num frame pairs: {NUM_FRAME_PAIRS}")
-    logger.info(f"Time step: {DT_SECONDS} seconds")
-    logger.info(f"Cameras: {CAMERA_NUMS}")
-    logger.info(f"Model type: {MODEL_TYPE}")
-    logger.info(f"Vector pattern: {VECTOR_PATTERN}")
-    logger.info(f"Type name: {TYPE_NAME}")
-    logger.info(f"Runs to process: {RUNS_TO_PROCESS if RUNS_TO_PROCESS else 'all'}")
-    logger.info(f"Worker count: {NUM_WORKERS if NUM_WORKERS else 'auto'}")
 
-    # Apply CLI settings to config.yaml so centralized systems work correctly
-    config = apply_cli_settings_to_config()
+    if USE_CONFIG_DIRECTLY:
+        # Load settings directly from existing config.yaml
+        logger.info("Loading settings directly from config.yaml (USE_CONFIG_DIRECTLY=True)")
+        config = get_config()
+
+        # Log settings from config
+        logger.info(f"Base directory: {config.base_paths[0]}")
+        logger.info(f"Num frame pairs: {config.num_frame_pairs}")
+        logger.info(f"Time step: {config.dt} seconds")
+        logger.info(f"Cameras: {config.camera_numbers}")
+        logger.info(f"Active calibration: {config.active_calibration_method}")
+        logger.info(f"Vector pattern: {config.vector_format}")
+        logger.info(f"Type name: {TYPE_NAME}")
+        logger.info(f"Runs to process: {RUNS_TO_PROCESS if RUNS_TO_PROCESS else 'all'}")
+        logger.info(f"Worker count: {NUM_WORKERS if NUM_WORKERS else 'auto'}")
+
+        camera_nums = config.camera_numbers
+    else:
+        # Log hardcoded settings and apply to config
+        logger.info(f"Base directory: {BASE_DIR}")
+        logger.info(f"Num frame pairs: {NUM_FRAME_PAIRS}")
+        logger.info(f"Time step: {DT_SECONDS} seconds")
+        logger.info(f"Cameras: {CAMERA_NUMS}")
+        logger.info(f"Model type: {MODEL_TYPE}")
+        logger.info(f"Vector pattern: {VECTOR_PATTERN}")
+        logger.info(f"Type name: {TYPE_NAME}")
+        logger.info(f"Runs to process: {RUNS_TO_PROCESS if RUNS_TO_PROCESS else 'all'}")
+        logger.info(f"Worker count: {NUM_WORKERS if NUM_WORKERS else 'auto'}")
+
+        # Apply CLI settings to config.yaml so centralized systems work correctly
+        config = apply_cli_settings_to_config()
+        camera_nums = CAMERA_NUMS
 
     failed_cameras = []
 
-    for camera_num in CAMERA_NUMS:
+    for camera_num in camera_nums:
         logger.info(f"Processing Camera {camera_num}...")
         try:
             # Create calibrator using config - settings are now in config.yaml
