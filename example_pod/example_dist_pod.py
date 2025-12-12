@@ -78,7 +78,7 @@ if __name__ == "__main__":
         eps_auto_psi=0.01,
         eps_auto_sigma=0.01,
     ).persist()       
-
+    print("done distributed pod ")
 
     
     def run_original(pairs_dask):
@@ -95,7 +95,7 @@ if __name__ == "__main__":
     maxerr = absdiff.max()
 
     logging.info(f"Mean absolute error = {mae}")
-    logging.info(f"Max absolute error  = {maxerr:.6e}")
+    logging.info(f"Max absolute error  = {maxerr}")
 
     i = 10
     fig, axes = plt.subplots(2, 3, figsize=(15, 8))
