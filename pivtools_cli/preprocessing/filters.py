@@ -477,6 +477,93 @@ def requires_batch(filter_type: str) -> bool:
     return filter_type in BATCH_FILTERS
 
 
+def _find_auto_mode_from_psi(PSI, eigvals, eps_auto_psi=0.01, eps_auto_sigma=0.01):
+    N = PSI.shape[0]
+    for i in range(N - 1):
+        mean_psi = np.abs(np.mean(PSI[:, i]))
+        denom = eigvals[N // 2] if eigvals[N // 2] != 0 else eigvals[0] if eigvals[0] != 0 else 1.0
+        sig_diff = np.abs(eigvals[i] - eigvals[i + 1]) / denom
+        if mean_psi < eps_auto_psi and sig_diff < eps_auto_sigma * eigvals[0]:
+            return i
+    return 0
+
+
+def compute_global_PHIs(darr, eps_auto_psi=0.01, eps_auto_sigma=0.01):
+    N = int(darr.shape[0])
+    C = int(darr.shape[1])
+    H = int(darr.shape[2])
+    W = int(darr.shape[3])
+    P = H * W   
+
+    PHI_list = []
+
+    for ch in range(C):
+        logging.info(f"\nComputing global PHI for channel {ch} ...")
+        X_ch = darr[:, ch].reshape((N, -1))
+
+        Cmat = da.matmul(X_ch, X_ch.T)
+        C_local = Cmat.compute()     
+
+        PSI, Svals, _ = np.linalg.svd(C_local, full_matrices=False)
+
+        N_keep = _find_auto_mode_from_psi(PSI, Svals,
+                                          eps_auto_psi=eps_auto_psi,
+                                          eps_auto_sigma=eps_auto_sigma)
+
+        if N_keep == 0:
+            logging.info("  → No modes selected")
+            PHI_list.append(np.zeros((0, P), dtype=np.float32))
+            continue
+
+        logging.info(f"  → Keeping {N_keep} global mode(s)")
+        PSI_k = PSI[:, :N_keep]
+
+        PHI_da = da.matmul(X_ch.T, PSI_k)   
+        PHI_p = PHI_da.compute()            
+
+        norms = np.linalg.norm(PHI_p, axis=0)
+        norms[norms == 0] = 1.0
+        PHI_p = PHI_p / norms[np.newaxis, :]
+
+        PHI_rows = PHI_p.T.astype(np.float32)
+        PHI_list.append(PHI_rows)
+
+        del C_local, PSI, PSI_k, PHI_p
+
+    return PHI_list
+
+
+def _apply_distributed_pod_block(block, PHI_list):
+    """
+    Applies global PHI to a single block (runs inside worker).
+    """
+    block = block.astype(np.float32)
+
+    N_block, C, H, W = block.shape
+    out = np.empty_like(block)
+
+    for ch in range(C):
+        M = block[:, ch].reshape(N_block, -1)
+        PHI = PHI_list[ch]
+        if PHI.size == 0:
+            out[:, ch] = block[:, ch]
+            continue
+
+        TC = M @ PHI.T
+        recon = TC @ PHI
+        out[:, ch] = (M - recon).reshape(N_block, H, W)
+
+    return out.astype(np.float32)
+
+def distributed_pod(darr, **kwargs):
+    PHI_list = compute_global_PHIs(darr, **kwargs)
+    logging.info(f"PHI size: {sys.getsizeof(PHI_list)} bytes")
+    logging.info(PHI_list[0])
+    return darr.map_blocks(_apply_distributed_pod_block,
+                           dtype=np.float32,
+                           PHI_list=PHI_list)
+
+
 def filter_images(images: da.Array, config: Config) -> da.Array:
     """
     Apply a sequence of filters defined in the config.
