@@ -23,7 +23,9 @@ pivtools_cli/lib/*.lib
 pivtools_cli/lib/*.obj
 pivtools_gui/static/*
 logs/*
-
+manual_tools/stereo_ensemble_3d/debug_output/
+manual_tools/stereo_ensemble_3d/pipeline_viz_500/
+manual_tools/stereo_ensemble_3d/pipeline_viz_2000_3x/
 
 # IDE
 .vscode/
