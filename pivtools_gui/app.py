@@ -1071,7 +1071,8 @@ def run_piv():
         "cameras": [1, 2, 3],    // List of camera numbers to process (optional)
         "source_path_idx": 0,    // Index of source path (legacy, use active_paths)
         "base_path_idx": 0,      // Index of base path (legacy, use active_paths)
-        "active_paths": [0, 1]   // List of path indices to process (optional)
+        "active_paths": [0, 1],  // List of path indices to process (optional)
+        "mode": "instantaneous"  // PIV mode: "instantaneous" or "ensemble"
     }
     """
     data = request.get_json() or {}
@@ -1081,6 +1082,7 @@ def run_piv():
     source_path_idx = data.get("source_path_idx", 0)
     base_path_idx = data.get("base_path_idx", 0)
     active_paths = data.get("active_paths")  # List of path indices to process
+    mode = data.get("mode", "instantaneous")  # PIV mode: instantaneous or ensemble
 
     # Get the runner and start the job
     runner = get_runner()
@@ -1089,6 +1091,7 @@ def run_piv():
         source_path_idx=source_path_idx,
         base_path_idx=base_path_idx,
         active_paths=active_paths,
+        mode=mode,
     )
 
     return jsonify(result), 200 if result.get("status") == "started" else 500

@@ -58,9 +58,9 @@ def main():
     # ============ USER SETTINGS ============
     input_set_file = r"/path/to/your/file.set"  # Path to input .set file
     output_directory = r"/path/to/output"        # Output directory for TIFFs
-    camera_to_export = 0                         # Camera index (0-based), camera 1 = index 0
+    camera_to_export = 1                         # Camera index (0-based), camera 1 = index 0
     frame_pair_start = 0                         # Starting frame pair index
-    frame_pair_end = None                        # Ending frame pair index (None = all)
+    frame_pair_end = 50                        # Ending frame pair index (None = all)
     # =========================================
 
     input_path = Path(input_set_file)

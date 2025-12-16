@@ -1,0 +1,38 @@
+PIVTools
+Copyright 2025 University of Southampton
+
+This product includes software developed at the University of Southampton,
+Faculty of Engineering and Physical Sciences.
+
+Principal Developer:
+  Morgan Taylor (m.t.taylor@soton.ac.uk)
+
+================================================================================
+                              LICENSING NOTICE
+================================================================================
+
+PIVTools source code is licensed under the BSD 3-Clause License.
+
+IMPORTANT - GPL Dependencies:
+-----------------------------
+Pre-built binaries link against the following GPL-licensed libraries:
+
+  * FFTW3 (http://www.fftw.org/) - GPL v2 or later
+  * GNU Scientific Library (GSL, https://www.gnu.org/software/gsl/) - GPL v3
+
+Binary distributions that include these libraries must comply with GPL terms,
+unless you replace them with alternatively-licensed implementations or obtain
+a commercial FFTW license.
+
+Proprietary Dependencies (Restricted License):
+----------------------------------------------
+  * lvpyio (LaVision GmbH) - "Free To Use But Restricted"
+    Required only for reading LaVision .im7/.set files (Windows/Linux only).
+    Subject to LaVision's license terms. Contact: python@lavision.de
+    Optional - use standard image formats (.tif, .png) to avoid this dependency.
+
+Other Dependencies:
+-------------------
+This software uses various third-party open-source libraries (NumPy, SciPy,
+OpenCV, Flask, etc.) which are distributed under permissive licenses (BSD,
+MIT, Apache 2.0). See each package's documentation for specific license terms.

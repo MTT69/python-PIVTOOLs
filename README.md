@@ -70,7 +70,9 @@ For detailed configuration options, see [piv.tools/manual](https://piv.tools/man
 
 ## License
 
-MIT License
+BSD 3-Clause License - See [LICENSE](LICENSE) for details.
+
+**Note:** Pre-built binaries link against GPL-licensed libraries (FFTW3, GSL). Binary distributions must comply with GPL terms unless these dependencies are replaced with alternatively-licensed implementations. See the LICENSE and NOTICE files for complete details.
 
 ## Contributing
 

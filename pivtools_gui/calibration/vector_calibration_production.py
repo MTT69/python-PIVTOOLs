@@ -174,8 +174,10 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
 
     Args:
         args: Tuple of (file_idx, vector_file_path, output_file_path,
-                       coords_x_px, coords_y_px, camera_matrix, dist_coeffs,
+                       coords_by_run, camera_matrix, dist_coeffs,
                        rvec, tvec, dt, max_run, valid_run_nums)
+               where coords_by_run is Dict[int, Tuple[ndarray, ndarray]]
+               mapping 1-based run numbers to (x_coords, y_coords).
 
     Returns:
         Dict with results or None if failed
@@ -184,8 +186,7 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
         file_idx,
         vector_file_path,
         output_file_path,
-        coords_x_px,
-        coords_y_px,
+        coords_by_run,
         camera_matrix,
         dist_coeffs,
         rvec,
@@ -226,7 +227,23 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
             else:
                 return None
 
-            # Simple array format - proceed with basic calibration
+            # Simple array format - find matching coordinates by shape
+            # Try to find coordinates that match the velocity data shape
+            coords_x_px, coords_y_px = None, None
+            for run_num in sorted(coords_by_run.keys()):
+                cx, cy = coords_by_run[run_num]
+                if cx.shape == ux_px.shape:
+                    coords_x_px, coords_y_px = cx, cy
+                    break
+
+            # Fall back to first available if no shape match
+            if coords_x_px is None and coords_by_run:
+                first_run = min(coords_by_run.keys())
+                coords_x_px, coords_y_px = coords_by_run[first_run]
+
+            if coords_x_px is None:
+                return {"frame": file_idx, "success": False, "error": "No coordinates available"}
+
             coords_flat = np.stack(
                 [coords_x_px.flatten(), coords_y_px.flatten()], axis=-1
             ).astype(np.float32)
@@ -271,37 +288,6 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
                 has_stresses = True
                 break
 
-        # Compute local stress scale factors if needed (only once per grid)
-        stress_scale = None
-        if has_stresses:
-            # Compute local velocity scaling factor at each grid point
-            delta_px = 1.0
-            coords_flat = np.stack(
-                [coords_x_px.flatten(), coords_y_px.flatten()], axis=-1
-            ).astype(np.float32)
-
-            if coords_flat.size > 0:
-                coords_world = _pixels_to_world_mm(
-                    coords_flat, camera_matrix, dist_coeffs, rvec, tvec
-                )
-                coords_disp_x = coords_flat + np.array([delta_px, 0.0], dtype=np.float32)
-                world_disp_x = _pixels_to_world_mm(
-                    coords_disp_x, camera_matrix, dist_coeffs, rvec, tvec
-                )
-                coords_disp_y = coords_flat + np.array([0.0, delta_px], dtype=np.float32)
-                world_disp_y = _pixels_to_world_mm(
-                    coords_disp_y, camera_matrix, dist_coeffs, rvec, tvec
-                )
-
-                delta_world_x = np.linalg.norm(world_disp_x - coords_world, axis=1)
-                delta_world_y = np.linalg.norm(world_disp_y - coords_world, axis=1)
-                delta_world_avg = (delta_world_x + delta_world_y) / 2.0
-
-                # Velocity scale factor: mm/pixel * (m/mm) / dt
-                velocity_scale = (delta_world_avg / delta_px) / 1000.0 / dt
-                # Stress scale factor = velocity_scale²
-                stress_scale = (velocity_scale ** 2).reshape(coords_x_px.shape)
-
         # Build output struct array with appropriate dtype
         if has_stresses:
             piv_dtype = np.dtype([
@@ -314,6 +300,7 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
         piv_result = np.empty(len(piv_result_raw), dtype=piv_dtype)
 
         for idx, cell in enumerate(piv_result_raw):
+            run_num = idx + 1  # 1-based run number
             ux_px = getattr(cell, "ux", None)
             uy_px = getattr(cell, "uy", None)
             b_mask = getattr(cell, "b_mask", None)
@@ -323,6 +310,21 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
                 b_mask = np.array([])
 
             if ux_px is not None and uy_px is not None and ux_px.size > 0:
+                # Get coordinates for this specific run
+                coords_x_px, coords_y_px = None, None
+                if run_num in coords_by_run:
+                    coords_x_px, coords_y_px = coords_by_run[run_num]
+
+                # Check shape match
+                if coords_x_px is None or coords_x_px.shape != ux_px.shape:
+                    # No matching coordinates for this run - store empty
+                    if has_stresses:
+                        piv_result[idx] = (np.array([]), np.array([]), np.array([]),
+                                          np.array([]), np.array([]), np.array([]))
+                    else:
+                        piv_result[idx] = (np.array([]), np.array([]), np.array([]))
+                    continue
+
                 # Calibrate velocities using pinhole model
                 coords_flat = np.stack(
                     [coords_x_px.flatten(), coords_y_px.flatten()], axis=-1
@@ -347,6 +349,22 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
                     UU_stress = getattr(cell, "UU_stress", None)
                     VV_stress = getattr(cell, "VV_stress", None)
                     UV_stress = getattr(cell, "UV_stress", None)
+
+                    # Compute stress scale factor for this run's grid
+                    delta_px = 1.0
+                    coords_disp_x = coords_flat + np.array([delta_px, 0.0], dtype=np.float32)
+                    world_disp_x = _pixels_to_world_mm(
+                        coords_disp_x, camera_matrix, dist_coeffs, rvec, tvec
+                    )
+                    coords_disp_y = coords_flat + np.array([0.0, delta_px], dtype=np.float32)
+                    world_disp_y = _pixels_to_world_mm(
+                        coords_disp_y, camera_matrix, dist_coeffs, rvec, tvec
+                    )
+                    delta_world_x = np.linalg.norm(world_disp_x - coords_world, axis=1)
+                    delta_world_y = np.linalg.norm(world_disp_y - coords_world, axis=1)
+                    delta_world_avg = (delta_world_x + delta_world_y) / 2.0
+                    velocity_scale = (delta_world_avg / delta_px) / 1000.0 / dt
+                    stress_scale = (velocity_scale ** 2).reshape(coords_x_px.shape)
 
                     # Calibrate stresses: pixels²/frame² -> m²/s²
                     UU_calib = UU_stress * stress_scale if UU_stress is not None else np.array([])
@@ -402,7 +420,7 @@ class VectorCalibrator:
         Args:
             base_dir: Base directory containing data (or from config.base_paths[0])
             camera_num: Camera number (1-based) (or from config.camera_numbers[0])
-            model_type: Calibration model type - "charuco" or "planar" (or from config.active_calibration_method)
+            model_type: Calibration model type - "charuco" or "pinhole" (or from config.active_calibration_method)
             dt: Time step between frames in seconds (or from config.dt)
             vector_pattern: Pattern for vector files (or from config.vector_format)
             type_name: Type name for data directory (e.g. "instantaneous", "ensemble")
@@ -423,7 +441,7 @@ class VectorCalibrator:
             elif active_method == "charuco":
                 self.model_type = "charuco"
             elif active_method in ("pinhole", "planar"):
-                self.model_type = "planar"
+                self.model_type = "pinhole"
             else:
                 raise ValueError(f"Cannot determine model_type from config.active_calibration_method: {active_method}")
             self.dt = dt if dt is not None else config.dt
@@ -451,9 +469,9 @@ class VectorCalibrator:
         self.num_workers = num_workers if num_workers else os.cpu_count()
 
         # Validate model type
-        if self.model_type not in ("charuco", "planar"):
+        if self.model_type not in ("charuco", "pinhole"):
             raise ValueError(
-                f"model_type must be 'charuco' or 'planar', got '{self.model_type}'"
+                f"model_type must be 'charuco' or 'pinhole', got '{self.model_type}'"
             )
 
         # Load calibration model
@@ -834,22 +852,26 @@ class VectorCalibrator:
         savemat(str(coords_path), coords_output)
         logger.info(f"Saved calibrated coordinates: {coords_path}")
 
-        # Process vector files using first valid run's coordinates
+        # Process vector files - build per-run coordinate mapping
         if valid_runs:
-            first_run_data = valid_runs[0]
-            x_coords_for_vectors = first_run_data[3]
-            y_coords_for_vectors = first_run_data[4]
+            # Build dict mapping run_num (1-based) -> (x_coords, y_coords)
+            # Each run may have different grid sizes due to different window sizes
+            coords_by_run = {
+                run_num: (x_coords, y_coords)
+                for _, run_num, _, x_coords, y_coords in valid_runs
+            }
             valid_run_nums = set(r[1] for r in valid_runs)
+
+            logger.info(f"Coordinates available for runs: {sorted(coords_by_run.keys())}")
 
             # Check if this is ensemble data (single file) vs instantaneous (many files)
             ensemble_file = uncalib_data_dir / "ensemble_result.mat"
             if self.type_name == "ensemble" or ensemble_file.exists():
-                # Ensemble data: single file
+                # Ensemble data: single file with potentially different grid per run
                 self._process_ensemble_file(
                     uncalib_data_dir,
                     calib_data_dir,
-                    x_coords_for_vectors,
-                    y_coords_for_vectors,
+                    coords_by_run,
                     max_run,
                     valid_run_nums,
                     progress_cb,
@@ -860,8 +882,7 @@ class VectorCalibrator:
                     uncalib_data_dir,
                     calib_data_dir,
                     num_frame_pairs,
-                    x_coords_for_vectors,
-                    y_coords_for_vectors,
+                    coords_by_run,
                     max_run,
                     valid_run_nums,
                     progress_cb,
@@ -873,8 +894,7 @@ class VectorCalibrator:
         self,
         uncalib_dir: Path,
         calib_dir: Path,
-        coords_x_px: np.ndarray,
-        coords_y_px: np.ndarray,
+        coords_by_run: Dict[int, Tuple[np.ndarray, np.ndarray]],
         max_run: int,
         valid_run_nums: set,
         progress_cb: Optional[Callable[[Dict[str, Any]], None]],
@@ -889,13 +909,12 @@ class VectorCalibrator:
             logger.error(f"Ensemble result file not found: {ensemble_file}")
             raise FileNotFoundError(f"Ensemble result file not found: {ensemble_file}")
 
-        # Process the single ensemble file
+        # Process the single ensemble file with per-run coordinates
         result = _process_single_vector_file((
             1,  # file_idx
             str(ensemble_file),
             str(output_file),
-            coords_x_px,
-            coords_y_px,
+            coords_by_run,
             self.camera_matrix,
             self.dist_coeffs,
             self.rvec,
@@ -925,8 +944,7 @@ class VectorCalibrator:
         uncalib_dir: Path,
         calib_dir: Path,
         num_images: int,
-        coords_x_px: np.ndarray,
-        coords_y_px: np.ndarray,
+        coords_by_run: Dict[int, Tuple[np.ndarray, np.ndarray]],
         max_run: int,
         valid_run_nums: set,
         progress_cb: Optional[Callable[[Dict[str, Any]], None]],
@@ -947,8 +965,7 @@ class VectorCalibrator:
                     i,
                     str(vector_file),
                     str(output_file),
-                    coords_x_px,
-                    coords_y_px,
+                    coords_by_run,
                     self.camera_matrix,
                     self.dist_coeffs,
                     self.rvec,

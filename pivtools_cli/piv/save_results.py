@@ -128,8 +128,8 @@ def save_coordinates_from_config_distributed(
             x_grid, y_grid = np.meshgrid(x_centers + 1, y_centers[::-1] + 1, indexing='xy')
 
             # Convert to half precision for space saving
-            x_grid = _convert_to_half_precision(x_grid)
-            y_grid = _convert_to_half_precision(y_grid)
+            x_grid = _convert_to_half_precision(x_grid, 'x_grid')
+            y_grid = _convert_to_half_precision(y_grid, 'y_grid')
 
             coords_struct['x'][i] = x_grid
             coords_struct['y'][i] = y_grid
@@ -253,8 +253,8 @@ def save_ensemble_coordinates_from_config_distributed(
             x_grid, y_grid = np.meshgrid(x_centers + 1, y_centers[::-1] + 1, indexing='xy')
 
             # Convert to half precision for space saving
-            x_grid = _convert_to_half_precision(x_grid)
-            y_grid = _convert_to_half_precision(y_grid)
+            x_grid = _convert_to_half_precision(x_grid, 'x_grid')
+            y_grid = _convert_to_half_precision(y_grid, 'y_grid')
 
             coords_struct['x'][i] = x_grid
             coords_struct['y'][i] = y_grid
@@ -376,21 +376,21 @@ def _create_ensemble_struct_all_passes(
 
         # Velocity fields
         if pass_result.ux_mat is not None:
-            ensemble_struct['ux'][local_idx] = _convert_to_half_precision(pass_result.ux_mat)
+            ensemble_struct['ux'][local_idx] = _convert_to_half_precision(pass_result.ux_mat, 'ux')
         if pass_result.uy_mat is not None:
-            ensemble_struct['uy'][local_idx] = _convert_to_half_precision(pass_result.uy_mat)
+            ensemble_struct['uy'][local_idx] = _convert_to_half_precision(pass_result.uy_mat, 'uy')
 
         # Stress tensors
         if pass_result.UU_stress is not None:
-            ensemble_struct['UU_stress'][local_idx] = _convert_to_half_precision(pass_result.UU_stress)
+            ensemble_struct['UU_stress'][local_idx] = _convert_to_half_precision(pass_result.UU_stress, 'UU_stress')
         if pass_result.VV_stress is not None:
-            ensemble_struct['VV_stress'][local_idx] = _convert_to_half_precision(pass_result.VV_stress)
+            ensemble_struct['VV_stress'][local_idx] = _convert_to_half_precision(pass_result.VV_stress, 'VV_stress')
         if pass_result.UV_stress is not None:
-            ensemble_struct['UV_stress'][local_idx] = _convert_to_half_precision(pass_result.UV_stress)
+            ensemble_struct['UV_stress'][local_idx] = _convert_to_half_precision(pass_result.UV_stress, 'UV_stress')
 
         # Normalized peak height
         if pass_result.peakheight is not None:
-            ensemble_struct['peakheight'][local_idx] = _convert_to_half_precision(pass_result.peakheight)
+            ensemble_struct['peakheight'][local_idx] = _convert_to_half_precision(pass_result.peakheight, 'peakheight')
 
         # NaN reason
         if pass_result.nan_reason is not None:
@@ -398,33 +398,33 @@ def _create_ensemble_struct_all_passes(
 
         # Sigma parameters (AB)
         if pass_result.sig_AB_x is not None:
-            ensemble_struct['sig_AB_x'][local_idx] = _convert_to_half_precision(pass_result.sig_AB_x)
+            ensemble_struct['sig_AB_x'][local_idx] = _convert_to_half_precision(pass_result.sig_AB_x, 'sig_AB_x')
         if pass_result.sig_AB_y is not None:
-            ensemble_struct['sig_AB_y'][local_idx] = _convert_to_half_precision(pass_result.sig_AB_y)
+            ensemble_struct['sig_AB_y'][local_idx] = _convert_to_half_precision(pass_result.sig_AB_y, 'sig_AB_y')
         if pass_result.sig_AB_xy is not None:
-            ensemble_struct['sig_AB_xy'][local_idx] = _convert_to_half_precision(pass_result.sig_AB_xy)
+            ensemble_struct['sig_AB_xy'][local_idx] = _convert_to_half_precision(pass_result.sig_AB_xy, 'sig_AB_xy')
 
         # Sigma parameters (A)
         if pass_result.sig_A_x is not None:
-            ensemble_struct['sig_A_x'][local_idx] = _convert_to_half_precision(pass_result.sig_A_x)
+            ensemble_struct['sig_A_x'][local_idx] = _convert_to_half_precision(pass_result.sig_A_x, 'sig_A_x')
         if pass_result.sig_A_y is not None:
-            ensemble_struct['sig_A_y'][local_idx] = _convert_to_half_precision(pass_result.sig_A_y)
+            ensemble_struct['sig_A_y'][local_idx] = _convert_to_half_precision(pass_result.sig_A_y, 'sig_A_y')
         if pass_result.sig_A_xy is not None:
-            ensemble_struct['sig_A_xy'][local_idx] = _convert_to_half_precision(pass_result.sig_A_xy)
+            ensemble_struct['sig_A_xy'][local_idx] = _convert_to_half_precision(pass_result.sig_A_xy, 'sig_A_xy')
 
         # Gaussian offset parameters (background levels)
         if pass_result.c_A is not None:
-            ensemble_struct['c_A'][local_idx] = _convert_to_half_precision(pass_result.c_A)
+            ensemble_struct['c_A'][local_idx] = _convert_to_half_precision(pass_result.c_A, 'c_A')
         if pass_result.c_B is not None:
-            ensemble_struct['c_B'][local_idx] = _convert_to_half_precision(pass_result.c_B)
+            ensemble_struct['c_B'][local_idx] = _convert_to_half_precision(pass_result.c_B, 'c_B')
         if pass_result.c_AB is not None:
-            ensemble_struct['c_AB'][local_idx] = _convert_to_half_precision(pass_result.c_AB)
+            ensemble_struct['c_AB'][local_idx] = _convert_to_half_precision(pass_result.c_AB, 'c_AB')
 
         # Window centers and size
         if pass_result.win_ctrs_x is not None:
-            ensemble_struct['win_ctrs_x'][local_idx] = _convert_to_half_precision(pass_result.win_ctrs_x)
+            ensemble_struct['win_ctrs_x'][local_idx] = _convert_to_half_precision(pass_result.win_ctrs_x, 'win_ctrs_x')
         if pass_result.win_ctrs_y is not None:
-            ensemble_struct['win_ctrs_y'][local_idx] = _convert_to_half_precision(pass_result.win_ctrs_y)
+            ensemble_struct['win_ctrs_y'][local_idx] = _convert_to_half_precision(pass_result.win_ctrs_y, 'win_ctrs_y')
         if pass_result.window_size is not None:
             ensemble_struct['window_size'][local_idx] = pass_result.window_size
 
@@ -434,9 +434,9 @@ def _create_ensemble_struct_all_passes(
 
         # Predictor fields
         if pass_result.pred_x is not None:
-            ensemble_struct['pred_x'][local_idx] = _convert_to_half_precision(pass_result.pred_x)
+            ensemble_struct['pred_x'][local_idx] = _convert_to_half_precision(pass_result.pred_x, 'pred_x')
         if pass_result.pred_y is not None:
-            ensemble_struct['pred_y'][local_idx] = _convert_to_half_precision(pass_result.pred_y)
+            ensemble_struct['pred_y'][local_idx] = _convert_to_half_precision(pass_result.pred_y, 'pred_y')
 
     return ensemble_struct
 
@@ -527,9 +527,9 @@ def _create_piv_struct_all_passes(
         
         # Save ux and uy directly without swapping - coordinate system is now correct
         if pass_result.ux_mat is not None:
-            piv_struct['ux'][local_idx] = _convert_to_half_precision(pass_result.ux_mat)
+            piv_struct['ux'][local_idx] = _convert_to_half_precision(pass_result.ux_mat, 'ux')
         if pass_result.uy_mat is not None:
-            piv_struct['uy'][local_idx] = _convert_to_half_precision(pass_result.uy_mat)
+            piv_struct['uy'][local_idx] = _convert_to_half_precision(pass_result.uy_mat, 'uy')
 
         # Use b_mask from pass_result (already computed during PIV)
         if pass_result.b_mask is not None:
@@ -543,18 +543,18 @@ def _create_piv_struct_all_passes(
 
         # Window centers are always stored in pass_result
         if pass_result.win_ctrs_x is not None:
-            piv_struct['win_ctrs_x'][local_idx] = _convert_to_half_precision(pass_result.win_ctrs_x)
+            piv_struct['win_ctrs_x'][local_idx] = _convert_to_half_precision(pass_result.win_ctrs_x, 'win_ctrs_x')
         if pass_result.win_ctrs_y is not None:
-            piv_struct['win_ctrs_y'][local_idx] = _convert_to_half_precision(pass_result.win_ctrs_y)
-            
+            piv_struct['win_ctrs_y'][local_idx] = _convert_to_half_precision(pass_result.win_ctrs_y, 'win_ctrs_y')
+
         if pass_result.peak_mag is not None:
-            piv_struct['peak_mag'][local_idx] = _convert_to_half_precision(pass_result.peak_mag)
+            piv_struct['peak_mag'][local_idx] = _convert_to_half_precision(pass_result.peak_mag, 'peak_mag')
         if pass_result.peak_choice is not None:
             piv_struct['peak_choice'][local_idx] = pass_result.peak_choice
         if pass_result.n_windows is not None:
             piv_struct['n_windows'][local_idx] = pass_result.n_windows
         if pass_result.predictor_field is not None:
-            piv_struct['predictor_field'][local_idx] = _convert_to_half_precision(pass_result.predictor_field)
+            piv_struct['predictor_field'][local_idx] = _convert_to_half_precision(pass_result.predictor_field, 'predictor_field')
         if pass_result.window_size is not None:
             piv_struct['window_size'][local_idx] = pass_result.window_size
     
@@ -673,12 +673,32 @@ def get_ensemble_output_path(
     )
 
 
-def _convert_to_half_precision(arr: np.ndarray) -> np.ndarray:
+def _convert_to_half_precision(arr: np.ndarray, field_name: str = "unknown") -> np.ndarray:
     """
     Convert float arrays to half precision (float16) for space saving.
+
+    Clamps values to float16 range to prevent overflow warnings.
+    float16 max is ~65504.
     """
     if arr is None or arr.size == 0:
         return arr
     if arr.dtype.kind == 'f':
-        return arr.astype(np.float16)
+        # float16 range: approximately [-65504, 65504]
+        FLOAT16_MAX = 65504.0
+
+        # Check for values that would overflow
+        finite_vals = arr[np.isfinite(arr)]
+        if finite_vals.size > 0:
+            max_abs = np.abs(finite_vals).max()
+            if max_abs > FLOAT16_MAX:
+                logging.warning(
+                    f"Field '{field_name}' has values exceeding float16 range: "
+                    f"max |value| = {max_abs:.2e}, clamping to ±{FLOAT16_MAX}"
+                )
+
+        # Clamp to float16 range before conversion
+        clamped = np.clip(arr, -FLOAT16_MAX, FLOAT16_MAX)
+        # Preserve NaN values (clip converts them to the clamp boundary)
+        clamped = np.where(np.isnan(arr), np.nan, clamped)
+        return clamped.astype(np.float16)
     return arr

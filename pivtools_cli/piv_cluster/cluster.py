@@ -19,7 +19,10 @@ def make_cluster(
         n_workers=n_workers_per_node,
         threads_per_worker=threads_per_worker,
         memory_limit=memory_limit,
-        nanny=True,
+        # Disable nanny to avoid restart attempts on Ctrl+C
+        # Nanny is useful for long-running production clusters, but for
+        # batch PIV processing we want clean shutdown on interrupt
+        nanny=False,
     )
     client = Client(cluster)
     return cluster, client

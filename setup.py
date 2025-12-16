@@ -11,7 +11,8 @@ class BuildCLib(build_ext):
     def run(self):
         if not self.dry_run:
             self.build_c_libraries()
-        super().run()
+        # Don't call super().run() - we use an empty Extension (sources=[])
+        # that only exists to trigger build_ext and force platform-specific wheels
 
     def build_c_libraries(self):
         pkg_dir = pathlib.Path(__file__).parent
@@ -48,7 +49,8 @@ class BuildCLib(build_ext):
                 raise RuntimeError("gcc-15 not found. Run: brew install gcc@15")
 
             compiler = gcc_path
-            extra_compile = ["-O3", "-fPIC", "-fopenmp"]
+            # Optimized flags: -march=native for CPU-specific opts, -ffast-math for FP speed
+            extra_compile = ["-O3", "-fPIC", "-fopenmp", "-march=native", "-ffast-math"]
             extra_link = [str(fftw_lib_file), "-lm", "-fopenmp"]
             shared_flag = "-shared"
             lib_ext = ".so"
@@ -87,7 +89,8 @@ class BuildCLib(build_ext):
 
             compiler = os.environ.get("CC", "gcc")
             shared_flag = "-shared"
-            extra_compile = ["-O3", "-fPIC", "-fopenmp"]
+            # Optimized flags: -march=native for CPU-specific opts, -ffast-math for FP speed
+            extra_compile = ["-O3", "-fPIC", "-fopenmp", "-march=native", "-ffast-math"]
             extra_link = [str(fftw_lib_file), "-lm", "-fopenmp"]
             lib_ext = ".so"
             use_msvc = False
@@ -193,11 +196,13 @@ class BuildCLib(build_ext):
                     *gsl_link_flags
                 ]
             else:
-                # GCC style
+                # GCC style - optimized build for marquadt
                 gsl_compile_flags = [f"-I{gsl_inc}"]
                 gsl_link_flags = [str(gsl_lib / "libgsl.a"), str(gsl_lib / "libgslcblas.a"), "-lm"]
+                # Use same optimized flags as other libraries, including OpenMP
+                marquadt_compile_flags = extra_compile.copy()
                 cmd_marquadt = [
-                    compiler, *extra_compile, shared_flag,
+                    compiler, *marquadt_compile_flags, shared_flag,
                     *gsl_compile_flags,
                     str(marquadt_src),
                     f"-I{src_dir}",
@@ -239,11 +244,12 @@ class BuildCLib(build_ext):
             raise RuntimeError(f"Build failed: {result.returncode}")
 
 
-# Dummy extension to trigger build_ext
-dummy_ext = Extension("pivtools_cli._build_marker", sources=["pivtools_cli/_build_marker.c"])
+# Empty extension to trigger build_ext and force platform-specific wheels
+# sources=[] means nothing is compiled - we just need ext_modules to be non-empty
+platform_marker = Extension("pivtools_cli._platform_marker", sources=[])
 
 setup(
-    ext_modules=[dummy_ext],
+    ext_modules=[platform_marker],
     cmdclass={"build_ext": BuildCLib},
     include_package_data=True,
 )

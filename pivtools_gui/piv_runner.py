@@ -136,11 +136,12 @@ class PIVRunner:
         base_path_idx: int = 0,
         active_paths: Optional[list[int]] = None,
         config_overrides: Optional[dict] = None,
+        mode: str = "instantaneous",
     ) -> dict:
         """
         Start a new PIV computation job as a subprocess.
 
-        Runs example.py which reads settings from config.yaml. The active_paths
+        Runs instantaneous.py or ensemble.py based on mode. The active_paths
         parameter can be used to override which source/base path pairs to process.
 
         Parameters
@@ -156,6 +157,8 @@ class PIVRunner:
             active_paths setting via PIV_ACTIVE_PATHS environment variable.
         config_overrides : dict, optional
             Configuration overrides to apply before running (future feature).
+        mode : str
+            PIV mode: "instantaneous" or "ensemble". Defaults to "instantaneous".
 
         Returns
         -------
@@ -165,9 +168,12 @@ class PIVRunner:
         job_id = self._generate_job_id()
         log_file = self.log_dir / f"{job_id}.log"
 
-        # Build command - runs example.py which uses config.yaml
+        # Build command - select script based on mode
         python_exe = self._get_python_executable()
-        script_path = self.project_root / "pivtools_core" / "example.py"
+        if mode == "ensemble":
+            script_path = self.project_root / "pivtools_core" / "ensemble.py"
+        else:
+            script_path = self.project_root / "pivtools_core" / "instantaneous.py"
         cmd = [python_exe, str(script_path)]
 
         # Open log file
