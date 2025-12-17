@@ -20,6 +20,8 @@ Parametric transformations (require :factor suffix, e.g., "scale_velocity:1000")
 """
 
 import copy
+import os
+import tempfile
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -83,15 +85,33 @@ def load_mat_for_transform(mat_file: Path) -> dict:
 
 def save_mat_from_transform(mat_file: Path, mat_dict: dict) -> None:
     """
-    Save mat file with compression, suppressing warnings.
+    Save mat file with compression using atomic write to prevent corruption.
+
+    Uses a write-to-temp-then-rename pattern to ensure the original file
+    is not corrupted if the process is interrupted during save.
 
     Args:
         mat_file: Path to save the .mat file
         mat_dict: Dictionary to save
     """
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", UserWarning)
-        savemat(str(mat_file), mat_dict, oned_as="row", do_compression=True)
+    mat_file = Path(mat_file)
+
+    # Create temp file in same directory to ensure same filesystem (for atomic rename)
+    fd, tmp_path = tempfile.mkstemp(suffix=".mat.tmp", dir=mat_file.parent)
+    try:
+        os.close(fd)  # Close the file descriptor, we'll use savemat
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            savemat(tmp_path, mat_dict, oned_as="row", do_compression=True)
+
+        # Atomic rename (on POSIX systems)
+        os.replace(tmp_path, mat_file)
+    except Exception:
+        # Clean up temp file on failure
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise
 
 
 def coords_to_structured_array(coords: np.ndarray) -> np.ndarray:

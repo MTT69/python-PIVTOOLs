@@ -162,7 +162,6 @@ processing:
   dask_workers_per_node: 4
   dask_threads_per_worker: 1
   dask_memory_limit: 3GB
-  filter_worker_count: 1
   always_batch: true
 outlier_detection:
   enabled: true
@@ -1722,81 +1721,6 @@ video:
         return self.data.get("processing", {}).get("dask_memory_limit", "4GB")
 
     @property
-    def filter_omp_threads(self) -> int:
-        """
-        OMP threads for pipelined filter workers.
-
-        During pipelined batch processing, filter workers run concurrently with
-        correlation workers. Using all cores for filtering causes oversubscription.
-        This setting controls thread count for subsequent batches (first batch
-        still uses all cores since no correlation is running yet).
-
-        Default: 2
-
-        Returns
-        -------
-        int
-            Number of OMP threads for pipelined filter batches
-        """
-        return self.data.get("processing", {}).get("filter_omp_threads", 2)
-
-    @property
-    def filter_worker_count(self):
-        """
-        Number of workers dedicated to filtering.
-
-        Auto-determined based on filter types:
-        - 1 worker for temporal filters (time, POD) to avoid memory issues
-        - 2 workers for spatial-only filters
-        - Can be overridden by setting manually in config
-
-        Returns
-        -------
-        int
-            Number of workers dedicated to filtering
-        """
-        # Check if manually set
-        manual_count = self.data.get("processing", {}).get(
-            "filter_worker_count"
-        )
-        if manual_count is not None:
-            return manual_count
-
-        # Auto-determine based on filter types
-        from pivtools_cli.preprocessing.preprocess import has_batch_filters
-
-        if has_batch_filters(self):
-            # Temporal filters (time, POD): use 1 worker to avoid memory issues
-            return 1
-        else:
-            # Spatial filters only: can use more workers
-            return 2
-
-    def get_filter_worker_allocation(self, total_workers: int):
-        """
-        Determine filter and correlation worker counts.
-
-        Parameters
-        ----------
-        total_workers : int
-            Total number of available workers
-
-        Returns
-        -------
-        tuple
-            (filter_workers, correlation_workers)
-
-        Examples
-        --------
-        10 cores, count=1 → (1, 9)
-        5 cores, count=2 → (2, 3)
-        """
-        filter_workers = max(
-            1, min(self.filter_worker_count, total_workers - 1)
-        )
-        return filter_workers, total_workers - filter_workers
-
-    @property
     def always_batch(self):
         """
         Force batch mode even for spatial filters (unified pipeline).
@@ -1851,11 +1775,6 @@ video:
             raise ValueError(
                 f"Invalid peak_finder: {peak_finder}. Must be 'gauss3', 'gauss4', 'gauss5', or 'gauss6'."
             )
-
-    @property
-    def ensemble_piv(self):
-        """Return True if ensemble PIV is enabled."""
-        return self.data.get("processing", {}).get("ensemble", False)
 
     # --- Ensemble PIV properties ---
     @property

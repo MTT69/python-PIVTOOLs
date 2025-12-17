@@ -1,5 +1,6 @@
 include README.md
 include LICENSE
+include NOTICE
 include requirements.txt
 
 # Include C library source files

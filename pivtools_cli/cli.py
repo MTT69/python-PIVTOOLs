@@ -3,13 +3,18 @@
 PIVTOOLs CLI - Command line interface for PIVTOOLs
 
 Commands:
-  init       - Initialize a new PIVTOOLs workspace
-  run        - Run PIV analysis
-  calibrate  - Calibrate vectors (pixels to m/s)
-  transform  - Apply geometric transforms to vectors
-  merge      - Merge multi-camera vector fields
-  statistics - Compute PIV statistics
-  video      - Create visualization videos
+  init                 - Initialize a new PIVTOOLs workspace
+  instantaneous        - Run instantaneous PIV processing
+  ensemble             - Run ensemble PIV processing
+  detect-planar        - Detect dot/circle grid, generate camera model
+  detect-charuco       - Detect ChArUco board, generate camera model
+  detect-stereo-planar - Detect dot/circle grid, generate stereo model
+  detect-stereo-charuco- Detect ChArUco board, generate stereo model
+  apply-calibration    - Apply calibration to vectors (pixels to m/s)
+  transform            - Apply geometric transforms to vectors
+  merge                - Merge multi-camera vector fields
+  statistics           - Compute PIV statistics
+  video                - Create visualization videos
 """
 
 import argparse
@@ -20,13 +25,31 @@ from pathlib import Path
 
 
 # =============================================================================
-# CALIBRATE COMMAND
+# HELPER FUNCTIONS
 # =============================================================================
 
-def calibrate_command(args):
-    """Calibrate PIV vectors from pixels to physical units (m/s)."""
+def get_active_paths_from_args(args, config):
+    """
+    Get active paths, with CLI override support.
+
+    If args.active_paths is provided (e.g., "0,1,2"), parse and return those indices.
+    Otherwise, return config.active_paths.
+
+    Returns list of path indices.
+    """
+    if hasattr(args, 'active_paths') and args.active_paths:
+        # Parse comma-separated indices
+        return [int(i.strip()) for i in args.active_paths.split(',')]
+    return config.active_paths
+
+
+# =============================================================================
+# APPLY-CALIBRATION COMMAND
+# =============================================================================
+
+def apply_calibration_command(args):
+    """Apply calibration to PIV vectors (pixels to physical units m/s)."""
     from pivtools_core.config import get_config
-    from pivtools_gui.calibration.vector_calibration_production import VectorCalibrator
 
     config = get_config()
 
@@ -37,15 +60,19 @@ def calibrate_command(args):
     if args.runs:
         runs_to_process = [int(r) for r in args.runs.split(",")]
 
-    # Get active paths
-    active_paths = config.active_paths
+    # Determine calibration method (CLI override or config)
+    method = args.method or config.active_calibration_method
+
+    # Get active paths (with CLI override support)
+    active_paths = get_active_paths_from_args(args, config)
     if not active_paths:
         print("Error: No active paths configured in config.yaml")
         sys.exit(1)
 
     print("=" * 60)
-    print("Vector Calibration - Starting")
+    print("Apply Calibration - Starting")
     print("=" * 60)
+    print(f"Method: {method}")
     print(f"Active paths: {len(active_paths)}")
     print(f"Cameras: {cameras}")
     print(f"Type: {type_name}")
@@ -59,13 +86,31 @@ def calibrate_command(args):
 
         for camera in cameras:
             try:
-                calibrator = VectorCalibrator(
-                    base_dir=base_dir,
-                    camera_num=camera,
-                    type_name=type_name,
-                    runs=runs_to_process,
-                )
-                result = calibrator.run()
+                if method == "scale_factor":
+                    from pivtools_gui.calibration.scale_factor_calibration_production import ScaleFactorCalibrator
+                    calibrator = ScaleFactorCalibrator(
+                        base_path=base_dir,
+                        type_name=type_name,
+                        config=config,
+                    )
+                    result = calibrator.process_camera(
+                        camera_num=camera,
+                        image_count=config.num_frame_pairs,
+                    )
+                else:
+                    # pinhole or charuco
+                    from pivtools_gui.calibration.vector_calibration_production import VectorCalibrator
+                    calibrator = VectorCalibrator(
+                        base_dir=base_dir,
+                        camera_num=camera,
+                        model_type=method,
+                        type_name=type_name,
+                        runs=runs_to_process,
+                        config=config,
+                    )
+                    calibrator.process_run()
+                    result = {"success": True, "calibrated_count": "N/A"}
+
                 result["path_idx"] = path_idx
                 result["camera"] = camera
                 results.append(result)
@@ -84,6 +129,448 @@ def calibrate_command(args):
     print("=" * 60)
     success_count = sum(1 for r in results if r.get("success"))
     print(f"Total: {success_count}/{len(results)} operations succeeded")
+
+    sys.exit(0 if success_count == len(results) else 1)
+
+
+# =============================================================================
+# APPLY-STEREO COMMAND
+# =============================================================================
+
+def apply_stereo_command(args):
+    """Apply stereo calibration for 3D velocity reconstruction."""
+    from pivtools_core.config import get_config
+    from pivtools_gui.stereo_reconstruction.stereo_reconstruction_production import StereoReconstructor
+
+    config = get_config()
+
+    # Parse camera pair from CLI or config
+    if args.camera_pair:
+        camera_pair = [int(c.strip()) for c in args.camera_pair.split(",")]
+    else:
+        camera_pair = config.data.get("calibration", {}).get("stereo", {}).get("camera_pair", [1, 2])
+
+    method = args.method  # "pinhole" or "charuco", None uses config default
+    type_name = args.type_name or "instantaneous"
+    runs_to_process = [int(r) for r in args.runs.split(",")] if args.runs else None
+
+    active_paths = get_active_paths_from_args(args, config)
+    if not active_paths:
+        print("Error: No active paths configured in config.yaml")
+        sys.exit(1)
+
+    print("=" * 60)
+    print("Stereo 3D Reconstruction - Starting")
+    print("=" * 60)
+    print(f"Active paths: {len(active_paths)}")
+    print(f"Camera pair: {camera_pair}")
+    print(f"Method: {method or 'from config'}")
+    print(f"Type: {type_name}")
+    print(f"Runs: {runs_to_process or 'all'}")
+
+    results = []
+    for path_idx in active_paths:
+        base_dir = Path(config.base_paths[path_idx])
+        print(f"\nPath {path_idx + 1}/{len(active_paths)}: {base_dir}")
+        print("-" * 40)
+
+        try:
+            reconstructor = StereoReconstructor(
+                base_dir=base_dir,
+                camera_pair=camera_pair,
+                model_type=method,
+                type_name=type_name,
+                runs=runs_to_process,
+                config=config,
+            )
+            reconstructor.process_run()
+            result = {"success": True}
+            result["path_idx"] = path_idx
+            results.append(result)
+
+            print(f"  Stereo reconstruction: OK")
+        except Exception as e:
+            print(f"  FAILED - {e}")
+            import traceback
+            traceback.print_exc()
+            results.append({"success": False, "error": str(e), "path_idx": path_idx})
+
+    # Summary
+    print("\n" + "=" * 60)
+    print("SUMMARY")
+    print("=" * 60)
+    success_count = sum(1 for r in results if r.get("success"))
+    print(f"Total: {success_count}/{len(results)} paths succeeded")
+
+    sys.exit(0 if success_count == len(results) else 1)
+
+
+# =============================================================================
+# DETECT-PLANAR COMMAND (Generate camera model from dot/circle grid)
+# =============================================================================
+
+def detect_planar_command(args):
+    """Detect dot/circle grid and generate camera model."""
+    from pivtools_core.config import get_config
+    from pivtools_gui.calibration.calibration_planar.planar_calibration_production import MultiViewCalibrator
+
+    config = get_config()
+
+    # Determine cameras to process
+    cameras = [args.camera] if args.camera else config.camera_numbers
+
+    # Get paths
+    active_paths = get_active_paths_from_args(args, config)
+    if not active_paths:
+        print("Error: No active paths configured in config.yaml")
+        sys.exit(1)
+
+    print("=" * 60)
+    print("Planar Camera Calibration - Starting")
+    print("=" * 60)
+    print(f"Cameras: {cameras}")
+    print(f"Active paths: {len(active_paths)}")
+
+    # Get calibration settings from config
+    pinhole_cfg = config.data.get("calibration", {}).get("pinhole", {})
+    pattern_cols = pinhole_cfg.get("pattern_cols", 10)
+    pattern_rows = pinhole_cfg.get("pattern_rows", 10)
+    dot_spacing_mm = pinhole_cfg.get("dot_spacing_mm", 28.89)
+    asymmetric = pinhole_cfg.get("asymmetric", False)
+    enhance_dots = pinhole_cfg.get("enhance_dots", True)
+
+    calib_cfg = config.data.get("calibration", {})
+    file_pattern = calib_cfg.get("image_format", "calib%05d.tif")
+    subfolder = calib_cfg.get("subfolder", "")
+
+    print(f"Grid: {pattern_cols}x{pattern_rows}, spacing: {dot_spacing_mm}mm")
+
+    results = []
+    for path_idx in active_paths:
+        source_dir = config.source_paths[path_idx]
+        base_dir = config.base_paths[path_idx]
+        print(f"\nPath {path_idx + 1}/{len(active_paths)}:")
+        print(f"  Source: {source_dir}")
+        print(f"  Base: {base_dir}")
+        print("-" * 40)
+
+        try:
+            calibrator = MultiViewCalibrator(
+                source_dir=source_dir,
+                base_dir=base_dir,
+                camera_count=len(cameras),
+                file_pattern=file_pattern,
+                pattern_cols=pattern_cols,
+                pattern_rows=pattern_rows,
+                dot_spacing_mm=dot_spacing_mm,
+                asymmetric=asymmetric,
+                enhance_dots=enhance_dots,
+                calibration_subfolder=subfolder,
+                config=config,
+            )
+
+            for camera in cameras:
+                result = calibrator.process_single_camera(
+                    cam_num=camera,
+                    save_visualizations=True,
+                )
+                result["path_idx"] = path_idx
+                result["camera"] = camera
+                results.append(result)
+
+                if result.get("success"):
+                    print(f"  Camera {camera}: OK - RMS error: {result.get('rms_error', 0):.4f}")
+                else:
+                    print(f"  Camera {camera}: FAILED - {result.get('error', 'Unknown')}")
+
+        except Exception as e:
+            print(f"  FAILED - {e}")
+            import traceback
+            traceback.print_exc()
+            results.append({"success": False, "error": str(e), "path_idx": path_idx})
+
+    # Summary
+    print("\n" + "=" * 60)
+    print("SUMMARY")
+    print("=" * 60)
+    success_count = sum(1 for r in results if r.get("success"))
+    print(f"Total: {success_count}/{len(results)} camera calibrations succeeded")
+
+    sys.exit(0 if success_count == len(results) else 1)
+
+
+# =============================================================================
+# DETECT-CHARUCO COMMAND (Generate camera model from ChArUco board)
+# =============================================================================
+
+def detect_charuco_command(args):
+    """Detect ChArUco board and generate camera model."""
+    from pivtools_core.config import get_config
+    from pivtools_gui.calibration.calibration_charuco.charuco_calibration_production import ChArUcoCalibrator
+
+    config = get_config()
+
+    # Determine cameras to process
+    cameras = [args.camera] if args.camera else config.camera_numbers
+
+    # Get paths
+    active_paths = get_active_paths_from_args(args, config)
+    if not active_paths:
+        print("Error: No active paths configured in config.yaml")
+        sys.exit(1)
+
+    print("=" * 60)
+    print("ChArUco Camera Calibration - Starting")
+    print("=" * 60)
+    print(f"Cameras: {cameras}")
+    print(f"Active paths: {len(active_paths)}")
+
+    # Get calibration settings from config
+    charuco_cfg = config.data.get("calibration", {}).get("charuco", {})
+    squares_h = charuco_cfg.get("squares_h", 10)
+    squares_v = charuco_cfg.get("squares_v", 9)
+    square_size = charuco_cfg.get("square_size", 0.03)
+    marker_ratio = charuco_cfg.get("marker_ratio", 0.5)
+    aruco_dict = charuco_cfg.get("aruco_dict", "DICT_4X4_1000")
+    min_corners = charuco_cfg.get("min_corners", 6)
+    dt = charuco_cfg.get("dt", 1.0)
+
+    calib_cfg = config.data.get("calibration", {})
+    file_pattern = calib_cfg.get("image_format", "calib%05d.tif")
+    subfolder = calib_cfg.get("subfolder", "")
+
+    print(f"Board: {squares_h}x{squares_v} squares, size: {square_size}m")
+
+    results = []
+    for path_idx in active_paths:
+        source_dir = config.source_paths[path_idx]
+        base_dir = config.base_paths[path_idx]
+        print(f"\nPath {path_idx + 1}/{len(active_paths)}:")
+        print(f"  Source: {source_dir}")
+        print(f"  Base: {base_dir}")
+        print("-" * 40)
+
+        try:
+            calibrator = ChArUcoCalibrator(
+                source_dir=source_dir,
+                base_dir=base_dir,
+                camera_count=len(cameras),
+                file_pattern=file_pattern,
+                squares_h=squares_h,
+                squares_v=squares_v,
+                square_size=square_size,
+                marker_ratio=marker_ratio,
+                aruco_dict=aruco_dict,
+                min_corners=min_corners,
+                dt=dt,
+                calibration_subfolder=subfolder,
+                config=config,
+            )
+
+            for camera in cameras:
+                result = calibrator.process_camera(
+                    cam_num=camera,
+                    save_visualizations=True,
+                )
+                result["path_idx"] = path_idx
+                result["camera"] = camera
+                results.append(result)
+
+                if result.get("success"):
+                    print(f"  Camera {camera}: OK - RMS error: {result.get('rms_error', 0):.4f}")
+                else:
+                    print(f"  Camera {camera}: FAILED - {result.get('error', 'Unknown')}")
+
+        except Exception as e:
+            print(f"  FAILED - {e}")
+            import traceback
+            traceback.print_exc()
+            results.append({"success": False, "error": str(e), "path_idx": path_idx})
+
+    # Summary
+    print("\n" + "=" * 60)
+    print("SUMMARY")
+    print("=" * 60)
+    success_count = sum(1 for r in results if r.get("success"))
+    print(f"Total: {success_count}/{len(results)} camera calibrations succeeded")
+
+    sys.exit(0 if success_count == len(results) else 1)
+
+
+# =============================================================================
+# DETECT-STEREO-PLANAR COMMAND (Generate stereo camera model from dot/circle grid)
+# =============================================================================
+
+def detect_stereo_planar_command(args):
+    """Detect dot/circle grid and generate stereo camera model."""
+    from pivtools_core.config import get_config
+    from pivtools_gui.stereo_reconstruction.stereo_pinhole_calibration_production import StereoPinholeCalibrator
+
+    config = get_config()
+
+    # Get paths
+    active_paths = get_active_paths_from_args(args, config)
+    if not active_paths:
+        print("Error: No active paths configured in config.yaml")
+        sys.exit(1)
+
+    print("=" * 60)
+    print("Stereo Planar Camera Calibration - Starting")
+    print("=" * 60)
+    print(f"Active paths: {len(active_paths)}")
+
+    # Get calibration settings from config
+    stereo_cfg = config.data.get("calibration", {}).get("stereo", {})
+    camera_pair = stereo_cfg.get("camera_pair", [1, 2])
+    pattern_cols = stereo_cfg.get("pattern_cols", 10)
+    pattern_rows = stereo_cfg.get("pattern_rows", 10)
+    dot_spacing_mm = stereo_cfg.get("dot_spacing_mm", 28.89)
+    asymmetric = stereo_cfg.get("asymmetric", False)
+    enhance_dots = stereo_cfg.get("enhance_dots", True)
+
+    calib_cfg = config.data.get("calibration", {})
+    file_pattern = calib_cfg.get("image_format", "calib%05d.tif")
+    subfolder = calib_cfg.get("subfolder", "")
+
+    print(f"Camera pair: {camera_pair}")
+    print(f"Grid: {pattern_cols}x{pattern_rows}, spacing: {dot_spacing_mm}mm")
+
+    results = []
+    for path_idx in active_paths:
+        source_dir = config.source_paths[path_idx]
+        base_dir = config.base_paths[path_idx]
+        print(f"\nPath {path_idx + 1}/{len(active_paths)}:")
+        print(f"  Source: {source_dir}")
+        print(f"  Base: {base_dir}")
+        print("-" * 40)
+
+        try:
+            calibrator = StereoPinholeCalibrator(
+                source_dir=source_dir,
+                base_dir=base_dir,
+                camera_pair=camera_pair,
+                file_pattern=file_pattern,
+                pattern_cols=pattern_cols,
+                pattern_rows=pattern_rows,
+                dot_spacing_mm=dot_spacing_mm,
+                asymmetric=asymmetric,
+                enhance_dots=enhance_dots,
+                calibration_subfolder=subfolder,
+                config=config,
+            )
+
+            result = calibrator.process_camera_pair(save_visualizations=True)
+            result["path_idx"] = path_idx
+            results.append(result)
+
+            if result.get("success"):
+                print(f"  Stereo calibration: OK - RMS error: {result.get('rms_error', 0):.4f}")
+            else:
+                print(f"  Stereo calibration: FAILED - {result.get('error', 'Unknown')}")
+
+        except Exception as e:
+            print(f"  FAILED - {e}")
+            import traceback
+            traceback.print_exc()
+            results.append({"success": False, "error": str(e), "path_idx": path_idx})
+
+    # Summary
+    print("\n" + "=" * 60)
+    print("SUMMARY")
+    print("=" * 60)
+    success_count = sum(1 for r in results if r.get("success"))
+    print(f"Total: {success_count}/{len(results)} stereo calibrations succeeded")
+
+    sys.exit(0 if success_count == len(results) else 1)
+
+
+# =============================================================================
+# DETECT-STEREO-CHARUCO COMMAND (Generate stereo camera model from ChArUco board)
+# =============================================================================
+
+def detect_stereo_charuco_command(args):
+    """Detect ChArUco board and generate stereo camera model."""
+    from pivtools_core.config import get_config
+    from pivtools_gui.stereo_reconstruction.stereo_charuco_calibration_production import StereoCharucoCalibrator
+
+    config = get_config()
+
+    # Get paths
+    active_paths = get_active_paths_from_args(args, config)
+    if not active_paths:
+        print("Error: No active paths configured in config.yaml")
+        sys.exit(1)
+
+    print("=" * 60)
+    print("Stereo ChArUco Camera Calibration - Starting")
+    print("=" * 60)
+    print(f"Active paths: {len(active_paths)}")
+
+    # Get calibration settings from config
+    stereo_cfg = config.data.get("calibration", {}).get("stereo", {})
+    camera_pair = stereo_cfg.get("camera_pair", [1, 2])
+
+    charuco_cfg = config.data.get("calibration", {}).get("charuco", {})
+    squares_h = charuco_cfg.get("squares_h", 10)
+    squares_v = charuco_cfg.get("squares_v", 9)
+    square_size = charuco_cfg.get("square_size", 0.03)
+    marker_ratio = charuco_cfg.get("marker_ratio", 0.5)
+    aruco_dict = charuco_cfg.get("aruco_dict", "DICT_4X4_1000")
+    min_corners = charuco_cfg.get("min_corners", 6)
+
+    calib_cfg = config.data.get("calibration", {})
+    file_pattern = calib_cfg.get("image_format", "calib%05d.tif")
+    subfolder = calib_cfg.get("subfolder", "")
+
+    print(f"Camera pair: {camera_pair}")
+    print(f"Board: {squares_h}x{squares_v} squares, size: {square_size}m")
+
+    results = []
+    for path_idx in active_paths:
+        source_dir = config.source_paths[path_idx]
+        base_dir = config.base_paths[path_idx]
+        print(f"\nPath {path_idx + 1}/{len(active_paths)}:")
+        print(f"  Source: {source_dir}")
+        print(f"  Base: {base_dir}")
+        print("-" * 40)
+
+        try:
+            calibrator = StereoCharucoCalibrator(
+                source_dir=source_dir,
+                base_dir=base_dir,
+                camera_pair=camera_pair,
+                file_pattern=file_pattern,
+                squares_h=squares_h,
+                squares_v=squares_v,
+                square_size=square_size,
+                marker_ratio=marker_ratio,
+                aruco_dict=aruco_dict,
+                min_corners=min_corners,
+                calibration_subfolder=subfolder,
+                config=config,
+            )
+
+            result = calibrator.process_camera_pair(save_visualizations=True)
+            result["path_idx"] = path_idx
+            results.append(result)
+
+            if result.get("success"):
+                print(f"  Stereo calibration: OK - RMS error: {result.get('rms_error', 0):.4f}")
+            else:
+                print(f"  Stereo calibration: FAILED - {result.get('error', 'Unknown')}")
+
+        except Exception as e:
+            print(f"  FAILED - {e}")
+            import traceback
+            traceback.print_exc()
+            results.append({"success": False, "error": str(e), "path_idx": path_idx})
+
+    # Summary
+    print("\n" + "=" * 60)
+    print("SUMMARY")
+    print("=" * 60)
+    success_count = sum(1 for r in results if r.get("success"))
+    print(f"Total: {success_count}/{len(results)} stereo calibrations succeeded")
 
     sys.exit(0 if success_count == len(results) else 1)
 
@@ -115,7 +602,7 @@ def transform_command(args):
     type_name = args.type_name or config.transforms_type_name or "instantaneous"
     use_merged = args.merged if args.merged else False
 
-    active_paths = config.active_paths
+    active_paths = get_active_paths_from_args(args, config)
     if not active_paths:
         print("Error: No active paths configured in config.yaml")
         sys.exit(1)
@@ -184,7 +671,7 @@ def merge_command(args):
         cameras = config.merging_cameras or config.camera_numbers
     type_name = args.type_name or config.merging_type_name or "instantaneous"
 
-    active_paths = config.active_paths
+    active_paths = get_active_paths_from_args(args, config)
     if not active_paths:
         print("Error: No active paths configured in config.yaml")
         sys.exit(1)
@@ -251,7 +738,7 @@ def statistics_command(args):
     type_name = args.type_name or "instantaneous"
     use_merged = args.merged if args.merged else False
 
-    active_paths = config.active_paths
+    active_paths = get_active_paths_from_args(args, config)
     if not active_paths:
         print("Error: No active paths configured in config.yaml")
         sys.exit(1)
@@ -347,7 +834,7 @@ def video_command(args):
     upper_limit = args.upper if args.upper is not None else config.video_upper_limit
     cmap = args.cmap if args.cmap else (config.video_cmap if config.video_cmap != "default" else None)
 
-    active_paths = config.active_paths
+    active_paths = get_active_paths_from_args(args, config)
     if not active_paths:
         print("Error: No active paths configured in config.yaml")
         sys.exit(1)
@@ -617,14 +1104,53 @@ masking:
         f.write(default_config.strip())
     print(f"Created default config.yaml at {config_path}")
 
-def run_command(args):
-    """Run PIV analysis using the current config"""
+def instantaneous_command(args):
+    """Run instantaneous PIV processing."""
+    import os
+    from pivtools_core import instantaneous
+
+    if args.active_paths:
+        os.environ['PIV_ACTIVE_PATHS'] = args.active_paths
+
+    print("=" * 60)
+    print("Instantaneous PIV Processing")
+    print("=" * 60)
+    if args.active_paths:
+        print(f"Active paths override: {args.active_paths}")
+
     try:
-        from pivtools_core.example import main as run_piv
-        run_piv()
-    except ImportError as e:
-        print(f"Error importing PIVTOOLs: {e}")
-        print("Make sure PIVTOOLs is properly installed")
+        instantaneous.main()
+    except SystemExit as e:
+        sys.exit(e.code if e.code is not None else 0)
+    except Exception as e:
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
+def ensemble_command(args):
+    """Run ensemble PIV processing."""
+    import os
+    from pivtools_core import ensemble
+
+    if args.active_paths:
+        os.environ['PIV_ACTIVE_PATHS'] = args.active_paths
+
+    print("=" * 60)
+    print("Ensemble PIV Processing")
+    print("=" * 60)
+    if args.active_paths:
+        print(f"Active paths override: {args.active_paths}")
+
+    try:
+        ensemble.main()
+    except SystemExit as e:
+        sys.exit(e.code if e.code is not None else 0)
+    except Exception as e:
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 def main():
@@ -647,32 +1173,137 @@ def main():
     )
     init_parser.set_defaults(func=init_command)
 
-    # run command
-    run_parser = subparsers.add_parser(
-        "run",
-        help="Run PIV analysis using config.yaml"
+    # instantaneous command
+    instantaneous_parser = subparsers.add_parser(
+        "instantaneous",
+        help="Run instantaneous PIV processing"
     )
-    run_parser.set_defaults(func=run_command)
+    instantaneous_parser.add_argument(
+        "--active-paths", "-p", default=None,
+        help="Comma-separated path indices to process (e.g., '0,1,2')"
+    )
+    instantaneous_parser.set_defaults(func=instantaneous_command)
 
-    # calibrate command
-    calibrate_parser = subparsers.add_parser(
-        "calibrate",
-        help="Calibrate PIV vectors from pixels to physical units (m/s)"
+    # ensemble command
+    ensemble_parser = subparsers.add_parser(
+        "ensemble",
+        help="Run ensemble PIV processing"
     )
-    calibrate_parser.add_argument(
+    ensemble_parser.add_argument(
+        "--active-paths", "-p", default=None,
+        help="Comma-separated path indices to process (e.g., '0,1,2')"
+    )
+    ensemble_parser.set_defaults(func=ensemble_command)
+
+    # detect-planar command (single camera)
+    detect_planar_parser = subparsers.add_parser(
+        "detect-planar",
+        help="Detect dot/circle grid and generate camera model"
+    )
+    detect_planar_parser.add_argument(
         "--camera", "-c", type=int, default=None,
         help="Camera number to process (default: all from config)"
     )
-    calibrate_parser.add_argument(
+    detect_planar_parser.add_argument(
+        "--active-paths", "-p", default=None,
+        help="Comma-separated path indices to process (e.g., '0,1,2')"
+    )
+    detect_planar_parser.set_defaults(func=detect_planar_command)
+
+    # detect-charuco command (single camera)
+    detect_charuco_parser = subparsers.add_parser(
+        "detect-charuco",
+        help="Detect ChArUco board and generate camera model"
+    )
+    detect_charuco_parser.add_argument(
+        "--camera", "-c", type=int, default=None,
+        help="Camera number to process (default: all from config)"
+    )
+    detect_charuco_parser.add_argument(
+        "--active-paths", "-p", default=None,
+        help="Comma-separated path indices to process (e.g., '0,1,2')"
+    )
+    detect_charuco_parser.set_defaults(func=detect_charuco_command)
+
+    # detect-stereo-planar command
+    detect_stereo_planar_parser = subparsers.add_parser(
+        "detect-stereo-planar",
+        help="Detect dot/circle grid and generate stereo camera model"
+    )
+    detect_stereo_planar_parser.add_argument(
+        "--active-paths", "-p", default=None,
+        help="Comma-separated path indices to process (e.g., '0,1,2')"
+    )
+    detect_stereo_planar_parser.set_defaults(func=detect_stereo_planar_command)
+
+    # detect-stereo-charuco command
+    detect_stereo_charuco_parser = subparsers.add_parser(
+        "detect-stereo-charuco",
+        help="Detect ChArUco board and generate stereo camera model"
+    )
+    detect_stereo_charuco_parser.add_argument(
+        "--active-paths", "-p", default=None,
+        help="Comma-separated path indices to process (e.g., '0,1,2')"
+    )
+    detect_stereo_charuco_parser.set_defaults(func=detect_stereo_charuco_command)
+
+    # apply-calibration command
+    apply_calibration_parser = subparsers.add_parser(
+        "apply-calibration",
+        help="Apply calibration to PIV vectors (pixels to m/s)"
+    )
+    apply_calibration_parser.add_argument(
+        "--camera", "-c", type=int, default=None,
+        help="Camera number to process (default: all from config)"
+    )
+    apply_calibration_parser.add_argument(
         "--type-name", "-t", default=None,
         choices=["instantaneous", "ensemble"],
         help="Data type (default: instantaneous)"
     )
-    calibrate_parser.add_argument(
+    apply_calibration_parser.add_argument(
         "--runs", "-r", default=None,
         help="Comma-separated run numbers to process (default: all)"
     )
-    calibrate_parser.set_defaults(func=calibrate_command)
+    apply_calibration_parser.add_argument(
+        "--active-paths", "-p", default=None,
+        help="Comma-separated path indices to process (e.g., '0,1,2')"
+    )
+    apply_calibration_parser.add_argument(
+        "--method", "-m", default=None,
+        choices=["pinhole", "charuco", "scale_factor"],
+        help="Calibration method (default: from config.yaml calibration.active)"
+    )
+    apply_calibration_parser.set_defaults(func=apply_calibration_command)
+
+    # apply-stereo command
+    apply_stereo_parser = subparsers.add_parser(
+        "apply-stereo",
+        help="Apply stereo calibration for 3D velocity reconstruction (ux, uy, uz)"
+    )
+    apply_stereo_parser.add_argument(
+        "--method", "-m", default=None,
+        choices=["pinhole", "charuco"],
+        help="Stereo calibration method (default: from config stereo.stereo_model_type)"
+    )
+    apply_stereo_parser.add_argument(
+        "--camera-pair", "-c", default=None,
+        help="Camera pair as 'CAM1,CAM2' (e.g., '1,2'). Default: from config"
+    )
+    apply_stereo_parser.add_argument(
+        "--type-name", "-t", default=None,
+        choices=["instantaneous", "ensemble"],
+        help="Data type (default: instantaneous)"
+    )
+    apply_stereo_parser.add_argument(
+        "--runs", "-r", default=None,
+        help="Comma-separated run numbers to process (default: all)"
+    )
+    apply_stereo_parser.add_argument(
+        "--active-paths", "-p", default=None,
+        help="Comma-separated path indices to process (e.g., '0,1,2')"
+    )
+    apply_stereo_parser.set_defaults(func=apply_stereo_command)
 
     # transform command
     transform_parser = subparsers.add_parser(
@@ -696,6 +1327,10 @@ def main():
         "--merged", "-m", action="store_true",
         help="Transform merged data instead of per-camera"
     )
+    transform_parser.add_argument(
+        "--active-paths", "-p", default=None,
+        help="Comma-separated path indices to process (e.g., '0,1,2')"
+    )
     transform_parser.set_defaults(func=transform_command)
 
     # merge command
@@ -711,6 +1346,10 @@ def main():
         "--type-name", "-t", default=None,
         choices=["instantaneous", "ensemble"],
         help="Data type (default: from config or instantaneous)"
+    )
+    merge_parser.add_argument(
+        "--active-paths", "-p", default=None,
+        help="Comma-separated path indices to process (e.g., '0,1,2')"
     )
     merge_parser.set_defaults(func=merge_command)
 
@@ -731,6 +1370,10 @@ def main():
     statistics_parser.add_argument(
         "--merged", "-m", action="store_true",
         help="Process merged data instead of per-camera"
+    )
+    statistics_parser.add_argument(
+        "--active-paths", "-p", default=None,
+        help="Comma-separated path indices to process (e.g., '0,1,2')"
     )
     statistics_parser.set_defaults(func=statistics_command)
 
@@ -783,6 +1426,10 @@ def main():
     video_parser.add_argument(
         "--test", action="store_true",
         help="Test mode: only process 50 frames"
+    )
+    video_parser.add_argument(
+        "--active-paths", "-p", default=None,
+        help="Comma-separated path indices to process (e.g., '0,1,2')"
     )
     video_parser.set_defaults(func=video_command)
 

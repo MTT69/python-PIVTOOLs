@@ -688,7 +688,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
 
         n_peaks = np.int32(config.num_peaks)
         i_peak_finder = np.int32(config.peak_finder)
-        b_ensemble = bool(config.ensemble_piv)
+        b_ensemble = False  # Instantaneous PIV, not ensemble
 
         # Output arrays shape: (n_peaks, n_win_y, n_win_x) in C-contiguous format
         out_shape = (n_peaks, n_win_y, n_win_x)

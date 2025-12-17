@@ -48,33 +48,33 @@ def _load_marquadt_lib():
 
     marquadt_lib = ctypes.CDLL(marquadt_libpath)
 
-    # Single-window function (kept for compatibility)
-    marquadt_lib.fit_stacked_gaussian_export.argtypes = [
-        ctypes.c_size_t,
-        ctypes.POINTER(ctypes.c_double),
-        ctypes.POINTER(ctypes.c_double),
-        ctypes.POINTER(ctypes.c_double),
-        ctypes.POINTER(ctypes.c_double),
-        ctypes.POINTER(ctypes.c_double),
-        ctypes.POINTER(ctypes.c_int),
-    ]
-    marquadt_lib.fit_stacked_gaussian_export.restype = ctypes.c_int
-
-    # Batch function with OpenMP parallelization
-    marquadt_lib.fit_stacked_gaussian_batch_export.argtypes = [
-        ctypes.c_size_t,  # num_windows
-        ctypes.c_size_t,  # n_per_window
-        ctypes.POINTER(ctypes.c_double),  # X1
-        ctypes.POINTER(ctypes.c_double),  # X2
-        ctypes.POINTER(ctypes.c_double),  # y_all
-        ctypes.POINTER(ctypes.c_double),  # initial_guesses
-        ctypes.POINTER(ctypes.c_double),  # out_params
-        ctypes.POINTER(ctypes.c_int),     # out_statuses
-    ]
-    marquadt_lib.fit_stacked_gaussian_batch_export.restype = ctypes.c_int
+    # Set up ctypes bindings for the offset control function
+    marquadt_lib.set_disable_offset.argtypes = [ctypes.c_int]
+    marquadt_lib.set_disable_offset.restype = None
 
     _marquadt_lib = marquadt_lib
     return marquadt_lib
+
+
+def set_offset_fitting(enabled: bool = True):
+    """
+    Enable or disable offset (+C) fitting in the Gaussian solver.
+
+    When offset fitting is disabled, the Gaussian model uses:
+        y = amp * exp(...) + 0
+    Instead of:
+        y = amp * exp(...) + c
+
+    This is useful for testing how offset fitting affects parameter recovery.
+
+    Parameters
+    ----------
+    enabled : bool, default True
+        If True, fit offsets normally (default behavior).
+        If False, fix offsets to zero during optimization.
+    """
+    lib = _load_marquadt_lib()
+    lib.set_disable_offset(0 if enabled else 1)
 
 
 def _get_sigma_from_previous_pass(
@@ -434,9 +434,9 @@ def _fit_windows_batch_optimized(
         statuses_valid.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
     )
 
-    # Post-process: validate fitted parameters
+    # Post-process: validate fitted parameters (C returns 1 for success)
     for i, idx in enumerate(valid_indices):
-        if statuses_valid[i] == 0:
+        if statuses_valid[i] == 1:  # 1 = success from C code
             AA_win = _get_window(AA_chunk, idx, win_size)
             BB_win = _get_window(BB_chunk, idx, win_size)
             is_valid, nan_reason_code = _validate_fitted_params(
@@ -448,6 +448,8 @@ def _fit_windows_batch_optimized(
             )
             if not is_valid:
                 statuses_valid[i] = nan_reason_code
+            else:
+                statuses_valid[i] = 0  # Convert to 0 = success for Python
 
     # Expand back to full size for return
     results = np.zeros((num_windows, 16), dtype=np.float64)
@@ -696,3 +698,537 @@ def _build_initial_guess(
 
     real_corr = np.concatenate([AA_win, BB_win, AB_win]).astype(np.float64)
     return initial_guess, real_corr
+
+
+def _set_omp_threads(num_threads: int) -> int:
+    """
+    Set OpenMP thread count at runtime.
+
+    Uses omp_set_num_threads() if available, otherwise falls back to
+    environment variable. Returns the actual thread count that was set.
+
+    Parameters
+    ----------
+    num_threads : int
+        Number of threads to use
+
+    Returns
+    -------
+    int
+        The number of threads that was set
+    """
+    import os
+    import ctypes
+    import sys
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    # Always set environment variable FIRST (before any library loads)
+    os.environ["OMP_NUM_THREADS"] = str(num_threads)
+
+    # Try to call omp_set_num_threads directly for already-loaded libraries
+    try:
+        if sys.platform == "darwin":
+            # macOS: gcc-15 uses libgomp, try multiple paths
+            gomp_paths = [
+                "/opt/homebrew/lib/gcc/15/libgomp.dylib",  # Homebrew ARM64
+                "/opt/homebrew/lib/gcc/current/libgomp.dylib",
+                "/usr/local/lib/gcc/15/libgomp.dylib",  # Homebrew Intel
+                "libgomp.1.dylib",  # System search path
+            ]
+            for path in gomp_paths:
+                try:
+                    libgomp = ctypes.CDLL(path, mode=ctypes.RTLD_GLOBAL)
+                    libgomp.omp_set_num_threads(ctypes.c_int(num_threads))
+                    logger.debug(f"Set OMP threads via {path}")
+                    return num_threads
+                except OSError:
+                    continue
+
+            # Try libomp (Apple's OpenMP from Xcode or llvm)
+            omp_paths = [
+                "/opt/homebrew/opt/libomp/lib/libomp.dylib",
+                "/usr/local/opt/libomp/lib/libomp.dylib",
+                "libomp.dylib",
+            ]
+            for path in omp_paths:
+                try:
+                    libomp = ctypes.CDLL(path, mode=ctypes.RTLD_GLOBAL)
+                    libomp.omp_set_num_threads(ctypes.c_int(num_threads))
+                    logger.debug(f"Set OMP threads via {path}")
+                    return num_threads
+                except OSError:
+                    continue
+
+        elif sys.platform.startswith("linux"):
+            # Linux: try libgomp
+            try:
+                libgomp = ctypes.CDLL("libgomp.so.1", mode=ctypes.RTLD_GLOBAL)
+                libgomp.omp_set_num_threads(ctypes.c_int(num_threads))
+                return num_threads
+            except OSError:
+                pass
+
+        # Fallback: environment variable only (already set above)
+        logger.debug(f"Using OMP_NUM_THREADS={num_threads} (env var only)")
+        return num_threads
+
+    except Exception as e:
+        logger.debug(f"Could not set OMP threads directly: {e}")
+        return num_threads
+
+
+def _build_initial_guesses_vectorized(
+    R_AA: np.ndarray,
+    R_BB: np.ndarray,
+    R_AB: np.ndarray,
+    valid_indices: np.ndarray,
+    sigma_dict: dict,
+    win_size: tuple,
+    central_index: int,
+    x_guess: float,
+    y_guess: float,
+    pass_idx: int,
+    config,
+) -> tuple:
+    """
+    Vectorized initial guess generation for all valid windows.
+
+    This replaces the per-window loop with batch numpy operations for
+    significant speedup (10-50x for typical window counts).
+
+    Parameters
+    ----------
+    R_AA, R_BB, R_AB : np.ndarray
+        Flattened correlation planes
+    valid_indices : np.ndarray
+        Indices of valid (non-masked) windows
+    sigma_dict : dict
+        Sigma values from previous pass (or all None for pass 0)
+    win_size : tuple
+        (height, width) of correlation window
+    central_index : int
+        Index of window center in flattened window
+    x_guess, y_guess : float
+        Center coordinates for auto-correlation peak
+    pass_idx : int
+        Current pass index
+    config : Config
+        Configuration object
+
+    Returns
+    -------
+    initial_guesses : np.ndarray
+        Initial parameters, shape (n_valid, 16)
+    y_all : np.ndarray
+        Packed correlation data for C function
+    """
+    n_valid = len(valid_indices)
+    win_h, win_w = win_size
+    n_per_window = win_h * win_w
+
+    # Reshape correlation planes to (num_windows, win_h, win_w) for batch operations
+    # First reshape to (total_windows, win_h * win_w), then extract valid and reshape
+    total_windows = len(R_AA) // n_per_window
+
+    # Extract valid windows in batch
+    # Shape: (n_valid, n_per_window)
+    AA_valid = R_AA.reshape(total_windows, n_per_window)[valid_indices]
+    BB_valid = R_BB.reshape(total_windows, n_per_window)[valid_indices]
+    AB_valid = R_AB.reshape(total_windows, n_per_window)[valid_indices]
+
+    # Reshape to 3D for spatial operations: (n_valid, win_h, win_w)
+    AA_3d = AA_valid.reshape(n_valid, win_h, win_w)
+    BB_3d = BB_valid.reshape(n_valid, win_h, win_w)
+    AB_3d = AB_valid.reshape(n_valid, win_h, win_w)
+
+    # Vectorized peak finding in AB cross-correlation
+    # Find peak location for each window
+    AB_flat_view = AB_valid  # Shape: (n_valid, n_per_window)
+    max_indices = np.argmax(AB_flat_view, axis=1)  # Shape: (n_valid,)
+
+    # Convert flat indices to 2D coordinates
+    peak_y = max_indices // win_w
+    peak_x = max_indices % win_w
+
+    # Extract values at peak locations (vectorized)
+    amp_AB = AB_flat_view[np.arange(n_valid), max_indices]  # AB amplitude at peak
+    amp_A = AA_valid[:, central_index]  # AA amplitude at center
+    amp_B = BB_valid[:, central_index]  # BB amplitude at center
+
+    # Check if we have sigma values from previous pass
+    has_prev_sigmas = (
+        sigma_dict['sig_AB_x'] is not None and
+        sigma_dict['sig_AB_y'] is not None
+    )
+
+    if pass_idx == 0 or not has_prev_sigmas:
+        # Pass 0: Use reasonable default VARIANCES (fixed, not scaled by window size)
+        #
+        # For Levenberg-Marquardt, initial guesses don't need to be precise -
+        # they just need to be in the right ballpark. Using fixed defaults
+        # is more robust than moment-based estimation which fails on noisy
+        # or non-Gaussian real data.
+        #
+        # Typical PIV correlation peak:
+        # - Particle image diameter: 2-4 pixels
+        # - Autocorrelation FWHM: ~1.5x particle diameter = 3-6 pixels
+        # - Variance (σ²) = (FWHM / 2.355)² ≈ 2-6 for typical PIV
+        #
+        # NOTE: Peak width is determined by particle image size, NOT window size.
+        # The variance is an intrinsic property and should NOT be scaled.
+
+        # Default variance for autocorrelation (AA, BB peaks)
+        # Typical PIV: σ² ≈ 3
+        default_var_A = 3.0
+
+        # Default variance for displacement uncertainty (AB peak width beyond AA)
+        # This is typically smaller: σ² ≈ 1.5
+        default_var_AB = 1.5
+
+        sigma_A_x = np.full(n_valid, default_var_A, dtype=np.float64)
+        sigma_A_y = np.full(n_valid, default_var_A, dtype=np.float64)
+        sigma_A_xy = np.zeros(n_valid, dtype=np.float64)
+
+        sigma_AB_x = np.full(n_valid, default_var_AB, dtype=np.float64)
+        sigma_AB_y = np.full(n_valid, default_var_AB, dtype=np.float64)
+        sigma_AB_xy = np.zeros(n_valid, dtype=np.float64)
+    else:
+        # Pass > 0: Use interpolated values from previous pass
+        sigma_A_x = sigma_dict['sig_A_x'][valid_indices].astype(np.float64)
+        sigma_A_y = sigma_dict['sig_A_y'][valid_indices].astype(np.float64)
+        sigma_A_xy = sigma_dict['sig_A_xy'][valid_indices].astype(np.float64) if sigma_dict['sig_A_xy'] is not None else np.zeros(n_valid)
+        sigma_AB_x = sigma_dict['sig_AB_x'][valid_indices].astype(np.float64)
+        sigma_AB_y = sigma_dict['sig_AB_y'][valid_indices].astype(np.float64)
+        sigma_AB_xy = sigma_dict['sig_AB_xy'][valid_indices].astype(np.float64) if sigma_dict['sig_AB_xy'] is not None else np.zeros(n_valid)
+
+        # Handle any NaN values with safe defaults
+        sigma_A_x = np.where(np.isnan(sigma_A_x), 1.0, sigma_A_x)
+        sigma_A_y = np.where(np.isnan(sigma_A_y), 1.0, sigma_A_y)
+        sigma_A_xy = np.where(np.isnan(sigma_A_xy), 0.0, sigma_A_xy)
+        sigma_AB_x = np.where(np.isnan(sigma_AB_x), 1.0, sigma_AB_x)
+        sigma_AB_y = np.where(np.isnan(sigma_AB_y), 1.0, sigma_AB_y)
+        sigma_AB_xy = np.where(np.isnan(sigma_AB_xy), 0.0, sigma_AB_xy)
+
+    # Estimate offsets from 5th percentile (vectorized)
+    # This represents the background level in each correlation plane
+    c_A = np.percentile(AA_valid, 5, axis=1)
+    c_B = np.percentile(BB_valid, 5, axis=1)
+    c_AB = np.percentile(AB_valid, 5, axis=1)
+
+    # CRITICAL: Amplitudes must be peak value ABOVE offset, not raw peak value!
+    # Model: f(x) = amp * exp(...) + c
+    # At peak: peak_value = amp * exp(0) + c = amp + c
+    # Therefore: amp = peak_value - c
+    amp_A_corrected = amp_A - c_A
+    amp_B_corrected = amp_B - c_B
+    amp_AB_corrected = amp_AB - c_AB
+
+    # Ensure amplitudes are positive (clamp to small positive value)
+    amp_A_corrected = np.maximum(amp_A_corrected, 1e-6)
+    amp_B_corrected = np.maximum(amp_B_corrected, 1e-6)
+    amp_AB_corrected = np.maximum(amp_AB_corrected, 1e-6)
+
+    # Build initial guesses array: (n_valid, 16)
+    # [0-2] amplitudes, [3-5] offsets, [6-8] sigma_A, [9-11] sigma_AB, [12-15] positions
+    initial_guesses = np.zeros((n_valid, 16), dtype=np.float64)
+    initial_guesses[:, 0] = amp_A_corrected
+    initial_guesses[:, 1] = amp_B_corrected
+    initial_guesses[:, 2] = amp_AB_corrected
+    initial_guesses[:, 3] = c_A
+    initial_guesses[:, 4] = c_B
+    initial_guesses[:, 5] = c_AB
+    initial_guesses[:, 6] = sigma_A_x
+    initial_guesses[:, 7] = sigma_A_y
+    initial_guesses[:, 8] = sigma_A_xy
+    initial_guesses[:, 9] = sigma_AB_x
+    initial_guesses[:, 10] = sigma_AB_y
+    initial_guesses[:, 11] = sigma_AB_xy
+    initial_guesses[:, 12] = x_guess
+    initial_guesses[:, 13] = y_guess
+    initial_guesses[:, 14] = (peak_x + 1).astype(np.float64)  # 1-based indexing
+    initial_guesses[:, 15] = (peak_y + 1).astype(np.float64)  # 1-based indexing
+
+    # Pack correlation data: [AA|BB|AB] for each window
+    y_all = np.zeros(n_valid * 3 * n_per_window, dtype=np.float64)
+    for i in range(n_valid):
+        offset = i * 3 * n_per_window
+        y_all[offset:offset + n_per_window] = AA_valid[i]
+        y_all[offset + n_per_window:offset + 2 * n_per_window] = BB_valid[i]
+        y_all[offset + 2 * n_per_window:offset + 3 * n_per_window] = AB_valid[i]
+
+    return initial_guesses, y_all
+
+
+def _estimate_sigma_batch_vectorized(
+    corr_planes_3d: np.ndarray,
+    peak_indices: np.ndarray,
+    win_size: tuple,
+    min_sigma: float = 0.5,
+) -> tuple:
+    """
+    Vectorized sigma estimation using MOMENT-BASED method for correlation planes.
+
+    Uses weighted second moment around the peak to estimate standard deviation:
+        σ² = Σ(x - x_peak)² * w(x) / Σw(x)
+
+    where w(x) is the correlation value (thresholded to positive values).
+    This is more robust than HWHM for discrete/noisy data.
+
+    Parameters
+    ----------
+    corr_planes_3d : np.ndarray
+        Correlation planes, shape (n_windows, win_h, win_w)
+    peak_indices : np.ndarray
+        Flat indices of peaks in each window, shape (n_windows,)
+    win_size : tuple
+        (height, width) of window
+    min_sigma : float
+        Minimum sigma value (standard deviation)
+
+    Returns
+    -------
+    sigma_x, sigma_y : np.ndarray
+        Estimated standard deviations (NOT variance), shape (n_windows,)
+    """
+    n_windows = corr_planes_3d.shape[0]
+    win_h, win_w = win_size
+
+    # Convert flat indices to 2D coordinates
+    peak_y = peak_indices // win_w
+    peak_x = peak_indices % win_w
+
+    # Get peak values
+    peak_vals = corr_planes_3d[np.arange(n_windows), peak_y, peak_x]
+
+    # Initialize sigma arrays
+    sigma_x = np.full(n_windows, min_sigma, dtype=np.float64)
+    sigma_y = np.full(n_windows, min_sigma, dtype=np.float64)
+
+    # Coordinate arrays for moment calculation
+    x_coords = np.arange(win_w, dtype=np.float64)
+    y_coords = np.arange(win_h, dtype=np.float64)
+
+    # Edge-based background estimation: use mean of border pixels
+    n_edge = max(3, win_w // 8)
+
+    for i in range(n_windows):
+        if peak_vals[i] < 1e-6:
+            continue
+
+        py, px = int(peak_y[i]), int(peak_x[i])
+        plane = corr_planes_3d[i]
+
+        # X-direction: profile at peak_y with edge-based background
+        x_profile = plane[py, :]
+        bg_x = 0.5 * (np.mean(x_profile[:n_edge]) + np.mean(x_profile[-n_edge:]))
+        x_shifted = x_profile - bg_x
+        weights_x = np.maximum(x_shifted, 0)
+
+        total_w = weights_x.sum()
+        if total_w > 1e-10:
+            centroid_x = np.sum(x_coords * weights_x) / total_w
+            var_x = np.sum((x_coords - centroid_x)**2 * weights_x) / total_w
+            sigma_x[i] = max(np.sqrt(var_x), min_sigma)
+
+        # Y-direction: profile at peak_x with edge-based background
+        y_profile = plane[:, px]
+        bg_y = 0.5 * (np.mean(y_profile[:n_edge]) + np.mean(y_profile[-n_edge:]))
+        y_shifted = y_profile - bg_y
+        weights_y = np.maximum(y_shifted, 0)
+
+        total_w = weights_y.sum()
+        if total_w > 1e-10:
+            centroid_y = np.sum(y_coords * weights_y) / total_w
+            var_y = np.sum((y_coords - centroid_y)**2 * weights_y) / total_w
+            sigma_y[i] = max(np.sqrt(var_y), min_sigma)
+
+    return sigma_x, sigma_y
+
+
+def fit_windows_openmp(
+    R_AA: np.ndarray,
+    R_BB: np.ndarray,
+    R_AB: np.ndarray,
+    mask_flat: np.ndarray,
+    sigma_dict: dict,
+    corr_size: tuple,
+    config,
+    pass_idx: int,
+    num_threads: int = None,
+) -> tuple:
+    """
+    Fit Gaussian peaks using pure OpenMP (no Dask overhead).
+
+    This function is designed for use after correlation planes have been
+    reduced to the main process. It bypasses Dask's scatter/submit/gather
+    pattern and calls the C library directly with OpenMP parallelization.
+
+    The C function fit_stacked_gaussian_batch_export() uses OpenMP internally
+    with `#pragma omp parallel for schedule(dynamic, 16)`.
+
+    IMPORTANT: This function uses ALL available CPU cores by default, not
+    limited by Dask worker thread settings. This is appropriate because
+    finalize_pass() runs on the main process after all Dask workers have
+    returned their results.
+
+    Parameters
+    ----------
+    R_AA : np.ndarray
+        Flattened auto-correlation A plane
+    R_BB : np.ndarray
+        Flattened auto-correlation B plane
+    R_AB : np.ndarray
+        Flattened cross-correlation AB plane
+    mask_flat : np.ndarray
+        Boolean mask array (True = skip this window)
+    sigma_dict : dict
+        Sigma values from previous pass (or all None for pass 0)
+        Keys: 'sig_AB_x', 'sig_AB_y', 'sig_AB_xy', 'sig_A_x', 'sig_A_y', 'sig_A_xy'
+    corr_size : tuple
+        (height, width) of correlation window
+    config : Config
+        Configuration object
+    pass_idx : int
+        Current pass index
+    num_threads : int, optional
+        Number of OpenMP threads. Defaults to ALL available CPU cores
+        (os.cpu_count()), NOT limited by config.omp_threads which is for
+        Dask workers.
+
+    Returns
+    -------
+    gauss_flat : np.ndarray
+        Fitted parameters, shape (num_windows, 16)
+    status_flat : np.ndarray
+        Status codes, shape (num_windows,)
+        -1 = masked/skipped, 0 = success, >0 = error code
+    initial_guess_flat : np.ndarray
+        Initial guesses used, shape (num_windows, 16)
+    """
+    import os
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    # Set OpenMP thread count - use ALL CPU cores by default since this runs
+    # on the main process after Dask workers have finished
+    if num_threads is not None:
+        omp_threads = num_threads
+    else:
+        # Default to all available cores, not Dask's omp_threads setting
+        omp_threads = os.cpu_count() or 4
+
+    # Use the proper thread setter (calls omp_set_num_threads if available)
+    actual_threads = _set_omp_threads(omp_threads)
+    logger.info(f"fit_windows_openmp: Using {actual_threads} OpenMP threads (all CPU cores)")
+
+    # Load library AFTER setting thread count
+    marquadt_lib = _load_marquadt_lib()
+
+    # Get grid info
+    win_size = corr_size  # (height, width)
+    num_windows = len(mask_flat)
+    X1, X2, central_index, x_guess, y_guess = _get_pass_grid(pass_idx, config)
+
+    # Find valid (non-masked) windows
+    valid_indices = np.where(~mask_flat)[0]
+    n_valid = len(valid_indices)
+
+    logger.info(f"fit_windows_openmp: Fitting {n_valid}/{num_windows} windows (pass {pass_idx + 1})")
+
+    if n_valid == 0:
+        # All windows masked - return immediately
+        results = np.zeros((num_windows, 16), dtype=np.float64)
+        statuses = np.full(num_windows, -1, dtype=np.int32)
+        initial_guesses = np.zeros((num_windows, 16), dtype=np.float64)
+        return results, statuses, initial_guesses
+
+    n_per_window = win_size[0] * win_size[1]
+
+    # Build initial guesses using vectorized implementation (much faster)
+    logger.debug(f"fit_windows_openmp: Building initial guesses (vectorized)...")
+    initial_guesses_valid, y_all = _build_initial_guesses_vectorized(
+        R_AA, R_BB, R_AB, valid_indices, sigma_dict, win_size,
+        central_index, x_guess, y_guess, pass_idx, config
+    )
+
+    # Allocate result arrays
+    results_valid = np.zeros((n_valid, 16), dtype=np.float64)
+    statuses_valid = np.zeros(n_valid, dtype=np.int32)
+
+    # Call batch C function - OpenMP parallelizes internally
+    logger.debug(f"fit_windows_openmp: Calling C batch function with {n_valid} windows")
+    success_count = marquadt_lib.fit_stacked_gaussian_batch_export(
+        ctypes.c_size_t(n_valid),
+        ctypes.c_size_t(n_per_window),
+        X2.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),  # X2 is x-coord
+        X1.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),  # X1 is y-coord
+        y_all.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+        initial_guesses_valid.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+        results_valid.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+        statuses_valid.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
+    )
+    # Count C fitter successes and failures
+    c_success = np.sum(statuses_valid == 1)
+    c_failure = n_valid - c_success
+    logger.info(
+        f"fit_windows_openmp: C fitter results: {c_success}/{n_valid} succeeded, "
+        f"{c_failure} failed ({c_failure/n_valid*100:.1f}% C failures)"
+    )
+
+    # Post-process: validate fitted parameters (vectorized where possible)
+    # Get central values for validation
+    total_windows = len(R_AA) // n_per_window
+    AA_all = R_AA.reshape(total_windows, n_per_window)
+    BB_all = R_BB.reshape(total_windows, n_per_window)
+    AA_central_valid = AA_all[valid_indices, central_index]
+    BB_central_valid = BB_all[valid_indices, central_index]
+
+    # Validate each successful fit (C returns 1 for success)
+    # Track rejection reasons for debugging
+    rejection_counts = {2: 0, 3: 0, 5: 0}  # AB height, displacement rule, negative sigma
+
+    for i in range(n_valid):
+        if statuses_valid[i] == 1:  # 1 = success from C code
+            is_valid, nan_reason_code = _validate_fitted_params(
+                results_valid[i], win_size, pass_idx,
+                config.ensemble_type[pass_idx],
+                tuple(config.ensemble_sum_window),
+                float(AA_central_valid[i]),
+                float(BB_central_valid[i])
+            )
+            if not is_valid:
+                statuses_valid[i] = nan_reason_code
+                if nan_reason_code in rejection_counts:
+                    rejection_counts[nan_reason_code] += 1
+            else:
+                statuses_valid[i] = 0  # Convert to 0 = success for Python
+
+    # Log rejection breakdown at INFO level for visibility
+    total_rejections = sum(rejection_counts.values())
+    if total_rejections > 0:
+        logger.info(
+            f"fit_windows_openmp: Validation rejections ({total_rejections} total): "
+            f"AB_height={rejection_counts[2]}, "
+            f"displacement_rule={rejection_counts[3]}, "
+            f"neg_sigma={rejection_counts[5]}"
+        )
+
+    # Expand back to full size
+    results = np.zeros((num_windows, 16), dtype=np.float64)
+    statuses = np.full(num_windows, -1, dtype=np.int32)  # -1 = masked default
+    initial_guesses = np.zeros((num_windows, 16), dtype=np.float64)
+
+    results[valid_indices] = results_valid
+    statuses[valid_indices] = statuses_valid
+    initial_guesses[valid_indices] = initial_guesses_valid
+
+    # Log success rate
+    successful_fits = np.sum(statuses == 0)
+    if n_valid > 0:
+        success_rate = successful_fits / n_valid
+        logger.info(f"fit_windows_openmp: Success rate {success_rate:.1%} ({successful_fits}/{n_valid})")
+
+    return results, statuses, initial_guesses

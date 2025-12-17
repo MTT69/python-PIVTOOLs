@@ -1,0 +1,14 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     'pivtools_cli/lib/libmarquadt.so'
+relocations:
+  - { offset: 0x19, size: 0x8, addend: 0x0, symName: _calc_sigma_derivs, symObjAddr: 0x0, symBinAddr: 0x600, symSize: 0x158 }
+  - { offset: 0x860, size: 0x8, addend: 0x0, symName: _fit_stacked_gaussian_export, symObjAddr: 0x1C6C, symBinAddr: 0x226C, symSize: 0x88 }
+  - { offset: 0x911, size: 0x8, addend: 0x0, symName: _fit_stacked_gaussian_batch_export, symObjAddr: 0x16B0, symBinAddr: 0x1CB0, symSize: 0x5BC }
+  - { offset: 0xB91, size: 0x8, addend: 0x0, symName: _fit_one, symObjAddr: 0x1368, symBinAddr: 0x1968, symSize: 0x348 }
+  - { offset: 0xCCD, size: 0x8, addend: 0x0, symName: _gauss2d_df, symObjAddr: 0x798, symBinAddr: 0xD98, symSize: 0xBD0 }
+  - { offset: 0x10EF, size: 0x8, addend: 0x0, symName: _gauss2d_f, symObjAddr: 0x1D4, symBinAddr: 0x7D4, symSize: 0x5C4 }
+  - { offset: 0x144A, size: 0x8, addend: 0x0, symName: _safe_sqrt_rad, symObjAddr: 0x194, symBinAddr: 0x794, symSize: 0x40 }
+  - { offset: 0x1478, size: 0x8, addend: 0x0, symName: _clamp_sigma, symObjAddr: 0x158, symBinAddr: 0x758, symSize: 0x3C }
+  - { offset: 0x14A2, size: 0x8, addend: 0x0, symName: _calc_sigma_derivs, symObjAddr: 0x0, symBinAddr: 0x600, symSize: 0x158 }
+...

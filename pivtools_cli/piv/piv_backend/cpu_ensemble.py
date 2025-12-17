@@ -168,16 +168,8 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             )
 
         cls._lib_marq = ctypes.CDLL(marquadt_libpath)
-        cls._lib_marq.fit_stacked_gaussian_export.argtypes = [
-            ctypes.c_size_t,
-            ctypes.POINTER(ctypes.c_double),
-            ctypes.POINTER(ctypes.c_double),
-            ctypes.POINTER(ctypes.c_double),
-            ctypes.POINTER(ctypes.c_double),
-            ctypes.POINTER(ctypes.c_double),
-            ctypes.POINTER(ctypes.c_int),
-        ]
-        cls._lib_marq.fit_stacked_gaussian_export.restype = ctypes.c_int
+        # Note: Only batch function is used now (fit_stacked_gaussian_batch_export)
+        # Single-window function was removed in the optimized matrix-free LM solver
 
         # Load cross-correlation library
         lib_path = os.path.join(

@@ -12,14 +12,10 @@ from typing import Optional
 
 import cv2
 import numpy as np
-from dask.distributed import Client
 
 from pivtools_core.config import Config
 from pivtools_cli.piv.piv_result import PIVEnsemblePassResult, PIVEnsembleResult
-from pivtools_cli.piv.piv_backend.gaussian_fitting import (
-    _fit_windows_batch_from_scattered,
-    _get_sigma_from_previous_pass,
-)
+from pivtools_cli.piv.piv_backend.gaussian_fitting import _get_sigma_from_previous_pass
 from pivtools_cli.piv.piv_backend.outlier_detection import apply_outlier_detection
 from pivtools_cli.piv.piv_backend.infilling import apply_infilling
 
@@ -304,21 +300,21 @@ class SinglePassAccumulator:
         return correl_AA_bg, correl_BB_bg, correl_AB_bg
 
     def finalize_pass(
-        self, pass_idx: int, client: Client, scattered_cache: dict,
+        self, pass_idx: int,
         predictor_field: Optional[np.ndarray] = None,
         output_path: Optional[Path] = None
     ):
         """
         Finalize a single pass with single-pass optimization.
 
+        Uses pure OpenMP parallelization for Gaussian fitting (no Dask overhead).
+        The correlation planes are already on the main process after reduction,
+        so we call the C library directly with OpenMP parallelization.
+
         Parameters
         ----------
         pass_idx : int
             Pass index to finalize
-        client : Client
-            Dask client for distributed Gaussian fitting
-        scattered_cache : dict
-            Pre-scattered correlator cache
         predictor_field : Optional[np.ndarray], default None
             Predictor displacement field used for warping in this pass.
             Shape: (n_win_y, n_win_x, 2) where [:, :, 0] is Y, [:, :, 1] is X.
@@ -382,90 +378,37 @@ class SinglePassAccumulator:
             n_win_x, n_win_y
         )
 
-        # Flatten mask for chunking (matches flat correlation plane arrays)
+        # Flatten mask for fitting
         if self.vector_masks and pass_idx < len(self.vector_masks):
             mask_flat = self.vector_masks[pass_idx].ravel(order='C').astype(bool)
         else:
             mask_flat = np.zeros(total_windows, dtype=bool)
 
-        # Distribute fitting across workers
-        workers = list(client.scheduler_info()["workers"].keys())
-        num_workers = len(workers)
-        windows_per_worker = (total_windows + num_workers - 1) // num_workers
+        # Pure OpenMP Gaussian fitting (no Dask overhead)
+        # The C library uses OpenMP internally for parallel fitting
+        from pivtools_cli.piv.piv_backend.gaussian_fitting import fit_windows_openmp
 
-        # PRE-CHUNK and SCATTER correlation planes per worker
-        # At high resolution (4K+), correlation planes can reach GB in size.
-        # Each worker only needs ~1/N of the data. Pre-chunking reduces memory by ~87%.
-        #
-        # IMPORTANT: We scatter BEFORE submit to avoid embedding data in task graph.
-        # When arrays are passed directly to client.submit(), they get serialized into
-        # the task graph itself, causing "Sending large graph" warnings.
-        # By scattering first, we get futures (tiny references) instead of data.
-        plane_size = corr_size[0] * corr_size[1]
+        logging.info(f"Pass {pass_idx + 1}: Starting OpenMP Gaussian fitting...")
 
-        # Combined scatter and submit in single loop
-        # Each worker receives its chunk and immediately starts fitting
-        futures = []
-        chunks_submitted = 0
-        for i, worker in enumerate(workers):
-            start_idx = i * windows_per_worker
-            end_idx = min((i + 1) * windows_per_worker, total_windows)
-            if start_idx >= end_idx:
-                continue
+        gauss_flat, status_flat, initial_guess_flat = fit_windows_openmp(
+            R_AA_ensemble,
+            R_BB_ensemble,
+            R_AB_ensemble,
+            mask_flat,
+            sigma_dict,
+            corr_size,
+            self.config,
+            pass_idx,
+            # num_threads=None means use ALL CPU cores (not limited by Dask worker settings)
+            # This is appropriate because finalize_pass() runs on the main process
+            # after all Dask workers have returned their results
+            num_threads=None,
+        )
 
-            # Extract correlation plane chunks for this worker
-            start_data = start_idx * plane_size
-            end_data = end_idx * plane_size
-
-            # Build sigma chunk dict for this worker
-            sigma_chunk = {}
-            for key in ['sig_AB_x', 'sig_AB_y', 'sig_AB_xy', 'sig_A_x', 'sig_A_y', 'sig_A_xy']:
-                if sigma_dict[key] is not None:
-                    sigma_chunk[key] = sigma_dict[key][start_idx:end_idx].copy()
-                else:
-                    sigma_chunk[key] = None
-
-            # Bundle all data for this worker into a single dict
-            # .copy() ensures we don't hold references to the large source arrays
-            chunk_dict = {
-                'AA': R_AA_ensemble[start_data:end_data].copy(),
-                'BB': R_BB_ensemble[start_data:end_data].copy(),
-                'AB': R_AB_ensemble[start_data:end_data].copy(),
-                'mask': mask_flat[start_idx:end_idx].copy(),
-                'sigma': sigma_chunk,
-            }
-
-            # Scatter and immediately submit in single step
-            scattered = client.scatter(chunk_dict, workers=[worker])
-            fut = client.submit(
-                _fit_windows_batch_from_scattered,
-                scattered,  # Future reference (~100 bytes), not data (~1 MB)
-                corr_size,
-                self.config,
-                pass_idx,
-                scattered_cache,
-                workers=[worker],
-                pure=False,
-            )
-            futures.append(fut)
-            chunks_submitted += 1
-
-        # Release large arrays - data now lives on workers
-        # Only delete if plane saving is not enabled (planes are saved later)
+        # Release large arrays after fitting
         if not (hasattr(self.config, 'ensemble_store_planes') and self.config.ensemble_store_planes):
             del R_AA_ensemble, R_BB_ensemble, R_AB_ensemble
             gc.collect()
-
-        logging.debug(
-            f"Pass {pass_idx + 1}: Scattered and submitted {chunks_submitted} chunks to workers"
-        )
-
-        # Gather results
-        results = client.gather(futures)
-
-        gauss_flat = np.concatenate([r[0] for r in results])
-        status_flat = np.concatenate([r[1] for r in results])
-        initial_guess_flat = np.concatenate([r[2] for r in results])
 
         gauss_results = gauss_flat.reshape(n_win_y, n_win_x, -1)
         statuses = status_flat.reshape(n_win_y, n_win_x)
@@ -529,6 +472,30 @@ class SinglePassAccumulator:
         ux_mat = x0_AB - win_center_x  # X displacement in pixels
         uy_mat = y0_AB - win_center_y  # Y displacement in pixels
 
+        # =========================================================
+        # DISPLACEMENT VALIDATION: 3/4 Window Rule
+        # =========================================================
+        # Displacements larger than 3/4 of the window size are physically
+        # implausible and indicate fitting failures. Set to NaN.
+        max_disp_x = 0.75 * corr_size[1]
+        max_disp_y = 0.75 * corr_size[0]
+
+        # Check for invalid displacements (inf, nan, or > 3/4 window)
+        invalid_disp = (
+            ~np.isfinite(ux_mat) | ~np.isfinite(uy_mat) |
+            (np.abs(ux_mat) > max_disp_x) | (np.abs(uy_mat) > max_disp_y)
+        )
+        n_invalid = invalid_disp.sum()
+        if n_invalid > 0:
+            logging.warning(
+                f"Pass {pass_idx + 1}: {n_invalid} vectors exceed 3/4 window rule "
+                f"or have inf/nan - setting to NaN"
+            )
+            ux_mat[invalid_disp] = np.nan
+            uy_mat[invalid_disp] = np.nan
+            # Mark as failed in statuses
+            statuses[invalid_disp] = 6  # 6 = displacement rule violation
+
         if pass_idx > 0:
             # Use the SMOOTHED predictor that was actually used for image warping
             # This is stored in passes_data[pass_idx] during accumulate_batch
@@ -543,12 +510,7 @@ class SinglePassAccumulator:
                 # Shape: (n_win_y, n_win_x, 2) where [:,:,0]=Y, [:,:,1]=X
                 ux_mat += smoothed_pred[:, :, 1]  # Add X-displacement
                 uy_mat += smoothed_pred[:, :, 0]  # Add Y-displacement
-
-                logging.info(
-                    f"Pass {pass_idx + 1}: Added smoothed predictor back to residual displacements. "
-                    f"ux range: [{ux_mat.min():.3f}, {ux_mat.max():.3f}], "
-                    f"uy range: [{uy_mat.min():.3f}, {uy_mat.max():.3f}]"
-                )
+                # Note: Final displacement range is logged after outlier detection/infilling
             else:
                 logging.warning(
                     f"Pass {pass_idx + 1}: No smoothed predictor found! "
@@ -556,28 +518,42 @@ class SinglePassAccumulator:
                     f"Residual displacements will be returned without predictor correction."
                 )
 
-        # Normalized peak height: AB / sqrt(A * B)
-        amp_A = gauss_results[:, :, 0].astype(np.float32)
-        amp_B = gauss_results[:, :, 1].astype(np.float32)
-        amp_AB = gauss_results[:, :, 2].astype(np.float32)
-        # Compute geometric mean, avoiding division by zero
+        # =========================================================
+        # Extract Gaussian parameters with overflow protection
+        # =========================================================
+        # Clamp to reasonable ranges before float32 cast to prevent overflow
+        MAX_AMP = 1e10   # Max reasonable amplitude
+        MAX_SIGMA = 1e6  # Max reasonable variance
+
+        def safe_extract(arr, max_val, fill_invalid=0.0):
+            """Extract and clamp array, replacing non-finite with fill value."""
+            result = np.clip(arr, -max_val, max_val)
+            result = np.where(np.isfinite(result), result, fill_invalid)
+            return result.astype(np.float32)
+
+        # Amplitudes (positive values expected)
+        amp_A = safe_extract(gauss_results[:, :, 0], MAX_AMP, 0.0)
+        amp_B = safe_extract(gauss_results[:, :, 1], MAX_AMP, 0.0)
+        amp_AB = safe_extract(gauss_results[:, :, 2], MAX_AMP, 0.0)
+
+        # Normalized peak height: AB / sqrt(A * B), clamped to [0, 1]
         geom_mean = np.sqrt(np.maximum(amp_A * amp_B, 1e-12))
-        peakheight = amp_AB / geom_mean
+        peakheight = np.clip(amp_AB / geom_mean, 0.0, 1.0).astype(np.float32)
 
-        # Gaussian offset terms (background level for each plane)
-        c_A = gauss_results[:, :, 3].astype(np.float32)
-        c_B = gauss_results[:, :, 4].astype(np.float32)
-        c_AB = gauss_results[:, :, 5].astype(np.float32)
+        # Gaussian offset terms (can be negative after background subtraction)
+        c_A = safe_extract(gauss_results[:, :, 3], MAX_AMP, 0.0)
+        c_B = safe_extract(gauss_results[:, :, 4], MAX_AMP, 0.0)
+        c_AB = safe_extract(gauss_results[:, :, 5], MAX_AMP, 0.0)
 
-        # Gaussian widths for A autocorrelation (indices shifted by +3 due to offset params)
-        sig_A_x = gauss_results[:, :, 6].astype(np.float32)   # sx_A
-        sig_A_y = gauss_results[:, :, 7].astype(np.float32)   # sy_A
-        sig_A_xy = gauss_results[:, :, 8].astype(np.float32)  # sxy_A
+        # Gaussian widths for A autocorrelation (variances, must be positive)
+        sig_A_x = safe_extract(gauss_results[:, :, 6], MAX_SIGMA, 0.0)
+        sig_A_y = safe_extract(gauss_results[:, :, 7], MAX_SIGMA, 0.0)
+        sig_A_xy = safe_extract(gauss_results[:, :, 8], MAX_SIGMA, 0.0)
 
         # Gaussian widths for AB cross-correlation (predictor displacement uncertainty)
-        sig_AB_x = gauss_results[:, :, 9].astype(np.float32)   # sx_AB
-        sig_AB_y = gauss_results[:, :, 10].astype(np.float32)  # sy_AB
-        sig_AB_xy = gauss_results[:, :, 11].astype(np.float32)  # sxy_AB
+        sig_AB_x = safe_extract(gauss_results[:, :, 9], MAX_SIGMA, 0.0)
+        sig_AB_y = safe_extract(gauss_results[:, :, 10], MAX_SIGMA, 0.0)
+        sig_AB_xy = safe_extract(gauss_results[:, :, 11], MAX_SIGMA, 0.0)
 
         UU_stress = sig_AB_x
         VV_stress = sig_AB_y

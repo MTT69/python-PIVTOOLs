@@ -285,7 +285,7 @@ def preprocess_images(images: da.Array, config: Config) -> da.Array:
     Apply spatial filters to images (lazy evaluation).
 
     NOTE: This function should NOT be used when batch filters are present.
-    For batch filters, use the batch-by-batch processing in example.py.
+    For batch filters, use the processing in instantaneous.py or ensemble.py.
 
     Args:
         images (da.Array): Dask array containing the images (N, 2, H, W)
