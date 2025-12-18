@@ -628,14 +628,20 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             correl_AA_sum = correl_out_AA.sum(axis=0)
             correl_BB_sum = correl_out_BB.sum(axis=0)
             correl_AB_sum = correl_out_AB.sum(axis=0)
-            plot_corr_planes(
-                correl_out_AA.mean(axis=0).ravel(order="C") / N,
-                n_win_y,
-                n_win_x,
-                win_size[0],
-                win_size[1],
-                pass_idx,
-            )
+            logging.info(f"Shape of correl_AB_sum: {correl_AB_sum.shape}")
+            logging.info(f"Shape of correl_out_AB: {correl_out_AB.shape}    ")
+            logging.info(f"max in correl_out_AB: {correl_out_AB.max()}")
+            logging.info(f"Min in correl_out_AB: {correl_out_AB.min()}")
+            logging.info(f"Shape of correl_out_BB: {correl_out_BB.shape}    ")
+            #plot_corr_planes(
+            #    correl_AB_sum.ravel(order="C") / N,
+            #    n_win_y,
+            #    n_win_x,
+            #    win_size[0],
+            #    win_size[1],
+            #    pass_idx,
+            #)
+            logging.info(f"Max in correl_AB_sum: {correl_AB_sum.max()}")
             if error_code_AB != 0 or error_code_AA != 0 or error_code_BB != 0:
                 logging.error("Correlation error codes: AB={}, AA={}, BB={}".format(
                         error_code_AB, error_code_AA, error_code_BB))
@@ -648,9 +654,9 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         # may be reused by subsequent correlation tasks before Dask finishes
         # serializing this result for network transfer
         return {
-            "corr_AA_sum": correl_AA_sum.copy(),
-            "corr_BB_sum": correl_BB_sum.copy(),
-            "corr_AB_sum": correl_AB_sum.copy(),
+            "corr_AA_sum": correl_AA_sum.copy()/N,
+            "corr_BB_sum": correl_BB_sum.copy()/N,
+            "corr_AB_sum": correl_AB_sum.copy()/N,
             "warp_A_sum": warp_A_sum.copy(),
             "warp_B_sum": warp_B_sum.copy(),
             "n_images": N,

@@ -206,7 +206,7 @@ class SinglePassAccumulator:
             pk_loc_x,
             pk_loc_y,
             pk_height,
-            sx,
+            sx, 
             sy,
             sxy,
             correl_out,
@@ -346,13 +346,13 @@ class SinglePassAccumulator:
         logging.info(f"Pass {pass_idx + 1}: Applying single-pass optimization")
 
         # Step 1: Compute mean warped images
-        A_mean = pass_data["sum_warp_A"] #/ N
-        B_mean = pass_data["sum_warp_B"] #/ N
+        A_mean = pass_data["sum_warp_A"] / N
+        B_mean = pass_data["sum_warp_B"] / N
 
         # Step 2: Compute average correlation planes (RAW with background)
-        R_AA_raw = pass_data["sum_corr_AA"] #/ N
-        R_BB_raw = pass_data["sum_corr_BB"] #/ N
-        R_AB_raw = pass_data["sum_corr_AB"] #/ N
+        R_AA_raw = pass_data["sum_corr_AA"] / N
+        R_BB_raw = pass_data["sum_corr_BB"] / N
+        R_AB_raw = pass_data["sum_corr_AB"] / N
 
         # Step 3: Correlate means for background subtraction
         R_AA_bg, R_BB_bg, R_AB_bg = self._correlate_mean_images(A_mean, B_mean, pass_idx)
@@ -471,7 +471,8 @@ class SinglePassAccumulator:
         # Extract peak positions from fitted Gaussian centers (16-param layout)
         x0_AB = gauss_results[:, :, 14].astype(np.float32)  # X position of AB peak
         y0_AB = gauss_results[:, :, 15].astype(np.float32)  # Y position of AB peak
-
+        logging.info(f"x0_AB:{x0_AB}")
+        logging.info(f"y0_AB:{y0_AB}")
         # Compute displacements as offset from window center
         ux_mat = x0_AB - win_center_x  # X displacement in pixels
         uy_mat = y0_AB - win_center_y  # Y displacement in pixels
