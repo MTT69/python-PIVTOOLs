@@ -20,7 +20,7 @@ from pivtools_cli.piv.piv_result import (
 def save_piv_result_distributed(
     piv_result: PIVResult,
     output_path: Path,
-    frame_number: int,
+    #frame_number: int,
     runs_to_save: Optional[List[int]] = None,
     vector_fmt: str = "B%05d.mat",
 ) -> str:
@@ -52,12 +52,12 @@ def save_piv_result_distributed(
     """
     output_path = Path(output_path)
     output_path.mkdir(parents=True, exist_ok=True)
-    
-    filename = output_path / (vector_fmt % frame_number)
-    
+
+    filename = output_path / (vector_fmt % 1)
+
     if len(piv_result.passes) == 0:
         logging.warning(
-            f"PIVResult has no passes for frame {frame_number}. "
+            f"PIVResult has no passes for frame {1}. "
             "Skipping save."
         )
         return str(filename)

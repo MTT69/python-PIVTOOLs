@@ -596,21 +596,18 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                     self.win_weights_A[pass_idx], self.win_weights_B[pass_idx],
                     b_mask, common_args + (correl_out_AB,)
                 )
-            logging.info(f"Pass {pass_idx + 1}: Correlation AB completed with error code {error_code_AB}")
                 # Auto-correlation AA
             error_code_AA, _ = self._run_correlation_kernel(
                     images_a_prime, images_a_prime,
                     self.win_weights_A[pass_idx], self.win_weights_A[pass_idx],
                     b_mask, common_args + (correl_out_AA,)
                 )
-            logging.info(f"Pass {pass_idx + 1}: Correlation AA completed with error code {error_code_AA}")
                 # Auto-correlation BB
             error_code_BB, _ = self._run_correlation_kernel(
                     images_b_prime, images_b_prime,
                     self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
                     b_mask, common_args + (correl_out_BB,)
                 )
-            logging.info(f"Pass {pass_idx + 1}: Correlation BB completed with error code {error_code_BB}")
             warp_A_sum = images_a_prime.sum(axis=0)
             warp_B_sum = images_b_prime.sum(axis=0)
             correl_out_AA = correl_out_AA.reshape(               N,
@@ -628,11 +625,6 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             correl_AA_sum = correl_out_AA.sum(axis=0)
             correl_BB_sum = correl_out_BB.sum(axis=0)
             correl_AB_sum = correl_out_AB.sum(axis=0)
-            logging.info(f"Shape of correl_AB_sum: {correl_AB_sum.shape}")
-            logging.info(f"Shape of correl_out_AB: {correl_out_AB.shape}    ")
-            logging.info(f"max in correl_out_AB: {correl_out_AB.max()}")
-            logging.info(f"Min in correl_out_AB: {correl_out_AB.min()}")
-            logging.info(f"Shape of correl_out_BB: {correl_out_BB.shape}    ")
             #plot_corr_planes(
             #    correl_AB_sum.ravel(order="C") / N,
             #    n_win_y,
@@ -641,7 +633,6 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             #    win_size[1],
             #    pass_idx,
             #)
-            logging.info(f"Max in correl_AB_sum: {correl_AB_sum.max()}")
             if error_code_AB != 0 or error_code_AA != 0 or error_code_BB != 0:
                 logging.error("Correlation error codes: AB={}, AA={}, BB={}".format(
                         error_code_AB, error_code_AA, error_code_BB))
@@ -654,9 +645,9 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         # may be reused by subsequent correlation tasks before Dask finishes
         # serializing this result for network transfer
         return {
-            "corr_AA_sum": correl_AA_sum.copy()/N,
-            "corr_BB_sum": correl_BB_sum.copy()/N,
-            "corr_AB_sum": correl_AB_sum.copy()/N,
+            "corr_AA_sum": correl_AA_sum.copy(),
+            "corr_BB_sum": correl_BB_sum.copy(),
+            "corr_AB_sum": correl_AB_sum.copy(),
             "warp_A_sum": warp_A_sum.copy(),
             "warp_B_sum": warp_B_sum.copy(),
             "n_images": N,

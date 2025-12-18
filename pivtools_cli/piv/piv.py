@@ -23,7 +23,7 @@ def _batch_policy(config: Config) -> int:
 
 def _process_and_save_single_pair(
     image_pair: da.Array,
-    frame_number: int,
+    #frame_number: int,
     config: Config,
     scattered_masks,
     scattered_cache,
@@ -66,11 +66,13 @@ def _process_and_save_single_pair(
     piv_result = _piv_single_pass(image_pair, config, scattered_masks, scattered_cache)
     
     # Save immediately to avoid accumulating results in memory
-    saved_path = save_piv_result_distributed(
-        piv_result, output_path, frame_number, runs_to_save, vector_format
-    )
-    
-    return saved_path
+    #saved_paths = []
+    #for frame_number, result in enumerate(piv_result.passes):
+    saved_paths =save_piv_result_distributed(
+            piv_result, output_path, runs_to_save, vector_format
+        )
+
+    return saved_paths
 
 
 def perform_piv_and_save(
@@ -200,9 +202,10 @@ def _piv_single_pass(
         if hasattr(image_block, 'compute'):
             image_block = image_block.compute()
 
-        if image_block.ndim == 3:
+        #if image_block.ndim == 3:
             # Shape: (2, H, W)
-            image_block = image_block[np.newaxis, ...]  # Shape: (1, 2, H, W)
+        #    image_block = image_block[np.newaxis, ...]  # Shape: (1, 2, H, W)
+        logging.info(f"Starting PIV processing for image block with shape {image_block.shape}")
         correlator = make_correlator_backend(config, precomputed_cache=correlator_cache)
         piv_results = correlator.correlate_batch(image_block, config=config, vector_masks=vector_masks)
     except Exception as e:

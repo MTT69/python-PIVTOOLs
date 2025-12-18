@@ -518,14 +518,14 @@ def correlate_and_save_batch(
     from pivtools_cli.piv.piv import _process_and_save_single_pair
 
     saved_paths = []
-    n_pairs = batch.shape[0]
+    #n_pairs = batch.shape[0]
 
-    for i in range(n_pairs):
-        frame_number = start_frame + i
+    #for i in range(n_pairs):
+    #    frame_number = start_frame + i
 
-        path = _process_and_save_single_pair(
-            batch[i],
-            frame_number,
+    saved_paths = _process_and_save_single_pair(
+            batch,
+            #frame_number,
             config,
             scattered_masks,
             scattered_cache,
@@ -533,7 +533,7 @@ def correlate_and_save_batch(
             runs_to_save,
             vector_format,
         )
-        saved_paths.append(path)
+    #saved_paths.append(path)
 
     return saved_paths
 

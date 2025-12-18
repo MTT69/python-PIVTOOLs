@@ -344,7 +344,6 @@ class SinglePassAccumulator:
             temp_piv_results.add_pass(pr)
 
         logging.info(f"Pass {pass_idx + 1}: Applying single-pass optimization")
-
         # Step 1: Compute mean warped images
         A_mean = pass_data["sum_warp_A"] / N
         B_mean = pass_data["sum_warp_B"] / N
@@ -354,15 +353,16 @@ class SinglePassAccumulator:
         R_BB_raw = pass_data["sum_corr_BB"] / N
         R_AB_raw = pass_data["sum_corr_AB"] / N
 
+
         # Step 3: Correlate means for background subtraction
         R_AA_bg, R_BB_bg, R_AB_bg = self._correlate_mean_images(A_mean, B_mean, pass_idx)
-
 
         # Step 4: Background subtraction (SINGLE-PASS OPTIMIZATION)
         #         R_ensemble = <A⋆B> - <A>⋆<B>
         R_AA_ensemble = R_AA_raw - R_AA_bg
         R_BB_ensemble = R_BB_raw - R_BB_bg
         R_AB_ensemble = R_AB_raw - R_AB_bg
+
 
         # Step 5: Get configuration for this pass
         win_size = pass_data["win_size"]

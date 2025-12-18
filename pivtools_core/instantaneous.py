@@ -163,7 +163,7 @@ def run_instantaneous_piv(
     images = images.persist()
     # NOTE: No wait() here! Dask handles dependencies automatically.
     # Correlation tasks will start as soon as their specific chunk is ready.
-
+    logging.info(f"Images shape{images.shape}")
     # 6. Submit correlation tasks using futures_of for proper dependency tracking
     from dask.distributed import futures_of
     block_futures = futures_of(images)
@@ -177,7 +177,6 @@ def run_instantaneous_piv(
     for chunk_idx, block_future in enumerate(block_futures):
         # Calculate frame number for this chunk
         chunk_start = sum(images.chunks[0][:chunk_idx])
-
         # Submit correlation task with explicit future dependency
         future = client.submit(
             correlate_and_save_batch,
