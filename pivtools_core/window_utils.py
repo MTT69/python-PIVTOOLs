@@ -482,22 +482,70 @@ def apply_single_mode_padding(
     >>> padding
     (6, 6, 6, 6)
     """
+
+def apply_single_mode_padding(
+    image: np.ndarray,
+    window_size: Tuple[int, int],
+    sum_window: Tuple[int, int],
+    pad_value: float = 0.0
+) -> Tuple[np.ndarray, Tuple[int, int, int, int]]:
+    """
+    Apply zero-padding to image for ensemble single mode processing.
+
+    Supports:
+    - (H, W)
+    - (N, H, W)
+    - (N, 2, H, W)
+
+    Returns
+    -------
+    padded_image : np.ndarray
+        Padded image with same number of dimensions as input
+    padding : Tuple[int, int, int, int]
+        (pad_top, pad_bottom, pad_left, pad_right)
+    """
     pad_top, pad_bottom, pad_left, pad_right = compute_padding_for_single_mode(
         window_size, sum_window
     )
 
-    # Handle both 2D and 3D arrays (batch mode)
     if image.ndim == 2:
-        pad_width = ((pad_top, pad_bottom), (pad_left, pad_right))
-    elif image.ndim == 3:
-        # Batch dimension not padded
-        pad_width = ((0, 0), (pad_top, pad_bottom), (pad_left, pad_right))
-    else:
-        raise ValueError(f"Image must be 2D or 3D, got shape {image.shape}")
+        # (H, W)
+        pad_width = (
+            (pad_top, pad_bottom),
+            (pad_left, pad_right),
+        )
 
-    padded = np.pad(image, pad_width, mode='constant', constant_values=pad_value)
+    elif image.ndim == 3:
+        # (N, H, W)
+        pad_width = (
+            (0, 0),
+            (pad_top, pad_bottom),
+            (pad_left, pad_right),
+        )
+
+    elif image.ndim == 4:
+        # (N, 2, H, W)
+        pad_width = (
+            (0, 0),  # batch (N)
+            (0, 0),  # channel (2)
+            (pad_top, pad_bottom),
+            (pad_left, pad_right),
+        )
+
+    else:
+        raise ValueError(
+            f"Image must be 2D, 3D, or 4D, got shape {image.shape}"
+        )
+
+    padded = np.pad(
+        image,
+        pad_width,
+        mode="constant",
+        constant_values=pad_value,
+    )
 
     return padded, (pad_top, pad_bottom, pad_left, pad_right)
+
 
 
 def validate_window_configuration(

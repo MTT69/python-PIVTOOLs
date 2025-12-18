@@ -69150,3 +69150,2579 @@ TypeError: unsupported operand type(s) for /: 'PosixPath' and 'bool'
 2025-12-16 14:30:16,875 [INFO] 127.0.0.1 - - [16/Dec/2025 14:30:16] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=10&var=ux&var_source=inst&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
 2025-12-16 14:30:17,029 [INFO] 127.0.0.1 - - [16/Dec/2025 14:30:17] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=11&var=ux&var_source=inst&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
 2025-12-16 14:30:17,194 [INFO] 127.0.0.1 - - [16/Dec/2025 14:30:17] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=12&var=ux&var_source=inst&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-18 09:17:56,538 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-18 09:17:58,887 [INFO] ================================================================================
+2025-12-18 09:17:58,887 [INFO] VALIDATING CONFIGURATION
+2025-12-18 09:17:58,887 [INFO] ================================================================================
+2025-12-18 09:17:58,887 [ERROR] Configuration validation failed!
+2025-12-18 09:17:58,887 [ERROR] ================================================================================
+2025-12-18 09:17:58,887 [ERROR] ERRORS:
+2025-12-18 09:17:58,887 [ERROR] Source path 1 does not exist: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images
+Failed to create base path 1: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor - [Errno 13] Permission denied: '/Users/morgan'
+2025-12-18 09:17:58,887 [ERROR] ================================================================================
+2025-12-18 09:17:58,887 [ERROR] 
+Please fix the configuration errors in config.yaml and try again.
+2025-12-18 11:14:10,102 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-18 11:14:10,102 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-18 11:14:10,102 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-18 11:14:10,102 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-18 11:14:10,102 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-18 11:14:10,112 [INFO] Worker logging configured successfully
+2025-12-18 11:14:10,112 [INFO] Worker logging configured successfully
+2025-12-18 11:14:10,112 [INFO] Worker logging configured successfully
+2025-12-18 11:14:10,112 [INFO] Worker logging configured successfully
+2025-12-18 11:14:10,112 [INFO] Worker logging configured successfully
+2025-12-18 11:14:10,114 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 11:14:10,114 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 11:14:10,114 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 11:14:10,114 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 11:14:10,114 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 11:14:10,544 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0006
+2025-12-18 11:14:10,672 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0004
+2025-12-18 11:14:11,362 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:14:11,362 [INFO]   Processing channel A...
+2025-12-18 11:14:11,396 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:14:11,481 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:14:11,481 [INFO]   Processing channel A...
+2025-12-18 11:14:11,517 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:14:11,560 [INFO]   Processing channel B...
+2025-12-18 11:14:11,586 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:14:11,589 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0008
+2025-12-18 11:14:11,678 [INFO]   Processing channel B...
+2025-12-18 11:14:11,703 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:14:11,742 [INFO] POD Filter: Complete
+2025-12-18 11:14:11,842 [INFO] POD Filter: Complete
+2025-12-18 11:14:11,943 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0002
+2025-12-18 11:14:12,007 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0000
+2025-12-18 11:14:12,266 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0005
+2025-12-18 11:14:12,323 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0007
+2025-12-18 11:14:12,382 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:14:12,382 [INFO]   Processing channel A...
+2025-12-18 11:14:12,426 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:14:12,575 [INFO]   Processing channel B...
+2025-12-18 11:14:12,599 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:14:12,711 [INFO] POD Filter: Complete
+2025-12-18 11:14:12,723 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:14:12,723 [INFO]   Processing channel A...
+2025-12-18 11:14:12,757 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:14:12,804 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:14:12,804 [INFO]   Processing channel A...
+2025-12-18 11:14:12,838 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:14:12,921 [INFO]   Processing channel B...
+2025-12-18 11:14:12,952 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:14:13,021 [INFO]   Processing channel B...
+2025-12-18 11:14:13,054 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:14:13,114 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:14:13,114 [INFO]   Processing channel A...
+2025-12-18 11:14:13,134 [INFO] POD Filter: Complete
+2025-12-18 11:14:13,155 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:14:13,155 [INFO]   Processing channel A...
+2025-12-18 11:14:13,161 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:14:13,192 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:14:13,263 [INFO] POD Filter: Complete
+2025-12-18 11:14:13,329 [INFO]   Processing channel B...
+2025-12-18 11:14:13,353 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:14:13,357 [INFO]   Processing channel B...
+2025-12-18 11:14:13,383 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:14:13,503 [INFO] POD Filter: Complete
+2025-12-18 11:14:13,517 [INFO] POD Filter: Complete
+2025-12-18 11:14:13,628 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0003
+2025-12-18 11:14:13,645 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0001
+2025-12-18 11:14:14,397 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:14:14,397 [INFO]   Processing channel A...
+2025-12-18 11:14:14,408 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:14:14,408 [INFO]   Processing channel A...
+2025-12-18 11:14:14,426 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:14:14,438 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:14:14,562 [INFO]   Processing channel B...
+2025-12-18 11:14:14,562 [INFO]   Processing channel B...
+2025-12-18 11:14:14,586 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:14:14,587 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:14:14,645 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0009
+2025-12-18 11:14:14,703 [INFO] POD Filter: Complete
+2025-12-18 11:14:14,710 [INFO] POD Filter: Complete
+2025-12-18 11:14:15,170 [INFO] Loading C libraries (One-time init)...
+2025-12-18 11:14:15,174 [INFO] Loading C libraries (One-time init)...
+2025-12-18 11:14:15,224 [INFO] Loading C libraries (One-time init)...
+2025-12-18 11:14:15,248 [INFO] Loading C libraries (One-time init)...
+2025-12-18 11:14:15,443 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:14:15,443 [INFO]   Processing channel A...
+2025-12-18 11:14:15,473 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:14:15,759 [INFO]   Processing channel B...
+2025-12-18 11:14:15,790 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:14:15,929 [INFO] POD Filter: Complete
+2025-12-18 11:49:06,711 [INFO] Worker logging configured successfully
+2025-12-18 11:49:06,742 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-18 11:49:06,742 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-18 11:49:06,742 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-18 11:49:06,742 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-18 11:49:06,747 [INFO] Worker logging configured successfully
+2025-12-18 11:49:06,747 [INFO] Worker logging configured successfully
+2025-12-18 11:49:06,747 [INFO] Worker logging configured successfully
+2025-12-18 11:49:06,747 [INFO] Worker logging configured successfully
+2025-12-18 11:49:06,750 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 11:49:06,750 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 11:49:06,750 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 11:49:06,750 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 11:49:06,751 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 11:49:07,795 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0008
+2025-12-18 11:49:08,613 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:49:08,613 [INFO]   Processing channel A...
+2025-12-18 11:49:08,646 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:49:08,764 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0005
+2025-12-18 11:49:08,848 [INFO]   Processing channel B...
+2025-12-18 11:49:08,857 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0007
+2025-12-18 11:49:08,876 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:49:09,008 [INFO] POD Filter: Complete
+2025-12-18 11:49:09,010 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0003
+2025-12-18 11:49:09,211 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0001
+2025-12-18 11:49:09,540 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0009
+2025-12-18 11:49:09,641 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:49:09,641 [INFO]   Processing channel A...
+2025-12-18 11:49:09,679 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:49:09,727 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:49:09,727 [INFO]   Processing channel A...
+2025-12-18 11:49:09,765 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:49:09,865 [INFO]   Processing channel B...
+2025-12-18 11:49:09,872 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:49:09,872 [INFO]   Processing channel A...
+2025-12-18 11:49:09,894 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:49:09,907 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:49:09,951 [INFO]   Processing channel B...
+2025-12-18 11:49:09,976 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:49:10,052 [INFO] POD Filter: Complete
+2025-12-18 11:49:10,090 [INFO]   Processing channel B...
+2025-12-18 11:49:10,090 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:49:10,090 [INFO]   Processing channel A...
+2025-12-18 11:49:10,126 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:49:10,129 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:49:10,163 [INFO] POD Filter: Complete
+2025-12-18 11:49:10,297 [INFO] POD Filter: Complete
+2025-12-18 11:49:10,299 [INFO]   Processing channel B...
+2025-12-18 11:49:10,332 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:49:10,403 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:49:10,403 [INFO]   Processing channel A...
+2025-12-18 11:49:10,444 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:49:10,508 [INFO] POD Filter: Complete
+2025-12-18 11:49:10,600 [INFO]   Processing channel B...
+2025-12-18 11:49:10,622 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0002
+2025-12-18 11:49:10,623 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:49:10,761 [INFO] POD Filter: Complete
+2025-12-18 11:49:10,826 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0004
+2025-12-18 11:49:11,019 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0000
+2025-12-18 11:49:11,363 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0006
+2025-12-18 11:49:11,550 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:49:11,550 [INFO]   Processing channel A...
+2025-12-18 11:49:11,580 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:49:11,729 [INFO]   Processing channel B...
+2025-12-18 11:49:11,762 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:49:11,765 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:49:11,765 [INFO]   Processing channel A...
+2025-12-18 11:49:11,810 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:49:11,923 [INFO] POD Filter: Complete
+2025-12-18 11:49:11,963 [INFO]   Processing channel B...
+2025-12-18 11:49:11,963 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:49:11,963 [INFO]   Processing channel A...
+2025-12-18 11:49:11,991 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:49:11,995 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:49:12,146 [INFO] POD Filter: Complete
+2025-12-18 11:49:12,149 [INFO]   Processing channel B...
+2025-12-18 11:49:12,173 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:49:12,212 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:49:12,212 [INFO]   Processing channel A...
+2025-12-18 11:49:12,245 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:49:12,326 [INFO] POD Filter: Complete
+2025-12-18 11:49:12,391 [INFO]   Processing channel B...
+2025-12-18 11:49:12,415 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:49:12,459 [INFO] Loading C libraries (One-time init)...
+2025-12-18 11:49:12,549 [ERROR] Error in correlation: this function takes at least 21 arguments (20 given)
+2025-12-18 11:49:12,583 [INFO] POD Filter: Complete
+2025-12-18 11:49:12,652 [INFO] Loading C libraries (One-time init)...
+2025-12-18 11:49:12,766 [ERROR] Error in correlation: this function takes at least 21 arguments (20 given)
+2025-12-18 11:55:48,941 [INFO] Worker logging configured successfully
+2025-12-18 11:55:48,941 [INFO] Worker logging configured successfully
+2025-12-18 11:55:48,941 [INFO] Worker logging configured successfully
+2025-12-18 11:55:48,941 [INFO] Worker logging configured successfully
+2025-12-18 11:55:48,941 [INFO] Worker logging configured successfully
+2025-12-18 11:55:48,943 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 11:55:48,943 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 11:55:48,943 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 11:55:48,943 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 11:55:48,943 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 11:55:49,401 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0009
+2025-12-18 11:55:49,433 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0008
+2025-12-18 11:55:49,489 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0005
+2025-12-18 11:55:49,560 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0003
+2025-12-18 11:55:49,692 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0001
+2025-12-18 11:55:50,248 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:55:50,248 [INFO]   Processing channel A...
+2025-12-18 11:55:50,273 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:55:50,274 [INFO]   Processing channel A...
+2025-12-18 11:55:50,284 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:55:50,314 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:55:50,350 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:55:50,350 [INFO]   Processing channel A...
+2025-12-18 11:55:50,407 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:55:50,420 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:55:50,421 [INFO]   Processing channel A...
+2025-12-18 11:55:50,517 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:55:50,627 [INFO]   Processing channel B...
+2025-12-18 11:55:50,638 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:55:50,638 [INFO]   Processing channel A...
+2025-12-18 11:55:50,695 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:55:50,716 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:55:50,765 [INFO]   Processing channel B...
+2025-12-18 11:55:50,816 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:55:50,912 [INFO]   Processing channel B...
+2025-12-18 11:55:50,924 [INFO]   Processing channel B...
+2025-12-18 11:55:50,951 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:55:50,959 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:55:50,976 [INFO] POD Filter: Complete
+2025-12-18 11:55:51,043 [INFO] POD Filter: Complete
+2025-12-18 11:55:51,058 [INFO]   Processing channel B...
+2025-12-18 11:55:51,108 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:55:51,166 [INFO] POD Filter: Complete
+2025-12-18 11:55:51,187 [INFO] POD Filter: Complete
+2025-12-18 11:55:51,265 [INFO] POD Filter: Complete
+2025-12-18 11:55:51,544 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0007
+2025-12-18 11:55:51,588 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0006
+2025-12-18 11:55:51,680 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0002
+2025-12-18 11:55:51,681 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0004
+2025-12-18 11:55:51,859 [ERROR] Error in correlation: this function takes at least 21 arguments (20 given)
+2025-12-18 11:55:52,348 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:55:52,348 [INFO]   Processing channel A...
+2025-12-18 11:55:52,372 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:55:52,374 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:55:52,374 [INFO]   Processing channel A...
+2025-12-18 11:55:52,400 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:55:52,467 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:55:52,467 [INFO]   Processing channel A...
+2025-12-18 11:55:52,488 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:55:52,488 [INFO]   Processing channel A...
+2025-12-18 11:55:52,505 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:55:52,526 [INFO]   Processing channel B...
+2025-12-18 11:55:52,533 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:55:52,565 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:55:52,591 [INFO]   Processing channel B...
+2025-12-18 11:55:52,629 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:55:52,722 [INFO]   Processing channel B...
+2025-12-18 11:55:52,748 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:55:52,748 [INFO]   Processing channel B...
+2025-12-18 11:55:52,758 [INFO] POD Filter: Complete
+2025-12-18 11:55:52,786 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:55:52,816 [INFO] POD Filter: Complete
+2025-12-18 11:55:52,918 [INFO] POD Filter: Complete
+2025-12-18 11:55:52,932 [INFO] POD Filter: Complete
+2025-12-18 11:57:39,657 [INFO] Worker logging configured successfully
+2025-12-18 11:57:39,657 [INFO] Worker logging configured successfully
+2025-12-18 11:57:39,657 [INFO] Worker logging configured successfully
+2025-12-18 11:57:39,657 [INFO] Worker logging configured successfully
+2025-12-18 11:57:39,657 [INFO] Worker logging configured successfully
+2025-12-18 11:57:39,660 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 11:57:39,660 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 11:57:39,660 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 11:57:39,660 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 11:57:39,661 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 11:57:40,202 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0008
+2025-12-18 11:57:40,204 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0009
+2025-12-18 11:57:40,252 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0006
+2025-12-18 11:57:40,303 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0005
+2025-12-18 11:57:40,434 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0003
+2025-12-18 11:57:41,067 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:57:41,067 [INFO]   Processing channel A...
+2025-12-18 11:57:41,092 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:57:41,092 [INFO]   Processing channel A...
+2025-12-18 11:57:41,119 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:57:41,127 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:57:41,128 [INFO]   Processing channel A...
+2025-12-18 11:57:41,150 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:57:41,162 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:57:41,162 [INFO]   Processing channel A...
+2025-12-18 11:57:41,183 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:57:41,212 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:57:41,326 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:57:41,326 [INFO]   Processing channel A...
+2025-12-18 11:57:41,392 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:57:41,475 [INFO]   Processing channel B...
+2025-12-18 11:57:41,495 [INFO]   Processing channel B...
+2025-12-18 11:57:41,497 [INFO]   Processing channel B...
+2025-12-18 11:57:41,500 [INFO]   Processing channel B...
+2025-12-18 11:57:41,526 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:57:41,526 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:57:41,546 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:57:41,558 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:57:41,739 [INFO]   Processing channel B...
+2025-12-18 11:57:41,764 [INFO] POD Filter: Complete
+2025-12-18 11:57:41,764 [INFO] POD Filter: Complete
+2025-12-18 11:57:41,776 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:57:41,786 [INFO] POD Filter: Complete
+2025-12-18 11:57:41,788 [INFO] POD Filter: Complete
+2025-12-18 11:57:41,910 [INFO] POD Filter: Complete
+2025-12-18 11:57:42,333 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0004
+2025-12-18 11:57:42,344 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0007
+2025-12-18 11:57:42,402 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0000
+2025-12-18 11:57:42,583 [ERROR] Error in correlation: this function takes at least 21 arguments (20 given)
+2025-12-18 11:57:42,617 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0002
+2025-12-18 11:57:43,185 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:57:43,185 [INFO]   Processing channel A...
+2025-12-18 11:57:43,189 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:57:43,189 [INFO]   Processing channel A...
+2025-12-18 11:57:43,219 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:57:43,226 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:57:43,265 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:57:43,265 [INFO]   Processing channel A...
+2025-12-18 11:57:43,297 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:57:43,395 [INFO]   Processing channel B...
+2025-12-18 11:57:43,399 [INFO]   Processing channel B...
+2025-12-18 11:57:43,426 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:57:43,426 [INFO]   Processing channel A...
+2025-12-18 11:57:43,430 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:57:43,431 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:57:43,457 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:57:43,475 [INFO]   Processing channel B...
+2025-12-18 11:57:43,507 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:57:43,603 [INFO] POD Filter: Complete
+2025-12-18 11:57:43,617 [INFO] POD Filter: Complete
+2025-12-18 11:57:43,645 [INFO]   Processing channel B...
+2025-12-18 11:57:43,671 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:57:43,674 [INFO] POD Filter: Complete
+2025-12-18 11:57:43,798 [INFO] POD Filter: Complete
+2025-12-18 11:58:50,207 [INFO] Worker logging configured successfully
+2025-12-18 11:58:50,207 [INFO] Worker logging configured successfully
+2025-12-18 11:58:50,207 [INFO] Worker logging configured successfully
+2025-12-18 11:58:50,207 [INFO] Worker logging configured successfully
+2025-12-18 11:58:50,207 [INFO] Worker logging configured successfully
+2025-12-18 11:58:50,210 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 11:58:50,210 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 11:58:50,210 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 11:58:50,210 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 11:58:50,210 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 11:58:50,647 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0009
+2025-12-18 11:58:50,687 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0008
+2025-12-18 11:58:50,766 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0005
+2025-12-18 11:58:50,804 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0004
+2025-12-18 11:58:50,983 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0001
+2025-12-18 11:58:51,485 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:58:51,485 [INFO]   Processing channel A...
+2025-12-18 11:58:51,521 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:58:51,549 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:58:51,549 [INFO]   Processing channel A...
+2025-12-18 11:58:51,587 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:58:51,609 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:58:51,609 [INFO]   Processing channel A...
+2025-12-18 11:58:51,645 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:58:51,662 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:58:51,663 [INFO]   Processing channel A...
+2025-12-18 11:58:51,707 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:58:51,801 [INFO]   Processing channel B...
+2025-12-18 11:58:51,837 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:58:51,837 [INFO]   Processing channel A...
+2025-12-18 11:58:51,841 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:58:51,877 [INFO]   Processing channel B...
+2025-12-18 11:58:51,890 [INFO]   Processing channel B...
+2025-12-18 11:58:51,890 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:58:51,920 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:58:51,927 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:58:51,978 [INFO]   Processing channel B...
+2025-12-18 11:58:52,015 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:58:52,110 [INFO] POD Filter: Complete
+2025-12-18 11:58:52,158 [INFO] POD Filter: Complete
+2025-12-18 11:58:52,176 [INFO] POD Filter: Complete
+2025-12-18 11:58:52,191 [INFO]   Processing channel B...
+2025-12-18 11:58:52,217 [INFO] POD Filter: Complete
+2025-12-18 11:58:52,218 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:58:52,347 [INFO] POD Filter: Complete
+2025-12-18 11:58:52,665 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0007
+2025-12-18 11:58:52,692 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0006
+2025-12-18 11:58:52,722 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0003
+2025-12-18 11:58:52,777 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0002
+2025-12-18 11:58:52,974 [ERROR] Error in correlation: this function takes at least 21 arguments (20 given)
+2025-12-18 11:58:53,468 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:58:53,468 [INFO]   Processing channel A...
+2025-12-18 11:58:53,488 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:58:53,488 [INFO]   Processing channel A...
+2025-12-18 11:58:53,494 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:58:53,514 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:58:53,514 [INFO]   Processing channel A...
+2025-12-18 11:58:53,527 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:58:53,550 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:58:53,569 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 11:58:53,569 [INFO]   Processing channel A...
+2025-12-18 11:58:53,619 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:58:53,707 [INFO]   Processing channel B...
+2025-12-18 11:58:53,741 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:58:53,756 [INFO]   Processing channel B...
+2025-12-18 11:58:53,768 [INFO]   Processing channel B...
+2025-12-18 11:58:53,791 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:58:53,798 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:58:53,821 [INFO]   Processing channel B...
+2025-12-18 11:58:53,856 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 11:58:53,941 [INFO] POD Filter: Complete
+2025-12-18 11:58:53,980 [INFO] POD Filter: Complete
+2025-12-18 11:58:53,985 [INFO] POD Filter: Complete
+2025-12-18 11:58:54,014 [INFO] POD Filter: Complete
+2025-12-18 12:02:11,246 [INFO] Worker logging configured successfully
+2025-12-18 12:02:11,246 [INFO] Worker logging configured successfully
+2025-12-18 12:02:11,246 [INFO] Worker logging configured successfully
+2025-12-18 12:02:11,246 [INFO] Worker logging configured successfully
+2025-12-18 12:02:11,246 [INFO] Worker logging configured successfully
+2025-12-18 12:02:11,248 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:02:11,248 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:02:11,249 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:02:11,249 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:02:11,249 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:02:11,709 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0009
+2025-12-18 12:02:11,750 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0008
+2025-12-18 12:02:11,818 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0005
+2025-12-18 12:02:11,852 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0004
+2025-12-18 12:02:11,998 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0002
+2025-12-18 12:02:12,590 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:02:12,591 [INFO]   Processing channel A...
+2025-12-18 12:02:12,613 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:02:12,613 [INFO]   Processing channel A...
+2025-12-18 12:02:12,634 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:02:12,661 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:02:12,683 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:02:12,683 [INFO]   Processing channel A...
+2025-12-18 12:02:12,720 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:02:12,720 [INFO]   Processing channel A...
+2025-12-18 12:02:12,732 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:02:12,767 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:02:12,866 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:02:12,866 [INFO]   Processing channel A...
+2025-12-18 12:02:12,917 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:02:12,956 [INFO]   Processing channel B...
+2025-12-18 12:02:13,012 [INFO]   Processing channel B...
+2025-12-18 12:02:13,029 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:02:13,049 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:02:13,056 [INFO]   Processing channel B...
+2025-12-18 12:02:13,091 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:02:13,125 [INFO]   Processing channel B...
+2025-12-18 12:02:13,168 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:02:13,201 [INFO]   Processing channel B...
+2025-12-18 12:02:13,233 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:02:13,250 [INFO] POD Filter: Complete
+2025-12-18 12:02:13,262 [INFO] POD Filter: Complete
+2025-12-18 12:02:13,306 [INFO] POD Filter: Complete
+2025-12-18 12:02:13,360 [INFO] POD Filter: Complete
+2025-12-18 12:02:13,396 [INFO] POD Filter: Complete
+2025-12-18 12:02:13,752 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0007
+2025-12-18 12:02:13,795 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0006
+2025-12-18 12:02:13,929 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0000
+2025-12-18 12:02:13,974 [ERROR] Error in correlation: this function takes at least 21 arguments (20 given)
+2025-12-18 12:02:14,601 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:02:14,601 [INFO]   Processing channel A...
+2025-12-18 12:02:14,630 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:02:14,635 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:02:14,635 [INFO]   Processing channel A...
+2025-12-18 12:02:14,680 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:02:14,754 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:02:14,755 [INFO]   Processing channel A...
+2025-12-18 12:02:14,795 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:02:14,846 [INFO]   Processing channel B...
+2025-12-18 12:02:14,877 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:02:14,905 [INFO]   Processing channel B...
+2025-12-18 12:02:14,937 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:02:15,009 [INFO]   Processing channel B...
+2025-12-18 12:02:15,036 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:02:15,047 [INFO] POD Filter: Complete
+2025-12-18 12:02:15,097 [INFO] POD Filter: Complete
+2025-12-18 12:02:15,176 [INFO] POD Filter: Complete
+2025-12-18 12:03:41,526 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-18 12:03:41,526 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-18 12:03:41,526 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-18 12:03:41,526 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-18 12:03:41,526 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-18 12:03:41,532 [INFO] Worker logging configured successfully
+2025-12-18 12:03:41,532 [INFO] Worker logging configured successfully
+2025-12-18 12:03:41,532 [INFO] Worker logging configured successfully
+2025-12-18 12:03:41,532 [INFO] Worker logging configured successfully
+2025-12-18 12:03:41,532 [INFO] Worker logging configured successfully
+2025-12-18 12:03:41,534 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:03:41,534 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:03:41,534 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:03:41,534 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:03:41,534 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:03:43,800 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0000
+2025-12-18 12:03:43,802 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0004
+2025-12-18 12:03:43,803 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0009
+2025-12-18 12:03:43,804 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0007
+2025-12-18 12:03:43,805 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0002
+2025-12-18 12:03:44,600 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:03:44,600 [INFO]   Processing channel A...
+2025-12-18 12:03:44,603 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:03:44,603 [INFO]   Processing channel A...
+2025-12-18 12:03:44,621 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:03:44,622 [INFO]   Processing channel A...
+2025-12-18 12:03:44,635 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:03:44,635 [INFO]   Processing channel A...
+2025-12-18 12:03:44,636 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:03:44,643 [INFO]   Processing channel A...
+2025-12-18 12:03:44,663 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:03:44,696 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:03:44,708 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:03:44,740 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:03:44,745 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:03:45,027 [INFO]   Processing channel B...
+2025-12-18 12:03:45,031 [INFO]   Processing channel B...
+2025-12-18 12:03:45,050 [INFO]   Processing channel B...
+2025-12-18 12:03:45,066 [INFO]   Processing channel B...
+2025-12-18 12:03:45,070 [INFO]   Processing channel B...
+2025-12-18 12:03:45,099 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:03:45,103 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:03:45,106 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:03:45,121 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:03:45,144 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:03:45,321 [INFO] POD Filter: Complete
+2025-12-18 12:03:45,323 [INFO] POD Filter: Complete
+2025-12-18 12:03:45,324 [INFO] POD Filter: Complete
+2025-12-18 12:03:45,327 [INFO] POD Filter: Complete
+2025-12-18 12:03:45,331 [INFO] POD Filter: Complete
+2025-12-18 12:03:45,817 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0008
+2025-12-18 12:03:45,821 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0003
+2025-12-18 12:03:45,831 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0005
+2025-12-18 12:03:45,834 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0006
+2025-12-18 12:03:45,847 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0001
+2025-12-18 12:03:46,588 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:03:46,588 [INFO]   Processing channel A...
+2025-12-18 12:03:46,590 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:03:46,590 [INFO]   Processing channel A...
+2025-12-18 12:03:46,599 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:03:46,600 [INFO]   Processing channel A...
+2025-12-18 12:03:46,607 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:03:46,607 [INFO]   Processing channel A...
+2025-12-18 12:03:46,608 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:03:46,609 [INFO]   Processing channel A...
+2025-12-18 12:03:46,615 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:03:46,617 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:03:46,634 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:03:46,650 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:03:46,654 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:03:46,831 [INFO]   Processing channel B...
+2025-12-18 12:03:46,838 [INFO]   Processing channel B...
+2025-12-18 12:03:46,862 [INFO]   Processing channel B...
+2025-12-18 12:03:46,868 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:03:46,878 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:03:46,890 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:03:46,892 [INFO]   Processing channel B...
+2025-12-18 12:03:46,905 [INFO]   Processing channel B...
+2025-12-18 12:03:46,933 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:03:46,936 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:03:47,087 [INFO] POD Filter: Complete
+2025-12-18 12:03:47,088 [INFO] POD Filter: Complete
+2025-12-18 12:03:47,099 [INFO] POD Filter: Complete
+2025-12-18 12:03:47,122 [INFO] POD Filter: Complete
+2025-12-18 12:03:47,128 [INFO] POD Filter: Complete
+2025-12-18 12:03:47,620 [INFO] Loading C libraries (One-time init)...
+2025-12-18 12:03:47,627 [INFO] Loading C libraries (One-time init)...
+2025-12-18 12:03:47,648 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:03:47,650 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:03:47,659 [INFO] Loading C libraries (One-time init)...
+2025-12-18 12:03:47,674 [INFO] Loading C libraries (One-time init)...
+2025-12-18 12:03:47,679 [INFO] Loading C libraries (One-time init)...
+2025-12-18 12:03:47,687 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:03:47,716 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:03:47,727 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:03:48,721 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:03:48,721 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:03:48,751 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:03:48,752 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:03:48,805 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:03:49,249 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:03:49,250 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:03:49,308 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:03:49,308 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:03:49,308 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:03:49,980 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:03:49,981 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:03:50,002 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:03:50,014 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:03:50,132 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:03:50,158 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:03:50,206 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:03:50,210 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:03:50,306 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:03:50,324 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:03:50,791 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:03:50,791 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:03:50,900 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:03:50,901 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:03:50,901 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:03:51,279 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:03:51,280 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:03:51,329 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:03:51,329 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:03:51,602 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:03:51,602 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:03:51,680 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:03:51,713 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:03:51,777 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:03:51,847 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:14:38,936 [INFO] Worker logging configured successfully
+2025-12-18 12:14:38,936 [INFO] Worker logging configured successfully
+2025-12-18 12:14:38,936 [INFO] Worker logging configured successfully
+2025-12-18 12:14:38,936 [INFO] Worker logging configured successfully
+2025-12-18 12:14:38,936 [INFO] Worker logging configured successfully
+2025-12-18 12:14:38,938 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:14:38,938 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:14:38,939 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:14:38,939 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:14:38,939 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:14:39,417 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0009
+2025-12-18 12:14:39,463 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0008
+2025-12-18 12:14:39,542 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0005
+2025-12-18 12:14:39,677 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0007
+2025-12-18 12:14:39,852 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0001
+2025-12-18 12:14:40,319 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:14:40,319 [INFO]   Processing channel A...
+2025-12-18 12:14:40,360 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:14:40,361 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:14:40,361 [INFO]   Processing channel A...
+2025-12-18 12:14:40,401 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:14:40,429 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:14:40,429 [INFO]   Processing channel A...
+2025-12-18 12:14:40,466 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:14:40,524 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:14:40,524 [INFO]   Processing channel A...
+2025-12-18 12:14:40,584 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:14:40,827 [INFO]   Processing channel B...
+2025-12-18 12:14:40,840 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:14:40,840 [INFO]   Processing channel A...
+2025-12-18 12:14:40,856 [INFO]   Processing channel B...
+2025-12-18 12:14:40,883 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:14:40,887 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:14:40,910 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:14:40,919 [INFO]   Processing channel B...
+2025-12-18 12:14:40,989 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:14:41,017 [INFO]   Processing channel B...
+2025-12-18 12:14:41,051 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:14:41,117 [INFO] POD Filter: Complete
+2025-12-18 12:14:41,154 [INFO] POD Filter: Complete
+2025-12-18 12:14:41,194 [INFO] POD Filter: Complete
+2025-12-18 12:14:41,202 [INFO]   Processing channel B...
+2025-12-18 12:14:41,231 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:14:41,249 [INFO] POD Filter: Complete
+2025-12-18 12:14:41,347 [INFO] POD Filter: Complete
+2025-12-18 12:14:41,659 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0003
+2025-12-18 12:14:41,667 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0006
+2025-12-18 12:14:41,705 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0004
+2025-12-18 12:14:41,791 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0002
+2025-12-18 12:14:41,887 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:14:42,191 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:14:42,462 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:14:42,550 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:14:42,550 [INFO]   Processing channel A...
+2025-12-18 12:14:42,570 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:14:42,570 [INFO]   Processing channel A...
+2025-12-18 12:14:42,601 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:14:42,613 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:14:42,698 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:14:42,702 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:14:42,702 [INFO]   Processing channel A...
+2025-12-18 12:14:42,746 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:14:42,771 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:14:42,771 [INFO]   Processing channel A...
+2025-12-18 12:14:42,777 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:14:42,814 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:14:42,829 [INFO]   Processing channel B...
+2025-12-18 12:14:42,831 [INFO]   Processing channel B...
+2025-12-18 12:14:42,882 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:14:42,885 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:14:42,977 [INFO]   Processing channel B...
+2025-12-18 12:14:43,018 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:14:43,047 [INFO]   Processing channel B...
+2025-12-18 12:14:43,078 [INFO] POD Filter: Complete
+2025-12-18 12:14:43,079 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:14:43,085 [INFO] POD Filter: Complete
+2025-12-18 12:14:43,142 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:14:43,209 [INFO] POD Filter: Complete
+2025-12-18 12:14:43,244 [INFO] POD Filter: Complete
+2025-12-18 12:14:43,378 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:14:43,612 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:14:43,780 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:14:43,901 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:14:43,938 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:14:44,265 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:14:44,409 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:14:44,413 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:14:44,571 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:14:44,733 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:14:44,749 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:14:44,968 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:14:44,986 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:14:45,026 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:14:45,038 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:14:45,064 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:14:45,101 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:14:45,471 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:14:45,490 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:14:45,548 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:14:45,767 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:14:45,824 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:14:45,920 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:14:46,147 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:14:46,147 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:14:46,209 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:14:46,228 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0000
+2025-12-18 12:14:46,978 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:14:46,978 [INFO]   Processing channel A...
+2025-12-18 12:14:47,013 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:14:47,135 [INFO]   Processing channel B...
+2025-12-18 12:14:47,158 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:14:47,274 [INFO] POD Filter: Complete
+2025-12-18 12:14:47,805 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:14:48,080 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:14:48,268 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:14:48,439 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:14:48,485 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:14:48,711 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:14:48,871 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:14:49,030 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:15:41,200 [INFO] Worker logging configured successfully
+2025-12-18 12:15:41,200 [INFO] Worker logging configured successfully
+2025-12-18 12:15:41,200 [INFO] Worker logging configured successfully
+2025-12-18 12:15:41,200 [INFO] Worker logging configured successfully
+2025-12-18 12:15:41,200 [INFO] Worker logging configured successfully
+2025-12-18 12:15:41,201 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:15:41,201 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:15:41,202 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:15:41,202 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:15:41,202 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:15:41,610 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0009
+2025-12-18 12:15:41,638 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0008
+2025-12-18 12:15:41,720 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0005
+2025-12-18 12:15:41,761 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0004
+2025-12-18 12:15:41,921 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0002
+2025-12-18 12:15:42,459 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:15:42,459 [INFO]   Processing channel A...
+2025-12-18 12:15:42,466 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:15:42,466 [INFO]   Processing channel A...
+2025-12-18 12:15:42,494 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:15:42,502 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:15:42,558 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:15:42,558 [INFO]   Processing channel A...
+2025-12-18 12:15:42,594 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:15:42,594 [INFO]   Processing channel A...
+2025-12-18 12:15:42,619 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:15:42,641 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:15:42,746 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:15:42,746 [INFO]   Processing channel A...
+2025-12-18 12:15:42,791 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:15:42,853 [INFO]   Processing channel B...
+2025-12-18 12:15:42,855 [INFO]   Processing channel B...
+2025-12-18 12:15:42,900 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:15:42,901 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:15:42,940 [INFO]   Processing channel B...
+2025-12-18 12:15:42,949 [INFO]   Processing channel B...
+2025-12-18 12:15:42,994 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:15:42,999 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:15:43,100 [INFO]   Processing channel B...
+2025-12-18 12:15:43,107 [INFO] POD Filter: Complete
+2025-12-18 12:15:43,128 [INFO] POD Filter: Complete
+2025-12-18 12:15:43,147 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:15:43,203 [INFO] POD Filter: Complete
+2025-12-18 12:15:43,204 [INFO] POD Filter: Complete
+2025-12-18 12:15:43,285 [INFO] POD Filter: Complete
+2025-12-18 12:15:43,656 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0007
+2025-12-18 12:15:43,721 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:15:43,801 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0006
+2025-12-18 12:15:43,820 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:15:43,890 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0000
+2025-12-18 12:15:44,315 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:15:44,424 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:15:44,624 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:15:44,680 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:15:44,901 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:15:44,953 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:15:44,954 [INFO]   Processing channel A...
+2025-12-18 12:15:44,975 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:15:44,993 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:15:45,012 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:15:45,037 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:15:45,038 [INFO]   Processing channel A...
+2025-12-18 12:15:45,085 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:15:45,085 [INFO]   Processing channel A...
+2025-12-18 12:15:45,143 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:15:45,155 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:15:45,176 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:15:45,333 [INFO]   Processing channel B...
+2025-12-18 12:15:45,368 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:15:45,392 [INFO]   Processing channel B...
+2025-12-18 12:15:45,425 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:15:45,454 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:15:45,488 [INFO]   Processing channel B...
+2025-12-18 12:15:45,536 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:15:45,536 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:15:45,585 [INFO] POD Filter: Complete
+2025-12-18 12:15:45,640 [INFO] POD Filter: Complete
+2025-12-18 12:15:45,755 [INFO] POD Filter: Complete
+2025-12-18 12:15:45,812 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:15:46,018 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:15:46,091 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:15:46,194 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0003
+2025-12-18 12:15:46,273 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:15:46,354 [INFO] Saving intermediate filter outputs to data/basic_filters/100/batch_0001
+2025-12-18 12:15:46,364 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:15:46,622 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:15:46,810 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:15:47,002 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:15:47,005 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:15:47,005 [INFO]   Processing channel A...
+2025-12-18 12:15:47,043 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:15:47,068 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:15:47,145 [INFO] POD Filter: Processing 10 image pairs
+2025-12-18 12:15:47,145 [INFO]   Processing channel A...
+2025-12-18 12:15:47,183 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:15:47,211 [INFO]   Processing channel B...
+2025-12-18 12:15:47,238 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:15:47,383 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:15:47,427 [INFO] POD Filter: Complete
+2025-12-18 12:15:47,451 [INFO]   Processing channel B...
+2025-12-18 12:15:47,478 [INFO]   POD: 10 images, removing 1 signal modes
+2025-12-18 12:15:47,582 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:15:47,627 [INFO] POD Filter: Complete
+2025-12-18 12:15:47,776 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:15:48,032 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:15:48,166 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:15:48,367 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:15:48,470 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:15:48,563 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:15:48,671 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:15:48,770 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:15:48,825 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:15:48,865 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:15:48,916 [INFO] Pass 1: Correlating batch of 10 image pairs...
+2025-12-18 12:15:49,056 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:15:49,207 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:15:49,273 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:15:49,437 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:15:49,498 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:15:49,641 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:15:51,028 [INFO] Pass 2: Correlating batch of 10 image pairs...
+2025-12-18 12:15:51,196 [INFO] Pass 2: Correlating batch of 10 image pairs...
+2025-12-18 12:15:51,212 [INFO] Pass 2: Correlating batch of 10 image pairs...
+2025-12-18 12:15:51,231 [INFO] Pass 2: Correlating batch of 10 image pairs...
+2025-12-18 12:15:51,234 [INFO] Pass 2: Correlating batch of 10 image pairs...
+2025-12-18 12:15:51,876 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:15:52,294 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:15:52,294 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:15:52,294 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:15:52,442 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:15:52,442 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:15:52,825 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:15:52,825 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:15:52,889 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:15:52,889 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:15:52,945 [INFO] Pass 2: Correlating batch of 10 image pairs...
+2025-12-18 12:15:53,211 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:15:53,211 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:15:53,287 [INFO] Pass 2: Correlating batch of 10 image pairs...
+2025-12-18 12:15:53,306 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:15:53,307 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:15:53,400 [INFO] Pass 2: Correlating batch of 10 image pairs...
+2025-12-18 12:15:53,504 [INFO] Pass 2: Correlating batch of 10 image pairs...
+2025-12-18 12:15:53,714 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:15:53,733 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:15:53,814 [INFO] Pass 2: Correlating batch of 10 image pairs...
+2025-12-18 12:15:54,430 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:15:54,431 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:15:54,628 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:15:54,629 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:15:54,631 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:15:54,931 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:15:54,936 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:15:55,093 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:15:55,094 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:15:55,227 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:15:55,310 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:15:55,310 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:15:55,489 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:15:55,489 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:15:57,081 [INFO] Pass 3: Correlating batch of 10 image pairs...
+2025-12-18 12:15:57,108 [INFO] Pass 3: Correlating batch of 10 image pairs...
+2025-12-18 12:15:57,111 [INFO] Pass 3: Correlating batch of 10 image pairs...
+2025-12-18 12:15:57,118 [INFO] Pass 3: Correlating batch of 10 image pairs...
+2025-12-18 12:15:57,123 [INFO] Pass 3: Correlating batch of 10 image pairs...
+2025-12-18 12:15:58,236 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:15:58,236 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:15:58,255 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:15:58,256 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:15:58,273 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:15:58,811 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:15:58,815 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:15:58,826 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:15:58,827 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:15:58,828 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:15:59,352 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:15:59,352 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:15:59,364 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:15:59,426 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:15:59,427 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:15:59,525 [INFO] Pass 3: Correlating batch of 10 image pairs...
+2025-12-18 12:15:59,540 [INFO] Pass 3: Correlating batch of 10 image pairs...
+2025-12-18 12:15:59,631 [INFO] Pass 3: Correlating batch of 10 image pairs...
+2025-12-18 12:15:59,635 [INFO] Pass 3: Correlating batch of 10 image pairs...
+2025-12-18 12:15:59,662 [INFO] Pass 3: Correlating batch of 10 image pairs...
+2025-12-18 12:16:00,449 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:16:00,449 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:16:00,476 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:16:00,476 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:16:00,659 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:16:00,937 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:16:00,937 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:16:00,937 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:16:00,937 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:16:01,313 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:16:01,314 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:16:01,368 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:16:01,368 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:16:01,369 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:16:01,568 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:16:03,024 [INFO] Pass 4: Correlating batch of 10 image pairs...
+2025-12-18 12:16:03,149 [INFO] Pass 4: Correlating batch of 10 image pairs...
+2025-12-18 12:16:03,213 [INFO] Pass 4: Correlating batch of 10 image pairs...
+2025-12-18 12:16:03,250 [INFO] Pass 4: Correlating batch of 10 image pairs...
+2025-12-18 12:16:03,256 [INFO] Pass 4: Correlating batch of 10 image pairs...
+2025-12-18 12:16:03,702 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:16:04,143 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:16:04,143 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:16:04,192 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:16:04,192 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:16:04,505 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:16:04,505 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:16:04,600 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:16:04,600 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:16:04,600 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:16:04,702 [INFO] Pass 4: Correlating batch of 10 image pairs...
+2025-12-18 12:16:04,986 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:16:05,127 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:16:05,127 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:16:05,127 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:16:05,237 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:16:05,259 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:16:05,355 [INFO] Pass 4: Correlating batch of 10 image pairs...
+2025-12-18 12:16:05,357 [INFO] Pass 4: Correlating batch of 10 image pairs...
+2025-12-18 12:16:05,363 [INFO] Pass 4: Correlating batch of 10 image pairs...
+2025-12-18 12:16:05,431 [INFO] Pass 4: Correlating batch of 10 image pairs...
+2025-12-18 12:16:05,865 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:16:06,131 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:16:06,131 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:16:06,286 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:16:06,287 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:16:06,290 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:16:06,538 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:16:06,694 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:16:06,694 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:16:06,694 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:16:06,895 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:16:06,979 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:16:06,997 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:16:07,011 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:16:08,473 [INFO] Pass 5: Correlating batch of 10 image pairs...
+2025-12-18 12:16:08,482 [INFO] Pass 5: Correlating batch of 10 image pairs...
+2025-12-18 12:16:08,483 [INFO] Pass 5: Correlating batch of 10 image pairs...
+2025-12-18 12:16:08,501 [INFO] Pass 5: Correlating batch of 10 image pairs...
+2025-12-18 12:16:08,515 [INFO] Pass 5: Correlating batch of 10 image pairs...
+2025-12-18 12:16:09,477 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:16:09,527 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:16:09,527 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:16:09,527 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:16:09,557 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:16:10,019 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:16:10,020 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:16:10,048 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:16:10,048 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:16:10,049 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:16:10,569 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:16:10,569 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:16:10,587 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:16:10,587 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:16:10,587 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:16:10,733 [INFO] Pass 5: Correlating batch of 10 image pairs...
+2025-12-18 12:16:10,755 [INFO] Pass 5: Correlating batch of 10 image pairs...
+2025-12-18 12:16:10,756 [INFO] Pass 5: Correlating batch of 10 image pairs...
+2025-12-18 12:16:10,756 [INFO] Pass 5: Correlating batch of 10 image pairs...
+2025-12-18 12:16:10,821 [INFO] Pass 5: Correlating batch of 10 image pairs...
+2025-12-18 12:16:11,643 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:16:11,643 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:16:11,730 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:16:11,730 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:16:11,732 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:16:12,052 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:16:12,157 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:16:12,157 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:16:12,357 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:16:12,357 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:16:12,593 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:16:12,594 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:16:12,669 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:16:12,698 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:16:12,704 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:16:16,092 [INFO] Pass 6: Correlating batch of 10 image pairs...
+2025-12-18 12:16:16,121 [INFO] Pass 6: Correlating batch of 10 image pairs...
+2025-12-18 12:16:16,123 [INFO] Pass 6: Correlating batch of 10 image pairs...
+2025-12-18 12:16:16,163 [INFO] Pass 6: Correlating batch of 10 image pairs...
+2025-12-18 12:16:16,165 [INFO] Pass 6: Correlating batch of 10 image pairs...
+2025-12-18 12:16:17,055 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:16:17,072 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:16:17,126 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:16:17,154 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:16:17,225 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:16:17,611 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:16:17,611 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:16:17,674 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:16:17,676 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:16:17,995 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:16:17,995 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:16:17,996 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:16:18,141 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:16:18,141 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:16:18,143 [INFO] Pass 6: Correlating batch of 10 image pairs...
+2025-12-18 12:16:18,156 [INFO] Pass 6: Correlating batch of 10 image pairs...
+2025-12-18 12:16:18,289 [INFO] Pass 6: Correlating batch of 10 image pairs...
+2025-12-18 12:16:18,297 [INFO] Pass 6: Correlating batch of 10 image pairs...
+2025-12-18 12:16:18,808 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:16:18,897 [INFO] Pass 6: Correlating batch of 10 image pairs...
+2025-12-18 12:16:19,010 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:16:19,011 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:16:19,011 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:16:19,396 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:16:19,443 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:16:19,443 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:16:19,444 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:16:19,444 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:16:19,912 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:16:19,912 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:16:19,912 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:16:19,952 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:16:19,954 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:16:20,368 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:16:20,411 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:18:41,385 [INFO] Worker logging configured successfully
+2025-12-18 12:18:41,385 [INFO] Worker logging configured successfully
+2025-12-18 12:18:41,385 [INFO] Worker logging configured successfully
+2025-12-18 12:18:41,385 [INFO] Worker logging configured successfully
+2025-12-18 12:18:41,385 [INFO] Worker logging configured successfully
+2025-12-18 12:18:41,388 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:18:41,388 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:18:41,388 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:18:41,388 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:18:41,388 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:18:42,424 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0009
+2025-12-18 12:18:43,246 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0007
+2025-12-18 12:18:43,422 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:18:43,422 [INFO]   Processing channel A...
+2025-12-18 12:18:43,817 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:18:43,820 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0008
+2025-12-18 12:18:44,346 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:18:44,346 [INFO]   Processing channel A...
+2025-12-18 12:18:44,496 [INFO]   Processing channel B...
+2025-12-18 12:18:44,571 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:18:44,948 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:18:44,948 [INFO]   Processing channel A...
+2025-12-18 12:18:44,967 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0006
+2025-12-18 12:18:45,522 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:18:45,865 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:18:46,137 [INFO]   Processing channel B...
+2025-12-18 12:18:46,227 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:18:46,228 [INFO]   Processing channel A...
+2025-12-18 12:18:46,363 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:18:46,450 [INFO]   Processing channel B...
+2025-12-18 12:18:46,464 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:18:46,634 [INFO] POD Filter: Complete
+2025-12-18 12:18:46,923 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0005
+2025-12-18 12:18:46,952 [INFO] POD Filter: Complete
+2025-12-18 12:18:46,959 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:18:47,148 [INFO]   Processing channel B...
+2025-12-18 12:18:47,387 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:18:47,416 [INFO] POD Filter: Complete
+2025-12-18 12:18:47,846 [INFO] POD Filter: Complete
+2025-12-18 12:18:47,911 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:18:47,911 [INFO]   Processing channel A...
+2025-12-18 12:18:48,079 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:18:48,172 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:18:49,985 [INFO]   Processing channel B...
+2025-12-18 12:18:50,210 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:18:50,666 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0003
+2025-12-18 12:18:50,824 [INFO] POD Filter: Complete
+2025-12-18 12:18:51,335 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:18:51,762 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:18:51,810 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:18:51,812 [INFO]   Processing channel A...
+2025-12-18 12:18:52,952 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:18:53,508 [INFO]   Processing channel B...
+2025-12-18 12:18:53,546 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0009
+2025-12-18 12:18:53,716 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:18:54,158 [INFO] POD Filter: Complete
+2025-12-18 12:18:54,742 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:18:54,742 [INFO]   Processing channel A...
+2025-12-18 12:18:54,896 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:18:54,995 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:18:55,474 [INFO]   Processing channel B...
+2025-12-18 12:18:55,574 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0007
+2025-12-18 12:18:55,682 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:18:56,181 [INFO] POD Filter: Complete
+2025-12-18 12:18:56,431 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0004
+2025-12-18 12:18:56,595 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:18:56,595 [INFO]   Processing channel A...
+2025-12-18 12:18:56,757 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0008
+2025-12-18 12:18:56,834 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:18:57,496 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:18:57,496 [INFO]   Processing channel A...
+2025-12-18 12:18:57,860 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:18:57,860 [INFO]   Processing channel A...
+2025-12-18 12:18:57,905 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:18:58,346 [INFO]   Processing channel B...
+2025-12-18 12:18:58,389 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:18:58,908 [INFO]   Processing channel B...
+2025-12-18 12:18:58,971 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:18:59,318 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:18:59,331 [INFO]   Processing channel B...
+2025-12-18 12:19:00,167 [INFO] POD Filter: Complete
+2025-12-18 12:19:00,556 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:19:00,997 [INFO] POD Filter: Complete
+2025-12-18 12:19:01,802 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0006
+2025-12-18 12:19:02,455 [INFO] POD Filter: Complete
+2025-12-18 12:19:02,890 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:19:02,890 [INFO]   Processing channel A...
+2025-12-18 12:19:03,112 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:19:03,500 [INFO]   Processing channel B...
+2025-12-18 12:19:03,758 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:19:03,771 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:19:03,820 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:19:06,422 [INFO] POD Filter: Complete
+2025-12-18 12:19:08,408 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:19:08,853 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:19:10,552 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0005
+2025-12-18 12:19:11,507 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:19:11,507 [INFO]   Processing channel A...
+2025-12-18 12:19:11,747 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:22:09,101 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-18 12:22:09,101 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-18 12:22:09,101 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-18 12:22:09,101 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-18 12:22:09,104 [INFO] Worker logging configured successfully
+2025-12-18 12:22:09,104 [INFO] Worker logging configured successfully
+2025-12-18 12:22:09,104 [INFO] Worker logging configured successfully
+2025-12-18 12:22:09,104 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-18 12:22:09,104 [INFO] Worker logging configured successfully
+2025-12-18 12:22:09,106 [INFO] Worker logging configured successfully
+2025-12-18 12:22:09,107 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:22:09,107 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:22:09,108 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:22:09,108 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:22:09,108 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:22:11,468 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0009
+2025-12-18 12:22:11,972 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0007
+2025-12-18 12:22:12,616 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:22:12,616 [INFO]   Processing channel A...
+2025-12-18 12:22:12,981 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:22:13,172 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:22:13,174 [INFO]   Processing channel A...
+2025-12-18 12:22:13,486 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0003
+2025-12-18 12:22:13,486 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0005
+2025-12-18 12:22:13,633 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:22:13,662 [INFO]   Processing channel B...
+2025-12-18 12:22:14,272 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:22:14,296 [INFO]   Processing channel B...
+2025-12-18 12:22:14,586 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:22:14,586 [INFO]   Processing channel A...
+2025-12-18 12:22:14,628 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:22:14,628 [INFO]   Processing channel A...
+2025-12-18 12:22:14,975 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:22:15,102 [INFO] POD Filter: Complete
+2025-12-18 12:22:15,261 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:22:15,295 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:22:16,260 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0006
+2025-12-18 12:22:16,552 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0008
+2025-12-18 12:22:17,440 [INFO]   Processing channel B...
+2025-12-18 12:22:17,444 [INFO]   Processing channel B...
+2025-12-18 12:22:17,474 [INFO] POD Filter: Complete
+2025-12-18 12:22:17,698 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:22:17,713 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:22:17,907 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:22:17,908 [INFO]   Processing channel A...
+2025-12-18 12:22:17,909 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:22:17,910 [INFO]   Processing channel A...
+2025-12-18 12:22:18,202 [INFO] POD Filter: Complete
+2025-12-18 12:22:18,203 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:22:18,217 [INFO] POD Filter: Complete
+2025-12-18 12:22:18,226 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:22:18,821 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0004
+2025-12-18 12:22:18,892 [INFO]   Processing channel B...
+2025-12-18 12:22:18,913 [INFO]   Processing channel B...
+2025-12-18 12:22:19,137 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:22:19,180 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:22:19,805 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0000
+2025-12-18 12:22:19,851 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0001
+2025-12-18 12:22:19,897 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:22:19,897 [INFO]   Processing channel A...
+2025-12-18 12:22:19,979 [INFO] POD Filter: Complete
+2025-12-18 12:22:20,038 [INFO] POD Filter: Complete
+2025-12-18 12:22:20,136 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:22:20,591 [INFO]   Processing channel B...
+2025-12-18 12:22:20,768 [INFO] Loading C libraries (One-time init)...
+2025-12-18 12:22:20,781 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:22:20,830 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0002
+2025-12-18 12:22:20,846 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:22:20,864 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:22:20,864 [INFO]   Processing channel A...
+2025-12-18 12:22:20,910 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:22:20,910 [INFO]   Processing channel A...
+2025-12-18 12:22:22,105 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:22:22,106 [INFO]   Processing channel A...
+2025-12-18 12:22:22,880 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:22:22,914 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:22:23,609 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:22:24,389 [INFO] POD Filter: Complete
+2025-12-18 12:22:24,389 [INFO]   Processing channel B...
+2025-12-18 12:22:24,492 [INFO]   Processing channel B...
+2025-12-18 12:22:24,508 [INFO]   Processing channel B...
+2025-12-18 12:22:24,703 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:22:24,953 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:22:24,995 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:22:25,267 [INFO] Loading C libraries (One-time init)...
+2025-12-18 12:22:25,285 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:22:25,324 [INFO] POD Filter: Complete
+2025-12-18 12:22:25,611 [INFO] POD Filter: Complete
+2025-12-18 12:22:25,672 [INFO] POD Filter: Complete
+2025-12-18 12:22:26,119 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:22:26,411 [INFO] Loading C libraries (One-time init)...
+2025-12-18 12:22:26,415 [INFO] Loading C libraries (One-time init)...
+2025-12-18 12:22:26,442 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:22:26,445 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:22:26,705 [INFO] Loading C libraries (One-time init)...
+2025-12-18 12:22:26,734 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:22:32,345 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:22:33,741 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:22:35,975 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:22:35,975 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:22:36,117 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:22:40,138 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:22:40,150 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:22:42,658 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:22:43,204 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:22:43,204 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:22:47,081 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:22:49,220 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:22:49,871 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:22:50,064 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:22:53,013 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:22:58,628 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:22:58,817 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:22:58,884 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:22:58,981 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:22:59,368 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:23:03,451 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:23:06,494 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:23:06,494 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:23:06,495 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:23:07,309 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:23:09,632 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:23:12,511 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:23:12,580 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:23:12,596 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:23:13,091 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:23:17,358 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:23:17,587 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:23:17,696 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:23:17,945 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:23:24,759 [INFO] Pass 2: Correlating batch of 100 image pairs...
+2025-12-18 12:23:24,766 [INFO] Pass 2: Correlating batch of 100 image pairs...
+2025-12-18 12:23:24,768 [INFO] Pass 2: Correlating batch of 100 image pairs...
+2025-12-18 12:23:24,874 [INFO] Pass 2: Correlating batch of 100 image pairs...
+2025-12-18 12:23:24,899 [INFO] Pass 2: Correlating batch of 100 image pairs...
+2025-12-18 12:23:35,641 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:23:35,739 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:23:35,741 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:23:37,422 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:23:37,556 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:23:44,520 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:23:44,521 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:23:44,521 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:23:44,850 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:23:45,034 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:23:54,758 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:23:54,880 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:23:55,086 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:23:55,129 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:23:55,156 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:24:19,862 [INFO] Pass 2: Correlating batch of 100 image pairs...
+2025-12-18 12:24:20,076 [INFO] Pass 2: Correlating batch of 100 image pairs...
+2025-12-18 12:24:20,081 [INFO] Pass 2: Correlating batch of 100 image pairs...
+2025-12-18 12:24:20,187 [INFO] Pass 2: Correlating batch of 100 image pairs...
+2025-12-18 12:24:20,293 [INFO] Pass 2: Correlating batch of 100 image pairs...
+2025-12-18 12:24:31,590 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:24:31,692 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:24:31,839 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:24:31,839 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:24:31,980 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:24:39,799 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:24:39,826 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:24:39,827 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:24:39,835 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:24:46,699 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:24:46,699 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:24:46,707 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:24:46,815 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:26:25,516 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-18 12:26:25,523 [INFO] Worker logging configured successfully
+2025-12-18 12:26:25,525 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:26:28,800 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0009
+2025-12-18 12:26:29,783 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:26:29,783 [INFO]   Processing channel A...
+2025-12-18 12:26:30,004 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:26:30,352 [INFO]   Processing channel B...
+2025-12-18 12:26:30,565 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:26:30,940 [INFO] POD Filter: Complete
+2025-12-18 12:26:32,146 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0008
+2025-12-18 12:26:33,074 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:26:33,074 [INFO]   Processing channel A...
+2025-12-18 12:26:33,277 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:26:33,628 [INFO]   Processing channel B...
+2025-12-18 12:26:33,838 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:26:34,201 [INFO] POD Filter: Complete
+2025-12-18 12:26:35,272 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0007
+2025-12-18 12:26:36,177 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:26:36,178 [INFO]   Processing channel A...
+2025-12-18 12:26:36,386 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:26:36,784 [INFO]   Processing channel B...
+2025-12-18 12:26:36,983 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:26:37,364 [INFO] POD Filter: Complete
+2025-12-18 12:26:38,522 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0006
+2025-12-18 12:26:39,438 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:26:39,438 [INFO]   Processing channel A...
+2025-12-18 12:26:39,641 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:26:40,018 [INFO]   Processing channel B...
+2025-12-18 12:26:40,225 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:26:40,595 [INFO] POD Filter: Complete
+2025-12-18 12:26:41,678 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0005
+2025-12-18 12:26:42,604 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:26:42,604 [INFO]   Processing channel A...
+2025-12-18 12:26:42,821 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:26:43,186 [INFO]   Processing channel B...
+2025-12-18 12:26:43,384 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:26:43,785 [INFO] POD Filter: Complete
+2025-12-18 12:26:44,929 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0004
+2025-12-18 12:26:45,843 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:26:45,843 [INFO]   Processing channel A...
+2025-12-18 12:26:46,051 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:26:46,446 [INFO]   Processing channel B...
+2025-12-18 12:26:46,650 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:26:47,042 [INFO] POD Filter: Complete
+2025-12-18 12:26:48,124 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0003
+2025-12-18 12:26:49,099 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:26:49,099 [INFO]   Processing channel A...
+2025-12-18 12:26:49,334 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:26:49,767 [INFO]   Processing channel B...
+2025-12-18 12:26:49,980 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:26:50,433 [INFO] POD Filter: Complete
+2025-12-18 12:26:51,518 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0002
+2025-12-18 12:26:52,479 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:26:52,479 [INFO]   Processing channel A...
+2025-12-18 12:26:52,692 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:26:53,119 [INFO]   Processing channel B...
+2025-12-18 12:26:53,318 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:26:53,739 [INFO] POD Filter: Complete
+2025-12-18 12:26:58,044 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0000
+2025-12-18 12:26:58,970 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:26:58,970 [INFO]   Processing channel A...
+2025-12-18 12:26:59,184 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:26:59,657 [INFO]   Processing channel B...
+2025-12-18 12:26:59,886 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:27:00,394 [INFO] POD Filter: Complete
+2025-12-18 12:27:00,908 [INFO] Loading C libraries (One-time init)...
+2025-12-18 12:27:00,921 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:27:03,517 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:27:05,248 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:27:06,968 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:27:07,312 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:27:07,712 [INFO] Worker logging configured successfully
+2025-12-18 12:27:07,722 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-18 12:27:07,722 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-18 12:27:07,722 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-18 12:27:07,724 [INFO] Worker logging configured successfully
+2025-12-18 12:27:07,724 [INFO] Worker logging configured successfully
+2025-12-18 12:27:07,724 [INFO] Worker logging configured successfully
+2025-12-18 12:27:07,726 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:27:07,726 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:27:07,726 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:27:07,726 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:27:08,941 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0009
+2025-12-18 12:27:09,585 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:27:10,003 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:27:10,003 [INFO]   Processing channel A...
+2025-12-18 12:27:10,383 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:27:10,946 [INFO]   Processing channel B...
+2025-12-18 12:27:11,173 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:27:11,644 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:27:11,670 [INFO] POD Filter: Complete
+2025-12-18 12:27:11,904 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0006
+2025-12-18 12:27:12,965 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:27:12,965 [INFO]   Processing channel A...
+2025-12-18 12:27:13,310 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:27:13,365 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0005
+2025-12-18 12:27:13,675 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:27:13,720 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0008
+2025-12-18 12:27:13,959 [INFO]   Processing channel B...
+2025-12-18 12:27:14,127 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:27:14,204 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:27:14,459 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:27:14,460 [INFO]   Processing channel A...
+2025-12-18 12:27:14,573 [INFO] POD Filter: Complete
+2025-12-18 12:27:14,662 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:27:14,663 [INFO]   Processing channel A...
+2025-12-18 12:27:14,673 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:27:15,217 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:27:15,227 [INFO] Loading C libraries (One-time init)...
+2025-12-18 12:27:15,255 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:27:15,654 [INFO]   Processing channel B...
+2025-12-18 12:27:15,838 [INFO]   Processing channel B...
+2025-12-18 12:27:16,369 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:27:16,625 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:27:17,153 [INFO] POD Filter: Complete
+2025-12-18 12:27:17,248 [INFO] POD Filter: Complete
+2025-12-18 12:27:17,967 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0004
+2025-12-18 12:27:18,083 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:27:18,687 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:27:19,272 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:27:19,274 [INFO]   Processing channel A...
+2025-12-18 12:27:19,645 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:27:20,298 [INFO]   Processing channel B...
+2025-12-18 12:27:20,524 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:27:20,778 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0002
+2025-12-18 12:27:20,872 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:27:21,084 [INFO] POD Filter: Complete
+2025-12-18 12:27:21,762 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:27:22,219 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:27:22,219 [INFO]   Processing channel A...
+2025-12-18 12:27:23,089 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:27:24,150 [INFO]   Processing channel B...
+2025-12-18 12:27:24,300 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:27:24,388 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:27:25,321 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:27:25,998 [INFO] POD Filter: Complete
+2025-12-18 12:27:26,532 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:27:26,745 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0000
+2025-12-18 12:27:27,797 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:27:27,797 [INFO]   Processing channel A...
+2025-12-18 12:27:28,005 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:27:28,417 [INFO]   Processing channel B...
+2025-12-18 12:27:28,626 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:27:28,947 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:27:29,072 [INFO] POD Filter: Complete
+2025-12-18 12:27:30,600 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:27:32,184 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:27:32,448 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:27:34,536 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:27:36,129 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:27:37,728 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:27:37,993 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:27:40,098 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:27:41,701 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:27:43,311 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:27:43,577 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:27:45,670 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:27:47,269 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:27:48,848 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:27:49,127 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:27:51,225 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:27:52,778 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:27:54,372 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:27:54,670 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:27:56,800 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:27:58,531 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:28:00,168 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:28:00,488 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:28:02,583 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:28:04,214 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:28:05,858 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:28:07,890 [INFO] Worker logging configured successfully
+2025-12-18 12:28:07,890 [INFO] Worker logging configured successfully
+2025-12-18 12:28:07,890 [INFO] Worker logging configured successfully
+2025-12-18 12:28:07,890 [INFO] Worker logging configured successfully
+2025-12-18 12:28:07,901 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:28:07,901 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:28:07,901 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:28:07,901 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:28:08,861 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0008
+2025-12-18 12:28:08,865 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0009
+2025-12-18 12:28:09,288 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0006
+2025-12-18 12:28:09,762 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0005
+2025-12-18 12:28:09,823 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:28:09,823 [INFO]   Processing channel A...
+2025-12-18 12:28:09,830 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:28:09,830 [INFO]   Processing channel A...
+2025-12-18 12:28:10,071 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:28:10,083 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:28:10,263 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:28:10,263 [INFO]   Processing channel A...
+2025-12-18 12:28:10,791 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:28:10,909 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:28:10,909 [INFO]   Processing channel A...
+2025-12-18 12:28:10,922 [INFO]   Processing channel B...
+2025-12-18 12:28:11,082 [INFO]   Processing channel B...
+2025-12-18 12:28:11,207 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:28:11,218 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:28:11,352 [INFO]   Processing channel B...
+2025-12-18 12:28:11,500 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:28:11,931 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:28:12,018 [INFO]   Processing channel B...
+2025-12-18 12:28:12,027 [INFO] POD Filter: Complete
+2025-12-18 12:28:12,204 [INFO] POD Filter: Complete
+2025-12-18 12:28:12,320 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:28:12,434 [INFO] POD Filter: Complete
+2025-12-18 12:28:12,628 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0007
+2025-12-18 12:28:12,769 [INFO] POD Filter: Complete
+2025-12-18 12:28:13,398 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0002
+2025-12-18 12:28:13,592 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:28:13,592 [INFO]   Processing channel A...
+2025-12-18 12:28:13,828 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:28:14,192 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0000
+2025-12-18 12:28:14,288 [INFO]   Processing channel B...
+2025-12-18 12:28:14,390 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:28:14,390 [INFO]   Processing channel A...
+2025-12-18 12:28:14,585 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:28:14,792 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:28:15,134 [INFO] POD Filter: Complete
+2025-12-18 12:28:15,158 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:28:15,158 [INFO]   Processing channel A...
+2025-12-18 12:28:15,290 [INFO]   Processing channel B...
+2025-12-18 12:28:15,414 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:28:15,555 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:28:15,771 [INFO] Loading C libraries (One-time init)...
+2025-12-18 12:28:15,819 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:28:15,890 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:28:17,018 [INFO]   Processing channel B...
+2025-12-18 12:28:17,345 [INFO] POD Filter: Complete
+2025-12-18 12:28:18,087 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0003
+2025-12-18 12:28:18,175 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:28:18,921 [INFO] POD Filter: Complete
+2025-12-18 12:28:20,215 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0001
+2025-12-18 12:28:20,289 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:28:20,289 [INFO]   Processing channel A...
+2025-12-18 12:28:20,656 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:28:21,348 [INFO]   Processing channel B...
+2025-12-18 12:28:21,869 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:28:21,944 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:28:21,997 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:28:22,167 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:28:22,194 [INFO]   Processing channel A...
+2025-12-18 12:28:22,715 [INFO] POD Filter: Complete
+2025-12-18 12:28:22,832 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:28:23,531 [INFO]   Processing channel B...
+2025-12-18 12:28:23,941 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:28:24,662 [INFO] POD Filter: Complete
+2025-12-18 12:28:25,430 [INFO] Loading C libraries (One-time init)...
+2025-12-18 12:28:25,452 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:28:26,478 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:28:26,731 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:28:26,737 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:28:33,927 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:28:34,194 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:28:34,322 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:28:34,468 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:28:40,071 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:28:41,845 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:28:44,179 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:28:44,655 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:28:45,180 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:28:46,745 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:28:47,769 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:28:48,870 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:28:50,554 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:28:52,031 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:28:54,227 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:28:55,527 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:28:55,624 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:28:56,499 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:28:58,912 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:28:59,220 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:28:59,242 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:28:59,783 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:29:02,722 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:29:03,814 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:29:05,800 [INFO] Pass 2: Correlating batch of 100 image pairs...
+2025-12-18 12:29:05,959 [INFO] Pass 2: Correlating batch of 100 image pairs...
+2025-12-18 12:29:05,960 [INFO] Pass 2: Correlating batch of 100 image pairs...
+2025-12-18 12:29:05,969 [INFO] Pass 2: Correlating batch of 100 image pairs...
+2025-12-18 12:29:16,718 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:29:16,749 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:29:16,797 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:29:16,952 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:29:24,982 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:29:25,146 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:29:25,228 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:29:25,700 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:29:32,936 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:29:33,196 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:29:33,434 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:29:33,831 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:29:53,159 [INFO] Pass 2: Correlating batch of 100 image pairs...
+2025-12-18 12:29:54,351 [INFO] Pass 2: Correlating batch of 100 image pairs...
+2025-12-18 12:29:54,632 [INFO] Pass 2: Correlating batch of 100 image pairs...
+2025-12-18 12:29:54,897 [INFO] Pass 2: Correlating batch of 100 image pairs...
+2025-12-18 12:30:04,483 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:30:06,924 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:30:07,107 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:30:09,081 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:30:12,091 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:30:14,825 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:30:14,825 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:30:16,909 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:30:19,557 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:30:22,643 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:30:22,885 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:30:23,828 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:30:29,795 [INFO] Worker logging configured successfully
+2025-12-18 12:30:29,814 [INFO] Worker logging configured successfully
+2025-12-18 12:30:29,848 [INFO] Worker logging configured successfully
+2025-12-18 12:30:29,886 [INFO] Worker logging configured successfully
+2025-12-18 12:30:29,927 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:30:29,933 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:30:29,938 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:30:29,942 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:30:44,442 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0008
+2025-12-18 12:30:44,776 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0007
+2025-12-18 12:30:45,407 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:30:45,407 [INFO]   Processing channel A...
+2025-12-18 12:30:45,684 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:30:45,768 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:30:45,768 [INFO]   Processing channel A...
+2025-12-18 12:30:46,057 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:30:46,678 [INFO]   Processing channel B...
+2025-12-18 12:30:46,751 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0003
+2025-12-18 12:30:46,762 [INFO]   Processing channel B...
+2025-12-18 12:30:46,780 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0009
+2025-12-18 12:30:46,926 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:30:47,077 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:30:47,563 [INFO] POD Filter: Complete
+2025-12-18 12:30:47,752 [INFO] POD Filter: Complete
+2025-12-18 12:30:47,962 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:30:47,962 [INFO]   Processing channel A...
+2025-12-18 12:30:48,030 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:30:48,030 [INFO]   Processing channel A...
+2025-12-18 12:30:48,210 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:30:48,352 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:30:48,509 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0006
+2025-12-18 12:30:48,850 [INFO]   Processing channel B...
+2025-12-18 12:30:49,017 [INFO]   Processing channel B...
+2025-12-18 12:30:49,108 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:30:49,317 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:30:49,498 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0001
+2025-12-18 12:30:49,523 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:30:49,523 [INFO]   Processing channel A...
+2025-12-18 12:30:49,615 [INFO] POD Filter: Complete
+2025-12-18 12:30:49,788 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:30:49,861 [INFO] POD Filter: Complete
+2025-12-18 12:30:50,179 [INFO]   Processing channel B...
+2025-12-18 12:30:50,379 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0004
+2025-12-18 12:30:50,407 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:30:50,513 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:30:50,514 [INFO]   Processing channel A...
+2025-12-18 12:30:50,520 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0002
+2025-12-18 12:30:50,793 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:30:50,938 [INFO] POD Filter: Complete
+2025-12-18 12:30:51,250 [INFO]   Processing channel B...
+2025-12-18 12:30:51,483 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:30:51,542 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:30:51,543 [INFO]   Processing channel A...
+2025-12-18 12:30:51,603 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:30:51,603 [INFO]   Processing channel A...
+2025-12-18 12:30:52,079 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:30:52,082 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:30:52,482 [INFO] POD Filter: Complete
+2025-12-18 12:30:52,703 [INFO]   Processing channel B...
+2025-12-18 12:30:52,732 [INFO]   Processing channel B...
+2025-12-18 12:30:52,954 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:30:53,002 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:30:53,488 [INFO] POD Filter: Complete
+2025-12-18 12:30:53,506 [INFO] POD Filter: Complete
+2025-12-18 12:30:53,594 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0000
+2025-12-18 12:30:53,962 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:30:54,104 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:30:54,738 [INFO] POD Filter: Processing 100 image pairs
+2025-12-18 12:30:54,738 [INFO]   Processing channel A...
+2025-12-18 12:30:54,969 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:30:55,375 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:30:56,186 [INFO]   Processing channel B...
+2025-12-18 12:30:56,772 [INFO]   POD: 100 images, removing 1 signal modes
+2025-12-18 12:30:57,555 [INFO] POD Filter: Complete
+2025-12-18 12:30:58,755 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:31:00,019 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:31:01,947 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:31:01,948 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:31:05,401 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:31:05,804 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:31:08,464 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:31:08,738 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:31:12,682 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:31:12,871 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:31:14,744 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:31:15,882 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:31:18,944 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:31:28,862 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:31:29,099 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:31:29,719 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:31:30,697 [INFO] Pass 1: Correlating batch of 100 image pairs...
+2025-12-18 12:31:34,307 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:31:35,146 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:31:35,356 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:31:36,766 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:31:38,956 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:31:39,085 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:31:39,184 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:31:40,501 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:31:44,050 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:31:44,139 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:31:44,141 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:31:45,078 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:34:23,325 [INFO] Worker logging configured successfully
+2025-12-18 12:34:23,325 [INFO] Worker logging configured successfully
+2025-12-18 12:34:23,326 [INFO] Worker logging configured successfully
+2025-12-18 12:34:23,326 [INFO] Worker logging configured successfully
+2025-12-18 12:34:23,328 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:34:23,328 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:34:23,329 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:34:23,329 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:34:23,941 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0009
+2025-12-18 12:34:24,069 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0007
+2025-12-18 12:34:24,251 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0005
+2025-12-18 12:34:24,560 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0003
+2025-12-18 12:34:24,849 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:34:24,849 [INFO]   Processing channel A...
+2025-12-18 12:34:24,932 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:24,967 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:34:24,967 [INFO]   Processing channel A...
+2025-12-18 12:34:25,053 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:25,143 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:34:25,146 [INFO]   Processing channel A...
+2025-12-18 12:34:25,223 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:25,394 [INFO]   Processing channel B...
+2025-12-18 12:34:25,418 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:34:25,418 [INFO]   Processing channel A...
+2025-12-18 12:34:25,490 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:25,530 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:25,602 [INFO]   Processing channel B...
+2025-12-18 12:34:25,650 [INFO]   Processing channel B...
+2025-12-18 12:34:25,703 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:25,758 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:25,856 [INFO] POD Filter: Complete
+2025-12-18 12:34:26,014 [INFO] POD Filter: Complete
+2025-12-18 12:34:26,042 [INFO]   Processing channel B...
+2025-12-18 12:34:26,078 [INFO] POD Filter: Complete
+2025-12-18 12:34:26,115 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:26,363 [INFO] POD Filter: Complete
+2025-12-18 12:34:26,544 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0008
+2025-12-18 12:34:26,556 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0006
+2025-12-18 12:34:26,802 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0004
+2025-12-18 12:34:27,225 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0024
+2025-12-18 12:34:27,613 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:34:27,614 [INFO]   Processing channel A...
+2025-12-18 12:34:27,623 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:34:27,623 [INFO]   Processing channel A...
+2025-12-18 12:34:27,690 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:27,703 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:27,716 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:34:27,716 [INFO]   Processing channel A...
+2025-12-18 12:34:27,800 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:27,990 [INFO]   Processing channel B...
+2025-12-18 12:34:28,009 [INFO]   Processing channel B...
+2025-12-18 12:34:28,073 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:34:28,073 [INFO]   Processing channel A...
+2025-12-18 12:34:28,083 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:28,101 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:28,101 [INFO]   Processing channel B...
+2025-12-18 12:34:28,189 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:28,199 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:28,425 [INFO] POD Filter: Complete
+2025-12-18 12:34:28,435 [INFO] POD Filter: Complete
+2025-12-18 12:34:28,494 [INFO]   Processing channel B...
+2025-12-18 12:34:28,505 [INFO] POD Filter: Complete
+2025-12-18 12:34:28,567 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:28,810 [INFO] POD Filter: Complete
+2025-12-18 12:34:28,990 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0022
+2025-12-18 12:34:29,039 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:34:29,732 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0021
+2025-12-18 12:34:30,240 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:34:30,240 [INFO]   Processing channel A...
+2025-12-18 12:34:30,344 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:30,517 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:34:30,750 [INFO]   Processing channel B...
+2025-12-18 12:34:30,850 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:30,892 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0018
+2025-12-18 12:34:30,974 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:34:30,975 [INFO]   Processing channel A...
+2025-12-18 12:34:31,119 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:31,222 [INFO] POD Filter: Complete
+2025-12-18 12:34:31,442 [INFO]   Processing channel B...
+2025-12-18 12:34:31,516 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:31,747 [INFO] POD Filter: Complete
+2025-12-18 12:34:31,834 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:34:31,942 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:34:31,942 [INFO]   Processing channel A...
+2025-12-18 12:34:32,072 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:32,531 [INFO]   Processing channel B...
+2025-12-18 12:34:32,605 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0019
+2025-12-18 12:34:32,636 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:32,906 [INFO] POD Filter: Complete
+2025-12-18 12:34:32,906 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:34:33,088 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:34:33,426 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0013
+2025-12-18 12:34:33,559 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0017
+2025-12-18 12:34:33,614 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:34:33,614 [INFO]   Processing channel A...
+2025-12-18 12:34:33,709 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:33,936 [INFO]   Processing channel B...
+2025-12-18 12:34:34,004 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:34,211 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:34:34,218 [INFO] POD Filter: Complete
+2025-12-18 12:34:34,531 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:34:34,531 [INFO]   Processing channel A...
+2025-12-18 12:34:34,700 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:34,797 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:34:34,797 [INFO]   Processing channel A...
+2025-12-18 12:34:35,054 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:35,281 [INFO]   Processing channel B...
+2025-12-18 12:34:35,349 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0014
+2025-12-18 12:34:35,386 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:35,449 [INFO]   Processing channel B...
+2025-12-18 12:34:35,526 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:35,550 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:34:35,680 [INFO] POD Filter: Complete
+2025-12-18 12:34:35,801 [INFO] POD Filter: Complete
+2025-12-18 12:34:36,348 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0015
+2025-12-18 12:34:36,519 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:34:36,519 [INFO]   Processing channel A...
+2025-12-18 12:34:36,637 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:36,672 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:34:36,861 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:34:36,945 [INFO]   Processing channel B...
+2025-12-18 12:34:37,018 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:37,270 [INFO] POD Filter: Complete
+2025-12-18 12:34:37,501 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:34:37,501 [INFO]   Processing channel A...
+2025-12-18 12:34:37,631 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:37,870 [INFO]   Processing channel B...
+2025-12-18 12:34:37,940 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:38,209 [INFO] POD Filter: Complete
+2025-12-18 12:34:38,281 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:34:38,364 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0010
+2025-12-18 12:34:38,767 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0011
+2025-12-18 12:34:39,003 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0012
+2025-12-18 12:34:39,567 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:34:39,818 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:34:39,818 [INFO]   Processing channel A...
+2025-12-18 12:34:39,917 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:40,016 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:34:40,016 [INFO]   Processing channel A...
+2025-12-18 12:34:40,130 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:40,244 [INFO]   Processing channel B...
+2025-12-18 12:34:40,252 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:34:40,252 [INFO]   Processing channel A...
+2025-12-18 12:34:40,341 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:40,422 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:40,501 [INFO]   Processing channel B...
+2025-12-18 12:34:40,598 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:40,725 [INFO] POD Filter: Complete
+2025-12-18 12:34:40,804 [INFO]   Processing channel B...
+2025-12-18 12:34:40,876 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:40,970 [INFO] POD Filter: Complete
+2025-12-18 12:34:40,990 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:34:41,160 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:34:41,162 [INFO] POD Filter: Complete
+2025-12-18 12:34:41,349 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:34:42,059 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:34:43,056 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0001
+2025-12-18 12:34:43,080 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:34:43,350 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:34:44,554 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:34:44,555 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:34:44,814 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:34:45,175 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:34:45,175 [INFO]   Processing channel A...
+2025-12-18 12:34:45,358 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:45,790 [INFO]   Processing channel B...
+2025-12-18 12:34:45,882 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:46,208 [INFO] POD Filter: Complete
+2025-12-18 12:34:46,377 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:34:46,448 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:34:46,448 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:34:46,765 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:34:46,768 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:34:48,211 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:34:48,376 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:34:48,443 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:34:48,483 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:34:50,004 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:34:50,004 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:34:50,110 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:34:51,410 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:34:51,453 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:34:51,487 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:34:51,615 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:34:51,643 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0002
+2025-12-18 12:34:52,744 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:34:52,844 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:34:52,870 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:34:53,113 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:34:53,113 [INFO]   Processing channel A...
+2025-12-18 12:34:53,239 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:53,544 [INFO]   Processing channel B...
+2025-12-18 12:34:53,638 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:34:54,071 [INFO] POD Filter: Complete
+2025-12-18 12:34:54,228 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:34:54,406 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:34:55,404 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:34:55,499 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:34:55,530 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:34:56,624 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:34:56,745 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:34:56,781 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:34:57,826 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:34:57,934 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:34:58,812 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:34:58,824 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:34:58,930 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:34:59,674 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:34:59,838 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:35:00,018 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:35:00,875 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:35:00,887 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:35:01,689 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:35:01,720 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:35:02,345 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:35:02,486 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0000
+2025-12-18 12:35:03,289 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:35:03,289 [INFO]   Processing channel A...
+2025-12-18 12:35:03,354 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:03,571 [INFO]   Processing channel B...
+2025-12-18 12:35:03,631 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:03,837 [INFO] POD Filter: Complete
+2025-12-18 12:35:04,351 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:35:05,189 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:35:05,811 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:35:06,487 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:35:06,607 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:35:07,448 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:35:08,081 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:35:08,730 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:35:08,853 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:35:09,683 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:35:10,315 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:35:10,953 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:35:11,073 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:35:11,885 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:35:12,527 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:35:13,173 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:35:13,295 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:35:14,139 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:35:14,779 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:35:15,413 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:35:36,942 [INFO] Worker logging configured successfully
+2025-12-18 12:35:36,942 [INFO] Worker logging configured successfully
+2025-12-18 12:35:36,942 [INFO] Worker logging configured successfully
+2025-12-18 12:35:36,942 [INFO] Worker logging configured successfully
+2025-12-18 12:35:36,945 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:35:36,945 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:35:36,945 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:35:36,945 [INFO] Set OMP_NUM_THREADS to 4 in worker process
+2025-12-18 12:35:37,677 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0007
+2025-12-18 12:35:37,905 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0005
+2025-12-18 12:35:38,231 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0003
+2025-12-18 12:35:38,555 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:35:38,555 [INFO]   Processing channel A...
+2025-12-18 12:35:38,719 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:38,900 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:35:38,900 [INFO]   Processing channel A...
+2025-12-18 12:35:39,088 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:39,101 [INFO]   Processing channel B...
+2025-12-18 12:35:39,185 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:39,241 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0023
+2025-12-18 12:35:39,245 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:35:39,245 [INFO]   Processing channel A...
+2025-12-18 12:35:39,380 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:39,544 [INFO] POD Filter: Complete
+2025-12-18 12:35:39,614 [INFO]   Processing channel B...
+2025-12-18 12:35:39,682 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:39,725 [INFO]   Processing channel B...
+2025-12-18 12:35:39,799 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:39,925 [INFO] POD Filter: Complete
+2025-12-18 12:35:40,057 [INFO] POD Filter: Complete
+2025-12-18 12:35:40,095 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0006
+2025-12-18 12:35:40,141 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:35:40,141 [INFO]   Processing channel A...
+2025-12-18 12:35:40,255 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:40,482 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0004
+2025-12-18 12:35:40,559 [INFO]   Processing channel B...
+2025-12-18 12:35:40,628 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0024
+2025-12-18 12:35:40,640 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:40,859 [INFO] POD Filter: Complete
+2025-12-18 12:35:40,982 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:35:40,982 [INFO]   Processing channel A...
+2025-12-18 12:35:41,115 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:41,356 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:35:41,356 [INFO]   Processing channel A...
+2025-12-18 12:35:41,411 [INFO]   Processing channel B...
+2025-12-18 12:35:41,460 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:41,505 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:41,521 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:35:41,521 [INFO]   Processing channel A...
+2025-12-18 12:35:41,627 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:41,765 [INFO]   Processing channel B...
+2025-12-18 12:35:41,815 [INFO] POD Filter: Complete
+2025-12-18 12:35:41,850 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:41,919 [INFO]   Processing channel B...
+2025-12-18 12:35:41,991 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:42,075 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0020
+2025-12-18 12:35:42,117 [INFO] POD Filter: Complete
+2025-12-18 12:35:42,231 [INFO] POD Filter: Complete
+2025-12-18 12:35:42,351 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0022
+2025-12-18 12:35:42,620 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:35:42,946 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:35:42,946 [INFO]   Processing channel A...
+2025-12-18 12:35:43,042 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:43,313 [INFO]   Processing channel B...
+2025-12-18 12:35:43,348 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:35:43,348 [INFO]   Processing channel A...
+2025-12-18 12:35:43,395 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:43,445 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:43,683 [INFO] POD Filter: Complete
+2025-12-18 12:35:43,723 [INFO]   Processing channel B...
+2025-12-18 12:35:43,789 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:43,841 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:35:44,096 [INFO] POD Filter: Complete
+2025-12-18 12:35:44,149 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0017
+2025-12-18 12:35:44,726 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0019
+2025-12-18 12:35:44,811 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:35:45,117 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:35:45,118 [INFO]   Processing channel A...
+2025-12-18 12:35:45,213 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0015
+2025-12-18 12:35:45,255 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:45,628 [INFO]   Processing channel B...
+2025-12-18 12:35:45,710 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:45,756 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:35:45,756 [INFO]   Processing channel A...
+2025-12-18 12:35:45,799 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:35:45,860 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:45,979 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:35:46,009 [INFO] POD Filter: Complete
+2025-12-18 12:35:46,159 [INFO]   Processing channel B...
+2025-12-18 12:35:46,178 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:35:46,178 [INFO]   Processing channel A...
+2025-12-18 12:35:46,239 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:46,353 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:46,584 [INFO] POD Filter: Complete
+2025-12-18 12:35:46,750 [INFO]   Processing channel B...
+2025-12-18 12:35:46,824 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:47,114 [INFO] POD Filter: Complete
+2025-12-18 12:35:47,180 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0016
+2025-12-18 12:35:47,205 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:35:47,710 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0014
+2025-12-18 12:35:48,113 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:35:48,158 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:35:48,158 [INFO]   Processing channel A...
+2025-12-18 12:35:48,241 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:48,490 [INFO]   Processing channel B...
+2025-12-18 12:35:48,558 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:48,688 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:35:48,688 [INFO]   Processing channel A...
+2025-12-18 12:35:48,782 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0010
+2025-12-18 12:35:48,785 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:48,831 [INFO] POD Filter: Complete
+2025-12-18 12:35:49,006 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:35:49,086 [INFO]   Processing channel B...
+2025-12-18 12:35:49,215 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:49,215 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:35:49,571 [INFO] POD Filter: Complete
+2025-12-18 12:35:49,637 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0013
+2025-12-18 12:35:49,735 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:35:49,736 [INFO]   Processing channel A...
+2025-12-18 12:35:49,831 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:50,054 [INFO]   Processing channel B...
+2025-12-18 12:35:50,118 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:50,363 [INFO] POD Filter: Complete
+2025-12-18 12:35:50,442 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:35:50,595 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:35:50,595 [INFO]   Processing channel A...
+2025-12-18 12:35:50,708 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:50,929 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:35:50,990 [INFO]   Processing channel B...
+2025-12-18 12:35:51,067 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:51,370 [INFO] POD Filter: Complete
+2025-12-18 12:35:51,537 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:35:52,157 [INFO] Saving intermediate filter outputs to data/basic_filters/1000/batch_0001
+2025-12-18 12:35:52,283 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:35:52,693 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:35:52,896 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:35:53,161 [INFO] POD Filter: Processing 40 image pairs
+2025-12-18 12:35:53,161 [INFO]   Processing channel A...
+2025-12-18 12:35:53,270 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:53,346 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:35:53,561 [INFO]   Processing channel B...
+2025-12-18 12:35:53,656 [INFO]   POD: 40 images, removing 1 signal modes
+2025-12-18 12:35:53,919 [INFO] POD Filter: Complete
+2025-12-18 12:35:54,289 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:35:54,537 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:35:54,552 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:35:54,870 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:35:55,462 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:35:55,867 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:35:56,524 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:35:56,948 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:35:57,532 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:35:57,671 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:35:57,678 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:35:58,211 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:35:58,428 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:35:59,221 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:35:59,222 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:35:59,984 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:35:59,985 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:36:00,185 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:36:00,264 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:36:00,824 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:36:00,824 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:36:01,020 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:36:01,849 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:36:02,135 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:36:02,417 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:36:02,474 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:36:03,179 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:36:03,319 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:36:03,674 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:36:04,511 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:36:04,627 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:36:04,661 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:36:04,769 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:36:04,826 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:36:05,009 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:36:06,603 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:36:06,747 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:36:06,952 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:36:07,809 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:36:07,899 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:36:08,324 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:36:09,422 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:36:09,534 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:36:09,659 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:36:09,681 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:36:09,694 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:36:09,844 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:36:11,241 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:36:11,241 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:36:11,379 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:36:12,808 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:36:12,912 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:36:12,955 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:36:14,342 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:36:14,478 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:36:14,488 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:36:14,504 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:36:14,709 [INFO] Pass 1: Correlating batch of 40 image pairs...
+2025-12-18 12:36:15,764 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:36:15,882 [INFO] Pass 1: Correlation AB completed with error code 0
+2025-12-18 12:36:16,974 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:36:17,110 [INFO] Pass 1: Correlation AA completed with error code 0
+2025-12-18 12:36:18,131 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:36:18,288 [INFO] Pass 1: Correlation BB completed with error code 0
+2025-12-18 12:36:24,451 [INFO] Pass 2: Correlating batch of 40 image pairs...
+2025-12-18 12:36:24,456 [INFO] Pass 2: Correlating batch of 40 image pairs...
+2025-12-18 12:36:24,479 [INFO] Pass 2: Correlating batch of 40 image pairs...
+2025-12-18 12:36:24,479 [INFO] Pass 2: Correlating batch of 40 image pairs...
+2025-12-18 12:36:28,936 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:36:28,991 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:36:29,040 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:36:29,094 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:36:31,467 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:36:32,335 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:36:32,337 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:36:32,476 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:36:35,505 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:36:35,505 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:36:35,505 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:36:35,521 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:36:37,309 [INFO] Pass 2: Correlating batch of 40 image pairs...
+2025-12-18 12:36:37,333 [INFO] Pass 2: Correlating batch of 40 image pairs...
+2025-12-18 12:36:37,339 [INFO] Pass 2: Correlating batch of 40 image pairs...
+2025-12-18 12:36:37,427 [INFO] Pass 2: Correlating batch of 40 image pairs...
+2025-12-18 12:36:40,959 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:36:41,141 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:36:41,141 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:36:41,142 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:36:43,135 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:36:43,164 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:36:43,197 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:36:43,375 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:36:45,835 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:36:45,910 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:36:45,951 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:36:46,090 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:36:46,916 [INFO] Pass 2: Correlating batch of 40 image pairs...
+2025-12-18 12:36:46,950 [INFO] Pass 2: Correlating batch of 40 image pairs...
+2025-12-18 12:36:46,997 [INFO] Pass 2: Correlating batch of 40 image pairs...
+2025-12-18 12:36:47,061 [INFO] Pass 2: Correlating batch of 40 image pairs...
+2025-12-18 12:36:50,636 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:36:50,637 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:36:50,637 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:36:50,736 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:36:52,609 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:36:52,609 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:36:52,677 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:36:52,713 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:36:55,131 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:36:55,427 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:36:55,429 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:36:55,492 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:36:55,741 [INFO] Pass 2: Correlating batch of 40 image pairs...
+2025-12-18 12:36:56,053 [INFO] Pass 2: Correlating batch of 40 image pairs...
+2025-12-18 12:36:56,064 [INFO] Pass 2: Correlating batch of 40 image pairs...
+2025-12-18 12:36:56,073 [INFO] Pass 2: Correlating batch of 40 image pairs...
+2025-12-18 12:36:58,862 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:36:59,387 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:36:59,395 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:36:59,395 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:37:00,680 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:37:01,477 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:37:01,545 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:37:01,880 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:37:02,522 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:37:03,172 [INFO] Pass 2: Correlating batch of 40 image pairs...
+2025-12-18 12:37:03,388 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:37:03,695 [INFO] Pass 2: Correlating batch of 40 image pairs...
+2025-12-18 12:37:03,974 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:37:04,140 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:37:04,348 [INFO] Pass 2: Correlating batch of 40 image pairs...
+2025-12-18 12:37:04,559 [INFO] Pass 2: Correlating batch of 40 image pairs...
+2025-12-18 12:37:05,820 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:37:07,647 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:37:07,647 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:37:07,647 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:37:07,647 [INFO] Pass 2: Correlation AB completed with error code 0
+2025-12-18 12:37:09,700 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:37:09,758 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:37:09,991 [INFO] Pass 2: Correlation AA completed with error code 0
+2025-12-18 12:37:09,993 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:37:11,686 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:37:11,740 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:37:11,865 [INFO] Pass 2: Correlation BB completed with error code 0
+2025-12-18 12:37:13,539 [INFO] Pass 3: Correlating batch of 40 image pairs...
+2025-12-18 12:37:13,556 [INFO] Pass 3: Correlating batch of 40 image pairs...
+2025-12-18 12:37:13,556 [INFO] Pass 3: Correlating batch of 40 image pairs...
+2025-12-18 12:37:13,590 [INFO] Pass 3: Correlating batch of 40 image pairs...
+2025-12-18 12:37:17,294 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:37:17,294 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:37:17,380 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:37:17,447 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:37:19,662 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:37:19,662 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:37:19,766 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:37:19,766 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:37:22,152 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:37:22,152 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:37:22,301 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:37:22,301 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:37:23,750 [INFO] Pass 3: Correlating batch of 40 image pairs...
+2025-12-18 12:37:23,820 [INFO] Pass 3: Correlating batch of 40 image pairs...
+2025-12-18 12:37:23,927 [INFO] Pass 3: Correlating batch of 40 image pairs...
+2025-12-18 12:37:23,952 [INFO] Pass 3: Correlating batch of 40 image pairs...
+2025-12-18 12:37:27,299 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:37:27,299 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:37:27,669 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:37:27,669 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:37:29,493 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:37:29,493 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:37:29,538 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:37:29,665 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:37:32,627 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:37:32,627 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:37:32,658 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:37:32,832 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:37:34,740 [INFO] Pass 3: Correlating batch of 40 image pairs...
+2025-12-18 12:37:34,888 [INFO] Pass 3: Correlating batch of 40 image pairs...
+2025-12-18 12:37:34,888 [INFO] Pass 3: Correlating batch of 40 image pairs...
+2025-12-18 12:37:34,926 [INFO] Pass 3: Correlating batch of 40 image pairs...
+2025-12-18 12:37:37,899 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:37:38,233 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:37:38,234 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:37:38,271 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:37:40,077 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:37:40,093 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:37:40,094 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:37:40,113 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:37:42,852 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:37:42,893 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:37:42,893 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:37:42,894 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:37:44,559 [INFO] Pass 3: Correlating batch of 40 image pairs...
+2025-12-18 12:37:44,606 [INFO] Pass 3: Correlating batch of 40 image pairs...
+2025-12-18 12:37:44,615 [INFO] Pass 3: Correlating batch of 40 image pairs...
+2025-12-18 12:37:44,631 [INFO] Pass 3: Correlating batch of 40 image pairs...
+2025-12-18 12:37:48,129 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:37:48,233 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:37:48,233 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:37:48,233 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:37:50,243 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:37:50,243 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:37:50,244 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:37:50,524 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:37:53,051 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:37:53,052 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:37:53,052 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:37:53,082 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:37:53,992 [INFO] Pass 3: Correlating batch of 40 image pairs...
+2025-12-18 12:37:54,016 [INFO] Pass 3: Correlating batch of 40 image pairs...
+2025-12-18 12:37:54,021 [INFO] Pass 3: Correlating batch of 40 image pairs...
+2025-12-18 12:37:54,031 [INFO] Pass 3: Correlating batch of 40 image pairs...
+2025-12-18 12:37:57,528 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:37:57,564 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:37:57,571 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:37:57,572 [INFO] Pass 3: Correlation AB completed with error code 0
+2025-12-18 12:37:59,289 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:37:59,340 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:37:59,340 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:37:59,359 [INFO] Pass 3: Correlation AA completed with error code 0
+2025-12-18 12:38:01,404 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:38:01,483 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:38:01,483 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:38:01,523 [INFO] Pass 3: Correlation BB completed with error code 0
+2025-12-18 12:38:02,929 [INFO] Pass 4: Correlating batch of 40 image pairs...
+2025-12-18 12:38:02,931 [INFO] Pass 4: Correlating batch of 40 image pairs...
+2025-12-18 12:38:02,932 [INFO] Pass 4: Correlating batch of 40 image pairs...
+2025-12-18 12:38:02,934 [INFO] Pass 4: Correlating batch of 40 image pairs...
+2025-12-18 12:38:07,052 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:38:07,102 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:38:07,104 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:38:07,183 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:38:09,775 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:38:09,775 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:38:09,820 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:38:09,855 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:38:13,167 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:38:13,167 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:38:13,222 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:38:13,252 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:38:15,499 [INFO] Pass 4: Correlating batch of 40 image pairs...
+2025-12-18 12:38:15,795 [INFO] Pass 4: Correlating batch of 40 image pairs...
+2025-12-18 12:38:15,796 [INFO] Pass 4: Correlating batch of 40 image pairs...
+2025-12-18 12:38:15,797 [INFO] Pass 4: Correlating batch of 40 image pairs...
+2025-12-18 12:38:18,765 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:38:19,297 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:38:19,297 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:38:19,297 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:38:20,974 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:38:21,286 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:38:21,286 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:38:21,432 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:38:22,927 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:38:23,411 [INFO] Pass 4: Correlating batch of 40 image pairs...
+2025-12-18 12:38:23,891 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:38:23,924 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:38:23,934 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:38:25,063 [INFO] Pass 4: Correlating batch of 40 image pairs...
+2025-12-18 12:38:25,092 [INFO] Pass 4: Correlating batch of 40 image pairs...
+2025-12-18 12:38:25,103 [INFO] Pass 4: Correlating batch of 40 image pairs...
+2025-12-18 12:38:26,699 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:38:28,169 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:38:28,376 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:38:28,377 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:38:29,049 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:38:30,244 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:38:30,244 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:38:30,447 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:38:30,586 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:38:31,227 [INFO] Pass 4: Correlating batch of 40 image pairs...
+2025-12-18 12:38:33,232 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:38:33,310 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:38:33,440 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:38:33,795 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:38:33,991 [INFO] Pass 4: Correlating batch of 40 image pairs...
+2025-12-18 12:38:34,142 [INFO] Pass 4: Correlating batch of 40 image pairs...
+2025-12-18 12:38:34,148 [INFO] Pass 4: Correlating batch of 40 image pairs...
+2025-12-18 12:38:35,565 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:38:37,584 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:38:37,584 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:38:37,584 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:38:37,585 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:38:37,917 [INFO] Pass 4: Correlating batch of 40 image pairs...
+2025-12-18 12:38:39,644 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:38:39,649 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:38:39,694 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:38:40,039 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:38:42,080 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:38:42,214 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:38:42,260 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:38:42,282 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:38:43,570 [INFO] Pass 4: Correlating batch of 40 image pairs...
+2025-12-18 12:38:43,573 [INFO] Pass 4: Correlating batch of 40 image pairs...
+2025-12-18 12:38:43,578 [INFO] Pass 4: Correlating batch of 40 image pairs...
+2025-12-18 12:38:44,191 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:38:46,620 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:38:46,782 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:38:46,783 [INFO] Pass 4: Correlation AB completed with error code 0
+2025-12-18 12:38:48,086 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:38:48,515 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:38:48,516 [INFO] Pass 4: Correlation AA completed with error code 0
+2025-12-18 12:38:49,318 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:38:49,711 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:38:49,739 [INFO] Pass 4: Correlation BB completed with error code 0
+2025-12-18 12:38:50,884 [INFO] Pass 5: Correlating batch of 40 image pairs...
+2025-12-18 12:38:50,886 [INFO] Pass 5: Correlating batch of 40 image pairs...
+2025-12-18 12:38:50,930 [INFO] Pass 5: Correlating batch of 40 image pairs...
+2025-12-18 12:38:50,930 [INFO] Pass 5: Correlating batch of 40 image pairs...
+2025-12-18 12:38:54,467 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:38:54,523 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:38:54,524 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:38:54,595 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:38:56,612 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:38:56,613 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:38:56,614 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:38:56,672 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:38:59,434 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:38:59,483 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:38:59,483 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:38:59,484 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:39:00,493 [INFO] Pass 5: Correlating batch of 40 image pairs...
+2025-12-18 12:39:00,587 [INFO] Pass 5: Correlating batch of 40 image pairs...
+2025-12-18 12:39:00,615 [INFO] Pass 5: Correlating batch of 40 image pairs...
+2025-12-18 12:39:00,639 [INFO] Pass 5: Correlating batch of 40 image pairs...
+2025-12-18 12:39:03,808 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:39:04,110 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:39:04,111 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:39:04,111 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:39:05,837 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:39:05,923 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:39:05,923 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:39:05,924 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:39:08,730 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:39:08,771 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:39:08,789 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:39:08,791 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:39:10,524 [INFO] Pass 5: Correlating batch of 40 image pairs...
+2025-12-18 12:39:10,556 [INFO] Pass 5: Correlating batch of 40 image pairs...
+2025-12-18 12:39:10,560 [INFO] Pass 5: Correlating batch of 40 image pairs...
+2025-12-18 12:39:10,562 [INFO] Pass 5: Correlating batch of 40 image pairs...
+2025-12-18 12:39:13,845 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:39:13,934 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:39:13,935 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:39:13,935 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:39:15,831 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:39:15,849 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:39:15,850 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:39:15,879 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:39:18,559 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:39:18,579 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:39:18,579 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:39:18,748 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:39:19,226 [INFO] Pass 5: Correlating batch of 40 image pairs...
+2025-12-18 12:39:19,287 [INFO] Pass 5: Correlating batch of 40 image pairs...
+2025-12-18 12:39:19,307 [INFO] Pass 5: Correlating batch of 40 image pairs...
+2025-12-18 12:39:19,322 [INFO] Pass 5: Correlating batch of 40 image pairs...
+2025-12-18 12:39:22,225 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:39:22,777 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:39:22,777 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:39:22,779 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:39:24,597 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:39:24,607 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:39:24,647 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:39:24,647 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:39:27,195 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:39:27,230 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:39:27,235 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:39:27,308 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:39:27,800 [INFO] Pass 5: Correlating batch of 40 image pairs...
+2025-12-18 12:39:27,835 [INFO] Pass 5: Correlating batch of 40 image pairs...
+2025-12-18 12:39:27,974 [INFO] Pass 5: Correlating batch of 40 image pairs...
+2025-12-18 12:39:27,986 [INFO] Pass 5: Correlating batch of 40 image pairs...
+2025-12-18 12:39:30,954 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:39:30,954 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:39:31,557 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:39:31,557 [INFO] Pass 5: Correlation AB completed with error code 0
+2025-12-18 12:39:32,442 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:39:32,488 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:39:33,266 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:39:33,282 [INFO] Pass 5: Correlation AA completed with error code 0
+2025-12-18 12:39:33,955 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:39:33,955 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:39:34,692 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:39:34,732 [INFO] Pass 5: Correlation BB completed with error code 0
+2025-12-18 12:39:36,533 [INFO] Pass 6: Correlating batch of 40 image pairs...
+2025-12-18 12:39:36,635 [INFO] Pass 6: Correlating batch of 40 image pairs...
+2025-12-18 12:39:36,636 [INFO] Pass 6: Correlating batch of 40 image pairs...
+2025-12-18 12:39:36,641 [INFO] Pass 6: Correlating batch of 40 image pairs...
+2025-12-18 12:39:40,735 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:39:40,768 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:39:40,834 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:39:40,835 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:39:43,124 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:39:43,170 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:39:43,171 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:39:43,209 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:39:45,605 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:39:45,887 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:39:45,904 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:39:45,936 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:39:46,968 [INFO] Pass 6: Correlating batch of 40 image pairs...
+2025-12-18 12:39:47,399 [INFO] Pass 6: Correlating batch of 40 image pairs...
+2025-12-18 12:39:47,407 [INFO] Pass 6: Correlating batch of 40 image pairs...
+2025-12-18 12:39:47,409 [INFO] Pass 6: Correlating batch of 40 image pairs...
+2025-12-18 12:39:50,092 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:39:50,966 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:39:50,967 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:39:50,966 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:39:52,285 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:39:53,113 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:39:53,114 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:39:53,143 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:39:54,362 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:39:55,241 [INFO] Pass 6: Correlating batch of 40 image pairs...
+2025-12-18 12:39:55,982 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:39:56,007 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:39:56,094 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:39:57,366 [INFO] Pass 6: Correlating batch of 40 image pairs...
+2025-12-18 12:39:57,538 [INFO] Pass 6: Correlating batch of 40 image pairs...
+2025-12-18 12:39:57,612 [INFO] Pass 6: Correlating batch of 40 image pairs...
+2025-12-18 12:39:59,035 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:40:00,473 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:40:01,057 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:40:01,058 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:40:01,166 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:40:02,786 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:40:02,891 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:40:02,891 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:40:02,918 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:40:03,701 [INFO] Pass 6: Correlating batch of 40 image pairs...
+2025-12-18 12:40:05,801 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:40:05,858 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:40:05,866 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:40:06,635 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:40:07,268 [INFO] Pass 6: Correlating batch of 40 image pairs...
+2025-12-18 12:40:07,307 [INFO] Pass 6: Correlating batch of 40 image pairs...
+2025-12-18 12:40:07,331 [INFO] Pass 6: Correlating batch of 40 image pairs...
+2025-12-18 12:40:08,739 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:40:10,815 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:40:10,815 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:40:10,815 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:40:10,931 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:40:11,330 [INFO] Pass 6: Correlating batch of 40 image pairs...
+2025-12-18 12:40:13,032 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:40:13,036 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:40:13,062 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:40:13,882 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:40:15,678 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:40:15,678 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:40:15,690 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:40:15,863 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:40:18,113 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:40:18,126 [INFO] Pass 6: Correlating batch of 40 image pairs...
+2025-12-18 12:40:18,312 [INFO] Pass 6: Correlating batch of 40 image pairs...
+2025-12-18 12:40:18,322 [INFO] Pass 6: Correlating batch of 40 image pairs...
+2025-12-18 12:40:20,970 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:40:21,083 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:40:21,297 [INFO] Pass 6: Correlation AB completed with error code 0
+2025-12-18 12:40:22,462 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:40:22,641 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:40:22,727 [INFO] Pass 6: Correlation AA completed with error code 0
+2025-12-18 12:40:24,146 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:40:24,303 [INFO] Pass 6: Correlation BB completed with error code 0
+2025-12-18 12:40:24,414 [INFO] Pass 6: Correlation BB completed with error code 0

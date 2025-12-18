@@ -1,5 +1,6 @@
 .venv/
 env/
+test/
 check_mat.ipynb
 .gitignore
 __pycache__/

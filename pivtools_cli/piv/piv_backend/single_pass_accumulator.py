@@ -115,9 +115,9 @@ class SinglePassAccumulator:
         pass_data["sum_warp_B"] += batch_result["warp_B_sum"]
 
         # Accumulate correlation planes (NO averaging yet)
-        pass_data["sum_corr_AA"] += batch_result["corr_AA_sum"]
-        pass_data["sum_corr_BB"] += batch_result["corr_BB_sum"]
-        pass_data["sum_corr_AB"] += batch_result["corr_AB_sum"]
+        pass_data["sum_corr_AA"] += batch_result["corr_AA_sum"].reshape(-1)
+        pass_data["sum_corr_BB"] += batch_result["corr_BB_sum"].reshape(-1)
+        pass_data["sum_corr_AB"] += batch_result["corr_AB_sum"].reshape(-1)
 
         # Store smoothed predictor (for pass > 0)
         # All batches should have the same smoothed predictor, so just overwrite
@@ -216,6 +216,7 @@ class SinglePassAccumulator:
             config=self.config,
             win_size=win_size,
             pass_idx=pass_idx,
+            N=1
         )
 
         # Image size for correlation
@@ -227,6 +228,7 @@ class SinglePassAccumulator:
             np.ascontiguousarray(B_mean, dtype=np.float32),
             b_mask,
             image_size,
+            1,
             correlator.win_ctrs_x[pass_idx].astype(np.float32),
             correlator.win_ctrs_y[pass_idx].astype(np.float32),
             n_windows,
@@ -251,6 +253,7 @@ class SinglePassAccumulator:
             np.ascontiguousarray(A_mean, dtype=np.float32),
             b_mask,
             image_size,
+            1,
             correlator.win_ctrs_x[pass_idx].astype(np.float32),
             correlator.win_ctrs_y[pass_idx].astype(np.float32),
             n_windows,
@@ -276,6 +279,7 @@ class SinglePassAccumulator:
             np.ascontiguousarray(B_mean, dtype=np.float32),
             b_mask,
             image_size,
+            1,
             correlator.win_ctrs_x[pass_idx].astype(np.float32),
             correlator.win_ctrs_y[pass_idx].astype(np.float32),
             n_windows,
@@ -342,13 +346,13 @@ class SinglePassAccumulator:
         logging.info(f"Pass {pass_idx + 1}: Applying single-pass optimization")
 
         # Step 1: Compute mean warped images
-        A_mean = pass_data["sum_warp_A"] / N
-        B_mean = pass_data["sum_warp_B"] / N
+        A_mean = pass_data["sum_warp_A"] #/ N
+        B_mean = pass_data["sum_warp_B"] #/ N
 
         # Step 2: Compute average correlation planes (RAW with background)
-        R_AA_raw = pass_data["sum_corr_AA"] / N
-        R_BB_raw = pass_data["sum_corr_BB"] / N
-        R_AB_raw = pass_data["sum_corr_AB"] / N
+        R_AA_raw = pass_data["sum_corr_AA"] #/ N
+        R_BB_raw = pass_data["sum_corr_BB"] #/ N
+        R_AB_raw = pass_data["sum_corr_AB"] #/ N
 
         # Step 3: Correlate means for background subtraction
         R_AA_bg, R_BB_bg, R_AB_bg = self._correlate_mean_images(A_mean, B_mean, pass_idx)

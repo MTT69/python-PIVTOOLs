@@ -79,77 +79,132 @@ unsigned convolve(const float *fA, const float *fB, float *fC, const int *N)
  *
  */
 
+/* diagnostic / robust xcorr_create_plan */
 unsigned xcorr_create_plan(const int *N, sPlan *pPlanStruct)
 {
-	fftwf_plan plan_AB_fft;
-	fftwf_plan plan_C_ifft;
-	fftwf_real *ab_copy;
-	fftwf_real *c_copy;
-	fftwf_complex *AB_copy;
-	fftwf_complex *C;
-	unsigned numel, numel_fft;
-	int Nbackwards[2];
+    fftwf_plan plan_AB_fft = NULL;
+    fftwf_plan plan_C_ifft = NULL;
+    fftwf_real *ab_copy = NULL;
+    fftwf_real *c_copy = NULL;
+    fftwf_complex *AB_copy = NULL;
+    fftwf_complex *C = NULL;
+    unsigned long long numel_ull = 0ull;
+    unsigned long long numel_fft_ull = 0ull;
+    unsigned numel = 0u;
+    unsigned numel_fft = 0u;
+    int Nbackwards[2];
+    unsigned uError = ERROR_NONE;
 
-	if(!pPlanStruct)
-		return ERROR_NOMEM;
+    if (!pPlanStruct) return ERROR_NOMEM;
 
-	/* initialise some bits we need */	
-	numel				= N[0] * N[1];
-	numel_fft		= N[1] * (N[0]/2+1);
-	Nbackwards[0]	= N[1];
-	Nbackwards[1]	= N[0];
+    /* Basic validation */
+    if (N[0] <= 0 || N[1] <= 0) {
+        fprintf(stderr, "xcorr_create_plan: invalid N: N[0]=%d N[1]=%d\n", N[0], N[1]);
+        return ERROR_NOPLAN_BWD; /* use an error to indicate invalid sizes */
+    }
 
-	/* allocate memory using fftw's aligned allocation for SIMD optimization
-	 * fftwf_alloc_* ensures proper alignment for SSE/AVX instructions
-	 */
-	ab_copy		= (fftwf_real *)		fftwf_alloc_real(numel * 2);
-	AB_copy		= (fftwf_complex *)	fftwf_alloc_complex(numel_fft * 2); // column major format
-	C				= (fftwf_complex *)	fftwf_alloc_complex(numel_fft    );
-	c_copy		= (fftwf_real *)		fftwf_alloc_real(numel);
-	if(!ab_copy || !AB_copy || !C || !c_copy)
-	{
-		if(ab_copy) fftwf_free(ab_copy);
-		if(AB_copy) fftwf_free(AB_copy);
-		if(C)			fftwf_free(C);
-		if(c_copy)	fftwf_free(c_copy);
-		return ERROR_NOMEM;
-	}
+    /* Compute sizes using 64-bit temporaries to detect overflow */
+    numel_ull = (unsigned long long)N[0] * (unsigned long long)N[1];
+    numel_fft_ull = (unsigned long long)N[1] * (unsigned long long)(N[0]/2 + 1);
 
-	/* create plans with FFTW_MEASURE for optimal performance
-	 * FFTW_MEASURE takes more time initially but creates much faster plans
-	 * The plans are reused many times, so this cost is amortized
-	 */
-	//fftwf_plan_with_nthreads(1);
-	plan_AB_fft = fftwf_plan_many_dft_r2c(	2, Nbackwards, 2,
-											ab_copy, NULL, 
-											1, N[0]*N[1], 
-											AB_copy, NULL,
-											1, N[1]*(N[0]/2+1),
-											FFTW_MEASURE | FFTW_DESTROY_INPUT);
-	plan_C_ifft = fftwf_plan_dft_c2r_2d( N[1], N[0], C, c_copy, FFTW_MEASURE | FFTW_DESTROY_INPUT );
-	if(!plan_AB_fft || !plan_C_ifft) 
-	{
-		fftwf_free(AB_copy);
-		fftwf_free(c_copy);
-		fftwf_free(ab_copy);
-		fftwf_free(C);
-		if(!plan_C_ifft)
-			return ERROR_NOPLAN_BWD;
-		return ERROR_NOPLAN_FWD;
-	}
+    /* Sane upper bound check (prevent crazy values). Adjust as appropriate. */
+    const unsigned long long MAX_PIXELS = 1ULL << 30; /* ~1 billion elements */
+    if (numel_ull == 0 || numel_fft_ull == 0 || numel_ull > MAX_PIXELS || numel_fft_ull > MAX_PIXELS) {
+        fprintf(stderr, "xcorr_create_plan: requested size too large or zero: N=(%d,%d), numel=%llu, numel_fft=%llu\n",
+                N[0], N[1], numel_ull, numel_fft_ull);
+        return ERROR_NOPLAN_BWD;
+    }
 
-	/* put into output structure */
-	pPlanStruct->plan_AB_fft	= plan_AB_fft;
-	pPlanStruct->plan_C_ifft	= plan_C_ifft;
-	pPlanStruct->ab_copy			= ab_copy;
-	pPlanStruct->AB_copy			= AB_copy;
-	pPlanStruct->C					= C;
-	pPlanStruct->c_copy			= c_copy;
-	pPlanStruct->N[0]				= N[0];
-	pPlanStruct->N[1]				= N[1];
+    /* safe cast to unsigned (FFTW functions expect int/size_t) */
+    numel = (unsigned)numel_ull;
+    numel_fft = (unsigned)numel_fft_ull;
 
-	return ERROR_NONE;
+    /* Debug print to see exactly what sizes are requested */
+
+    Nbackwards[0] = N[1];
+    Nbackwards[1] = N[0];
+
+    /* allocate aligned memory for plan scratch */
+    ab_copy = (fftwf_real *)fftwf_alloc_real((size_t)numel * 2);
+    AB_copy = (fftwf_complex *)fftwf_alloc_complex((size_t)numel_fft * 2);
+    C       = (fftwf_complex *)fftwf_alloc_complex((size_t)numel_fft);
+    c_copy  = (fftwf_real *)fftwf_alloc_real((size_t)numel);
+
+    if (!ab_copy || !AB_copy || !C || !c_copy) {
+        fprintf(stderr, "xcorr_create_plan: fftwf_alloc_* failed (memory). ab=%p AB=%p C=%p c=%p\n",
+                (void*)ab_copy, (void*)AB_copy, (void*)C, (void*)c_copy);
+        if (ab_copy) fftwf_free(ab_copy);
+        if (AB_copy) fftwf_free(AB_copy);
+        if (C) fftwf_free(C);
+        if (c_copy) fftwf_free(c_copy);
+        return ERROR_NOMEM;
+    }
+
+    /* initialize FFTW threads & ensure plan creations use 1 thread each */
+#ifdef FFTW_THREADS
+    fftwf_init_threads();
+    fftwf_plan_with_nthreads(1);
+#endif
+
+    /* Try MEASURE first, then ESTIMATE if MEASURE fails */
+    int flags_measure = FFTW_MEASURE | FFTW_DESTROY_INPUT;
+    int flags_estimate = FFTW_ESTIMATE | FFTW_DESTROY_INPUT;
+
+    plan_AB_fft = fftwf_plan_many_dft_r2c(2, Nbackwards, 2,
+                                         ab_copy, NULL,
+                                         1, (int)numel,
+                                         AB_copy, NULL,
+                                         1, (int)numel_fft,
+                                         flags_measure);
+
+    plan_C_ifft = fftwf_plan_dft_c2r_2d(N[1], N[0], C, c_copy, flags_measure);
+
+    if (!plan_AB_fft || !plan_C_ifft) {
+        fprintf(stderr, "xcorr_create_plan: MEASURE plan failed for N=(%d,%d). Falling back to ESTIMATE\n", N[0], N[1]);
+        if (plan_AB_fft) { fftwf_destroy_plan(plan_AB_fft); plan_AB_fft = NULL; }
+        if (plan_C_ifft) { fftwf_destroy_plan(plan_C_ifft); plan_C_ifft = NULL; }
+
+#ifdef FFTW_THREADS
+        fftwf_plan_with_nthreads(1);
+#endif
+        plan_AB_fft = fftwf_plan_many_dft_r2c(2, Nbackwards, 2,
+                                             ab_copy, NULL,
+                                             1, (int)numel,
+                                             AB_copy, NULL,
+                                             1, (int)numel_fft,
+                                             flags_estimate);
+
+        plan_C_ifft = fftwf_plan_dft_c2r_2d(N[1], N[0], C, c_copy, flags_estimate);
+
+        if (!plan_AB_fft || !plan_C_ifft) {
+            fprintf(stderr, "xcorr_create_plan: ESTIMATE plan also failed for N=(%d,%d). plan_AB=%p plan_C=%p\n",
+                    N[0], N[1], (void*)plan_AB_fft, (void*)plan_C_ifft);
+            if (plan_AB_fft) { fftwf_destroy_plan(plan_AB_fft); plan_AB_fft = NULL; }
+            if (plan_C_ifft) { fftwf_destroy_plan(plan_C_ifft); plan_C_ifft = NULL; }
+            fftwf_free(AB_copy);
+            fftwf_free(c_copy);
+            fftwf_free(ab_copy);
+            fftwf_free(C);
+            if (!plan_C_ifft) {
+                return ERROR_NOPLAN_BWD;
+            }
+            return ERROR_NOPLAN_FWD;
+        }
+    }
+
+    /* success: populate plan struct */
+    pPlanStruct->plan_AB_fft = plan_AB_fft;
+    pPlanStruct->plan_C_ifft = plan_C_ifft;
+    pPlanStruct->ab_copy = ab_copy;
+    pPlanStruct->AB_copy = AB_copy;
+    pPlanStruct->C = C;
+    pPlanStruct->c_copy = c_copy;
+    pPlanStruct->N[0] = N[0];
+    pPlanStruct->N[1] = N[1];
+
+    return ERROR_NONE;
 }
+
 
 /****************************************************
  * unsigned xcorr_destroy_plan(planstruct)

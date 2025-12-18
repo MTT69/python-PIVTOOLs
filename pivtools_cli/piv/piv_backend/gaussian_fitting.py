@@ -24,6 +24,7 @@ def _load_marquadt_lib():
         return _marquadt_lib
     import ctypes
     import os
+    import logging
 
     lib_extension = ".dll" if os.name == "nt" else ".so"
 
@@ -45,7 +46,7 @@ def _load_marquadt_lib():
         raise FileNotFoundError(
             f"Marquadt library not found. Tried paths: {possible_paths}"
         )
-
+    logging.info(f"Loading Marquadt library from: {marquadt_libpath}")
     marquadt_lib = ctypes.CDLL(marquadt_libpath)
 
     # Set up ctypes bindings for the offset control function
@@ -725,7 +726,7 @@ def _set_omp_threads(num_threads: int) -> int:
     logger = logging.getLogger(__name__)
 
     # Always set environment variable FIRST (before any library loads)
-    os.environ["OMP_NUM_THREADS"] = str(num_threads)
+    os.environ["OMP_NUM_THREADS"] = "4"# str(num_threads)
 
     # Try to call omp_set_num_threads directly for already-loaded libraries
     try:

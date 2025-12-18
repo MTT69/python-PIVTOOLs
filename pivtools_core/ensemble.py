@@ -11,6 +11,11 @@ Entry point for ensemble PIV with true Dask patterns:
 Usage:
     python -m pivtools_core.ensemble
 """
+from pivtools_core.config import Config
+import os
+config = Config()
+omp_threads = str(config.omp_threads)
+os.environ["OMP_NUM_THREADS"] = omp_threads
 
 import gc
 import logging
@@ -21,11 +26,8 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
-import numpy as np
-import dask.array as da
 from dask.distributed import Client
 
-from pivtools_core.config import Config
 from pivtools_core.validation import (
     validate_config,
     log_validation_result,
@@ -305,7 +307,7 @@ def main():
     start_time = time.time()
 
     # Load configuration
-    config = Config()
+    #config = Config()
 
     # Validate configuration
     is_valid, error_msg, warnings = validate_config(config)
@@ -325,7 +327,6 @@ def main():
         logger.info("Starting Dask cluster...")
         cluster, client = start_cluster(
             n_workers_per_node=config.dask_workers_per_node,
-            threads_per_worker=config.dask_threads_per_worker,
             memory_limit=config.dask_memory_limit,
             config=config,
             worker_omp_threads=worker_omp_threads,

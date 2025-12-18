@@ -10,7 +10,7 @@
 
 /**** function declarations ****/
 
-EXPORT unsigned char bulkxcorr2d(const float *fImageA, const float *fImageB,const float *fMask, const int *nImageSize, int N_images, 
+EXPORT unsigned char bulkxcorr2d(const float *fImageA, const float *fImageB,const float *fMask, const int *nImageSize, 
                            const float *fWinCtrsX, const float *fWinCtrsY, const int *nWindows, float * fWindowWeightA, bool bEnsemble,
                            const float *fWindowWeightB, const int *nWindowSize, int nPeaks, int iPeakFinder, 
                            float *fPkLocX, float *fPkLocY, float *fPkHeight, float *fSx, float *fSy, float *fSxy, float *fCorrelPlane_Out);
