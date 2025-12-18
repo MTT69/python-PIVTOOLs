@@ -15,19 +15,19 @@ def make_cluster(
     n_workers_per_node: int = 2,
     memory_limit: str = "auto",
 ) -> Tuple[LocalCluster, Client]:
-    #cluster = LocalCluster(
-    #    n_workers=n_workers_per_node,
-    #    threads_per_worker=threads_per_worker,
-    #    memory_limit=memory_limit,
+    cluster = LocalCluster(
+        n_workers=n_workers_per_node,
+        threads_per_worker=threads_per_worker,
+        memory_limit=memory_limit,
     #    # Disable nanny to avoid restart attempts on Ctrl+C
     #    # Nanny is useful for long-running production clusters, but for
     #    # batch PIV processing we want clean shutdown on interrupt
-    #    nanny=False,
-    #    dashboard_address=":8788"
-    #)
-   # client = Client(cluster)
-    client = Client("tcp://10.64.27.210:8786")
-    return None,client
+        nanny=False,
+        dashboard_address=":8788"
+    )
+    client = Client(cluster)
+    #client = Client("tcp://10.64.27.210:8786")
+    #return None,client
     return cluster, client
 
 

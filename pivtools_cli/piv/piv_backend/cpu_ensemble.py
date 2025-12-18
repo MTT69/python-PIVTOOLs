@@ -14,7 +14,7 @@ import logging
 import os
 import traceback
 from typing import List, Optional
-
+import matplotlib.pyplot as plt
 import cv2
 import numpy as np
 from scipy.ndimage import gaussian_filter
@@ -28,7 +28,8 @@ from pivtools_cli.piv.piv_backend.base import CrossCorrelator
 from pivtools_cli.piv.piv_result import PIVEnsembleBlockResult
 from pivtools_cli.piv.piv_backend.infilling import apply_infilling
 
-
+import matplotlib
+matplotlib.use("Agg") 
 class EnsembleCorrelatorCPU(CrossCorrelator):
     """
     Ensemble PIV correlator using CPU with Levenberg-Marquardt Gaussian
@@ -627,7 +628,14 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             correl_AA_sum = correl_out_AA.sum(axis=0)
             correl_BB_sum = correl_out_BB.sum(axis=0)
             correl_AB_sum = correl_out_AB.sum(axis=0)
-
+            plot_corr_planes(
+                correl_out_AA.mean(axis=0).ravel(order="C") / N,
+                n_win_y,
+                n_win_x,
+                win_size[0],
+                win_size[1],
+                pass_idx,
+            )
             if error_code_AB != 0 or error_code_AA != 0 or error_code_BB != 0:
                 logging.error("Correlation error codes: AB={}, AA={}, BB={}".format(
                         error_code_AB, error_code_AA, error_code_BB))
@@ -814,3 +822,42 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         im_mesh_B = self.im_mesh + delta_0b
 
         return im_mesh_A, im_mesh_B, delta_ab_pred
+def plot_corr_planes(corr_avg_flat, n_win_y, n_win_x, win_h, win_w, pass_idx):
+    """
+    Visualize ensemble-averaged correlation planes for PIV in a grid
+    matching the window structure.
+
+    Parameters
+    ----------
+    corr_avg_flat : np.ndarray
+        Flattened correlation planes,
+        shape (n_win_y * n_win_x * win_h * win_w,)
+    n_win_y : int
+        Number of interrogation windows in y direction
+    n_win_x : int
+        Number of interrogation windows in x direction
+    win_h : int
+        Height of each correlation plane (pixels)
+    win_w : int
+        Width of each correlation plane (pixels)
+    pass_idx : int
+        Pass index for naming the output file
+    """
+    # Reshape into (n_win_y, n_win_x, win_h, win_w) using C order
+    corr_planes = corr_avg_flat.reshape((n_win_y, n_win_x, win_h, win_w), order="C")
+
+    fig, axes = plt.subplots(n_win_y, n_win_x, figsize=(3 * n_win_x, 3 * n_win_y))
+
+    for i in range(n_win_y):
+        for j in range(n_win_x):
+            ax = axes[i, j]
+            plane = corr_planes[i, j]
+            im = ax.imshow(plane, origin="lower", cmap="viridis")
+            ax.set_title(f"W{i},{j}")
+            ax.axis("off")
+            fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+
+    plt.tight_layout()
+    plt.savefig(f"corr{pass_idx}.png", dpi=150, bbox_inches="tight")
+    print(f"Saved: corr{pass_idx}.png")
+    plt.close()
