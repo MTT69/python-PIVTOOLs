@@ -23,7 +23,7 @@ def _batch_policy(config: Config) -> int:
 
 def _process_and_save_single_pair(
     image_pair: da.Array,
-    #frame_number: int,
+    start_img_idx: int,
     config: Config,
     scattered_masks,
     scattered_cache,
@@ -63,13 +63,16 @@ def _process_and_save_single_pair(
         Path to the saved file.
     """
     # Process PIV
-    piv_result = _piv_single_pass(image_pair, config, scattered_masks, scattered_cache)
+    piv_results = _piv_single_pass(image_pair, config, scattered_masks, scattered_cache)
     
     # Save immediately to avoid accumulating results in memory
     #saved_paths = []
     #for frame_number, result in enumerate(piv_result.passes):
-    saved_paths =save_piv_result_distributed(
-            piv_result, output_path, runs_to_save, vector_format
+    logging.info(f"Piv result length: {len(piv_results)}")
+    for i,piv_result in enumerate(piv_results):
+        img_idx = start_img_idx + i
+        saved_paths = save_piv_result_distributed(
+            piv_result, output_path,img_idx, runs_to_save, vector_format
         )
 
     return saved_paths

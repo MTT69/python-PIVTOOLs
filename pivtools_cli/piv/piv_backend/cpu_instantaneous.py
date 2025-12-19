@@ -181,7 +181,6 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         # Log image batch info
         logging.debug(f"Processing batch: N={N} pairs, shape=({H}, {W}), dtype={images.dtype}")
 
-        piv_result_all = PIVResult()
         self.delta_ab_pred = None
         self.delta_ab_old = None
 
@@ -200,7 +199,6 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 # Convert images to C-contiguous (row-major) format
             images_a = images[:, 0, :, :].astype(np.float32, copy=False)
             images_b = images[:, 1, :, :].astype(np.float32, copy=False)
-            logging.info(f"Converted images to float32 with shapes {images_a.shape} and {images_b.shape}")
 
             if not images_a.flags["C_CONTIGUOUS"]:
                 images_a = np.ascontiguousarray(images_a)
@@ -209,9 +207,10 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
 
                 # Pass image_size as [H, W] in C-contiguous format
             image_size = np.ascontiguousarray(np.array([H, W], dtype=np.int32))
+            batch_results = [PIVResult() for _ in range(N)]
 
             for pass_idx, win_size in enumerate(config.window_sizes):
-                logging.info(f"Starting correlation pass {pass_idx + 1}/{len(config.window_sizes)} with window size {win_size}")
+               
                 pass_start = time.perf_counter()
                 images_a_prime, images_b_prime, self.delta_ab_pred = (
                         self._predictor_corrector_batch(
@@ -272,7 +271,6 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                             sxy,
                             correl_plane_out,
                         )
-                    logging.info(f"Done cross correlation for pass {pass_idx + 1}/{len(config.window_sizes)} error_code={error_code}")
                 except Exception as e:
                     logging.error(f"    Exception type: {type(e).__name__}")
                     logging.error(traceback.format_exc())
@@ -339,108 +337,118 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 ux_mat[nan_mask] = 0.0
                 uy_mat[nan_mask] = 0.0
                 #logging.info(f"av ux:{np.max(ux_mat)} uy:{np.max(uy_mat)}")
+        # ------------------------------------------------------------
+# Initial peak choice (all primary peaks)
+# ------------------------------------------------------------
                 peak_choice = np.ones((N, n_win_y, n_win_x), dtype=np.intp)
-                for im_idx in range(N):
-                    # Apply outlier detection if enabled
-                    if config.outlier_detection_enabled:
-                        outlier_methods = config.outlier_detection_methods
-                        if outlier_methods:
-                            # Get primary peak magnitude for peak_mag detection
-                            primary_peak_mag_temp = pk_height[im_idx,0]
+
+# ------------------------------------------------------------
+# Initial outlier detection (per-image, unavoidable)
+# ------------------------------------------------------------
+                if config.outlier_detection_enabled:
+                    outlier_methods = config.outlier_detection_methods
+                    if outlier_methods:
+                        for im_idx in range(N):
+                            primary_peak_mag_0 = pk_height[im_idx, 0]
                             outlier_mask = apply_outlier_detection(
-                                ux_mat[im_idx], uy_mat[im_idx], outlier_methods, peak_mag=primary_peak_mag_temp
-                            )
+                ux_mat[im_idx],
+                uy_mat[im_idx],
+                outlier_methods,
+                peak_mag=primary_peak_mag_0,
+            )
                             nan_mask[im_idx] |= outlier_mask
-                    if config.secondary_peak:
-                        for pk in range(1, n_peaks):
-                            # Increment peak_choice for nan_mask locations
-                            peak_choice[im_idx][nan_mask[im_idx]] += 1
-                            # Clamp peak_choice to valid range
-                            peak_choice[im_idx] = np.clip(peak_choice[im_idx], 1, n_peaks)
-                            # Select new peak for nan_mask locations
-                            ux_mat = np.choose(peak_choice[im_idx] - 1, pk_loc_x[im_idx])
-                            uy_mat = np.choose(peak_choice[im_idx] - 1, pk_loc_y[im_idx])
-                            if config.outlier_detection_enabled:
-                                outlier_methods = config.outlier_detection_methods
-                                if outlier_methods:
-                                    primary_peak_mag_temp = np.choose(peak_choice[im_idx] - 1, pk_height[im_idx])
+
+# ------------------------------------------------------------
+# Secondary peak selection (BATCHED over images)
+# ------------------------------------------------------------
+                if config.secondary_peak:
+                    for pk in range(1, n_peaks):
+                        active = nan_mask & (peak_choice < n_peaks)
+                        if not active.any():
+                            break
+
+                        peak_choice[active] += 1
+
+                        idx = peak_choice[:, None, :, :] - 1
+                        ux_mat = np.take_along_axis(pk_loc_x, idx, axis=1)[:, 0]
+                        uy_mat = np.take_along_axis(pk_loc_y, idx, axis=1)[:, 0]
+
+                        if config.outlier_detection_enabled and outlier_methods:
+                            primary_peak_mag = np.take_along_axis(pk_height, idx, axis=1)[:, 0]
+                            for im_idx in range(N):
+                                if nan_mask[im_idx].any():
                                     outlier_mask = apply_outlier_detection(
-                                        ux_mat[im_idx], uy_mat[im_idx], outlier_methods, peak_mag=primary_peak_mag_temp
-                                    )
+                        ux_mat[im_idx],
+                        uy_mat[im_idx],
+                        outlier_methods,
+                        peak_mag=primary_peak_mag[im_idx],
+                    )
                                     nan_mask[im_idx] |= outlier_mask
-                            if not nan_mask[im_idx].any():
-                                break
-                    # Select primary peak magnitude
-                    primary_peak_mag = np.choose(peak_choice[im_idx] - 1, pk_height[im_idx])
-                    nan_mask[im_idx] |= np.isnan(primary_peak_mag)
 
-                    # Q calculation (peak ratio)
-                    shifted_pk_height = np.roll(pk_height[im_idx], shift=-1, axis=0)
-                    shifted_pk_height[-1, :, :] = pk_height[im_idx, -1, :, :]
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore", category=RuntimeWarning)
-                        Q_mat = np.divide(
-                            pk_height[im_idx],
-                            shifted_pk_height,
-                            out=np.zeros_like(pk_height[im_idx]),
-                            where=shifted_pk_height > 0,
-                        )
-                    Q = np.choose(peak_choice[im_idx] - 1, Q_mat)
-                    if nan_mask[im_idx].any():
-                        ux_mat[im_idx][nan_mask[im_idx]] = np.nan
-                        uy_mat[im_idx][nan_mask[im_idx]] = np.nan
-                        primary_peak_mag[nan_mask[im_idx]] = np.nan
-                        Q[nan_mask[im_idx]] = 0.0
+# ------------------------------------------------------------
+# Final primary peak magnitude (BATCHED)
+# ------------------------------------------------------------
+                idx = peak_choice[:, None, :, :] - 1
+                primary_peak_mag = np.take_along_axis(pk_height, idx, axis=1)[:, 0]
+                nan_mask |= np.isnan(primary_peak_mag)
 
-                    ux_mat[im_idx][mask_bool] = 0.0
-                    uy_mat[im_idx][mask_bool] = 0.0
-                    # Apply infilling for mid-passes or final pass
-                    is_final_pass = (pass_idx == len(config.window_sizes) - 1)
-                    if is_final_pass:
-                        # Final pass infilling (optional)
-                        final_infill_cfg = config.infilling_final_pass
-                        if final_infill_cfg.get('enabled', True) and np.isnan(ux_mat[im_idx]).any():
-                            infill_mask = np.isnan(ux_mat[im_idx]) | np.isnan(uy_mat[im_idx])
-                            ux_mat[im_idx], uy_mat[im_idx] = apply_infilling(
-                                ux_mat[im_idx], uy_mat[im_idx], infill_mask, final_infill_cfg
-                            )
-                    else:
-                        # Mid-pass infilling (required for predictor)
-                        if np.isnan(ux_mat[im_idx]).any() or np.isnan(uy_mat[im_idx]).any():
-                            infill_mask = np.isnan(ux_mat[im_idx]) | np.isnan(uy_mat[im_idx])
-                            mid_infill_cfg = config.infilling_mid_pass
-                            ux_mat[im_idx], uy_mat[im_idx] = apply_infilling(
-                                ux_mat[im_idx], uy_mat[im_idx], infill_mask, mid_infill_cfg
-                            )
+# ------------------------------------------------------------
+# Q calculation (FULLY BATCHED)
+# ------------------------------------------------------------
+                shifted_pk_height = np.roll(pk_height, shift=-1, axis=1)
+                shifted_pk_height[:, -1, :, :] = pk_height[:, -1, :, :]
+
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    Q_mat = np.divide(
+        pk_height,
+        shifted_pk_height,
+        out=np.zeros_like(pk_height),
+        where=shifted_pk_height > 0,
+    )
+
+                Q = np.take_along_axis(Q_mat, idx, axis=1)[:, 0]
+
+                ux_mat[nan_mask] = np.nan
+                uy_mat[nan_mask] = np.nan
+                primary_peak_mag[nan_mask] = np.nan
+                Q[nan_mask] = 0.0
+
                 ux_mat[mask_bool_batch] = 0.0
                 uy_mat[mask_bool_batch] = 0.0
                 peak_choice[nan_mask] = 0
 
-                ux_mat = np.ascontiguousarray(ux_mat.astype(np.float32))
-                uy_mat = np.ascontiguousarray(uy_mat.astype(np.float32))
-                nan_mask = np.ascontiguousarray(nan_mask)
-                Q = np.ascontiguousarray(Q.astype(np.float32))
-                primary_peak_mag = np.ascontiguousarray(
-                        np.where(nan_mask, 0.0, primary_peak_mag.astype(np.float32))
-                    )
-                pk_height = np.ascontiguousarray(pk_height.astype(np.float32))
+                is_final_pass = (pass_idx == len(config.window_sizes) - 1)
+
+                for im_idx in range(N):
+                    if np.isnan(ux_mat[im_idx]).any() or np.isnan(uy_mat[im_idx]).any():
+                        infill_mask = np.isnan(ux_mat[im_idx]) | np.isnan(uy_mat[im_idx])
+                        cfg = (
+                            config.infilling_final_pass
+                            if is_final_pass
+                            else config.infilling_mid_pass
+                        )
+                        if cfg.get("enabled", True):
+                            ux_mat[im_idx], uy_mat[im_idx] = apply_infilling(
+                                ux_mat[im_idx],
+                                uy_mat[im_idx],
+                                infill_mask,
+                                cfg,
+                            )
+
                 pre_y, pre_x = self.n_pre_all[pass_idx]
                 post_y, post_x = self.n_post_all[pass_idx]
 
-                padded_delta_ab_old_batched = np.zeros(
-                    (N, n_win_y + pre_y + post_y, n_win_x + pre_x + post_x, 2),
-                    dtype=np.float32,
-                )
-                for i in range(N):
+                stacked = np.stack([uy_mat, ux_mat], axis=-1)  # (N, ny, nx, 2)
 
-                    stacked = np.stack(
-                        [uy_mat[i], ux_mat[i]], axis=2
-                    )  # (n_win_y, n_win_x, 2)
-                    padded = np.pad(
-                        stacked, ((pre_y, post_y), (pre_x, post_x), (0, 0)), mode="edge"
-                    )
-                    padded_delta_ab_old_batched[i] = padded
-                self.delta_ab_old = padded_delta_ab_old_batched
+                self.delta_ab_old = np.pad(
+    stacked,
+    ((0, 0), (pre_y, post_y), (pre_x, post_x), (0, 0)),
+    mode="edge",
+)
+
+
+
+
                 self.previous_win_spacing = (
                     self.win_spacing_y[pass_idx],
                     self.win_spacing_x[pass_idx],
@@ -464,7 +472,8 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     )
                     pass_time = time.perf_counter() - pass_start
                     self.pass_times.append((im_idx, pass_idx, pass_time))
-                    piv_result_all.add_pass(pass_result)
+                    batch_results[im_idx].add_pass(pass_result)
+
                     
                     # Explicit memory cleanup to prevent accumulation
                     # These large intermediate arrays can consume 500+ MB per pass
@@ -481,7 +490,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             logging.error(traceback.format_exc())
             raise
 
-        return piv_result_all
+        return batch_results
 
     def _compute_window_centres(
         self, pass_idx: int, config: Config
@@ -548,14 +557,12 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         interpolator="cubic",
         config: Config = None,
     ):
-        logging.info(f"Starting predictor-corrector for pass {pass_idx + 1}")
         interp_flag = cv2.INTER_CUBIC if interpolator == "cubic" else cv2.INTER_LINEAR
         N, H, W = images_a.shape
         n_win_y = len(self.win_ctrs_y[pass_idx])
         n_win_x = len(self.win_ctrs_x[pass_idx])
 
         self.delta_ab_pred = np.zeros((N, n_win_y, n_win_x, 2), dtype=np.float32)
-        logging.info(f"Starting predictor-corrector for pass {pass_idx + 1}")
         if pass_idx == 0:
             if self.delta_ab_old is None:
                 self.delta_ab_old = np.zeros((N, n_win_y, n_win_x, 2), dtype=np.float32)
