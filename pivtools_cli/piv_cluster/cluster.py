@@ -6,29 +6,67 @@ from pathlib import Path
 from typing import List, Tuple
 
 from dask.distributed import Client, LocalCluster
-
+from dask_jobqueue import SLURMCluster
 from pivtools_core.config import Config
 
 
 def make_cluster(
-    threads_per_worker: int = 1,  # None,
-    n_workers_per_node: int = 2,
-    memory_limit: str = "auto",
-) -> Tuple[LocalCluster, Client]:
-    cluster = LocalCluster(
-        n_workers=n_workers_per_node,
-        threads_per_worker=threads_per_worker,
-        memory_limit=memory_limit,
-    #    # Disable nanny to avoid restart attempts on Ctrl+C
-    #    # Nanny is useful for long-running production clusters, but for
-    #    # batch PIV processing we want clean shutdown on interrupt
-        nanny=False,
-        dashboard_address=":8788"
-    )
-    client = Client(cluster)
-    #client = Client("tcp://10.64.27.210:8786")
-    #return None,client
-    return cluster, client
+    config: Config,
+) -> Tuple[object, Client]:
+    """
+    Create a Dask cluster (local or Slurm) based on config.cluster_type.
+
+    Returns:
+        cluster: Dask Cluster object
+        client: Dask Client
+    """
+    if getattr(config, "cluster_type", "local") == "local":
+        cluster = LocalCluster(
+            n_workers=config.dask_workers_per_node,
+            threads_per_worker=config.dask_threads_per_worker,
+            memory_limit=config.dask_memory_limit,
+            nanny=False,
+            processes=True,
+            config={"distributed.worker.profile.enabled": False},
+            dashboard_address=":8788"
+        )
+
+    elif config.cluster_type == "slurm":
+        if not hasattr(config, "n_nodes"):
+            raise ValueError("config.n_nodes must be set for Slurm cluster")
+        slurm_env = [
+            'export DASK_DISTRIBUTED__COMM__ALLOWED_TRANSPORTS=["tcp://[::]:0"]',
+            'echo "Landed on $HOSTNAME"',
+            f'source {os.getenv("HOME")}/.bashrc',
+            f"source /home/co1f23/scratch/MorganTaylor/PyPIVtools/examples/setup_env.sh",
+        ]
+        import socket
+
+        cluster = SLURMCluster(
+            queue=getattr(config, "queue", None),
+            project=getattr(config, "project", None),
+            cores=1,  # config.dask_workers_per_node,
+            processes=config.dask_workers_per_node,
+            memory=config.dask_memory_limit,
+            walltime=getattr(config, "walltime", "01:00:00"),
+            interface="ib0",
+            job_extra=[
+                "--qos=expert",
+                f"--nodes={config.n_nodes}",
+                "--output=dask_job_output_%j.out",
+                "--error=dask_job_output_%j.err",
+                "--exclusive",
+            ],
+            job_script_prologue=slurm_env,
+            scheduler_options={"host": socket.gethostname()},
+        )
+        logging.info(f"Number of nodes in Slurm cluster: {config.n_nodes}")
+
+        cluster.scale(jobs=config.n_nodes)
+        logging.info(f"Slurm job script:\n{cluster.job_script()}")
+
+    else:
+        raise ValueError(f"Unknown cluster_type: {config.cluster_type}")
 
 
 def group_workers_by_host(client: Client) -> dict[str, List[str]]:

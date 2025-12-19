@@ -2483,6 +2483,33 @@ video:
         if endpoint not in allowed:
             return False, f"Endpoint '{endpoint}' not allowed for {tool}. Allowed: {allowed}"
         return True, ""
+    
+    @property
+    def cluster_type(self):
+        cluster_type = (
+            self.data.get("processing", {}).get("cluster_type", "local").lower()
+        )
+        if cluster_type not in ["local", "slurm"]:
+            raise ValueError("cluster_type must be 'local' or 'slurm'")
+        return cluster_type
+
+    @property
+    def n_nodes(self):
+        if self.cluster_type == "slurm":
+            n_nodes = self.data.get("processing", {}).get("n_nodes", None)
+            if n_nodes is None:
+                raise ValueError("n_nodes must be set for Slurm cluster")
+            return n_nodes
+        else:
+            return None
+
+    @property
+    def walltime(self):
+        if self.cluster_type == "slurm":
+            walltime = self.data.get("processing", {}).get("walltime", "01:00:00")
+            return walltime
+        else:
+            return None
 
 
 def get_config(refresh: bool = False) -> Config:

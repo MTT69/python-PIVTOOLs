@@ -21,8 +21,8 @@ def _batch_policy(config: Config) -> int:
         return 1
 
 
-def _process_and_save_single_pair(
-    image_pair: da.Array,
+def _process_and_save_batch(
+    image_batch: da.Array,
     start_img_idx: int,
     config: Config,
     scattered_masks,
@@ -63,8 +63,8 @@ def _process_and_save_single_pair(
         Path to the saved file.
     """
     # Process PIV
-    piv_results = _piv_single_pass(image_pair, config, scattered_masks, scattered_cache)
-    
+    piv_results = _piv_inst_batch(image_batch, config, scattered_masks, scattered_cache)
+
     # Save immediately to avoid accumulating results in memory
     #saved_paths = []
     #for frame_number, result in enumerate(piv_result.passes):
@@ -166,7 +166,7 @@ def perform_piv_and_save(
     # Dask scheduler will distribute to workers efficiently
     # Each worker will process tasks one-by-one as they become available
     futures = client.map(
-        _process_and_save_single_pair,
+        _process_and_save_batch,
         delayed_blocks,  # List of delayed tasks
         frame_numbers,
         config=config,
@@ -194,7 +194,7 @@ def perform_piv_and_save(
     return all_saved_paths, scattered_cache
 
 
-def _piv_single_pass(
+def _piv_inst_batch(
     image_block: da.Array,
     config: Config,
     vector_masks: Optional[List[np.ndarray]] = None,
