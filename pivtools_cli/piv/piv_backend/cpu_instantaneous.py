@@ -337,14 +337,8 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 ux_mat[nan_mask] = 0.0
                 uy_mat[nan_mask] = 0.0
                 #logging.info(f"av ux:{np.max(ux_mat)} uy:{np.max(uy_mat)}")
-        # ------------------------------------------------------------
-# Initial peak choice (all primary peaks)
-# ------------------------------------------------------------
                 peak_choice = np.ones((N, n_win_y, n_win_x), dtype=np.intp)
 
-# ------------------------------------------------------------
-# Initial outlier detection (per-image, unavoidable)
-# ------------------------------------------------------------
                 if config.outlier_detection_enabled:
                     outlier_methods = config.outlier_detection_methods
                     if outlier_methods:
@@ -358,9 +352,6 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             )
                             nan_mask[im_idx] |= outlier_mask
 
-# ------------------------------------------------------------
-# Secondary peak selection (BATCHED over images)
-# ------------------------------------------------------------
                 if config.secondary_peak:
                     for pk in range(1, n_peaks):
                         active = nan_mask & (peak_choice < n_peaks)
@@ -385,16 +376,10 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     )
                                     nan_mask[im_idx] |= outlier_mask
 
-# ------------------------------------------------------------
-# Final primary peak magnitude (BATCHED)
-# ------------------------------------------------------------
                 idx = peak_choice[:, None, :, :] - 1
                 primary_peak_mag = np.take_along_axis(pk_height, idx, axis=1)[:, 0]
                 nan_mask |= np.isnan(primary_peak_mag)
 
-# ------------------------------------------------------------
-# Q calculation (FULLY BATCHED)
-# ------------------------------------------------------------
                 shifted_pk_height = np.roll(pk_height, shift=-1, axis=1)
                 shifted_pk_height[:, -1, :, :] = pk_height[:, -1, :, :]
 
