@@ -72,7 +72,7 @@ class BuildCLib(build_ext):
                 raise RuntimeError("No suitable compiler found (clang on macOS).")
 
             sdk_path = subprocess.check_output(["xcrun", "--show-sdk-path"], text=True).strip()
-            self.extra_compile = ["-g","-O0", "-fPIC", "-fopenmp", f"-I{self.fftw_inc}", "-isysroot", sdk_path]
+            self.extra_compile = ["-O3", "-fPIC", "-fopenmp", f"-I{self.fftw_inc}", "-isysroot", sdk_path]
             self.extra_link = [ "-lm", "-fopenmp", "-L" + str(self.fftw_lib), "-lfftw3f", "-lfftw3f_threads", "-isysroot", sdk_path]
             shared_flag = "-shared"
 
@@ -117,7 +117,7 @@ class BuildCLib(build_ext):
 
             compiler = os.environ.get("CC", "gcc")
             shared_flag = "-shared"
-            extra_compile = ["-g","-O0", "-fPIC", "-fopenmp"]
+            extra_compile = ["-O3", "-fPIC", "-fopenmp"]
             extra_link = [ "-lm", "-fopenmp"]
             lib_ext = ".so"
             extra_link += [f"-L{self.fftw_lib}", "-lfftw3f", "-lfftw3f_threads"]

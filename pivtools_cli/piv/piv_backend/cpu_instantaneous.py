@@ -197,13 +197,13 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         logging.info(f"About to start correlation passes for batch of {N} image pairs")
         try:
                 # Convert images to C-contiguous (row-major) format
-            images_a = images[:, 0, :, :].astype(np.float32, copy=False)
-            images_b = images[:, 1, :, :].astype(np.float32, copy=False)
+            #images_a = images[:, 0, :, :].astype(np.float32, copy=False)
+            #images_b = images[:, 1, :, :].astype(np.float32, copy=False)
 
-            if not images_a.flags["C_CONTIGUOUS"]:
-                images_a = np.ascontiguousarray(images_a)
-            if not images_b.flags["C_CONTIGUOUS"]:
-                images_b = np.ascontiguousarray(images_b)
+#            if not images_a.flags["C_CONTIGUOUS"]:
+#                images_a = np.ascontiguousarray(images_a)
+#            if not images_b.flags["C_CONTIGUOUS"]:
+#                images_b = np.ascontiguousarray(images_b)
 
                 # Pass image_size as [H, W] in C-contiguous format
             image_size = np.ascontiguousarray(np.array([H, W], dtype=np.int32))
@@ -215,8 +215,8 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 images_a_prime, images_b_prime, self.delta_ab_pred = (
                         self._predictor_corrector_batch(
                             pass_idx,
-                            images_a,
-                            images_b,
+                            images[:, 0, :, :].astype(np.float32, copy=False),
+                            images[:, 1, :, :].astype(np.float32, copy=False),
                             config=config
                         )
                     )
