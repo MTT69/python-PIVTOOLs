@@ -9,23 +9,12 @@ from setuptools.command.build_ext import build_ext
 import shutil
 import sysconfig
 
-
 class BuildCLib(build_ext):
     def run(self):
         self.python_include = sysconfig.get_path("include")
         self.pkg_dir = pathlib.Path(__file__).parent
         if not self.dry_run:
             self.build_c_libraries()
-
-        dummy_ext = Extension(
-            "pivtools_cli._build_marker",
-            sources=[str(pathlib.Path(__file__).parent / "pivtools_cli" / "_build_marker.c")],
-            include_dirs=[self.python_include, str(self.pkg_dir / "pivtools_cli" / "lib"), str(self.fftw_inc)],
-            extra_compile_args=self.extra_compile,
-            extra_link_args=self.extra_link,
-            language="c",
-        )
-        self.extensions = [dummy_ext]
         super().run()
 
     def build_c_libraries(self):
@@ -72,6 +61,7 @@ class BuildCLib(build_ext):
                 raise RuntimeError("No suitable compiler found (clang on macOS).")
 
             sdk_path = subprocess.check_output(["xcrun", "--show-sdk-path"], text=True).strip()
+            print(f"Using SDK path: {sdk_path}")
             self.extra_compile = ["-O3", "-fPIC", "-fopenmp", f"-I{self.fftw_inc}", "-isysroot", sdk_path]
             self.extra_link = [ "-lm", "-fopenmp", "-L" + str(self.fftw_lib), "-lfftw3f", "-lfftw3f_threads", "-isysroot", sdk_path]
             shared_flag = "-shared"
@@ -261,9 +251,21 @@ class BuildCLib(build_ext):
             print("STDERR:", result.stderr)
             raise RuntimeError(f"Build failed: {result.returncode}")
 
-dummy_ext = Extension("pivtools_cli._build_marker", sources=["pivtools_cli/_build_marker.c"])
-setup(ext_modules=[dummy_ext],
-    cmdclass={"build_ext": BuildCLib},
-    include_package_data=True,
-    packages=["pivtools_cli"],  # list your packages
+try:
+    sdk_path = subprocess.check_output(["xcrun", "--show-sdk-path"], text=True).strip()
+except Exception:
+    sdk_path = None
+
+dummy_ext = Extension(
+    "pivtools_cli._cbuild",
+    sources=[],
+    extra_compile_args=["-isysroot", sdk_path] if sdk_path else [],
+    extra_link_args=["-isysroot", sdk_path] if sdk_path else [],
 )
+setup(
+    include_package_data=True,
+    ext_modules=[dummy_ext],
+    cmdclass={"build_ext": BuildCLib},
+
+)
+
