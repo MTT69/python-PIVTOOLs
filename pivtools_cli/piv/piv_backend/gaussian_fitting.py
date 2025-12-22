@@ -791,7 +791,9 @@ def _build_initial_guesses_vectorized(
     x_guess: float,
     y_guess: float,
     pass_idx: int,
-    config,
+    config: Config,
+    num_windows:int,
+
 ) -> tuple:
     """
     Vectorized initial guess generation for all valid windows.
@@ -835,9 +837,9 @@ def _build_initial_guesses_vectorized(
 
     # Extract valid windows in batch
     # Shape: (n_valid, n_per_window)
-    AA_valid = R_AA.reshape(total_windows, n_per_window)[valid_indices]
-    BB_valid = R_BB.reshape(total_windows, n_per_window)[valid_indices]
-    AB_valid = R_AB.reshape(total_windows, n_per_window)[valid_indices]
+    AA_valid = R_AA.reshape(num_windows, n_per_window)[valid_indices]
+    BB_valid = R_BB.reshape(num_windows, n_per_window)[valid_indices]
+    AB_valid = R_AB.reshape(num_windows, n_per_window)[valid_indices]
 
     # Reshape to 3D for spatial operations: (n_valid, win_h, win_w)
     AA_3d = AA_valid.reshape(n_valid, win_h, win_w)
@@ -1057,7 +1059,9 @@ def fit_windows_openmp(
     corr_size: tuple,
     config,
     pass_idx: int,
+    num_windows:int,
     num_threads: int = None,
+
 ) -> tuple:
     """
     Fit Gaussian peaks using pure OpenMP (no Dask overhead).
@@ -1151,7 +1155,7 @@ def fit_windows_openmp(
     logger.debug(f"fit_windows_openmp: Building initial guesses (vectorized)...")
     initial_guesses_valid, y_all = _build_initial_guesses_vectorized(
         R_AA, R_BB, R_AB, valid_indices, sigma_dict, win_size,
-        central_index, x_guess, y_guess, pass_idx, config
+        central_index, x_guess, y_guess, pass_idx, config, num_windows=num_windows
     )
 
     # Allocate result arrays

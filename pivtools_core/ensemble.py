@@ -252,7 +252,7 @@ def run_ensemble_piv(
         logger.info("  Finalizing pass...")
         accumulator.accumulate_batch(accumulated, pass_idx=pass_idx)
         pass_result = accumulator.finalize_pass(
-            pass_idx, predictor_field, output_path
+            client=client, pass_idx=pass_idx, predictor_field=predictor_field, output_path=output_path
         )
         # NOTE: finalize_pass() already appends to passes_results internally
 

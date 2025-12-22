@@ -12,6 +12,7 @@ from typing import Optional
 
 import cv2
 import numpy as np
+from dask.distributed import Client
 
 from pivtools_core.config import Config
 from pivtools_cli.piv.piv_result import PIVEnsemblePassResult, PIVEnsembleResult
@@ -305,8 +306,10 @@ class SinglePassAccumulator:
 
     def finalize_pass(
         self, pass_idx: int,
+        client: Client,
         predictor_field: Optional[np.ndarray] = None,
-        output_path: Optional[Path] = None
+        output_path: Optional[Path] = None,
+
     ):
         """
         Finalize a single pass with single-pass optimization.
@@ -392,28 +395,67 @@ class SinglePassAccumulator:
 
         # Pure OpenMP Gaussian fitting (no Dask overhead)
         # The C library uses OpenMP internally for parallel fitting
-        from pivtools_cli.piv.piv_backend.gaussian_fitting import fit_windows_openmp
+
 
         logging.info(f"Shapes of inputs for fit_windows_openmp: "
                      f"{R_AA_ensemble.shape}, {R_BB_ensemble.shape}, {R_AB_ensemble.shape}, "
-                     f"{mask_flat.shape}, {sigma_dict}, {corr_size}")
+                     f"{mask_flat.shape}, {corr_size}")
 
         logging.info(f"Pass {pass_idx + 1}: Starting OpenMP Gaussian fitting...")
+        n_workers = len(client.scheduler_info()['workers'])
+        num_windows_per_worker = total_windows // n_workers  # integer division
+        remainder = total_windows % n_workers 
+        slices = []
+        start = 0
+        for i in range(n_workers):
+            end = start + num_windows_per_worker
+            if i == n_workers - 1:
+            # Last worker gets remainder as well
+                end += remainder
+            slices.append((start, end))
+            start = end
+        logging.info(f"Window slices for workers: {slices}")
+        n_per_window = win_size[0] * win_size[1]
+        flattened_slices = [(s* n_per_window, e * n_per_window) for s,e in slices]
 
-        gauss_flat, status_flat, initial_guess_flat = fit_windows_openmp(
-            R_AA_ensemble,
-            R_BB_ensemble,
-            R_AB_ensemble,
-            mask_flat,
-            sigma_dict,
-            corr_size,
-            self.config,
-            pass_idx,
-            # num_threads=None means use ALL CPU cores (not limited by Dask worker settings)
-            # This is appropriate because finalize_pass() runs on the main process
-            # after all Dask workers have returned their results
-            num_threads=None,
-        )
+
+        chunk_size = max(1, total_windows // n_workers)
+        chunk_size = chunk_size *win_size[0]*win_size[1]  # Convert to number of elements
+
+        logging.info(f"Total windows: {total_windows}, n_workers: {n_workers}, chunk_size: {chunk_size}")
+        indices = np.arange(0, total_windows, chunk_size)
+        chunks = [(i, min(i + chunk_size, total_windows)) for i in indices]
+        if pass_idx > 1:
+            logging.info(f"sigma_AB_x shape: {sigma_dict['sig_AB_x'].shape}")
+        logging.info(f" chunks are {chunks}")
+        chunk_sigma_dict = {
+    key: (None if val is None else val[start:end])
+    for key, val in sigma_dict.items()
+}
+        from pivtools_cli.piv.piv_backend.gaussian_fitting import fit_windows_openmp
+        futures = [
+        client.submit(
+        fit_windows_openmp,
+        R_AA_ensemble[start:end],
+        R_BB_ensemble[start:end],
+        R_AB_ensemble[start:end],
+        mask_flat[start//n_per_window:end//n_per_window],
+        sigma_dict,
+        corr_size,
+        self.config,
+        pass_idx,
+        num_windows=end//n_per_window - start//n_per_window,
+        num_threads=None,
+    )
+    for start, end in flattened_slices
+]
+
+        results = client.gather(futures)
+
+        # Concatenate results in the correct order
+        gauss_flat = np.concatenate([r[0] for r in results])
+        status_flat = np.concatenate([r[1] for r in results])
+        initial_guess_flat = np.concatenate([r[2] for r in results])
 
         # Release large arrays after fitting
         if not (hasattr(self.config, 'ensemble_store_planes') and self.config.ensemble_store_planes):
@@ -796,6 +838,54 @@ class SinglePassAccumulator:
         logging.info(f"Pass {pass_idx + 1}: Finalization complete")
 
         return pass_result
+    
+def fit_chunk(window_slice, R_AA_ensemble, R_BB_ensemble, R_AB_ensemble,
+              mask_flat, sigma_dict, corr_size, config, pass_idx, num_windows):
+    """
+    Fit a subset of windows using fit_windows_openmp.
+
+    Parameters
+    ----------
+    window_slice : tuple
+        (start, end) indices of the flattened windows to process
+    R_AA_ensemble, R_BB_ensemble, R_AB_ensemble : np.ndarray
+        Flattened correlation planes
+    mask_flat : np.ndarray
+        Flattened mask
+    sigma_dict : dict
+        Signal variance arrays
+    corr_size : list
+        Window size
+    config : object
+        Config object
+    pass_idx : int
+        Pass index
+    num_windows : int
+        Number of windows in this chunk
+    """
+    from pivtools_cli.piv.piv_backend.gaussian_fitting import fit_windows_openmp
+    start, end = window_slice
+    logging.info(f"Fitting windows {start} to {end} (total {end - start}) using OpenMP")
+
+    R_AA_chunk = R_AA_ensemble[start:end]
+    R_BB_chunk = R_BB_ensemble[start:end]
+    R_AB_chunk = R_AB_ensemble[start:end]
+    mask_chunk = mask_flat[start:end]
+
+    gauss_flat, status_flat, initial_guess_flat = fit_windows_openmp(
+        R_AA_chunk,
+        R_BB_chunk,
+        R_AB_chunk,
+        mask_chunk,
+        sigma_dict,
+        corr_size,
+        config,
+        pass_idx,
+        num_windows=num_windows,
+        num_threads=None,  # or limit per worker
+    )
+
+    return gauss_flat, status_flat, initial_guess_flat
 
     def get_ensemble_result(self) -> PIVEnsembleResult:
         """
