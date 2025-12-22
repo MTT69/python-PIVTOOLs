@@ -397,77 +397,72 @@ class SinglePassAccumulator:
         # The C library uses OpenMP internally for parallel fitting
 
 
-        logging.info(f"Shapes of inputs for fit_windows_openmp: "
-                     f"{R_AA_ensemble.shape}, {R_BB_ensemble.shape}, {R_AB_ensemble.shape}, "
-                     f"{mask_flat.shape}, {corr_size}")
-
         logging.info(f"Pass {pass_idx + 1}: Starting OpenMP Gaussian fitting...")
         n_workers = len(client.scheduler_info()['workers'])
-        num_windows_per_worker = total_windows // n_workers  # integer division
-        remainder = total_windows % n_workers 
-        slices = []
-        start = 0
-        for i in range(n_workers):
-            end = start + num_windows_per_worker
-            if i == n_workers - 1:
-            # Last worker gets remainder as well
-                end += remainder
-            slices.append((start, end))
-            start = end
-        logging.info(f"Window slices for workers: {slices}")
-        n_per_window = win_size[0] * win_size[1]
-        flattened_slices = [(s* n_per_window, e * n_per_window) for s,e in slices]
+        workers = list(client.scheduler_info()["workers"].keys())
+        windows_per_worker = (total_windows + n_workers - 1) // n_workers
+        R_AA_futures = []
+        R_BB_futures = []
+        R_AB_futures = []
+        mask_flat_futures = []
+        sigma_dict_futures = [{} for _ in range(n_workers)]
+        for worker_idx in range(n_workers):
+            start_idx = worker_idx * windows_per_worker * win_size[0] * win_size[1]
+            end_idx = min(
+                (worker_idx + 1) * windows_per_worker * win_size[0] * win_size[1],
+                R_AA_ensemble.size,
+            )
+            start_idx_win = worker_idx * windows_per_worker
+            end_idx_win = min(
+                (worker_idx + 1) * windows_per_worker,
+                total_windows,
+            )
+
+            R_AA_futures.append(client.scatter(
+                R_AA_ensemble[start_idx:end_idx],
+                broadcast=False,
+            ))
+            R_BB_futures.append(client.scatter(
+                R_BB_ensemble[start_idx:end_idx],
+                broadcast=False,
+            ))
+            R_AB_futures.append(client.scatter(
+                R_AB_ensemble[start_idx:end_idx],
+                broadcast=False,
+            ))
+            mask_flat_futures.append(client.scatter(
+                mask_flat[start_idx_win:end_idx_win],
+                broadcast=False,
+            ))
+
+                    
+                
+            for k, v in sigma_dict.items():
+                if v is not None:
+                    sigma_dict_futures[worker_idx][k]=client.scatter(
+                        v[start_idx_win:end_idx_win],
+                        broadcast=False,
+                    )
+                    logging.info(f"Worker {worker_idx}: sigma_dict[{k}] shape: {v.shape}")
+                else:
+                    sigma_dict_futures[worker_idx][k]=None
 
 
-        chunk_windows = max(1, total_windows // n_workers)
-        from dask import array as da
-
-        chunk_size = chunk_windows * win_size[0] * win_size[1]  # Convert to number of elements
-        R_AA_da = da.from_array(R_AA_ensemble, chunks=(chunk_size,))
-        R_BB_da = da.from_array(R_BB_ensemble, chunks=(chunk_size,))
-        R_AB_da = da.from_array(R_AB_ensemble, chunks=(chunk_size,))
-        mask_flat_da = da.from_array(mask_flat, chunks=(chunk_windows,))
-        logging.info(f"R_AA_da.shape: {mask_flat_da.chunks} {chunk_size}")
-
-        logging.info(f"Total windows: {total_windows}, n_workers: {n_workers}, chunk_size: {chunk_size}")
-        if pass_idx > 0:
-            logging.info(f"sigma_AB_x shape: {sigma_dict['sig_AB_x'].shape}")
-        sigma_da = {}
-        for key, val in sigma_dict.items():
-            if val is None:
-                sigma_da[key] = None
-            else:
-                sigma_da[key] = da.from_array(val, chunks=(chunk_windows,))
-
-        from pivtools_cli.piv.piv_backend.gaussian_fitting import fit_windows_openmp
-
-        def fit_chunk_dask(R_AA_chunk, R_BB_chunk, R_AB_chunk, sigma_chunk, mask_chunk):
-            num_windows = chunk_windows
-            logging.info(f"Fitting chunk with {num_windows} windows")
-            return fit_windows_openmp(
-        R_AA_chunk,
-        R_BB_chunk,
-        R_AB_chunk,
-        mask_chunk,
-        sigma_chunk,
+            from pivtools_cli.piv.piv_backend.gaussian_fitting import fit_windows_openmp
+            futures = [
+    client.submit(
+        fit_windows_openmp,
+        R_AA_futures[i],
+        R_BB_futures[i],
+        R_AB_futures[i],
+        mask_flat_futures[i],
+        sigma_dict_futures[i],
         corr_size,
         self.config,
         pass_idx,
-        num_windows=num_windows,
-        num_threads=None
-    )
+    ) for i in range(len(R_AA_futures))]
 
-# Use map_blocks or delayed
-        from dask import delayed, compute
-
-        futures = [
-            delayed(fit_chunk_dask)(R_AA_da.blocks[i], R_BB_da.blocks[i], R_AB_da.blocks[i],
-                                    {k: (v.blocks[i] if v is not None else None) for k, v in sigma_da.items()},mask_flat_da.blocks[i])
-            for i in range(R_AA_da.numblocks[0])
-        ]
-
-        results = compute(*futures) 
-        # Concatenate results in the correct order
+        results = client.gather(futures) 
         gauss_flat = np.concatenate([r[0] for r in results])
         status_flat = np.concatenate([r[1] for r in results])
         initial_guess_flat = np.concatenate([r[2] for r in results])
