@@ -515,11 +515,11 @@ def correlate_and_save_batch(
     Returns:
         List of saved file paths
     """
-    from pivtools_cli.piv.piv import _process_and_save_single_pair
+    from pivtools_cli.piv.piv import _process_and_save_batch
 
     saved_paths = []
 
-    saved_paths = _process_and_save_single_pair(
+    saved_paths = _process_and_save_batch(
             batch,
             start_img_idx,
             config,
