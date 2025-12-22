@@ -1137,6 +1137,8 @@ def fit_windows_openmp(
     X1, X2, central_index, x_guess, y_guess = _get_pass_grid(pass_idx, config)
 
     # Find valid (non-masked) windows
+    mask_flat = np.asarray(mask_flat) 
+    logging.info(f"Mask flat shape: {mask_flat.shape}")
     valid_indices = np.where(~mask_flat)[0]
     n_valid = len(valid_indices)
 
@@ -1152,7 +1154,7 @@ def fit_windows_openmp(
     n_per_window = win_size[0] * win_size[1]
 
     # Build initial guesses using vectorized implementation (much faster)
-    logger.debug(f"fit_windows_openmp: Building initial guesses (vectorized)...")
+    logger.debug(f"fit_windows_openmp: Building initial guesses (vectorized)...{num_windows}")
     initial_guesses_valid, y_all = _build_initial_guesses_vectorized(
         R_AA, R_BB, R_AB, valid_indices, sigma_dict, win_size,
         central_index, x_guess, y_guess, pass_idx, config, num_windows=num_windows

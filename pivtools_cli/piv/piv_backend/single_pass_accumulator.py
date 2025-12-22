@@ -419,39 +419,54 @@ class SinglePassAccumulator:
         flattened_slices = [(s* n_per_window, e * n_per_window) for s,e in slices]
 
 
-        chunk_size = max(1, total_windows // n_workers)
-        chunk_size = chunk_size *win_size[0]*win_size[1]  # Convert to number of elements
+        chunk_windows = max(1, total_windows // n_workers)
+        from dask import array as da
+
+        chunk_size = chunk_windows * win_size[0] * win_size[1]  # Convert to number of elements
+        R_AA_da = da.from_array(R_AA_ensemble, chunks=(chunk_size,))
+        R_BB_da = da.from_array(R_BB_ensemble, chunks=(chunk_size,))
+        R_AB_da = da.from_array(R_AB_ensemble, chunks=(chunk_size,))
+        mask_flat_da = da.from_array(mask_flat, chunks=(chunk_windows,))
+        logging.info(f"R_AA_da.shape: {mask_flat_da.chunks} {chunk_size}")
 
         logging.info(f"Total windows: {total_windows}, n_workers: {n_workers}, chunk_size: {chunk_size}")
-        indices = np.arange(0, total_windows, chunk_size)
-        chunks = [(i, min(i + chunk_size, total_windows)) for i in indices]
-        if pass_idx > 1:
+        if pass_idx > 0:
             logging.info(f"sigma_AB_x shape: {sigma_dict['sig_AB_x'].shape}")
-        logging.info(f" chunks are {chunks}")
-        chunk_sigma_dict = {
-    key: (None if val is None else val[start:end])
-    for key, val in sigma_dict.items()
-}
+        sigma_da = {}
+        for key, val in sigma_dict.items():
+            if val is None:
+                sigma_da[key] = None
+            else:
+                sigma_da[key] = da.from_array(val, chunks=(chunk_windows,))
+
         from pivtools_cli.piv.piv_backend.gaussian_fitting import fit_windows_openmp
-        futures = [
-        client.submit(
-        fit_windows_openmp,
-        R_AA_ensemble[start:end],
-        R_BB_ensemble[start:end],
-        R_AB_ensemble[start:end],
-        mask_flat[start//n_per_window:end//n_per_window],
-        sigma_dict,
+
+        def fit_chunk_dask(R_AA_chunk, R_BB_chunk, R_AB_chunk, sigma_chunk, mask_chunk):
+            num_windows = chunk_windows
+            logging.info(f"Fitting chunk with {num_windows} windows")
+            return fit_windows_openmp(
+        R_AA_chunk,
+        R_BB_chunk,
+        R_AB_chunk,
+        mask_chunk,
+        sigma_chunk,
         corr_size,
         self.config,
         pass_idx,
-        num_windows=end//n_per_window - start//n_per_window,
-        num_threads=None,
+        num_windows=num_windows,
+        num_threads=None
     )
-    for start, end in flattened_slices
-]
 
-        results = client.gather(futures)
+# Use map_blocks or delayed
+        from dask import delayed, compute
 
+        futures = [
+            delayed(fit_chunk_dask)(R_AA_da.blocks[i], R_BB_da.blocks[i], R_AB_da.blocks[i],
+                                    {k: (v.blocks[i] if v is not None else None) for k, v in sigma_da.items()},mask_flat_da.blocks[i])
+            for i in range(R_AA_da.numblocks[0])
+        ]
+
+        results = compute(*futures) 
         # Concatenate results in the correct order
         gauss_flat = np.concatenate([r[0] for r in results])
         status_flat = np.concatenate([r[1] for r in results])
