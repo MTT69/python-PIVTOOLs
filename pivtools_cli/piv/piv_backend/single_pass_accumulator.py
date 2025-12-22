@@ -381,16 +381,22 @@ class SinglePassAccumulator:
             pass_idx, total_windows, self.config, temp_piv_results,
             n_win_x, n_win_y
         )
+        logging.info(f"Sigma dict: {sigma_dict}")
 
         # Flatten mask for fitting
         if self.vector_masks and pass_idx < len(self.vector_masks):
             mask_flat = self.vector_masks[pass_idx].ravel(order='C').astype(bool)
+            logging.info(f"mask shape: {self.vector_masks[pass_idx].shape}, flat shape: {mask_flat.shape}")
         else:
             mask_flat = np.zeros(total_windows, dtype=bool)
 
         # Pure OpenMP Gaussian fitting (no Dask overhead)
         # The C library uses OpenMP internally for parallel fitting
         from pivtools_cli.piv.piv_backend.gaussian_fitting import fit_windows_openmp
+
+        logging.info(f"Shapes of inputs for fit_windows_openmp: "
+                     f"{R_AA_ensemble.shape}, {R_BB_ensemble.shape}, {R_AB_ensemble.shape}, "
+                     f"{mask_flat.shape}, {sigma_dict}, {corr_size}")
 
         logging.info(f"Pass {pass_idx + 1}: Starting OpenMP Gaussian fitting...")
 

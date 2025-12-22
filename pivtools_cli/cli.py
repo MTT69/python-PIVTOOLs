@@ -1158,7 +1158,8 @@ def main():
         description="PIVTOOLs - Particle Image Velocimetry Tools",
         prog="pivtools-cli"
     )
-
+    import logging
+    logging.info("Starting PIVTOOLs CLI")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # init command

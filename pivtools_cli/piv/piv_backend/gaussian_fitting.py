@@ -1124,7 +1124,6 @@ def fit_windows_openmp(
     # Use the proper thread setter (calls omp_set_num_threads if available)
     actual_threads = _set_omp_threads(omp_threads)
     logger.info(f"fit_windows_openmp: Using {actual_threads} OpenMP threads (all CPU cores)")
-
     # Load library AFTER setting thread count
     marquadt_lib = _load_marquadt_lib()
 

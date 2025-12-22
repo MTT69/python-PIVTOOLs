@@ -4,13 +4,14 @@ import platform
 import pathlib
 import subprocess
 import sysconfig
-from setuptools import setup, Extension
+from setuptools import find_packages, setup, Extension
 from setuptools.command.build_ext import build_ext
 import shutil
 import sysconfig
 
 class BuildCLib(build_ext):
     def run(self):
+        print(">>> BuildCLib.run() CALLED <<<")
         self.python_include = sysconfig.get_path("include")
         self.pkg_dir = pathlib.Path(__file__).parent
         if not self.dry_run:
@@ -262,7 +263,9 @@ dummy_ext = Extension(
     extra_compile_args=["-isysroot", sdk_path] if sdk_path else [],
     extra_link_args=["-isysroot", sdk_path] if sdk_path else [],
 )
+
 setup(
+    packages=find_packages(),
     include_package_data=True,
     ext_modules=[dummy_ext],
     cmdclass={"build_ext": BuildCLib},

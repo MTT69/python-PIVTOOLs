@@ -367,6 +367,10 @@ PIV_EXPORT int fit_stacked_gaussian_batch_export(
     #pragma omp parallel reduction(+:success_count)
     {
     #endif
+        #pragma omp single
+    {
+        fprintf(stderr, "[fit] OpenMP threads: %d\n", omp_get_num_threads());
+    }
         // Thread-local Y buffer
         double *sub_y = malloc(3 * actual_n * sizeof(double));
 

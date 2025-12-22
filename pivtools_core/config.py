@@ -1709,9 +1709,7 @@ video:
     @property
     def dask_threads_per_worker(self):
         """Return number of threads per Dask worker."""
-        if self.auto_compute_params:
-            return self._get_auto_compute_params()["dask_threads_per_worker"]
-        return self.data.get("processing", {}).get("dask_threads_per_worker", 1)
+        return 1
 
     @property
     def dask_memory_limit(self):

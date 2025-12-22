@@ -23,14 +23,16 @@ def make_cluster(
     if getattr(config, "cluster_type", "local") == "local":
         cluster = LocalCluster(
             n_workers=config.dask_workers_per_node,
-            threads_per_worker=config.dask_threads_per_worker,
+            threads_per_worker=1,
             memory_limit=config.dask_memory_limit,
             nanny=False,
             processes=True,
             config={"distributed.worker.profile.enabled": False},
             dashboard_address=":8788"
         )
-
+        client = Client(cluster)
+        logging.info(f"Local Dask cluster started with {len(cluster.workers)} workers.")
+        return cluster, client
     elif config.cluster_type == "slurm":
         if not hasattr(config, "n_nodes"):
             raise ValueError("config.n_nodes must be set for Slurm cluster")
@@ -64,9 +66,12 @@ def make_cluster(
 
         cluster.scale(jobs=config.n_nodes)
         logging.info(f"Slurm job script:\n{cluster.job_script()}")
-
+        client = Client(cluster)
+        return cluster, client
     else:
         raise ValueError(f"Unknown cluster_type: {config.cluster_type}")
+    
+
 
 
 def group_workers_by_host(client: Client) -> dict[str, List[str]]:
@@ -103,9 +108,7 @@ def start_cluster(
 
     try:
         cluster, client = make_cluster(
-            n_workers_per_node=n_workers_per_node,
-            threads_per_worker=1,
-            memory_limit=memory_limit,
+            config= config#n_workers_per_node=n_workers_per_node,
         )
         client.run(
             setup_worker_logging,
