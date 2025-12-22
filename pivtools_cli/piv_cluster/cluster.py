@@ -36,30 +36,21 @@ def make_cluster(
     elif config.cluster_type == "slurm":
         if not hasattr(config, "n_nodes"):
             raise ValueError("config.n_nodes must be set for Slurm cluster")
-        #slurm_env = [
-        #    'export DASK_DISTRIBUTED__COMM__ALLOWED_TRANSPORTS=["tcp://[::]:0"]',
-        #    'echo "Landed on $HOSTNAME"',
-        #    f'source {os.getenv("HOME")}/.bashrc',
-        #    f"source /home/co1f23/scratch/MorganTaylor/PyPIVtools/examples/setup_env.sh",
-        #]
         import socket
-        slurm_cfg = config.data.get("processing", {}).get("slurm", {})
         cluster = SLURMCluster(
-            queue=slurm_cfg.get("partition"),
-            walltime=slurm_cfg.get("walltime", "01:00:00"),
-
+            queue=config.slurm_partition,
+            walltime=config.slurm_walltime,
             cores=1,
             processes=config.dask_workers_per_node,
-            memory=config.dask_memory_limit,
-            interface=slurm_cfg.get("interface", "ib0"),
-            job_extra=slurm_cfg.get("job_extra", []),
-            job_script_prologue=slurm_cfg.get("prologue", []),
+            memory=config.slurm_memory_limit,
+            interface=config.slurm_interface,
+            job_extra=config.slurm_job_extra,
+            job_script_prologue=config.slurm_job_prologue,
             scheduler_options={"host": socket.gethostname()},
             )
 
-        nnodes = slurm_cfg.get("nnodes")
-        if nnodes is not None:
-            cluster.scale(jobs=int(nnodes))
+        if config.n_nodes is not None:
+            cluster.scale(jobs=config.n_nodes)
 
             client = Client(cluster)
             return cluster, client
