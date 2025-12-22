@@ -471,8 +471,6 @@ class SinglePassAccumulator:
         # Extract peak positions from fitted Gaussian centers (16-param layout)
         x0_AB = gauss_results[:, :, 14].astype(np.float32)  # X position of AB peak
         y0_AB = gauss_results[:, :, 15].astype(np.float32)  # Y position of AB peak
-        logging.info(f"x0_AB:{x0_AB}")
-        logging.info(f"y0_AB:{y0_AB}")
         # Compute displacements as offset from window center
         ux_mat = x0_AB - win_center_x  # X displacement in pixels
         uy_mat = y0_AB - win_center_y  # Y displacement in pixels
