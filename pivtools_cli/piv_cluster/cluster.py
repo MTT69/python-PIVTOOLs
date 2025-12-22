@@ -36,38 +36,33 @@ def make_cluster(
     elif config.cluster_type == "slurm":
         if not hasattr(config, "n_nodes"):
             raise ValueError("config.n_nodes must be set for Slurm cluster")
-        slurm_env = [
-            'export DASK_DISTRIBUTED__COMM__ALLOWED_TRANSPORTS=["tcp://[::]:0"]',
-            'echo "Landed on $HOSTNAME"',
-            f'source {os.getenv("HOME")}/.bashrc',
-            f"source /home/co1f23/scratch/MorganTaylor/PyPIVtools/examples/setup_env.sh",
-        ]
+        #slurm_env = [
+        #    'export DASK_DISTRIBUTED__COMM__ALLOWED_TRANSPORTS=["tcp://[::]:0"]',
+        #    'echo "Landed on $HOSTNAME"',
+        #    f'source {os.getenv("HOME")}/.bashrc',
+        #    f"source /home/co1f23/scratch/MorganTaylor/PyPIVtools/examples/setup_env.sh",
+        #]
         import socket
-
+        slurm_cfg = config.data.get("processing", {}).get("slurm", {})
         cluster = SLURMCluster(
-            queue=getattr(config, "queue", None),
-            project=getattr(config, "project", None),
-            cores=1,  # config.dask_workers_per_node,
+            queue=slurm_cfg.get("partition"),
+            walltime=slurm_cfg.get("walltime", "01:00:00"),
+
+            cores=1,
             processes=config.dask_workers_per_node,
             memory=config.dask_memory_limit,
-            walltime=getattr(config, "walltime", "01:00:00"),
-            interface="ib0",
-            job_extra=[
-                "--qos=expert",
-                f"--nodes={config.n_nodes}",
-                "--output=dask_job_output_%j.out",
-                "--error=dask_job_output_%j.err",
-                "--exclusive",
-            ],
-            job_script_prologue=slurm_env,
+            interface=slurm_cfg.get("interface", "ib0"),
+            job_extra=slurm_cfg.get("job_extra", []),
+            job_script_prologue=slurm_cfg.get("prologue", []),
             scheduler_options={"host": socket.gethostname()},
-        )
-        logging.info(f"Number of nodes in Slurm cluster: {config.n_nodes}")
+            )
 
-        cluster.scale(jobs=config.n_nodes)
-        logging.info(f"Slurm job script:\n{cluster.job_script()}")
-        client = Client(cluster)
-        return cluster, client
+        nnodes = slurm_cfg.get("nnodes")
+        if nnodes is not None:
+            cluster.scale(jobs=int(nnodes))
+
+            client = Client(cluster)
+            return cluster, client
     else:
         raise ValueError(f"Unknown cluster_type: {config.cluster_type}")
     
