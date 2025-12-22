@@ -2545,6 +2545,7 @@ video:
             return prologue
         else:
             return None
+        
 def get_config(refresh: bool = False) -> Config:
     """Return shared Config instance. Pass refresh=True to reload from disk."""
     global _CONFIG
