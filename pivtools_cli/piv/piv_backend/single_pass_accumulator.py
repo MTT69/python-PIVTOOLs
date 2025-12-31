@@ -12,6 +12,7 @@ from typing import Optional
 
 import cv2
 import numpy as np
+from dask.distributed import Client
 
 from pivtools_core.config import Config
 from pivtools_cli.piv.piv_result import PIVEnsemblePassResult, PIVEnsembleResult
@@ -115,9 +116,9 @@ class SinglePassAccumulator:
         pass_data["sum_warp_B"] += batch_result["warp_B_sum"]
 
         # Accumulate correlation planes (NO averaging yet)
-        pass_data["sum_corr_AA"] += batch_result["corr_AA_sum"]
-        pass_data["sum_corr_BB"] += batch_result["corr_BB_sum"]
-        pass_data["sum_corr_AB"] += batch_result["corr_AB_sum"]
+        pass_data["sum_corr_AA"] += batch_result["corr_AA_sum"].reshape(-1)
+        pass_data["sum_corr_BB"] += batch_result["corr_BB_sum"].reshape(-1)
+        pass_data["sum_corr_AB"] += batch_result["corr_AB_sum"].reshape(-1)
 
         # Store smoothed predictor (for pass > 0)
         # All batches should have the same smoothed predictor, so just overwrite
@@ -206,7 +207,7 @@ class SinglePassAccumulator:
             pk_loc_x,
             pk_loc_y,
             pk_height,
-            sx,
+            sx, 
             sy,
             sxy,
             correl_out,
@@ -216,6 +217,7 @@ class SinglePassAccumulator:
             config=self.config,
             win_size=win_size,
             pass_idx=pass_idx,
+            N=1
         )
 
         # Image size for correlation
@@ -227,6 +229,7 @@ class SinglePassAccumulator:
             np.ascontiguousarray(B_mean, dtype=np.float32),
             b_mask,
             image_size,
+            1,
             correlator.win_ctrs_x[pass_idx].astype(np.float32),
             correlator.win_ctrs_y[pass_idx].astype(np.float32),
             n_windows,
@@ -251,6 +254,7 @@ class SinglePassAccumulator:
             np.ascontiguousarray(A_mean, dtype=np.float32),
             b_mask,
             image_size,
+            1,
             correlator.win_ctrs_x[pass_idx].astype(np.float32),
             correlator.win_ctrs_y[pass_idx].astype(np.float32),
             n_windows,
@@ -276,6 +280,7 @@ class SinglePassAccumulator:
             np.ascontiguousarray(B_mean, dtype=np.float32),
             b_mask,
             image_size,
+            1,
             correlator.win_ctrs_x[pass_idx].astype(np.float32),
             correlator.win_ctrs_y[pass_idx].astype(np.float32),
             n_windows,
@@ -301,8 +306,10 @@ class SinglePassAccumulator:
 
     def finalize_pass(
         self, pass_idx: int,
+        client: Client,
         predictor_field: Optional[np.ndarray] = None,
-        output_path: Optional[Path] = None
+        output_path: Optional[Path] = None,
+
     ):
         """
         Finalize a single pass with single-pass optimization.
@@ -340,7 +347,6 @@ class SinglePassAccumulator:
             temp_piv_results.add_pass(pr)
 
         logging.info(f"Pass {pass_idx + 1}: Applying single-pass optimization")
-
         # Step 1: Compute mean warped images
         A_mean = pass_data["sum_warp_A"] / N
         B_mean = pass_data["sum_warp_B"] / N
@@ -350,15 +356,16 @@ class SinglePassAccumulator:
         R_BB_raw = pass_data["sum_corr_BB"] / N
         R_AB_raw = pass_data["sum_corr_AB"] / N
 
+
         # Step 3: Correlate means for background subtraction
         R_AA_bg, R_BB_bg, R_AB_bg = self._correlate_mean_images(A_mean, B_mean, pass_idx)
-
 
         # Step 4: Background subtraction (SINGLE-PASS OPTIMIZATION)
         #         R_ensemble = <A⋆B> - <A>⋆<B>
         R_AA_ensemble = R_AA_raw - R_AA_bg
         R_BB_ensemble = R_BB_raw - R_BB_bg
         R_AB_ensemble = R_AB_raw - R_AB_bg
+
 
         # Step 5: Get configuration for this pass
         win_size = pass_data["win_size"]
@@ -377,33 +384,88 @@ class SinglePassAccumulator:
             pass_idx, total_windows, self.config, temp_piv_results,
             n_win_x, n_win_y
         )
+        logging.info(f"Sigma dict: {sigma_dict}")
 
         # Flatten mask for fitting
         if self.vector_masks and pass_idx < len(self.vector_masks):
             mask_flat = self.vector_masks[pass_idx].ravel(order='C').astype(bool)
+            logging.info(f"mask shape: {self.vector_masks[pass_idx].shape}, flat shape: {mask_flat.shape}")
         else:
             mask_flat = np.zeros(total_windows, dtype=bool)
 
         # Pure OpenMP Gaussian fitting (no Dask overhead)
         # The C library uses OpenMP internally for parallel fitting
-        from pivtools_cli.piv.piv_backend.gaussian_fitting import fit_windows_openmp
+
 
         logging.info(f"Pass {pass_idx + 1}: Starting OpenMP Gaussian fitting...")
+        n_workers = len(client.scheduler_info()['workers'])
+        workers = list(client.scheduler_info()["workers"].keys())
+        windows_per_worker = (total_windows + n_workers - 1) // n_workers
+        R_AA_futures = []
+        R_BB_futures = []
+        R_AB_futures = []
+        mask_flat_futures = []
+        sigma_dict_futures = [{} for _ in range(n_workers)]
+        for worker_idx in range(n_workers):
+            start_idx = worker_idx * windows_per_worker * win_size[0] * win_size[1]
+            end_idx = min(
+                (worker_idx + 1) * windows_per_worker * win_size[0] * win_size[1],
+                R_AA_ensemble.size,
+            )
+            start_idx_win = worker_idx * windows_per_worker
+            end_idx_win = min(
+                (worker_idx + 1) * windows_per_worker,
+                total_windows,
+            )
 
-        gauss_flat, status_flat, initial_guess_flat = fit_windows_openmp(
-            R_AA_ensemble,
-            R_BB_ensemble,
-            R_AB_ensemble,
-            mask_flat,
-            sigma_dict,
-            corr_size,
-            self.config,
-            pass_idx,
-            # num_threads=None means use ALL CPU cores (not limited by Dask worker settings)
-            # This is appropriate because finalize_pass() runs on the main process
-            # after all Dask workers have returned their results
-            num_threads=None,
-        )
+            R_AA_futures.append(client.scatter(
+                R_AA_ensemble[start_idx:end_idx],
+                broadcast=False,
+            ))
+            R_BB_futures.append(client.scatter(
+                R_BB_ensemble[start_idx:end_idx],
+                broadcast=False,
+            ))
+            R_AB_futures.append(client.scatter(
+                R_AB_ensemble[start_idx:end_idx],
+                broadcast=False,
+            ))
+            mask_flat_futures.append(client.scatter(
+                mask_flat[start_idx_win:end_idx_win],
+                broadcast=False,
+            ))
+
+                    
+                
+            for k, v in sigma_dict.items():
+                if v is not None:
+                    sigma_dict_futures[worker_idx][k]=client.scatter(
+                        v[start_idx_win:end_idx_win],
+                        broadcast=False,
+                    )
+                    logging.info(f"Worker {worker_idx}: sigma_dict[{k}] shape: {v.shape}")
+                else:
+                    sigma_dict_futures[worker_idx][k]=None
+
+
+            from pivtools_cli.piv.piv_backend.gaussian_fitting import fit_windows_openmp
+            futures = [
+    client.submit(
+        fit_windows_openmp,
+        R_AA_futures[i],
+        R_BB_futures[i],
+        R_AB_futures[i],
+        mask_flat_futures[i],
+        sigma_dict_futures[i],
+        corr_size,
+        self.config,
+        pass_idx,
+    ) for i in range(len(R_AA_futures))]
+
+        results = client.gather(futures) 
+        gauss_flat = np.concatenate([r[0] for r in results])
+        status_flat = np.concatenate([r[1] for r in results])
+        initial_guess_flat = np.concatenate([r[2] for r in results])
 
         # Release large arrays after fitting
         if not (hasattr(self.config, 'ensemble_store_planes') and self.config.ensemble_store_planes):
@@ -467,7 +529,6 @@ class SinglePassAccumulator:
         # Extract peak positions from fitted Gaussian centers (16-param layout)
         x0_AB = gauss_results[:, :, 14].astype(np.float32)  # X position of AB peak
         y0_AB = gauss_results[:, :, 15].astype(np.float32)  # Y position of AB peak
-
         # Compute displacements as offset from window center
         ux_mat = x0_AB - win_center_x  # X displacement in pixels
         uy_mat = y0_AB - win_center_y  # Y displacement in pixels
@@ -787,6 +848,54 @@ class SinglePassAccumulator:
         logging.info(f"Pass {pass_idx + 1}: Finalization complete")
 
         return pass_result
+    
+def fit_chunk(window_slice, R_AA_ensemble, R_BB_ensemble, R_AB_ensemble,
+              mask_flat, sigma_dict, corr_size, config, pass_idx, num_windows):
+    """
+    Fit a subset of windows using fit_windows_openmp.
+
+    Parameters
+    ----------
+    window_slice : tuple
+        (start, end) indices of the flattened windows to process
+    R_AA_ensemble, R_BB_ensemble, R_AB_ensemble : np.ndarray
+        Flattened correlation planes
+    mask_flat : np.ndarray
+        Flattened mask
+    sigma_dict : dict
+        Signal variance arrays
+    corr_size : list
+        Window size
+    config : object
+        Config object
+    pass_idx : int
+        Pass index
+    num_windows : int
+        Number of windows in this chunk
+    """
+    from pivtools_cli.piv.piv_backend.gaussian_fitting import fit_windows_openmp
+    start, end = window_slice
+    logging.info(f"Fitting windows {start} to {end} (total {end - start}) using OpenMP")
+
+    R_AA_chunk = R_AA_ensemble[start:end]
+    R_BB_chunk = R_BB_ensemble[start:end]
+    R_AB_chunk = R_AB_ensemble[start:end]
+    mask_chunk = mask_flat[start:end]
+
+    gauss_flat, status_flat, initial_guess_flat = fit_windows_openmp(
+        R_AA_chunk,
+        R_BB_chunk,
+        R_AB_chunk,
+        mask_chunk,
+        sigma_dict,
+        corr_size,
+        config,
+        pass_idx,
+        num_windows=num_windows,
+        num_threads=None,  # or limit per worker
+    )
+
+    return gauss_flat, status_flat, initial_guess_flat
 
     def get_ensemble_result(self) -> PIVEnsembleResult:
         """

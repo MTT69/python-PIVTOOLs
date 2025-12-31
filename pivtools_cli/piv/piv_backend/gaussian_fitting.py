@@ -6,6 +6,7 @@ in ensemble PIV processing.
 """
 
 import ctypes
+import logging
 
 import cv2
 import numpy as np
@@ -24,6 +25,7 @@ def _load_marquadt_lib():
         return _marquadt_lib
     import ctypes
     import os
+    import logging
 
     lib_extension = ".dll" if os.name == "nt" else ".so"
 
@@ -45,7 +47,7 @@ def _load_marquadt_lib():
         raise FileNotFoundError(
             f"Marquadt library not found. Tried paths: {possible_paths}"
         )
-
+    logging.info(f"Loading Marquadt library from: {marquadt_libpath}")
     marquadt_lib = ctypes.CDLL(marquadt_libpath)
 
     # Set up ctypes bindings for the offset control function
@@ -700,85 +702,6 @@ def _build_initial_guess(
     return initial_guess, real_corr
 
 
-def _set_omp_threads(num_threads: int) -> int:
-    """
-    Set OpenMP thread count at runtime.
-
-    Uses omp_set_num_threads() if available, otherwise falls back to
-    environment variable. Returns the actual thread count that was set.
-
-    Parameters
-    ----------
-    num_threads : int
-        Number of threads to use
-
-    Returns
-    -------
-    int
-        The number of threads that was set
-    """
-    import os
-    import ctypes
-    import sys
-    import logging
-
-    logger = logging.getLogger(__name__)
-
-    # Always set environment variable FIRST (before any library loads)
-    os.environ["OMP_NUM_THREADS"] = str(num_threads)
-
-    # Try to call omp_set_num_threads directly for already-loaded libraries
-    try:
-        if sys.platform == "darwin":
-            # macOS: gcc-15 uses libgomp, try multiple paths
-            gomp_paths = [
-                "/opt/homebrew/lib/gcc/15/libgomp.dylib",  # Homebrew ARM64
-                "/opt/homebrew/lib/gcc/current/libgomp.dylib",
-                "/usr/local/lib/gcc/15/libgomp.dylib",  # Homebrew Intel
-                "libgomp.1.dylib",  # System search path
-            ]
-            for path in gomp_paths:
-                try:
-                    libgomp = ctypes.CDLL(path, mode=ctypes.RTLD_GLOBAL)
-                    libgomp.omp_set_num_threads(ctypes.c_int(num_threads))
-                    logger.debug(f"Set OMP threads via {path}")
-                    return num_threads
-                except OSError:
-                    continue
-
-            # Try libomp (Apple's OpenMP from Xcode or llvm)
-            omp_paths = [
-                "/opt/homebrew/opt/libomp/lib/libomp.dylib",
-                "/usr/local/opt/libomp/lib/libomp.dylib",
-                "libomp.dylib",
-            ]
-            for path in omp_paths:
-                try:
-                    libomp = ctypes.CDLL(path, mode=ctypes.RTLD_GLOBAL)
-                    libomp.omp_set_num_threads(ctypes.c_int(num_threads))
-                    logger.debug(f"Set OMP threads via {path}")
-                    return num_threads
-                except OSError:
-                    continue
-
-        elif sys.platform.startswith("linux"):
-            # Linux: try libgomp
-            try:
-                libgomp = ctypes.CDLL("libgomp.so.1", mode=ctypes.RTLD_GLOBAL)
-                libgomp.omp_set_num_threads(ctypes.c_int(num_threads))
-                return num_threads
-            except OSError:
-                pass
-
-        # Fallback: environment variable only (already set above)
-        logger.debug(f"Using OMP_NUM_THREADS={num_threads} (env var only)")
-        return num_threads
-
-    except Exception as e:
-        logger.debug(f"Could not set OMP threads directly: {e}")
-        return num_threads
-
-
 def _build_initial_guesses_vectorized(
     R_AA: np.ndarray,
     R_BB: np.ndarray,
@@ -790,7 +713,9 @@ def _build_initial_guesses_vectorized(
     x_guess: float,
     y_guess: float,
     pass_idx: int,
-    config,
+    config: Config,
+    num_windows:int,
+
 ) -> tuple:
     """
     Vectorized initial guess generation for all valid windows.
@@ -834,9 +759,9 @@ def _build_initial_guesses_vectorized(
 
     # Extract valid windows in batch
     # Shape: (n_valid, n_per_window)
-    AA_valid = R_AA.reshape(total_windows, n_per_window)[valid_indices]
-    BB_valid = R_BB.reshape(total_windows, n_per_window)[valid_indices]
-    AB_valid = R_AB.reshape(total_windows, n_per_window)[valid_indices]
+    AA_valid = R_AA.reshape(num_windows, n_per_window)[valid_indices]
+    BB_valid = R_BB.reshape(num_windows, n_per_window)[valid_indices]
+    AB_valid = R_AB.reshape(num_windows, n_per_window)[valid_indices]
 
     # Reshape to 3D for spatial operations: (n_valid, win_h, win_w)
     AA_3d = AA_valid.reshape(n_valid, win_h, win_w)
@@ -896,6 +821,10 @@ def _build_initial_guesses_vectorized(
         sigma_AB_xy = np.zeros(n_valid, dtype=np.float64)
     else:
         # Pass > 0: Use interpolated values from previous pass
+        import logging
+        logging.info(f"Keys in sigma_dict: {list(sigma_dict.keys())}")
+        logging.info(f"sigma_dict sig_AB_x sample: {sigma_dict['sig_AB_x'][:5] if sigma_dict['sig_AB_x'] is not None else None} ")
+        logging.info(f"Shapes in sigma_dict: {[sigma_dict[key].shape if sigma_dict[key] is not None else None for key in sigma_dict.keys()]}")
         sigma_A_x = sigma_dict['sig_A_x'][valid_indices].astype(np.float64)
         sigma_A_y = sigma_dict['sig_A_y'][valid_indices].astype(np.float64)
         sigma_A_xy = sigma_dict['sig_A_xy'][valid_indices].astype(np.float64) if sigma_dict['sig_A_xy'] is not None else np.zeros(n_valid)
@@ -1057,6 +986,7 @@ def fit_windows_openmp(
     config,
     pass_idx: int,
     num_threads: int = None,
+
 ) -> tuple:
     """
     Fit Gaussian peaks using pure OpenMP (no Dask overhead).
@@ -1119,11 +1049,16 @@ def fit_windows_openmp(
     else:
         # Default to all available cores, not Dask's omp_threads setting
         omp_threads = os.cpu_count() or 4
-
+    R_AA = np.asarray(R_AA)
+    R_BB = np.asarray(R_BB)
+    R_AB = np.asarray(R_AB)
+    mask_flat = np.asarray(mask_flat)
+    num_windows = len(mask_flat)
+    
+    if sigma_dict is not None:
+        sigma_dict = {k: np.asarray(v) if v is not None else None for k, v in sigma_dict.items()}
     # Use the proper thread setter (calls omp_set_num_threads if available)
     actual_threads = _set_omp_threads(omp_threads)
-    logger.info(f"fit_windows_openmp: Using {actual_threads} OpenMP threads (all CPU cores)")
-
     # Load library AFTER setting thread count
     marquadt_lib = _load_marquadt_lib()
 
@@ -1133,6 +1068,7 @@ def fit_windows_openmp(
     X1, X2, central_index, x_guess, y_guess = _get_pass_grid(pass_idx, config)
 
     # Find valid (non-masked) windows
+    mask_flat = np.asarray(mask_flat) 
     valid_indices = np.where(~mask_flat)[0]
     n_valid = len(valid_indices)
 
@@ -1148,10 +1084,10 @@ def fit_windows_openmp(
     n_per_window = win_size[0] * win_size[1]
 
     # Build initial guesses using vectorized implementation (much faster)
-    logger.debug(f"fit_windows_openmp: Building initial guesses (vectorized)...")
+    logger.debug(f"fit_windows_openmp: Building initial guesses (vectorized)...{num_windows}")
     initial_guesses_valid, y_all = _build_initial_guesses_vectorized(
         R_AA, R_BB, R_AB, valid_indices, sigma_dict, win_size,
-        central_index, x_guess, y_guess, pass_idx, config
+        central_index, x_guess, y_guess, pass_idx, config, num_windows=num_windows
     )
 
     # Allocate result arrays

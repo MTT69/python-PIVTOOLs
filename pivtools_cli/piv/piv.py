@@ -21,9 +21,9 @@ def _batch_policy(config: Config) -> int:
         return 1
 
 
-def _process_and_save_single_pair(
-    image_pair: da.Array,
-    frame_number: int,
+def _process_and_save_batch(
+    image_batch: da.Array,
+    start_img_idx: int,
     config: Config,
     scattered_masks,
     scattered_cache,
@@ -63,14 +63,19 @@ def _process_and_save_single_pair(
         Path to the saved file.
     """
     # Process PIV
-    piv_result = _piv_single_pass(image_pair, config, scattered_masks, scattered_cache)
-    
+    piv_results = _piv_inst_batch(image_batch, config, scattered_masks, scattered_cache)
+
     # Save immediately to avoid accumulating results in memory
-    saved_path = save_piv_result_distributed(
-        piv_result, output_path, frame_number, runs_to_save, vector_format
-    )
-    
-    return saved_path
+    #saved_paths = []
+    #for frame_number, result in enumerate(piv_result.passes):
+    logging.info(f"Piv result length: {len(piv_results)}")
+    for i,piv_result in enumerate(piv_results):
+        img_idx = start_img_idx + i
+        saved_paths = save_piv_result_distributed(
+            piv_result, output_path,img_idx, runs_to_save, vector_format
+        )
+
+    return saved_paths
 
 
 def perform_piv_and_save(
@@ -161,7 +166,7 @@ def perform_piv_and_save(
     # Dask scheduler will distribute to workers efficiently
     # Each worker will process tasks one-by-one as they become available
     futures = client.map(
-        _process_and_save_single_pair,
+        _process_and_save_batch,
         delayed_blocks,  # List of delayed tasks
         frame_numbers,
         config=config,
@@ -189,7 +194,7 @@ def perform_piv_and_save(
     return all_saved_paths, scattered_cache
 
 
-def _piv_single_pass(
+def _piv_inst_batch(
     image_block: da.Array,
     config: Config,
     vector_masks: Optional[List[np.ndarray]] = None,
@@ -200,9 +205,10 @@ def _piv_single_pass(
         if hasattr(image_block, 'compute'):
             image_block = image_block.compute()
 
-        if image_block.ndim == 3:
+        #if image_block.ndim == 3:
             # Shape: (2, H, W)
-            image_block = image_block[np.newaxis, ...]  # Shape: (1, 2, H, W)
+        #    image_block = image_block[np.newaxis, ...]  # Shape: (1, 2, H, W)
+        logging.info(f"Starting PIV processing for image block with shape {image_block.shape}")
         correlator = make_correlator_backend(config, precomputed_cache=correlator_cache)
         piv_results = correlator.correlate_batch(image_block, config=config, vector_masks=vector_masks)
     except Exception as e:

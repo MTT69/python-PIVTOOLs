@@ -1722,9 +1722,7 @@ video:
     @property
     def dask_threads_per_worker(self):
         """Return number of threads per Dask worker."""
-        if self.auto_compute_params:
-            return self._get_auto_compute_params()["dask_threads_per_worker"]
-        return self.data.get("processing", {}).get("dask_threads_per_worker", 1)
+        return 1
 
     @property
     def dask_memory_limit(self):
@@ -2532,8 +2530,71 @@ video:
         if type_name not in allowed:
             return False, f"Type name '{type_name}' not allowed for {tool}. Allowed: {allowed}"
         return True, ""
+    
+    @property
+    def cluster_type(self):
+        cluster_type = (
+            self.data.get("processing", {}).get("cluster_type", "local").lower()
+        )
+        if cluster_type not in ["local", "slurm"]:
+            raise ValueError("cluster_type must be 'local' or 'slurm'")
+        return cluster_type
 
+    @property
+    def n_nodes(self):
+        if self.cluster_type == "slurm":
+            n_nodes = self.data.get("processing", {}).get("slurm", {}).get("nnodes", None)
+            if n_nodes is None:
+                raise ValueError("n_nodes must be set for Slurm cluster")
+            return int(n_nodes)
+        else:
+            return None
 
+    @property
+    def slurm_walltime(self):
+        if self.cluster_type == "slurm":
+            walltime = self.data.get("processing", {}).get("slurm", {}).get("walltime", "01:00:00")
+            return walltime
+        else:
+            return None
+    @property
+    def slurm_memory_limit(self):
+        if self.cluster_type == "slurm":
+            mem_limit = self.data.get("processing", {}).get("slurm", {}).get("memory_limit", "100GB")
+            return mem_limit
+        else:
+            return None
+
+    @property
+    def slurm_partition(self):
+        if self.cluster_type == "slurm":
+            partition = self.data.get("processing", {}).get("slurm", {}).get("partition", "normal")
+            return partition
+        else:
+            return None
+    @property
+    def slurm_interface(self):
+        if self.cluster_type == "slurm":
+            interface = self.data.get("processing", {}).get("slurm", {}).get("interface", "ib0")
+            return interface
+        else:
+            return None
+    @property
+    def slurm_job_extra(self):
+        if self.cluster_type == "slurm":
+            job_extra = self.data.get("processing", {}).get("slurm", {}).get("job_extra", [])
+            return job_extra
+        else:
+            return None
+        
+    @property
+    def slurm_job_prologue(self):
+        if self.cluster_type == "slurm":
+            prologue = self.data.get("processing", {}).get("slurm", {}).get("prologue", [])
+            return prologue
+        else:
+            return None
+        
 def get_config(refresh: bool = False) -> Config:
     """Return shared Config instance. Pass refresh=True to reload from disk."""
     global _CONFIG

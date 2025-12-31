@@ -11,6 +11,11 @@ Entry point for ensemble PIV with true Dask patterns:
 Usage:
     python -m pivtools_core.ensemble
 """
+from pivtools_core.config import Config
+import os
+config = Config()
+omp_threads = str(config.omp_threads)
+os.environ["OMP_NUM_THREADS"] = omp_threads
 
 import gc
 import logging
@@ -21,11 +26,8 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
-import numpy as np
-import dask.array as da
 from dask.distributed import Client
 
-from pivtools_core.config import Config
 from pivtools_core.validation import (
     validate_config,
     log_validation_result,
@@ -250,7 +252,7 @@ def run_ensemble_piv(
         logger.info("  Finalizing pass...")
         accumulator.accumulate_batch(accumulated, pass_idx=pass_idx)
         pass_result = accumulator.finalize_pass(
-            pass_idx, predictor_field, output_path
+            client=client, pass_idx=pass_idx, predictor_field=predictor_field, output_path=output_path
         )
         # NOTE: finalize_pass() already appends to passes_results internally
 
@@ -305,7 +307,7 @@ def main():
     start_time = time.time()
 
     # Load configuration
-    config = Config()
+    #config = Config()
 
     # Validate configuration
     is_valid, error_msg, warnings = validate_config(config)
@@ -324,11 +326,10 @@ def main():
         # Start Dask cluster
         logger.info("Starting Dask cluster...")
         cluster, client = start_cluster(
-            n_workers_per_node=config.dask_workers_per_node,
-            threads_per_worker=config.dask_threads_per_worker,
-            memory_limit=config.dask_memory_limit,
+            #n_workers_per_node=config.dask_workers_per_node,
+            #memory_limit=config.dask_memory_limit,
             config=config,
-            worker_omp_threads=worker_omp_threads,
+            #worker_omp_threads=worker_omp_threads,
         )
         _cluster = cluster
         _client = client

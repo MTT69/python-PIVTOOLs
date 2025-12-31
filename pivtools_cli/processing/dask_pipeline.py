@@ -488,7 +488,7 @@ def scatter_immutable_data(
 
 def correlate_and_save_batch(
     batch: np.ndarray,
-    start_frame: int,
+    start_img_idx: int,
     config: Config,
     scattered_cache: dict,
     scattered_masks: Optional[List[np.ndarray]],
@@ -504,7 +504,7 @@ def correlate_and_save_batch(
 
     Args:
         batch: Image batch of shape (N, 2, H, W)
-        start_frame: Frame number of first pair (1-indexed)
+        start_img_idx: Frame number of first pair (1-indexed)
         config: Configuration object
         scattered_cache: Pre-scattered correlator cache
         scattered_masks: Pre-scattered vector masks
@@ -515,17 +515,13 @@ def correlate_and_save_batch(
     Returns:
         List of saved file paths
     """
-    from pivtools_cli.piv.piv import _process_and_save_single_pair
+    from pivtools_cli.piv.piv import _process_and_save_batch
 
     saved_paths = []
-    n_pairs = batch.shape[0]
 
-    for i in range(n_pairs):
-        frame_number = start_frame + i
-
-        path = _process_and_save_single_pair(
-            batch[i],
-            frame_number,
+    saved_paths = _process_and_save_batch(
+            batch,
+            start_img_idx,
             config,
             scattered_masks,
             scattered_cache,
@@ -533,7 +529,7 @@ def correlate_and_save_batch(
             runs_to_save,
             vector_format,
         )
-        saved_paths.append(path)
+    #saved_paths.append(path)
 
     return saved_paths
 

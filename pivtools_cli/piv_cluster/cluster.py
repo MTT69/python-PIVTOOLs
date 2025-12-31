@@ -6,26 +6,58 @@ from pathlib import Path
 from typing import List, Tuple
 
 from dask.distributed import Client, LocalCluster
-
+from dask_jobqueue import SLURMCluster
 from pivtools_core.config import Config
 
 
 def make_cluster(
-    threads_per_worker: int = 1,  # None,
-    n_workers_per_node: int = 2,
-    memory_limit: str = "auto",
-) -> Tuple[LocalCluster, Client]:
-    cluster = LocalCluster(
-        n_workers=n_workers_per_node,
-        threads_per_worker=threads_per_worker,
-        memory_limit=memory_limit,
-        # Disable nanny to avoid restart attempts on Ctrl+C
-        # Nanny is useful for long-running production clusters, but for
-        # batch PIV processing we want clean shutdown on interrupt
-        nanny=False,
-    )
-    client = Client(cluster)
-    return cluster, client
+    config: Config,
+) -> Tuple[object, Client]:
+    """
+    Create a Dask cluster (local or Slurm) based on config.cluster_type.
+
+    Returns:
+        cluster: Dask Cluster object
+        client: Dask Client
+    """
+    if getattr(config, "cluster_type", "local") == "local":
+        cluster = LocalCluster(
+            n_workers=config.dask_workers_per_node,
+            threads_per_worker=1,
+            memory_limit=config.dask_memory_limit,
+            nanny=False,
+            processes=True,
+            config={"distributed.worker.profile.enabled": False},
+            dashboard_address=":8788"
+        )
+        client = Client(cluster)
+        logging.info(f"Local Dask cluster started with {len(cluster.workers)} workers.")
+        return cluster, client
+    elif config.cluster_type == "slurm":
+        if not hasattr(config, "n_nodes"):
+            raise ValueError("config.n_nodes must be set for Slurm cluster")
+        import socket
+        cluster = SLURMCluster(
+            queue=config.slurm_partition,
+            walltime=config.slurm_walltime,
+            cores=1,
+            processes=config.dask_workers_per_node,
+            memory=config.slurm_memory_limit,
+            interface=config.slurm_interface,
+            job_extra=config.slurm_job_extra,
+            job_script_prologue=config.slurm_job_prologue,
+            scheduler_options={"host": socket.gethostname()},
+            )
+
+        if config.n_nodes is not None:
+            cluster.scale(jobs=config.n_nodes)
+
+            client = Client(cluster)
+            return cluster, client
+    else:
+        raise ValueError(f"Unknown cluster_type: {config.cluster_type}")
+    
+
 
 
 def group_workers_by_host(client: Client) -> dict[str, List[str]]:
@@ -46,7 +78,6 @@ def select_workers_per_node(client: Client, n_workers_per_node: int = 1) -> List
 
 def start_cluster(
     n_workers_per_node: int = 1,
-    threads_per_worker: int = None,
     memory_limit: str = "auto",
     config: Config = Config(),
     worker_omp_threads: str = None,
@@ -63,9 +94,7 @@ def start_cluster(
 
     try:
         cluster, client = make_cluster(
-            n_workers_per_node=n_workers_per_node,
-            threads_per_worker=threads_per_worker,
-            memory_limit=memory_limit,
+            config= config#n_workers_per_node=n_workers_per_node,
         )
         client.run(
             setup_worker_logging,

@@ -10,6 +10,11 @@ Entry point for instantaneous PIV with true Dask patterns:
 Usage:
     python -m pivtools_core.instantaneous
 """
+from pivtools_core.config import Config
+import os
+config = Config()
+omp_threads = str(config.omp_threads)
+os.environ["OMP_NUM_THREADS"] = omp_threads
 
 import gc
 import logging
@@ -158,7 +163,7 @@ def run_instantaneous_piv(
     images = images.persist()
     # NOTE: No wait() here! Dask handles dependencies automatically.
     # Correlation tasks will start as soon as their specific chunk is ready.
-
+    logging.info(f"Images shape{images.shape}")
     # 6. Submit correlation tasks using futures_of for proper dependency tracking
     from dask.distributed import futures_of
     block_futures = futures_of(images)
@@ -172,7 +177,6 @@ def run_instantaneous_piv(
     for chunk_idx, block_future in enumerate(block_futures):
         # Calculate frame number for this chunk
         chunk_start = sum(images.chunks[0][:chunk_idx])
-
         # Submit correlation task with explicit future dependency
         future = client.submit(
             correlate_and_save_batch,
@@ -217,8 +221,6 @@ def main():
     """Main entry point for instantaneous PIV processing."""
     start_time = time.time()
 
-    # Load configuration
-    config = Config()
 
     # Validate configuration
     is_valid, error_msg, warnings = validate_config(config)
@@ -238,7 +240,6 @@ def main():
         logger.info("Starting Dask cluster...")
         cluster, client = start_cluster(
             n_workers_per_node=config.dask_workers_per_node,
-            threads_per_worker=config.dask_threads_per_worker,
             memory_limit=config.dask_memory_limit,
             config=config,
             worker_omp_threads=worker_omp_threads,

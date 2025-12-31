@@ -27,6 +27,7 @@ classifiers = [
 dependencies = [
     # Core dependencies
     "dask[distributed]==2025.7.0",
+    "dask-jobqueue",
     "dask-image",
     "loguru==0.7.3",
     "numpy==2.2.6",
