@@ -168,15 +168,18 @@ def check_video_data_availability(
     camera: int,
     num_frame_pairs: int,
     vector_format: str,
+    is_stereo: bool = False,
+    stereo_camera_pair: Optional[tuple] = None,
 ) -> Dict[str, Any]:
     """
     Check what data sources are available for video creation.
-    Returns availability info for calibrated, uncalibrated, merged, and inst_stats data.
+    Returns availability info for calibrated, uncalibrated, merged, stereo, and inst_stats data.
     """
     available = {
         "calibrated": {"exists": False, "frame_count": 0, "path": None},
         "uncalibrated": {"exists": False, "frame_count": 0, "path": None},
         "merged": {"exists": False, "frame_count": 0, "path": None},
+        "stereo": {"exists": False, "frame_count": 0, "path": None, "camera_pair": None},
         "inst_stats": {"exists": False, "frame_count": 0, "path": None},
     }
 
@@ -220,25 +223,48 @@ def check_video_data_availability(
     except Exception as e:
         logger.debug(f"Error checking uncalibrated data: {e}")
 
-    # Check merged instantaneous
-    try:
-        merged_paths = get_data_paths(
-            base_dir=base_path,
-            num_frame_pairs=num_frame_pairs,
-            cam=camera,
-            type_name="instantaneous",
-            use_uncalibrated=False,
-            use_merged=True,
-        )
-        merged_data_dir = Path(merged_paths["data_dir"])
-        if merged_data_dir.exists():
-            frame_count = len(list(merged_data_dir.glob("[0-9]*.mat")))
-            if frame_count > 0:
-                available["merged"]["exists"] = True
-                available["merged"]["frame_count"] = frame_count
-                available["merged"]["path"] = str(merged_data_dir)
-    except Exception as e:
-        logger.debug(f"Error checking merged data: {e}")
+    # Check merged instantaneous (only if not stereo setup)
+    if not is_stereo:
+        try:
+            merged_paths = get_data_paths(
+                base_dir=base_path,
+                num_frame_pairs=num_frame_pairs,
+                cam=camera,
+                type_name="instantaneous",
+                use_uncalibrated=False,
+                use_merged=True,
+            )
+            merged_data_dir = Path(merged_paths["data_dir"])
+            if merged_data_dir.exists():
+                frame_count = len(list(merged_data_dir.glob("[0-9]*.mat")))
+                if frame_count > 0:
+                    available["merged"]["exists"] = True
+                    available["merged"]["frame_count"] = frame_count
+                    available["merged"]["path"] = str(merged_data_dir)
+        except Exception as e:
+            logger.debug(f"Error checking merged data: {e}")
+
+    # Check stereo instantaneous (only if stereo setup with camera pair)
+    if is_stereo and stereo_camera_pair:
+        try:
+            stereo_paths = get_data_paths(
+                base_dir=base_path,
+                num_frame_pairs=num_frame_pairs,
+                cam=stereo_camera_pair[0],
+                type_name="instantaneous",
+                use_stereo=True,
+                stereo_camera_pair=stereo_camera_pair,
+            )
+            stereo_data_dir = Path(stereo_paths["data_dir"])
+            if stereo_data_dir.exists():
+                frame_count = len(list(stereo_data_dir.glob("[0-9]*.mat")))
+                if frame_count > 0:
+                    available["stereo"]["exists"] = True
+                    available["stereo"]["frame_count"] = frame_count
+                    available["stereo"]["path"] = str(stereo_data_dir)
+                    available["stereo"]["camera_pair"] = list(stereo_camera_pair)
+        except Exception as e:
+            logger.debug(f"Error checking stereo data: {e}")
 
     # Check instantaneous statistics
     try:
@@ -356,16 +382,23 @@ def check_data_sources():
                 "error": f"Base path does not exist: {base_path}"
             }), 404
 
+        is_stereo = cfg.is_stereo_setup
+        stereo_camera_pair = cfg.stereo_pairs[0] if cfg.stereo_pairs else None
+
         available = check_video_data_availability(
             base_path=base_path,
             camera=camera,
             num_frame_pairs=cfg.num_frame_pairs,
             vector_format=cfg.vector_format,
+            is_stereo=is_stereo,
+            stereo_camera_pair=stereo_camera_pair,
         )
 
         # Determine default data source
         default_source = None
-        if available["merged"]["exists"]:
+        if is_stereo and available["stereo"]["exists"]:
+            default_source = "stereo"
+        elif available["merged"]["exists"]:
             default_source = "merged"
         elif available["calibrated"]["exists"]:
             default_source = "calibrated"
@@ -381,6 +414,7 @@ def check_data_sources():
             "has_any_data": has_any_data,
             "base_path": str(base_path),
             "camera": camera,
+            "is_stereo": is_stereo,
         })
 
     except Exception as e:
@@ -663,8 +697,11 @@ def start_video():
     except (ValueError, TypeError):
         return jsonify({"error": "Invalid run number"}), 400
 
+    is_stereo = cfg.is_stereo_setup
+    stereo_camera_pair = cfg.stereo_pairs[0] if cfg.stereo_pairs else None
+
     data_source = data.get("data_source", cfg.video_data_source)
-    valid_sources = ("calibrated", "uncalibrated", "merged", "inst_stats")
+    valid_sources = ("calibrated", "uncalibrated", "merged", "stereo", "inst_stats")
     if data_source not in valid_sources:
         return jsonify({"error": f"Invalid data_source. Must be one of: {', '.join(valid_sources)}"}), 400
 
@@ -684,6 +721,8 @@ def start_video():
         camera=cam,
         num_frame_pairs=cfg.num_frame_pairs,
         vector_format=cfg.vector_format,
+        is_stereo=is_stereo,
+        stereo_camera_pair=stereo_camera_pair,
     )
 
     # For stats variables, auto-switch to inst_stats source
@@ -886,6 +925,8 @@ def start_video_batch():
 
     cfg = get_config(refresh=True)
     base_paths = cfg.base_paths
+    is_stereo = cfg.is_stereo_setup
+    stereo_camera_pair = cfg.stereo_pairs[0] if cfg.stereo_pairs else None
 
     base_path_idx = int(data.get("base_path_idx", 0))
     process_merged = bool(data.get("process_merged", False))
@@ -974,6 +1015,8 @@ def start_video_batch():
                 camera=cam_num,
                 num_frame_pairs=cfg.num_frame_pairs,
                 vector_format=cfg.vector_format,
+                is_stereo=is_stereo,
+                stereo_camera_pair=stereo_camera_pair,
             )
 
             # Determine effective data source for merged targets

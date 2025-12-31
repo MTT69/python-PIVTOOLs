@@ -299,6 +299,7 @@ def main():
                     camera_num,
                     use_uncalibrated=True,
                     base_path_idx=path_idx,
+                    piv_type="instantaneous",
                 )
 
                 # Run PIV

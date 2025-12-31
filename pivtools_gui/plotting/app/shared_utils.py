@@ -265,6 +265,19 @@ def parse_plot_params(req) -> Dict:
     use_merged = merged_raw in ("1", "true", "True", "TRUE")
     is_uncal_raw = req.args.get("is_uncalibrated", default="0", type=str)
     use_uncalibrated = is_uncal_raw in ("1", "true", "True", "TRUE")
+    is_stereo_raw = req.args.get("is_stereo", default="0", type=str)
+    use_stereo = is_stereo_raw in ("1", "true", "True", "TRUE")
+    # Camera pair for stereo (comma-separated, e.g., "1,2")
+    camera_pair_raw = req.args.get("camera_pair", default=None, type=str)
+    stereo_camera_pair = None
+    if camera_pair_raw and use_stereo:
+        try:
+            parts = camera_pair_raw.split(",")
+            stereo_camera_pair = (int(parts[0]), int(parts[1]))
+        except (ValueError, IndexError):
+            # Fall back to config stereo pairs
+            if cfg.is_stereo_setup and cfg.stereo_pairs:
+                stereo_camera_pair = cfg.stereo_pairs[0]
     type_name = req.args.get("type_name", default="instantaneous", type=str)
     frame = req.args.get("frame", default=1, type=int)
     run = req.args.get("run", default=1, type=int)
@@ -294,7 +307,7 @@ def parse_plot_params(req) -> Dict:
         custom_title = None
 
     # Validate frame number for calibrated data
-    if not use_uncalibrated and not use_merged:
+    if not use_uncalibrated and not use_merged and not use_stereo:
         if frame < 1 or frame > cfg.num_frame_pairs:
             raise ValueError(f"Frame {frame} out of range. Valid: 1-{cfg.num_frame_pairs}")
 
@@ -307,6 +320,8 @@ def parse_plot_params(req) -> Dict:
         "var": var,
         "use_merged": use_merged,
         "use_uncalibrated": use_uncalibrated,
+        "use_stereo": use_stereo,
+        "stereo_camera_pair": stereo_camera_pair,
         "lower_limit": lower_limit,
         "upper_limit": upper_limit,
         "cmap": cmap,
@@ -340,6 +355,8 @@ def validate_and_get_paths(params: Dict) -> Dict[str, Path]:
             endpoint=params["endpoint"],
             use_merged=params["use_merged"],
             use_uncalibrated=params["use_uncalibrated"],
+            use_stereo=params.get("use_stereo", False),
+            stereo_camera_pair=params.get("stereo_camera_pair"),
         )
     except Exception as e:
         logger.error(f"Path resolution failed: {e}")

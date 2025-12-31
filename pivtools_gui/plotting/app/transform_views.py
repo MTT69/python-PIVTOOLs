@@ -54,13 +54,17 @@ def transform_frame():
         camera = camera_number(data.get("camera", 1))
         frame = int(data.get("frame", 1))
         transformation = data.get("transformation", "")
-        merged_raw = data.get("merged", False)
-        merged = bool(merged_raw)
+        merged_raw = data.get("merged")
+        if merged_raw is None:
+            # Fall back to config source_endpoint
+            merged = config.transforms_source_endpoint == "merged"
+        else:
+            merged = bool(merged_raw)
         type_name = data.get("type_name", config.transforms_type_name)
 
         logger.info(
             f"transform_frame: base_path={base_path}, camera={camera}, "
-            f"frame={frame}, transformation={transformation}"
+            f"frame={frame}, transformation={transformation}, merged={merged}"
         )
 
         if not base_path:
@@ -132,11 +136,15 @@ def clear_transform():
         base_path = data.get("base_path", "")
         camera = camera_number(data.get("camera", 1))
         frame = int(data.get("frame", 1))
-        merged_raw = data.get("merged", False)
-        merged = bool(merged_raw)
+        merged_raw = data.get("merged")
+        if merged_raw is None:
+            # Fall back to config source_endpoint
+            merged = config.transforms_source_endpoint == "merged"
+        else:
+            merged = bool(merged_raw)
         type_name = data.get("type_name", config.transforms_type_name)
 
-        logger.info(f"clear_transform: base_path={base_path}, camera={camera}, frame={frame}")
+        logger.info(f"clear_transform: base_path={base_path}, camera={camera}, frame={frame}, merged={merged}")
 
         if not base_path:
             return jsonify({"success": False, "error": "base_path required"}), 400
@@ -189,12 +197,17 @@ def check_transform_status():
         JSON with has_original, pending_transformations
     """
     try:
+        config = get_config()
         base_path = request.args.get("base_path", "")
         camera = camera_number(request.args.get("camera", 1))
         frame = int(request.args.get("frame", 1))
-        merged_raw = request.args.get("merged", "0")
-        merged = merged_raw in ("1", "true", "True", "TRUE")
-        type_name = request.args.get("type_name", "instantaneous")
+        merged_raw = request.args.get("merged")
+        if merged_raw is None:
+            # Fall back to config source_endpoint
+            merged = config.transforms_source_endpoint == "merged"
+        else:
+            merged = merged_raw in ("1", "true", "True", "TRUE")
+        type_name = request.args.get("type_name", config.transforms_type_name)
 
         if not base_path:
             return jsonify({"success": False, "error": "base_path required"}), 400
@@ -252,13 +265,17 @@ def transform_all_frames():
     base_path = data.get("base_path", "")
     source_camera = camera_number(data.get("camera", 1))
     source_frame = int(data.get("frame", 1))
-    merged_raw = data.get("merged", False)
-    merged = bool(merged_raw)
+    merged_raw = data.get("merged")
+    if merged_raw is None:
+        # Fall back to config source_endpoint
+        merged = config.transforms_source_endpoint == "merged"
+    else:
+        merged = bool(merged_raw)
     type_name = data.get("type_name", config.transforms_type_name)
 
     logger.info(
         f"transform_all_frames: base_path={base_path}, "
-        f"source_camera={source_camera}, source_frame={source_frame}"
+        f"source_camera={source_camera}, source_frame={source_frame}, merged={merged}"
     )
 
     if not base_path:

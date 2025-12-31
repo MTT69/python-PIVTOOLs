@@ -69150,3 +69150,402 @@ TypeError: unsupported operand type(s) for /: 'PosixPath' and 'bool'
 2025-12-16 14:30:16,875 [INFO] 127.0.0.1 - - [16/Dec/2025 14:30:16] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=10&var=ux&var_source=inst&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
 2025-12-16 14:30:17,029 [INFO] 127.0.0.1 - - [16/Dec/2025 14:30:17] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=11&var=ux&var_source=inst&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
 2025-12-16 14:30:17,194 [INFO] 127.0.0.1 - - [16/Dec/2025 14:30:17] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=12&var=ux&var_source=inst&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:45:32,025 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-17 10:45:32,026 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:32] "GET /backend/config HTTP/1.1" 200 -
+2025-12-17 10:45:32,027 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:32] "[33mGET /apple-touch-icon-precomposed.png HTTP/1.1[0m" 404 -
+2025-12-17 10:45:32,027 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:32] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2025-12-17 10:45:32,028 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:32] "[33mGET /apple-touch-icon.png HTTP/1.1[0m" 404 -
+2025-12-17 10:45:32,652 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:32] "POST /backend/validate_files HTTP/1.1" 200 -
+2025-12-17 10:45:35,772 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:35] "GET /backend/config HTTP/1.1" 200 -
+2025-12-17 10:45:35,786 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:35] "POST /backend/update_config HTTP/1.1" 200 -
+2025-12-17 10:45:35,789 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:35] "GET /backend/statistics/constraints HTTP/1.1" 200 -
+2025-12-17 10:45:35,799 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:35] "GET /backend/plot/check_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&camera=1&merged=0&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 10:45:35,799 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:35] "GET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&merged=0&is_uncalibrated=0&type_name=instantaneous HTTP/1.1" 200 -
+2025-12-17 10:45:35,940 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:35] "GET /backend/plot/check_all_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&camera=1&merged=0&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 10:45:35,989 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:35] "GET /backend/plot/check_available_data?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1 HTTP/1.1" 200 -
+2025-12-17 10:45:36,050 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:36] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&var=ux&var_source=inst&cmap=default&run=1&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:45:36,064 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:36] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&var=ux&var_source=inst&cmap=default&run=4&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:45:36,166 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:36] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&var=ux&var_source=inst&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:45:38,411 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:38] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&frame=1&var=ux&var_source=inst&run=3&merged=0&x_percent=0.6672556393144756&y_percent=0.5687883339376687&xlim_min=-18.770312641445983&xlim_max=128.82238000199948&ylim_min=-128.81923882905903&ylim_max=18.76976460494916 HTTP/1.1" 200 -
+2025-12-17 10:45:39,258 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:39] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&frame=1&var=ux&var_source=inst&run=3&merged=0&x_percent=0.13121664555829074&y_percent=0.7834075673543124&xlim_min=-18.770312641445983&xlim_max=128.82238000199948&ylim_min=-128.81923882905903&ylim_max=18.76976460494916 HTTP/1.1" 200 -
+2025-12-17 10:45:42,489 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:42] "POST /backend/update_config HTTP/1.1" 200 -
+2025-12-17 10:45:42,499 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:42] "GET /backend/plot/check_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&camera=1&merged=0&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-12-17 10:45:42,500 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:42] "GET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&merged=0&is_uncalibrated=1&type_name=instantaneous HTTP/1.1" 200 -
+2025-12-17 10:45:42,545 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:42] "GET /backend/plot/check_all_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&camera=1&merged=0&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-12-17 10:45:42,721 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:42] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&var=ux&var_source=inst&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:45:42,755 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:42] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&var=ux&var_source=inst&cmap=default&run=4&camera=1&merged=0&is_uncalibrated=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:45:45,611 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:45] "POST /backend/update_config HTTP/1.1" 200 -
+2025-12-17 10:45:45,613 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:45] "[33mGET /backend/plot/plot_ensemble?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&var=ens:ux&cmap=default&run=4&camera=1&merged=0&is_uncalibrated=0 HTTP/1.1[0m" 404 -
+2025-12-17 10:45:45,613 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:45] "GET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&merged=0&is_uncalibrated=0&type_name=ensemble HTTP/1.1" 200 -
+2025-12-17 10:45:45,720 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:45] "GET /backend/plot/check_all_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&camera=1&merged=0&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 10:45:45,727 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:45] "GET /backend/plot/plot_ensemble?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&var=ens:ux&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 10:45:49,642 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:49] "POST /backend/update_config HTTP/1.1" 200 -
+2025-12-17 10:45:49,649 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:49] "GET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&merged=0&is_uncalibrated=1&type_name=ensemble HTTP/1.1" 200 -
+2025-12-17 10:45:49,690 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:49] "GET /backend/plot/check_all_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&camera=1&merged=0&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-12-17 10:45:49,762 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:49] "GET /backend/plot/plot_ensemble?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&var=ens:ux&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-12-17 10:45:56,117 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:56] "POST /backend/update_config HTTP/1.1" 200 -
+2025-12-17 10:45:56,123 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:56] "GET /backend/plot/check_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&camera=1&merged=0&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 10:45:56,124 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:56] "GET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&merged=0&is_uncalibrated=0&type_name=instantaneous HTTP/1.1" 200 -
+2025-12-17 10:45:56,364 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:56] "GET /backend/plot/check_all_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&camera=1&merged=0&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 10:45:56,398 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:56] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&var=ux&var_source=inst&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:45:56,454 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:56] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&var=ux&var_source=ens&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:45:56,489 [INFO] 127.0.0.1 - - [17/Dec/2025 10:45:56] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&var=ux&var_source=inst&cmap=default&run=4&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:50:20,412 [INFO] 127.0.0.1 - - [17/Dec/2025 10:50:20] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&frame=1&var=ux&var_source=inst&run=4&merged=0&x_percent=0.3528075681740364&y_percent=0.8457589127391831&xlim_min=-19.356229302483214&xlim_max=129.40818126015267&ylim_min=-129.40498807690892&ylim_max=19.355679410695302 HTTP/1.1" 200 -
+2025-12-17 10:53:39,366 [INFO] 127.0.0.1 - - [17/Dec/2025 10:53:39] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&frame=1&var=ux&var_source=inst&run=4&merged=0&x_percent=0.34225561947804856&y_percent=0.942694731013561&xlim_min=-19.356229302483214&xlim_max=129.40818126015267&ylim_min=-129.40498807690892&ylim_max=19.355679410695302 HTTP/1.1" 200 -
+2025-12-17 10:53:46,047 [INFO] 127.0.0.1 - - [17/Dec/2025 10:53:46] "POST /backend/update_config HTTP/1.1" 200 -
+2025-12-17 10:53:46,567 [INFO] 127.0.0.1 - - [17/Dec/2025 10:53:46] "POST /backend/validate_files HTTP/1.1" 200 -
+2025-12-17 10:53:54,060 [INFO] 127.0.0.1 - - [17/Dec/2025 10:53:54] "GET /backend/config HTTP/1.1" 200 -
+2025-12-17 10:53:54,086 [INFO] 127.0.0.1 - - [17/Dec/2025 10:53:54] "POST /backend/update_config HTTP/1.1" 200 -
+2025-12-17 10:53:54,086 [INFO] 127.0.0.1 - - [17/Dec/2025 10:53:54] "GET /backend/statistics/constraints HTTP/1.1" 200 -
+2025-12-17 10:53:54,097 [INFO] 127.0.0.1 - - [17/Dec/2025 10:53:54] "GET /backend/plot/check_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&camera=1&merged=0&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 10:53:54,098 [INFO] 127.0.0.1 - - [17/Dec/2025 10:53:54] "GET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&merged=0&is_uncalibrated=0&type_name=instantaneous HTTP/1.1" 200 -
+2025-12-17 10:53:54,293 [INFO] 127.0.0.1 - - [17/Dec/2025 10:53:54] "GET /backend/plot/check_all_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&camera=1&merged=0&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 10:53:54,320 [INFO] 127.0.0.1 - - [17/Dec/2025 10:53:54] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&var=ux&var_source=inst&cmap=default&run=1&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:53:54,336 [INFO] 127.0.0.1 - - [17/Dec/2025 10:53:54] "GET /backend/plot/check_available_data?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1 HTTP/1.1" 200 -
+2025-12-17 10:53:54,361 [INFO] 127.0.0.1 - - [17/Dec/2025 10:53:54] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&var=ux&var_source=inst&cmap=default&run=4&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:53:54,440 [INFO] 127.0.0.1 - - [17/Dec/2025 10:53:54] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&var=ux&var_source=inst&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:53:57,552 [INFO] 127.0.0.1 - - [17/Dec/2025 10:53:57] "POST /backend/update_config HTTP/1.1" 200 -
+2025-12-17 10:53:57,557 [INFO] 127.0.0.1 - - [17/Dec/2025 10:53:57] "GET /backend/plot/check_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&camera=1&merged=1&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 10:53:57,558 [INFO] 127.0.0.1 - - [17/Dec/2025 10:53:57] "GET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&merged=1&is_uncalibrated=0&type_name=instantaneous HTTP/1.1" 200 -
+2025-12-17 10:53:57,560 [INFO] 127.0.0.1 - - [17/Dec/2025 10:53:57] "GET /backend/plot/check_all_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&camera=1&merged=1&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 10:53:57,724 [INFO] 127.0.0.1 - - [17/Dec/2025 10:53:57] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&var=ux&var_source=inst&cmap=default&run=3&camera=1&merged=1&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:53:57,785 [INFO] 127.0.0.1 - - [17/Dec/2025 10:53:57] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&var=ux&var_source=inst&cmap=default&run=4&camera=1&merged=1&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:54:07,103 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:07] "POST /backend/plot/transform_frame HTTP/1.1" 200 -
+2025-12-17 10:54:07,116 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:07] "GET /backend/plot/check_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&camera=1&merged=1&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 10:54:07,261 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:07] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&var=ux&var_source=inst&cmap=default&run=4&camera=1&merged=1&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:54:10,104 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:10] "POST /backend/plot/transform_all_frames HTTP/1.1" 200 -
+2025-12-17 10:54:10,112 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:10] "GET /backend/plot/transform_all_frames/status/transform_20251217_105410_9f2eff HTTP/1.1" 200 -
+2025-12-17 10:54:11,118 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:11] "GET /backend/plot/transform_all_frames/status/transform_20251217_105410_9f2eff HTTP/1.1" 200 -
+2025-12-17 10:54:12,123 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:12] "GET /backend/plot/transform_all_frames/status/transform_20251217_105410_9f2eff HTTP/1.1" 200 -
+2025-12-17 10:54:13,130 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:13] "GET /backend/plot/transform_all_frames/status/transform_20251217_105410_9f2eff HTTP/1.1" 200 -
+2025-12-17 10:54:14,137 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:14] "GET /backend/plot/transform_all_frames/status/transform_20251217_105410_9f2eff HTTP/1.1" 200 -
+2025-12-17 10:54:14,153 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:14] "GET /backend/plot/check_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&camera=1&merged=1&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 10:54:14,287 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:14] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&var=ux&var_source=inst&cmap=default&run=3&camera=1&merged=1&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:54:16,147 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:16] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&frame=1&var=ux&var_source=inst&run=4&merged=1&x_percent=0.190307558255823&y_percent=0.32257515751047944&xlim_min=-18.76976460494916&xlim_max=128.81923882905903&ylim_min=-18.770312641445983&ylim_max=128.82238000199948 HTTP/1.1" 200 -
+2025-12-17 10:54:21,260 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:21] "POST /backend/update_config HTTP/1.1" 200 -
+2025-12-17 10:54:21,265 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:21] "GET /backend/plot/check_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&camera=1&merged=0&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 10:54:21,265 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:21] "GET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&merged=0&is_uncalibrated=0&type_name=instantaneous HTTP/1.1" 200 -
+2025-12-17 10:54:21,402 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:21] "GET /backend/plot/check_all_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&camera=1&merged=0&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 10:54:21,419 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:21] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&var=ux&var_source=inst&cmap=default&run=4&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:54:26,623 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:26] "POST /backend/update_config HTTP/1.1" 200 -
+2025-12-17 10:54:26,633 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:26] "GET /backend/plot/check_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&camera=1&merged=0&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-12-17 10:54:26,633 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:26] "GET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&merged=0&is_uncalibrated=1&type_name=instantaneous HTTP/1.1" 200 -
+2025-12-17 10:54:26,716 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:26] "GET /backend/plot/check_all_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&camera=1&merged=0&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-12-17 10:54:26,811 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:26] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&var=ux&var_source=inst&cmap=default&run=4&camera=1&merged=0&is_uncalibrated=1&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:54:30,306 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:30] "POST /backend/update_config HTTP/1.1" 200 -
+2025-12-17 10:54:30,307 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:30] "GET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&merged=0&is_uncalibrated=0&type_name=ensemble HTTP/1.1" 200 -
+2025-12-17 10:54:30,307 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:30] "[33mGET /backend/plot/plot_ensemble?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&var=ens:ux&cmap=default&run=4&camera=1&merged=0&is_uncalibrated=0 HTTP/1.1[0m" 404 -
+2025-12-17 10:54:30,399 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:30] "GET /backend/plot/check_all_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&camera=1&merged=0&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 10:54:30,409 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:30] "GET /backend/plot/plot_ensemble?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&var=ens:ux&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 10:54:33,720 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:33] "GET /backend/plot/plot_ensemble?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&var=ens:ux&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 10:54:34,342 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:34] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&frame=1&var=ux&var_source=ens&run=3&merged=0&x_percent=0.06368417390396826&y_percent=0.027630659396442568&xlim_min=-18.76976460494916&xlim_max=128.81923882905903&ylim_min=-18.770312641445983&ylim_max=128.82238000199948 HTTP/1.1" 200 -
+2025-12-17 10:54:37,974 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:37] "POST /backend/update_config HTTP/1.1" 200 -
+2025-12-17 10:54:37,979 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:37] "GET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&merged=0&is_uncalibrated=1&type_name=ensemble HTTP/1.1" 200 -
+2025-12-17 10:54:38,030 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:38] "GET /backend/plot/check_all_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&camera=1&merged=0&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-12-17 10:54:38,082 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:38] "GET /backend/plot/plot_ensemble?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&var=ens:ux&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=1 HTTP/1.1" 200 -
+2025-12-17 10:54:41,694 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:41] "POST /backend/update_config HTTP/1.1" 200 -
+2025-12-17 10:54:41,703 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:41] "GET /backend/plot/check_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&camera=1&merged=1&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 10:54:41,704 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:41] "GET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&merged=1&is_uncalibrated=0&type_name=instantaneous HTTP/1.1" 200 -
+2025-12-17 10:54:41,706 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:41] "GET /backend/plot/check_all_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&camera=1&merged=1&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 10:54:41,974 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:41] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&var=ux&var_source=inst&cmap=default&run=3&camera=1&merged=1&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:54:42,051 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:42] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&var=ux&var_source=ens&cmap=default&run=3&camera=1&merged=1&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:54:42,083 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:42] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&var=ux&var_source=inst&cmap=default&run=4&camera=1&merged=1&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:54:47,014 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:47] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=2&var=ux&var_source=inst&cmap=default&run=4&camera=1&merged=1&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:54:47,191 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:47] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=3&var=ux&var_source=inst&cmap=default&run=4&camera=1&merged=1&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:54:47,353 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:47] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=4&var=ux&var_source=inst&cmap=default&run=4&camera=1&merged=1&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:54:47,527 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:47] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=5&var=ux&var_source=inst&cmap=default&run=4&camera=1&merged=1&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:54:47,714 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:47] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=6&var=ux&var_source=inst&cmap=default&run=4&camera=1&merged=1&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:54:47,895 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:47] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=7&var=ux&var_source=inst&cmap=default&run=4&camera=1&merged=1&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:54:48,072 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:48] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=8&var=ux&var_source=inst&cmap=default&run=4&camera=1&merged=1&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:54:48,249 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:48] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=9&var=ux&var_source=inst&cmap=default&run=4&camera=1&merged=1&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:54:48,430 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:48] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=10&var=ux&var_source=inst&cmap=default&run=4&camera=1&merged=1&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:54:48,612 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:48] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=11&var=ux&var_source=inst&cmap=default&run=4&camera=1&merged=1&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:54:48,788 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:48] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=12&var=ux&var_source=inst&cmap=default&run=4&camera=1&merged=1&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:54:48,961 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:48] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=13&var=ux&var_source=inst&cmap=default&run=4&camera=1&merged=1&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:54:51,326 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:51] "POST /backend/update_config HTTP/1.1" 200 -
+2025-12-17 10:54:51,327 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:51] "GET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&merged=1&is_uncalibrated=0&type_name=ensemble HTTP/1.1" 200 -
+2025-12-17 10:54:51,327 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:51] "[33mGET /backend/plot/plot_ensemble?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&var=ens:ux&cmap=default&run=4&camera=1&merged=1&is_uncalibrated=0 HTTP/1.1[0m" 404 -
+2025-12-17 10:54:51,421 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:51] "GET /backend/plot/plot_ensemble?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&var=ens:ux&cmap=default&run=3&camera=1&merged=1&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 10:54:58,006 [INFO] 127.0.0.1 - - [17/Dec/2025 10:54:58] "[31m[1mPOST /backend/plot/transform_all_frames HTTP/1.1[0m" 400 -
+2025-12-17 10:55:03,788 [INFO] 127.0.0.1 - - [17/Dec/2025 10:55:03] "GET /backend/plot/plot_ensemble?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&var=ens:ux&cmap=default&run=3&camera=1&merged=1&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 10:55:23,193 [INFO] 127.0.0.1 - - [17/Dec/2025 10:55:23] "POST /backend/plot/transform_frame HTTP/1.1" 200 -
+2025-12-17 10:55:23,286 [INFO] 127.0.0.1 - - [17/Dec/2025 10:55:23] "GET /backend/plot/plot_ensemble?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&var=ens:ux&cmap=default&run=3&camera=1&merged=1&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 10:55:34,480 [INFO] 127.0.0.1 - - [17/Dec/2025 10:55:34] "POST /backend/plot/clear_transform HTTP/1.1" 200 -
+2025-12-17 10:55:34,572 [INFO] 127.0.0.1 - - [17/Dec/2025 10:55:34] "GET /backend/plot/plot_ensemble?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&var=ens:ux&cmap=default&run=3&camera=1&merged=1&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 10:55:40,371 [INFO] 127.0.0.1 - - [17/Dec/2025 10:55:40] "POST /backend/plot/transform_frame HTTP/1.1" 200 -
+2025-12-17 10:55:40,538 [INFO] 127.0.0.1 - - [17/Dec/2025 10:55:40] "GET /backend/plot/plot_ensemble?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&var=ens:ux&cmap=default&run=3&camera=1&merged=1&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 10:55:41,683 [INFO] 127.0.0.1 - - [17/Dec/2025 10:55:41] "POST /backend/plot/transform_all_frames HTTP/1.1" 200 -
+2025-12-17 10:55:41,706 [INFO] 127.0.0.1 - - [17/Dec/2025 10:55:41] "GET /backend/plot/transform_all_frames/status/transform_20251217_105541_b33b79 HTTP/1.1" 200 -
+2025-12-17 10:55:42,713 [INFO] 127.0.0.1 - - [17/Dec/2025 10:55:42] "GET /backend/plot/transform_all_frames/status/transform_20251217_105541_b33b79 HTTP/1.1" 200 -
+2025-12-17 10:55:42,728 [INFO] 127.0.0.1 - - [17/Dec/2025 10:55:42] "GET /backend/plot/check_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&camera=1&merged=1&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 10:55:42,857 [INFO] 127.0.0.1 - - [17/Dec/2025 10:55:42] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&var=ux&var_source=ens&cmap=default&run=3&camera=1&merged=1&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:55:45,496 [INFO] 127.0.0.1 - - [17/Dec/2025 10:55:45] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&frame=13&var=ux&var_source=ens&run=3&merged=1&x_percent=0.36335951687002427&y_percent=0.7085054114185434&xlim_min=-18.76976460494916&xlim_max=128.81923882905903&ylim_min=-18.770312641445983&ylim_max=128.82238000199948 HTTP/1.1" 200 -
+2025-12-17 10:55:46,268 [INFO] 127.0.0.1 - - [17/Dec/2025 10:55:46] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&frame=13&var=ux&var_source=ens&run=3&merged=1&x_percent=0.36335951687002427&y_percent=0.9093187660911402&xlim_min=-18.76976460494916&xlim_max=128.81923882905903&ylim_min=-18.770312641445983&ylim_max=128.82238000199948 HTTP/1.1" 200 -
+2025-12-17 10:55:50,208 [INFO] 127.0.0.1 - - [17/Dec/2025 10:55:50] "POST /backend/update_config HTTP/1.1" 200 -
+2025-12-17 10:55:50,213 [INFO] 127.0.0.1 - - [17/Dec/2025 10:55:50] "GET /backend/plot/check_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&camera=1&merged=1&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 10:55:50,217 [INFO] 127.0.0.1 - - [17/Dec/2025 10:55:50] "GET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&merged=1&is_uncalibrated=0&type_name=instantaneous HTTP/1.1" 200 -
+2025-12-17 10:55:50,436 [INFO] 127.0.0.1 - - [17/Dec/2025 10:55:50] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=13&var=ux&var_source=ens&cmap=default&run=3&camera=1&merged=1&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:55:50,504 [INFO] 127.0.0.1 - - [17/Dec/2025 10:55:50] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=13&var=ux&var_source=inst&cmap=default&run=3&camera=1&merged=1&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:55:50,537 [INFO] 127.0.0.1 - - [17/Dec/2025 10:55:50] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=13&var=ux&var_source=inst&cmap=default&run=4&camera=1&merged=1&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 10:57:06,117 [INFO] 127.0.0.1 - - [17/Dec/2025 10:57:06] "POST /backend/update_config HTTP/1.1" 200 -
+2025-12-17 10:57:06,121 [INFO] 127.0.0.1 - - [17/Dec/2025 10:57:06] "[33mGET /backend/plot/plot_ensemble?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&var=ens:ux&cmap=default&run=4&camera=1&merged=1&is_uncalibrated=0 HTTP/1.1[0m" 404 -
+2025-12-17 10:57:06,121 [INFO] 127.0.0.1 - - [17/Dec/2025 10:57:06] "GET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&merged=1&is_uncalibrated=0&type_name=ensemble HTTP/1.1" 200 -
+2025-12-17 10:57:06,225 [INFO] 127.0.0.1 - - [17/Dec/2025 10:57:06] "GET /backend/plot/plot_ensemble?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&var=ens:ux&cmap=default&run=3&camera=1&merged=1&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 11:01:55,714 [INFO] 127.0.0.1 - - [17/Dec/2025 11:01:55] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&frame=13&var=ux&var_source=ens&run=3&merged=1&x_percent=0.9964764386292977&y_percent=0.9320031140199458&xlim_min=-18.770312641445983&xlim_max=128.82238000199948&ylim_min=-128.81923882905903&ylim_max=18.76976460494916 HTTP/1.1" 200 -
+2025-12-17 11:02:04,445 [INFO] 127.0.0.1 - - [17/Dec/2025 11:02:04] "GET /backend/calibration/config HTTP/1.1" 200 -
+2025-12-17 11:02:04,452 [INFO] 127.0.0.1 - - [17/Dec/2025 11:02:04] "GET /backend/config HTTP/1.1" 200 -
+2025-12-17 11:02:04,970 [INFO] 127.0.0.1 - - [17/Dec/2025 11:02:04] "POST /backend/calibration/config HTTP/1.1" 200 -
+2025-12-17 11:02:04,992 [INFO] 127.0.0.1 - - [17/Dec/2025 11:02:04] "POST /backend/update_config HTTP/1.1" 200 -
+2025-12-17 11:02:05,006 [INFO] 127.0.0.1 - - [17/Dec/2025 11:02:05] "POST /backend/calibration/planar/validate HTTP/1.1" 200 -
+2025-12-17 11:02:08,259 [INFO] 127.0.0.1 - - [17/Dec/2025 11:02:08] "GET /backend/calibration/config HTTP/1.1" 200 -
+2025-12-17 11:02:08,780 [INFO] 127.0.0.1 - - [17/Dec/2025 11:02:08] "POST /backend/update_config HTTP/1.1" 200 -
+2025-12-17 11:02:08,795 [INFO] 127.0.0.1 - - [17/Dec/2025 11:02:08] "POST /backend/calibration/validate_images HTTP/1.1" 200 -
+2025-12-17 11:02:10,722 [INFO] 127.0.0.1 - - [17/Dec/2025 11:02:10] "GET /backend/calibration/config HTTP/1.1" 200 -
+2025-12-17 11:02:10,729 [INFO] 127.0.0.1 - - [17/Dec/2025 11:02:10] "GET /backend/config HTTP/1.1" 200 -
+2025-12-17 11:02:11,243 [INFO] 127.0.0.1 - - [17/Dec/2025 11:02:11] "POST /backend/calibration/config HTTP/1.1" 200 -
+2025-12-17 11:02:11,260 [INFO] 127.0.0.1 - - [17/Dec/2025 11:02:11] "POST /backend/update_config HTTP/1.1" 200 -
+2025-12-17 11:02:11,271 [INFO] 127.0.0.1 - - [17/Dec/2025 11:02:11] "POST /backend/calibration/planar/validate HTTP/1.1" 200 -
+2025-12-17 11:02:11,884 [INFO] 127.0.0.1 - - [17/Dec/2025 11:02:11] "POST /backend/update_config HTTP/1.1" 200 -
+2025-12-17 11:20:22,139 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-17 11:20:22,140 [INFO] 127.0.0.1 - - [17/Dec/2025 11:20:22] "GET /backend/config HTTP/1.1" 200 -
+2025-12-17 11:20:22,145 [INFO] 127.0.0.1 - - [17/Dec/2025 11:20:22] "GET /grid.svg HTTP/1.1" 200 -
+2025-12-17 11:20:22,664 [INFO] 127.0.0.1 - - [17/Dec/2025 11:20:22] "POST /backend/validate_files HTTP/1.1" 200 -
+2025-12-17 11:20:26,293 [INFO] 127.0.0.1 - - [17/Dec/2025 11:20:26] "GET /backend/config HTTP/1.1" 200 -
+2025-12-17 11:20:26,307 [INFO] 127.0.0.1 - - [17/Dec/2025 11:20:26] "POST /backend/update_config HTTP/1.1" 200 -
+2025-12-17 11:20:26,308 [INFO] 127.0.0.1 - - [17/Dec/2025 11:20:26] "GET /backend/statistics/constraints HTTP/1.1" 200 -
+2025-12-17 11:20:26,316 [INFO] 127.0.0.1 - - [17/Dec/2025 11:20:26] "GET /backend/plot/check_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&camera=1&merged=0&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 11:20:26,316 [INFO] 127.0.0.1 - - [17/Dec/2025 11:20:26] "GET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&merged=0&is_uncalibrated=0&type_name=instantaneous HTTP/1.1" 200 -
+2025-12-17 11:20:26,490 [INFO] 127.0.0.1 - - [17/Dec/2025 11:20:26] "GET /backend/plot/check_all_vars?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&camera=1&merged=0&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 11:20:26,578 [INFO] 127.0.0.1 - - [17/Dec/2025 11:20:26] "GET /backend/plot/check_available_data?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1 HTTP/1.1" 200 -
+2025-12-17 11:20:26,587 [INFO] 127.0.0.1 - - [17/Dec/2025 11:20:26] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&var=ux&var_source=inst&cmap=default&run=1&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 11:20:26,592 [INFO] 127.0.0.1 - - [17/Dec/2025 11:20:26] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&var=ux&var_source=inst&cmap=default&run=4&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 11:20:26,706 [INFO] 127.0.0.1 - - [17/Dec/2025 11:20:26] "GET /backend/plot/plot_vector?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&frame=1&var=ux&var_source=inst&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=0&x_offset=0&y_offset=0 HTTP/1.1" 200 -
+2025-12-17 11:20:53,181 [INFO] 127.0.0.1 - - [17/Dec/2025 11:20:53] "POST /backend/update_config HTTP/1.1" 200 -
+2025-12-17 11:20:53,185 [INFO] 127.0.0.1 - - [17/Dec/2025 11:20:53] "GET /backend/plot/check_runs?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&merged=0&is_uncalibrated=0&type_name=ensemble HTTP/1.1" 200 -
+2025-12-17 11:20:53,286 [INFO] 127.0.0.1 - - [17/Dec/2025 11:20:53] "GET /backend/plot/plot_ensemble?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&var=ens:ux&cmap=default&run=3&camera=1&merged=0&is_uncalibrated=0 HTTP/1.1" 200 -
+2025-12-17 11:24:39,769 [INFO] 127.0.0.1 - - [17/Dec/2025 11:24:39] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&frame=1&var=ux&var_source=ens&run=3&merged=0&x_percent=0.6820283674888585&y_percent=0.8168298352639779&xlim_min=-18.76976460494916&xlim_max=128.81923882905903&ylim_min=-18.770312641445983&ylim_max=128.82238000199948 HTTP/1.1" 200 -
+2025-12-17 11:30:52,417 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-17 11:31:30,505 [INFO] 127.0.0.1 - - [17/Dec/2025 11:31:30] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&frame=1&var=ux&var_source=ens&run=3&merged=0&x_percent=0.7432296699255885&y_percent=0.5569347692030301&xlim_min=-18.76976460494916&xlim_max=128.81923882905903&ylim_min=-18.770312641445983&ylim_max=128.82238000199948 HTTP/1.1" 200 -
+2025-12-17 11:31:30,846 [INFO] 127.0.0.1 - - [17/Dec/2025 11:31:30] "GET /backend/plot/get_vector_at_position?base_path=/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/%23current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor&camera=1&frame=1&var=ux&var_source=ens&run=3&merged=0&x_percent=0.39079458347959295&y_percent=0.5885442751620664&xlim_min=-18.76976460494916&xlim_max=128.81923882905903&ylim_min=-18.770312641445983&ylim_max=128.82238000199948 HTTP/1.1" 200 -
+2025-12-17 11:32:13,569 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-17 11:32:20,379 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-17 15:29:15,476 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-17 15:29:16,477 [INFO] ================================================================================
+2025-12-17 15:29:16,477 [INFO] VALIDATING CONFIGURATION
+2025-12-17 15:29:16,477 [INFO] ================================================================================
+2025-12-17 15:29:16,477 [ERROR] Configuration validation failed!
+2025-12-17 15:29:16,477 [ERROR] ================================================================================
+2025-12-17 15:29:16,477 [ERROR] ERRORS:
+2025-12-17 15:29:16,477 [ERROR] Camera 1 path does not exist: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/Cam1
+Camera 2 path does not exist: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/Cam2
+2025-12-17 15:29:16,477 [ERROR] ================================================================================
+2025-12-17 15:29:16,477 [ERROR] 
+Please fix the configuration errors in config.yaml and try again.
+2025-12-17 15:29:37,779 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-17 15:29:38,416 [INFO] ================================================================================
+2025-12-17 15:29:38,416 [INFO] VALIDATING CONFIGURATION
+2025-12-17 15:29:38,416 [INFO] ================================================================================
+2025-12-17 15:29:38,416 [INFO] Configuration validated successfully
+2025-12-17 15:29:38,416 [INFO]   Source paths: [PosixPath('/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images')]
+2025-12-17 15:29:38,416 [INFO]   Cameras: [1]
+2025-12-17 15:29:38,416 [INFO]   Image files: 100
+2025-12-17 15:29:38,416 [INFO]   Frame pairs: 100
+2025-12-17 15:29:38,416 [INFO]   Image format: ('B%05d_A.tif', 'B%05d_B.tif')
+2025-12-17 15:29:38,416 [INFO] 
+2025-12-17 15:29:38,416 [INFO] NOTES:
+2025-12-17 15:29:38,416 [INFO]   - Camera 1: Processing subset - using 100 of 1000 available files
+2025-12-17 15:29:38,416 [INFO] ================================================================================
+2025-12-17 15:29:38,416 [INFO] 
+2025-12-17 15:29:38,416 [INFO] Starting Dask cluster...
+2025-12-17 15:29:39,457 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-17 15:29:39,457 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-17 15:29:39,457 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-17 15:29:39,470 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-17 15:29:40,173 [INFO] Worker logging configured successfully
+2025-12-17 15:29:40,173 [INFO] Worker logging configured successfully
+2025-12-17 15:29:40,173 [INFO] Worker logging configured successfully
+2025-12-17 15:29:40,173 [INFO] Worker logging configured successfully
+2025-12-17 15:29:40,174 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-12-17 15:29:40,174 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-12-17 15:29:40,174 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-12-17 15:29:40,174 [INFO] Set OMP_NUM_THREADS to 2 in worker process
+2025-12-17 15:29:40,175 [INFO] Dask cluster started successfully
+2025-12-17 15:29:40,175 [INFO] Worker tcp://127.0.0.1:52181: pid=None, host=127.0.0.1
+2025-12-17 15:29:40,175 [INFO] Worker tcp://127.0.0.1:52184: pid=None, host=127.0.0.1
+2025-12-17 15:29:40,175 [INFO] Worker tcp://127.0.0.1:52185: pid=None, host=127.0.0.1
+2025-12-17 15:29:40,175 [INFO] Worker tcp://127.0.0.1:52190: pid=None, host=127.0.0.1
+2025-12-17 15:29:40,175 [INFO] 
+2025-12-17 15:29:40,175 [INFO] ================================================================================
+2025-12-17 15:29:40,175 [INFO] ENSEMBLE PIV PROCESSING (DASK-NATIVE)
+2025-12-17 15:29:40,175 [INFO] Processing 1 path(s), 1 camera(s)
+2025-12-17 15:29:40,175 [INFO] ================================================================================
+2025-12-17 15:29:40,175 [INFO] 
+2025-12-17 15:29:40,175 [INFO] PATH SET 1 of 1
+2025-12-17 15:29:40,175 [INFO]   Source: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images
+2025-12-17 15:29:40,175 [INFO]   Base: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor
+2025-12-17 15:29:40,175 [INFO] 
+2025-12-17 15:29:40,175 [INFO] Processing camera 1...
+2025-12-17 15:29:40,176 [INFO] ============================================================
+2025-12-17 15:29:40,176 [INFO] ENSEMBLE PIV: Camera 1
+2025-12-17 15:29:40,176 [INFO]   Image files: 100
+2025-12-17 15:29:40,176 [INFO]   Frame pairs: 100
+2025-12-17 15:29:40,176 [INFO]   Batch size: 25
+2025-12-17 15:29:40,176 [INFO]   Passes: 3
+2025-12-17 15:29:40,176 [INFO]   Window sizes: [[128, 128], [64, 64], [32, 32]]
+2025-12-17 15:29:40,176 [INFO]   Output: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor/uncalibrated_piv/100/Cam1/ensemble
+2025-12-17 15:29:40,176 [INFO] ============================================================
+2025-12-17 15:29:40,176 [INFO] Loading images for camera 1...
+2025-12-17 15:29:40,178 [INFO] _detect_image_shape: image_format = ('B%05d_A.tif', 'B%05d_B.tif'), image_type = standard
+2025-12-17 15:29:40,178 [INFO] Source path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images, Camera: 1
+2025-12-17 15:29:40,178 [INFO] Camera path: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images
+2025-12-17 15:29:40,178 [INFO] Trying to read file: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/B00001_A.tif
+2025-12-17 15:29:40,221 [INFO] Detected image shape: (2048, 2048)
+2025-12-17 15:29:40,221 [INFO] Auto-detected image shape: (2048, 2048)
+2025-12-17 15:29:40,224 [INFO] Lazy loading complete: 100 independent delayed tasks created (~100 KB memory footprint)
+2025-12-17 15:29:40,224 [INFO]   Loaded: shape=(100, 2, 2048, 2048), chunks=(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
+2025-12-17 15:29:40,224 [INFO] Scattering immutable data...
+2025-12-17 15:29:40,224 [INFO] Scattering immutable data to workers...
+2025-12-17 15:29:40,225 [INFO] Loading C libraries (One-time init)...
+2025-12-17 15:29:40,638 [INFO] Cached window padding for 3 passes
+2025-12-17 15:29:40,681 [INFO] Cached interpolation grids for 3 passes
+2025-12-17 15:29:41,217 [INFO]   Scattered correlator cache (~32768.0 KB)
+2025-12-17 15:29:41,219 [INFO] Rechunking to batch_size=25...
+2025-12-17 15:29:41,220 [INFO]   Rechunked: chunks=(25, 25, 25, 25)
+2025-12-17 15:29:41,220 [INFO] Creating filter pipeline...
+2025-12-17 15:29:41,220 [INFO] Creating filter pipeline...
+2025-12-17 15:29:41,220 [INFO]   No filters configured, returning images unchanged
+2025-12-17 15:29:41,220 [INFO] Persisting filtered images on workers...
+2025-12-17 15:29:41,380 [INFO] Processing 3 passes with 4 chunks each...
+2025-12-17 15:29:41,380 [INFO] 
+2025-12-17 15:29:41,380 [INFO] ======== PASS 1/3 ========
+2025-12-17 15:29:41,381 [INFO]   Distributing 4 chunks across 4 workers...
+2025-12-17 15:29:41,382 [INFO]   (~1 chunks per worker)
+2025-12-17 15:29:41,384 [INFO]   Gathering 4 worker results...
+2025-12-17 15:29:41,749 [INFO] Loading C libraries (One-time init)...
+2025-12-17 15:29:42,050 [INFO] Loading C libraries (One-time init)...
+2025-12-17 15:29:42,652 [INFO] Loading C libraries (One-time init)...
+2025-12-17 15:29:49,623 [INFO] Loading C libraries (One-time init)...
+2025-12-17 15:29:56,568 [INFO]   Gathered 4 accumulated results
+2025-12-17 15:29:56,569 [INFO]   Final reduction on client...
+2025-12-17 15:29:56,788 [INFO]   Accumulated 100 images
+2025-12-17 15:29:56,788 [INFO]   Finalizing pass...
+2025-12-17 15:29:56,904 [INFO] Finalizing pass 1 with single-pass optimization
+2025-12-17 15:29:56,905 [INFO] Pass 1: Applying single-pass optimization
+2025-12-17 15:29:56,955 [INFO] Cached window padding for 3 passes
+2025-12-17 15:29:57,001 [INFO] Cached interpolation grids for 3 passes
+2025-12-17 15:29:57,295 [INFO] Pass 0: AA_bg after bulkxcorr2d: [1.040e+07, 1.362e+07], has_inf=False, has_nan=False
+2025-12-17 15:29:57,420 [INFO] Pass 0: BB_bg after bulkxcorr2d: [1.025e+07, 1.354e+07], has_inf=False, has_nan=False
+2025-12-17 15:29:57,420 [INFO] Pass 0: Computed background correlations from mean images
+2025-12-17 15:29:57,465 [INFO] Pass 1: Starting OpenMP Gaussian fitting...
+2025-12-17 15:29:57,473 [INFO] fit_windows_openmp: Using 10 OpenMP threads (all CPU cores)
+2025-12-17 15:29:57,473 [INFO] fit_windows_openmp: Fitting 961/961 windows (pass 1)
+2025-12-17 15:30:00,956 [INFO] fit_windows_openmp: C fitter results: 961/961 succeeded, 0 failed (0.0% C failures)
+2025-12-17 15:30:00,972 [INFO] fit_windows_openmp: Success rate 100.0% (961/961)
+2025-12-17 15:30:00,979 [INFO] Pass 1: Gaussian fitting success rate: 100.0% (961/961 non-masked windows)
+2025-12-17 15:30:00,980 [INFO] Pass 1: 0 vectors masked (set to zero)
+2025-12-17 15:30:00,982 [INFO] Pass 1: Outlier detection found 38 outliers (4.0%)
+2025-12-17 15:30:00,982 [INFO] Pass 1: Infilling 38 vectors using 'biharmonic'
+2025-12-17 15:30:01,012 [INFO] Pass 1: Post-processing complete. ux range: [9.007, 15.060], uy range: [-0.711, 0.558]
+2025-12-17 15:30:01,013 [INFO] Cached window padding for 3 passes
+2025-12-17 15:30:01,029 [INFO] Cached interpolation grids for 3 passes
+2025-12-17 15:30:14,030 [INFO] Pass 1: Saved correlation planes to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor/uncalibrated_piv/100/Cam1/ensemble/planes_pass_1.mat
+2025-12-17 15:30:14,030 [INFO] Pass 1: Finalization complete
+2025-12-17 15:30:14,069 [INFO]   Extracted predictor field for next pass
+2025-12-17 15:30:14,340 [INFO]   Pass 1 complete
+2025-12-17 15:30:14,340 [INFO] 
+2025-12-17 15:30:14,340 [INFO] ======== PASS 2/3 ========
+2025-12-17 15:30:14,346 [INFO]   Broadcast predictor field from previous pass
+2025-12-17 15:30:14,346 [INFO]   Distributing 4 chunks across 4 workers...
+2025-12-17 15:30:14,346 [INFO]   (~1 chunks per worker)
+2025-12-17 15:30:14,347 [INFO]   Gathering 4 worker results...
+2025-12-17 15:30:26,055 [INFO]   Gathered 4 accumulated results
+2025-12-17 15:30:26,055 [INFO]   Final reduction on client...
+2025-12-17 15:30:26,189 [INFO]   Accumulated 100 images
+2025-12-17 15:30:26,190 [INFO]   Finalizing pass...
+2025-12-17 15:30:26,449 [INFO] Finalizing pass 2 with single-pass optimization
+2025-12-17 15:30:26,449 [INFO] Pass 2: Applying single-pass optimization
+2025-12-17 15:30:26,484 [INFO] Cached window padding for 3 passes
+2025-12-17 15:30:26,552 [INFO] Cached interpolation grids for 3 passes
+2025-12-17 15:30:26,701 [INFO] Pass 1: AA_bg after bulkxcorr2d: [5.561e+05, 9.586e+05], has_inf=False, has_nan=False
+2025-12-17 15:30:26,733 [INFO] Pass 1: BB_bg after bulkxcorr2d: [5.613e+05, 9.611e+05], has_inf=False, has_nan=False
+2025-12-17 15:30:26,734 [INFO] Pass 1: Computed background correlations from mean images
+2025-12-17 15:30:26,785 [INFO] Pass 2: Starting OpenMP Gaussian fitting...
+2025-12-17 15:30:26,787 [INFO] fit_windows_openmp: Using 10 OpenMP threads (all CPU cores)
+2025-12-17 15:30:26,787 [INFO] fit_windows_openmp: Fitting 3969/3969 windows (pass 2)
+2025-12-17 15:30:30,364 [INFO] fit_windows_openmp: C fitter results: 3969/3969 succeeded, 0 failed (0.0% C failures)
+2025-12-17 15:30:30,385 [INFO] fit_windows_openmp: Success rate 100.0% (3969/3969)
+2025-12-17 15:30:30,393 [INFO] Pass 2: Gaussian fitting success rate: 100.0% (3969/3969 non-masked windows)
+2025-12-17 15:30:30,393 [INFO] Pass 2: Using smoothed predictor field from image warping
+2025-12-17 15:30:30,393 [INFO] Pass 2: 0 vectors masked (set to zero)
+2025-12-17 15:30:30,395 [INFO] Pass 2: Outlier detection found 126 outliers (3.2%)
+2025-12-17 15:30:30,395 [INFO] Pass 2: Infilling 126 vectors using 'biharmonic'
+2025-12-17 15:30:30,433 [INFO] Pass 2: Post-processing complete. ux range: [8.821, 14.954], uy range: [-0.470, 0.256]
+2025-12-17 15:30:30,433 [INFO] Pass 2: Storing SMOOTHED predictor field in pass result (shape: (63, 63, 2))
+2025-12-17 15:30:30,434 [INFO] Cached window padding for 3 passes
+2025-12-17 15:30:30,452 [INFO] Cached interpolation grids for 3 passes
+2025-12-17 15:30:36,755 [INFO] Pass 2: Saved correlation planes to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor/uncalibrated_piv/100/Cam1/ensemble/planes_pass_2.mat
+2025-12-17 15:30:36,755 [INFO] Pass 2: Finalization complete
+2025-12-17 15:30:36,787 [INFO]   Extracted predictor field for next pass
+2025-12-17 15:30:37,016 [INFO]   Pass 2 complete
+2025-12-17 15:30:37,016 [INFO] 
+2025-12-17 15:30:37,016 [INFO] ======== PASS 3/3 ========
+2025-12-17 15:30:37,021 [INFO]   Broadcast predictor field from previous pass
+2025-12-17 15:30:37,021 [INFO]   Distributing 4 chunks across 4 workers...
+2025-12-17 15:30:37,021 [INFO]   (~1 chunks per worker)
+2025-12-17 15:30:37,022 [INFO]   Gathering 4 worker results...
+2025-12-17 15:30:56,928 [INFO]   Gathered 4 accumulated results
+2025-12-17 15:30:56,929 [INFO]   Final reduction on client...
+2025-12-17 15:30:57,062 [INFO]   Accumulated 100 images
+2025-12-17 15:30:57,062 [INFO]   Finalizing pass...
+2025-12-17 15:30:57,258 [INFO] Finalizing pass 3 with single-pass optimization
+2025-12-17 15:30:57,258 [INFO] Pass 3: Applying single-pass optimization
+2025-12-17 15:30:57,326 [INFO] Cached window padding for 3 passes
+2025-12-17 15:30:57,359 [INFO] Cached interpolation grids for 3 passes
+2025-12-17 15:30:57,571 [INFO] Pass 2: AA_bg after bulkxcorr2d: [3.585e+04, 1.099e+05], has_inf=False, has_nan=False
+2025-12-17 15:30:57,624 [INFO] Pass 2: BB_bg after bulkxcorr2d: [3.775e+04, 1.103e+05], has_inf=False, has_nan=False
+2025-12-17 15:30:57,624 [INFO] Pass 2: Computed background correlations from mean images
+2025-12-17 15:30:57,699 [INFO] Pass 3: Starting OpenMP Gaussian fitting...
+2025-12-17 15:30:57,700 [INFO] fit_windows_openmp: Using 10 OpenMP threads (all CPU cores)
+2025-12-17 15:30:57,700 [INFO] fit_windows_openmp: Fitting 16129/16129 windows (pass 3)
+2025-12-17 15:31:06,293 [INFO] fit_windows_openmp: C fitter results: 16129/16129 succeeded, 0 failed (0.0% C failures)
+2025-12-17 15:31:06,402 [INFO] fit_windows_openmp: Success rate 100.0% (16129/16129)
+2025-12-17 15:31:06,408 [INFO] Pass 3: Gaussian fitting success rate: 100.0% (16129/16129 non-masked windows)
+2025-12-17 15:31:06,408 [INFO] Pass 3: Using smoothed predictor field from image warping
+2025-12-17 15:31:06,409 [INFO] Pass 3: 0 vectors masked (set to zero)
+2025-12-17 15:31:06,415 [INFO] Pass 3: Outlier detection found 284 outliers (1.8%)
+2025-12-17 15:31:06,415 [INFO] Pass 3: Infilling 284 vectors using 'biharmonic'
+2025-12-17 15:31:06,492 [INFO] Pass 3: Post-processing complete. ux range: [7.329, 14.911], uy range: [-0.383, 0.308]
+2025-12-17 15:31:06,492 [INFO] Pass 3: Storing SMOOTHED predictor field in pass result (shape: (127, 127, 2))
+2025-12-17 15:31:06,492 [INFO] Cached window padding for 3 passes
+2025-12-17 15:31:06,506 [INFO] Cached interpolation grids for 3 passes
+2025-12-17 15:31:13,425 [INFO] Pass 3: Saved correlation planes to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor/uncalibrated_piv/100/Cam1/ensemble/planes_pass_3.mat
+2025-12-17 15:31:13,425 [INFO] Pass 3: Finalization complete
+2025-12-17 15:31:13,707 [INFO]   Pass 3 complete
+2025-12-17 15:31:13,707 [INFO] 
+2025-12-17 15:31:13,707 [INFO] Building ensemble result...
+2025-12-17 15:31:13,708 [INFO] Saving ensemble result...
+2025-12-17 15:31:13,708 [WARNING] Field 'c_A' has values exceeding float16 range: max |value| = 8.83e+05, clamping to ±65504.0
+2025-12-17 15:31:13,708 [WARNING] Field 'c_B' has values exceeding float16 range: max |value| = 8.86e+05, clamping to ±65504.0
+2025-12-17 15:31:13,708 [WARNING] Field 'c_AB' has values exceeding float16 range: max |value| = 8.84e+05, clamping to ±65504.0
+2025-12-17 15:31:13,709 [WARNING] Field 'c_A' has values exceeding float16 range: max |value| = 2.04e+05, clamping to ±65504.0
+2025-12-17 15:31:13,709 [WARNING] Field 'c_B' has values exceeding float16 range: max |value| = 2.06e+05, clamping to ±65504.0
+2025-12-17 15:31:13,709 [WARNING] Field 'c_AB' has values exceeding float16 range: max |value| = 2.01e+05, clamping to ±65504.0
+2025-12-17 15:31:13,840 [INFO] Saved ensemble result to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor/uncalibrated_piv/100/Cam1/ensemble/ensemble_result.mat
+2025-12-17 15:31:13,840 [INFO] Saving coordinates...
+2025-12-17 15:31:13,842 [INFO] Cached window padding for 3 passes
+2025-12-17 15:31:13,863 [INFO] Cached interpolation grids for 3 passes
+2025-12-17 15:31:13,894 [INFO] Saved ensemble coordinates to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor/uncalibrated_piv/100/Cam1/ensemble/coordinates.mat
+2025-12-17 15:31:13,894 [INFO]   Saved to /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor/uncalibrated_piv/100/Cam1/ensemble/ensemble_result.mat
+2025-12-17 15:31:13,954 [INFO] 
+2025-12-17 15:31:13,954 [INFO] ============================================================
+2025-12-17 15:31:13,955 [INFO] ENSEMBLE PIV COMPLETE: /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor/uncalibrated_piv/100/Cam1/ensemble/ensemble_result.mat
+2025-12-17 15:31:13,955 [INFO] ============================================================
+2025-12-17 19:28:30,287 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-17 20:15:19,047 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-17 20:15:20,498 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-17 20:26:10,474 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-17 20:26:19,558 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-17 21:41:04,003 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-17 21:42:13,496 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-17 21:42:14,894 [INFO] Logging initialized. Level: INFO, File: pypiv.log
+2025-12-17 21:42:18,693 [INFO] Logging initialized. Level: INFO, File: pypiv.log

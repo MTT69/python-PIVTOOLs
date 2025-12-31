@@ -385,6 +385,7 @@ def apply_transforms_batch():
     Simplified API:
         base_path_idx: int - Single path index (default: 0)
         process_merged: bool - If true: merged only; if false: all cameras with pending transforms
+        process_stereo: bool - If true: process stereo data; if false: per-camera
         type_name: str (optional, defaults to config.transforms_type_name)
 
     NOTE: Statistics files are NOT transformed.
@@ -402,6 +403,7 @@ def apply_transforms_batch():
 
         base_path_idx = int(data.get("base_path_idx", 0))
         process_merged = bool(data.get("process_merged", False))
+        process_stereo = bool(data.get("process_stereo", False))
         type_name = data.get("type_name", config.transforms_type_name)
 
         # Validate path index
@@ -420,14 +422,32 @@ def apply_transforms_batch():
                 "error": "No pending transformations to apply"
             }), 400
 
-        # Build targets based on process_merged flag
+        # Build targets based on process_merged/process_stereo flags
         targets = []
-        if process_merged:
+        stereo_camera_pair = None
+        if process_stereo:
+            # Process stereo data - use stereo camera pair from config
+            stereo_pairs = config.stereo_pairs
+            if stereo_pairs:
+                stereo_camera_pair = stereo_pairs[0]
+            else:
+                stereo_camera_pair = (1, 2)
+            cam_transforms = list(camera_transforms.values())[0]
+            targets.append({
+                "camera": stereo_camera_pair[0],
+                "is_merged": False,
+                "is_stereo": True,
+                "stereo_camera_pair": stereo_camera_pair,
+                "label": f"Stereo Cam{stereo_camera_pair[0]}_Cam{stereo_camera_pair[1]}",
+                "operations": cam_transforms,
+            })
+        elif process_merged:
             # Process merged data only - use first camera's transforms
             cam_transforms = list(camera_transforms.values())[0]
             targets.append({
                 "camera": None,
                 "is_merged": True,
+                "is_stereo": False,
                 "label": "Merged",
                 "operations": cam_transforms,
             })
@@ -437,6 +457,7 @@ def apply_transforms_batch():
                 targets.append({
                     "camera": cam_num,
                     "is_merged": False,
+                    "is_stereo": False,
                     "label": f"Cam{cam_num}",
                     "operations": cam_transforms,
                 })
@@ -454,8 +475,18 @@ def apply_transforms_batch():
         # Launch a job for each target
         for target in targets:
             use_merged = target["is_merged"]
+            use_stereo = target.get("is_stereo", False)
+            target_stereo_pair = target.get("stereo_camera_pair")
             cam_num = target["camera"] if target["camera"] else 1
             cam_transforms = target["operations"]
+
+            # Determine job type label
+            if use_stereo:
+                job_type = f"stereo_{target_stereo_pair[0]}_{target_stereo_pair[1]}"
+            elif use_merged:
+                job_type = "merged"
+            else:
+                job_type = f"camera_{cam_num}"
 
             # Create sub-job
             job_id = job_manager.create_job(
@@ -467,7 +498,7 @@ def apply_transforms_batch():
             )
             sub_jobs.append({
                 "job_id": job_id,
-                "type": "merged" if use_merged else f"camera_{cam_num}",
+                "type": job_type,
                 "path_idx": base_path_idx,
                 "label": target["label"],
             })
@@ -482,6 +513,8 @@ def apply_transforms_batch():
                     cam_transforms,
                     type_name,
                     use_merged,
+                    use_stereo,
+                    target_stereo_pair,
                     config,
                 ),
             )
@@ -518,11 +551,18 @@ def _run_transform_job(
     operations: list,
     type_name: str,
     use_merged: bool,
+    use_stereo: bool,
+    stereo_camera_pair,
     config,
 ):
     """Run transform job in a background thread."""
     try:
-        cam_folder = "Merged" if use_merged else f"Cam{camera}"
+        if use_stereo and stereo_camera_pair:
+            cam_folder = f"Stereo Cam{stereo_camera_pair[0]}_Cam{stereo_camera_pair[1]}"
+        elif use_merged:
+            cam_folder = "Merged"
+        else:
+            cam_folder = f"Cam{camera}"
         logger.info(f"[Transform] Starting job {job_id} for {cam_folder}")
 
         job_manager.update_job(job_id, status="running")
@@ -536,6 +576,8 @@ def _run_transform_job(
             type_name=type_name,
             config=config,
             use_merged=use_merged,
+            use_stereo=use_stereo,
+            stereo_camera_pair=stereo_camera_pair,
         )
 
         def progress_callback(info):

@@ -20,7 +20,7 @@ from typing import Dict, Tuple
 import ctypes
 
 # Reuse functions from the main test
-from test_gaussian_fitting import (
+from PyPIVTools.tests.test_gaussian_fitting import (
     generate_2d_gaussian,
     generate_stacked_planes,
     _load_marquadt_lib,

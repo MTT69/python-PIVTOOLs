@@ -123,12 +123,26 @@ def calculate_statistics():
         # Build targets based on workflow
         targets = []
         if workflow == "stereo":
-            # Stereo: single combined 3D result, use camera 1 path
-            targets.append({
-                "camera": 1,
-                "is_merged": False,
-                "label": "Stereo",
-            })
+            # Stereo: single combined 3D result, use stereo path structure
+            stereo_pairs = cfg.stereo_pairs
+            if stereo_pairs:
+                cam_pair = stereo_pairs[0]
+                targets.append({
+                    "camera": cam_pair[0],  # Reference camera
+                    "camera_pair": cam_pair,
+                    "is_merged": False,
+                    "is_stereo": True,
+                    "label": f"Stereo Cam{cam_pair[0]}_Cam{cam_pair[1]}",
+                })
+            else:
+                # Fallback if no stereo pairs configured
+                targets.append({
+                    "camera": 1,
+                    "camera_pair": (1, 2),
+                    "is_merged": False,
+                    "is_stereo": True,
+                    "label": "Stereo Cam1_Cam2",
+                })
         elif workflow == "after_merge":
             # Process merged data only
             targets.append({
@@ -171,6 +185,8 @@ def calculate_statistics():
         # Launch a job for each target
         for target in targets:
             use_merged = target["is_merged"]
+            use_stereo = target.get("is_stereo", False)
+            stereo_camera_pair = target.get("camera_pair")
             cam_num = target["camera"] if target["camera"] else 1
 
             target_paths = get_data_paths(
@@ -179,6 +195,8 @@ def calculate_statistics():
                 cam=cam_num,
                 type_name=type_name,
                 use_merged=use_merged,
+                use_stereo=use_stereo,
+                stereo_camera_pair=stereo_camera_pair,
             )
 
             data_dir = target_paths["data_dir"]

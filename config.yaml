@@ -116,7 +116,8 @@ statistics:
     inst_stresses: true
   gamma_radius: 4
   save_figures: true
-  type_name: instantaneous
+  type_name: ensemble
+  source_endpoint: regular
 instantaneous_piv:
   window_size:
   - - 128
@@ -266,12 +267,13 @@ masking:
     left: 0
     right: 0
 merging:
-  type_name: instantaneous
+  type_name: ensemble
   base_path_idx: 0
 transforms:
   base_path_idx: 0
-  type_name: instantaneous
+  type_name: ensemble
   cameras:
     1:
       operations:
-      - rotate_90_ccw
+      - rotate_90_cw
+  source_endpoint: regular

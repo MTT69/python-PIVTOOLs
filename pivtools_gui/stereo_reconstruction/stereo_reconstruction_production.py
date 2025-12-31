@@ -836,13 +836,18 @@ class StereoReconstructor:
         logger.info(f"Uncalibrated data camera {cam1}: {uncalib_dir1}")
         logger.info(f"Uncalibrated data camera {cam2}: {uncalib_dir2}")
 
-        # Output uses camera 1 as reference
+        # Output uses dedicated stereo path structure
         output_paths = get_data_paths(
-            self.base_dir, num_frame_pairs, cam1, self.type_name
+            self.base_dir,
+            num_frame_pairs,
+            cam=cam1,  # Reference camera (not used for stereo path construction)
+            type_name=self.type_name,
+            use_stereo=True,
+            stereo_camera_pair=self.camera_pair,
         )
         output_dir = output_paths["data_dir"]
         output_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Output directory: {output_dir}")
+        logger.info(f"Output directory (stereo): {output_dir}")
 
         # Check directories exist
         if not uncalib_dir1.exists():

@@ -600,7 +600,17 @@ def transform_command(args):
             sys.exit(1)
 
     type_name = args.type_name or config.transforms_type_name or "instantaneous"
-    use_merged = args.merged if args.merged else False
+
+    # Determine use_merged: CLI flag takes precedence, otherwise read from config
+    if args.merged:
+        use_merged = True
+        # Update config to persist the source_endpoint
+        config.data.setdefault("transforms", {})["source_endpoint"] = "merged"
+        config.save()
+        print("Updated config: transforms.source_endpoint = merged")
+    else:
+        # Fall back to config source_endpoint
+        use_merged = config.transforms_source_endpoint == "merged"
 
     active_paths = get_active_paths_from_args(args, config)
     if not active_paths:
@@ -736,7 +746,18 @@ def statistics_command(args):
     # Apply CLI overrides
     cameras = [args.camera] if args.camera else config.camera_numbers
     type_name = args.type_name or "instantaneous"
-    use_merged = args.merged if args.merged else False
+
+    # Determine use_merged: CLI flag takes precedence, otherwise read from config
+    if args.merged:
+        use_merged = True
+        # Update config to persist the workflow
+        config.data.setdefault("statistics", {})["workflow"] = "after_merge"
+        config.data["statistics"]["source_endpoint"] = "merged"
+        config.save()
+        print("Updated config: statistics.workflow = after_merge, statistics.source_endpoint = merged")
+    else:
+        # Fall back to config workflow
+        use_merged = config.statistics_workflow == "after_merge"
 
     active_paths = get_active_paths_from_args(args, config)
     if not active_paths:

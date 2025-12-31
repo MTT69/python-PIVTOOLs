@@ -883,7 +883,7 @@ class VideoMaker:
         Parameters
         ----------
         data_source : str
-            One of: 'calibrated', 'uncalibrated', 'merged', 'inst_stats'
+            One of: 'calibrated', 'uncalibrated', 'merged', 'stereo', 'inst_stats'
         num_frame_pairs : int
             Number of frame pairs (for path construction)
 
@@ -894,16 +894,24 @@ class VideoMaker:
         """
         num_str = str(num_frame_pairs)
 
-        if data_source == "calibrated":
+        if data_source == "stereo":
+            # Get stereo camera pair from config
+            if self._config and self._config.stereo_pairs:
+                cam_pair = self._config.stereo_pairs[0]
+            else:
+                cam_pair = (1, 2)
+            cam_pair_str = f"Cam{cam_pair[0]}_Cam{cam_pair[1]}"
+            return self.base_dir / "stereo_calibrated" / num_str / cam_pair_str / "instantaneous"
+        elif data_source == "calibrated":
             return self.base_dir / "calibrated_piv" / num_str / f"Cam{self.camera}" / "instantaneous"
         elif data_source == "uncalibrated":
             return self.base_dir / "uncalibrated_piv" / num_str / f"Cam{self.camera}" / "instantaneous"
         elif data_source == "merged":
-            return self.base_dir / "merged" / num_str / "instantaneous"
+            return self.base_dir / "calibrated_piv" / num_str / "Merged" / "instantaneous"
         elif data_source == "inst_stats":
             return self.base_dir / "statistics" / num_str / f"Cam{self.camera}" / "instantaneous" / "instantaneous_stats"
         else:
-            raise ValueError(f"Unknown data_source: {data_source}. Must be one of: calibrated, uncalibrated, merged, inst_stats")
+            raise ValueError(f"Unknown data_source: {data_source}. Must be one of: calibrated, uncalibrated, merged, stereo, inst_stats")
 
     def _get_video_dir(self, data_source: str, num_frame_pairs: int) -> Path:
         """
@@ -912,7 +920,7 @@ class VideoMaker:
         Parameters
         ----------
         data_source : str
-            One of: 'calibrated', 'uncalibrated', 'merged', 'inst_stats'
+            One of: 'calibrated', 'uncalibrated', 'merged', 'stereo', 'inst_stats'
         num_frame_pairs : int
             Number of frame pairs (for path construction)
 
@@ -923,7 +931,15 @@ class VideoMaker:
         """
         num_str = str(num_frame_pairs)
 
-        if data_source == "merged":
+        if data_source == "stereo":
+            # Get stereo camera pair from config
+            if self._config and self._config.stereo_pairs:
+                cam_pair = self._config.stereo_pairs[0]
+            else:
+                cam_pair = (1, 2)
+            cam_pair_str = f"Cam{cam_pair[0]}_Cam{cam_pair[1]}"
+            return self.base_dir / "videos" / num_str / "stereo" / cam_pair_str
+        elif data_source == "merged":
             return self.base_dir / "videos" / num_str / "merged"
         elif data_source == "inst_stats":
             return self.base_dir / "videos" / num_str / f"Cam{self.camera}" / "stats"

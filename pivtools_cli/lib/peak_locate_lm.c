@@ -566,13 +566,14 @@ static void lm_gauss6_fit(const float *xcorr, const int *N, float *peak_loc, flo
 	/* Store final results */
 	peak_loc[0] = i0;
 	peak_loc[1] = j0;
-	/* WARNING: Output parameters are swapped! sig[0]=sy, sig[1]=sx
-	 * This is confusing and should be refactored. The 6-DOF model uses
-	 * inverse covariance parameterization which differs from standard
-	 * Gaussian parameterization used in 4-DOF and 5-DOF models. */
-	sig[0] = sy;
-	sig[1] = sx;
-	sig[2] = -(sxy * (sx * sy - sxy * sxy)); /* Covariance determinant */
+	/* Output convention (consistent with 4-DOF and 5-DOF):
+	 * sig[0] = variance in row (i) direction
+	 * sig[1] = variance in col (j) direction
+	 * sig[2] = covariance term (sxy)
+	 * Note: 6-DOF uses inverse covariance parameterization (variances, not sigmas) */
+	sig[0] = sx;  /* Row direction variance */
+	sig[1] = sy;  /* Col direction variance */
+	sig[2] = sxy; /* Covariance term */
 	
 	/* Generate fitted values if requested */
 	if(fitval) {

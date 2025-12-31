@@ -7,13 +7,26 @@ import shutil
 import yaml
 
 # ===================== ENDPOINT CONSTRAINTS =====================
-# Tool-specific endpoint constraints - defines what data sources each tool can use
-TOOL_ALLOWED_ENDPOINTS = {
-    "video": ["instantaneous", "merged"],  # No ensemble (no temporal sequence)
-    "merging": ["instantaneous", "ensemble"],  # No stereo (3D vectors can't merge)
-    "statistics": ["instantaneous", "ensemble", "merged", "stereo"],
-    "transforms": ["instantaneous", "ensemble", "merged", "stereo"],
+# Tool-specific source_endpoint constraints - defines what data sources each tool can use
+# source_endpoint values: "regular" (per-camera), "merged" (multi-camera merged), "stereo" (3D stereo PIV)
+TOOL_ALLOWED_SOURCE_ENDPOINTS = {
+    "video": ["regular", "merged", "stereo"],  # All source endpoints allowed
+    "merging": ["regular"],  # Only regular (per-camera) data can be merged
+    "statistics": ["regular", "merged", "stereo"],
+    "transforms": ["regular", "merged", "stereo"],
 }
+
+# Tool-specific type_name constraints - defines what temporal types each tool can use
+# type_name values: "instantaneous" (frame-by-frame), "ensemble" (averaged result)
+TOOL_ALLOWED_TYPE_NAMES = {
+    "video": ["instantaneous"],  # No ensemble (no temporal sequence for animation)
+    "merging": ["instantaneous", "ensemble"],  # Both temporal types can be merged
+    "statistics": ["instantaneous", "ensemble"],  # Statistics on either type
+    "transforms": ["instantaneous", "ensemble"],  # Transforms on either type
+}
+
+# Legacy alias for backward compatibility
+TOOL_ALLOWED_ENDPOINTS = TOOL_ALLOWED_SOURCE_ENDPOINTS
 
 _CONFIG = None  # singleton cache
 _LOGGING_INITIALIZED = False  # Track if logging has been set up
@@ -996,9 +1009,9 @@ video:
         Returns
         -------
         str
-            Source endpoint (default 'instantaneous')
+            Source endpoint (default 'regular')
         """
-        return self.statistics.get("source_endpoint", "instantaneous")
+        return self.statistics.get("source_endpoint", "regular")
 
     @property
     def statistics_workflow(self) -> str:
@@ -1190,9 +1203,9 @@ video:
         Returns
         -------
         str
-            Source endpoint (default 'instantaneous')
+            Source endpoint (default 'regular')
         """
-        return self.video.get("source_endpoint", "instantaneous")
+        return self.video.get("source_endpoint", "regular")
 
     @property
     def videos(self):
@@ -1571,9 +1584,9 @@ video:
         Returns
         -------
         str
-            Source endpoint (default 'instantaneous')
+            Source endpoint (default 'regular')
         """
-        return self.merging.get("source_endpoint", "instantaneous")
+        return self.merging.get("source_endpoint", "regular")
 
     # --- PIV-specific properties from pypivtools ---
     @property
@@ -2409,9 +2422,9 @@ video:
         Returns
         -------
         str
-            Source endpoint (default 'instantaneous')
+            Source endpoint (default 'regular')
         """
-        return self.transforms.get("source_endpoint", "instantaneous")
+        return self.transforms.get("source_endpoint", "regular")
 
     def get_camera_folder(self, camera_num: int) -> str:
         """Get the subfolder name for a specific camera.
@@ -2459,19 +2472,34 @@ video:
         Returns
         -------
         List[str]
-            List of allowed endpoint names
+            List of allowed source endpoint names: 'regular', 'merged', 'stereo'
         """
-        return TOOL_ALLOWED_ENDPOINTS.get(tool, [])
+        return TOOL_ALLOWED_SOURCE_ENDPOINTS.get(tool, [])
+
+    def get_allowed_type_names(self, tool: str) -> List[str]:
+        """Get allowed type names for a specific tool.
+
+        Parameters
+        ----------
+        tool : str
+            Tool name: 'video', 'merging', 'statistics', 'transforms'
+
+        Returns
+        -------
+        List[str]
+            List of allowed type names: 'instantaneous', 'ensemble'
+        """
+        return TOOL_ALLOWED_TYPE_NAMES.get(tool, [])
 
     def validate_endpoint_for_tool(self, tool: str, endpoint: str) -> Tuple[bool, str]:
-        """Validate that an endpoint is allowed for a tool.
+        """Validate that a source endpoint is allowed for a tool.
 
         Parameters
         ----------
         tool : str
             Tool name: 'video', 'merging', 'statistics', 'transforms'
         endpoint : str
-            Endpoint to validate: 'instantaneous', 'ensemble', 'merged', 'stereo'
+            Source endpoint to validate: 'regular', 'merged', 'stereo'
 
         Returns
         -------
@@ -2481,7 +2509,28 @@ video:
         """
         allowed = self.get_allowed_endpoints(tool)
         if endpoint not in allowed:
-            return False, f"Endpoint '{endpoint}' not allowed for {tool}. Allowed: {allowed}"
+            return False, f"Source endpoint '{endpoint}' not allowed for {tool}. Allowed: {allowed}"
+        return True, ""
+
+    def validate_type_name_for_tool(self, tool: str, type_name: str) -> Tuple[bool, str]:
+        """Validate that a type name is allowed for a tool.
+
+        Parameters
+        ----------
+        tool : str
+            Tool name: 'video', 'merging', 'statistics', 'transforms'
+        type_name : str
+            Type name to validate: 'instantaneous', 'ensemble'
+
+        Returns
+        -------
+        Tuple[bool, str]
+            (is_valid, error_message)
+            If valid, error_message is empty string.
+        """
+        allowed = self.get_allowed_type_names(tool)
+        if type_name not in allowed:
+            return False, f"Type name '{type_name}' not allowed for {tool}. Allowed: {allowed}"
         return True, ""
 
 
