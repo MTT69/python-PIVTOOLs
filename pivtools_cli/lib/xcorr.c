@@ -140,9 +140,8 @@ unsigned xcorr_create_plan(const int *N, sPlan *pPlanStruct)
         return ERROR_NOMEM;
     }
 
-    /* initialize FFTW threads & ensure plan creations use 1 thread each */
+    /* Ensure plan creation uses 1 thread (FFTW init done by fftw_library_init) */
 #ifdef FFTW_THREADS
-    fftwf_init_threads();
     fftwf_plan_with_nthreads(1);
 #endif
 

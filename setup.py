@@ -56,7 +56,7 @@ class BuildCLib(build_ext):
 
             sdk_path = subprocess.check_output(["xcrun", "--show-sdk-path"], text=True).strip()
             print(f"Using SDK path: {sdk_path}")
-            self.extra_compile = ["-O3", "-fPIC", "-fopenmp", f"-I{self.fftw_inc}", "-isysroot", sdk_path]
+            self.extra_compile = ["-O3", "-fPIC", "-fopenmp", "-DFFTW_THREADS", f"-I{self.fftw_inc}", "-isysroot", sdk_path]
             # Link statically with FFTW .a files
             self.extra_link = ["-lm", "-fopenmp", str(fftw_lib_file), str(fftw_omp_file), "-isysroot", sdk_path]
             shared_flag = "-shared"
@@ -80,7 +80,7 @@ class BuildCLib(build_ext):
 
             compiler = "cl"
             shared_flag = "/LD"  # Create DLL
-            self.extra_compile = ["/O2", "/openmp:experimental", "/MT"]
+            self.extra_compile = ["/O2", "/openmp:experimental", "/MT", "/DFFTW_THREADS"]
             self.extra_link = [str(fftw_lib_file)]
             lib_ext = ".dll"
             use_msvc = True
@@ -102,7 +102,7 @@ class BuildCLib(build_ext):
 
             compiler = os.environ.get("CC", "gcc")
             shared_flag = "-shared"
-            self.extra_compile = ["-O3", "-fPIC", "-fopenmp", f"-I{self.fftw_inc}", f"-I{self.python_include}"]
+            self.extra_compile = ["-O3", "-fPIC", "-fopenmp", "-DFFTW_THREADS", f"-I{self.fftw_inc}", f"-I{self.python_include}"]
             # Link statically with FFTW .a files
             self.extra_link = ["-lm", "-fopenmp", str(fftw_lib_file), str(fftw_omp_file)]
             lib_ext = ".so"

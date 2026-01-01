@@ -25,7 +25,7 @@ images:
   image_type: standard
   use_camera_subfolders: false
 batches:
-  size: 25
+  size: 10
 logging:
   file: pypiv.log
   level: INFO
@@ -34,10 +34,10 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 2
+  omp_threads: 4
   dask_workers_per_node: 2
-  dask_threads_per_worker: 1
-  dask_memory_limit: 4GB
+  dask_threads_per_worker: 2
+  dask_memory_limit: 8GB
   always_batch: true
   instantaneous: true
   ensemble: false

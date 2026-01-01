@@ -42,6 +42,9 @@ uError = convolve(fWindowWeightB, fWindowWeightB, fCorrelWeight, nWindowSize);
 if (uError) { free(fCorrelWeight); return uError; }
 for (i = 0; i < nPxPerWindow; ++i) fCorrelWeight[i] = nPxPerWindow / fCorrelWeight[i];
 
+/* Initialize FFTW threads (thread-safe, only runs once) */
+fftw_library_init();
+
 /* Load FFTW wisdom */
 char wisdom_path[512];
 xcorr_cache_get_default_wisdom_path(wisdom_path, sizeof(wisdom_path));
@@ -145,8 +148,10 @@ int total_windows = N_images * nWindowsTotal;
                 fCorrelPlane[i] *= fCorrelWeight[i];
         }
 
-        /* Copy correlation plane to output */
-        memcpy(&fCorrelPlane_Out[idx * nPxPerWindow], fCorrelPlane, nPxPerWindow * sizeof(float));
+        /* Copy correlation plane to output - only needed for ensemble mode */
+        if (bEnsemble && fCorrelPlane_Out != NULL) {
+            memcpy(&fCorrelPlane_Out[idx * nPxPerWindow], fCorrelPlane, nPxPerWindow * sizeof(float));
+        }
 
         /* Peak finder */
         if(!bEnsemble)

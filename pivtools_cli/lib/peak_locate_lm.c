@@ -587,12 +587,12 @@ void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPe
 		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0, j0-1, N[0])] ||
 		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0, j0+1, N[0])])
 		{
-			peak_loc[SUB2IND_2D(0, iPeak, 3)] = NAN;
-			peak_loc[SUB2IND_2D(1, iPeak, 3)] = NAN;
-			peak_loc[SUB2IND_2D(2, iPeak, 3)] = 0;
-			std_dev[SUB2IND_2D(0, iPeak, 3)] = 0;
-			std_dev[SUB2IND_2D(1, iPeak, 3)] = 0;
-			std_dev[SUB2IND_2D(2, iPeak, 3)] = 0;
+			peak_loc[SUB2IND_2D(0, iPeak, nPeaks)] = NAN;
+			peak_loc[SUB2IND_2D(1, iPeak, nPeaks)] = NAN;
+			peak_loc[SUB2IND_2D(2, iPeak, nPeaks)] = 0;
+			std_dev[SUB2IND_2D(0, iPeak, nPeaks)] = 0;
+			std_dev[SUB2IND_2D(1, iPeak, nPeaks)] = 0;
+			std_dev[SUB2IND_2D(2, iPeak, nPeaks)] = 0;
 			continue;
 		}
 		
@@ -651,12 +651,12 @@ void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPe
 		}
 		
 		/* Save results */
-		peak_loc[SUB2IND_2D(0, iPeak, 3)] = peak[0] + i0;
-		peak_loc[SUB2IND_2D(1, iPeak, 3)] = peak[1] + j0;
-		peak_loc[SUB2IND_2D(2, iPeak, 3)] = fPeakHeight;
-		std_dev[SUB2IND_2D(0, iPeak, 3)] = sig[0];
-		std_dev[SUB2IND_2D(1, iPeak, 3)] = sig[1];
-		std_dev[SUB2IND_2D(2, iPeak, 3)] = sig[2];
+		peak_loc[SUB2IND_2D(0, iPeak, nPeaks)] = peak[0] + i0;
+		peak_loc[SUB2IND_2D(1, iPeak, nPeaks)] = peak[1] + j0;
+		peak_loc[SUB2IND_2D(2, iPeak, nPeaks)] = fPeakHeight;
+		std_dev[SUB2IND_2D(0, iPeak, nPeaks)] = sig[0];
+		std_dev[SUB2IND_2D(1, iPeak, nPeaks)] = sig[1];
+		std_dev[SUB2IND_2D(2, iPeak, nPeaks)] = sig[2];
 		
 		/* Subtract fit from correlation plane */
 		for(i = 0; i < PKSIZE_X; ++i) {

@@ -23,4 +23,17 @@ void xcorr_cache_cleanup(void);
 /* Get default wisdom file path */
 void xcorr_cache_get_default_wisdom_path(char *path, size_t max_len);
 
+/******************************************************************************
+ * FFTW Thread-Safe Initialization
+ *
+ * These functions must be called outside of any OpenMP parallel region.
+ * fftw_library_init() is thread-safe and can be called multiple times.
+ *****************************************************************************/
+
+/* Thread-safe one-time FFTW initialization (call before any parallel region) */
+void fftw_library_init(void);
+
+/* Cleanup FFTW and wisdom cache (call at program exit) */
+void fftw_library_cleanup(void);
+
 #endif

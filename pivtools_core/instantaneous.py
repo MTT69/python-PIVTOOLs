@@ -328,9 +328,8 @@ def main():
                 logger.info(f"INSTANTANEOUS PIV COMPLETE: {len(saved_paths)} results saved")
                 logger.info("=" * 60)
 
-                # Clean up
+                # Clean up (local only - gc.collect on workers causes SIGSEGV with FFTW)
                 gc.collect()
-                client.run(gc.collect)
 
     except Exception as e:
         import traceback
