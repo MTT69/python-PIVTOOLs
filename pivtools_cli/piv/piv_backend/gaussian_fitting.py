@@ -31,12 +31,10 @@ def _load_marquadt_lib():
 
     # Try multiple possible paths for the library
     possible_paths = [
-        # Absolute path to the project lib directory
+        # Installed package location (relative to this file)
         os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "lib", f"libmarquadt{lib_extension}")),
-        # From current working directory
+        # Development: from current working directory
         os.path.abspath(os.path.join("pivtools_cli", "lib", f"libmarquadt{lib_extension}")),
-        # Hardcoded absolute path (for debugging)
-        os.path.abspath("/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/lib/libmarquadt.so"),
     ]
 
     for path in possible_paths:

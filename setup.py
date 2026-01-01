@@ -7,7 +7,6 @@ import sysconfig
 from setuptools import find_packages, setup, Extension
 from setuptools.command.build_ext import build_ext
 import shutil
-import sysconfig
 
 class BuildCLib(build_ext):
     def run(self):
@@ -19,60 +18,56 @@ class BuildCLib(build_ext):
         super().run()
 
     def build_c_libraries(self):
-
         build_dir = self.pkg_dir / "pivtools_cli" / "lib"
         build_dir.mkdir(parents=True, exist_ok=True)
         src_dir = self.pkg_dir / "pivtools_cli" / "lib"
-        self.fftw_inc = os.environ.get("FFTW_INC_DIR")
-        self.fftw_lib = os.environ.get("FFTW_LIB_DIR")
         sys_name = platform.system().lower()
-        static_root = self.pkg_dir / "static_fftw"
 
-        
         # === macOS ===
         if sys_name == "darwin":
             sys_name = "macos"
             arch = platform.machine().lower()
 
-            if self.fftw_inc and self.fftw_lib:
-                self.fftw_inc = pathlib.Path(self.fftw_inc)
-                self.fftw_lib = pathlib.Path(self.fftw_lib)
+            # Always use static FFTW from bundled libraries
+            if arch == "arm64":
+                fftw_static_dir = self.pkg_dir / "static_fftw" / "macos_arm64"
             else:
-                try:
-                    brew_prefix = subprocess.run(["brew", "--prefix", "fftw"], capture_output=True, text=True).stdout.strip()
-                except Exception:
-                    brew_prefix = ""
+                raise RuntimeError(f"Unsupported macOS architecture: {arch}. Only arm64 is supported.")
 
-                if brew_prefix:
-                    self.fftw_inc = pathlib.Path(brew_prefix) / "include"
-                    self.fftw_lib = pathlib.Path(brew_prefix) / "lib"
-                else:
-                    if arch == "arm64":
-                        static_root = self.pkg_dir / "static_fftw" / "macos_arm64"
-                        self.fftw_inc = static_root / "include"
-                        self.fftw_lib = static_root / "lib"
-                        fftw_lib_file = self.fftw_lib / "libfftw3f.a"
-                        if not fftw_lib_file.exists():
-                            raise RuntimeError(f"FFTW static lib not found: {fftw_lib_file}")
-                    else:
-                        raise RuntimeError(f"No FFTW found for macOS {arch}")
+            self.fftw_inc = fftw_static_dir / "include"
+            self.fftw_lib = fftw_static_dir / "lib"
+            fftw_lib_file = self.fftw_lib / "libfftw3f.a"
+            fftw_omp_file = self.fftw_lib / "libfftw3f_omp.a"
+            if not fftw_lib_file.exists():
+                raise RuntimeError(f"FFTW static lib not found: {fftw_lib_file}")
+            print(f"Using static FFTW from: {fftw_static_dir}")
 
-            compiler = shutil.which("clang") or "/opt/homebrew/opt/llvm/bin/clang"
-            if compiler is None:
-                raise RuntimeError("No suitable compiler found (clang on macOS).")
+            # Prefer Homebrew GCC (has OpenMP support) over Apple clang (no OpenMP)
+            compiler = (
+                shutil.which("gcc-15") or
+                shutil.which("gcc-14") or
+                shutil.which("gcc-13") or
+                shutil.which("gcc")
+            )
+            if compiler is None or "/usr/bin/gcc" in str(compiler):
+                # /usr/bin/gcc is actually Apple clang, not real GCC
+                raise RuntimeError("No suitable GCC compiler found. Install via: brew install gcc")
+            print(f"Using compiler: {compiler}")
 
             sdk_path = subprocess.check_output(["xcrun", "--show-sdk-path"], text=True).strip()
             print(f"Using SDK path: {sdk_path}")
             self.extra_compile = ["-O3", "-fPIC", "-fopenmp", f"-I{self.fftw_inc}", "-isysroot", sdk_path]
-            self.extra_link = [ "-lm", "-fopenmp", "-L" + str(self.fftw_lib), "-lfftw3f", "-lfftw3f_threads", "-isysroot", sdk_path]
+            # Link statically with FFTW .a files
+            self.extra_link = ["-lm", "-fopenmp", str(fftw_lib_file), str(fftw_omp_file), "-isysroot", sdk_path]
             shared_flag = "-shared"
 
-            lib_ext = ".so"
+            lib_ext = ".so"  # Use .so on macOS for compatibility with Python ctypes
             use_msvc = False
 
         # === Windows ===
         elif sys_name == "windows":
-            fftw_dir = static_root / "windows"
+            # Always use static FFTW from bundled libraries
+            fftw_dir = self.pkg_dir / "static_fftw" / "windows"
             if not fftw_dir.exists():
                 raise RuntimeError(f"Static FFTW not found: {fftw_dir}")
 
@@ -81,39 +76,36 @@ class BuildCLib(build_ext):
             fftw_lib_file = self.fftw_lib / "libfftw3f-3.lib"
             if not fftw_lib_file.exists():
                 raise RuntimeError(f"FFTW static lib not found: {fftw_lib_file}")
+            print(f"Using static FFTW from: {fftw_dir}")
 
             compiler = "cl"
             shared_flag = "/LD"  # Create DLL
-            extra_compile = ["/O2", "/openmp:experimental", "/MT"]
-            extra_link = [str(fftw_lib_file)]
+            self.extra_compile = ["/O2", "/openmp:experimental", "/MT"]
+            self.extra_link = [str(fftw_lib_file)]
             lib_ext = ".dll"
             use_msvc = True
 
         # === Linux ===
         else:
-            if self.fftw_inc and self.fftw_lib:
-                self.fftw_inc = pathlib.Path(self.fftw_inc)
-                self.fftw_lib = pathlib.Path(self.fftw_lib)
+            # Always use static FFTW from bundled libraries
+            fftw_static_dir = self.pkg_dir / "static_fftw" / "linux"
+            if not fftw_static_dir.exists():
+                raise RuntimeError(f"Static FFTW not found: {fftw_static_dir}")
 
-            else:
-                fftw_dir = static_root / "linux"
-                if not fftw_dir.exists():
-                    raise RuntimeError(f"Static FFTW not found: {fftw_dir}")
-
-                self.fftw_inc = fftw_dir / "include"
-                self.fftw_lib = fftw_dir / "lib"
-            #fftw_lib_file = fftw_lib / "libfftw3f.so"
-            #if not fftw_lib_file.exists():
-            #    raise RuntimeError(f"FFTW static lib not found: {fftw_lib_file}")
+            self.fftw_inc = fftw_static_dir / "include"
+            self.fftw_lib = fftw_static_dir / "lib"
+            fftw_lib_file = self.fftw_lib / "libfftw3f.a"
+            fftw_omp_file = self.fftw_lib / "libfftw3f_omp.a"
+            if not fftw_lib_file.exists():
+                raise RuntimeError(f"FFTW static lib not found: {fftw_lib_file}")
+            print(f"Using static FFTW from: {fftw_static_dir}")
 
             compiler = os.environ.get("CC", "gcc")
             shared_flag = "-shared"
-            extra_compile = ["-O3", "-fPIC", "-fopenmp"]
-            extra_link = [ "-lm", "-fopenmp"]
+            self.extra_compile = ["-O3", "-fPIC", "-fopenmp", f"-I{self.fftw_inc}", f"-I{self.python_include}"]
+            # Link statically with FFTW .a files
+            self.extra_link = ["-lm", "-fopenmp", str(fftw_lib_file), str(fftw_omp_file)]
             lib_ext = ".so"
-            extra_link += [f"-L{self.fftw_lib}", "-lfftw3f", "-lfftw3f_threads"]
-            extra_compile += [f"-I{self.fftw_inc}"]
-            extra_compile += [ f"-I{self.python_include}"]
             use_msvc = False
 
         # --- Build libbulkxcorr2d ---

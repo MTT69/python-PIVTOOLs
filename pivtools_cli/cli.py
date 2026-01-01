@@ -962,18 +962,30 @@ def create_default_config(config_path):
     default_config = """
 paths:
   base_paths:
-  - ./data
+  - /setme
   source_paths:
-  - ./images
+  - /setme
+  active_paths:
+  - 0
   camera_numbers:
   - 1
   camera_count: 1
+  camera_subfolders: []
 images:
   num_images: 100
-  image_format: B%05d.tif
-  vector_format: '%05d.mat'
+  image_format:
+  - B%05d_A.tif
+  - B%05d_B.tif
+  vector_format:
+  - '%05d.mat'
   time_resolved: false
   dtype: float32
+  zero_based_indexing: false
+  pairing_mode: sequential
+  pairing_skip: 0
+  num_frame_pairs: 100
+  image_type: standard
+  use_camera_subfolders: false
 batches:
   size: 25
 logging:
@@ -981,25 +993,41 @@ logging:
   level: INFO
   console: true
 processing:
-  instantaneous: true
-  ensemble: false
-  stereo: false
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 4
-  dask_workers_per_node: 5
+  omp_threads: 2
+  dask_workers_per_node: 4
   dask_threads_per_worker: 1
-  dask_memory_limit: 12GB
+  dask_memory_limit: 3GB
+  always_batch: true
+  instantaneous: true
+  ensemble: false
 outlier_detection:
   enabled: true
   methods:
-  - threshold: 0.25
+  - threshold: 0.2
     type: peak_mag
   - epsilon: 0.2
     threshold: 2
     type: median_2d
 infilling:
+  mid_pass:
+    method: biharmonic
+    parameters:
+      ksize: 3
+  final_pass:
+    enabled: true
+    method: biharmonic
+    parameters:
+      ksize: 3
+ensemble_outlier_detection:
+  enabled: true
+  methods:
+  - epsilon: 0.2
+    threshold: 2
+    type: median_2d
+ensemble_infilling:
   mid_pass:
     method: biharmonic
     parameters:
@@ -1015,12 +1043,13 @@ plots:
   fontsize: 14
   title_fontsize: 16
 video:
+  base_path_idx: 0
   camera: 1
-  variable: ux
-  run: 1
   data_source: calibrated
+  variable: uu_inst
+  run: 4
   piv_type: instantaneous
-  cmap: default
+  cmap: viridis
   lower: ''
   upper: ''
   fps: 30
@@ -1029,8 +1058,14 @@ video:
 statistics:
   enabled_methods:
     mean_velocity: true
+    fluctuating_velocity: true
     reynolds_stress: true
     normal_stress: true
+    tke: true
+    vorticity: true
+    divergence: true
+    gamma1: true
+    gamma2: true
     mean_tke: true
     mean_vorticity: true
     mean_divergence: true
@@ -1039,16 +1074,36 @@ statistics:
     inst_vorticity: true
     inst_divergence: true
     inst_gamma: true
-  gamma_radius: 5
-  save_figures: false
-  type_name: instantaneous
-transforms:
-  type_name: instantaneous
-  cameras: {}
-merging:
-  type_name: instantaneous
-  cameras: []
+    mean_stresses: true
+    inst_stresses: true
+  gamma_radius: 4
+  save_figures: true
+  type_name: ensemble
+  source_endpoint: regular
 instantaneous_piv:
+  window_size:
+  - - 128
+    - 128
+  - - 64
+    - 64
+  - - 32
+    - 32
+  - - 16
+    - 16
+  overlap:
+  - 50
+  - 50
+  - 50
+  - 50
+  runs:
+  - 3
+  - 4
+  time_resolved: false
+  window_type: gaussian
+  num_peaks: 1
+  peak_finder: gauss6
+  secondary_peak: false
+ensemble_piv:
   window_size:
   - - 128
     - 128
@@ -1060,34 +1115,49 @@ instantaneous_piv:
   - 50
   - 50
   - 50
+  type:
+  - std
+  - std
+  - std
   runs:
+  - 1
+  - 2
   - 3
-  time_resolved: false
-  window_type: gaussian
-  num_peaks: 1
-  peak_finder: gauss3
-  secondary_peak: false
+  store_planes: true
+  save_diagnostics: true
+  sum_window:
+  - 16
+  - 16
+  resume_from_pass: 0
 calibration:
-  image_format: calib%05d.tif
-  num_images: 10
+  image_format: planar_calibration_plate_%02d.tif
+  num_images: 19
   image_type: standard
   zero_based_indexing: false
   use_camera_subfolders: false
-  subfolder: ''
+  subfolder: enhanced
+  camera_subfolders:
+  - Cam1
+  - Cam2
+  path_order: camera_first
   active: pinhole
+  piv_type: instantaneous
   scale_factor:
     dt: 0.56
     px_per_mm: 3.41
+    source_path_idx: 0
   pinhole:
     camera: 1
     pattern_cols: 10
     pattern_rows: 10
-    dot_spacing_mm: 28.89
-    enhance_dots: true
+    dot_spacing_mm: 12.22
+    enhance_dots: false
     asymmetric: false
     grid_tolerance: 0.5
     ransac_threshold: 3
-    dt: 0.0275
+    dt: 0.0057553
+    source_path_idx: 0
+    image_index: 0
   charuco:
     camera: 1
     squares_h: 10
@@ -1096,29 +1166,80 @@ calibration:
     marker_ratio: 0.5
     aruco_dict: DICT_4X4_1000
     min_corners: 6
-    dt: 1
+    dt: 0.0057553
+    source_path_idx: 0
+    file_pattern: '*.tif'
   stereo:
     camera_pair:
     - 1
     - 2
     pattern_cols: 10
     pattern_rows: 10
-    dot_spacing_mm: 28.89
-    enhance_dots: true
+    dot_spacing_mm: 12.2222
+    enhance_dots: false
     asymmetric: false
-    dt: 2
-filters:
-- type: pod
+    dt: 0.0057553
+    stereo_model_type: pinhole
+  polynomial:
+    xml_path: ''
+    use_xml: true
+    dt: 0.0057553
+    source_path_idx: 0
+    cameras:
+      1:
+        origin:
+          x: 0.0
+          y: 0.0
+        normalisation:
+          nx: 512.0
+          ny: 384.0
+        mm_per_pixel: 0.0
+        coefficients_x: []
+        coefficients_y: []
+      2:
+        origin:
+          x: 0.0
+          y: 0.0
+        normalisation:
+          nx: 512.0
+          ny: 384.0
+        mm_per_pixel: 0.0
+        coefficients_x: []
+        coefficients_y: []
+  stereo_charuco:
+    camera_pair:
+    - 1
+    - 2
+    squares_h: 10
+    squares_v: 9
+    square_size: 0.03
+    marker_ratio: 0.5
+    aruco_dict: DICT_4X4_1000
+    min_corners: 6
+    dt: 0.0057553
+filters: []
 masking:
-  enabled: true
+  enabled: false
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
-  mode: file
+  mode: rectangular
   rectangular:
-    top: 64
-    bottom: 64
+    top: 0
+    bottom: 0
     left: 0
     right: 0
+merging:
+  type_name: ensemble
+  base_path_idx: 0
+transforms:
+  base_path_idx: 0
+  type_name: ensemble
+  cameras:
+    1:
+      operations:
+      - rotate_90_cw
+  source_endpoint: regular
+
 """
 
     with open(config_path, 'w') as f:

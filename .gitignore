@@ -27,6 +27,7 @@ pivtools_cli/lib/*.obj
 pivtools_gui/static/*
 logs/*
 manual_tools/
+pypiv.log
 
 # IDE
 .vscode/
