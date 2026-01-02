@@ -266,7 +266,7 @@ def run_ensemble_piv(
         if scattered_predictor is not None:
             del scattered_predictor
         gc.collect()
-        client.run(gc.collect)
+        # NOTE: gc.collect on workers causes SIGSEGV with FFTW - removed
         logger.info(f"  Pass {pass_idx + 1} complete")
 
     # 7. Build and save ensemble result
@@ -416,9 +416,8 @@ def main():
                 logger.info(f"ENSEMBLE PIV COMPLETE: {result_path}")
                 logger.info("=" * 60)
 
-                # Clean up
+                # Clean up (local only - gc.collect on workers causes SIGSEGV with FFTW)
                 gc.collect()
-                client.run(gc.collect)
 
     except Exception as e:
         import traceback

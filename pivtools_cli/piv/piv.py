@@ -66,14 +66,13 @@ def _process_and_save_batch(
     piv_results = _piv_inst_batch(image_batch, config, scattered_masks, scattered_cache)
 
     # Save immediately to avoid accumulating results in memory
-    #saved_paths = []
-    #for frame_number, result in enumerate(piv_result.passes):
-    logging.info(f"Piv result length: {len(piv_results)}")
-    for i,piv_result in enumerate(piv_results):
+    saved_paths = []
+    for i, piv_result in enumerate(piv_results):
         img_idx = start_img_idx + i
-        saved_paths = save_piv_result_distributed(
-            piv_result, output_path,img_idx, runs_to_save, vector_format
+        path = save_piv_result_distributed(
+            piv_result, output_path, img_idx, runs_to_save, vector_format
         )
+        saved_paths.append(path)
 
     return saved_paths
 

@@ -819,10 +819,6 @@ def _build_initial_guesses_vectorized(
         sigma_AB_xy = np.zeros(n_valid, dtype=np.float64)
     else:
         # Pass > 0: Use interpolated values from previous pass
-        import logging
-        logging.info(f"Keys in sigma_dict: {list(sigma_dict.keys())}")
-        logging.info(f"sigma_dict sig_AB_x sample: {sigma_dict['sig_AB_x'][:5] if sigma_dict['sig_AB_x'] is not None else None} ")
-        logging.info(f"Shapes in sigma_dict: {[sigma_dict[key].shape if sigma_dict[key] is not None else None for key in sigma_dict.keys()]}")
         sigma_A_x = sigma_dict['sig_A_x'][valid_indices].astype(np.float64)
         sigma_A_y = sigma_dict['sig_A_y'][valid_indices].astype(np.float64)
         sigma_A_xy = sigma_dict['sig_A_xy'][valid_indices].astype(np.float64) if sigma_dict['sig_A_xy'] is not None else np.zeros(n_valid)

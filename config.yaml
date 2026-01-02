@@ -10,7 +10,7 @@ paths:
   camera_count: 1
   camera_subfolders: []
 images:
-  num_images: 100
+  num_images: 1000
   image_format:
   - B%05d_A.tif
   - B%05d_B.tif
@@ -21,7 +21,7 @@ images:
   zero_based_indexing: false
   pairing_mode: sequential
   pairing_skip: 0
-  num_frame_pairs: 100
+  num_frame_pairs: 1000
   image_type: standard
   use_camera_subfolders: false
 batches:
@@ -34,10 +34,10 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 4
-  dask_workers_per_node: 2
-  dask_threads_per_worker: 2
-  dask_memory_limit: 8GB
+  omp_threads: 2
+  dask_workers_per_node: 5
+  dask_threads_per_worker: 1
+  dask_memory_limit: 3.5GB
   always_batch: true
   instantaneous: true
   ensemble: false
@@ -116,8 +116,8 @@ statistics:
     inst_stresses: true
   gamma_radius: 4
   save_figures: true
-  type_name: ensemble
-  source_endpoint: regular
+  type_name: instantaneous
+  source_endpoint: instantaneous
 instantaneous_piv:
   window_size:
   - - 128
@@ -267,13 +267,13 @@ masking:
     left: 0
     right: 0
 merging:
-  type_name: ensemble
+  type_name: instantaneous
   base_path_idx: 0
 transforms:
   base_path_idx: 0
-  type_name: ensemble
+  type_name: instantaneous
   cameras:
     1:
       operations:
       - rotate_90_cw
-  source_endpoint: regular
+  source_endpoint: instantaneous

@@ -610,18 +610,18 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 )
             warp_A_sum = images_a_prime.sum(axis=0)
             warp_B_sum = images_b_prime.sum(axis=0)
-            correl_out_AA = correl_out_AA.reshape(               N,
+            correl_out_AA = correl_out_AA.reshape(N,
                 total_windows,
-                config.window_sizes[pass_idx][0],
-                config.window_sizes[pass_idx][1],)
-            correl_out_AB = correl_out_AB.reshape(               N,
+                config.ensemble_window_sizes[pass_idx][0],
+                config.ensemble_window_sizes[pass_idx][1],)
+            correl_out_AB = correl_out_AB.reshape(N,
                 total_windows,
-                config.window_sizes[pass_idx][0],
-                config.window_sizes[pass_idx][1],)
-            correl_out_BB = correl_out_BB.reshape(               N,
+                config.ensemble_window_sizes[pass_idx][0],
+                config.ensemble_window_sizes[pass_idx][1],)
+            correl_out_BB = correl_out_BB.reshape(N,
                 total_windows,
-                config.window_sizes[pass_idx][0],
-                config.window_sizes[pass_idx][1],)
+                config.ensemble_window_sizes[pass_idx][0],
+                config.ensemble_window_sizes[pass_idx][1],)
             correl_AA_sum = correl_out_AA.sum(axis=0)
             correl_BB_sum = correl_out_BB.sum(axis=0)
             correl_AB_sum = correl_out_AB.sum(axis=0)

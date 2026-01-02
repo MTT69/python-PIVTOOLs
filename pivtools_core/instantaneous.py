@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import List, Optional
 
 import dask.array as da
-from dask.distributed import Client
+from dask.distributed import Client, as_completed
 
 from pivtools_core.config import Config
 from pivtools_core.validation import (
@@ -192,11 +192,25 @@ def run_instantaneous_piv(
         )
         correlation_futures.append(future)
 
-    # 7. Gather results
-    logger.info("Gathering results...")
+    # 7. Gather results with progress tracking
+    num_futures = len(correlation_futures)
     all_saved_paths = []
-    for batch_paths in client.gather(correlation_futures):
+    gather_start = time.time()
+
+    for i, future in enumerate(as_completed(correlation_futures)):
+        batch_paths = future.result()
         all_saved_paths.extend(batch_paths)
+
+        # Progress update every 10% (minimum 1 update)
+        update_interval = max(1, num_futures // 10)
+        if (i + 1) % update_interval == 0 or i == num_futures - 1:
+            elapsed = time.time() - gather_start
+            rate = (i + 1) / elapsed if elapsed > 0 else 0
+            remaining = (num_futures - i - 1) / rate if rate > 0 else 0
+            logger.info(
+                f"Progress: {i+1}/{num_futures} batches "
+                f"({100*(i+1)/num_futures:.0f}%) - ETA: {remaining:.0f}s"
+            )
 
     # Save coordinates
     logger.info("Saving coordinates...")
