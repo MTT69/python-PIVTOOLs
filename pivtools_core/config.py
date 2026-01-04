@@ -1806,9 +1806,20 @@ video:
     def ensemble_overlaps(self):
         """Return ensemble PIV overlap percentages."""
         overlaps = self.data.get("ensemble_piv", {}).get("overlap", self.overlap)
-        # Ensure we have as many overlaps as window sizes
-        if overlaps and len(overlaps) == 1 and len(self.ensemble_window_sizes) > 1:
-            overlaps = overlaps * len(self.ensemble_window_sizes)
+        n_passes = len(self.ensemble_window_sizes)
+
+        # Broadcast single overlap to all passes
+        if overlaps and len(overlaps) == 1 and n_passes > 1:
+            overlaps = overlaps * n_passes
+
+        # Validate array length matches window_sizes
+        if overlaps and len(overlaps) != n_passes:
+            raise ValueError(
+                f"ensemble_piv.overlap has {len(overlaps)} entries but "
+                f"ensemble_piv.window_size has {n_passes} entries. "
+                f"These must match (or use a single overlap value to broadcast)."
+            )
+
         return overlaps
 
     @property

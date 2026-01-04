@@ -4,7 +4,7 @@ Module for saving PIV results to .mat files compatible with post-processing code
 import logging
 import sys
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import scipy.io
@@ -743,3 +743,142 @@ def _convert_to_half_precision(arr: np.ndarray, field_name: str = "unknown") -> 
         clamped = np.where(np.isnan(arr), np.nan, clamped)
         return clamped.astype(np.float16)
     return arr
+
+
+# =============================================================================
+# Load Functions for Resume from Pass
+# =============================================================================
+
+
+def load_ensemble_result(
+    file_path: Path,
+    passes_to_load: Optional[List[int]] = None,
+) -> Tuple[PIVEnsembleResult, int]:
+    """
+    Load ensemble result from .mat file for resume functionality.
+
+    Parameters
+    ----------
+    file_path : Path
+        Path to ensemble_result.mat file
+    passes_to_load : Optional[List[int]]
+        List of pass indices (0-based) to load. If None, load all passes.
+
+    Returns
+    -------
+    tuple
+        (PIVEnsembleResult, n_passes_loaded)
+
+    Notes
+    -----
+    Sign conventions are reversed during load to match save conventions:
+    - uy was negated on save -> negate back on load
+    - UV_stress was negated on save -> negate back on load
+    - pred_y was negated on save -> negate back on load
+    """
+    mat = scipy.io.loadmat(str(file_path), struct_as_record=False, squeeze_me=True)
+
+    if "ensemble_result" not in mat:
+        raise KeyError(f"'ensemble_result' not found in {file_path}")
+
+    data = mat["ensemble_result"]
+    ensemble_result = PIVEnsembleResult()
+
+    # Handle array of structs (multiple passes)
+    if isinstance(data, np.ndarray) and data.dtype == object and data.size > 0:
+        n_passes = data.size
+        if passes_to_load is None:
+            passes_to_load = list(range(n_passes))
+
+        for pass_idx in passes_to_load:
+            if pass_idx >= n_passes:
+                logging.warning(f"Pass {pass_idx} not found in file (has {n_passes} passes)")
+                continue
+            struct = data.flat[pass_idx]
+            pass_result = _struct_to_ensemble_pass_result(struct)
+            ensemble_result.add_pass(pass_result)
+    else:
+        # Single pass case
+        if passes_to_load is None or 0 in passes_to_load:
+            pass_result = _struct_to_ensemble_pass_result(data)
+            ensemble_result.add_pass(pass_result)
+
+    logging.info(f"Loaded {len(ensemble_result.passes)} passes from {file_path}")
+    return ensemble_result, len(ensemble_result.passes)
+
+
+def _struct_to_ensemble_pass_result(struct) -> PIVEnsemblePassResult:
+    """
+    Convert MATLAB struct to PIVEnsemblePassResult.
+
+    Reverses sign conventions applied during save.
+    """
+    def get_array(name: str) -> Optional[np.ndarray]:
+        """Safely get attribute and convert to numpy array."""
+        val = getattr(struct, name, None)
+        if val is None:
+            return None
+        arr = np.asarray(val)
+        if arr.size == 0:
+            return None
+        # Convert from float16 back to float32 for computation
+        if arr.dtype == np.float16:
+            arr = arr.astype(np.float32)
+        return arr
+
+    # Core velocity fields - uy was negated on save
+    ux = get_array('ux')
+    uy = get_array('uy')
+    if uy is not None:
+        uy = -uy  # Reverse negation from save
+
+    # Stress tensors - UV_stress was negated on save
+    UU_stress = get_array('UU_stress')
+    VV_stress = get_array('VV_stress')
+    UV_stress = get_array('UV_stress')
+    if UV_stress is not None:
+        UV_stress = -UV_stress  # Reverse negation from save
+
+    # Predictor fields - pred_y was negated on save
+    pred_x = get_array('pred_x')
+    pred_y = get_array('pred_y')
+    if pred_y is not None:
+        pred_y = -pred_y  # Reverse negation from save
+
+    # Window size (tuple)
+    window_size_val = getattr(struct, 'window_size', None)
+    window_size = None
+    if window_size_val is not None:
+        ws = np.asarray(window_size_val).flatten()
+        if ws.size >= 2:
+            window_size = (int(ws[0]), int(ws[1]))
+
+    # Mask
+    b_mask = get_array('b_mask')
+    if b_mask is not None:
+        b_mask = b_mask.astype(bool)
+
+    return PIVEnsemblePassResult(
+        ux_mat=ux,
+        uy_mat=uy,
+        UU_stress=UU_stress,
+        VV_stress=VV_stress,
+        UV_stress=UV_stress,
+        peakheight=get_array('peakheight'),
+        nan_reason=get_array('nan_reason'),
+        sig_AB_x=get_array('sig_AB_x'),
+        sig_AB_y=get_array('sig_AB_y'),
+        sig_AB_xy=get_array('sig_AB_xy'),
+        sig_A_x=get_array('sig_A_x'),
+        sig_A_y=get_array('sig_A_y'),
+        sig_A_xy=get_array('sig_A_xy'),
+        c_A=get_array('c_A'),
+        c_B=get_array('c_B'),
+        c_AB=get_array('c_AB'),
+        b_mask=b_mask,
+        pred_x=pred_x,
+        pred_y=pred_y,
+        window_size=window_size,
+        win_ctrs_x=get_array('win_ctrs_x'),
+        win_ctrs_y=get_array('win_ctrs_y'),
+    )

@@ -10,7 +10,7 @@ paths:
   camera_count: 1
   camera_subfolders: []
 images:
-  num_images: 100
+  num_images: 1000
   image_format:
   - B%05d_A.tif
   - B%05d_B.tif
@@ -21,26 +21,26 @@ images:
   zero_based_indexing: false
   pairing_mode: sequential
   pairing_skip: 0
-  num_frame_pairs: 100
+  num_frame_pairs: 1000
   image_type: standard
   use_camera_subfolders: false
 batches:
   size: 10
 logging:
   file: pypiv.log
-  level: DEBUG
+  level: INFO
   console: true
 processing:
   backend: cpu
   debug: false
   auto_compute_params: false
   omp_threads: 10
-  dask_workers_per_node: 1
+  dask_workers_per_node: 5
   dask_threads_per_worker: 1
-  dask_memory_limit: 14GB
+  dask_memory_limit: 4GB
   always_batch: true
-  instantaneous: false
-  ensemble: true
+  instantaneous: true
+  ensemble: false
 outlier_detection:
   enabled: true
   methods:
@@ -153,7 +153,13 @@ ensemble_piv:
     - 16
   - - 8
     - 8
+  - - 6
+    - 6
+  - - 4
+    - 4
   overlap:
+  - 50
+  - 50
   - 50
   - 50
   - 50
@@ -165,12 +171,16 @@ ensemble_piv:
   - std
   - std
   - single
+  - single
+  - single
   runs:
   - 1
   - 2
   - 3
   - 4
   - 5
+  - 6
+  - 7
   store_planes: true
   save_diagnostics: true
   sum_window:

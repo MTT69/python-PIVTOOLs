@@ -982,30 +982,49 @@ def get_vector_at_position():
         x_percent = float(request.args.get("x_percent"))
         y_percent = float(request.args.get("y_percent"))
 
+        # Determine data source - must be done BEFORE path resolution
+        var_source = request.args.get("var_source", default="inst", type=str)
+
+        # Override type_name for ensemble data so path resolution uses ensemble directory
+        if var_source == "ens":
+            params["type_name"] = "ensemble"
+
         paths = validate_and_get_paths(params)
         data_dir = Path(paths["data_dir"])
         stats_dir = Path(paths["stats_dir"])
         vec_fmt = get_config().vector_format
 
-        # Determine data source - matches plot_vector logic
-        var_source = request.args.get("var_source", default="inst", type=str)
-
         if var_source == "mean":
             mat_path = stats_dir / "mean_stats" / "mean_stats.mat"
         elif var_source == "inst_stat":
             mat_path = stats_dir / "instantaneous_stats" / (vec_fmt % params["frame"])
+        elif var_source == "ens":
+            mat_path = data_dir / "ensemble_result.mat"
         else:
             mat_path = data_dir / (vec_fmt % params["frame"])
 
         if not mat_path.exists():
             raise ValueError(f"Vector mat not found: {mat_path}")
 
-        piv_result = load_piv_result(mat_path)
-        pr, effective_run = find_non_empty_run(piv_result, params["var"], params["run"])
+        # Handle ensemble-specific loading
+        if var_source == "ens":
+            mat = loadmat(str(mat_path), struct_as_record=False, squeeze_me=True)
+            if "ensemble_result" not in mat:
+                raise ValueError("Variable 'ensemble_result' not found in mat file")
+            piv_result = mat["ensemble_result"]
+            # Strip variable prefix if present (e.g., "inst:ux" -> "ux")
+            var_name = params["var"]
+            if ':' in var_name:
+                _, var_name = var_name.split(':', 1)
+        else:
+            piv_result = load_piv_result(mat_path)
+            var_name = params["var"]
+
+        pr, effective_run = find_non_empty_run(piv_result, var_name, params["run"])
         if pr is None:
             raise ValueError("No non-empty run found")
 
-        var_arr = np.asarray(getattr(pr, params["var"]))
+        var_arr = np.asarray(getattr(pr, var_name))
         if var_arr.ndim < 2:
             var_arr = var_arr.reshape(var_arr.shape[0], -1)
         H, W = var_arr.shape

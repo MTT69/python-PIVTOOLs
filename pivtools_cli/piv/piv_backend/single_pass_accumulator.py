@@ -98,6 +98,30 @@ class SinglePassAccumulator:
                 "win_size": win_size,
             })
 
+    def load_previous_passes(
+        self, ensemble_result: PIVEnsembleResult, n_images: int
+    ) -> None:
+        """
+        Load previous passes from existing ensemble result for resume functionality.
+
+        This method allows resuming ensemble PIV from a specific pass by loading
+        completed passes from a previously saved ensemble_result.mat file.
+
+        Parameters
+        ----------
+        ensemble_result : PIVEnsembleResult
+            Loaded ensemble result containing completed passes
+        n_images : int
+            Number of images used to generate the loaded result
+            (should match the current run for consistent averaging)
+        """
+        self.n_images = n_images
+        self.passes_results = list(ensemble_result.passes)
+        logging.info(
+            f"Loaded {len(self.passes_results)} previous passes for resume "
+            f"(n_images={n_images})"
+        )
+
     def accumulate_batch(self, batch_result: dict, pass_idx: int):
         """
         Add batch results to running sums.

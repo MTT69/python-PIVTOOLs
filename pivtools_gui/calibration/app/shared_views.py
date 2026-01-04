@@ -35,38 +35,39 @@ calibration_shared_bp = Blueprint("calibration_shared", __name__)
 @calibration_shared_bp.route("/calibration/set_datum", methods=["POST"])
 def calibration_set_datum():
     """
-    Set a new datum (origin) for the coordinates of a given run, and/or apply offsets.
+    Set a new datum (origin) and/or apply offsets to ALL runs in the specified type's coordinates.
 
     Request JSON:
         base_path_idx or source_path_idx: int
         camera: int
-        run: int
-        type_name: str (default: "instantaneous")
-        x: float (optional) - New x origin
-        y: float (optional) - New y origin
-        x_offset: float (optional) - X offset to apply
-        y_offset: float (optional) - Y offset to apply
+        run: int (used only for logging, offsets apply to ALL runs)
+        type_name: str (default: "instantaneous") - which coordinates file to update
+        x: float (optional) - New x origin (subtracted from all coordinates)
+        y: float (optional) - New y origin (subtracted from all coordinates)
+        x_offset: float (optional) - X offset to apply (added to all coordinates)
+        y_offset: float (optional) - Y offset to apply (added to all coordinates)
 
     Returns:
-        JSON with status, run, shape
+        JSON with status and updated file path
     """
     data = request.get_json() or {}
     base_path_idx = int(data.get("base_path_idx", data.get("source_path_idx", 0)))
     camera = camera_number(data.get("camera", 1))
-    run = int(data.get("run", 1))
+    run = int(data.get("run", 1))  # For logging only
     type_name = data.get("type_name", "instantaneous")
     x0 = data.get("x")
     y0 = data.get("y")
     x_offset = data.get("x_offset", 0)
     y_offset = data.get("y_offset", 0)
 
-    logger.debug("updating datum for run %d", run)
+    logger.debug(f"updating datum/offset for all runs in {type_name} (triggered from run {run})")
 
     try:
         cfg = get_config()
         source_root = Path(
             getattr(cfg, "base_paths", getattr(cfg, "source_paths", []))[base_path_idx]
         )
+
         paths = get_data_paths(
             base_dir=source_root,
             num_frame_pairs=cfg.num_frame_pairs,
@@ -80,67 +81,65 @@ def calibration_set_datum():
         if not coords_path.exists():
             return jsonify({"error": f"Coordinates file not found: {coords_path}"}), 404
 
-        mat = scipy.io.loadmat(coords_path, struct_as_record=False, squeeze_me=True)
+        mat = scipy.io.loadmat(str(coords_path), struct_as_record=False, squeeze_me=True)
         if "coordinates" not in mat:
-            return (
-                jsonify({"error": "Variable 'coordinates' not found in coords mat"}),
-                400,
-            )
+            return jsonify({"error": "Variable 'coordinates' not found in mat"}), 400
+
         coordinates = mat["coordinates"]
 
-        run_idx = run - 1
-
-        # Use extract_coordinates from pivtools_core.coordinate_utils
-        cx, cy = extract_coordinates(coordinates, run)
-
-        logger.debug(
-            f"[set_datum] Run {run} - original first x,y: {cx.flat[0]}, {cy.flat[0]}"
-        )
-        logger.debug(
-            f"[set_datum] Datum to set: x0={x0}, y0={y0}, x_offset={x_offset}, y_offset={y_offset}"
-        )
-
-        # Only apply datum shift if x/y are provided
-        if x0 is not None and y0 is not None:
-            x0 = float(x0)
-            y0 = float(y0)
-            cx = cx - x0
-            cy = cy - y0
-            logger.debug(
-                f"[set_datum] After datum shift, first x,y: {cx.flat[0]}, {cy.flat[0]}"
-            )
-
-        # Always apply offsets if present
-        if x_offset is not None and y_offset is not None:
-            x_offset = float(x_offset)
-            y_offset = float(y_offset)
-            cx = cx + x_offset
-            cy = cy + y_offset
-            logger.debug(f"[set_datum] After offset, first x,y: {cx.flat[0]}, {cy.flat[0]}")
-
-        # Convert to proper MATLAB struct format
-        num_runs = len(coordinates) if hasattr(coordinates, "__len__") else 1
-        if num_runs == 1 and not hasattr(coordinates, "__len__"):
+        # Determine number of runs in this coordinates file
+        if hasattr(coordinates, "__len__") and not isinstance(coordinates, np.void):
+            num_runs = len(coordinates)
+        else:
             num_runs = 1
-            coordinates = [coordinates]
+
+        logger.debug(f"[set_datum] Processing {type_name} with {num_runs} runs")
 
         dtype = [("x", object), ("y", object)]
         coords_struct = np.empty((num_runs,), dtype=dtype)
 
-        # Copy all existing coordinates
+        # Apply datum/offset to ALL runs
         for i in range(num_runs):
-            if i == run_idx:
-                coords_struct["x"][i] = cx
-                coords_struct["y"][i] = cy
-            else:
-                existing_x, existing_y = extract_coordinates(coordinates, i + 1)
-                coords_struct["x"][i] = existing_x
-                coords_struct["y"][i] = existing_y
+            cx, cy = extract_coordinates(mat["coordinates"], i + 1)
+
+            if i == 0:
+                logger.debug(
+                    f"[set_datum] {type_name} run 1 - original first x,y: {cx.flat[0]}, {cy.flat[0]}"
+                )
+
+            # Apply datum shift if x/y are provided
+            if x0 is not None and y0 is not None:
+                cx = cx - float(x0)
+                cy = cy - float(y0)
+
+            # Apply offsets if present
+            if x_offset is not None and y_offset is not None:
+                cx = cx + float(x_offset)
+                cy = cy + float(y_offset)
+
+            coords_struct["x"][i] = cx
+            coords_struct["y"][i] = cy
+
+            if i == 0:
+                logger.debug(
+                    f"[set_datum] {type_name} run 1 - after transform first x,y: {cx.flat[0]}, {cy.flat[0]}"
+                )
 
         scipy.io.savemat(
-            coords_path, {"coordinates": coords_struct}, do_compression=True
+            str(coords_path), {"coordinates": coords_struct}, do_compression=True
         )
-        return jsonify({"status": "ok", "run": run, "shape": [cx.shape, cy.shape]})
+        logger.info(f"[set_datum] Updated {type_name} coordinates ({num_runs} runs): {coords_path}")
+
+        return jsonify({
+            "status": "ok",
+            "type_name": type_name,
+            "num_runs_updated": num_runs,
+            "coords_path": str(coords_path),
+            "x0": x0,
+            "y0": y0,
+            "x_offset": x_offset,
+            "y_offset": y_offset,
+        })
 
     except Exception as e:
         logger.error(f"[set_datum] ERROR: {e}")

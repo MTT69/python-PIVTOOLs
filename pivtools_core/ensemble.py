@@ -20,6 +20,7 @@ os.environ["OMP_NUM_THREADS"] = omp_threads
 import gc
 import logging
 import os
+import shutil
 import signal
 import sys
 import time
@@ -182,12 +183,67 @@ def run_ensemble_piv(
     accumulator = SinglePassAccumulator(config, vector_masks)
     predictor_field = None
 
+    # Import for predictor extraction (used both for resume and after each pass)
+    from pivtools_cli.processing.dask_pipeline import extract_predictor_field
+
+    # Check for resume from previous pass
+    resume_from_pass = config.ensemble_resume_from_pass  # 1-based, 0 = no resume
+    start_pass_idx = 0  # 0-based
+
+    if resume_from_pass > 0:
+        # Convert to 0-based: resume_from_pass=6 means start at pass_idx=5
+        start_pass_idx = resume_from_pass - 1
+
+        # Validation
+        if start_pass_idx < 1:
+            raise ValueError(
+                f"resume_from_pass={resume_from_pass} invalid: must resume from pass 2 or higher"
+            )
+        if start_pass_idx >= num_passes:
+            raise ValueError(
+                f"resume_from_pass={resume_from_pass} exceeds num_passes={num_passes}"
+            )
+
+        # Load existing ensemble_result.mat
+        existing_result_path = output_path / "ensemble_result.mat"
+        if not existing_result_path.exists():
+            raise FileNotFoundError(
+                f"Cannot resume: {existing_result_path} not found. "
+                f"Ensure previous passes completed successfully."
+            )
+
+        logger.info(f"Resuming from pass {resume_from_pass} (loading passes 1-{resume_from_pass-1})...")
+
+        from pivtools_cli.piv.save_results import load_ensemble_result
+        loaded_result, n_loaded = load_ensemble_result(
+            existing_result_path,
+            passes_to_load=list(range(start_pass_idx))  # Load passes 0..start_pass_idx-1
+        )
+
+        # Validate loaded passes
+        if n_loaded < start_pass_idx:
+            raise ValueError(
+                f"Loaded only {n_loaded} passes but need {start_pass_idx} for resume_from_pass={resume_from_pass}"
+            )
+
+        # Load previous passes into accumulator
+        # Note: n_images is tracked per-batch, but for resume we use total images from config
+        # The final save combines all passes with their original statistics
+        accumulator.load_previous_passes(loaded_result, config.num_images)
+
+        # Extract predictor from last loaded pass
+        last_pass = loaded_result.passes[-1]
+        predictor_field = extract_predictor_field(last_pass)
+
+        logger.info(f"  Loaded {n_loaded} passes from {existing_result_path}")
+        logger.info(f"  Predictor extracted from pass {start_pass_idx} (shape: {predictor_field.shape})")
+
     # Scatter config once to avoid repeated serialization
     scattered_config = client.scatter(config, broadcast=True)
 
-    logger.info(f"Processing {num_passes} passes with {num_chunks} chunks each...")
+    logger.info(f"Processing passes {start_pass_idx + 1} to {num_passes} with {num_chunks} chunks each...")
 
-    for pass_idx in range(num_passes):
+    for pass_idx in range(start_pass_idx, num_passes):
         if _shutdown_requested:
             logger.info("Shutdown requested, stopping...")
             break
@@ -277,6 +333,14 @@ def run_ensemble_piv(
     ensemble_result = PIVEnsembleResult()
     for pass_result in accumulator.passes_results:
         ensemble_result.add_pass(pass_result)
+
+    # Backup existing result if resuming (safety measure)
+    if resume_from_pass > 0:
+        existing_path = output_path / "ensemble_result.mat"
+        if existing_path.exists():
+            backup_path = output_path / f"ensemble_result_before_pass{resume_from_pass}.mat.bak"
+            shutil.copy2(existing_path, backup_path)
+            logger.info(f"Backed up previous result to {backup_path}")
 
     logger.info("Saving ensemble result...")
     save_ensemble_result_distributed(

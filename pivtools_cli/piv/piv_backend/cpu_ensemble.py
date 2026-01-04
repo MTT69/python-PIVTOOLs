@@ -86,6 +86,23 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),
         ]
 
+        # New ensemble accumulation function (Option C: window-parallel)
+        self.lib.bulkxcorr2d_accumulate.restype = ctypes.c_ubyte
+        self.lib.bulkxcorr2d_accumulate.argtypes = [
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fImageA_stack
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fImageB_stack
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fMask
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nImageSize
+            ctypes.c_int,                                                      # N_images
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWinCtrsX
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWinCtrsY
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nWindows
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWindowWeightA
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWindowWeightB
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nWindowSize
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fCorrelPlane_Sum (output)
+        ]
+
         # Initialize window weights for each pass
         # For single mode, Frame A and Frame B use different weights
         self.win_weights_A = []
@@ -210,6 +227,23 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),
         ]
 
+        # New ensemble accumulation function (Option C: window-parallel)
+        cls._lib_corr.bulkxcorr2d_accumulate.restype = ctypes.c_ubyte
+        cls._lib_corr.bulkxcorr2d_accumulate.argtypes = [
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fImageA_stack
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fImageB_stack
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fMask
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nImageSize
+            ctypes.c_int,                                                      # N_images
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWinCtrsX
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWinCtrsY
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nWindows
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWindowWeightA
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWindowWeightB
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nWindowSize
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fCorrelPlane_Sum (output)
+        ]
+
     def _run_correlation_kernel(
         self, img1, img2, weight1, weight2, b_mask, common_args
     ):
@@ -260,6 +294,74 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             out_plane
         )
         return err, out_plane
+
+    def _run_correlation_accumulate(
+        self,
+        images_a: np.ndarray,
+        images_b: np.ndarray,
+        weight_a: np.ndarray,
+        weight_b: np.ndarray,
+        mask: np.ndarray,
+        pass_idx: int,
+        correl_sum: np.ndarray,
+    ) -> int:
+        """
+        Compute cross-correlation with internal accumulation (Option C).
+
+        This function uses the new bulkxcorr2d_accumulate C function which
+        parallelizes over windows and accumulates across images internally.
+        Output is the SUM across all N images (not individual planes).
+
+        Memory usage: O(windows × corr_size²) instead of O(N × windows × corr_size²)
+
+        Parameters
+        ----------
+        images_a : np.ndarray
+            Stack of first images, shape (N, H, W)
+        images_b : np.ndarray
+            Stack of second images, shape (N, H, W)
+        weight_a : np.ndarray
+            Window weights for image A
+        weight_b : np.ndarray
+            Window weights for image B
+        mask : np.ndarray
+            Window mask (1 = skip, 0 = process)
+        pass_idx : int
+            Current pass index
+        correl_sum : np.ndarray
+            Pre-allocated output buffer, shape (windows × corr_size²)
+
+        Returns
+        -------
+        int
+            Error code (0 = success)
+        """
+        N = images_a.shape[0]
+        H, W = images_a.shape[1], images_a.shape[2]
+
+        image_size = np.array([H, W], dtype=np.int32)
+        n_win_y = len(self.win_ctrs_y[pass_idx])
+        n_win_x = len(self.win_ctrs_x[pass_idx])
+        n_windows = np.array([n_win_y, n_win_x], dtype=np.int32)
+        corr_size = self.window_sizes_for_corr[pass_idx]
+        win_size_arr = np.array([corr_size[0], corr_size[1]], dtype=np.int32)
+
+        error_code = self.lib.bulkxcorr2d_accumulate(
+            np.ascontiguousarray(images_a, dtype=np.float32),
+            np.ascontiguousarray(images_b, dtype=np.float32),
+            mask,
+            image_size,
+            N,
+            self.win_ctrs_x[pass_idx].astype(np.float32),
+            self.win_ctrs_y[pass_idx].astype(np.float32),
+            n_windows,
+            weight_a,
+            weight_b,
+            win_size_arr,
+            correl_sum,
+        )
+
+        return error_code
 
     def _cache_window_padding_ensemble(self, config: Config) -> None:
         """Cache window padding information for ensemble PIV.
@@ -563,94 +665,52 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             traceback.print_exc()
 
         try:
-            # Set up library arguments
-            (
-                    win_size_arr,
-                    n_windows,
-                    b_mask,
-                    n_peaks,
-                    i_peak_finder,
-                    b_ensemble,
-                    pk_loc_x,
-                    pk_loc_y,
-                    pk_height,
-                    sx,
-                    sy,
-                    sxy,
-                    correl_out_AB,
-                    correl_out_AA,
-                    correl_out_BB,
-                ) = self._set_lib_arguments_ensemble(
-                    config=config,
-                    win_size=config.ensemble_window_sizes[pass_idx],
-                    pass_idx=pass_idx,
-                    N=N
-                )
-
-                # Pack common arguments
-            common_args = (N,
-                    image_size,
-                    self.win_ctrs_x[pass_idx].astype(np.float32),
-                    self.win_ctrs_y[pass_idx].astype(np.float32),
-                    n_windows,
-                    win_size_arr,
-                    int(n_peaks),
-                    int(i_peak_finder),
-                    pk_loc_x,
-                    pk_loc_y,
-                    pk_height,
-                    sx,
-                    sy,
-                    sxy,
-                )
-
-                # Cross-correlation AB
-            error_code_AB, _ = self._run_correlation_kernel(
-                    images_a_prime, images_b_prime,
-                    self.win_weights_A[pass_idx], self.win_weights_B[pass_idx],
-                    b_mask, common_args + (correl_out_AB,)
-                )
-                # Auto-correlation AA
-            error_code_AA, _ = self._run_correlation_kernel(
-                    images_a_prime, images_a_prime,
-                    self.win_weights_A[pass_idx], self.win_weights_A[pass_idx],
-                    b_mask, common_args + (correl_out_AA,)
-                )
-                # Auto-correlation BB
-            error_code_BB, _ = self._run_correlation_kernel(
-                    images_b_prime, images_b_prime,
-                    self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
-                    b_mask, common_args + (correl_out_BB,)
-                )
-            # Note: warp_A_sum and warp_B_sum computed earlier (before padding)
-            # Use actual correlation size (SumWindow for single mode)
+            # Use new memory-efficient accumulation function (Option C)
+            # Allocates only windows × corr_size² instead of N × windows × corr_size²
+            # For 8×8 windows with 259k windows: 265 MB instead of 6.6 GB (25× reduction)
             corr_size = self.window_sizes_for_corr[pass_idx]
-            correl_out_AA = correl_out_AA.reshape(N,
-                total_windows,
-                corr_size[0],
-                corr_size[1],)
-            correl_out_AB = correl_out_AB.reshape(N,
-                total_windows,
-                corr_size[0],
-                corr_size[1],)
-            correl_out_BB = correl_out_BB.reshape(N,
-                total_windows,
-                corr_size[0],
-                corr_size[1],)
-            correl_AA_sum = correl_out_AA.sum(axis=0)
-            correl_BB_sum = correl_out_BB.sum(axis=0)
-            correl_AB_sum = correl_out_AB.sum(axis=0)
-            #plot_corr_planes(
-            #    correl_AB_sum.ravel(order="C") / N,
-            #    n_win_y,
-            #    n_win_x,
-            #    win_size[0],
-            #    win_size[1],
-            #    pass_idx,
-            #)
+            plane_size = total_windows * corr_size[0] * corr_size[1]
+
+            # Allocate output buffers - directly accumulated by C library
+            correl_AB_sum = np.zeros(plane_size, dtype=np.float32)
+            correl_AA_sum = np.zeros(plane_size, dtype=np.float32)
+            correl_BB_sum = np.zeros(plane_size, dtype=np.float32)
+
+            # Create mask for C library
+            if vector_mask is not None:
+                b_mask = np.ascontiguousarray(vector_mask.ravel(order='C').astype(np.float32))
+            else:
+                b_mask = np.zeros(total_windows, dtype=np.float32)
+
+            # Cross-correlation AB (accumulates internally - no reshape/sum needed!)
+            error_code_AB = self._run_correlation_accumulate(
+                images_a_prime, images_b_prime,
+                self.win_weights_A[pass_idx], self.win_weights_B[pass_idx],
+                b_mask, pass_idx, correl_AB_sum
+            )
+
+            # Auto-correlation AA
+            error_code_AA = self._run_correlation_accumulate(
+                images_a_prime, images_a_prime,
+                self.win_weights_A[pass_idx], self.win_weights_A[pass_idx],
+                b_mask, pass_idx, correl_AA_sum
+            )
+
+            # Auto-correlation BB
+            error_code_BB = self._run_correlation_accumulate(
+                images_b_prime, images_b_prime,
+                self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
+                b_mask, pass_idx, correl_BB_sum
+            )
+
+            # Reshape to (windows, corr_h, corr_w) for downstream processing
+            correl_AA_sum = correl_AA_sum.reshape(total_windows, corr_size[0], corr_size[1])
+            correl_AB_sum = correl_AB_sum.reshape(total_windows, corr_size[0], corr_size[1])
+            correl_BB_sum = correl_BB_sum.reshape(total_windows, corr_size[0], corr_size[1])
+
             if error_code_AB != 0 or error_code_AA != 0 or error_code_BB != 0:
                 logging.error("Correlation error codes: AB={}, AA={}, BB={}".format(
-                        error_code_AB, error_code_AA, error_code_BB))
+                    error_code_AB, error_code_AA, error_code_BB))
 
         except Exception as e:
             logging.error("Error in correlation: %s", e)

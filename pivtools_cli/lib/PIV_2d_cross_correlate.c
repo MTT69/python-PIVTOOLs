@@ -192,6 +192,134 @@ free(fCorrelWeight);
 return uError;
 
 }
+
+/**
+ * Ensemble-optimized cross-correlation with internal accumulation.
+ * Option C: Parallel over windows, sequential over images.
+ */
+unsigned char bulkxcorr2d_accumulate(
+    const float *fImageA_stack, const float *fImageB_stack, const float *fMask,
+    const int *nImageSize, int N_images,
+    const float *fWinCtrsX, const float *fWinCtrsY, const int *nWindows,
+    const float *fWindowWeightA, const float *fWindowWeightB,
+    const int *nWindowSize,
+    float *fCorrelPlane_Sum)
+{
+    int nWindowsTotal = nWindows[0] * nWindows[1];
+    int nPxPerWindow = nWindowSize[0] * nWindowSize[1];
+    int nImagePixels = nImageSize[0] * nImageSize[1];
+    unsigned uError = ERROR_NONE;
+    int i, j, n, iWindowIdx, ii, jj;
+
+    /* Initialize FFTW threads */
+    fftw_library_init();
+
+    /* Load FFTW wisdom */
+    char wisdom_path[512];
+    xcorr_cache_get_default_wisdom_path(wisdom_path, sizeof(wisdom_path));
+    xcorr_cache_init(wisdom_path);
+
+    /* Initialize output to zero */
+    memset(fCorrelPlane_Sum, 0, nWindowsTotal * nPxPerWindow * sizeof(float));
+
+    /* OPTION C: Parallel over windows, sequential over images */
+    #pragma omp parallel \
+        default(none) \
+        shared(fImageA_stack, fImageB_stack, fMask, nImageSize, N_images, \
+               fWinCtrsX, fWinCtrsY, nWindows, fWindowWeightA, fWindowWeightB, \
+               nWindowSize, fCorrelPlane_Sum, nPxPerWindow, nWindowsTotal, nImagePixels) \
+        private(i, j, n, iWindowIdx, ii, jj) \
+        reduction(|:uError)
+    {
+        /* Thread-local workspace - small! Only one correlation plane */
+        float *fCorrelPlane = (float*)fftwf_malloc(nPxPerWindow * sizeof(float));
+        float *fWindowA = (float*)fftwf_malloc(nPxPerWindow * sizeof(float));
+        float *fWindowB = (float*)fftwf_malloc(nPxPerWindow * sizeof(float));
+        sPlan sCCPlan;
+
+        if (!fCorrelPlane || !fWindowA || !fWindowB) {
+            uError = ERROR_NOMEM;
+            goto thread_cleanup;
+        }
+
+        memset(&sCCPlan, 0, sizeof(sCCPlan));
+        #pragma omp critical
+        uError = xcorr_create_plan(nWindowSize, &sCCPlan);
+        if (uError) goto thread_cleanup;
+
+        /* Outer loop: parallel over windows */
+        #pragma omp for schedule(static)
+        for (iWindowIdx = 0; iWindowIdx < nWindowsTotal; ++iWindowIdx)
+        {
+            ii = iWindowIdx % nWindows[1];  /* column */
+            jj = iWindowIdx / nWindows[1];  /* row */
+
+            /* Skip masked windows */
+            if (fMask[iWindowIdx] == 1) continue;
+
+            /* Compute window bounds */
+            int row_min = (int)floor(fWinCtrsY[jj] - ((float)nWindowSize[0]-1.0f)/2.0f + 0.5f);
+            int col_min = (int)floor(fWinCtrsX[ii] - ((float)nWindowSize[1]-1.0f)/2.0f + 0.5f);
+
+            /* Bounds check */
+            if (row_min < 0 || col_min < 0 ||
+                row_min + nWindowSize[0] > nImageSize[0] ||
+                col_min + nWindowSize[1] > nImageSize[1]) continue;
+
+            /* Pointer to this window's output (this thread owns it!) */
+            float *out_ptr = &fCorrelPlane_Sum[iWindowIdx * nPxPerWindow];
+
+            /* Inner loop: sequential over images, accumulating */
+            for (n = 0; n < N_images; ++n)
+            {
+                const float *fImageA = &fImageA_stack[n * nImagePixels];
+                const float *fImageB = &fImageB_stack[n * nImagePixels];
+
+                /* Extract windows and apply weights */
+                float fMeanA = 0.0f, fMeanB = 0.0f;
+                for (i = 0; i < nWindowSize[0]; ++i) {
+                    for (j = 0; j < nWindowSize[1]; ++j) {
+                        int img_idx = (row_min + i) * nImageSize[1] + (col_min + j);
+                        int win_idx = i * nWindowSize[1] + j;
+                        fWindowA[win_idx] = fImageA[img_idx] * fWindowWeightA[win_idx];
+                        fWindowB[win_idx] = fImageB[img_idx] * fWindowWeightB[win_idx];
+                        fMeanA += fWindowA[win_idx];
+                        fMeanB += fWindowB[win_idx];
+                    }
+                }
+                fMeanA /= nPxPerWindow;
+                fMeanB /= nPxPerWindow;
+
+                /* For ensemble: compute energy but DON'T subtract mean */
+                /* (mean subtraction happens via background correlation in Python) */
+                float fEnergyA = 0.0f, fEnergyB = 0.0f;
+                for (i = 0; i < nPxPerWindow; ++i) {
+                    fEnergyA += fWindowA[i] * fWindowA[i];
+                    fEnergyB += fWindowB[i] * fWindowB[i];
+                }
+
+                /* Cross-correlation via FFT */
+                xcorr_preplanned(fWindowB, fWindowA, fCorrelPlane, &sCCPlan);
+
+                /* Accumulate to output (no atomics - this thread owns this window!) */
+                for (i = 0; i < nPxPerWindow; ++i) {
+                    out_ptr[i] += fCorrelPlane[i];
+                }
+            }
+        }
+
+    thread_cleanup:
+        if (fWindowA) fftwf_free(fWindowA);
+        if (fWindowB) fftwf_free(fWindowB);
+        if (fCorrelPlane) fftwf_free(fCorrelPlane);
+        #pragma omp critical
+        xcorr_destroy_plan(&sCCPlan);
+    }
+
+    xcorr_cache_save_wisdom(wisdom_path);
+    return uError;
+}
+
 /* fminvec, find minimum element in vector */
 float fminvec(const float *fVec, int n)
 {
