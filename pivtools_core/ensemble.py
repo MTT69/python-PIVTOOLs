@@ -26,7 +26,7 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
-from dask.distributed import Client
+from dask.distributed import Client, as_completed
 
 from pivtools_core.validation import (
     validate_config,
@@ -148,7 +148,7 @@ def run_ensemble_piv(
     # 1. Load images (lazy)
     logger.info(f"Loading images for camera {camera_num}...")
     images = load_images(camera_num, config, source=source_path)
-    logger.info(f"  Loaded: shape={images.shape}, chunks={images.chunks[0]}")
+    logger.info(f"  Loaded: shape={images.shape}, {len(images.chunks[0])} chunks")
 
     # 2. Scatter immutable data once
     logger.info("Scattering immutable data...")
@@ -160,7 +160,7 @@ def run_ensemble_piv(
     batch_size = config.batch_size
     logger.info(f"Rechunking to batch_size={batch_size}...")
     images = rechunk_for_batched_processing(images, batch_size)
-    logger.info(f"  Rechunked: chunks={images.chunks[0]}")
+    logger.info(f"  Rechunked: {len(images.chunks[0])} chunks of size {images.chunks[0][0]}")
 
     # 4. Apply all filters via map_blocks
     logger.info("Creating filter pipeline...")
@@ -236,20 +236,20 @@ def run_ensemble_piv(
             )
             worker_futures.append(future)
 
-        # Gather only num_workers results (not num_chunks!)
-        logger.info(f"  Gathering {len(worker_futures)} worker results...")
-        worker_results = client.gather(worker_futures)
-        logger.info(f"  Gathered {len(worker_results)} accumulated results")
+        # Gather results with progress tracking
+        pass_start = time.time()
+        worker_results = []
+        for i, future in enumerate(as_completed(worker_futures)):
+            result = future.result()
+            worker_results.append(result)
+            logger.info(f"  Worker {i+1}/{len(worker_futures)} complete ({result['n_images']} images)")
 
         # Final local reduction (fast - only num_workers elements)
-        logger.info("  Final reduction on client...")
         accumulated = worker_results[0]
         for r in worker_results[1:]:
             accumulated = reduce_ensemble_results(accumulated, r)
-        logger.info(f"  Accumulated {accumulated['n_images']} images")
 
         # Accumulate and finalize pass
-        logger.info("  Finalizing pass...")
         accumulator.accumulate_batch(accumulated, pass_idx=pass_idx)
         pass_result = accumulator.finalize_pass(
             client=client, pass_idx=pass_idx, predictor_field=predictor_field, output_path=output_path
@@ -259,15 +259,17 @@ def run_ensemble_piv(
         # Extract predictor for next pass
         if pass_idx < num_passes - 1:
             predictor_field = extract_predictor_field(pass_result)
-            logger.info(f"  Extracted predictor field for next pass")
 
-        # Clean up
+        # Clean up - free accumulated correlation planes to reduce memory usage
+        accumulator.clear_pass_data(pass_idx)
         del worker_futures, worker_results, accumulated
         if scattered_predictor is not None:
             del scattered_predictor
         gc.collect()
         # NOTE: gc.collect on workers causes SIGSEGV with FFTW - removed
-        logger.info(f"  Pass {pass_idx + 1} complete")
+
+        pass_elapsed = time.time() - pass_start
+        logger.info(f"  Pass {pass_idx + 1} complete in {pass_elapsed:.1f}s")
 
     # 7. Build and save ensemble result
     logger.info("")

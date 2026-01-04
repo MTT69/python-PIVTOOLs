@@ -1,13 +1,13 @@
 """
-Pinhole (Planar) Calibration Views.
+Dotboard (Planar) Calibration Views.
 
-Clean API for planar calibration:
-- /calibration/planar/validate - Validate calibration images
-- /calibration/planar/frame/<idx> - Get single calibration frame
-- /calibration/planar/generate_model - Start calibration job for single camera
-- /calibration/planar/generate_model_all - Start calibration job for all cameras
-- /calibration/planar/job/<job_id> - Poll job status
-- /calibration/planar/model - Load saved camera model + detections
+Clean API for dotboard calibration:
+- /calibration/dotboard/validate - Validate calibration images
+- /calibration/dotboard/frame/<idx> - Get single calibration frame
+- /calibration/dotboard/generate_model - Start calibration job for single camera
+- /calibration/dotboard/generate_model_all - Start calibration job for all cameras
+- /calibration/dotboard/job/<job_id> - Poll job status
+- /calibration/dotboard/model - Load saved camera model + detections
 """
 
 import threading
@@ -29,7 +29,7 @@ from pivtools_gui.calibration.calibration_planar.planar_calibration_production i
 from pivtools_gui.calibration.services.job_manager import job_manager
 from pivtools_gui.utils import camera_number, numpy_to_png_base64
 
-pinhole_bp = Blueprint("pinhole", __name__)
+dotboard_bp = Blueprint("dotboard", __name__)
 
 
 # ============================================================================
@@ -37,7 +37,7 @@ pinhole_bp = Blueprint("pinhole", __name__)
 # ============================================================================
 
 
-@pinhole_bp.route("/calibration/planar/validate", methods=["POST"])
+@dotboard_bp.route("/calibration/dotboard/validate", methods=["POST"])
 def planar_validate():
     """
     Validate calibration images exist and are readable.
@@ -84,7 +84,7 @@ def planar_validate():
 # ============================================================================
 
 
-@pinhole_bp.route("/calibration/planar/frame/<int:idx>", methods=["GET"])
+@dotboard_bp.route("/calibration/dotboard/frame/<int:idx>", methods=["GET"])
 def planar_frame(idx: int):
     """
     Get a single calibration frame (image only, no overlay).
@@ -148,7 +148,7 @@ def planar_frame(idx: int):
 # ============================================================================
 
 
-@pinhole_bp.route("/calibration/planar/generate_model", methods=["POST"])
+@dotboard_bp.route("/calibration/dotboard/generate_model", methods=["POST"])
 def planar_generate_model():
     """
     Start camera model generation job.
@@ -169,7 +169,7 @@ def planar_generate_model():
 
     # Create job
     job_id = job_manager.create_job(
-        "planar",
+        "dotboard",
         processed_images=0,
         valid_images=0,
         total_images=0,
@@ -182,7 +182,7 @@ def planar_generate_model():
 
             # Get config and parameters
             cfg = get_config()
-            pinhole_cfg = cfg.data.get("calibration", {}).get("pinhole", {})
+            dotboard_cfg = cfg.data.get("calibration", {}).get("dotboard", {})
 
             # Get paths
             base_root = Path(cfg.base_paths[source_path_idx])
@@ -209,11 +209,11 @@ def planar_generate_model():
                 base_dir=str(base_root),
                 camera_count=1,  # Processing single camera
                 file_pattern=cfg.calibration_image_format,
-                pattern_cols=pinhole_cfg.get("pattern_cols", 10),
-                pattern_rows=pinhole_cfg.get("pattern_rows", 10),
-                dot_spacing_mm=pinhole_cfg.get("dot_spacing_mm", 28.89),
-                asymmetric=pinhole_cfg.get("asymmetric", False),
-                enhance_dots=pinhole_cfg.get("enhance_dots", True),
+                pattern_cols=dotboard_cfg.get("pattern_cols", 10),
+                pattern_rows=dotboard_cfg.get("pattern_rows", 10),
+                dot_spacing_mm=dotboard_cfg.get("dot_spacing_mm", 28.89),
+                asymmetric=dotboard_cfg.get("asymmetric", False),
+                enhance_dots=dotboard_cfg.get("enhance_dots", True),
                 calibration_subfolder="",  # Already included in source_dir
             )
 
@@ -242,12 +242,12 @@ def planar_generate_model():
                     num_images_used=result.get("num_images_used"),
                     model_path=result.get("model_path"),
                 )
-                logger.info(f"Planar calibration completed for camera {camera}")
+                logger.info(f"Dotboard calibration completed for camera {camera}")
             else:
                 job_manager.fail_job(job_id, result.get("error", "Calibration failed"))
 
         except Exception as e:
-            logger.error(f"Planar calibration job {job_id} failed: {e}")
+            logger.error(f"Dotboard calibration job {job_id} failed: {e}")
             job_manager.fail_job(job_id, str(e))
 
     thread = threading.Thread(target=run_calibration)
@@ -266,7 +266,7 @@ def planar_generate_model():
 # ============================================================================
 
 
-@pinhole_bp.route("/calibration/planar/job/<job_id>", methods=["GET"])
+@dotboard_bp.route("/calibration/dotboard/job/<job_id>", methods=["GET"])
 def planar_job_status(job_id: str):
     """
     Get calibration job status.
@@ -287,7 +287,7 @@ def planar_job_status(job_id: str):
 # ============================================================================
 
 
-@pinhole_bp.route("/calibration/planar/model", methods=["GET"])
+@dotboard_bp.route("/calibration/dotboard/model", methods=["GET"])
 def planar_load_model():
     """
     Load saved camera model and detection coordinates.
@@ -305,9 +305,9 @@ def planar_load_model():
     try:
         cfg = get_config()
         base_root = Path(cfg.base_paths[source_path_idx])
-        cam_output_base = base_root / "calibration" / f"Cam{camera}" / "pinhole_planar"
+        cam_output_base = base_root / "calibration" / f"Cam{camera}" / "dotboard_planar"
 
-        model_file = cam_output_base / "model" / "pinhole_model.mat"
+        model_file = cam_output_base / "model" / "dotboard_model.mat"
         indices_folder = cam_output_base / "indices"
 
         # Check if model exists
@@ -387,7 +387,7 @@ def planar_load_model():
 # ============================================================================
 
 
-@pinhole_bp.route("/calibration/planar/generate_model_all", methods=["POST"])
+@dotboard_bp.route("/calibration/dotboard/generate_model_all", methods=["POST"])
 def planar_generate_model_all():
     """
     Start camera model generation job for all configured cameras.
@@ -413,7 +413,7 @@ def planar_generate_model_all():
 
         # Create multi-camera job
         job_id = job_manager.create_job(
-            "planar_all",
+            "dotboard_all",
             processed_cameras=0,
             total_cameras=len(camera_numbers),
             current_camera=None,
@@ -423,7 +423,7 @@ def planar_generate_model_all():
         def run_calibration():
             try:
                 camera_results = {}
-                pinhole_cfg = cfg.data.get("calibration", {}).get("pinhole", {})
+                dotboard_cfg = cfg.data.get("calibration", {}).get("dotboard", {})
                 base_root = Path(cfg.base_paths[source_path_idx])
                 subfolder = cfg.calibration_subfolder
 
@@ -450,11 +450,11 @@ def planar_generate_model_all():
                             base_dir=str(base_root),
                             camera_count=1,
                             file_pattern=cfg.calibration_image_format,
-                            pattern_cols=pinhole_cfg.get("pattern_cols", 10),
-                            pattern_rows=pinhole_cfg.get("pattern_rows", 10),
-                            dot_spacing_mm=pinhole_cfg.get("dot_spacing_mm", 28.89),
-                            asymmetric=pinhole_cfg.get("asymmetric", False),
-                            enhance_dots=pinhole_cfg.get("enhance_dots", True),
+                            pattern_cols=dotboard_cfg.get("pattern_cols", 10),
+                            pattern_rows=dotboard_cfg.get("pattern_rows", 10),
+                            dot_spacing_mm=dotboard_cfg.get("dot_spacing_mm", 28.89),
+                            asymmetric=dotboard_cfg.get("asymmetric", False),
+                            enhance_dots=dotboard_cfg.get("enhance_dots", True),
                             calibration_subfolder="",
                         )
 

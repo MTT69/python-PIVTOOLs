@@ -831,7 +831,9 @@ class CrossCorrelator(ABC):
         window_type : str
             Window type for weighting function ('gaussian', 'blackman', etc.)
         compute_window_fn : Callable
-            Function to compute window centers: fn(pass_idx, config) -> (spacing_x, spacing_y, ctrs_x, ctrs_y)
+            Function to compute window centers:
+            fn(pass_idx, config) -> (spacing_x, spacing_y, ctrs_x, ctrs_y, padding)
+            where padding is (top, bottom, left, right) tuple
         first_pass_ksize : tuple
             Kernel size for first pass smoothing. (1,1) for ensemble, (0,0) for instantaneous.
         """
@@ -846,21 +848,37 @@ class CrossCorrelator(ABC):
         self.ksize_filt: list[tuple[int, int]] = []
         self.sd: list[float] = []
         self.G_smooth_predictor: list[np.ndarray] = []
+        self.padding_per_pass: list[tuple[int, int, int, int]] = []  # For single mode coordinate conversion
 
         H, W = config.image_shape
 
         for pass_idx in range(len(window_sizes)):
-            spacing_x, spacing_y, win_ctrs_x, win_ctrs_y = compute_window_fn(pass_idx, config)
+            spacing_x, spacing_y, win_ctrs_x, win_ctrs_y, padding = compute_window_fn(pass_idx, config)
+            self.padding_per_pass.append(padding)
 
             # Compute padded window centers (pre/post)
+            # IMPORTANT: We need n_pre >= 2 and n_post >= 2 for safe cubic interpolation.
+            # Cubic interpolation needs 4 neighbors. At map index 0.x, cubic reaches for
+            # index -1 which is OOB. With n_pre >= 2, map index is >= 1.x and all 4
+            # neighbors (0, 1, 2, 3) are valid.
             win_ctrs_x_pre = np.arange(1, win_ctrs_x[0] - spacing_x / 2, spacing_x)
             if win_ctrs_x_pre.size == 0:
                 win_ctrs_x_pre = np.array([1])
             win_ctrs_x_pre -= 1
+            # Ensure n_pre_x >= 2 for cubic interpolation safety
+            while len(win_ctrs_x_pre) < 2:
+                extra = win_ctrs_x_pre[0] - spacing_x
+                win_ctrs_x_pre = np.concatenate([[max(0, extra)], win_ctrs_x_pre])
+
             win_ctrs_x_post = np.arange(W, win_ctrs_x[-1] + spacing_x / 2, -spacing_x)
             if win_ctrs_x_post.size == 0:
                 win_ctrs_x_post = np.array([W])
             win_ctrs_x_post -= 1
+            # Ensure n_post_x >= 2 for cubic interpolation safety
+            while len(win_ctrs_x_post) < 2:
+                extra = win_ctrs_x_post[-1] + spacing_x
+                win_ctrs_x_post = np.concatenate([win_ctrs_x_post, [min(W - 1, extra)]])
+
             win_ctrs_x_all = np.concatenate(
                 [win_ctrs_x_pre, win_ctrs_x, win_ctrs_x_post[::-1]]
             )
@@ -869,10 +887,20 @@ class CrossCorrelator(ABC):
             if win_ctrs_y_pre.size == 0:
                 win_ctrs_y_pre = np.array([1])
             win_ctrs_y_pre -= 1
+            # Ensure n_pre_y >= 2 for cubic interpolation safety
+            while len(win_ctrs_y_pre) < 2:
+                extra = win_ctrs_y_pre[0] - spacing_y
+                win_ctrs_y_pre = np.concatenate([[max(0, extra)], win_ctrs_y_pre])
+
             win_ctrs_y_post = np.arange(H, win_ctrs_y[-1] + spacing_y / 2, -spacing_y)
             if win_ctrs_y_post.size == 0:
                 win_ctrs_y_post = np.array([H])
             win_ctrs_y_post -= 1
+            # Ensure n_post_y >= 2 for cubic interpolation safety
+            while len(win_ctrs_y_post) < 2:
+                extra = win_ctrs_y_post[-1] + spacing_y
+                win_ctrs_y_post = np.concatenate([win_ctrs_y_post, [min(H - 1, extra)]])
+
             win_ctrs_y_all = np.concatenate(
                 [win_ctrs_y_pre, win_ctrs_y, win_ctrs_y_post[::-1]]
             )

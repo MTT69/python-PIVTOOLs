@@ -246,9 +246,13 @@ def compute_window_centers(
         n_win_x,
         dtype=np.float32
     )
+    # Anchor to BOTTOM of image, but return ASCENDING order for np.interp compatibility
+    # Gap will be at TOP (pixels 0 to first_ctr_y - window/2 are unmeasured)
+    # Same positions as descending, just ascending array order
+    first_ctr_y_anchored = last_ctr_y - win_spacing_y * (n_win_y - 1)
     win_ctrs_y = np.linspace(
-        first_ctr_y,
-        first_ctr_y + win_spacing_y * (n_win_y - 1),
+        first_ctr_y_anchored,  # Near top (low pixel y, high physical y)
+        last_ctr_y,            # At bottom (high pixel y, low physical y)
         n_win_y,
         dtype=np.float32
     )
@@ -406,16 +410,19 @@ def compute_window_centers_single_mode(
         n_win_x,
         dtype=np.float32
     )
+    # Anchor to BOTTOM of image, but return ASCENDING order for np.interp compatibility
+    # Gap will be at TOP (pixels 0 to first_ctr_y - window/2 are unmeasured)
+    first_ctr_y_anchored = last_ctr_y - win_spacing_y * (n_win_y - 1)
     win_ctrs_y = np.linspace(
-        first_ctr_y,
-        first_ctr_y + win_spacing_y * (n_win_y - 1),
+        first_ctr_y_anchored,  # Near top (low pixel y, high physical y)
+        last_ctr_y,            # At bottom (high pixel y, low physical y)
         n_win_y,
         dtype=np.float32
     )
 
     # Verify last window fits within padded image (catches off-by-one errors early)
     max_ctr_x = win_ctrs_x[-1]
-    max_ctr_y = win_ctrs_y[-1]
+    max_ctr_y = win_ctrs_y[-1]  # Last element is largest (ascending order)
     half_win_x = (sum_width - 1) / 2.0
     half_win_y = (sum_height - 1) / 2.0
 

@@ -2,7 +2,7 @@
 """
 test_stereo_calibration.py
 
-Tests for stereo camera calibration using ChArUco and circle grid (pinhole) detection.
+Tests for stereo camera calibration using ChArUco and circle grid (dotboard) detection.
 Uses synthetic stereo image pairs generated programmatically for reproducibility.
 
 Test categories:
@@ -27,8 +27,8 @@ from pivtools_gui.stereo_reconstruction.stereo_charuco_calibration_production im
     StereoCharucoCalibrator,
     ARUCO_DICT_MAP,
 )
-from pivtools_gui.stereo_reconstruction.stereo_pinhole_calibration_production import (
-    StereoPinholeCalibrator,
+from pivtools_gui.stereo_reconstruction.stereo_dotboard_calibration_production import (
+    StereoDotboardCalibrator,
 )
 
 
@@ -342,15 +342,15 @@ def test_charuco_pattern_params():
 
 
 # ============================================================
-# UNIT TESTS - PINHOLE (DOTBOARD)
+# UNIT TESTS - DOTBOARD (DOTBOARD)
 # ============================================================
 
-def test_pinhole_detector_creation():
-    """Test that StereoPinholeCalibrator creates detector correctly."""
+def test_dotboard_detector_creation():
+    """Test that StereoDotboardCalibrator creates detector correctly."""
     print("  Testing Pinhole detector creation...")
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        calibrator = StereoPinholeCalibrator(
+        calibrator = StereoDotboardCalibrator(
             source_dir=tmpdir,
             base_dir=tmpdir,
             camera_pair=[1, 2],
@@ -365,12 +365,12 @@ def test_pinhole_detector_creation():
     return True
 
 
-def test_pinhole_object_points_symmetric():
+def test_dotboard_object_points_symmetric():
     """Test symmetric grid object points generation."""
     print("  Testing Pinhole symmetric object points...")
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        calibrator = StereoPinholeCalibrator(
+        calibrator = StereoDotboardCalibrator(
             source_dir=tmpdir,
             base_dir=tmpdir,
             camera_pair=[1, 2],
@@ -398,12 +398,12 @@ def test_pinhole_object_points_symmetric():
     return True
 
 
-def test_pinhole_object_points_asymmetric():
+def test_dotboard_object_points_asymmetric():
     """Test asymmetric grid object points generation."""
     print("  Testing Pinhole asymmetric object points...")
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        calibrator = StereoPinholeCalibrator(
+        calibrator = StereoDotboardCalibrator(
             source_dir=tmpdir,
             base_dir=tmpdir,
             camera_pair=[1, 2],
@@ -426,7 +426,7 @@ def test_pinhole_object_points_asymmetric():
     return True
 
 
-def test_pinhole_detection_synthetic():
+def test_dotboard_detection_synthetic():
     """Test circle grid detection on synthetic image."""
     print("  Testing Pinhole detection on synthetic image...")
 
@@ -434,7 +434,7 @@ def test_pinhole_detection_synthetic():
     img1, img2 = generator.generate_dotboard_stereo_pair(cols=8, rows=6)
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        calibrator = StereoPinholeCalibrator(
+        calibrator = StereoDotboardCalibrator(
             source_dir=tmpdir,
             base_dir=tmpdir,
             camera_pair=[1, 2],
@@ -457,7 +457,7 @@ def test_pinhole_detection_synthetic():
     return True
 
 
-def test_pinhole_detection_inverted():
+def test_dotboard_detection_inverted():
     """Test circle grid detection on inverted image."""
     print("  Testing Pinhole detection on inverted image...")
 
@@ -470,7 +470,7 @@ def test_pinhole_detection_inverted():
     img2_inv = 255 - img2
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        calibrator = StereoPinholeCalibrator(
+        calibrator = StereoDotboardCalibrator(
             source_dir=tmpdir,
             base_dir=tmpdir,
             camera_pair=[1, 2],
@@ -489,12 +489,12 @@ def test_pinhole_detection_inverted():
     return True
 
 
-def test_pinhole_pattern_params():
+def test_dotboard_pattern_params():
     """Test Pinhole pattern parameters retrieval."""
     print("  Testing Pinhole pattern parameters...")
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        calibrator = StereoPinholeCalibrator(
+        calibrator = StereoDotboardCalibrator(
             source_dir=tmpdir,
             base_dir=tmpdir,
             camera_pair=[1, 2],
@@ -662,7 +662,7 @@ def test_charuco_stereo_pipeline_synthetic():
     return True
 
 
-def test_pinhole_stereo_pipeline_synthetic():
+def test_dotboard_stereo_pipeline_synthetic():
     """Test full Pinhole stereo calibration with synthetic images."""
     print("  Testing Pinhole stereo pipeline...")
 
@@ -675,7 +675,7 @@ def test_pinhole_stereo_pipeline_synthetic():
     )
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        calibrator = StereoPinholeCalibrator(
+        calibrator = StereoDotboardCalibrator(
             source_dir=tmpdir,
             base_dir=tmpdir,
             camera_pair=[1, 2],
@@ -753,13 +753,13 @@ def test_module_imports():
         StereoCharucoCalibrator,
         ARUCO_DICT_MAP,
     )
-    from pivtools_gui.stereo_reconstruction.stereo_pinhole_calibration_production import (
-        StereoPinholeCalibrator,
+    from pivtools_gui.stereo_reconstruction.stereo_dotboard_calibration_production import (
+        StereoDotboardCalibrator,
     )
 
     assert BaseStereoCalibrator is not None
     assert StereoCharucoCalibrator is not None
-    assert StereoPinholeCalibrator is not None
+    assert StereoDotboardCalibrator is not None
     assert ARUCO_DICT_MAP is not None
 
     return True
@@ -811,7 +811,7 @@ def test_script_syntax_charuco():
     return True
 
 
-def test_script_syntax_pinhole():
+def test_script_syntax_dotboard():
     """Test that Pinhole script has valid syntax."""
     print("  Testing Pinhole script syntax...")
 
@@ -820,7 +820,7 @@ def test_script_syntax_pinhole():
         Path(__file__).parent.parent
         / "pivtools_gui"
         / "stereo_reconstruction"
-        / "stereo_pinhole_calibration_production.py"
+        / "stereo_dotboard_calibration_production.py"
     )
 
     with open(script_path, "r") as f:
@@ -847,13 +847,13 @@ def run_tests(verbose: bool = True):
         ("ChArUco Pattern Params", test_charuco_pattern_params),
     ]
 
-    pinhole_unit_tests = [
-        ("Pinhole Detector Creation", test_pinhole_detector_creation),
-        ("Pinhole Object Points Symmetric", test_pinhole_object_points_symmetric),
-        ("Pinhole Object Points Asymmetric", test_pinhole_object_points_asymmetric),
-        ("Pinhole Detection Synthetic", test_pinhole_detection_synthetic),
-        ("Pinhole Detection Inverted", test_pinhole_detection_inverted),
-        ("Pinhole Pattern Params", test_pinhole_pattern_params),
+    dotboard_unit_tests = [
+        ("Dotboard Detector Creation", test_dotboard_detector_creation),
+        ("Dotboard Object Points Symmetric", test_dotboard_object_points_symmetric),
+        ("Dotboard Object Points Asymmetric", test_dotboard_object_points_asymmetric),
+        ("Dotboard Detection Synthetic", test_dotboard_detection_synthetic),
+        ("Dotboard Detection Inverted", test_dotboard_detection_inverted),
+        ("Dotboard Pattern Params", test_dotboard_pattern_params),
     ]
 
     stereo_math_tests = [
@@ -863,7 +863,7 @@ def run_tests(verbose: bool = True):
 
     integration_tests = [
         ("ChArUco Stereo Pipeline", test_charuco_stereo_pipeline_synthetic),
-        ("Pinhole Stereo Pipeline", test_pinhole_stereo_pipeline_synthetic),
+        ("Dotboard Stereo Pipeline", test_dotboard_stereo_pipeline_synthetic),
         ("Stereo Output Structure", test_stereo_output_structure),
     ]
 
@@ -871,12 +871,12 @@ def run_tests(verbose: bool = True):
         ("Module Imports", test_module_imports),
         ("Script Syntax Base", test_script_syntax_base),
         ("Script Syntax ChArUco", test_script_syntax_charuco),
-        ("Script Syntax Pinhole", test_script_syntax_pinhole),
+        ("Script Syntax Dotboard", test_script_syntax_dotboard),
     ]
 
     all_test_groups = [
         ("CHARUCO UNIT TESTS", charuco_unit_tests),
-        ("PINHOLE UNIT TESTS", pinhole_unit_tests),
+        ("DOTBOARD UNIT TESTS", dotboard_unit_tests),
         ("STEREO MATH TESTS", stereo_math_tests),
         ("INTEGRATION TESTS", integration_tests),
         ("CLI TESTS", cli_tests),

@@ -6,8 +6,8 @@ Classes
 -------
 BaseStereoCalibrator
     Abstract base class for stereo calibration
-StereoPinholeCalibrator
-    Stereo calibration using circle grid (pinhole) detection
+StereoDotboardCalibrator
+    Stereo calibration using circle grid (dotboard) detection
 StereoCharucoCalibrator
     Stereo calibration using ChArUco board detection
 StereoReconstructor
@@ -15,13 +15,13 @@ StereoReconstructor
 """
 
 from .stereo_calibration_base import BaseStereoCalibrator
-from .stereo_pinhole_calibration_production import StereoPinholeCalibrator
+from .stereo_dotboard_calibration_production import StereoDotboardCalibrator
 from .stereo_charuco_calibration_production import StereoCharucoCalibrator
 from .stereo_reconstruction_production import StereoReconstructor
 
 __all__ = [
     "BaseStereoCalibrator",
-    "StereoPinholeCalibrator",
+    "StereoDotboardCalibrator",
     "StereoCharucoCalibrator",
     "StereoReconstructor",
 ]

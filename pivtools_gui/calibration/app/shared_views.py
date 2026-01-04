@@ -4,7 +4,7 @@ Shared Calibration Views.
 Provides utility endpoints used across calibration methods, including:
 - Unified calibration image fetching
 - Calibration configuration management
-- Vector calibration (unified for pinhole and charuco)
+- Vector calibration (unified for dotboard and charuco)
 """
 
 import threading
@@ -463,7 +463,7 @@ def detect_calibration_model_type(base_dir: Path, camera_num: int) -> Optional[s
         camera_num: Camera number (1-based)
 
     Returns:
-        'charuco' if charuco model exists, 'planar' if pinhole model exists, None otherwise
+        'charuco' if charuco model exists, 'dotboard' if dotboard model exists, None otherwise
     """
     calib_base = base_dir / "calibration" / f"Cam{camera_num}"
 
@@ -472,10 +472,10 @@ def detect_calibration_model_type(base_dir: Path, camera_num: int) -> Optional[s
     if charuco_model.exists():
         return "charuco"
 
-    # Check for pinhole/planar model
-    pinhole_model = calib_base / "pinhole_planar" / "model" / "pinhole_model.mat"
-    if pinhole_model.exists():
-        return "planar"
+    # Check for dotboard model
+    dotboard_model = calib_base / "dotboard_planar" / "model" / "dotboard_model.mat"
+    if dotboard_model.exists():
+        return "dotboard"
 
     return None
 
@@ -511,12 +511,12 @@ def vectors_calibrate():
         base_root = Path(cfg.base_paths[source_path_idx])
         num_frame_pairs = cfg.num_frame_pairs
 
-        # Get dt from the active calibration type or pinhole config
-        active_type = getattr(cfg, "calibration_active", "pinhole")
+        # Get dt from the active calibration type or dotboard config
+        active_type = getattr(cfg, "calibration_active", "dotboard")
         if active_type == "charuco":
             dt = getattr(cfg, "calibration_charuco_dt", 1.0)
         else:
-            dt = getattr(cfg, "calibration_pinhole_dt", 1.0)
+            dt = getattr(cfg, "calibration_dotboard_dt", 1.0)
 
         # Create multi-camera job
         job_id = job_manager.create_job(

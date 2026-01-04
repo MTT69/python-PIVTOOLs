@@ -27,7 +27,7 @@
 #endif
 
 #define P_PARAMS 16
-#define TARGET_GRID_DIM 32      // Downsample to ~32x32 = 1024 pts (good balance)
+#define EXTRACT_SIZE 32         // Extract 32x32 region around peak (full resolution)
 #define SIGMA_MIN 1e-6          // Minimum variance to prevent singular matrices
 #define FIT_TOL 1e-4            // Convergence tolerance (1e-4 is good for PIV)
 #define MAX_ITER 20             // Max LM iterations (20 usually converges or never will)
@@ -322,37 +322,12 @@ PIV_EXPORT int fit_stacked_gaussian_batch_export(
     int success_count = 0;
     int win_w = (int)sqrt((double)n_per_window);
 
-    int stride = (win_w > TARGET_GRID_DIM) ? (win_w / TARGET_GRID_DIM) : 1;
-    int sub_w = (win_w + stride - 1) / stride;
-    size_t n_sub = (size_t)(sub_w * sub_w);
+    // Determine extraction region size (min of EXTRACT_SIZE and window size)
+    int extract_w = (win_w < EXTRACT_SIZE) ? win_w : EXTRACT_SIZE;
+    size_t n_extract = (size_t)(extract_w * extract_w);
 
-    fprintf(stderr, "[fit] %zu windows, %dx%d -> stride %d -> %zu pts\n",
-            num_windows, win_w, win_w, stride, n_sub);
-
-    // Pre-compute downsampled coordinates
-    double *sub_X1 = malloc(n_sub * sizeof(double));
-    double *sub_X2 = malloc(n_sub * sizeof(double));
-    size_t *src_idx = malloc(n_sub * sizeof(size_t));
-
-    if (!sub_X1 || !sub_X2 || !src_idx) {
-        fprintf(stderr, "[fit] malloc failed\n");
-        free(sub_X1); free(sub_X2); free(src_idx);
-        return 0;
-    }
-
-    size_t k = 0;
-    for (int r = 0; r < win_w && k < n_sub; r += stride) {
-        for (int c = 0; c < win_w && k < n_sub; c += stride) {
-            size_t src = (size_t)(r * win_w + c);
-            src_idx[k] = src;
-            sub_X1[k] = X1[src];
-            sub_X2[k] = X2[src];
-            k++;
-        }
-    }
-    size_t actual_n = k;
-
-    fprintf(stderr, "[fit] actual subsampled points: %zu\n", actual_n);
+    fprintf(stderr, "[fit] %zu windows, %dx%d -> extracting %dx%d (%zu pts) around peak\n",
+            num_windows, win_w, win_w, extract_w, extract_w, n_extract);
 
     gsl_set_error_handler_off();
 
@@ -371,13 +346,15 @@ PIV_EXPORT int fit_stacked_gaussian_batch_export(
     {
         fprintf(stderr, "[fit] OpenMP threads: %d\n", omp_get_num_threads());
     }
-        // Thread-local Y buffer
-        double *sub_y = malloc(3 * actual_n * sizeof(double));
+        // Thread-local buffers for extracted region
+        double *ext_X1 = malloc(n_extract * sizeof(double));
+        double *ext_X2 = malloc(n_extract * sizeof(double));
+        double *ext_y = malloc(3 * n_extract * sizeof(double));
 
-        // Thread-local GSL workspace - allocated ONCE per thread, reused for all windows
-        gsl_multifit_nlinear_workspace *work = gsl_multifit_nlinear_alloc(T, &fdf_params, 3 * actual_n, P_PARAMS);
+        // Thread-local GSL workspace
+        gsl_multifit_nlinear_workspace *work = gsl_multifit_nlinear_alloc(T, &fdf_params, 3 * n_extract, P_PARAMS);
 
-        if (!sub_y || !work) {
+        if (!ext_X1 || !ext_X2 || !ext_y || !work) {
             fprintf(stderr, "[fit] thread allocation failed\n");
         }
 
@@ -385,7 +362,7 @@ PIV_EXPORT int fit_stacked_gaussian_batch_export(
         #pragma omp for schedule(dynamic, 16)
         #endif
         for (int i = 0; i < (int)num_windows; i++) {
-            if (!sub_y || !work) {
+            if (!ext_X1 || !ext_X2 || !ext_y || !work) {
                 out_statuses[i] = 0;
                 continue;
             }
@@ -394,16 +371,41 @@ PIV_EXPORT int fit_stacked_gaussian_batch_export(
             const double *guess = initial_guesses + (size_t)i * P_PARAMS;
             double *params = out_params + (size_t)i * P_PARAMS;
 
-            // Downsample Y (cache-friendly sequential access)
-            for (size_t j = 0; j < actual_n; j++) {
-                size_t s = src_idx[j];
-                sub_y[j]              = y_win[s];
-                sub_y[j + actual_n]   = y_win[s + n_per_window];
-                sub_y[j + 2*actual_n] = y_win[s + 2*n_per_window];
+            // Get peak location from initial guess (x0_A, y0_A)
+            double peak_x = guess[12];
+            double peak_y = guess[13];
+
+            // Convert to grid indices (coordinates are typically 0..win_w-1)
+            int peak_col = (int)(peak_x + 0.5);
+            int peak_row = (int)(peak_y + 0.5);
+
+            // Compute extraction region bounds (centered on peak)
+            int half_w = extract_w / 2;
+            int r_start = peak_row - half_w;
+            int c_start = peak_col - half_w;
+
+            // Clamp to window bounds
+            if (r_start < 0) r_start = 0;
+            if (c_start < 0) c_start = 0;
+            if (r_start + extract_w > win_w) r_start = win_w - extract_w;
+            if (c_start + extract_w > win_w) c_start = win_w - extract_w;
+
+            // Extract region at full resolution
+            size_t k = 0;
+            for (int r = r_start; r < r_start + extract_w; r++) {
+                for (int c = c_start; c < c_start + extract_w; c++) {
+                    size_t src = (size_t)(r * win_w + c);
+                    ext_X1[k] = X1[src];
+                    ext_X2[k] = X2[src];
+                    ext_y[k]              = y_win[src];
+                    ext_y[k + n_extract]   = y_win[src + n_per_window];
+                    ext_y[k + 2*n_extract] = y_win[src + 2*n_per_window];
+                    k++;
+                }
             }
 
-            // Reuse workspace - no allocation!
-            int ok = fit_one_reuse(work, actual_n, sub_X1, sub_X2, sub_y, guess, params);
+            // Fit using extracted region
+            int ok = fit_one_reuse(work, n_extract, ext_X1, ext_X2, ext_y, guess, params);
             out_statuses[i] = ok;
 
             if (ok) {
@@ -415,15 +417,13 @@ PIV_EXPORT int fit_stacked_gaussian_batch_export(
 
         // Free thread-local resources
         if (work) gsl_multifit_nlinear_free(work);
-        free(sub_y);
+        free(ext_X1);
+        free(ext_X2);
+        free(ext_y);
 
     #ifdef _OPENMP
     }
     #endif
-
-    free(sub_X1);
-    free(sub_X2);
-    free(src_idx);
 
     fprintf(stderr, "[fit] completed: %d/%zu succeeded\n", success_count, num_windows);
 

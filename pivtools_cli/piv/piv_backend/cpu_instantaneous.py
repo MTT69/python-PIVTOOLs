@@ -227,7 +227,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         x_coords = np.arange(self.W, dtype=np.float32)
         y_mesh, x_mesh = np.meshgrid(y_coords, x_coords, indexing="ij")
         self.im_mesh = np.stack([y_mesh, x_mesh], axis=-1)
-        logging.info(f"Processing batch of {N} image pairs")
+        logging.debug(f"Processing batch of {N} image pairs")
 
         try:
                 # Convert images to C-contiguous (row-major) format
@@ -246,9 +246,9 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             for pass_idx, win_size in enumerate(config.window_sizes):
 
                 pass_start = time.perf_counter()
-                logging.info(f"\n{'='*60}")
-                logging.info(f"PASS {pass_idx + 1} of {len(config.window_sizes)} (window_size={win_size})")
-                logging.info(f"{'='*60}")
+                logging.debug(f"\n{'='*60}")
+                logging.debug(f"PASS {pass_idx + 1} of {len(config.window_sizes)} (window_size={win_size})")
+                logging.debug(f"{'='*60}")
 
                 images_a_prime, images_b_prime, self.delta_ab_pred = (
                         self._predictor_corrector_batch(
@@ -483,10 +483,10 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 stacked = np.stack([uy_mat, ux_mat], axis=-1)  # (N, ny, nx, 2)
 
                 self.delta_ab_old = np.pad(
-    stacked,
-    ((0, 0), (pre_y, post_y), (pre_x, post_x), (0, 0)),
-    mode="edge",
-)
+                    stacked,
+                    ((0, 0), (pre_y, post_y), (pre_x, post_x), (0, 0)),
+                    mode="edge",
+                )
 
 
 
@@ -534,7 +534,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
 
     def _compute_window_centres(
         self, pass_idx: int, config: Config
-    ) -> tuple[int, int, np.ndarray, np.ndarray]:
+    ) -> tuple[int, int, np.ndarray, np.ndarray, tuple]:
         """
         Compute window centers and spacing for a given pass using centralized utilities.
 
@@ -545,8 +545,10 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         :type pass_idx: int
         :param config: Configuration object containing window sizes, overlap, and image shape.
         :type config: Config
-        :return: Tuple containing window spacing in x and y, and arrays of window center coordinates in x and y.
-        :rtype: tuple[int, int, np.ndarray, np.ndarray]
+        :return: Tuple containing window spacing in x and y, arrays of window center coordinates
+                 in x and y, and padding tuple (top, bottom, left, right) - always (0,0,0,0) for
+                 instantaneous mode.
+        :rtype: tuple[int, int, np.ndarray, np.ndarray, tuple]
         """
         win_height, win_width = config.window_sizes[pass_idx]
         overlap = config.overlap[pass_idx]
@@ -588,6 +590,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             result.win_spacing_y,
             np.ascontiguousarray(result.win_ctrs_x),
             np.ascontiguousarray(result.win_ctrs_y),
+            (0, 0, 0, 0),  # No padding for instantaneous mode
         )
     def _predictor_corrector_batch(
         self,

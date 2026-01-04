@@ -603,6 +603,9 @@ def reduce_ensemble_results(r1: dict, r2: dict) -> dict:
         "n_win_y": r1["n_win_y"],
         "smoothed_predictor": r1.get("smoothed_predictor"),
         "vector_mask": r1.get("vector_mask"),
+        # Padding values for predictor field storage
+        "n_pre": r1.get("n_pre"),
+        "n_post": r1.get("n_post"),
     }
 
 
@@ -614,8 +617,10 @@ def extract_predictor_field(pass_result) -> np.ndarray:
         pass_result: PIVEnsemblePassResult from finalize_pass
 
     Returns:
-        Predictor field of shape (n_win_y+2, n_win_x+2, 2) containing [uy, ux]
-        Padded by 1 on each edge for boundary extrapolation.
+        Predictor field of shape (n_win_y, n_win_x, 2) containing [uy, ux]
+        NOTE: Returns UNPADDED field. Padding is applied inside _get_im_mesh()
+        using pass-specific n_pre_all/n_post_all values to match the
+        interpolation grid coordinates (win_ctrs_x_all, win_ctrs_y_all).
     """
     uy = pass_result.uy_mat.copy()
     ux = pass_result.ux_mat.copy()
@@ -623,14 +628,21 @@ def extract_predictor_field(pass_result) -> np.ndarray:
     # Stack as [uy, ux] along last dimension
     predictor_field = np.stack([uy, ux], axis=-1).astype(np.float32)
 
-    # Pad predictor field for boundary extrapolation
-    predictor_field = np.pad(
-        predictor_field,
-        ((1, 1), (1, 1), (0, 0)),
-        mode='edge'
-    )
+    # NOTE: No padding here - _get_im_mesh() in cpu_ensemble.py handles
+    # proper padding using n_pre_all/n_post_all which vary by pass configuration
 
-    logger.debug(f"Extracted predictor field: shape={predictor_field.shape}")
+    # DEBUG: Log edge values of extracted predictor to trace edge artifact source
+    logger.debug(
+        f"Extracted predictor field: shape={predictor_field.shape}, "
+        f"edge values: top-left=({predictor_field[0,0,0]:.4f}, {predictor_field[0,0,1]:.4f}), "
+        f"top-right=({predictor_field[0,-1,0]:.4f}, {predictor_field[0,-1,1]:.4f}), "
+        f"bot-left=({predictor_field[-1,0,0]:.4f}, {predictor_field[-1,0,1]:.4f}), "
+        f"bot-right=({predictor_field[-1,-1,0]:.4f}, {predictor_field[-1,-1,1]:.4f}), "
+        f"center=({predictor_field[predictor_field.shape[0]//2, predictor_field.shape[1]//2, 0]:.4f}, "
+        f"{predictor_field[predictor_field.shape[0]//2, predictor_field.shape[1]//2, 1]:.4f}), "
+        f"uy range=[{np.nanmin(uy):.4f}, {np.nanmax(uy):.4f}], "
+        f"ux range=[{np.nanmin(ux):.4f}, {np.nanmax(ux):.4f}]"
+    )
 
     return predictor_field
 
@@ -710,6 +722,9 @@ def correlate_and_reduce_on_worker(
                 "n_win_y": result["n_win_y"],
                 "smoothed_predictor": result.get("smoothed_predictor"),
                 "vector_mask": result.get("vector_mask"),
+                # Padding values for PADDED predictor storage (matching instantaneous)
+                "n_pre": result.get("n_pre"),
+                "n_post": result.get("n_post"),
             }
         else:
             # Subsequent batches - in-place accumulation

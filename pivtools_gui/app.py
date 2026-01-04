@@ -210,7 +210,7 @@ def get_active_calibration_params(cfg):
     Updated to work with new calibration structure.
     """
     cal = cfg.data.get("calibration", {})
-    active = cal.get("active", "pinhole")
+    active = cal.get("active", "dotboard")
     params = cal.get(active, {})
     return active, params
 
@@ -879,6 +879,8 @@ def validate_files():
                 "first_image_preview": validation.get("first_image_preview"),
                 "image_size": validation.get("image_size"),
                 "suggested_pattern": validation.get("suggested_pattern"),
+                "suggested_pattern_b": validation.get("suggested_pattern_b"),
+                "suggested_mode": validation.get("suggested_mode"),
             }
 
         except Exception as e:

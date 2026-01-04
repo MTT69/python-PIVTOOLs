@@ -10,6 +10,21 @@ from dask_jobqueue import SLURMCluster
 from pivtools_core.config import Config
 
 
+def _suppress_dask_verbose_logging():
+    """Suppress verbose Dask internal logging to reduce noise."""
+    # Suppress worker startup/shutdown messages
+    for logger_name in [
+        "distributed.worker",
+        "distributed.scheduler",
+        "distributed.nanny",
+        "distributed.core",
+        "distributed.comm",
+        "distributed.http.proxy",
+        "bokeh.server.views.ws",
+    ]:
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
+
+
 def make_cluster(
     config: Config,
 ) -> Tuple[object, Client]:
@@ -89,6 +104,9 @@ def start_cluster(
         client: Dask Client
         piv_workers: list of workers to use for PIV
     """
+    # Suppress verbose Dask internal logging
+    _suppress_dask_verbose_logging()
+
     cluster = None
     client = None
 

@@ -4,7 +4,7 @@ stereo_calibration_base.py
 
 Base class for stereo camera calibration.
 Provides shared stereo calibration logic (stereoCalibrate, stereoRectify) that is
-inherited by both pinhole (circle grid) and ChArUco stereo calibrators.
+inherited by both dotboard (circle grid) and ChArUco stereo calibrators.
 """
 
 import math
@@ -134,7 +134,7 @@ class BaseStereoCalibrator(ABC):
         Returns
         -------
         Any
-            Detector object (e.g., SimpleBlobDetector for pinhole,
+            Detector object (e.g., SimpleBlobDetector for dotboard,
             (CharucoBoard, CharucoDetector) tuple for ChArUco)
         """
         pass

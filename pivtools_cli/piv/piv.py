@@ -207,7 +207,7 @@ def _piv_inst_batch(
         #if image_block.ndim == 3:
             # Shape: (2, H, W)
         #    image_block = image_block[np.newaxis, ...]  # Shape: (1, 2, H, W)
-        logging.info(f"Starting PIV processing for image block with shape {image_block.shape}")
+        logging.debug(f"Starting PIV processing for image block with shape {image_block.shape}")
         correlator = make_correlator_backend(config, precomputed_cache=correlator_cache)
         piv_results = correlator.correlate_batch(image_block, config=config, vector_masks=vector_masks)
     except Exception as e:

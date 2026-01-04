@@ -92,9 +92,9 @@ class Config:
         meta_settings = ["active", "piv_type"]
         method_configs = [
             "scale_factor",
-            "pinhole",
+            "dotboard",
             "charuco",
-            "stereo",
+            "stereo_dotboard",
             "polynomial",
             "stereo_charuco",
         ]
@@ -282,7 +282,7 @@ calibration:
     dt: 0.56
     px_per_mm: 3.41
     source_path_idx: 0
-  pinhole:
+  dotboard:
     camera: 1
     pattern_cols: 10
     pattern_rows: 10
@@ -303,7 +303,7 @@ calibration:
     min_corners: 6
     dt: 1
     source_path_idx: 0
-  stereo:
+  stereo_dotboard:
     camera_pair:
     - 1
     - 2
@@ -546,7 +546,7 @@ video:
     def is_stereo_setup(self) -> bool:
         """Return True if this is a stereo PIV setup.
 
-        Determined by calibration.active being 'stereo' or 'stereo_charuco'.
+        Determined by calibration.active being 'stereo_dotboard' or 'stereo_charuco'.
 
         Returns
         -------
@@ -554,7 +554,7 @@ video:
             True if stereo calibration is active
         """
         active = self.active_calibration_method
-        return active in ("stereo", "stereo_charuco")
+        return active in ("stereo_dotboard", "stereo_charuco")
 
     @property
     def camera_folders(self):
@@ -1444,15 +1444,15 @@ video:
 
     @property
     def active_calibration_method(self):
-        """Return the active calibration method name (e.g., 'pinhole', 'scale_factor')."""
+        """Return the active calibration method name (e.g., 'dotboard', 'scale_factor')."""
         cal = self.calibration
-        return cal.get("active", "pinhole")
+        return cal.get("active", "dotboard")
 
     @property
     def active_calibration_params(self):
         """Return the parameters dict for the active calibration method."""
         cal = self.calibration
-        active = cal.get("active", "pinhole")
+        active = cal.get("active", "dotboard")
         return cal.get(active, {})
 
     @property
@@ -1461,14 +1461,19 @@ video:
         return self.calibration.get("scale_factor", {})
 
     @property
-    def pinhole_calibration(self):
-        """Return pinhole calibration parameters."""
-        return self.calibration.get("pinhole", {})
+    def dotboard_calibration(self):
+        """Return dotboard calibration parameters."""
+        return self.calibration.get("dotboard", {})
 
     @property
     def stereo_calibration(self):
-        """Return stereo calibration parameters."""
+        """Return stereo calibration parameters (shared stereo settings)."""
         return self.calibration.get("stereo", {})
+
+    @property
+    def stereo_dotboard_calibration(self):
+        """Return stereo dotboard calibration parameters."""
+        return self.calibration.get("stereo_dotboard", {})
 
     @property
     def charuco_calibration(self):
@@ -1522,7 +1527,7 @@ video:
 
     def set_active_calibration_method(self, method: str):
         """Set the active calibration method."""
-        if method in ["scale_factor", "pinhole", "stereo", "charuco", "polynomial", "stereo_charuco"]:
+        if method in ["scale_factor", "dotboard", "stereo_dotboard", "charuco", "polynomial", "stereo_charuco"]:
             self.data["calibration"]["active"] = method
         else:
             raise ValueError(f"Unknown calibration method: {method}")
@@ -1613,14 +1618,18 @@ video:
         """Return time difference between frames."""
         # Check active calibration method
         active_method = self.active_calibration_method
-        if active_method == "stereo":
-            return self.stereo_calibration.get("dt", 1)
-        elif active_method == "pinhole":
-            return self.pinhole_calibration.get("dt", 1)
+        if active_method == "stereo_dotboard":
+            return self.stereo_dotboard_calibration.get("dt", 1)
+        elif active_method == "dotboard":
+            return self.dotboard_calibration.get("dt", 1)
         elif active_method == "scale_factor":
             return self.scale_factor_calibration.get("dt", 1)
         elif active_method == "charuco":
             return self.charuco_calibration.get("dt", 1)
+        elif active_method == "stereo_charuco":
+            return self.stereo_charuco_calibration.get("dt", 1)
+        elif active_method == "polynomial":
+            return self.polynomial_calibration.get("dt", 1)
         return 1
 
     @property

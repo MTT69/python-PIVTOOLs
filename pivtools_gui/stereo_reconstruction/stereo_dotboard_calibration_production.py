@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-stereo_pinhole_calibration_production.py
+stereo_dotboard_calibration_production.py
 
-Production-ready stereo calibration using circle grid (pinhole) detection.
+Production-ready stereo calibration using circle grid (dotboard) detection.
 Uses OpenCV's findCirclesGrid with blob detection for calibration dot detection.
 
 Saves results to: {BASE_DIR}/calibration/stereo_cam{N}_cam{M}/
@@ -95,12 +95,12 @@ def apply_cli_settings_to_config() -> Config:
             logger.warning("Could not auto-detect calibration image count, using default")
 
     # Stereo-specific params
-    config.data["calibration"]["stereo"]["camera_pair"] = CAMERA_PAIR
-    config.data["calibration"]["stereo"]["pattern_cols"] = PATTERN_COLS
-    config.data["calibration"]["stereo"]["pattern_rows"] = PATTERN_ROWS
-    config.data["calibration"]["stereo"]["dot_spacing_mm"] = DOT_SPACING_MM
-    config.data["calibration"]["stereo"]["asymmetric"] = ASYMMETRIC
-    config.data["calibration"]["stereo"]["enhance_dots"] = ENHANCE_DOTS
+    config.data["calibration"]["stereo_dotboard"]["camera_pair"] = CAMERA_PAIR
+    config.data["calibration"]["stereo_dotboard"]["pattern_cols"] = PATTERN_COLS
+    config.data["calibration"]["stereo_dotboard"]["pattern_rows"] = PATTERN_ROWS
+    config.data["calibration"]["stereo_dotboard"]["dot_spacing_mm"] = DOT_SPACING_MM
+    config.data["calibration"]["stereo_dotboard"]["asymmetric"] = ASYMMETRIC
+    config.data["calibration"]["stereo_dotboard"]["enhance_dots"] = ENHANCE_DOTS
 
     # Save to disk so centralized loader picks up changes
     config.save()
@@ -110,8 +110,8 @@ def apply_cli_settings_to_config() -> Config:
     return reload_config()
 
 
-class StereoPinholeCalibrator(BaseStereoCalibrator):
-    """Stereo calibration using circle grid (pinhole) detection.
+class StereoDotboardCalibrator(BaseStereoCalibrator):
+    """Stereo calibration using circle grid (dotboard) detection.
 
     This calibrator detects circle grids (symmetric or asymmetric) in calibration
     images and uses them for stereo camera calibration.
@@ -119,7 +119,7 @@ class StereoPinholeCalibrator(BaseStereoCalibrator):
     Parameters
     ----------
     config : Config, optional
-        Configuration object. If provided, settings are read from config.stereo_calibration
+        Configuration object. If provided, settings are read from config.stereo_dotboard_calibration
     pattern_cols : int
         Number of columns in the calibration grid
     pattern_rows : int
@@ -135,7 +135,7 @@ class StereoPinholeCalibrator(BaseStereoCalibrator):
 
     Example
     -------
-    >>> calibrator = StereoPinholeCalibrator(
+    >>> calibrator = StereoDotboardCalibrator(
     ...     source_dir="/path/to/images",
     ...     base_dir="/path/to/output",
     ...     camera_pair=[1, 2],
@@ -165,9 +165,9 @@ class StereoPinholeCalibrator(BaseStereoCalibrator):
         source_path_idx: int = 0,
         dt: float = 1.0,
     ):
-        # Get pattern params from config.stereo_calibration if available
+        # Get pattern params from config.stereo_dotboard_calibration if available
         if config is not None:
-            stereo_cfg = config.stereo_calibration
+            stereo_cfg = config.stereo_dotboard_calibration
             pattern_cols = stereo_cfg.get('pattern_cols', pattern_cols)
             pattern_rows = stereo_cfg.get('pattern_rows', pattern_rows)
             dot_spacing_mm = stereo_cfg.get('dot_spacing_mm', dot_spacing_mm)
@@ -341,7 +341,7 @@ def main():
         config = apply_cli_settings_to_config()
 
     # Create calibrator using config - all settings are now in config.yaml
-    calibrator = StereoPinholeCalibrator(config=config)
+    calibrator = StereoDotboardCalibrator(config=config)
     calibrator.run()
 
 

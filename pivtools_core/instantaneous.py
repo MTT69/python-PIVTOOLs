@@ -150,7 +150,7 @@ def run_instantaneous_piv(
     batch_size = config.batch_size
     logger.info(f"Rechunking to batch_size={batch_size}...")
     images = rechunk_for_batched_processing(images, batch_size)
-    logger.info(f"  Rechunked: chunks={images.chunks[0]}")
+    logger.info(f"  Rechunked: {len(images.chunks[0])} chunks of size {images.chunks[0][0]}")
 
     # 4. Apply all filters via map_blocks
     logger.info("Creating filter pipeline...")

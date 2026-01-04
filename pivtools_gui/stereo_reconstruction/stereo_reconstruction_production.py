@@ -4,7 +4,7 @@ stereo_reconstruction_production.py
 
 Production script for 3D velocity reconstruction from stereo camera pairs.
 Takes uncalibrated 2D velocity fields from two cameras and reconstructs 3D velocities (ux, uy, uz).
-Supports both ChArUco and Pinhole (circle grid) stereo calibration models.
+Supports both ChArUco and Dotboard (circle grid) stereo calibration models.
 Uses ProcessPoolExecutor for parallel frame processing.
 """
 
@@ -32,7 +32,7 @@ BASE_DIR = "/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/
 CAMERA_PAIR = [1, 2]  # Single pair [cam1_num, cam2_num]
 NUM_FRAME_PAIRS = 100  # Number of frame pairs to process
 DT_SECONDS = 0.0057553   # Time step between frames in seconds
-MODEL_TYPE = "pinhole"  # "charuco" or "pinhole" - determines stereo model expectation
+MODEL_TYPE = "dotboard"  # "charuco" or "dotboard" - determines stereo model expectation
 VECTOR_PATTERN = "%05d.mat"  # Pattern for vector files
 TYPE_NAME = "instantaneous"  # Type name for data directory
 MIN_TRIANGULATION_ANGLE = 5.0  # Minimum angle in degrees for triangulation quality
@@ -398,7 +398,7 @@ def _load_stereo_model(
     Args:
         base_dir: Base directory for calibrated data
         cam1, cam2: Camera numbers
-        model_type: 'charuco' or 'pinhole' - sets expectation but doesn't change path
+        model_type: 'charuco' or 'dotboard' - sets expectation but doesn't change path
 
     Returns:
         Dict with stereo calibration parameters (numpy arrays)
@@ -440,7 +440,7 @@ def _load_stereo_model(
         if hasattr(params, "pattern_type"):
             detected_type = params.pattern_type
             if detected_type == "circle_grid":
-                detected_type = "pinhole"
+                detected_type = "dotboard"
             if detected_type != model_type:
                 logger.warning(
                     f"Model type mismatch: config says '{model_type}', "
@@ -498,7 +498,7 @@ class StereoReconstructor:
         Args:
             base_dir: Base directory containing data (or from config.base_paths[0])
             camera_pair: Camera pair [cam1, cam2] (or from config.stereo_calibration)
-            model_type: 'charuco' or 'pinhole' (or from config.stereo_calibration)
+            model_type: 'charuco' or 'dotboard' (or from config.stereo_dotboard_calibration)
             dt: Time step between frames in seconds (or from config.dt)
             vector_pattern: Pattern for vector files (or from config.vector_format)
             type_name: Type name for data directory
@@ -512,7 +512,7 @@ class StereoReconstructor:
         # Read from config if provided
         if config is not None:
             self.base_dir = Path(base_dir) if base_dir else config.base_paths[0]
-            stereo_cfg = config.stereo_calibration
+            stereo_cfg = config.stereo_dotboard_calibration
             self.camera_pair = camera_pair or stereo_cfg.get("camera_pair", [1, 2])
             self.model_type = model_type or stereo_cfg.get("stereo_model_type", "charuco")
             self.dt = dt if dt is not None else config.dt
@@ -534,8 +534,8 @@ class StereoReconstructor:
         self.min_angle = min_angle
 
         # Validate model type
-        if self.model_type not in ("charuco", "pinhole"):
-            raise ValueError(f"model_type must be 'charuco' or 'pinhole', got '{self.model_type}'")
+        if self.model_type not in ("charuco", "dotboard"):
+            raise ValueError(f"model_type must be 'charuco' or 'dotboard', got '{self.model_type}'")
 
         # Load stereo calibration model
         self.stereo_params = _load_stereo_model(

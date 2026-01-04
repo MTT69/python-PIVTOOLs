@@ -31,7 +31,7 @@ BASE_DIR = "/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/
 NUM_FRAME_PAIRS = 100  # Number of frame pairs (from config.yaml images.num_frame_pairs)
 DT_SECONDS = 0.0057553  # Time step between frames in seconds
 CAMERA_NUMS = [1]  # List of camera numbers to process (1-based), e.g. [1, 2] for stereo
-MODEL_TYPE = "charuco"  # "charuco" or "planar" - sets calibration.active
+MODEL_TYPE = "charuco"  # "charuco" or "dotboard" - sets calibration.active
 VECTOR_PATTERN = "%05d.mat"  # Pattern for vector files (e.g. "B%05d.mat", "%05d.mat")
 TYPE_NAME = "instantaneous"  # Type name for data directory (e.g. "instantaneous", "ensemble")
 RUNS_TO_PROCESS = None  # List of 1-indexed runs to process, or None for all (e.g. [1, 2, 3])
@@ -69,11 +69,11 @@ def apply_cli_settings_to_config():
     if MODEL_TYPE.lower() == "charuco":
         config.data["calibration"]["active"] = "charuco"
         config.data["calibration"]["charuco"]["dt"] = DT_SECONDS
-    elif MODEL_TYPE.lower() == "planar":
-        config.data["calibration"]["active"] = "pinhole"
-        config.data["calibration"]["pinhole"]["dt"] = DT_SECONDS
+    elif MODEL_TYPE.lower() == "dotboard":
+        config.data["calibration"]["active"] = "dotboard"
+        config.data["calibration"]["dotboard"]["dt"] = DT_SECONDS
     else:
-        raise ValueError(f"MODEL_TYPE must be 'charuco' or 'planar', got '{MODEL_TYPE}'")
+        raise ValueError(f"MODEL_TYPE must be 'charuco' or 'dotboard', got '{MODEL_TYPE}'")
 
     # Save to disk so centralized systems pick up changes
     config.save()
@@ -420,7 +420,7 @@ class VectorCalibrator:
         Args:
             base_dir: Base directory containing data (or from config.base_paths[0])
             camera_num: Camera number (1-based) (or from config.camera_numbers[0])
-            model_type: Calibration model type - "charuco" or "pinhole" (or from config.active_calibration_method)
+            model_type: Calibration model type - "charuco" or "dotboard" (or from config.active_calibration_method)
             dt: Time step between frames in seconds (or from config.dt)
             vector_pattern: Pattern for vector files (or from config.vector_format)
             type_name: Type name for data directory (e.g. "instantaneous", "ensemble")
@@ -440,8 +440,8 @@ class VectorCalibrator:
                 self.model_type = model_type.lower()
             elif active_method == "charuco":
                 self.model_type = "charuco"
-            elif active_method in ("pinhole", "planar"):
-                self.model_type = "pinhole"
+            elif active_method == "dotboard":
+                self.model_type = "dotboard"
             else:
                 raise ValueError(f"Cannot determine model_type from config.active_calibration_method: {active_method}")
             self.dt = dt if dt is not None else config.dt
@@ -469,9 +469,9 @@ class VectorCalibrator:
         self.num_workers = num_workers if num_workers else os.cpu_count()
 
         # Validate model type
-        if self.model_type not in ("charuco", "pinhole"):
+        if self.model_type not in ("charuco", "dotboard"):
             raise ValueError(
-                f"model_type must be 'charuco' or 'pinhole', got '{self.model_type}'"
+                f"model_type must be 'charuco' or 'dotboard', got '{self.model_type}'"
             )
 
         # Load calibration model
@@ -506,8 +506,8 @@ class VectorCalibrator:
         # Build model path based on model type
         if self.model_type == "charuco":
             model_path = calib_dir / "charuco_planar" / "model" / "camera_model.mat"
-        else:  # planar
-            model_path = calib_dir / "pinhole_planar" / "model" / "pinhole_model.mat"
+        else:  # dotboard
+            model_path = calib_dir / "dotboard_planar" / "model" / "dotboard_model.mat"
 
         if not model_path.exists():
             raise FileNotFoundError(

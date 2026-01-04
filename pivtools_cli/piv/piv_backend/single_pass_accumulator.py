@@ -111,7 +111,11 @@ class SinglePassAccumulator:
         """
         pass_data = self.passes_data[pass_idx]
 
-        # Accumulate warped images
+        # Accumulate warped images (shape validation for single mode debugging)
+        logging.debug(
+            f"Pass {pass_idx}: accumulator shape {pass_data['sum_warp_A'].shape}, "
+            f"batch warp shape {batch_result['warp_A_sum'].shape}"
+        )
         pass_data["sum_warp_A"] += batch_result["warp_A_sum"]
         pass_data["sum_warp_B"] += batch_result["warp_B_sum"]
 
@@ -128,6 +132,13 @@ class SinglePassAccumulator:
                 f"Pass {pass_idx + 1}: Stored smoothed predictor in passes_data "
                 f"(shape: {batch_result['smoothed_predictor'].shape})"
             )
+
+        # Store padding values for predictor storage in finalize_pass
+        # These are needed to pad the final velocities like instantaneous does
+        if batch_result.get("n_pre") is not None:
+            pass_data["n_pre"] = batch_result["n_pre"]
+        if batch_result.get("n_post") is not None:
+            pass_data["n_post"] = batch_result["n_post"]
 
         self.n_images += batch_result["n_images"]
 
@@ -347,6 +358,7 @@ class SinglePassAccumulator:
             temp_piv_results.add_pass(pr)
 
         logging.info(f"Pass {pass_idx + 1}: Applying single-pass optimization")
+
         # Step 1: Compute mean warped images
         A_mean = pass_data["sum_warp_A"] / N
         B_mean = pass_data["sum_warp_B"] / N
@@ -366,14 +378,21 @@ class SinglePassAccumulator:
         R_BB_ensemble = R_BB_raw - R_BB_bg
         R_AB_ensemble = R_AB_raw - R_AB_bg
 
-
         # Step 5: Get configuration for this pass
         win_size = pass_data["win_size"]
         corr_size = pass_data["corr_size"]
         n_win_y = pass_data["n_win_y"]
         n_win_x = pass_data["n_win_x"]
         total_windows = n_win_y * n_win_x
-        
+
+        # Debug: Verify correlation plane sizes match expected dimensions
+        expected_size = total_windows * corr_size[0] * corr_size[1]
+        logging.debug(
+            f"Pass {pass_idx}: Correlation plane sizes - "
+            f"R_AA: {R_AA_ensemble.size}, R_BB: {R_BB_ensemble.size}, R_AB: {R_AB_ensemble.size}, "
+            f"expected: {expected_size} ({total_windows} windows × {corr_size[0]}×{corr_size[1]})"
+        )
+
         # Step 6: Perform distributed Gaussian fitting
 
         # Get sigma values from previous pass (if applicable)
@@ -384,7 +403,7 @@ class SinglePassAccumulator:
             pass_idx, total_windows, self.config, temp_piv_results,
             n_win_x, n_win_y
         )
-        logging.info(f"Sigma dict: {sigma_dict}")
+        logging.debug(f"Sigma dict: {sigma_dict}")
 
         # Flatten mask for fitting
         if self.vector_masks and pass_idx < len(self.vector_masks):
@@ -407,9 +426,10 @@ class SinglePassAccumulator:
         mask_flat_futures = []
         sigma_dict_futures = [{} for _ in range(n_workers)]
         for worker_idx in range(n_workers):
-            start_idx = worker_idx * windows_per_worker * win_size[0] * win_size[1]
+            # Use corr_size (not win_size) for slicing - correlation planes are sized at SumWindow
+            start_idx = worker_idx * windows_per_worker * corr_size[0] * corr_size[1]
             end_idx = min(
-                (worker_idx + 1) * windows_per_worker * win_size[0] * win_size[1],
+                (worker_idx + 1) * windows_per_worker * corr_size[0] * corr_size[1],
                 R_AA_ensemble.size,
             )
             start_idx_win = worker_idx * windows_per_worker
@@ -748,21 +768,36 @@ class SinglePassAccumulator:
             peakheight_temp = np.zeros_like(peakheight)
             peakheight, _ = apply_infilling(peakheight, peakheight_temp, infill_mask, infill_cfg)
 
-        logging.info(
-            f"Pass {pass_idx + 1}: Post-processing complete. "
-            f"ux range: [{np.nanmin(ux_mat):.3f}, {np.nanmax(ux_mat):.3f}], "
-            f"uy range: [{np.nanmin(uy_mat):.3f}, {np.nanmax(uy_mat):.3f}]"
-        )
-
-        # Extract predictor field components if available
-        # Use the SMOOTHED predictor that was actually used for warping
+        # Store PADDED predictor field to match instantaneous mode format
+        # Instantaneous stores: np.pad([uy_mat, ux_mat], n_pre/n_post, mode="edge")
+        # We replicate this exactly for parity
         pred_x = None
         pred_y = None
-        if pass_idx > 0 and "smoothed_predictor" in pass_data and pass_data["smoothed_predictor"] is not None:
-            smoothed_pred = pass_data["smoothed_predictor"]
+        n_pre = pass_data.get("n_pre")
+        n_post = pass_data.get("n_post")
+        if n_pre is not None and n_post is not None:
+            pre_y, pre_x = n_pre
+            post_y, post_x = n_post
+            # Stack and pad like instantaneous does (cpu_instantaneous.py lines 480-489)
+            stacked = np.stack([uy_mat, ux_mat], axis=-1)  # (ny, nx, 2)
+            padded = np.pad(
+                stacked,
+                ((pre_y, post_y), (pre_x, post_x), (0, 0)),
+                mode="edge",
+            )
+            pred_y = padded[:, :, 0].copy()  # Y component (PADDED)
+            pred_x = padded[:, :, 1].copy()  # X component (PADDED)
             logging.info(
-                f"Pass {pass_idx + 1}: Storing SMOOTHED predictor field in pass result "
-                f"(shape: {smoothed_pred.shape})"
+                f"Pass {pass_idx + 1}: Storing PADDED predictor field in pass result "
+                f"(original: {ux_mat.shape}, padded: {pred_x.shape}, "
+                f"n_pre={n_pre}, n_post={n_post})"
+            )
+        elif pass_idx > 0 and "smoothed_predictor" in pass_data and pass_data["smoothed_predictor"] is not None:
+            # Fallback to smoothed predictor if padding values not available
+            smoothed_pred = pass_data["smoothed_predictor"]
+            logging.warning(
+                f"Pass {pass_idx + 1}: n_pre/n_post not available, "
+                f"storing UNPADDED smoothed predictor (shape: {smoothed_pred.shape})"
             )
             pred_y = smoothed_pred[:, :, 0].copy()  # Y component
             pred_x = smoothed_pred[:, :, 1].copy()  # X component
@@ -774,6 +809,21 @@ class SinglePassAccumulator:
             )
             pred_y = predictor_field[:, :, 0].copy()  # Y component
             pred_x = predictor_field[:, :, 1].copy()  # X component
+
+        # DEBUG: Log edge values in final pass result to trace edge artifact source
+        logging.debug(
+            f"Pass {pass_idx + 1}: FINAL RESULT edge values - "
+            f"ux_mat: TL={ux_mat[0,0]:.4f}, TR={ux_mat[0,-1]:.4f}, "
+            f"BL={ux_mat[-1,0]:.4f}, BR={ux_mat[-1,-1]:.4f}, "
+            f"center={ux_mat[ux_mat.shape[0]//2, ux_mat.shape[1]//2]:.4f}, "
+            f"uy_mat: TL={uy_mat[0,0]:.4f}, TR={uy_mat[0,-1]:.4f}, "
+            f"BL={uy_mat[-1,0]:.4f}, BR={uy_mat[-1,-1]:.4f}, "
+            f"center={uy_mat[uy_mat.shape[0]//2, uy_mat.shape[1]//2]:.4f}, "
+            f"NaN at edges: top_row={np.isnan(ux_mat[0,:]).sum()}, "
+            f"bot_row={np.isnan(ux_mat[-1,:]).sum()}, "
+            f"left_col={np.isnan(ux_mat[:,0]).sum()}, "
+            f"right_col={np.isnan(ux_mat[:,-1]).sum()}"
+        )
 
         # Create pass result
         pass_result = PIVEnsemblePassResult(
@@ -848,54 +898,6 @@ class SinglePassAccumulator:
         logging.info(f"Pass {pass_idx + 1}: Finalization complete")
 
         return pass_result
-    
-def fit_chunk(window_slice, R_AA_ensemble, R_BB_ensemble, R_AB_ensemble,
-              mask_flat, sigma_dict, corr_size, config, pass_idx, num_windows):
-    """
-    Fit a subset of windows using fit_windows_openmp.
-
-    Parameters
-    ----------
-    window_slice : tuple
-        (start, end) indices of the flattened windows to process
-    R_AA_ensemble, R_BB_ensemble, R_AB_ensemble : np.ndarray
-        Flattened correlation planes
-    mask_flat : np.ndarray
-        Flattened mask
-    sigma_dict : dict
-        Signal variance arrays
-    corr_size : list
-        Window size
-    config : object
-        Config object
-    pass_idx : int
-        Pass index
-    num_windows : int
-        Number of windows in this chunk
-    """
-    from pivtools_cli.piv.piv_backend.gaussian_fitting import fit_windows_openmp
-    start, end = window_slice
-    logging.info(f"Fitting windows {start} to {end} (total {end - start}) using OpenMP")
-
-    R_AA_chunk = R_AA_ensemble[start:end]
-    R_BB_chunk = R_BB_ensemble[start:end]
-    R_AB_chunk = R_AB_ensemble[start:end]
-    mask_chunk = mask_flat[start:end]
-
-    gauss_flat, status_flat, initial_guess_flat = fit_windows_openmp(
-        R_AA_chunk,
-        R_BB_chunk,
-        R_AB_chunk,
-        mask_chunk,
-        sigma_dict,
-        corr_size,
-        config,
-        pass_idx,
-        num_windows=num_windows,
-        num_threads=None,  # or limit per worker
-    )
-
-    return gauss_flat, status_flat, initial_guess_flat
 
     def get_ensemble_result(self) -> PIVEnsembleResult:
         """
@@ -955,3 +957,52 @@ def fit_chunk(window_slice, R_AA_ensemble, R_BB_ensemble, R_AB_ensemble,
             f"Pass {pass_idx + 1}: Cleared accumulated data "
             f"(freed ~{mem_before:.1f} MB)"
         )
+
+
+def fit_chunk(window_slice, R_AA_ensemble, R_BB_ensemble, R_AB_ensemble,
+              mask_flat, sigma_dict, corr_size, config, pass_idx, num_windows):
+    """
+    Fit a subset of windows using fit_windows_openmp.
+
+    Parameters
+    ----------
+    window_slice : tuple
+        (start, end) indices of the flattened windows to process
+    R_AA_ensemble, R_BB_ensemble, R_AB_ensemble : np.ndarray
+        Flattened correlation planes
+    mask_flat : np.ndarray
+        Flattened mask
+    sigma_dict : dict
+        Signal variance arrays
+    corr_size : list
+        Window size
+    config : object
+        Config object
+    pass_idx : int
+        Pass index
+    num_windows : int
+        Number of windows in this chunk
+    """
+    from pivtools_cli.piv.piv_backend.gaussian_fitting import fit_windows_openmp
+    start, end = window_slice
+    logging.info(f"Fitting windows {start} to {end} (total {end - start}) using OpenMP")
+
+    R_AA_chunk = R_AA_ensemble[start:end]
+    R_BB_chunk = R_BB_ensemble[start:end]
+    R_AB_chunk = R_AB_ensemble[start:end]
+    mask_chunk = mask_flat[start:end]
+
+    gauss_flat, status_flat, initial_guess_flat = fit_windows_openmp(
+        R_AA_chunk,
+        R_BB_chunk,
+        R_AB_chunk,
+        mask_chunk,
+        sigma_dict,
+        corr_size,
+        config,
+        pass_idx,
+        num_windows=num_windows,
+        num_threads=None,  # or limit per worker
+    )
+
+    return gauss_flat, status_flat, initial_guess_flat

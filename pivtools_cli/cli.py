@@ -98,7 +98,7 @@ def apply_calibration_command(args):
                         image_count=config.num_frame_pairs,
                     )
                 else:
-                    # pinhole or charuco
+                    # dotboard or charuco
                     from pivtools_gui.calibration.vector_calibration_production import VectorCalibrator
                     calibrator = VectorCalibrator(
                         base_dir=base_dir,
@@ -148,9 +148,9 @@ def apply_stereo_command(args):
     if args.camera_pair:
         camera_pair = [int(c.strip()) for c in args.camera_pair.split(",")]
     else:
-        camera_pair = config.data.get("calibration", {}).get("stereo", {}).get("camera_pair", [1, 2])
+        camera_pair = config.data.get("calibration", {}).get("stereo_dotboard", {}).get("camera_pair", [1, 2])
 
-    method = args.method  # "pinhole" or "charuco", None uses config default
+    method = args.method  # "dotboard" or "charuco", None uses config default
     type_name = args.type_name or "instantaneous"
     runs_to_process = [int(r) for r in args.runs.split(",")] if args.runs else None
 
@@ -232,12 +232,12 @@ def detect_planar_command(args):
     print(f"Active paths: {len(active_paths)}")
 
     # Get calibration settings from config
-    pinhole_cfg = config.data.get("calibration", {}).get("pinhole", {})
-    pattern_cols = pinhole_cfg.get("pattern_cols", 10)
-    pattern_rows = pinhole_cfg.get("pattern_rows", 10)
-    dot_spacing_mm = pinhole_cfg.get("dot_spacing_mm", 28.89)
-    asymmetric = pinhole_cfg.get("asymmetric", False)
-    enhance_dots = pinhole_cfg.get("enhance_dots", True)
+    dotboard_cfg = config.data.get("calibration", {}).get("dotboard", {})
+    pattern_cols = dotboard_cfg.get("pattern_cols", 10)
+    pattern_rows = dotboard_cfg.get("pattern_rows", 10)
+    dot_spacing_mm = dotboard_cfg.get("dot_spacing_mm", 28.89)
+    asymmetric = dotboard_cfg.get("asymmetric", False)
+    enhance_dots = dotboard_cfg.get("enhance_dots", True)
 
     calib_cfg = config.data.get("calibration", {})
     file_pattern = calib_cfg.get("image_format", "calib%05d.tif")
@@ -404,7 +404,7 @@ def detect_charuco_command(args):
 def detect_stereo_planar_command(args):
     """Detect dot/circle grid and generate stereo camera model."""
     from pivtools_core.config import get_config
-    from pivtools_gui.stereo_reconstruction.stereo_pinhole_calibration_production import StereoPinholeCalibrator
+    from pivtools_gui.stereo_reconstruction.stereo_dotboard_calibration_production import StereoDotboardCalibrator
 
     config = get_config()
 
@@ -420,13 +420,13 @@ def detect_stereo_planar_command(args):
     print(f"Active paths: {len(active_paths)}")
 
     # Get calibration settings from config
-    stereo_cfg = config.data.get("calibration", {}).get("stereo", {})
-    camera_pair = stereo_cfg.get("camera_pair", [1, 2])
-    pattern_cols = stereo_cfg.get("pattern_cols", 10)
-    pattern_rows = stereo_cfg.get("pattern_rows", 10)
-    dot_spacing_mm = stereo_cfg.get("dot_spacing_mm", 28.89)
-    asymmetric = stereo_cfg.get("asymmetric", False)
-    enhance_dots = stereo_cfg.get("enhance_dots", True)
+    stereo_dotboard_cfg = config.data.get("calibration", {}).get("stereo_dotboard", {})
+    camera_pair = stereo_dotboard_cfg.get("camera_pair", [1, 2])
+    pattern_cols = stereo_dotboard_cfg.get("pattern_cols", 10)
+    pattern_rows = stereo_dotboard_cfg.get("pattern_rows", 10)
+    dot_spacing_mm = stereo_dotboard_cfg.get("dot_spacing_mm", 28.89)
+    asymmetric = stereo_dotboard_cfg.get("asymmetric", False)
+    enhance_dots = stereo_dotboard_cfg.get("enhance_dots", True)
 
     calib_cfg = config.data.get("calibration", {})
     file_pattern = calib_cfg.get("image_format", "calib%05d.tif")
@@ -445,7 +445,7 @@ def detect_stereo_planar_command(args):
         print("-" * 40)
 
         try:
-            calibrator = StereoPinholeCalibrator(
+            calibrator = StereoDotboardCalibrator(
                 source_dir=source_dir,
                 base_dir=base_dir,
                 camera_pair=camera_pair,
@@ -507,8 +507,8 @@ def detect_stereo_charuco_command(args):
     print(f"Active paths: {len(active_paths)}")
 
     # Get calibration settings from config
-    stereo_cfg = config.data.get("calibration", {}).get("stereo", {})
-    camera_pair = stereo_cfg.get("camera_pair", [1, 2])
+    stereo_charuco_cfg = config.data.get("calibration", {}).get("stereo_charuco", {})
+    camera_pair = stereo_charuco_cfg.get("camera_pair", [1, 2])
 
     charuco_cfg = config.data.get("calibration", {}).get("charuco", {})
     squares_h = charuco_cfg.get("squares_h", 10)
@@ -772,6 +772,11 @@ def statistics_command(args):
     print(f"Type: {type_name}")
     print(f"Use merged: {use_merged}")
 
+    # Get required config values
+    num_frame_pairs = config.num_frame_pairs
+    vector_format = config.vector_format[0] if isinstance(config.vector_format, list) else config.vector_format
+    gamma_radius = config.statistics_gamma_radius
+
     results = []
     for path_idx in active_paths:
         base_dir = Path(config.base_paths[path_idx])
@@ -781,19 +786,32 @@ def statistics_command(args):
         targets = ["merged"] if use_merged else cameras
         for target in targets:
             try:
+                # Construct data_dir based on merge status
                 if target == "merged":
+                    data_dir = base_dir / "calibrated_piv" / str(num_frame_pairs) / "Merged" / type_name
                     processor = VectorStatisticsProcessor(
+                        data_dir=data_dir,
                         base_dir=base_dir,
-                        camera=1,  # Merged uses camera 1 path structure
+                        num_frame_pairs=num_frame_pairs,
+                        vector_format=vector_format,
                         type_name=type_name,
                         use_merged=True,
+                        camera=1,
+                        gamma_radius=gamma_radius,
+                        config=config,
                     )
                 else:
+                    data_dir = base_dir / "calibrated_piv" / str(num_frame_pairs) / f"Cam{target}" / type_name
                     processor = VectorStatisticsProcessor(
+                        data_dir=data_dir,
                         base_dir=base_dir,
-                        camera=target,
+                        num_frame_pairs=num_frame_pairs,
+                        vector_format=vector_format,
                         type_name=type_name,
                         use_merged=False,
+                        camera=target,
+                        gamma_radius=gamma_radius,
+                        config=config,
                     )
                 result = processor.process()
                 result["path_idx"] = path_idx
@@ -1140,13 +1158,13 @@ calibration:
   - Cam1
   - Cam2
   path_order: camera_first
-  active: pinhole
+  active: dotboard
   piv_type: instantaneous
   scale_factor:
     dt: 0.56
     px_per_mm: 3.41
     source_path_idx: 0
-  pinhole:
+  dotboard:
     camera: 1
     pattern_cols: 10
     pattern_rows: 10
@@ -1169,7 +1187,7 @@ calibration:
     dt: 0.0057553
     source_path_idx: 0
     file_pattern: '*.tif'
-  stereo:
+  stereo_dotboard:
     camera_pair:
     - 1
     - 2
@@ -1179,7 +1197,7 @@ calibration:
     enhance_dots: false
     asymmetric: false
     dt: 0.0057553
-    stereo_model_type: pinhole
+    stereo_model_type: dotboard
   polynomial:
     xml_path: ''
     use_xml: true
@@ -1414,7 +1432,7 @@ def main():
     )
     apply_calibration_parser.add_argument(
         "--method", "-m", default=None,
-        choices=["pinhole", "charuco", "scale_factor"],
+        choices=["dotboard", "charuco", "scale_factor"],
         help="Calibration method (default: from config.yaml calibration.active)"
     )
     apply_calibration_parser.set_defaults(func=apply_calibration_command)
@@ -1426,8 +1444,8 @@ def main():
     )
     apply_stereo_parser.add_argument(
         "--method", "-m", default=None,
-        choices=["pinhole", "charuco"],
-        help="Stereo calibration method (default: from config stereo.stereo_model_type)"
+        choices=["dotboard", "charuco"],
+        help="Stereo calibration method (default: from config stereo_dotboard.stereo_model_type)"
     )
     apply_stereo_parser.add_argument(
         "--camera-pair", "-c", default=None,

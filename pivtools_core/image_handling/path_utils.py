@@ -307,6 +307,74 @@ def _suggest_pattern(filename: str, forced_ext: Optional[str] = None) -> str:
     return filename
 
 
+def _detect_ab_pair_pattern(
+    sample_files: List[str], forced_ext: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """Detect if files follow A/B naming convention and suggest both patterns.
+
+    Looks for paired files with _A/_B or _a/_b suffixes in the filename.
+    Returns both pattern_a and pattern_b if A/B pairs are detected.
+
+    Parameters
+    ----------
+    sample_files : List[str]
+        List of filenames to analyze (just names, not full paths)
+    forced_ext : str, optional
+        Force a specific extension
+
+    Returns
+    -------
+    Optional[Dict[str, Any]]
+        If A/B pairs detected:
+        {
+            "pattern_a": str,  # Pattern for A files (e.g., "B%05d_A.tif")
+            "pattern_b": str,  # Pattern for B files (e.g., "B%05d_B.tif")
+            "mode": "ab_format"
+        }
+        If not A/B format, returns None
+    """
+    if not sample_files:
+        return None
+
+    # Look for A/B pattern in filenames
+    # Common patterns: _A.tif/_B.tif, _a.png/_b.png, -A.jpg/-B.jpg
+    a_pattern = re.compile(r'[_-][Aa]\.[a-zA-Z]+$')
+    b_pattern = re.compile(r'[_-][Bb]\.[a-zA-Z]+$')
+
+    a_files = [f for f in sample_files if a_pattern.search(f)]
+    b_files = [f for f in sample_files if b_pattern.search(f)]
+
+    # Need both A and B files present, with similar counts
+    if not a_files or not b_files:
+        return None
+
+    # Check that counts are roughly similar (within factor of 2)
+    if max(len(a_files), len(b_files)) > 2 * min(len(a_files), len(b_files)):
+        return None
+
+    # Generate patterns from the first A and B files
+    first_a = sorted(a_files)[0]
+    first_b = sorted(b_files)[0]
+
+    # Use existing _suggest_pattern but preserve the _A/_B suffix
+    pattern_a = _suggest_pattern(first_a, forced_ext)
+    pattern_b = _suggest_pattern(first_b, forced_ext)
+
+    # Verify the patterns differ only in A/B
+    pattern_a_normalized = re.sub(r'[_-][Aa]\.', '_X.', pattern_a)
+    pattern_b_normalized = re.sub(r'[_-][Bb]\.', '_X.', pattern_b)
+
+    if pattern_a_normalized != pattern_b_normalized:
+        # Patterns don't match in structure - not a valid A/B pair
+        return None
+
+    return {
+        "pattern_a": pattern_a,
+        "pattern_b": pattern_b,
+        "mode": "ab_format",
+    }
+
+
 def validate_images_generic(
     camera_path: Path,
     camera: int,
@@ -365,6 +433,8 @@ def validate_images_generic(
         "format_detected": None,
         "error": None,
         "suggested_pattern": None,
+        "suggested_pattern_b": None,  # For A/B pair detection
+        "suggested_mode": None,  # "ab_format" or None
     }
 
     start_idx = 0 if zero_based_indexing else 1
@@ -510,9 +580,19 @@ def validate_images_generic(
                 all_images.extend(camera_path.glob(ext))
 
             if all_images:
-                suggested = _suggest_pattern(sorted(all_images)[0].name)
-                result["suggested_pattern"] = suggested
-                result["sample_files"] = [f.name for f in sorted(all_images)[:5]]
+                all_image_names = [f.name for f in sorted(all_images)]
+                result["sample_files"] = all_image_names[:5]
+
+                # First try to detect A/B pairs
+                ab_result = _detect_ab_pair_pattern(all_image_names)
+                if ab_result:
+                    result["suggested_pattern"] = ab_result["pattern_a"]
+                    result["suggested_pattern_b"] = ab_result["pattern_b"]
+                    result["suggested_mode"] = ab_result["mode"]
+                else:
+                    # Fall back to single pattern suggestion
+                    suggested = _suggest_pattern(all_image_names[0])
+                    result["suggested_pattern"] = suggested
             return result
 
         result["found_count"] = len(matching_files)

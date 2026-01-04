@@ -276,12 +276,16 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
 
     def _compute_window_centres_ensemble(
         self, pass_idx: int, config: Config
-    ) -> tuple[int, int, np.ndarray, np.ndarray]:
+    ) -> tuple[int, int, np.ndarray, np.ndarray, tuple]:
         """
         Compute window centers and spacing for ensemble PIV pass.
 
         Uses centralized window_utils for consistency with instantaneous mode.
         Supports both standard and single mode ensemble PIV.
+
+        Returns:
+            tuple: (win_spacing_x, win_spacing_y, win_ctrs_x, win_ctrs_y, padding)
+                   padding is (top, bottom, left, right) - (0,0,0,0) for standard mode
         """
         win_y, win_x = config.ensemble_window_sizes[pass_idx]
         overlap = config.ensemble_overlaps[pass_idx]
@@ -298,6 +302,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 overlap=overlap,
                 validate=True
             )
+            padding = result.padding  # (top, bottom, left, right)
         else:
             # Standard mode
             result = compute_window_centers(
@@ -306,12 +311,14 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 overlap=overlap,
                 validate=True
             )
+            padding = (0, 0, 0, 0)  # No padding for standard mode
 
         return (
             result.win_spacing_x,
             result.win_spacing_y,
             np.ascontiguousarray(result.win_ctrs_x),
             np.ascontiguousarray(result.win_ctrs_y),
+            padding,
         )
 
     def _cache_interpolation_grids_ensemble(self, config: Config) -> None:
@@ -346,6 +353,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         self.win_weights_A = cache.get('win_weights_A', [])
         self.win_weights_B = cache.get('win_weights_B', [])
         self.window_sizes_for_corr = cache.get('window_sizes_for_corr', [])
+        self.padding_per_pass = cache.get('padding_per_pass', [])
 
     def get_cache_data(self) -> dict:
         """Extract cache data for sharing across workers."""
@@ -369,6 +377,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             'win_weights_A': self.win_weights_A,
             'win_weights_B': self.win_weights_B,
             'window_sizes_for_corr': self.window_sizes_for_corr,
+            'padding_per_pass': self.padding_per_pass,
         }
 
     def correlate_batch(self, images: np.ndarray, config: Config, vector_masks: List[np.ndarray] = None):
@@ -470,7 +479,6 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         )
 
         # Process each image batch
-        logging.info(f"Pass {pass_idx + 1}: Correlating batch of {N} image pairs...")
         try:
             image_a_stack = images[:, 0, :, :].astype(np.float32, copy=False)
             image_b_stack = images[:, 1, :, :].astype(np.float32, copy=False)
@@ -530,7 +538,13 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                         image_b_original=image_b_stack[0, :, :, :],  # Original pre-warp image
                     )
 
-                # Apply padding for single mode
+            # Compute warp sums BEFORE padding (for accumulation in original image space)
+            # This ensures warp sums have shape (H, W) not (H_padded, W_padded)
+            warp_A_sum = images_a_prime.sum(axis=0)
+            warp_B_sum = images_b_prime.sum(axis=0)
+            logging.debug(f"Pass {pass_idx}: warp_A_sum shape {warp_A_sum.shape} (expected {H}x{W})")
+
+                # Apply padding for single mode (for correlation only)
             if is_single_mode:
                 sum_window = tuple(config.ensemble_sum_window)
                 images_a_prime, _ = apply_single_mode_padding(
@@ -539,7 +553,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 images_b_prime, _ = apply_single_mode_padding(
                         images_b_prime, win_size, sum_window, pad_value=0.0
                     )
-                H_padded, W_padded = images_a_prime.shape
+                H_padded, W_padded = images_a_prime.shape[-2:]
                 image_size = np.ascontiguousarray(np.array([H_padded, W_padded], dtype=np.int32))
             else:
                 image_size = np.ascontiguousarray(np.array([H, W], dtype=np.int32))
@@ -608,20 +622,21 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                     self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
                     b_mask, common_args + (correl_out_BB,)
                 )
-            warp_A_sum = images_a_prime.sum(axis=0)
-            warp_B_sum = images_b_prime.sum(axis=0)
+            # Note: warp_A_sum and warp_B_sum computed earlier (before padding)
+            # Use actual correlation size (SumWindow for single mode)
+            corr_size = self.window_sizes_for_corr[pass_idx]
             correl_out_AA = correl_out_AA.reshape(N,
                 total_windows,
-                config.ensemble_window_sizes[pass_idx][0],
-                config.ensemble_window_sizes[pass_idx][1],)
+                corr_size[0],
+                corr_size[1],)
             correl_out_AB = correl_out_AB.reshape(N,
                 total_windows,
-                config.ensemble_window_sizes[pass_idx][0],
-                config.ensemble_window_sizes[pass_idx][1],)
+                corr_size[0],
+                corr_size[1],)
             correl_out_BB = correl_out_BB.reshape(N,
                 total_windows,
-                config.ensemble_window_sizes[pass_idx][0],
-                config.ensemble_window_sizes[pass_idx][1],)
+                corr_size[0],
+                corr_size[1],)
             correl_AA_sum = correl_out_AA.sum(axis=0)
             correl_BB_sum = correl_out_BB.sum(axis=0)
             correl_AB_sum = correl_out_AB.sum(axis=0)
@@ -655,6 +670,10 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             "n_win_y": n_win_y,
             "smoothed_predictor": smoothed_predictor,  # For pass > 0
             "vector_mask": vector_mask,
+            # Padding values for predictor field - used in finalize_pass to store
+            # PADDED predictor matching instantaneous mode format
+            "n_pre": self.n_pre_all[pass_idx],
+            "n_post": self.n_post_all[pass_idx],
         }
 
     def _set_lib_arguments_ensemble(
@@ -690,7 +709,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         i_peak_finder = config.ensemble_peak_finder
         b_ensemble = True
         correl_plane_out = np.ascontiguousarray(
-            np.zeros(N * total_windows * win_size[0] * win_size[1], dtype=np.float32)
+            np.zeros(N * total_windows * corr_size[0] * corr_size[1], dtype=np.float32)
         )
         out_shape = (N, n_peaks, n_win_y, n_win_x)
 
@@ -765,6 +784,64 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         if predictor_field is None or pass_idx == 0:
             predictor_field = np.zeros((n_win_y, n_win_x, 2), dtype=np.float32)
 
+        # Pad predictor field using PREVIOUS pass padding values.
+        # The interpolation maps (cached_dense_maps, cached_predictor_maps)
+        # were built from win_ctrs_x_all[pass_idx-1] which includes pre/post
+        # padding. The input predictor must match this padded coordinate system.
+        # This matches instantaneous mode's padding in cpu_instantaneous.py:480-489.
+        if pass_idx > 0:
+            prev_pass = pass_idx - 1
+            pre_y, pre_x = self.n_pre_all[prev_pass]
+            post_y, post_x = self.n_post_all[prev_pass]
+
+            # Verify incoming predictor has expected shape (previous pass grid)
+            expected_y = len(self.win_ctrs_y[prev_pass])
+            expected_x = len(self.win_ctrs_x[prev_pass])
+            if predictor_field.shape[0] != expected_y or predictor_field.shape[1] != expected_x:
+                logging.warning(
+                    f"Pass {pass_idx}: Predictor shape mismatch! "
+                    f"Got {predictor_field.shape[:2]}, expected ({expected_y}, {expected_x}). "
+                    f"This may cause edge artifacts."
+                )
+
+            # DEBUG: Log predictor edge values BEFORE padding
+            logging.debug(
+                f"Pass {pass_idx}: PRE-PADDING predictor edges - "
+                f"top-left=({predictor_field[0,0,0]:.4f}, {predictor_field[0,0,1]:.4f}), "
+                f"top-right=({predictor_field[0,-1,0]:.4f}, {predictor_field[0,-1,1]:.4f}), "
+                f"bot-left=({predictor_field[-1,0,0]:.4f}, {predictor_field[-1,0,1]:.4f}), "
+                f"bot-right=({predictor_field[-1,-1,0]:.4f}, {predictor_field[-1,-1,1]:.4f}), "
+                f"center=({predictor_field[predictor_field.shape[0]//2, predictor_field.shape[1]//2, 0]:.4f}, "
+                f"{predictor_field[predictor_field.shape[0]//2, predictor_field.shape[1]//2, 1]:.4f})"
+            )
+
+            predictor_field = np.pad(
+                predictor_field,
+                ((pre_y, post_y), (pre_x, post_x), (0, 0)),
+                mode="edge",
+            )
+
+            # Verify padded shape matches expected interpolation grid
+            expected_padded_y = len(self.win_ctrs_y_all[prev_pass])
+            expected_padded_x = len(self.win_ctrs_x_all[prev_pass])
+            if predictor_field.shape[0] != expected_padded_y or predictor_field.shape[1] != expected_padded_x:
+                logging.error(
+                    f"Pass {pass_idx}: CRITICAL - Padded predictor shape mismatch! "
+                    f"Got {predictor_field.shape[:2]}, expected ({expected_padded_y}, {expected_padded_x}). "
+                    f"Padding: pre=({pre_y},{pre_x}), post=({post_y},{post_x})"
+                )
+
+            # DEBUG: Log predictor edge values AFTER padding
+            logging.debug(
+                f"Pass {pass_idx}: POST-PADDING predictor edges - "
+                f"top-left=({predictor_field[0,0,0]:.4f}, {predictor_field[0,0,1]:.4f}), "
+                f"top-right=({predictor_field[0,-1,0]:.4f}, {predictor_field[0,-1,1]:.4f}), "
+                f"bot-left=({predictor_field[-1,0,0]:.4f}, {predictor_field[-1,0,1]:.4f}), "
+                f"bot-right=({predictor_field[-1,-1,0]:.4f}, {predictor_field[-1,-1,1]:.4f}), "
+                f"center=({predictor_field[predictor_field.shape[0]//2, predictor_field.shape[1]//2, 0]:.4f}, "
+                f"{predictor_field[predictor_field.shape[0]//2, predictor_field.shape[1]//2, 1]:.4f})"
+            )
+
         self.delta_ab_old = np.zeros_like(predictor_field).astype(np.float32)
         delta_ab_pred = np.zeros((n_win_y, n_win_x, 2), dtype=np.float32)
 
@@ -781,6 +858,20 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             truncate=(self.ksize_filt[pass_idx][0] - 1) / (2 * self.sd[pass_idx]),
             mode="nearest",
         )
+
+        # DEBUG: Log smoothed predictor edge values
+        if pass_idx > 0:
+            logging.debug(
+                f"Pass {pass_idx}: POST-SMOOTH delta_ab_old edges - "
+                f"shape={self.delta_ab_old.shape}, "
+                f"top-left=({self.delta_ab_old[0,0,0]:.4f}, {self.delta_ab_old[0,0,1]:.4f}), "
+                f"top-right=({self.delta_ab_old[0,-1,0]:.4f}, {self.delta_ab_old[0,-1,1]:.4f}), "
+                f"bot-left=({self.delta_ab_old[-1,0,0]:.4f}, {self.delta_ab_old[-1,0,1]:.4f}), "
+                f"bot-right=({self.delta_ab_old[-1,-1,0]:.4f}, {self.delta_ab_old[-1,-1,1]:.4f}), "
+                f"center=({self.delta_ab_old[self.delta_ab_old.shape[0]//2, self.delta_ab_old.shape[1]//2, 0]:.4f}, "
+                f"{self.delta_ab_old[self.delta_ab_old.shape[0]//2, self.delta_ab_old.shape[1]//2, 1]:.4f}), "
+                f"sigma={self.sd[pass_idx]:.4f}, ksize={self.ksize_filt[pass_idx]}"
+            )
 
         interp_flag = cv2.INTER_CUBIC if interp == "cubic" else cv2.INTER_LINEAR
         self.delta_ab_dense = np.zeros((self.H, self.W, 2), dtype=np.float32)
@@ -799,6 +890,26 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 borderValue=0,
             )
 
+        # DEBUG: Log dense remap edge values and check for zeros at edges
+        if pass_idx > 0:
+            edge_margin = 10  # pixels from edge
+            edge_zeros = (
+                (self.delta_ab_dense[:edge_margin, :, :] == 0).sum() +
+                (self.delta_ab_dense[-edge_margin:, :, :] == 0).sum() +
+                (self.delta_ab_dense[:, :edge_margin, :] == 0).sum() +
+                (self.delta_ab_dense[:, -edge_margin:, :] == 0).sum()
+            )
+            center_zeros = (self.delta_ab_dense[edge_margin:-edge_margin, edge_margin:-edge_margin, :] == 0).sum()
+            logging.debug(
+                f"Pass {pass_idx}: POST-REMAP delta_ab_dense - "
+                f"shape={self.delta_ab_dense.shape}, "
+                f"edge_zeros(margin={edge_margin})={edge_zeros}, center_zeros={center_zeros}, "
+                f"corners: TL=({self.delta_ab_dense[0,0,0]:.4f},{self.delta_ab_dense[0,0,1]:.4f}), "
+                f"TR=({self.delta_ab_dense[0,-1,0]:.4f},{self.delta_ab_dense[0,-1,1]:.4f}), "
+                f"BL=({self.delta_ab_dense[-1,0,0]:.4f},{self.delta_ab_dense[-1,0,1]:.4f}), "
+                f"BR=({self.delta_ab_dense[-1,-1,0]:.4f},{self.delta_ab_dense[-1,-1,1]:.4f})"
+            )
+
         map_x, map_y = self.cached_predictor_maps[pass_idx]
         if map_x is None or map_y is None:
             raise ValueError(f"Predictor interpolation maps missing for pass {pass_idx}")
@@ -811,6 +922,19 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 interp_flag,
                 borderMode=cv2.BORDER_CONSTANT,
                 borderValue=0.0,
+            )
+
+        # DEBUG: Log predictor remap edge values
+        if pass_idx > 0:
+            logging.debug(
+                f"Pass {pass_idx}: POST-REMAP delta_ab_pred - "
+                f"shape={delta_ab_pred.shape}, "
+                f"top-left=({delta_ab_pred[0,0,0]:.4f}, {delta_ab_pred[0,0,1]:.4f}), "
+                f"top-right=({delta_ab_pred[0,-1,0]:.4f}, {delta_ab_pred[0,-1,1]:.4f}), "
+                f"bot-left=({delta_ab_pred[-1,0,0]:.4f}, {delta_ab_pred[-1,0,1]:.4f}), "
+                f"bot-right=({delta_ab_pred[-1,-1,0]:.4f}, {delta_ab_pred[-1,-1,1]:.4f}), "
+                f"center=({delta_ab_pred[delta_ab_pred.shape[0]//2, delta_ab_pred.shape[1]//2, 0]:.4f}, "
+                f"{delta_ab_pred[delta_ab_pred.shape[0]//2, delta_ab_pred.shape[1]//2, 1]:.4f})"
             )
 
         delta_0b = self.delta_ab_dense / 2

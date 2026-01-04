@@ -2,7 +2,7 @@
 """
 planar_calibration_multiview.py
 
-Pure Multi-View Pinhole Calibration script.
+Pure Multi-View Dotboard Calibration script.
 - Aggregates multiple views of a calibration board.
 - Solves for Intrinsics (Camera Matrix + Distortion) using OpenCV.
 - Saves grid detections and final model to .mat files.
@@ -27,8 +27,8 @@ from pivtools_core.image_handling.load_images import read_image
 # SOURCE_DIR: Root directory containing data
 SOURCE_DIR = "/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/enhanced"
 
-# BASE_DIR: Output directory. 
-# Results save to: {BASE_DIR}/calibration/Cam{N}/pinhole_planar/...
+# BASE_DIR: Output directory.
+# Results save to: {BASE_DIR}/calibration/Cam{N}/dotboard_planar/...
 BASE_DIR = "/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images"
 
 # CALIBRATION_SUBFOLDER: Subfolder for images (leave "" if in root)
@@ -90,12 +90,12 @@ def apply_cli_settings_to_config():
     if NUM_CALIBRATION_IMAGES is not None:
         config.data["calibration"]["num_images"] = NUM_CALIBRATION_IMAGES
 
-    # Pinhole-specific params (for planar calibration)
-    config.data["calibration"]["pinhole"]["pattern_cols"] = PATTERN_COLS
-    config.data["calibration"]["pinhole"]["pattern_rows"] = PATTERN_ROWS
-    config.data["calibration"]["pinhole"]["dot_spacing_mm"] = DOT_SPACING_MM
-    config.data["calibration"]["pinhole"]["asymmetric"] = ASYMMETRIC
-    config.data["calibration"]["pinhole"]["enhance_dots"] = ENHANCE_DOTS
+    # Dotboard-specific params (for planar calibration)
+    config.data["calibration"]["dotboard"]["pattern_cols"] = PATTERN_COLS
+    config.data["calibration"]["dotboard"]["pattern_rows"] = PATTERN_ROWS
+    config.data["calibration"]["dotboard"]["dot_spacing_mm"] = DOT_SPACING_MM
+    config.data["calibration"]["dotboard"]["asymmetric"] = ASYMMETRIC
+    config.data["calibration"]["dotboard"]["enhance_dots"] = ENHANCE_DOTS
 
     # Save to disk so centralized loader picks up changes
     config.save()
@@ -152,10 +152,10 @@ class MultiViewCalibrator:
         return cv2.SimpleBlobDetector_create(params)
 
     def _setup_directories(self):
-        """Create output directories with /pinhole_planar structure"""
+        """Create output directories with /dotboard_planar structure"""
         for cam_num in range(1, self.camera_count + 1):
-            # NEW PATH STRUCTURE: .../CamX/pinhole_planar/
-            cam_base = self.base_dir / "calibration" / f"Cam{cam_num}" / "pinhole_planar"
+            # NEW PATH STRUCTURE: .../CamX/dotboard_planar/
+            cam_base = self.base_dir / "calibration" / f"Cam{cam_num}" / "dotboard_planar"
             (cam_base / "indices").mkdir(parents=True, exist_ok=True)
             (cam_base / "model").mkdir(parents=True, exist_ok=True)
             (cam_base / "figures").mkdir(parents=True, exist_ok=True)
@@ -323,7 +323,7 @@ class MultiViewCalibrator:
             logger.warning(f"Failed to save visualization for {filename}: {e}")
 
     def run(self):
-        logger.info("Starting Multi-View Pinhole Calibration...")
+        logger.info("Starting Multi-View Dotboard Calibration...")
         
         objp_base = self.make_object_points() # Shape: (N, 3)
 
@@ -332,7 +332,7 @@ class MultiViewCalibrator:
 
             # Path setup: source / camera_folder / calibration_subfolder
             cam_input_dir = self._get_camera_input_dir(cam_num)
-            cam_output_base = self.base_dir / "calibration" / f"Cam{cam_num}" / "pinhole_planar"
+            cam_output_base = self.base_dir / "calibration" / f"Cam{cam_num}" / "dotboard_planar"
 
             # Find images
             image_files = []
@@ -442,7 +442,7 @@ class MultiViewCalibrator:
                 "dot_spacing_mm": self.dot_spacing_mm
             }
 
-            out_file = cam_output_base / "model" / "pinhole_model.mat"
+            out_file = cam_output_base / "model" / "dotboard_model.mat"
             savemat(str(out_file), model_data)
             logger.info(f"Saved model to: {out_file}")
 
@@ -516,7 +516,7 @@ class MultiViewCalibrator:
 
         # Path setup: source / camera_folder / calibration_subfolder
         cam_input_dir = self._get_camera_input_dir(cam_num)
-        cam_output_base = self.base_dir / "calibration" / f"Cam{cam_num}" / "pinhole_planar"
+        cam_output_base = self.base_dir / "calibration" / f"Cam{cam_num}" / "dotboard_planar"
 
         # Ensure directories exist
         (cam_output_base / "indices").mkdir(parents=True, exist_ok=True)
@@ -656,7 +656,7 @@ class MultiViewCalibrator:
             "dot_spacing_mm": self.dot_spacing_mm
         }
 
-        out_file = cam_output_base / "model" / "pinhole_model.mat"
+        out_file = cam_output_base / "model" / "dotboard_model.mat"
         savemat(str(out_file), model_data)
         logger.info(f"Saved model to: {out_file}")
 
@@ -712,11 +712,11 @@ if __name__ == "__main__":
         camera_nums = config.data["paths"].get("camera_numbers", [1])
         file_pattern = config.data["calibration"]["image_format"]
         calibration_subfolder = config.data["calibration"].get("subfolder", "")
-        pattern_cols = config.data["calibration"]["pinhole"]["pattern_cols"]
-        pattern_rows = config.data["calibration"]["pinhole"]["pattern_rows"]
-        dot_spacing_mm = config.data["calibration"]["pinhole"]["dot_spacing_mm"]
-        asymmetric = config.data["calibration"]["pinhole"].get("asymmetric", False)
-        enhance_dots = config.data["calibration"]["pinhole"].get("enhance_dots", False)
+        pattern_cols = config.data["calibration"]["dotboard"]["pattern_cols"]
+        pattern_rows = config.data["calibration"]["dotboard"]["pattern_rows"]
+        dot_spacing_mm = config.data["calibration"]["dotboard"]["dot_spacing_mm"]
+        asymmetric = config.data["calibration"]["dotboard"].get("asymmetric", False)
+        enhance_dots = config.data["calibration"]["dotboard"].get("enhance_dots", False)
     else:
         # Apply CLI settings to config.yaml so centralized loaders work correctly
         config = apply_cli_settings_to_config()

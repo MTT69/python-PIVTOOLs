@@ -3,6 +3,45 @@ Gaussian Fitting Utilities for Ensemble PIV
 
 This module contains helper functions for Gaussian fitting
 in ensemble PIV processing.
+
+NaN Reason Codes (nan_reason / status codes)
+============================================
+These codes indicate why a vector was marked as invalid or failed.
+Stored in PIVPassResult.nan_reason array.
+
+Code  Stage                   Description
+----  -----                   -----------
+ -1   Pre-fitting             Masked vector (not correlated, e.g., outside ROI)
+  0   Success                 Fit succeeded and passed all validation
+  1   C solver                Levenberg-Marquardt solver did not converge
+  2   Post-fit validation     AB peak height invalid (normalized height not in [0,1])
+  3   Post-fit validation     Breaks 1/2 displacement rule (peak too far from center)
+  5   Post-fit validation     Negative sigma values (unphysical Gaussian width)
+  6   Displacement check      Displacement exceeds 3/4 window rule (too large)
+ 10   Outlier detection       Fit succeeded but vector flagged as outlier by
+                              median-based displacement outlier detection
+
+Validation Pipeline
+===================
+1. C solver attempts Levenberg-Marquardt fit → code 1 if fails
+2. _validate_fitted_params() checks fitted parameters → codes 2, 3, 5
+3. Displacement magnitude check (3/4 rule) → code 6
+4. Median-based outlier detection on displacement field → code 10
+5. Vectors with code 0 after all checks are valid
+
+Initial Guess Sources
+=====================
+For pass 0:
+  - Amplitudes: Peak values from current correlation planes
+  - Offsets: 5th percentile of current correlation planes
+  - Sigmas: HWHM estimation from AA (particle size) and AB (displacement uncertainty)
+  - Positions: Peak finding in AB cross-correlation
+
+For pass > 0:
+  - Amplitudes: Peak values from WARPED correlation planes (re-computed)
+  - Offsets: 5th percentile of WARPED correlation planes (re-computed)
+  - Sigmas: Interpolated from previous pass (outlier-detected + infilled + validated)
+  - Positions: Peak finding in WARPED AB cross-correlation
 """
 
 import ctypes
@@ -77,6 +116,55 @@ def set_offset_fitting(enabled: bool = True):
     lib.set_disable_offset(0 if enabled else 1)
 
 
+def _validate_sigma_field(
+    sigma_field: np.ndarray,
+    min_val: float = 0.1,
+    max_val: float = 20.0
+) -> np.ndarray:
+    """
+    Validate and clean sigma field before propagation to next pass.
+
+    Replaces invalid values (NaN, inf, out-of-bounds) with local median.
+    This prevents bad sigma estimates from propagating through passes
+    and causing "pockets of bad results".
+
+    Parameters
+    ----------
+    sigma_field : np.ndarray
+        2D sigma field from previous pass
+    min_val : float
+        Minimum valid sigma value
+    max_val : float
+        Maximum valid sigma value
+
+    Returns
+    -------
+    np.ndarray
+        Validated sigma field with same shape
+    """
+    from scipy.ndimage import median_filter
+
+    # Identify invalid values
+    invalid = ~np.isfinite(sigma_field) | (sigma_field < min_val) | (sigma_field > max_val)
+
+    if invalid.any():
+        # Use median of valid neighbors to fill invalid values
+        # First, set invalid to nan for median calculation
+        temp_field = np.where(invalid, np.nan, sigma_field)
+
+        # Median filter with nan handling
+        median_field = median_filter(
+            np.nan_to_num(temp_field, nan=np.nanmedian(temp_field)),
+            size=3,
+            mode='nearest'
+        )
+
+        sigma_field = np.where(invalid, median_field, sigma_field)
+
+    # Final clip to bounds
+    return np.clip(sigma_field, min_val, max_val)
+
+
 def _get_sigma_from_previous_pass(
     pass_idx: int,
     n_windows: int,
@@ -144,6 +232,19 @@ def _get_sigma_from_previous_pass(
         'sig_A_y': prev_pass.sig_A_y.copy().astype(np.float32),
         'sig_A_xy': prev_pass.sig_A_xy.copy().astype(np.float32),
     }
+
+    # Validate sigma fields before interpolation to prevent bad values from propagating
+    # Use different bounds for different sigma types:
+    # - sig_A (particle size): typically 0.5-15 pixels
+    # - sig_AB (displacement uncertainty): typically 0.1-10 pixels
+    # - sig_xy (cross-terms): can be negative, typically -10 to 10
+    sigma_fields['sig_AB_x'] = _validate_sigma_field(sigma_fields['sig_AB_x'], 0.1, 15.0)
+    sigma_fields['sig_AB_y'] = _validate_sigma_field(sigma_fields['sig_AB_y'], 0.1, 15.0)
+    sigma_fields['sig_A_x'] = _validate_sigma_field(sigma_fields['sig_A_x'], 0.3, 20.0)
+    sigma_fields['sig_A_y'] = _validate_sigma_field(sigma_fields['sig_A_y'], 0.3, 20.0)
+    # Cross-terms can be negative, use symmetric bounds
+    sigma_fields['sig_AB_xy'] = _validate_sigma_field(sigma_fields['sig_AB_xy'], -15.0, 15.0)
+    sigma_fields['sig_A_xy'] = _validate_sigma_field(sigma_fields['sig_A_xy'], -20.0, 20.0)
 
     result = {}
 
@@ -787,36 +888,59 @@ def _build_initial_guesses_vectorized(
     )
 
     if pass_idx == 0 or not has_prev_sigmas:
-        # Pass 0: Use reasonable default VARIANCES (fixed, not scaled by window size)
+        # Pass 0: Estimate sigmas from HWHM of correlation planes
+        # Data-driven initial guesses instead of fixed defaults.
         #
-        # For Levenberg-Marquardt, initial guesses don't need to be precise -
-        # they just need to be in the right ballpark. Using fixed defaults
-        # is more robust than moment-based estimation which fails on noisy
-        # or non-Gaussian real data.
+        # Uses Half-Width at Half-Maximum (HWHM) which is robust to background
+        # and provides accurate estimates for Gaussian-shaped peaks.
         #
-        # Typical PIV correlation peak:
-        # - Particle image diameter: 2-4 pixels
-        # - Autocorrelation FWHM: ~1.5x particle diameter = 3-6 pixels
-        # - Variance (σ²) = (FWHM / 2.355)² ≈ 2-6 for typical PIV
-        #
-        # NOTE: Peak width is determined by particle image size, NOT window size.
-        # The variance is an intrinsic property and should NOT be scaled.
+        # sigma_A: from AA autocorrelation (particle image size)
+        # sigma_AB: from AB cross-correlation minus AA contribution (displacement uncertainty)
+        #           sigma^2_total = sigma^2_particle + sigma^2_displacement
+        #           So: HWHM_disp = sqrt(HWHM_total^2 - HWHM_particle^2)
 
-        # Default variance for autocorrelation (AA, BB peaks)
-        # Typical PIV: σ² ≈ 3
+        # Sigma A: from AA autocorrelation at center (particle image size)
+        central_indices = np.full(n_valid, central_index, dtype=np.int64)
+        sigma_A_x, sigma_A_y, hwhm_A_x, hwhm_A_y = _estimate_sigma_batch_hwhm(
+            AA_3d, central_indices, win_size, min_sigma=0.5
+        )
+        sigma_A_xy = np.zeros(n_valid, dtype=np.float64)  # Assume axis-aligned for pass 0
+
+        # Sigma AB: from AB cross-correlation minus AA contribution
+        sigma_AB_raw_x, sigma_AB_raw_y, hwhm_AB_x, hwhm_AB_y = _estimate_sigma_batch_hwhm(
+            AB_3d, max_indices, win_size, min_sigma=0.1
+        )
+
+        # Compute displacement uncertainty by subtracting particle contribution (quadrature)
+        # HWHM_disp = sqrt(HWHM_total^2 - HWHM_particle^2)
+        min_hwhm = 0.1 * np.sqrt(2 * np.log(2))
+        hwhm_diff_x = np.sqrt(np.maximum(hwhm_AB_x**2 - hwhm_A_x**2, min_hwhm**2))
+        hwhm_diff_y = np.sqrt(np.maximum(hwhm_AB_y**2 - hwhm_A_y**2, min_hwhm**2))
+
+        sigma_AB_x = hwhm_diff_x / np.sqrt(2 * np.log(2))
+        sigma_AB_y = hwhm_diff_y / np.sqrt(2 * np.log(2))
+        sigma_AB_xy = np.zeros(n_valid, dtype=np.float64)  # Assume axis-aligned for pass 0
+
+        # Apply reasonable bounds - extreme values indicate estimation failure
+        sigma_A_x = np.clip(sigma_A_x, 0.5, 20.0)
+        sigma_A_y = np.clip(sigma_A_y, 0.5, 20.0)
+        sigma_AB_x = np.clip(sigma_AB_x, 0.1, 10.0)
+        sigma_AB_y = np.clip(sigma_AB_y, 0.1, 10.0)
+
+        # Fallback: if HWHM estimation produces extreme values, use defaults
+        # This handles cases where correlation planes are too noisy
         default_var_A = 3.0
-
-        # Default variance for displacement uncertainty (AB peak width beyond AA)
-        # This is typically smaller: σ² ≈ 1.5
         default_var_AB = 1.5
 
-        sigma_A_x = np.full(n_valid, default_var_A, dtype=np.float64)
-        sigma_A_y = np.full(n_valid, default_var_A, dtype=np.float64)
-        sigma_A_xy = np.zeros(n_valid, dtype=np.float64)
+        bad_A = (sigma_A_x > 15.0) | (sigma_A_y > 15.0) | \
+                (sigma_A_x < 0.3) | (sigma_A_y < 0.3)
+        bad_AB = (sigma_AB_x > 8.0) | (sigma_AB_y > 8.0) | \
+                 (sigma_AB_x < 0.05) | (sigma_AB_y < 0.05)
 
-        sigma_AB_x = np.full(n_valid, default_var_AB, dtype=np.float64)
-        sigma_AB_y = np.full(n_valid, default_var_AB, dtype=np.float64)
-        sigma_AB_xy = np.zeros(n_valid, dtype=np.float64)
+        sigma_A_x = np.where(bad_A, default_var_A, sigma_A_x)
+        sigma_A_y = np.where(bad_A, default_var_A, sigma_A_y)
+        sigma_AB_x = np.where(bad_AB, default_var_AB, sigma_AB_x)
+        sigma_AB_y = np.where(bad_AB, default_var_AB, sigma_AB_y)
     else:
         # Pass > 0: Use interpolated values from previous pass
         sigma_A_x = sigma_dict['sig_A_x'][valid_indices].astype(np.float64)
@@ -970,6 +1094,84 @@ def _estimate_sigma_batch_vectorized(
     return sigma_x, sigma_y
 
 
+def _estimate_sigma_batch_hwhm(
+    corr_planes_3d: np.ndarray,
+    peak_indices: np.ndarray,
+    win_size: tuple,
+    min_sigma: float = 0.5,
+) -> tuple:
+    """
+    Vectorized HWHM-based sigma estimation for correlation planes.
+
+    Uses Half-Width at Half-Maximum (HWHM) to estimate Gaussian sigma:
+        sigma = HWHM / sqrt(2 * ln(2))
+
+    This is more robust than moment-based for peaks with clear structure
+    and handles background subtraction implicitly (threshold = peak/2).
+
+    Parameters
+    ----------
+    corr_planes_3d : np.ndarray
+        Correlation planes, shape (n_windows, win_h, win_w)
+    peak_indices : np.ndarray
+        Flat indices of peaks in each window, shape (n_windows,)
+    win_size : tuple
+        (height, width) of window
+    min_sigma : float
+        Minimum sigma value (standard deviation)
+
+    Returns
+    -------
+    sigma_x, sigma_y : np.ndarray
+        Estimated standard deviations, shape (n_windows,)
+    hwhm_x, hwhm_y : np.ndarray
+        Raw HWHM values for debugging/subtraction, shape (n_windows,)
+    """
+    n_windows = corr_planes_3d.shape[0]
+    win_h, win_w = win_size
+
+    # Convert flat indices to 2D coordinates
+    peak_y = peak_indices // win_w
+    peak_x = peak_indices % win_w
+
+    # Initialize outputs with defaults
+    sigma_x = np.full(n_windows, min_sigma, dtype=np.float64)
+    sigma_y = np.full(n_windows, min_sigma, dtype=np.float64)
+    hwhm_x = np.full(n_windows, min_sigma * np.sqrt(2 * np.log(2)), dtype=np.float64)
+    hwhm_y = np.full(n_windows, min_sigma * np.sqrt(2 * np.log(2)), dtype=np.float64)
+
+    # HWHM to sigma conversion factor
+    hwhm_to_sigma = 1.0 / np.sqrt(2 * np.log(2))  # ~0.849
+
+    # Get peak values for all windows (vectorized)
+    peak_vals = corr_planes_3d[np.arange(n_windows), peak_y, peak_x]
+
+    # Process each window (loop required for profile thresholding)
+    for i in range(n_windows):
+        if peak_vals[i] < 1e-6:
+            continue
+
+        py, px = int(peak_y[i]), int(peak_x[i])
+        plane = corr_planes_3d[i]
+        threshold = peak_vals[i] / 2.0
+
+        # X-direction: profile at peak_y
+        x_profile = plane[py, :]
+        x_above = np.where(x_profile >= threshold)[0]
+        if len(x_above) >= 2:
+            hwhm_x[i] = (x_above[-1] - x_above[0]) / 2.0
+            sigma_x[i] = max(hwhm_x[i] * hwhm_to_sigma, min_sigma)
+
+        # Y-direction: profile at peak_x
+        y_profile = plane[:, px]
+        y_above = np.where(y_profile >= threshold)[0]
+        if len(y_above) >= 2:
+            hwhm_y[i] = (y_above[-1] - y_above[0]) / 2.0
+            sigma_y[i] = max(hwhm_y[i] * hwhm_to_sigma, min_sigma)
+
+    return sigma_x, sigma_y, hwhm_x, hwhm_y
+
+
 def fit_windows_openmp(
     R_AA: np.ndarray,
     R_BB: np.ndarray,
@@ -1064,7 +1266,7 @@ def fit_windows_openmp(
     valid_indices = np.where(~mask_flat)[0]
     n_valid = len(valid_indices)
 
-    logger.info(f"fit_windows_openmp: Fitting {n_valid}/{num_windows} windows (pass {pass_idx + 1})")
+    logger.debug(f"fit_windows_openmp: Fitting {n_valid}/{num_windows} windows (pass {pass_idx + 1})")
 
     if n_valid == 0:
         # All windows masked - return immediately

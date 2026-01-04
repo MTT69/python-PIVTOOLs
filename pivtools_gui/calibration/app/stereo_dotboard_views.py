@@ -1,13 +1,13 @@
 """
-Stereo Pinhole Calibration Views.
+Stereo Dotboard Calibration Views.
 
-Clean API for stereo pinhole calibration using circle grid detection:
-- /calibration/stereo/pinhole/validate - Validate calibration images for both cameras
-- /calibration/stereo/pinhole/frame/<idx> - Get single calibration frame (with camera param)
-- /calibration/stereo/pinhole/generate_model - Start stereo calibration job
-- /calibration/stereo/pinhole/job/<job_id> - Poll job status
-- /calibration/stereo/pinhole/model - Load saved stereo model + detections
-- /calibration/stereo/pinhole/reconstruct - Start 3D vector reconstruction job
+Clean API for stereo dotboard calibration using circle grid detection:
+- /calibration/stereo/dotboard/validate - Validate calibration images for both cameras
+- /calibration/stereo/dotboard/frame/<idx> - Get single calibration frame (with camera param)
+- /calibration/stereo/dotboard/generate_model - Start stereo calibration job
+- /calibration/stereo/dotboard/job/<job_id> - Poll job status
+- /calibration/stereo/dotboard/model - Load saved stereo model + detections
+- /calibration/stereo/dotboard/reconstruct - Start 3D vector reconstruction job
 """
 
 import re
@@ -26,12 +26,12 @@ from pivtools_core.image_handling.calibration_loader import (
     validate_calibration_images,
 )
 
-from pivtools_gui.stereo_reconstruction.stereo_pinhole_calibration_production import StereoPinholeCalibrator
+from pivtools_gui.stereo_reconstruction.stereo_dotboard_calibration_production import StereoDotboardCalibrator
 from pivtools_gui.stereo_reconstruction.stereo_reconstruction_production import StereoReconstructor
 from pivtools_gui.calibration.services.job_manager import job_manager
 from pivtools_gui.utils import camera_number, numpy_to_png_base64
 
-stereo_pinhole_bp = Blueprint("stereo_pinhole", __name__)
+stereo_dotboard_bp = Blueprint("stereo_dotboard", __name__)
 
 
 # ============================================================================
@@ -39,8 +39,8 @@ stereo_pinhole_bp = Blueprint("stereo_pinhole", __name__)
 # ============================================================================
 
 
-@stereo_pinhole_bp.route("/calibration/stereo/pinhole/validate", methods=["POST"])
-def stereo_pinhole_validate():
+@stereo_dotboard_bp.route("/calibration/stereo/dotboard/validate", methods=["POST"])
+def stereo_dotboard_validate():
     """
     Validate calibration images exist for BOTH cameras in a stereo pair.
 
@@ -123,8 +123,8 @@ def stereo_pinhole_validate():
 # ============================================================================
 
 
-@stereo_pinhole_bp.route("/calibration/stereo/pinhole/frame/<int:idx>", methods=["GET"])
-def stereo_pinhole_frame(idx: int):
+@stereo_dotboard_bp.route("/calibration/stereo/dotboard/frame/<int:idx>", methods=["GET"])
+def stereo_dotboard_frame(idx: int):
     """
     Get a single calibration frame for stereo viewing.
 
@@ -188,8 +188,8 @@ def stereo_pinhole_frame(idx: int):
 # ============================================================================
 
 
-@stereo_pinhole_bp.route("/calibration/stereo/pinhole/generate_model", methods=["POST"])
-def stereo_pinhole_generate_model():
+@stereo_dotboard_bp.route("/calibration/stereo/dotboard/generate_model", methods=["POST"])
+def stereo_dotboard_generate_model():
     """
     Start stereo calibration job for a camera pair.
 
@@ -199,7 +199,7 @@ def stereo_pinhole_generate_model():
         cam2: int
 
     All calibration parameters are read from config.yaml.
-    Uses StereoPinholeCalibrator.process_camera_pair() for the actual calibration.
+    Uses StereoDotboardCalibrator.process_camera_pair() for the actual calibration.
 
     Returns:
         JSON with job_id, status
@@ -211,7 +211,7 @@ def stereo_pinhole_generate_model():
 
     # Create job
     job_id = job_manager.create_job(
-        "stereo_pinhole",
+        "stereo_dotboard",
         processed_pairs=0,
         valid_pairs=0,
         total_pairs=0,
@@ -226,10 +226,10 @@ def stereo_pinhole_generate_model():
 
             # Get config
             cfg = get_config()
-            stereo_cfg = cfg.stereo_calibration
+            stereo_cfg = cfg.stereo_dotboard_calibration
 
             # Create calibrator using config
-            calibrator = StereoPinholeCalibrator(
+            calibrator = StereoDotboardCalibrator(
                 config=cfg,
                 camera_pair=[cam1, cam2],
                 source_path_idx=source_path_idx,
@@ -263,12 +263,12 @@ def stereo_pinhole_generate_model():
                     relative_angle_deg=result.get("relative_angle_deg"),
                     model_path=result.get("model_path"),
                 )
-                logger.info(f"Stereo pinhole calibration completed for cameras {cam1}-{cam2}")
+                logger.info(f"Stereo dotboard calibration completed for cameras {cam1}-{cam2}")
             else:
                 job_manager.fail_job(job_id, result.get("error", "Calibration failed"))
 
         except Exception as e:
-            logger.error(f"Stereo pinhole calibration job {job_id} failed: {e}")
+            logger.error(f"Stereo dotboard calibration job {job_id} failed: {e}")
             job_manager.fail_job(job_id, str(e))
 
     thread = threading.Thread(target=run_calibration)
@@ -287,8 +287,8 @@ def stereo_pinhole_generate_model():
 # ============================================================================
 
 
-@stereo_pinhole_bp.route("/calibration/stereo/pinhole/job/<job_id>", methods=["GET"])
-def stereo_pinhole_job_status(job_id: str):
+@stereo_dotboard_bp.route("/calibration/stereo/dotboard/job/<job_id>", methods=["GET"])
+def stereo_dotboard_job_status(job_id: str):
     """
     Get stereo calibration job status.
 
@@ -308,8 +308,8 @@ def stereo_pinhole_job_status(job_id: str):
 # ============================================================================
 
 
-@stereo_pinhole_bp.route("/calibration/stereo/pinhole/model", methods=["GET"])
-def stereo_pinhole_load_model():
+@stereo_dotboard_bp.route("/calibration/stereo/dotboard/model", methods=["GET"])
+def stereo_dotboard_load_model():
     """
     Load saved stereo calibration model and detection coordinates.
 
@@ -472,8 +472,8 @@ def stereo_pinhole_load_model():
 # ============================================================================
 
 
-@stereo_pinhole_bp.route("/calibration/stereo/pinhole/reconstruct", methods=["POST"])
-def stereo_pinhole_reconstruct():
+@stereo_dotboard_bp.route("/calibration/stereo/dotboard/reconstruct", methods=["POST"])
+def stereo_dotboard_reconstruct():
     """
     Start 3D vector reconstruction from stereo calibration.
 
@@ -515,7 +515,7 @@ def stereo_pinhole_reconstruct():
             reconstructor = StereoReconstructor(
                 base_dir=str(base_root),
                 camera_pair=[cam1, cam2],
-                model_type="pinhole",  # Using pinhole stereo model
+                model_type="dotboard",  # Using dotboard stereo model
                 type_name=type_name,
                 config=cfg,
             )
@@ -562,8 +562,8 @@ def stereo_pinhole_reconstruct():
 # ============================================================================
 
 
-@stereo_pinhole_bp.route("/calibration/stereo/pinhole/reconstruct/status/<job_id>", methods=["GET"])
-def stereo_pinhole_reconstruct_status(job_id: str):
+@stereo_dotboard_bp.route("/calibration/stereo/dotboard/reconstruct/status/<job_id>", methods=["GET"])
+def stereo_dotboard_reconstruct_status(job_id: str):
     """
     Get stereo reconstruction job status.
 
@@ -583,28 +583,28 @@ def stereo_pinhole_reconstruct_status(job_id: str):
 # ============================================================================
 
 
-@stereo_pinhole_bp.route("/calibration/stereo/pinhole/generate_model_batch", methods=["POST"])
-def stereo_pinhole_generate_model_batch():
+@stereo_dotboard_bp.route("/calibration/stereo/dotboard/generate_model_batch", methods=["POST"])
+def stereo_dotboard_generate_model_batch():
     """
-    Start stereo pinhole calibration with batch processing support.
+    Start stereo dotboard calibration with batch processing support.
 
     For stereo calibration, we process one camera pair per path (no camera loop).
 
     Request JSON:
         active_paths: list of path indices (default: from config)
-        cam1: int (default: from config stereo.camera_pair[0])
-        cam2: int (default: from config stereo.camera_pair[1])
+        cam1: int (default: from config stereo_dotboard.camera_pair[0])
+        cam2: int (default: from config stereo_dotboard.camera_pair[1])
 
     Returns:
         JSON with parent_job_id, sub_jobs list, status
     """
     data = request.get_json() or {}
-    logger.info(f"Received batch stereo pinhole calibration request: {data}")
+    logger.info(f"Received batch stereo dotboard calibration request: {data}")
 
     try:
         cfg = get_config()
         base_paths = cfg.base_paths
-        stereo_cfg = cfg.stereo_calibration
+        stereo_cfg = cfg.stereo_dotboard_calibration
 
         # Get batch parameters
         active_paths = data.get("active_paths")
@@ -622,7 +622,7 @@ def stereo_pinhole_generate_model_batch():
 
         # Create parent job
         parent_job_id = job_manager.create_job(
-            "stereo_pinhole_batch",
+            "stereo_dotboard_batch",
             total_targets=len(valid_paths),
             cam1=cam1,
             cam2=cam2,
@@ -635,7 +635,7 @@ def stereo_pinhole_generate_model_batch():
 
             # Create sub-job
             job_id = job_manager.create_job(
-                "stereo_pinhole",
+                "stereo_dotboard",
                 path_idx=path_idx,
                 parent_job_id=parent_job_id,
                 cam1=cam1,
@@ -654,7 +654,7 @@ def stereo_pinhole_generate_model_batch():
 
             # Launch thread
             thread = threading.Thread(
-                target=_run_stereo_pinhole_job,
+                target=_run_stereo_dotboard_job,
                 args=(
                     job_id,
                     base_dir,
@@ -676,15 +676,15 @@ def stereo_pinhole_generate_model_batch():
             "total_targets": len(valid_paths),
             "processed_targets": len(sub_jobs),
             "status": "starting",
-            "message": f"Stereo pinhole calibration started for {len(sub_jobs)} path(s)",
+            "message": f"Stereo dotboard calibration started for {len(sub_jobs)} path(s)",
         })
 
     except Exception as e:
-        logger.error(f"Error starting batch stereo pinhole calibration: {e}", exc_info=True)
+        logger.error(f"Error starting batch stereo dotboard calibration: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
-def _run_stereo_pinhole_job(
+def _run_stereo_dotboard_job(
     job_id: str,
     base_dir: Path,
     path_idx: int,
@@ -692,14 +692,14 @@ def _run_stereo_pinhole_job(
     cam2: int,
     cfg,
 ):
-    """Run stereo pinhole calibration job in a background thread."""
+    """Run stereo dotboard calibration job in a background thread."""
     try:
-        logger.info(f"[StereoPinhole] Starting job {job_id} for path {path_idx}")
+        logger.info(f"[StereoDotboard] Starting job {job_id} for path {path_idx}")
 
         job_manager.update_job(job_id, status="running", stage="detecting")
 
         # Create calibrator
-        calibrator = StereoPinholeCalibrator(
+        calibrator = StereoDotboardCalibrator(
             config=cfg,
             camera_pair=[cam1, cam2],
             source_path_idx=path_idx,
@@ -733,19 +733,19 @@ def _run_stereo_pinhole_job(
                 relative_angle_deg=result.get("relative_angle_deg"),
                 model_path=result.get("model_path"),
             )
-            logger.info(f"[StereoPinhole] Job {job_id} completed for path {path_idx}")
+            logger.info(f"[StereoDotboard] Job {job_id} completed for path {path_idx}")
         else:
             job_manager.fail_job(job_id, result.get("error", "Calibration failed"))
-            logger.error(f"[StereoPinhole] Job {job_id} failed: {result.get('error')}")
+            logger.error(f"[StereoDotboard] Job {job_id} failed: {result.get('error')}")
 
     except Exception as e:
-        logger.error(f"[StereoPinhole] Job {job_id} error: {e}", exc_info=True)
+        logger.error(f"[StereoDotboard] Job {job_id} error: {e}", exc_info=True)
         job_manager.fail_job(job_id, str(e))
 
 
-@stereo_pinhole_bp.route("/calibration/stereo/pinhole/batch_status/<job_id>", methods=["GET"])
-def stereo_pinhole_batch_status(job_id: str):
-    """Get batch stereo pinhole calibration job status with aggregated sub-job info."""
+@stereo_dotboard_bp.route("/calibration/stereo/dotboard/batch_status/<job_id>", methods=["GET"])
+def stereo_dotboard_batch_status(job_id: str):
+    """Get batch stereo dotboard calibration job status with aggregated sub-job info."""
     job_data = job_manager.get_job(job_id)
     if job_data is None:
         return jsonify({"error": "Job not found"}), 404

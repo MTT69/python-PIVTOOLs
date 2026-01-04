@@ -494,17 +494,17 @@ def test_calibration_output_files():
             return True
 
         # Check output directories exist
-        model_dir = tmpdir / "calibration" / "Cam1" / "pinhole_planar" / "model"
-        indices_dir = tmpdir / "calibration" / "Cam1" / "pinhole_planar" / "indices"
-        figures_dir = tmpdir / "calibration" / "Cam1" / "pinhole_planar" / "figures"
+        model_dir = tmpdir / "calibration" / "Cam1" / "dotboard_planar" / "model"
+        indices_dir = tmpdir / "calibration" / "Cam1" / "dotboard_planar" / "indices"
+        figures_dir = tmpdir / "calibration" / "Cam1" / "dotboard_planar" / "figures"
 
         assert model_dir.exists(), "Model directory not created"
         assert indices_dir.exists(), "Indices directory not created"
         assert figures_dir.exists(), "Figures directory not created"
 
         # Check model file
-        model_file = model_dir / "pinhole_model.mat"
-        assert model_file.exists(), "pinhole_model.mat not created"
+        model_file = model_dir / "dotboard_model.mat"
+        assert model_file.exists(), "dotboard_model.mat not created"
 
         # Check indices files exist
         indices_files = list(indices_dir.glob("indexing_*.mat"))

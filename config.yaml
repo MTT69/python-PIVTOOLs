@@ -10,7 +10,7 @@ paths:
   camera_count: 1
   camera_subfolders: []
 images:
-  num_images: 1000
+  num_images: 100
   image_format:
   - B%05d_A.tif
   - B%05d_B.tif
@@ -21,26 +21,26 @@ images:
   zero_based_indexing: false
   pairing_mode: sequential
   pairing_skip: 0
-  num_frame_pairs: 1000
+  num_frame_pairs: 100
   image_type: standard
   use_camera_subfolders: false
 batches:
   size: 10
 logging:
   file: pypiv.log
-  level: INFO
+  level: DEBUG
   console: true
 processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 2
-  dask_workers_per_node: 5
+  omp_threads: 10
+  dask_workers_per_node: 1
   dask_threads_per_worker: 1
-  dask_memory_limit: 3.5GB
+  dask_memory_limit: 14GB
   always_batch: true
-  instantaneous: true
-  ensemble: false
+  instantaneous: false
+  ensemble: true
 outlier_detection:
   enabled: true
   methods:
@@ -52,29 +52,26 @@ outlier_detection:
 infilling:
   mid_pass:
     method: biharmonic
-    parameters:
-      ksize: 3
+    parameters: {}
   final_pass:
     enabled: true
     method: biharmonic
-    parameters:
-      ksize: 3
+    parameters: {}
 ensemble_outlier_detection:
   enabled: true
   methods:
   - epsilon: 0.2
-    threshold: 2
+    threshold: 3
     type: median_2d
 ensemble_infilling:
   mid_pass:
-    method: biharmonic
+    method: local_median
     parameters:
-      ksize: 3
+      ksize: 7
   final_pass:
     enabled: true
     method: biharmonic
-    parameters:
-      ksize: 3
+    parameters: {}
 plots:
   save_extension: .png
   save_pickle: true
@@ -84,15 +81,16 @@ video:
   base_path_idx: 0
   camera: 1
   data_source: calibrated
-  variable: uu_inst
+  variable: ux
   run: 4
-  piv_type: instantaneous
-  cmap: viridis
+  piv_type: ensemble
+  cmap: jet
   lower: ''
   upper: ''
   fps: 30
   crf: 15
   resolution: 1080p
+  source_endpoint: regular
 statistics:
   enabled_methods:
     mean_velocity: true
@@ -116,8 +114,8 @@ statistics:
     inst_stresses: true
   gamma_radius: 4
   save_figures: true
-  type_name: instantaneous
-  source_endpoint: instantaneous
+  type_name: ensemble
+  source_endpoint: regular
 instantaneous_piv:
   window_size:
   - - 128
@@ -134,6 +132,8 @@ instantaneous_piv:
   - 50
   - 50
   runs:
+  - 1
+  - 2
   - 3
   - 4
   time_resolved: false
@@ -149,7 +149,13 @@ ensemble_piv:
     - 64
   - - 32
     - 32
+  - - 16
+    - 16
+  - - 8
+    - 8
   overlap:
+  - 50
+  - 50
   - 50
   - 50
   - 50
@@ -157,16 +163,21 @@ ensemble_piv:
   - std
   - std
   - std
+  - std
+  - single
   runs:
   - 1
   - 2
   - 3
+  - 4
+  - 5
   store_planes: true
   save_diagnostics: true
   sum_window:
   - 16
   - 16
   resume_from_pass: 0
+  window_type: square
 calibration:
   image_format: planar_calibration_plate_%02d.tif
   num_images: 19
@@ -178,13 +189,13 @@ calibration:
   - Cam1
   - Cam2
   path_order: camera_first
-  active: pinhole
+  active: dotboard
   piv_type: instantaneous
   scale_factor:
     dt: 0.56
     px_per_mm: 3.41
     source_path_idx: 0
-  pinhole:
+  dotboard:
     camera: 1
     pattern_cols: 10
     pattern_rows: 10
@@ -207,7 +218,7 @@ calibration:
     dt: 0.0057553
     source_path_idx: 0
     file_pattern: '*.tif'
-  stereo:
+  stereo_dotboard:
     camera_pair:
     - 1
     - 2
@@ -217,7 +228,7 @@ calibration:
     enhance_dots: false
     asymmetric: false
     dt: 0.0057553
-    stereo_model_type: pinhole
+    stereo_model_type: dotboard
   polynomial:
     xml_path: ''
     use_xml: true
@@ -267,13 +278,13 @@ masking:
     left: 0
     right: 0
 merging:
-  type_name: instantaneous
+  type_name: ensemble
   base_path_idx: 0
 transforms:
   base_path_idx: 0
-  type_name: instantaneous
+  type_name: ensemble
   cameras:
     1:
       operations:
       - rotate_90_cw
-  source_endpoint: instantaneous
+  source_endpoint: regular
