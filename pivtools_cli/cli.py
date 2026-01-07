@@ -601,16 +601,27 @@ def transform_command(args):
 
     type_name = args.type_name or config.transforms_type_name or "instantaneous"
 
-    # Determine use_merged: CLI flag takes precedence, otherwise read from config
-    if args.merged:
-        use_merged = True
-        # Update config to persist the source_endpoint
-        config.data.setdefault("transforms", {})["source_endpoint"] = "merged"
+    # Determine source_endpoint
+    # Priority: new --source-endpoint flag > legacy --merged flag > config
+    source_endpoint = args.source_endpoint
+
+    # Handle legacy --merged flag for backward compatibility
+    if source_endpoint is None and args.merged:
+        source_endpoint = "merged"
+
+    # Fall back to config
+    if source_endpoint is None:
+        source_endpoint = config.transforms_source_endpoint
+
+    # Determine use_merged and use_stereo from source_endpoint
+    use_merged = source_endpoint == "merged"
+    use_stereo = source_endpoint == "stereo"
+
+    # Update config if CLI specified source_endpoint
+    if args.source_endpoint or args.merged:
+        config.data.setdefault("transforms", {})["source_endpoint"] = source_endpoint or "regular"
         config.save()
-        print("Updated config: transforms.source_endpoint = merged")
-    else:
-        # Fall back to config source_endpoint
-        use_merged = config.transforms_source_endpoint == "merged"
+        print(f"Updated config: transforms.source_endpoint = {source_endpoint or 'regular'}")
 
     active_paths = get_active_paths_from_args(args, config)
     if not active_paths:
@@ -623,7 +634,7 @@ def transform_command(args):
     print(f"Active paths: {len(active_paths)}")
     print(f"Camera transforms: {camera_transforms}")
     print(f"Type: {type_name}")
-    print(f"Use merged: {use_merged}")
+    print(f"Source endpoint: {source_endpoint or 'regular'}")
 
     results = []
     for path_idx in active_paths:
@@ -739,6 +750,7 @@ def merge_command(args):
 def statistics_command(args):
     """Compute PIV statistics (mean, Reynolds stresses, TKE, vorticity, etc.)."""
     from pivtools_core.config import get_config
+    from pivtools_core.paths import get_data_paths
     from pivtools_gui.vector_statistics.instantaneous_statistics import VectorStatisticsProcessor
 
     config = get_config()
@@ -747,9 +759,35 @@ def statistics_command(args):
     cameras = [args.camera] if args.camera else config.camera_numbers
     type_name = args.type_name or "instantaneous"
 
-    # Determine use_merged: CLI flag takes precedence, otherwise read from config
-    if args.merged:
-        use_merged = True
+    # Determine workflow and source_endpoint
+    # Priority: new flags > legacy flags > config
+    source_endpoint = args.source_endpoint
+    workflow = args.workflow
+
+    # Handle legacy flags for backward compatibility
+    if source_endpoint is None:
+        if args.stereo:
+            source_endpoint = "stereo"
+        elif args.merged:
+            source_endpoint = "merged"
+
+    if workflow is None:
+        if source_endpoint == "stereo":
+            workflow = "stereo"
+        elif source_endpoint == "merged":
+            workflow = "after_merge"
+
+    # Determine final flags based on source_endpoint/workflow
+    use_stereo = source_endpoint == "stereo" or workflow == "stereo"
+    use_merged = source_endpoint == "merged" or workflow == "after_merge"
+
+    if use_stereo:
+        # Update config to persist stereo workflow
+        config.data.setdefault("statistics", {})["workflow"] = "stereo"
+        config.data["statistics"]["source_endpoint"] = "stereo"
+        config.save()
+        print("Updated config: statistics.workflow = stereo, statistics.source_endpoint = stereo")
+    elif use_merged:
         # Update config to persist the workflow
         config.data.setdefault("statistics", {})["workflow"] = "after_merge"
         config.data["statistics"]["source_endpoint"] = "merged"
@@ -770,7 +808,8 @@ def statistics_command(args):
     print(f"Active paths: {len(active_paths)}")
     print(f"Cameras: {cameras}")
     print(f"Type: {type_name}")
-    print(f"Use merged: {use_merged}")
+    print(f"Source endpoint: {source_endpoint or 'regular'}")
+    print(f"Workflow: {workflow or 'per_camera'}")
 
     # Get required config values
     num_frame_pairs = config.num_frame_pairs
@@ -783,12 +822,48 @@ def statistics_command(args):
         print(f"\nPath {path_idx + 1}/{len(active_paths)}: {base_dir}")
         print("-" * 40)
 
-        targets = ["merged"] if use_merged else cameras
-        for target in targets:
+        # Determine targets based on workflow
+        if use_stereo:
+            # Stereo: single combined 3D result
+            stereo_pairs = config.stereo_pairs
+            cam_pair = stereo_pairs[0] if stereo_pairs else (config.camera_numbers[0], config.camera_numbers[1] if len(config.camera_numbers) > 1 else 2)
+            targets = [("stereo", cam_pair)]
+        elif use_merged:
+            targets = [("merged", None)]
+        else:
+            targets = [("camera", cam) for cam in cameras]
+
+        for target_type, target_value in targets:
             try:
-                # Construct data_dir based on merge status
-                if target == "merged":
+                # Construct data_dir based on target type
+                if target_type == "stereo":
+                    cam_pair = target_value
+                    paths = get_data_paths(
+                        base_dir=base_dir,
+                        num_frame_pairs=num_frame_pairs,
+                        cam=cam_pair[0],
+                        type_name=type_name,
+                        use_stereo=True,
+                        stereo_camera_pair=cam_pair
+                    )
+                    data_dir = paths["data_dir"]
+                    label = f"Stereo Cam{cam_pair[0]}_Cam{cam_pair[1]}"
+                    processor = VectorStatisticsProcessor(
+                        data_dir=data_dir,
+                        base_dir=base_dir,
+                        num_frame_pairs=num_frame_pairs,
+                        vector_format=vector_format,
+                        type_name=type_name,
+                        use_merged=False,
+                        use_stereo=True,
+                        stereo_camera_pair=cam_pair,
+                        camera=cam_pair[0],
+                        gamma_radius=gamma_radius,
+                        config=config,
+                    )
+                elif target_type == "merged":
                     data_dir = base_dir / "calibrated_piv" / str(num_frame_pairs) / "Merged" / type_name
+                    label = "Merged"
                     processor = VectorStatisticsProcessor(
                         data_dir=data_dir,
                         base_dir=base_dir,
@@ -800,8 +875,10 @@ def statistics_command(args):
                         gamma_radius=gamma_radius,
                         config=config,
                     )
-                else:
-                    data_dir = base_dir / "calibrated_piv" / str(num_frame_pairs) / f"Cam{target}" / type_name
+                else:  # camera
+                    cam = target_value
+                    data_dir = base_dir / "calibrated_piv" / str(num_frame_pairs) / f"Cam{cam}" / type_name
+                    label = f"Camera {cam}"
                     processor = VectorStatisticsProcessor(
                         data_dir=data_dir,
                         base_dir=base_dir,
@@ -809,22 +886,22 @@ def statistics_command(args):
                         vector_format=vector_format,
                         type_name=type_name,
                         use_merged=False,
-                        camera=target,
+                        camera=cam,
                         gamma_radius=gamma_radius,
                         config=config,
                     )
                 result = processor.process()
                 result["path_idx"] = path_idx
-                result["target"] = target
+                result["target"] = label
                 results.append(result)
 
                 if result.get("success"):
-                    print(f"  {'Merged' if target == 'merged' else f'Camera {target}'}: OK")
+                    print(f"  {label}: OK")
                 else:
-                    print(f"  {'Merged' if target == 'merged' else f'Camera {target}'}: FAILED - {result.get('error', 'Unknown')}")
+                    print(f"  {label}: FAILED - {result.get('error', 'Unknown')}")
             except Exception as e:
-                print(f"  {'Merged' if target == 'merged' else f'Camera {target}'}: FAILED - {e}")
-                results.append({"success": False, "error": str(e), "path_idx": path_idx, "target": target})
+                print(f"  {label}: FAILED - {e}")
+                results.append({"success": False, "error": str(e), "path_idx": path_idx, "target": label})
 
     # Summary
     print("\n" + "=" * 60)
@@ -901,6 +978,7 @@ def video_command(args):
                 base_dir=base_dir,
                 camera=camera,
                 type_name="instantaneous",  # Video always from instantaneous
+                config=config,  # Pass config for stereo pair access
             )
 
             result = maker.create_video(
@@ -1486,7 +1564,12 @@ def main():
     )
     transform_parser.add_argument(
         "--merged", "-m", action="store_true",
-        help="Transform merged data instead of per-camera"
+        help="Transform merged data instead of per-camera (deprecated: use --source-endpoint merged)"
+    )
+    transform_parser.add_argument(
+        "--source-endpoint", "-s", default=None,
+        choices=["regular", "merged", "stereo"],
+        help="Data source: regular (per-camera), merged, or stereo"
     )
     transform_parser.add_argument(
         "--active-paths", "-p", default=None,
@@ -1536,6 +1619,20 @@ def main():
         "--active-paths", "-p", default=None,
         help="Comma-separated path indices to process (e.g., '0,1,2')"
     )
+    statistics_parser.add_argument(
+        "--stereo", action="store_true",
+        help="Process stereo PIV data (deprecated: use --source-endpoint stereo)"
+    )
+    statistics_parser.add_argument(
+        "--source-endpoint", "-s", default=None,
+        choices=["regular", "merged", "stereo"],
+        help="Data source: regular (per-camera), merged, or stereo"
+    )
+    statistics_parser.add_argument(
+        "--workflow", "-w", default=None,
+        choices=["per_camera", "after_merge", "both", "stereo"],
+        help="Workflow: per_camera, after_merge, both, or stereo"
+    )
     statistics_parser.set_defaults(func=statistics_command)
 
     # video command
@@ -1557,7 +1654,7 @@ def main():
     )
     video_parser.add_argument(
         "--data-source", "-d", default=None,
-        choices=["calibrated", "uncalibrated", "merged", "inst_stats"],
+        choices=["calibrated", "uncalibrated", "merged", "stereo", "inst_stats"],
         help="Data source (default: calibrated)"
     )
     video_parser.add_argument(

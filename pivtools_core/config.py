@@ -2011,6 +2011,15 @@ video:
         return self.data.get("ensemble_piv", {}).get("resume_from_pass", 0)
 
     @property
+    def ensemble_fit_offset(self) -> bool:
+        """Enable/disable offset (+C) term in stacked Gaussian fitting.
+
+        When True (default): y = amp * exp(...) + c
+        When False: y = amp * exp(...) (no offset term)
+        """
+        return self.data.get("ensemble_piv", {}).get("fit_offset", True)
+
+    @property
     def outlier_detection_enabled(self):
         """Return True if outlier detection is enabled."""
         return self.data.get("outlier_detection", {}).get("enabled", True)

@@ -524,9 +524,9 @@ def stereo_dotboard_reconstruct():
                 job_manager.update_job(
                     job_id,
                     progress=progress_data.get("progress", 0),
-                    processed_frames=progress_data.get("processed", 0),
-                    successful_frames=progress_data.get("successful", 0),
-                    total_frames=progress_data.get("total", 0),
+                    processed_frames=progress_data.get("processed_frames", 0),
+                    successful_frames=progress_data.get("successful_frames", 0),
+                    total_frames=progress_data.get("total_frames", 0),
                 )
 
             # Run reconstruction

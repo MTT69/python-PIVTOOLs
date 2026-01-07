@@ -39,11 +39,31 @@ def get_statistics_constraints():
         JSON with allowed_source_endpoints, workflow_options, is_stereo
     """
     cfg = get_config()
-    is_stereo = cfg.is_stereo_setup
+    is_stereo_config = cfg.is_stereo_setup
+
+    # File-based detection for stereo data
+    # Check if stereo_calibrated folder has data (regardless of calibration.active setting)
+    has_stereo_data = False
+    if cfg.base_paths:
+        base_path = Path(cfg.base_paths[0])
+        stereo_calibrated_dir = base_path / "stereo_calibrated" / str(cfg.num_frame_pairs)
+        if stereo_calibrated_dir.exists():
+            has_stereo_data = any(stereo_calibrated_dir.iterdir())
+
+    # Stereo workflow available if EITHER config says stereo OR stereo data exists
+    is_stereo = is_stereo_config or has_stereo_data
 
     # For stereo, only stereo workflow available (single combined result)
     # For planar, per_camera/after_merge/both options available
-    if is_stereo:
+    # If BOTH stereo data and non-stereo data exist, offer all options
+    if is_stereo and not has_stereo_data:
+        # Config is stereo-only (no planar data expected)
+        workflow_options = ["stereo"]
+    elif has_stereo_data and not is_stereo_config:
+        # Stereo data exists but config is planar - offer all options including stereo
+        workflow_options = ["per_camera", "after_merge", "both", "stereo"]
+    elif has_stereo_data and is_stereo_config:
+        # Both stereo config and stereo data - primarily stereo but allow others if data exists
         workflow_options = ["stereo"]
     else:
         workflow_options = ["per_camera", "after_merge", "both"]
@@ -54,6 +74,7 @@ def get_statistics_constraints():
         "current_workflow": cfg.statistics_workflow,
         "current_source_endpoint": cfg.statistics_source_endpoint,
         "is_stereo": is_stereo,
+        "has_stereo_data": has_stereo_data,  # File-based detection result
     })
 
 
@@ -86,8 +107,15 @@ def calculate_statistics():
         cfg = get_config()
         base_paths = cfg.base_paths
 
+        # Validate path index first (needed for stereo detection)
+        if base_path_idx < 0 or base_path_idx >= len(base_paths):
+            return jsonify({"error": f"Invalid base_path_idx: {base_path_idx}"}), 400
+
+        base_dir = base_paths[base_path_idx]
+
         # Get workflow - support both new workflow param and deprecated process_merged
         workflow = data.get("workflow")
+        source_endpoint = data.get("source_endpoint", "regular")
         if workflow is None:
             # Check deprecated process_merged for backward compat
             if "process_merged" in data:
@@ -96,14 +124,29 @@ def calculate_statistics():
             else:
                 workflow = cfg.statistics_workflow
 
-        # Check if stereo setup
-        is_stereo = cfg.is_stereo_setup
+        # Check if stereo setup (config-based)
+        is_stereo_config = cfg.is_stereo_setup
 
-        # Validate workflow
-        if is_stereo:
-            valid_workflows = ("stereo",)
-            # Force stereo workflow for stereo setups
+        # File-based detection for stereo data
+        base_dir_path = Path(base_dir)
+        stereo_calibrated_dir = base_dir_path / "stereo_calibrated" / str(cfg.num_frame_pairs)
+        has_stereo_data = stereo_calibrated_dir.exists() and any(stereo_calibrated_dir.iterdir()) if stereo_calibrated_dir.exists() else False
+
+        # Stereo available if EITHER config says stereo OR stereo data exists
+        is_stereo = is_stereo_config or has_stereo_data
+
+        # Auto-select stereo workflow if source_endpoint is stereo
+        if source_endpoint == "stereo" and has_stereo_data:
             workflow = "stereo"
+
+        # Validate workflow - allow stereo if data exists
+        if is_stereo_config and not has_stereo_data:
+            # Config-only stereo (no data yet) - only stereo workflow
+            valid_workflows = ("stereo",)
+            workflow = "stereo"
+        elif has_stereo_data:
+            # Stereo data exists - allow stereo workflow alongside others
+            valid_workflows = ("per_camera", "after_merge", "both", "stereo")
         else:
             valid_workflows = ("per_camera", "after_merge", "both")
 
@@ -111,12 +154,6 @@ def calculate_statistics():
             return jsonify({
                 "error": f"Invalid workflow '{workflow}'. Must be one of: {valid_workflows}"
             }), 400
-
-        # Validate path index
-        if base_path_idx < 0 or base_path_idx >= len(base_paths):
-            return jsonify({"error": f"Invalid base_path_idx: {base_path_idx}"}), 400
-
-        base_dir = base_paths[base_path_idx]
         vector_format = cfg.vector_format
         num_frame_pairs = cfg.num_frame_pairs
 
@@ -233,6 +270,8 @@ def calculate_statistics():
                     use_merged,
                     cam_num,
                     requested_statistics,
+                    use_stereo,
+                    stereo_camera_pair,
                 ),
             )
             thread.daemon = True
@@ -265,13 +304,21 @@ def _run_statistics_job(
     use_merged: bool,
     camera: int,
     requested_statistics: list,
+    use_stereo: bool = False,
+    stereo_camera_pair: tuple = None,
 ):
     """
     Run statistics calculation in a background thread.
     Uses VectorStatisticsProcessor.process() which handles parallelism internally.
     """
     try:
-        cam_folder = "Merged" if use_merged else f"Cam{camera}"
+        # Determine folder name for logging
+        if use_stereo and stereo_camera_pair:
+            cam_folder = f"Cam{stereo_camera_pair[0]}_Cam{stereo_camera_pair[1]}"
+        elif use_merged:
+            cam_folder = "Merged"
+        else:
+            cam_folder = f"Cam{camera}"
         logger.info(f"[Statistics] Starting job {job_id} for {cam_folder}")
 
         job_manager.update_job(job_id, status="running")
@@ -288,6 +335,8 @@ def _run_statistics_job(
             type_name=type_name,
             use_merged=use_merged,
             camera=camera,
+            use_stereo=use_stereo,
+            stereo_camera_pair=stereo_camera_pair,
         )
 
         result = processor.process(

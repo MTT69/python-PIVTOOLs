@@ -466,15 +466,15 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                                 cfg,
                             )
 
-                # Pass summary - only warn if >20% invalid vectors (not in mask)
-                total_vectors = ux_mat.size
-                valid_count = (~np.isnan(ux_mat)).sum()
-                outlier_count = nan_mask.sum()
-                invalid_rate = outlier_count / total_vectors if total_vectors > 0 else 0
+                # Pass summary - only warn if >20% invalid vectors (excluding masked regions)
+                mask_count = mask_bool_batch.sum()
+                unmasked_total = ux_mat.size - mask_count
+                true_invalid_count = nan_mask.sum() - mask_count  # nan_mask includes mask, subtract it
+                invalid_rate = true_invalid_count / unmasked_total if unmasked_total > 0 else 0
                 if invalid_rate > 0.20:
                     logging.warning(
                         f"Pass {pass_idx + 1}: {invalid_rate*100:.1f}% invalid vectors "
-                        f"({outlier_count}/{total_vectors})"
+                        f"({true_invalid_count}/{unmasked_total})"
                     )
 
                 pre_y, pre_x = self.n_pre_all[pass_idx]

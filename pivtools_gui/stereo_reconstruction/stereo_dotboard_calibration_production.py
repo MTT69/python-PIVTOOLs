@@ -173,6 +173,7 @@ class StereoDotboardCalibrator(BaseStereoCalibrator):
             dot_spacing_mm = stereo_cfg.get('dot_spacing_mm', dot_spacing_mm)
             asymmetric = stereo_cfg.get('asymmetric', asymmetric)
             enhance_dots = stereo_cfg.get('enhance_dots', enhance_dots)
+            dt = stereo_cfg.get('dt', dt)
 
         self.pattern_size = (pattern_cols, pattern_rows)
         self.dot_spacing_mm = dot_spacing_mm

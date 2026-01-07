@@ -70,20 +70,22 @@ class PlotSettings:
 
     # Quality knobs - optimized for sharp, production-quality output
     use_ffmpeg: bool = True  # only ffmpeg supported
-    crf: int = 15  # Lower CRF = higher quality (15 is visually lossless for most content)
+    crf: int = 8  # Maximum quality (lower = higher quality, range 0-51)
     codec: str = "libx264"  # ensure H.264 by default
-    pix_fmt: str = "yuv420p"  # ensure maximum compatibility (Windows players)
-    preset: str = "slow"  # encoding speed/size tradeoff
+    pix_fmt: str = "yuv420p"  # 4:2:0 for maximum compatibility (macOS, Windows, browsers)
+    preset: str = "veryslow"  # Maximum quality encoding (slower but better compression)
     dither: bool = False  # Disabled by default to avoid graininess
     dither_strength: float = 0.0001  # Much lower strength when enabled
     upscale: Optional[float | Tuple[int, int]] = (
         None  # e.g. 2.0 or (H_out, W_out) or None (keep native)
     )
 
-    # Extra ffmpeg args - add sharpening and quality tuning for scientific visualization
+    # Extra ffmpeg args - optimized for scientific visualization with Mac/browser compatibility
     ffmpeg_extra_args: Tuple[str, ...] | List[str] = (
+        "-profile:v", "high",  # H.264 High profile (compatible with macOS/QuickTime)
+        "-level:v", "4.0",  # Level 4.0 for maximum compatibility (supports 1080p)
         "-tune", "stillimage",  # Optimize for still images/slow motion (scientific data)
-        "-x264-params", "aq-mode=3:aq-strength=0.8",  # Adaptive quantization for smooth gradients
+        "-x264-params", "aq-mode=3:aq-strength=0.5:deblock=-1,-1",  # Reduced blocking artifacts
     )
     ffmpeg_loglevel: str = "warning"
 

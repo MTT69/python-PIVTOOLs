@@ -481,6 +481,8 @@ def check_all_vars():
                 type_name="ensemble",
                 use_uncalibrated=params["use_uncalibrated"],
                 use_merged=params["use_merged"],
+                use_stereo=params.get("use_stereo", False),
+                stereo_camera_pair=params.get("stereo_camera_pair"),
             )
             ensemble_file = Path(ens_paths["data_dir"]) / "ensemble_result.mat"
             result["ensemble"] = get_plottable_vars(ensemble_file, var_name="ensemble_result")
@@ -787,79 +789,89 @@ def check_available_data():
             Path(uncal_ens_paths["data_dir"]), is_ensemble=True, source_name="uncalibrated_ensemble"
         )
 
-        # For stereo setups: check stereo paths only, NOT calibrated_piv
-        # For non-stereo: check calibrated and merged paths
-        if is_stereo:
-            # Stereo setup: use dedicated stereo path structure
-            stereo_pairs = cfg.stereo_pairs
-            if stereo_pairs:
-                cam_pair = stereo_pairs[0]  # Use first stereo pair for now
-                stereo_inst_paths = get_data_paths(
-                    base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=cam_pair[0],
-                    type_name="instantaneous", use_stereo=True, stereo_camera_pair=cam_pair
-                )
-                stereo_result = check_directory_for_frames(
-                    Path(stereo_inst_paths["data_dir"]), is_ensemble=False, source_name="stereo_instantaneous"
-                )
-                stereo_result["camera_pair"] = list(cam_pair)
-                available["stereo_instantaneous"] = stereo_result
+        # Always check calibrated and merged paths (non-stereo)
+        cal_inst_paths = get_data_paths(
+            base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=camera,
+            type_name="instantaneous", use_uncalibrated=False
+        )
+        available["calibrated_instantaneous"] = check_directory_for_frames(
+            Path(cal_inst_paths["data_dir"]), is_ensemble=False, source_name="calibrated_instantaneous"
+        )
 
-                stereo_ens_paths = get_data_paths(
-                    base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=cam_pair[0],
-                    type_name="ensemble", use_stereo=True, stereo_camera_pair=cam_pair
-                )
-                stereo_ens_result = check_directory_for_frames(
-                    Path(stereo_ens_paths["data_dir"]), is_ensemble=True, source_name="stereo_ensemble"
-                )
-                stereo_ens_result["camera_pair"] = list(cam_pair)
-                available["stereo_ensemble"] = stereo_ens_result
+        cal_ens_paths = get_data_paths(
+            base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=camera,
+            type_name="ensemble", use_uncalibrated=False
+        )
+        available["calibrated_ensemble"] = check_directory_for_frames(
+            Path(cal_ens_paths["data_dir"]), is_ensemble=True, source_name="calibrated_ensemble"
+        )
 
-                # Stereo statistics
-                stereo_stats_result = check_statistics(Path(stereo_inst_paths["stats_dir"]))
-                stereo_stats_result["camera_pair"] = list(cam_pair)
-                available["stereo_statistics"] = stereo_stats_result
+        merged_inst_paths = get_data_paths(
+            base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=camera,
+            type_name="instantaneous", use_merged=True
+        )
+        available["merged_instantaneous"] = check_directory_for_frames(
+            Path(merged_inst_paths["data_dir"]), is_ensemble=False, source_name="merged_instantaneous"
+        )
+
+        merged_ens_paths = get_data_paths(
+            base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=camera,
+            type_name="ensemble", use_merged=True
+        )
+        available["merged_ensemble"] = check_directory_for_frames(
+            Path(merged_ens_paths["data_dir"]), is_ensemble=True, source_name="merged_ensemble"
+        )
+
+        available["statistics"] = check_statistics(Path(cal_inst_paths["stats_dir"]))
+        available["merged_statistics"] = check_statistics(Path(merged_inst_paths["stats_dir"]))
+
+        # Always check stereo paths (file-based detection)
+        # Get stereo camera pair from config, or derive from camera_numbers
+        stereo_pairs = cfg.stereo_pairs
+        if stereo_pairs:
+            cam_pair = stereo_pairs[0]
+        elif len(cfg.camera_numbers) >= 2:
+            cam_pair = (cfg.camera_numbers[0], cfg.camera_numbers[1])
         else:
-            # Non-stereo: check calibrated and merged paths
-            cal_inst_paths = get_data_paths(
-                base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=camera,
-                type_name="instantaneous", use_uncalibrated=False
-            )
-            available["calibrated_instantaneous"] = check_directory_for_frames(
-                Path(cal_inst_paths["data_dir"]), is_ensemble=False, source_name="calibrated_instantaneous"
-            )
+            cam_pair = (1, 2)  # Default fallback
 
-            cal_ens_paths = get_data_paths(
-                base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=camera,
-                type_name="ensemble", use_uncalibrated=False
-            )
-            available["calibrated_ensemble"] = check_directory_for_frames(
-                Path(cal_ens_paths["data_dir"]), is_ensemble=True, source_name="calibrated_ensemble"
-            )
+        stereo_inst_paths = get_data_paths(
+            base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=cam_pair[0],
+            type_name="instantaneous", use_stereo=True, stereo_camera_pair=cam_pair
+        )
+        stereo_result = check_directory_for_frames(
+            Path(stereo_inst_paths["data_dir"]), is_ensemble=False, source_name="stereo_instantaneous"
+        )
+        stereo_result["camera_pair"] = list(cam_pair)
+        available["stereo_instantaneous"] = stereo_result
 
-            merged_inst_paths = get_data_paths(
-                base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=camera,
-                type_name="instantaneous", use_merged=True
-            )
-            available["merged_instantaneous"] = check_directory_for_frames(
-                Path(merged_inst_paths["data_dir"]), is_ensemble=False, source_name="merged_instantaneous"
-            )
+        stereo_ens_paths = get_data_paths(
+            base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=cam_pair[0],
+            type_name="ensemble", use_stereo=True, stereo_camera_pair=cam_pair
+        )
+        stereo_ens_result = check_directory_for_frames(
+            Path(stereo_ens_paths["data_dir"]), is_ensemble=True, source_name="stereo_ensemble"
+        )
+        stereo_ens_result["camera_pair"] = list(cam_pair)
+        available["stereo_ensemble"] = stereo_ens_result
 
-            merged_ens_paths = get_data_paths(
-                base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=camera,
-                type_name="ensemble", use_merged=True
-            )
-            available["merged_ensemble"] = check_directory_for_frames(
-                Path(merged_ens_paths["data_dir"]), is_ensemble=True, source_name="merged_ensemble"
-            )
+        # Stereo statistics
+        stereo_stats_result = check_statistics(Path(stereo_inst_paths["stats_dir"]))
+        stereo_stats_result["camera_pair"] = list(cam_pair)
+        available["stereo_statistics"] = stereo_stats_result
 
-            available["statistics"] = check_statistics(Path(cal_inst_paths["stats_dir"]))
-            available["merged_statistics"] = check_statistics(Path(merged_inst_paths["stats_dir"]))
+        # File-based stereo detection: has_stereo_data is True if stereo data exists
+        has_stereo_data = (
+            available["stereo_instantaneous"]["exists"] or
+            available["stereo_ensemble"]["exists"]
+        )
 
         return jsonify({
             "success": True,
             "camera": camera,
             "base_path": str(base_path),
             "is_stereo": is_stereo,
+            "has_stereo_data": has_stereo_data,
             "available": available,
         })
 

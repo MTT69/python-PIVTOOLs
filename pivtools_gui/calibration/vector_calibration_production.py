@@ -484,9 +484,9 @@ class VectorCalibrator:
 
         logger.info(f"Initialized calibrator for Camera {camera_num}")
         logger.info(f"Model type: {self.model_type}")
-        logger.info(f"Time step: {dt} seconds")
+        logger.info(f"Time step: {self.dt} seconds")
         logger.info(f"Dot spacing: {self.dot_spacing_mm} mm")
-        logger.info(f"Vector pattern: {vector_pattern}")
+        logger.info(f"Vector pattern: {self.vector_pattern}")
         logger.info(f"Type name: {type_name}")
         logger.info(f"Runs to process: {runs if runs else 'all'}")
         logger.info(f"Worker count: {self.num_workers}")

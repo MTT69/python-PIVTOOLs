@@ -541,6 +541,7 @@ def correlate_batch_for_accumulation_distributed(
     scattered_predictor: Optional[np.ndarray],
     scattered_cache: dict,
     scattered_masks: Optional[List[np.ndarray]],
+    is_first_batch: bool = False,
 ) -> dict:
     """
     Wrapper for distributed ensemble correlation.
@@ -555,6 +556,7 @@ def correlate_batch_for_accumulation_distributed(
         scattered_predictor: Pre-scattered predictor field
         scattered_cache: Pre-scattered correlator cache
         scattered_masks: Pre-scattered vector masks
+        is_first_batch: If True, capture first-pair warped images for diagnostics
 
     Returns:
         Dict with correlation sums (corr_AA_sum, corr_BB_sum, corr_AB_sum, etc.)
@@ -572,6 +574,7 @@ def correlate_batch_for_accumulation_distributed(
         config,
         pass_idx=pass_idx,
         predictor_field=scattered_predictor,
+        is_first_batch=is_first_batch,
     )
 
     return result
@@ -592,6 +595,10 @@ def reduce_ensemble_results(r1: dict, r2: dict) -> dict:
     Returns:
         Combined result with summed arrays
     """
+    # Keep first-pair images from whichever result has them (only one should)
+    first_pair_A = r1.get("first_pair_A") if r1.get("first_pair_A") is not None else r2.get("first_pair_A")
+    first_pair_B = r1.get("first_pair_B") if r1.get("first_pair_B") is not None else r2.get("first_pair_B")
+
     return {
         "corr_AA_sum": r1["corr_AA_sum"] + r2["corr_AA_sum"],
         "corr_BB_sum": r1["corr_BB_sum"] + r2["corr_BB_sum"],
@@ -606,6 +613,9 @@ def reduce_ensemble_results(r1: dict, r2: dict) -> dict:
         # Padding values for predictor field storage
         "n_pre": r1.get("n_pre"),
         "n_post": r1.get("n_post"),
+        # First-pair warped images for diagnostic saving
+        "first_pair_A": first_pair_A,
+        "first_pair_B": first_pair_B,
     }
 
 
@@ -695,19 +705,22 @@ def correlate_and_reduce_on_worker(
     )
 
     accumulated = None
+    is_first_batch_processed = False
 
     for batch in batch_list:
         # Skip empty batches (can happen with uneven distribution)
         if batch is None or (hasattr(batch, 'shape') and batch.shape[0] == 0):
             continue
 
-        # Correlate this batch
+        # Correlate this batch (pass is_first_batch for first non-empty batch)
         result = correlator.correlate_batch_for_accumulation(
             batch,
             config,
             pass_idx=pass_idx,
             predictor_field=scattered_predictor,
+            is_first_batch=not is_first_batch_processed,
         )
+        is_first_batch_processed = True
 
         if accumulated is None:
             # First batch - initialize with copy to avoid aliasing
@@ -725,6 +738,9 @@ def correlate_and_reduce_on_worker(
                 # Padding values for PADDED predictor storage (matching instantaneous)
                 "n_pre": result.get("n_pre"),
                 "n_post": result.get("n_post"),
+                # First-pair warped images for diagnostic saving
+                "first_pair_A": result.get("first_pair_A"),
+                "first_pair_B": result.get("first_pair_B"),
             }
         else:
             # Subsequent batches - in-place accumulation

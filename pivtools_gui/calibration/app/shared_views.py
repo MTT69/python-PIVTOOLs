@@ -46,6 +46,8 @@ def calibration_set_datum():
         y: float (optional) - New y origin (subtracted from all coordinates)
         x_offset: float (optional) - X offset to apply (added to all coordinates)
         y_offset: float (optional) - Y offset to apply (added to all coordinates)
+        use_stereo: bool (optional) - Whether to use stereo data paths
+        camera_pair: list[int] (optional) - Camera pair for stereo data (e.g., [1, 2])
 
     Returns:
         JSON with status and updated file path
@@ -59,8 +61,12 @@ def calibration_set_datum():
     y0 = data.get("y")
     x_offset = data.get("x_offset", 0)
     y_offset = data.get("y_offset", 0)
+    use_stereo = data.get("use_stereo", False)
+    camera_pair = data.get("camera_pair")
+    if camera_pair and isinstance(camera_pair, list):
+        camera_pair = tuple(camera_pair)
 
-    logger.debug(f"updating datum/offset for all runs in {type_name} (triggered from run {run})")
+    logger.debug(f"updating datum/offset for all runs in {type_name} (triggered from run {run}, stereo={use_stereo})")
 
     try:
         cfg = get_config()
@@ -74,6 +80,8 @@ def calibration_set_datum():
             cam=camera,
             type_name=type_name,
             calibration=False,
+            use_stereo=use_stereo,
+            stereo_camera_pair=camera_pair,
         )
         data_dir = paths["data_dir"]
         coords_path = data_dir / "coordinates.mat"
@@ -93,18 +101,37 @@ def calibration_set_datum():
         else:
             num_runs = 1
 
-        logger.debug(f"[set_datum] Processing {type_name} with {num_runs} runs")
+        # Check if stereo coordinates (has z field)
+        first_coord = coordinates[0] if num_runs > 0 else coordinates
+        has_z = hasattr(first_coord, 'z') if hasattr(first_coord, '__getattr__') else 'z' in first_coord.dtype.names if hasattr(first_coord, 'dtype') and first_coord.dtype.names else False
 
-        dtype = [("x", object), ("y", object)]
+        logger.debug(f"[set_datum] Processing {type_name} with {num_runs} runs, has_z={has_z}")
+
+        # Use appropriate dtype based on whether stereo (with z) or planar (x,y only)
+        if has_z:
+            dtype = [("x", object), ("y", object), ("z", object)]
+        else:
+            dtype = [("x", object), ("y", object)]
         coords_struct = np.empty((num_runs,), dtype=dtype)
 
         # Apply datum/offset to ALL runs
         for i in range(num_runs):
             cx, cy = extract_coordinates(mat["coordinates"], i + 1)
 
+            # Extract z if stereo
+            if has_z:
+                c_el = coordinates[i] if num_runs > 1 else coordinates
+                cz = np.asarray(c_el.z) if hasattr(c_el, 'z') else np.asarray(c_el['z'])
+
+            # Log first valid (non-NaN) values for debugging
             if i == 0:
+                # Find first non-NaN value for better logging
+                valid_x = cx[~np.isnan(cx)] if cx.size > 0 else cx
+                valid_y = cy[~np.isnan(cy)] if cy.size > 0 else cy
+                first_x = valid_x.flat[0] if valid_x.size > 0 else np.nan
+                first_y = valid_y.flat[0] if valid_y.size > 0 else np.nan
                 logger.debug(
-                    f"[set_datum] {type_name} run 1 - original first x,y: {cx.flat[0]}, {cy.flat[0]}"
+                    f"[set_datum] {type_name} run 1 - original first valid x,y: {first_x}, {first_y}"
                 )
 
             # Apply datum shift if x/y are provided
@@ -119,10 +146,16 @@ def calibration_set_datum():
 
             coords_struct["x"][i] = cx
             coords_struct["y"][i] = cy
+            if has_z:
+                coords_struct["z"][i] = cz  # Preserve z unchanged
 
             if i == 0:
+                valid_x = cx[~np.isnan(cx)] if cx.size > 0 else cx
+                valid_y = cy[~np.isnan(cy)] if cy.size > 0 else cy
+                first_x = valid_x.flat[0] if valid_x.size > 0 else np.nan
+                first_y = valid_y.flat[0] if valid_y.size > 0 else np.nan
                 logger.debug(
-                    f"[set_datum] {type_name} run 1 - after transform first x,y: {cx.flat[0]}, {cy.flat[0]}"
+                    f"[set_datum] {type_name} run 1 - after transform first valid x,y: {first_x}, {first_y}"
                 )
 
         scipy.io.savemat(
@@ -510,12 +543,8 @@ def vectors_calibrate():
         base_root = Path(cfg.base_paths[source_path_idx])
         num_frame_pairs = cfg.num_frame_pairs
 
-        # Get dt from the active calibration type or dotboard config
-        active_type = getattr(cfg, "calibration_active", "dotboard")
-        if active_type == "charuco":
-            dt = getattr(cfg, "calibration_charuco_dt", 1.0)
-        else:
-            dt = getattr(cfg, "calibration_dotboard_dt", 1.0)
+        # Get dt from config (uses active calibration method to determine source)
+        dt = cfg.dt
 
         # Create multi-camera job
         job_id = job_manager.create_job(

@@ -29,8 +29,8 @@
 #define P_PARAMS 16
 #define EXTRACT_SIZE 32         // Extract 32x32 region around peak (full resolution)
 #define SIGMA_MIN 1e-6          // Minimum variance to prevent singular matrices
-#define FIT_TOL 1e-4            // Convergence tolerance (1e-4 is good for PIV)
-#define MAX_ITER 20             // Max LM iterations (20 usually converges or never will)
+#define FIT_TOL 1e-6            // Convergence tolerance (tightened for high accuracy)
+#define MAX_ITER 50             // Max LM iterations (increased for tighter tolerance)
 
 // Global flag to disable offset (+C) fitting for testing
 // 0 = fit offsets normally, 1 = fix offsets to zero
@@ -286,7 +286,7 @@ static int fit_one_reuse(
     gsl_multifit_nlinear_init(&xv.vector, &fdf, work);
 
     int info;
-    int status = gsl_multifit_nlinear_driver(MAX_ITER, FIT_TOL, FIT_TOL, 0.0, NULL, NULL, &info, work);
+    int status = gsl_multifit_nlinear_driver(MAX_ITER, FIT_TOL, FIT_TOL, FIT_TOL, NULL, NULL, &info, work);
 
     gsl_vector *x_out = gsl_multifit_nlinear_position(work);
     for (size_t i = 0; i < P_PARAMS; i++) {
@@ -337,6 +337,7 @@ PIV_EXPORT int fit_stacked_gaussian_batch_export(
     // Use more robust solver settings for production
     fdf_params.solver = gsl_multifit_nlinear_solver_cholesky;
     fdf_params.scale = gsl_multifit_nlinear_scale_more;
+    fdf_params.trs = gsl_multifit_nlinear_trs_lmaccel;  // Geodesic acceleration for better convergence
 
     #ifdef _OPENMP
     #pragma omp parallel reduction(+:success_count)

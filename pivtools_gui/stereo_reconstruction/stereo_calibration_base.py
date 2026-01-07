@@ -121,8 +121,13 @@ class BaseStereoCalibrator(ABC):
         else:
             self.calibration_subfolder = ""
 
-        # Time step
-        self.dt = dt or stereo_cfg.get('dt', 1.0)
+        # Time step - use explicit dt, or fall back to unified config.dt
+        if dt != 1.0:  # Explicit dt was passed (not default)
+            self.dt = dt
+        elif self._config is not None:
+            self.dt = self._config.dt
+        else:
+            self.dt = 1.0
 
         # Initialize detector (implemented by subclass)
         self.detector = self._create_detector()

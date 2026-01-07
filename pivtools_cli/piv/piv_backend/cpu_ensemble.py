@@ -734,6 +734,9 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             # PADDED predictor matching instantaneous mode format
             "n_pre": self.n_pre_all[pass_idx],
             "n_post": self.n_post_all[pass_idx],
+            # First-pair warped images for diagnostic comparison (only from first batch)
+            "first_pair_A": images_a_prime[0].copy() if is_first_batch else None,
+            "first_pair_B": images_b_prime[0].copy() if is_first_batch else None,
         }
 
     def _set_lib_arguments_ensemble(

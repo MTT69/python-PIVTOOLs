@@ -58,7 +58,7 @@ MIN_CORNERS = 6             # Minimum number of corners required to accept an im
 
 # USE_CONFIG_DIRECTLY: If True, skip updating config.yaml with above parameters
 # and load calibration settings directly from the existing config.yaml
-USE_CONFIG_DIRECTLY = False
+USE_CONFIG_DIRECTLY = True
 
 # ===================================================================
 

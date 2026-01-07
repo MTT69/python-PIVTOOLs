@@ -84,7 +84,7 @@ def _load_marquadt_lib():
         raise FileNotFoundError(
             f"Marquadt library not found. Tried paths: {possible_paths}"
         )
-    logging.info(f"Loading Marquadt library from: {marquadt_libpath}")
+    logging.debug(f"Loading Marquadt library from: {marquadt_libpath}")
     marquadt_lib = ctypes.CDLL(marquadt_libpath)
 
     # Set up ctypes bindings for the offset control function
@@ -254,15 +254,24 @@ def _get_sigma_from_previous_pass(
         for key, field in sigma_fields.items():
             result[key] = field.ravel(order="C")
     else:
-        # Different grid size - use cubic interpolation for smooth upsampling
-        map_y, map_x = np.meshgrid(
-            np.linspace(0, old_h - 1, new_h).astype(np.float32),
-            np.linspace(0, old_w - 1, new_w).astype(np.float32),
-            indexing="ij"
-        )
+        # Different grid size - pad before interpolation to avoid edge zeros
+        # Pad with 2 pixels on each side (matches cubic interpolation kernel requirement)
+        # This mirrors velocity field handling in cpu_ensemble.py lines 878-882
+        pad_size = 2
         for key, field in sigma_fields.items():
+            # Pad field with edge values before interpolation (like velocity fields)
+            padded = np.pad(field, pad_size, mode='edge')
+
+            # Adjust interpolation coordinates to account for padding
+            map_y, map_x = np.meshgrid(
+                np.linspace(pad_size, old_h - 1 + pad_size, new_h).astype(np.float32),
+                np.linspace(pad_size, old_w - 1 + pad_size, new_w).astype(np.float32),
+                indexing="ij"
+            )
+
             result[key] = cv2.remap(
-                field, map_x, map_y, cv2.INTER_CUBIC
+                padded, map_x, map_y, cv2.INTER_CUBIC,
+                borderMode=cv2.BORDER_REPLICATE  # Extra safety for any remaining edge cases
             ).ravel(order="C")
 
     return result
@@ -779,9 +788,15 @@ def _build_initial_guess(
         sigma_AB_xy = float(sigma_vals['sig_AB_xy']) if sigma_vals['sig_AB_xy'] is not None else 0.0
 
     # Estimate offset values from correlation plane backgrounds (5th percentile)
-    c_A_guess = _estimate_offset(AA_win)
-    c_B_guess = _estimate_offset(BB_win)
-    c_AB_guess = _estimate_offset(AB_win)
+    # OR zero if offset fitting is disabled
+    if config.ensemble_fit_offset:
+        c_A_guess = _estimate_offset(AA_win)
+        c_B_guess = _estimate_offset(BB_win)
+        c_AB_guess = _estimate_offset(AB_win)
+    else:
+        c_A_guess = 0.0
+        c_B_guess = 0.0
+        c_AB_guess = 0.0
 
     # Build 16-parameter initial guess:
     # [0-2] amplitudes, [3-5] offsets, [6-8] sigma_A, [9-11] sigma_AB, [12-15] positions
@@ -958,16 +973,23 @@ def _build_initial_guesses_vectorized(
         sigma_AB_y = np.where(np.isnan(sigma_AB_y), 1.0, sigma_AB_y)
         sigma_AB_xy = np.where(np.isnan(sigma_AB_xy), 0.0, sigma_AB_xy)
 
-    # Estimate offsets from 5th percentile (vectorized)
+    # Estimate offsets from 5th percentile (vectorized) OR zero if disabled
     # This represents the background level in each correlation plane
-    c_A = np.percentile(AA_valid, 5, axis=1)
-    c_B = np.percentile(BB_valid, 5, axis=1)
-    c_AB = np.percentile(AB_valid, 5, axis=1)
+    if config.ensemble_fit_offset:
+        c_A = np.percentile(AA_valid, 5, axis=1)
+        c_B = np.percentile(BB_valid, 5, axis=1)
+        c_AB = np.percentile(AB_valid, 5, axis=1)
+    else:
+        # Offsets disabled - set to zero
+        c_A = np.zeros(n_valid, dtype=np.float64)
+        c_B = np.zeros(n_valid, dtype=np.float64)
+        c_AB = np.zeros(n_valid, dtype=np.float64)
 
     # CRITICAL: Amplitudes must be peak value ABOVE offset, not raw peak value!
     # Model: f(x) = amp * exp(...) + c
     # At peak: peak_value = amp * exp(0) + c = amp + c
     # Therefore: amp = peak_value - c
+    # When offsets are zero, amp = peak_value (no correction needed)
     amp_A_corrected = amp_A - c_A
     amp_B_corrected = amp_B - c_B
     amp_AB_corrected = amp_AB - c_AB
@@ -1182,7 +1204,7 @@ def fit_windows_openmp(
     config,
     pass_idx: int,
     num_threads: int = None,
-
+    fit_offset: bool = True,
 ) -> tuple:
     """
     Fit Gaussian peaks using pure OpenMP (no Dask overhead).
@@ -1255,6 +1277,10 @@ def fit_windows_openmp(
         sigma_dict = {k: np.asarray(v) if v is not None else None for k, v in sigma_dict.items()}
     # Use the proper thread setter (calls omp_set_num_threads if available)
     marquadt_lib = _load_marquadt_lib()
+
+    # Configure offset fitting for THIS worker process
+    # Must be called on the worker, not main process, due to process isolation
+    set_offset_fitting(fit_offset)
 
     # Get grid info
     win_size = corr_size  # (height, width)

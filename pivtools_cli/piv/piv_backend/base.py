@@ -949,7 +949,7 @@ class CrossCorrelator(ABC):
                 g_kernel /= max(np.sum(g_kernel), 1e-12)
                 self.G_smooth_predictor.append(g_kernel)
 
-        logging.info(f"Cached window padding for {len(window_sizes)} passes")
+        logging.debug(f"Cached window padding for {len(window_sizes)} passes")
 
     def _cache_interpolation_grids_unified(
         self,
@@ -1017,4 +1017,4 @@ class CrossCorrelator(ABC):
 
             self.cached_predictor_maps.append((map_x, map_y))
 
-        logging.info(f"Cached interpolation grids for {len(window_sizes)} passes")
+        logging.debug(f"Cached interpolation grids for {len(window_sizes)} passes")

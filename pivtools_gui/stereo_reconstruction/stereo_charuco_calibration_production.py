@@ -51,7 +51,7 @@ NUM_CALIBRATION_IMAGES = None
 
 # USE_CONFIG_DIRECTLY: If True, skip updating config.yaml with above parameters
 # and load calibration settings directly from the existing config.yaml
-USE_CONFIG_DIRECTLY = False
+USE_CONFIG_DIRECTLY = True
 
 # ===================================================================
 
@@ -203,6 +203,9 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
             marker_ratio = charuco_cfg.get('marker_ratio', marker_ratio)
             aruco_dict = charuco_cfg.get('aruco_dict', aruco_dict)
             min_corners = charuco_cfg.get('min_corners', min_corners)
+            # Get dt from stereo_charuco config (not charuco_calibration)
+            stereo_cfg = config.stereo_charuco_calibration
+            dt = stereo_cfg.get('dt', dt)
 
         self.squares_h = squares_h
         self.squares_v = squares_v
