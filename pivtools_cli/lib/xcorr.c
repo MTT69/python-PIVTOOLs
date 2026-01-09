@@ -140,11 +140,6 @@ unsigned xcorr_create_plan(const int *N, sPlan *pPlanStruct)
         return ERROR_NOMEM;
     }
 
-    /* Ensure plan creation uses 1 thread (FFTW init done by fftw_library_init) */
-#ifdef FFTW_THREADS
-    fftwf_plan_with_nthreads(1);
-#endif
-
     /* Try MEASURE first, then ESTIMATE if MEASURE fails */
     int flags_measure = FFTW_MEASURE | FFTW_DESTROY_INPUT;
     int flags_estimate = FFTW_ESTIMATE | FFTW_DESTROY_INPUT;
@@ -163,9 +158,6 @@ unsigned xcorr_create_plan(const int *N, sPlan *pPlanStruct)
         if (plan_AB_fft) { fftwf_destroy_plan(plan_AB_fft); plan_AB_fft = NULL; }
         if (plan_C_ifft) { fftwf_destroy_plan(plan_C_ifft); plan_C_ifft = NULL; }
 
-#ifdef FFTW_THREADS
-        fftwf_plan_with_nthreads(1);
-#endif
         plan_AB_fft = fftwf_plan_many_dft_r2c(2, Nbackwards, 2,
                                              ab_copy, NULL,
                                              1, (int)numel,

@@ -30,8 +30,8 @@ void fftw_library_init(void)
 {
 	int expected = 0;
 	if (atomic_compare_exchange_strong(&fftw_initialized, &expected, 1)) {
-		/* We won the race - initialize FFTW threads */
-		fftwf_init_threads();
+		/* FFTW initialized - we use OpenMP for parallelism at the PIV window level,
+		   so no need for FFTW's internal threading (fftwf_init_threads). */
 	}
 	/* If we didn't win, another thread already initialized */
 }
@@ -85,9 +85,8 @@ void xcorr_cache_cleanup(void)
 /* Comprehensive cleanup of FFTW and wisdom cache (call at program exit) */
 void fftw_library_cleanup(void)
 {
-	/* Cleanup FFTW thread state if it was initialized */
+	/* Cleanup FFTW state if it was initialized */
 	if (atomic_load(&fftw_initialized)) {
-		fftwf_cleanup_threads();
 		fftwf_cleanup();
 		atomic_store(&fftw_initialized, 0);
 	}

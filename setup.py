@@ -80,7 +80,7 @@ class BuildCLib(build_ext):
 
             compiler = "cl"
             shared_flag = "/LD"  # Create DLL
-            self.extra_compile = ["/O2", "/std:c11", "/openmp:experimental", "/MT", "/DFFTW_THREADS"]
+            self.extra_compile = ["/O2", "/std:c11", "/experimental:c11atomics", "/openmp:experimental", "/MT"]
             self.extra_link = [str(fftw_lib_file)]
             lib_ext = ".dll"
             use_msvc = True
