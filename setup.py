@@ -4,13 +4,16 @@ import platform
 import pathlib
 import subprocess
 import sysconfig
-from setuptools import find_packages, setup, Extension
-from setuptools.command.build_ext import build_ext
+from setuptools import find_packages, setup
+from setuptools.command.build import build
 import shutil
 
-class BuildCLib(build_ext):
+
+class BuildCLibraries(build):
+    """Custom build command that compiles C libraries before the standard build."""
+
     def run(self):
-        print(">>> BuildCLib.run() CALLED <<<")
+        print(">>> Building C libraries <<<")
         self.python_include = sysconfig.get_path("include")
         self.pkg_dir = pathlib.Path(__file__).parent
         if not self.dry_run:
@@ -176,7 +179,6 @@ class BuildCLib(build_ext):
         marquadt_src = src_dir / "marquadt_gaussian.c"
         if marquadt_src.exists():
             # Use static GSL from static_gsl folder
-            #self.pkg_dir = pathlib.Path(__file__).parent
             if sys_name == "macos":
                 arch = platform.machine().lower()
                 if arch == "arm64":
@@ -244,23 +246,9 @@ class BuildCLib(build_ext):
             print("STDERR:", result.stderr)
             raise RuntimeError(f"Build failed: {result.returncode}")
 
-try:
-    sdk_path = subprocess.check_output(["xcrun", "--show-sdk-path"], text=True).strip()
-except Exception:
-    sdk_path = None
-
-dummy_ext = Extension(
-    "pivtools_cli._cbuild",
-    sources=["pivtools_cli/lib/_dummy.c"],
-    extra_compile_args=["-isysroot", sdk_path] if sdk_path else [],
-    extra_link_args=["-isysroot", sdk_path] if sdk_path else [],
-)
 
 setup(
     packages=find_packages(),
     include_package_data=True,
-    ext_modules=[dummy_ext],
-    cmdclass={"build_ext": BuildCLib},
-
+    cmdclass={"build": BuildCLibraries},
 )
-
