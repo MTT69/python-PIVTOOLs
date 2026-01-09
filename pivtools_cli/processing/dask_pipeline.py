@@ -978,6 +978,8 @@ def correlate_single_batch_and_accumulate(
     masks: Optional[List[np.ndarray]],
     is_first_batch: bool = False,
     output_path: Optional[str] = None,
+    global_offset: int = 0,
+    total_images: int = 0,
 ) -> dict:
     """
     Correlate ONE batch and accumulate with previous sum.
@@ -1003,6 +1005,8 @@ def correlate_single_batch_and_accumulate(
         masks: Vector masks
         is_first_batch: Whether this is the first batch (for diagnostics)
         output_path: Path for saving diagnostic images
+        global_offset: Starting image count for this worker (for progress logging)
+        total_images: Total images across all workers (for progress logging)
 
     Returns:
         Dict with accumulated correlation sums
@@ -1034,8 +1038,10 @@ def correlate_single_batch_and_accumulate(
     )
 
     mem_after = process.memory_info().rss / 1024**3
+    global_total = global_offset + n_images_so_far + batch_images
+    total_str = f"/{total_images}" if total_images > 0 else ""
     logger.info(
-        f"[CHAINED] Batch +{batch_images} images (total: {n_images_so_far + batch_images}), "
+        f"Batch +{batch_images} images ({global_total}{total_str}), "
         f"mem: {mem_before:.2f} -> {mem_after:.2f} GB"
     )
 

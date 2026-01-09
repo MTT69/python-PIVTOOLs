@@ -79,6 +79,12 @@ def signal_handler(signum, frame):
     logger.info(f"Received signal {sig_name}, initiating clean shutdown...")
     print(f"\n[CANCELLED] Received signal {sig_name}, shutting down...", flush=True)
 
+    # Suppress noisy distributed logs during teardown
+    import logging as _logging
+    for name in ["distributed.worker", "distributed.scheduler", "distributed.nanny",
+                 "distributed.core", "distributed.comm"]:
+        _logging.getLogger(name).setLevel(_logging.CRITICAL)
+
     # Close Dask client and cluster if they exist
     try:
         if _client is not None:
@@ -93,6 +99,10 @@ def signal_handler(signum, frame):
             _client.close(timeout=5)
     except Exception as e:
         logger.warning(f"Error closing client: {e}")
+
+    # Small delay to let workers finish cleanly
+    import time as _time
+    _time.sleep(0.5)
 
     try:
         if _cluster is not None:
@@ -175,16 +185,22 @@ def run_ensemble_piv(
     save_intermediate = base_path if config.filters else None
     images = create_filter_pipeline(images, config, pixel_mask, save_intermediate_base=save_intermediate)
 
-    # 5. Persist filtered chunks on workers (don't wait - enables pipelining!)
-    logger.info("Persisting filtered images on workers...")
-    images = images.persist()
-    # NOTE: No wait() here! Dask handles dependencies automatically.
-    # First pass correlation tasks will start as their chunks become ready.
+    # 5. Decide memory strategy based on dataset size
+    num_chunks = len(images.chunks[0])
 
-    # 6. Multi-pass ensemble processing
-    from dask.distributed import futures_of
-    block_futures = futures_of(images)
-    num_chunks = len(block_futures)
+    if num_chunks == 1:
+        # Small dataset: all images fit in one batch, persist to avoid re-loading per pass
+        from dask.distributed import wait, futures_of
+        logger.info(f"Small dataset ({num_chunks} chunk): persisting to avoid re-load per pass")
+        images = images.persist()
+        wait(images)  # Wait since there's only one chunk
+        block_futures = futures_of(images)
+        use_streaming = False
+    else:
+        # Large dataset: stream batches to minimize memory (re-loads per pass)
+        logger.info(f"Large dataset ({num_chunks} chunks): streaming on-demand to save memory")
+        block_futures = None  # Not used in streaming mode
+        use_streaming = True
     num_passes = config.ensemble_num_passes
     accumulator = SinglePassAccumulator(config, vector_masks)
     predictor_field = None
@@ -294,7 +310,11 @@ def run_ensemble_piv(
                 # Chain tasks: each depends on previous sum + one new batch
                 accumulated_future = None
                 for j, chunk_idx in enumerate(range(start_idx, end_idx)):
-                    block_future = block_futures[chunk_idx]
+                    # Get batch: streaming computes on-demand, persisted uses cached future
+                    if use_streaming:
+                        block_future = client.compute(images.blocks[chunk_idx], workers=[worker])
+                    else:
+                        block_future = block_futures[chunk_idx]
                     accumulated_future = client.submit(
                         warp_single_batch_and_accumulate,
                         accumulated_future,
@@ -358,7 +378,11 @@ def run_ensemble_piv(
                 # Chain tasks: each depends on previous sum + one new batch
                 accumulated_future = None
                 for j, chunk_idx in enumerate(range(start_idx, end_idx)):
-                    block_future = block_futures[chunk_idx]
+                    # Get batch: streaming computes on-demand, persisted uses cached future
+                    if use_streaming:
+                        block_future = client.compute(images.blocks[chunk_idx], workers=[worker])
+                    else:
+                        block_future = block_futures[chunk_idx]
                     accumulated_future = client.submit(
                         correlate_mean_subtracted_single_batch,
                         accumulated_future,
@@ -412,22 +436,30 @@ def run_ensemble_piv(
             # Use chained submission to preserve lazy loading - each task depends on
             # (previous sum, ONE batch) so Dask only resolves one batch per task
             worker_futures = []
+            total_images = images.shape[0]
+            batch_size = config.batch_size
             for i, worker in enumerate(workers):
                 start_idx = i * chunks_per_worker
                 end_idx = min((i + 1) * chunks_per_worker, num_chunks)
                 if start_idx >= end_idx:
                     continue
 
+                # Calculate global offset for this worker's progress logging
+                global_offset = start_idx * batch_size
+
                 # Chain tasks: each depends on previous sum + one new batch
-                # This preserves lazy loading - only ONE batch resolved per task
                 accumulated_future = None
                 for j, chunk_idx in enumerate(range(start_idx, end_idx)):
-                    block_future = block_futures[chunk_idx]
+                    # Get batch: streaming computes on-demand, persisted uses cached future
+                    if use_streaming:
+                        block_future = client.compute(images.blocks[chunk_idx], workers=[worker])
+                    else:
+                        block_future = block_futures[chunk_idx]
                     # Overwrite accumulated_future - releases Client's ref to previous future
                     accumulated_future = client.submit(
                         correlate_single_batch_and_accumulate,
                         accumulated_future,    # Previous sum (Future or None)
-                        block_future,          # ONE batch - lazily resolved!
+                        block_future,          # ONE batch
                         scattered_config,
                         pass_idx,
                         scattered_predictor,
@@ -435,6 +467,8 @@ def run_ensemble_piv(
                         scattered['masks'],
                         j == 0,                # is_first_batch
                         str(output_path) if config.ensemble_save_diagnostics and j == 0 else None,
+                        global_offset,         # For progress logging
+                        total_images,          # For progress logging
                         workers=[worker],      # Keep on same worker!
                         pure=False,
                     )
@@ -649,16 +683,24 @@ def main():
         traceback.print_exc()
 
     finally:
-        # Clean shutdown
+        # Clean shutdown - suppress noisy distributed logs during teardown
+        import logging as _logging
+        for name in ["distributed.worker", "distributed.scheduler", "distributed.nanny",
+                     "distributed.core", "distributed.comm"]:
+            _logging.getLogger(name).setLevel(_logging.CRITICAL)
+
         try:
             if _client is not None:
-                _client.close()
+                _client.close(timeout=5)
         except Exception as e:
             logger.warning(f"Error closing client: {e}")
 
+        # Small delay to let workers finish cleanly
+        time.sleep(0.5)
+
         try:
             if _cluster is not None:
-                _cluster.close()
+                _cluster.close(timeout=5)
         except Exception as e:
             logger.warning(f"Error closing cluster: {e}")
 
