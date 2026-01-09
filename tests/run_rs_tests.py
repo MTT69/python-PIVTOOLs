@@ -32,6 +32,7 @@ def create_test_config(
     num_images: int = 100,
     window_sizes: list = None,
     overlaps: list = None,
+    fit_method: str = 'gaussian',  # 'gaussian' or 'kspace'
 ) -> Path:
     """Create a YAML config file for the test."""
     if window_sizes is None:
@@ -118,6 +119,8 @@ def create_test_config(
         },
         'ensemble_piv': {
             'fit_offset': False,
+            'fit_method': fit_method,  # 'gaussian' or 'kspace'
+            'kspace_snr_threshold': 3.0,
             'window_size': window_sizes,
             'overlap': overlaps,
             'type': ['std'] * len(window_sizes),
@@ -912,6 +915,263 @@ def run_test_mean_only():
     return None
 
 
+def run_kspace_comparison():
+    """Compare Gaussian vs K-space fitting methods.
+
+    Runs the same test with both fitting methods to compare accuracy.
+    """
+    print("\n" + "=" * 70)
+    print("K-SPACE vs GAUSSIAN COMPARISON TEST")
+    print("=" * 70)
+
+    test_dir = Path(__file__).parent / 'rs_kspace_compare'
+    image_dir = test_dir / 'Cam1'
+
+    # Clean previous run
+    if test_dir.exists():
+        shutil.rmtree(test_dir)
+
+    # Generate images once
+    image_dir.mkdir(parents=True, exist_ok=True)
+    num_images = 100  # Use fewer images for quick comparison
+    print(f"\nGenerating {num_images} images (zero mean, UU=2, VV=3)...")
+    stats = generate_rs_test_images(
+        output_dir=image_dir,
+        num_pairs=num_images,
+        image_shape=(256, 256),
+        particle_diameter=2.0,
+        mean_dx=0.0,
+        mean_dy=0.0,
+        std_dx=np.sqrt(2.0),  # UU = 2.0
+        std_dy=np.sqrt(3.0),  # VV = 3.0
+        seed=12345,
+    )
+
+    all_results = {}
+
+    for method in ['gaussian', 'kspace']:
+        print(f"\n{'='*60}")
+        print(f"Running with fit_method = '{method}'")
+        print(f"{'='*60}")
+
+        output_dir = test_dir / f'output_{method}'
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        config_path = create_test_config(
+            test_name=f'kspace_compare_{method}',
+            image_dir=image_dir,
+            output_dir=output_dir,
+            num_images=num_images,
+            window_sizes=[[64, 64], [32, 32]],  # 2 passes
+            overlaps=[50, 50],
+            fit_method=method,
+        )
+
+        success = run_ensemble_piv(config_path)
+        if not success:
+            print(f"PIV processing failed for {method}!")
+            continue
+
+        data = load_ensemble_results(output_dir, num_images=num_images)
+        if data is not None:
+            expected_rs = {
+                'UU': 2.0,
+                'VV': 3.0,
+                'mean_ux': 0.0,
+                'mean_uy': 0.0,
+                'std_x': np.sqrt(2.0),
+                'std_y': np.sqrt(3.0),
+                'particle_d': 2.0,
+            }
+            results = analyze_per_pass_results(
+                data, f"{method.upper()} fitting", expected_rs, edge_trim=1
+            )
+            all_results[method] = results
+
+    # Summary comparison
+    if len(all_results) == 2:
+        print("\n" + "=" * 80)
+        print("GAUSSIAN vs K-SPACE COMPARISON SUMMARY")
+        print("=" * 80)
+        print(f"\n{'Method':<12} {'Pass':<6} {'UU':<12} {'VV':<12} {'UU Error':<12} {'VV Error':<12}")
+        print("-" * 66)
+
+        for method, results in all_results.items():
+            for r in results:
+                uu_err = 100 * (r['UU']['mean'] - 2.0) / 2.0
+                vv_err = 100 * (r['VV']['mean'] - 3.0) / 3.0
+                print(f"{method:<12} {r['pass']:<6} {r['UU']['mean']:<12.4f} {r['VV']['mean']:<12.4f} "
+                      f"{uu_err:+.1f}%{'':<6} {vv_err:+.1f}%")
+
+    return all_results
+
+
+def run_particle_diameter_sweep():
+    """Test RS accuracy across particle diameters 2, 3, 4, 5 px.
+
+    For each particle size, runs:
+    1. Single-pass test (16×16) - baseline without warping (matches 3-pass final window)
+    2. 3-pass test (64→32→16) - with predictor warping
+
+    Uses 500 images per test for good statistical accuracy.
+
+    Comparison Logic:
+    - If single-pass 16×16 gives accurate RS but 3-pass 16×16 doesn't → multi-pass warping is the problem
+    - If both give same (wrong) RS → window size or fitting is the problem
+    """
+    print("\n" + "=" * 70)
+    print("PARTICLE DIAMETER SWEEP TEST")
+    print("Testing RS accuracy with particle diameters: 2, 3, 4, 5 px")
+    print("=" * 70)
+
+    particle_diameters = [2, 3, 4, 5]
+    num_images = 500
+    all_results = {}
+
+    for particle_d in particle_diameters:
+        print(f"\n{'='*70}")
+        print(f"PARTICLE DIAMETER: {particle_d} px")
+        print(f"{'='*70}")
+
+        test_dir = Path(__file__).parent / f'rs_particle_d{particle_d}'
+        image_dir = test_dir / 'Cam1'
+
+        # Clean previous run
+        if test_dir.exists():
+            shutil.rmtree(test_dir)
+
+        # Generate images once with specific particle_diameter
+        image_dir.mkdir(parents=True, exist_ok=True)
+        print(f"\nGenerating {num_images} images (zero mean, UU=2, VV=3, particle_d={particle_d}px)...")
+
+        stats = generate_rs_test_images(
+            output_dir=image_dir,
+            num_pairs=num_images,
+            image_shape=(256, 256),
+            particle_diameter=float(particle_d),
+            mean_dx=0.0,
+            mean_dy=0.0,
+            std_dx=np.sqrt(2.0),  # UU = 2.0
+            std_dy=np.sqrt(3.0),  # VV = 3.0
+            seed=42 + particle_d,  # Different seed per particle size
+        )
+
+        expected_rs = {
+            'UU': 2.0,
+            'VV': 3.0,
+            'mean_ux': 0.0,
+            'mean_uy': 0.0,
+            'std_x': np.sqrt(2.0),
+            'std_y': np.sqrt(3.0),
+            'particle_d': float(particle_d),
+        }
+
+        particle_results = {'particle_d': particle_d}
+
+        # --- Single-pass test (16×16) - baseline without multi-pass warping ---
+        print(f"\n--- Single-pass 16×16 (baseline, no warping) ---")
+        output_dir_single = test_dir / 'output_single'
+        output_dir_single.mkdir(parents=True, exist_ok=True)
+
+        config_path_single = create_test_config(
+            test_name=f'particle{particle_d}_single',
+            image_dir=image_dir,
+            output_dir=output_dir_single,
+            num_images=num_images,
+            window_sizes=[[16, 16]],  # Match 3-pass final window
+            overlaps=[50],
+        )
+
+        success = run_ensemble_piv(config_path_single)
+        if success:
+            data = load_ensemble_results(output_dir_single, num_images=num_images)
+            if data:
+                results = analyze_per_pass_results(
+                    data, f"Particle {particle_d}px - Single-pass 16×16", expected_rs
+                )
+                particle_results['single_pass'] = results
+
+        # --- 3-pass test (64→32→16) - with predictor warping ---
+        print(f"\n--- 3-pass 64→32→16 (with warping) ---")
+        output_dir_3pass = test_dir / 'output_3pass'
+        output_dir_3pass.mkdir(parents=True, exist_ok=True)
+
+        config_path_3pass = create_test_config(
+            test_name=f'particle{particle_d}_3pass',
+            image_dir=image_dir,
+            output_dir=output_dir_3pass,
+            num_images=num_images,
+            window_sizes=[[64, 64], [32, 32], [16, 16]],
+            overlaps=[50, 50, 50],
+        )
+
+        success = run_ensemble_piv(config_path_3pass)
+        if success:
+            data = load_ensemble_results(output_dir_3pass, num_images=num_images)
+            if data:
+                results = analyze_per_pass_results(
+                    data, f"Particle {particle_d}px - 3-pass 64→32→16", expected_rs
+                )
+                particle_results['three_pass'] = results
+
+        all_results[particle_d] = particle_results
+
+    # --- Summary comparison table ---
+    print("\n" + "=" * 90)
+    print("PARTICLE DIAMETER SWEEP SUMMARY")
+    print("=" * 90)
+    print("\nKey comparison: Single-pass 16×16 vs 3-pass final 16×16")
+    print("If both match expected RS → window size/fitting OK, multi-pass OK")
+    print("If single-pass OK but 3-pass wrong → multi-pass warping causes RS loss")
+    print("If both wrong similarly → inherent to 16×16 window or fitting\n")
+
+    print(f"{'Particle':<10} {'Config':<15} {'Pass':<6} {'Window':<10} {'sig_A_x':<10} {'UU':<10} {'VV':<10} {'UU Err':<10} {'VV Err':<10}")
+    print("-" * 95)
+
+    for particle_d, results in all_results.items():
+        # Single-pass results
+        if 'single_pass' in results and results['single_pass']:
+            r = results['single_pass'][0]  # First (only) pass
+            uu_err = 100 * (r['UU']['mean'] - 2.0) / 2.0
+            vv_err = 100 * (r['VV']['mean'] - 3.0) / 3.0
+            print(f"{particle_d}px{'':<6} {'Single 16×16':<15} {1:<6} {'16×16':<10} "
+                  f"{r['sig_A_x']['mean']:<10.4f} {r['UU']['mean']:<10.4f} {r['VV']['mean']:<10.4f} "
+                  f"{uu_err:+.1f}%{'':<4} {vv_err:+.1f}%")
+
+        # 3-pass results (show final pass for direct comparison)
+        if 'three_pass' in results and results['three_pass']:
+            for r in results['three_pass']:
+                uu_err = 100 * (r['UU']['mean'] - 2.0) / 2.0
+                vv_err = 100 * (r['VV']['mean'] - 3.0) / 3.0
+                win_size = r.get('win_size')
+                if win_size is not None and hasattr(win_size, '__len__'):
+                    win_str = f"{win_size[0]}×{win_size[1]}"
+                else:
+                    win_str = "?×?"
+                print(f"{particle_d}px{'':<6} {'3-pass':<15} {r['pass']:<6} {win_str:<10} "
+                      f"{r['sig_A_x']['mean']:<10.4f} {r['UU']['mean']:<10.4f} {r['VV']['mean']:<10.4f} "
+                      f"{uu_err:+.1f}%{'':<4} {vv_err:+.1f}%")
+
+    # Key insight comparison
+    print("\n" + "-" * 95)
+    print("SINGLE vs 3-PASS COMPARISON (final 16×16 window):")
+    print("-" * 95)
+    for particle_d, results in all_results.items():
+        single_uu = results.get('single_pass', [{}])[0].get('UU', {}).get('mean', np.nan)
+        # Get final (3rd) pass from 3-pass results
+        three_pass_final_uu = np.nan
+        if 'three_pass' in results and len(results['three_pass']) >= 3:
+            three_pass_final_uu = results['three_pass'][2].get('UU', {}).get('mean', np.nan)
+
+        if not np.isnan(single_uu) and not np.isnan(three_pass_final_uu):
+            diff = three_pass_final_uu - single_uu
+            pct_diff = 100 * diff / single_uu if single_uu > 0 else 0
+            print(f"  {particle_d}px: Single UU={single_uu:.4f}, 3-pass UU={three_pass_final_uu:.4f}, "
+                  f"Diff={diff:+.4f} ({pct_diff:+.1f}%)")
+
+    return all_results
+
+
 def main():
     """Run all tests or specific test."""
     print("=" * 70)
@@ -922,6 +1182,8 @@ def main():
     print("  zero     - Zero mean test (RS=2,3, 3 passes)")
     print("  5pass    - 5-pass diagnostic (64→32→32→32→16) to isolate warping effect")
     print("  single   - Single-pass comparison (64, 32, 16 independently)")
+    print("  kspace   - Compare Gaussian vs K-space fitting methods")
+    print("  particle - Particle diameter sweep (2, 3, 4, 5 px)")
     print("  all      - Run all main tests (mean, zero, 5pass)")
     print("  full     - Run ALL tests including single-pass comparison")
 
@@ -935,6 +1197,10 @@ def main():
             run_test3()
         elif test == 'single':
             run_single_pass_comparison()
+        elif test == 'kspace':
+            run_kspace_comparison()
+        elif test == 'particle':
+            run_particle_diameter_sweep()
         elif test == 'all':
             run_test_mean_only()
             run_test2()
@@ -944,9 +1210,11 @@ def main():
             run_test2()
             run_test3()
             run_single_pass_comparison()
+            run_kspace_comparison()
+            run_particle_diameter_sweep()
         else:
             print(f"\nUnknown test: {test}")
-            print("Usage: python run_rs_tests.py [mean|zero|5pass|single|all|full]")
+            print("Usage: python run_rs_tests.py [mean|zero|5pass|single|kspace|particle|all|full]")
     else:
         # Default: run main tests
         print("\nNo test specified, running main tests...")

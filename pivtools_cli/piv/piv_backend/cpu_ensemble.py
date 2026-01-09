@@ -52,6 +52,8 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
     ) -> None:
         super().__init__()
 
+        # Store config for interpolation settings
+        self.config = config
         self.printed_passes = set()
 
         # Load libraries ONLY if not already loaded in this process
@@ -598,7 +600,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                         )
                 else:
                     im_mesh_A, im_mesh_B, delta_ab_pred = self._get_im_mesh(
-                            pass_idx, predictor_field, interp="cubic"
+                            pass_idx, predictor_field
                         )
                     smoothed_predictor = delta_ab_pred
                     logging.debug(
@@ -611,34 +613,14 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                             smoothed_predictor[vector_mask] = 0
 
             if predictor_field is not None and pass_idx > 0:
-                image_a_prime_batch, image_b_prime_batch = self._get_image_prime_batch(
+                images_a_prime, images_b_prime = self._get_image_prime_batch(
                         image_a_stack, image_b_stack, im_mesh_A, im_mesh_B
             )
-                images_a_prime = np.clip(image_a_prime_batch, 0, None)
-                images_b_prime = np.clip(image_b_prime_batch, 0, None)
             else:
                     # No warping for pass 0
                 images_a_prime = image_a_stack
                 images_b_prime = image_b_stack
 
-                # Accumulate RAW warped images (for computing <A>, <B> later)
-            #warp_A_sum += image_a_prime
-            #warp_B_sum += image_b_prime
-
-
-                # Save warped images for diagnostic purposes (first pair of first batch)
-            if save_diagnostics and is_first_batch and output_path is not None:
-                from pathlib import Path
-                from pivtools_cli.preprocessing.diagnostics import save_warped_diagnostics
-                save_warped_diagnostics(
-                        image_a_warped=images_a_prime[0, :, :, :],
-                        image_b_warped=images_b_prime[0, :, :, :],
-                        output_dir=Path(output_path),
-                        pass_idx=pass_idx,
-                        pair_idx=0,
-                        image_a_original=image_a_stack[0, :, :, :],  # Original pre-warp image
-                        image_b_original=image_b_stack[0, :, :, :],  # Original pre-warp image
-                    )
 
             # Compute warp sums BEFORE padding (for accumulation in original image space)
             # This ensures warp sums have shape (H, W) not (H_padded, W_padded)
@@ -665,16 +647,10 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             traceback.print_exc()
 
         try:
-            # Use new memory-efficient accumulation function (Option C)
-            # Allocates only windows × corr_size² instead of N × windows × corr_size²
-            # For 8×8 windows with 259k windows: 265 MB instead of 6.6 GB (25× reduction)
             corr_size = self.window_sizes_for_corr[pass_idx]
             plane_size = total_windows * corr_size[0] * corr_size[1]
 
-            # Allocate output buffers - directly accumulated by C library
-            correl_AB_sum = np.zeros(plane_size, dtype=np.float32)
-            correl_AA_sum = np.zeros(plane_size, dtype=np.float32)
-            correl_BB_sum = np.zeros(plane_size, dtype=np.float32)
+            # Use pre-allocated buffers (already cleared above at lines 567-570)
 
             # Create mask for C library
             if vector_mask is not None:
@@ -735,6 +711,291 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             "n_pre": self.n_pre_all[pass_idx],
             "n_post": self.n_post_all[pass_idx],
             # First-pair warped images for diagnostic comparison (only from first batch)
+            "first_pair_A": images_a_prime[0].copy() if is_first_batch else None,
+            "first_pair_B": images_b_prime[0].copy() if is_first_batch else None,
+        }
+
+    def compute_warp_sums_only(
+        self,
+        images: np.ndarray,
+        config: Config,
+        pass_idx: int,
+        predictor_field: Optional[np.ndarray] = None,
+    ) -> dict:
+        """
+        Compute warped image sums only (no correlation) for 'image' background method.
+
+        This is the first pass of the two-pass 'image' background subtraction method.
+        It loads images, warps them if pass > 0, and accumulates the warped image sums
+        which are used to compute mean images (Ā, B̄).
+
+        Parameters
+        ----------
+        images : np.ndarray
+            Image batch of shape (N, 2, H, W)
+        config : Config
+            Configuration object
+        pass_idx : int
+            PIV pass index
+        predictor_field : Optional[np.ndarray]
+            Predictor field from previous pass (shape: n_win_y+2, n_win_x+2, 2)
+            containing [uy, ux]. None for pass 0.
+
+        Returns
+        -------
+        dict
+            Dictionary with keys:
+            - warp_A_sum: Sum of warped A images (H, W)
+            - warp_B_sum: Sum of warped B images (H, W)
+            - n_images: Number of images in batch
+            - smoothed_predictor: Smoothed predictor field (for pass > 0)
+        """
+        N, _, H, W = images.shape
+        smoothed_predictor = None
+
+        vector_mask = (
+            self.vector_masks[pass_idx]
+            if self.vector_masks and pass_idx < len(self.vector_masks)
+            else None
+        )
+
+        # Extract A and B frames
+        image_a_stack = images[:, 0, :, :].astype(np.float32, copy=False)
+        image_b_stack = images[:, 1, :, :].astype(np.float32, copy=False)
+
+        # Warp images if predictor field is provided (pass > 0)
+        if pass_idx > 0 and predictor_field is not None:
+            im_mesh_A, im_mesh_B, delta_ab_pred = self._get_im_mesh(
+                pass_idx, predictor_field
+            )
+            smoothed_predictor = delta_ab_pred
+            logging.debug(
+                f"Pass {pass_idx + 1} [warp-only]: Got smoothed predictor field "
+                f"(shape: {delta_ab_pred.shape})"
+            )
+
+            # Apply vector mask to zero out masked vectors
+            if vector_mask is not None:
+                smoothed_predictor[vector_mask] = 0
+
+            # Warp images
+            images_a_prime, images_b_prime = self._get_image_prime_batch(
+                image_a_stack, image_b_stack, im_mesh_A, im_mesh_B
+            )
+        else:
+            # No warping for pass 0
+            images_a_prime = image_a_stack
+            images_b_prime = image_b_stack
+
+        # Compute warp sums
+        warp_A_sum = images_a_prime.sum(axis=0)
+        warp_B_sum = images_b_prime.sum(axis=0)
+
+        logging.debug(
+            f"Pass {pass_idx} [warp-only]: warp_A_sum shape {warp_A_sum.shape}, "
+            f"n_images={N}"
+        )
+
+        return {
+            "warp_A_sum": warp_A_sum.copy(),
+            "warp_B_sum": warp_B_sum.copy(),
+            "n_images": N,
+            "smoothed_predictor": smoothed_predictor,
+        }
+
+    def correlate_mean_subtracted_batch(
+        self,
+        images: np.ndarray,
+        config: Config,
+        pass_idx: int,
+        A_mean: np.ndarray,
+        B_mean: np.ndarray,
+        predictor_field: Optional[np.ndarray] = None,
+        save_diagnostics: bool = False,
+        output_path: Optional[str] = None,
+        is_first_batch: bool = False,
+    ) -> dict:
+        """
+        Correlate mean-subtracted images for 'image' background subtraction method.
+
+        This is the second pass of the two-pass 'image' background method.
+        It loads images, warps them if pass > 0, subtracts the pre-computed mean
+        images, then correlates the mean-subtracted images.
+
+        Formula: R_ensemble = <(A - Ā) ⊗ (B - B̄)>
+
+        Parameters
+        ----------
+        images : np.ndarray
+            Image batch of shape (N, 2, H, W)
+        config : Config
+            Configuration object
+        pass_idx : int
+            PIV pass index
+        A_mean : np.ndarray
+            Mean of warped A images (H, W) from first pass
+        B_mean : np.ndarray
+            Mean of warped B images (H, W) from first pass
+        predictor_field : Optional[np.ndarray]
+            Predictor field from previous pass
+        save_diagnostics : bool
+            If True, save warped images for first pair
+        output_path : Optional[str]
+            Output directory for diagnostic images
+        is_first_batch : bool
+            If True, this is the first batch
+
+        Returns
+        -------
+        dict
+            Dictionary with keys:
+            - corr_AA_sum: Auto-correlation A sum (mean-subtracted)
+            - corr_BB_sum: Auto-correlation B sum (mean-subtracted)
+            - corr_AB_sum: Cross-correlation sum (mean-subtracted)
+            - n_images: Number of images in batch
+            - n_win_x: Number of windows in x
+            - n_win_y: Number of windows in y
+            - smoothed_predictor: Smoothed predictor field
+            - vector_mask: Vector mask
+            - n_pre, n_post: Padding values
+        """
+        from pivtools_core.window_utils import apply_single_mode_padding
+
+        win_size = config.ensemble_window_sizes[pass_idx]
+        n_win_y = len(self.win_ctrs_y[pass_idx])
+        n_win_x = len(self.win_ctrs_x[pass_idx])
+        total_windows = n_win_y * n_win_x
+
+        runtype = config.ensemble_type[pass_idx]
+        is_single_mode = (runtype == 'single')
+
+        N, _, H, W = images.shape
+        smoothed_predictor = None
+
+        vector_mask = (
+            self.vector_masks[pass_idx]
+            if self.vector_masks and pass_idx < len(self.vector_masks)
+            else None
+        )
+
+        # Extract and convert images
+        image_a_stack = images[:, 0, :, :].astype(np.float32, copy=False)
+        image_b_stack = images[:, 1, :, :].astype(np.float32, copy=False)
+
+        # Warp images if predictor field is provided (pass > 0)
+        if pass_idx > 0 and predictor_field is not None:
+            im_mesh_A, im_mesh_B, delta_ab_pred = self._get_im_mesh(
+                pass_idx, predictor_field
+            )
+            smoothed_predictor = delta_ab_pred
+
+            if vector_mask is not None:
+                smoothed_predictor[vector_mask] = 0
+
+            images_a_prime, images_b_prime = self._get_image_prime_batch(
+                image_a_stack, image_b_stack, im_mesh_A, im_mesh_B
+            )
+        else:
+            images_a_prime = image_a_stack
+            images_b_prime = image_b_stack
+
+        # SUBTRACT MEAN IMAGES - this is the key difference from standard method
+        # A' = A - Ā, B' = B - B̄
+        # In-place subtraction to avoid allocating new (N, H, W) arrays
+        images_a_prime -= A_mean
+        images_b_prime -= B_mean
+        images_a_centered = images_a_prime
+        images_b_centered = images_b_prime
+
+        logging.debug(
+            f"Pass {pass_idx} [mean-subtracted]: A_mean range [{A_mean.min():.2f}, {A_mean.max():.2f}], "
+            f"centered A range [{images_a_centered.min():.2f}, {images_a_centered.max():.2f}]"
+        )
+
+        # Save diagnostics if requested
+        if save_diagnostics and is_first_batch and output_path is not None:
+            from pathlib import Path
+            from pivtools_cli.preprocessing.diagnostics import save_warped_diagnostics
+            save_warped_diagnostics(
+                image_a_warped=images_a_prime[0],
+                image_b_warped=images_b_prime[0],
+                output_dir=Path(output_path),
+                pass_idx=pass_idx,
+                pair_idx=0,
+                image_a_original=image_a_stack[0],
+                image_b_original=image_b_stack[0],
+            )
+
+        # Apply padding for single mode (for correlation only)
+        if is_single_mode:
+            sum_window = tuple(config.ensemble_sum_window)
+            images_a_centered, _ = apply_single_mode_padding(
+                images_a_centered, win_size, sum_window, pad_value=0.0
+            )
+            images_b_centered, _ = apply_single_mode_padding(
+                images_b_centered, win_size, sum_window, pad_value=0.0
+            )
+            H_padded, W_padded = images_a_centered.shape[-2:]
+            image_size = np.ascontiguousarray(np.array([H_padded, W_padded], dtype=np.int32))
+        else:
+            image_size = np.ascontiguousarray(np.array([H, W], dtype=np.int32))
+
+        # Correlate mean-subtracted images
+        corr_size = self.window_sizes_for_corr[pass_idx]
+        plane_size = total_windows * corr_size[0] * corr_size[1]
+
+        correl_AB_sum = np.zeros(plane_size, dtype=np.float32)
+        correl_AA_sum = np.zeros(plane_size, dtype=np.float32)
+        correl_BB_sum = np.zeros(plane_size, dtype=np.float32)
+
+        if vector_mask is not None:
+            b_mask = np.ascontiguousarray(vector_mask.ravel(order='C').astype(np.float32))
+        else:
+            b_mask = np.zeros(total_windows, dtype=np.float32)
+
+        # Cross-correlation AB (mean-subtracted)
+        error_code_AB = self._run_correlation_accumulate(
+            images_a_centered, images_b_centered,
+            self.win_weights_A[pass_idx], self.win_weights_B[pass_idx],
+            b_mask, pass_idx, correl_AB_sum
+        )
+
+        # Auto-correlation AA (mean-subtracted)
+        error_code_AA = self._run_correlation_accumulate(
+            images_a_centered, images_a_centered,
+            self.win_weights_A[pass_idx], self.win_weights_A[pass_idx],
+            b_mask, pass_idx, correl_AA_sum
+        )
+
+        # Auto-correlation BB (mean-subtracted)
+        error_code_BB = self._run_correlation_accumulate(
+            images_b_centered, images_b_centered,
+            self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
+            b_mask, pass_idx, correl_BB_sum
+        )
+
+        # Reshape to (windows, corr_h, corr_w)
+        correl_AA_sum = correl_AA_sum.reshape(total_windows, corr_size[0], corr_size[1])
+        correl_AB_sum = correl_AB_sum.reshape(total_windows, corr_size[0], corr_size[1])
+        correl_BB_sum = correl_BB_sum.reshape(total_windows, corr_size[0], corr_size[1])
+
+        if error_code_AB != 0 or error_code_AA != 0 or error_code_BB != 0:
+            logging.error(
+                f"Correlation error codes: AB={error_code_AB}, AA={error_code_AA}, BB={error_code_BB}"
+            )
+
+        # Return correlation sums only (no warp sums needed - mean already subtracted)
+        return {
+            "corr_AA_sum": correl_AA_sum.copy(),
+            "corr_BB_sum": correl_BB_sum.copy(),
+            "corr_AB_sum": correl_AB_sum.copy(),
+            "n_images": N,
+            "n_win_x": n_win_x,
+            "n_win_y": n_win_y,
+            "smoothed_predictor": smoothed_predictor,
+            "vector_mask": vector_mask,
+            "n_pre": self.n_pre_all[pass_idx],
+            "n_post": self.n_post_all[pass_idx],
             "first_pair_A": images_a_prime[0].copy() if is_first_batch else None,
             "first_pair_B": images_b_prime[0].copy() if is_first_batch else None,
         }
@@ -800,13 +1061,24 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             point_spread_b,
         )
 
+    # Interpolation method mapping for cv2.remap
+    INTERP_FLAGS = {
+        'nearest': cv2.INTER_NEAREST,
+        'linear': cv2.INTER_LINEAR,
+        'cubic': cv2.INTER_CUBIC,
+    }
+
     def _get_image_prime_batch(
         self,
-        images_a: np.ndarray,  
-        images_b: np.ndarray, 
-        im_mesh_A: np.ndarray,  
-        im_mesh_B: np.ndarray, 
+        images_a: np.ndarray,
+        images_b: np.ndarray,
+        im_mesh_A: np.ndarray,
+        im_mesh_B: np.ndarray,
     ):
+        """Warp images using predictor field meshes.
+
+        Uses interpolation method from config.ensemble_image_warp_interpolation.
+        """
         images_a = images_a.astype(np.float32, copy=False)
         images_b = images_b.astype(np.float32, copy=False)
         map_A_x = im_mesh_A[..., 1].astype(np.float32, copy=False)
@@ -819,12 +1091,16 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         out_a = np.empty_like(images_a, dtype=np.float32)
         out_b = np.empty_like(images_b, dtype=np.float32)
 
+        # Get interpolation method from config (default to cubic for backwards compatibility)
+        interp_method = getattr(self.config, 'ensemble_image_warp_interpolation', 'cubic')
+        interp_flag = self.INTERP_FLAGS.get(interp_method, cv2.INTER_CUBIC)
+
         for n in range(N):
             out_a[n] = cv2.remap(
                 images_a[n],
                 map_A_x,
                 map_A_y,
-                interpolation=cv2.INTER_CUBIC,
+                interpolation=interp_flag,
                 borderMode=cv2.BORDER_CONSTANT,
                 borderValue=0,
             )
@@ -832,15 +1108,18 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 images_b[n],
                 map_B_x,
                 map_B_y,
-                interpolation=cv2.INTER_CUBIC,
+                interpolation=interp_flag,
                 borderMode=cv2.BORDER_CONSTANT,
                 borderValue=0,
             )
 
         return out_a, out_b
     
-    def _get_im_mesh(self, pass_idx: int, predictor_field: Optional[np.ndarray], interp: str = "cubic"):
-        """Compute image meshes with predictor field warping."""
+    def _get_im_mesh(self, pass_idx: int, predictor_field: Optional[np.ndarray]):
+        """Compute image meshes with predictor field warping.
+
+        Uses interpolation method from config.ensemble_predictor_interpolation.
+        """
         n_win_y = len(self.win_ctrs_y[pass_idx])
         n_win_x = len(self.win_ctrs_x[pass_idx])
 
@@ -936,7 +1215,10 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 f"sigma={self.sd[pass_idx]:.4f}, ksize={self.ksize_filt[pass_idx]}"
             )
 
-        interp_flag = cv2.INTER_CUBIC if interp == "cubic" else cv2.INTER_LINEAR
+        # Get interpolation method from config (default to cubic for backwards compatibility)
+        interp_method = getattr(self.config, 'ensemble_predictor_interpolation', 'cubic')
+        interp_flag = self.INTERP_FLAGS.get(interp_method, cv2.INTER_CUBIC)
+
         self.delta_ab_dense = np.zeros((self.H, self.W, 2), dtype=np.float32)
         map_x_2d, map_y_2d = self.cached_dense_maps[pass_idx]
 

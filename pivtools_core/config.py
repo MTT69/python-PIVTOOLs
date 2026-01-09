@@ -2020,6 +2020,167 @@ video:
         return self.data.get("ensemble_piv", {}).get("fit_offset", True)
 
     @property
+    def ensemble_fit_method(self) -> str:
+        """Return fitting method for ensemble PIV.
+
+        Options:
+        - 'gaussian': Levenberg-Marquardt 16-parameter stacked Gaussian (default)
+        - 'kspace': K-space transfer function with 6 parameters
+
+        The k-space method offers better noise robustness by:
+        - Algebraic cancellation of particle shape (6 params vs 16)
+        - Adaptive SNR-based wavenumber bounds
+        - Forward-model fitting that emphasizes high-SNR components
+        """
+        method = self.data.get("ensemble_piv", {}).get("fit_method", "gaussian")
+        valid_methods = {'gaussian', 'kspace'}
+        if method not in valid_methods:
+            raise ValueError(
+                f"Invalid ensemble_fit_method '{method}'. "
+                f"Must be one of {valid_methods}"
+            )
+        return method
+
+    @property
+    def ensemble_kspace_snr_threshold(self) -> float:
+        """Return SNR threshold for k-space adaptive bounds.
+
+        Wavenumbers with SNR below this threshold are excluded from fitting.
+        Higher values are more conservative (exclude more noise).
+
+        Default: 3.0
+        """
+        return self.data.get("ensemble_piv", {}).get("kspace_snr_threshold", 3.0)
+
+    @property
+    def ensemble_kspace_soft_weighting(self) -> bool:
+        """Return whether to use anisotropic soft decay weighting in k-space fitting.
+
+        When True (default): Uses combined SNR × anisotropic soft decay weighting:
+            w(k) = w_snr(k) * exp(-k_x²/k0_x² - k_y²/k0_y²)
+
+        where k0_x and k0_y are computed from Sigma_xx and Sigma_yy estimates.
+
+        This naturally down-weights high-k regions where:
+        - Signal-to-noise is poor
+        - The Gaussian model becomes less accurate
+
+        Benefits:
+        - Avoids hard k_max cutoffs
+        - Automatically adapts to signal quality
+        - Handles anisotropic stresses (different turbulence in x vs y)
+        - Reduces bias from model mismatch at high k
+
+        When False: Uses uniform weighting within k_max bounds.
+
+        Default: True
+        """
+        return self.data.get("ensemble_piv", {}).get("kspace_soft_weighting", True)
+
+    @property
+    def ensemble_image_warp_interpolation(self) -> str:
+        """Return interpolation method for image warping in ensemble PIV.
+
+        This controls the cv2.remap interpolation when warping images based on
+        the predictor field from the previous pass. The choice of interpolation
+        may affect:
+        - Particle image sharpness (PSF)
+        - Measured Reynolds stress (peak width)
+        - Processing speed
+
+        Options:
+        - 'nearest': cv2.INTER_NEAREST (fastest, no smoothing, may cause aliasing)
+        - 'linear': cv2.INTER_LINEAR (bilinear, moderate smoothing)
+        - 'cubic': cv2.INTER_CUBIC (bicubic, smoothest, default)
+
+        Default: 'cubic'
+        """
+        method = self.data.get("ensemble_piv", {}).get(
+            "image_warp_interpolation", "cubic"
+        )
+        valid_methods = {'nearest', 'linear', 'cubic'}
+        if method not in valid_methods:
+            raise ValueError(
+                f"Invalid ensemble_image_warp_interpolation '{method}'. "
+                f"Must be one of {valid_methods}"
+            )
+        return method
+
+    @property
+    def ensemble_predictor_interpolation(self) -> str:
+        """Return interpolation method for predictor field in ensemble PIV.
+
+        This controls the cv2.remap interpolation when upsampling the predictor
+        field from coarse to fine grids and from window centers to dense pixel
+        coordinates.
+
+        Options:
+        - 'nearest': cv2.INTER_NEAREST (fastest, may cause blocky artifacts)
+        - 'linear': cv2.INTER_LINEAR (bilinear, good balance)
+        - 'cubic': cv2.INTER_CUBIC (bicubic, smoothest, default)
+
+        Default: 'cubic'
+        """
+        method = self.data.get("ensemble_piv", {}).get(
+            "predictor_interpolation", "cubic"
+        )
+        valid_methods = {'nearest', 'linear', 'cubic'}
+        if method not in valid_methods:
+            raise ValueError(
+                f"Invalid ensemble_predictor_interpolation '{method}'. "
+                f"Must be one of {valid_methods}"
+            )
+        return method
+
+    @property
+    def ensemble_skip_background_subtraction(self) -> bool:
+        """Skip background subtraction in ensemble PIV (debug/testing only).
+
+        When True, skips the single-pass optimization formula:
+            R_ensemble = <A⊗B> - <A>⊗<B>
+
+        And instead uses raw correlation planes directly:
+            R_ensemble = <A⊗B>
+
+        WARNING: This is for testing/debugging only. Without background
+        subtraction, correlation planes will have elevated noise floors
+        which may affect fitting quality.
+
+        Default: False
+        """
+        return self.data.get("ensemble_piv", {}).get("skip_background_subtraction", False)
+
+    @property
+    def ensemble_background_subtraction_method(self) -> str:
+        """Background subtraction method for ensemble PIV.
+
+        Options:
+        - 'correlation': R = <A⊗B> - <A>⊗<B> (current default, single-pass)
+          Correlates raw images, then subtracts correlation of mean images.
+          More memory efficient (single pass through data).
+
+        - 'image': R = <(A-Ā)⊗(B-B̄)> (two-pass, subtract mean images first)
+          First pass computes mean images, second pass correlates mean-subtracted
+          images. Requires two iterations through the data but may be more
+          numerically stable for certain fitting methods (e.g., k-space).
+
+        Both methods are mathematically equivalent but may differ numerically
+        due to order of operations and floating-point precision.
+
+        Default: 'correlation'
+        """
+        method = self.data.get("ensemble_piv", {}).get(
+            "background_subtraction_method", "correlation"
+        )
+        valid_methods = {'correlation', 'image'}
+        if method not in valid_methods:
+            raise ValueError(
+                f"Invalid ensemble_background_subtraction_method '{method}'. "
+                f"Must be one of {valid_methods}"
+            )
+        return method
+
+    @property
     def outlier_detection_enabled(self):
         """Return True if outlier detection is enabled."""
         return self.data.get("outlier_detection", {}).get("enabled", True)

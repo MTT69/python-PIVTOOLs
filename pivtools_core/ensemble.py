@@ -52,8 +52,14 @@ from pivtools_cli.processing.dask_pipeline import (
     create_filter_pipeline,
     scatter_immutable_data,
     correlate_and_reduce_on_worker,
+    compute_warp_sums_on_worker,
+    correlate_mean_subtracted_on_worker,
     reduce_ensemble_results,
     extract_predictor_field,
+    # Single-batch chained accumulation functions (lazy loading)
+    correlate_single_batch_and_accumulate,
+    warp_single_batch_and_accumulate,
+    correlate_mean_subtracted_single_batch,
 )
 
 
@@ -267,43 +273,195 @@ def run_ensemble_piv(
         logger.info(f"  Distributing {num_chunks} chunks across {num_workers} workers...")
         logger.info(f"  (~{chunks_per_worker} chunks per worker)")
 
-        worker_futures = []
-        for i, worker in enumerate(workers):
-            start_idx = i * chunks_per_worker
-            end_idx = min((i + 1) * chunks_per_worker, num_chunks)
-            if start_idx >= end_idx:
-                continue
-
-            # Get the futures for this worker's assigned chunks
-            worker_batch_futures = block_futures[start_idx:end_idx]
-
-            # Submit task to process all assigned chunks on this worker
-            # Dask will resolve the futures before the function executes
-            future = client.submit(
-                correlate_and_reduce_on_worker,
-                worker_batch_futures,  # List of futures - resolved to numpy arrays
-                scattered_config,
-                pass_idx,
-                scattered_predictor,
-                scattered['cache'],
-                scattered['masks'],
-                workers=[worker],
-                pure=False,  # Stateful computation
-            )
-            worker_futures.append(future)
-
-        # Gather results with progress tracking
+        # Check background subtraction method
+        bg_method = config.ensemble_background_subtraction_method
         pass_start = time.time()
-        worker_results = []
-        for i, future in enumerate(as_completed(worker_futures)):
-            result = future.result()
-            worker_results.append(result)
-            logger.info(f"  Worker {i+1}/{len(worker_futures)} complete ({result['n_images']} images)")
 
-        # Final local reduction (fast - only num_workers elements)
-        accumulated = worker_results[0]
-        for r in worker_results[1:]:
-            accumulated = reduce_ensemble_results(accumulated, r)
+        if bg_method == 'image':
+            # TWO-PASS method: First compute mean images, then correlate mean-subtracted
+            logger.info(f"  [Image BG] Using two-pass background subtraction")
+
+            # ---- PASS 1: Compute warped image sums ----
+            # Use chained submission to preserve lazy loading
+            logger.info(f"  [Image BG] Sub-pass 1/2: Computing mean images...")
+            warp_sum_futures = []
+            for i, worker in enumerate(workers):
+                start_idx = i * chunks_per_worker
+                end_idx = min((i + 1) * chunks_per_worker, num_chunks)
+                if start_idx >= end_idx:
+                    continue
+
+                # Chain tasks: each depends on previous sum + one new batch
+                accumulated_future = None
+                for j, chunk_idx in enumerate(range(start_idx, end_idx)):
+                    block_future = block_futures[chunk_idx]
+                    accumulated_future = client.submit(
+                        warp_single_batch_and_accumulate,
+                        accumulated_future,
+                        block_future,
+                        scattered_config,
+                        pass_idx,
+                        scattered_predictor,
+                        scattered['cache'],
+                        scattered['masks'],
+                        workers=[worker],
+                        pure=False,
+                    )
+
+                # Append only the final result of the chain
+                warp_sum_futures.append(accumulated_future)
+
+            # Gather warp sums and compute global mean
+            warp_results = []
+            for i, future in enumerate(as_completed(warp_sum_futures)):
+                result = future.result()
+                warp_results.append(result)
+                logger.debug(f"    Warp sums from worker {i+1}/{len(warp_sum_futures)}")
+
+            # Reduce warp sums to get global mean
+            total_warp_A = warp_results[0]["warp_A_sum"].copy()
+            total_warp_B = warp_results[0]["warp_B_sum"].copy()
+            total_n_images = warp_results[0]["n_images"]
+            smoothed_predictor = warp_results[0].get("smoothed_predictor")
+
+            for r in warp_results[1:]:
+                total_warp_A += r["warp_A_sum"]
+                total_warp_B += r["warp_B_sum"]
+                total_n_images += r["n_images"]
+                if r.get("smoothed_predictor") is not None:
+                    smoothed_predictor = r["smoothed_predictor"]
+
+            # Compute mean images
+            A_mean = total_warp_A / total_n_images
+            B_mean = total_warp_B / total_n_images
+            logger.info(f"  [Image BG] Mean images computed from {total_n_images} images")
+            logger.debug(f"    A_mean range: [{A_mean.min():.2f}, {A_mean.max():.2f}]")
+
+            # Scatter mean images to workers
+            mean_images = {"A_mean": A_mean, "B_mean": B_mean}
+            scattered_means = client.scatter(mean_images, broadcast=True)
+
+            # Clean up warp sum results
+            del warp_results, total_warp_A, total_warp_B, warp_sum_futures
+            gc.collect()
+
+            # ---- PASS 2: Correlate mean-subtracted images ----
+            # Use chained submission to preserve lazy loading
+            logger.info(f"  [Image BG] Sub-pass 2/2: Correlating mean-subtracted images...")
+            worker_futures = []
+            for i, worker in enumerate(workers):
+                start_idx = i * chunks_per_worker
+                end_idx = min((i + 1) * chunks_per_worker, num_chunks)
+                if start_idx >= end_idx:
+                    continue
+
+                # Chain tasks: each depends on previous sum + one new batch
+                accumulated_future = None
+                for j, chunk_idx in enumerate(range(start_idx, end_idx)):
+                    block_future = block_futures[chunk_idx]
+                    accumulated_future = client.submit(
+                        correlate_mean_subtracted_single_batch,
+                        accumulated_future,
+                        block_future,
+                        scattered_config,
+                        pass_idx,
+                        scattered_predictor,
+                        scattered_means,
+                        scattered['cache'],
+                        scattered['masks'],
+                        j == 0,                # is_first_batch
+                        workers=[worker],
+                        pure=False,
+                    )
+
+                # Append only the final result of the chain
+                worker_futures.append(accumulated_future)
+
+            # DIAGNOSTIC: Check where accumulated futures live before gathering
+            logger.debug(f"  [LOCALITY] Checking future locations before gather...")
+            for i, fut in enumerate(worker_futures):
+                if hasattr(fut, 'key') and fut.key:
+                    who = client.who_has(fut)
+                    locations = list(who.get(fut.key, []))
+                    logger.debug(f"  [LOCALITY] Final future {i}: on workers {[w[-20:] for w in locations]}")
+
+            # Gather correlation results
+            worker_results = []
+            for i, future in enumerate(as_completed(worker_futures)):
+                result = future.result()
+                worker_results.append(result)
+                logger.info(f"  Worker {i+1}/{len(worker_futures)} complete ({result['n_images']} images)")
+
+            # Final local reduction
+            accumulated = worker_results[0]
+            for r in worker_results[1:]:
+                accumulated = reduce_ensemble_results(accumulated, r)
+
+            # For 'image' method, update warp sums with actual mean images
+            # (workers return zero warp sums for compatibility with reduce_ensemble_results)
+            # finalize_pass() needs these for diagnostic logging but skips background correlation
+            accumulated["warp_A_sum"] = A_mean * total_n_images
+            accumulated["warp_B_sum"] = B_mean * total_n_images
+
+            # Clean up scattered means
+            del scattered_means
+            gc.collect()
+
+        else:
+            # SINGLE-PASS method: correlate raw images, subtract correlated means after
+            # Use chained submission to preserve lazy loading - each task depends on
+            # (previous sum, ONE batch) so Dask only resolves one batch per task
+            worker_futures = []
+            for i, worker in enumerate(workers):
+                start_idx = i * chunks_per_worker
+                end_idx = min((i + 1) * chunks_per_worker, num_chunks)
+                if start_idx >= end_idx:
+                    continue
+
+                # Chain tasks: each depends on previous sum + one new batch
+                # This preserves lazy loading - only ONE batch resolved per task
+                accumulated_future = None
+                for j, chunk_idx in enumerate(range(start_idx, end_idx)):
+                    block_future = block_futures[chunk_idx]
+                    # Overwrite accumulated_future - releases Client's ref to previous future
+                    accumulated_future = client.submit(
+                        correlate_single_batch_and_accumulate,
+                        accumulated_future,    # Previous sum (Future or None)
+                        block_future,          # ONE batch - lazily resolved!
+                        scattered_config,
+                        pass_idx,
+                        scattered_predictor,
+                        scattered['cache'],
+                        scattered['masks'],
+                        j == 0,                # is_first_batch
+                        str(output_path) if config.ensemble_save_diagnostics and j == 0 else None,
+                        workers=[worker],      # Keep on same worker!
+                        pure=False,
+                    )
+
+                # CRITICAL: Append ONLY the final result of the chain
+                # This must be OUTSIDE the inner j loop
+                worker_futures.append(accumulated_future)
+
+            # DIAGNOSTIC: Check where accumulated futures live before gathering
+            logger.debug(f"  [LOCALITY] Checking future locations before gather...")
+            for i, fut in enumerate(worker_futures):
+                if hasattr(fut, 'key') and fut.key:
+                    who = client.who_has(fut)
+                    locations = list(who.get(fut.key, []))
+                    logger.debug(f"  [LOCALITY] Final future {i}: on workers {[w[-20:] for w in locations]}")
+
+            # Gather results with progress tracking
+            worker_results = []
+            for i, future in enumerate(as_completed(worker_futures)):
+                result = future.result()
+                worker_results.append(result)
+                logger.info(f"  Worker {i+1}/{len(worker_futures)} complete ({result['n_images']} images)")
+
+            # Final local reduction (fast - only num_workers elements)
+            accumulated = worker_results[0]
+            for r in worker_results[1:]:
+                accumulated = reduce_ensemble_results(accumulated, r)
 
         # Accumulate and finalize pass
         accumulator.accumulate_batch(accumulated, pass_idx=pass_idx)

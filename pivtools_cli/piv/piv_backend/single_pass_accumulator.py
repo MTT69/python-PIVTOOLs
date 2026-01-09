@@ -117,9 +117,10 @@ class SinglePassAccumulator:
             Loaded ensemble result containing completed passes
         n_images : int
             Number of images used to generate the loaded result
-            (should match the current run for consistent averaging)
+            (kept for API compatibility but not used - each pass counts its own images)
         """
-        self.n_images = n_images
+        # NOTE: Do NOT set self.n_images here! Each pass should count its own images
+        # via accumulate_batch(). Setting it here causes double-counting when resuming.
         self.passes_results = list(ensemble_result.passes)
         logging.info(
             f"Loaded {len(self.passes_results)} previous passes for resume "
@@ -396,24 +397,47 @@ class SinglePassAccumulator:
 
         logging.info(f"Pass {pass_idx + 1}: Applying single-pass optimization")
 
-        # Step 1: Compute mean warped images
+        # Check background subtraction method
+        bg_method = getattr(self.config, 'ensemble_background_subtraction_method', 'correlation')
+        skip_bg_subtraction = getattr(self.config, 'ensemble_skip_background_subtraction', False)
+
+        # Step 1: Compute mean warped images (always needed for diagnostics/metadata)
         A_mean = pass_data["sum_warp_A"] / N
         B_mean = pass_data["sum_warp_B"] / N
 
-        # Step 2: Compute average correlation planes (RAW with background)
+        # Step 2: Compute average correlation planes
         R_AA_raw = pass_data["sum_corr_AA"] / N
         R_BB_raw = pass_data["sum_corr_BB"] / N
         R_AB_raw = pass_data["sum_corr_AB"] / N
 
-
-        # Step 3: Correlate means for background subtraction
-        R_AA_bg, R_BB_bg, R_AB_bg = self._correlate_mean_images(A_mean, B_mean, pass_idx)
-
-        # Step 4: Background subtraction (SINGLE-PASS OPTIMIZATION)
-        #         R_ensemble = <A⋆B> - <A>⋆<B>
-        R_AA_ensemble = R_AA_raw - R_AA_bg
-        R_BB_ensemble = R_BB_raw - R_BB_bg
-        R_AB_ensemble = R_AB_raw - R_AB_bg
+        # Step 3-4: Background subtraction depends on method
+        if bg_method == 'image':
+            # IMAGE method: mean was subtracted BEFORE correlation
+            # Correlation planes are already background-subtracted: R = <(A-Ā)⊗(B-B̄)>
+            logging.info(f"Pass {pass_idx + 1}: Using 'image' background method (already subtracted)")
+            R_AA_ensemble = R_AA_raw
+            R_BB_ensemble = R_BB_raw
+            R_AB_ensemble = R_AB_raw
+            # Set background to zero for diagnostic logging
+            R_AA_bg = np.zeros_like(R_AA_raw)
+            R_BB_bg = np.zeros_like(R_BB_raw)
+            R_AB_bg = np.zeros_like(R_AB_raw)
+        elif skip_bg_subtraction:
+            # Skip background subtraction (debug mode)
+            logging.warning(f"Pass {pass_idx + 1}: SKIPPING background subtraction (debug mode)")
+            R_AA_ensemble = R_AA_raw
+            R_BB_ensemble = R_BB_raw
+            R_AB_ensemble = R_AB_raw
+            R_AA_bg = np.zeros_like(R_AA_raw)
+            R_BB_bg = np.zeros_like(R_BB_raw)
+            R_AB_bg = np.zeros_like(R_AB_raw)
+        else:
+            # CORRELATION method: correlate raw images, subtract correlated means
+            # R_ensemble = <A⊗B> - <A>⊗<B>
+            R_AA_bg, R_BB_bg, R_AB_bg = self._correlate_mean_images(A_mean, B_mean, pass_idx)
+            R_AA_ensemble = R_AA_raw - R_AA_bg
+            R_BB_ensemble = R_BB_raw - R_BB_bg
+            R_AB_ensemble = R_AB_raw - R_AB_bg
 
         # Step 4a: Diagnostic logging to understand noise floor source
         logging.debug(f"Pass {pass_idx + 1} BACKGROUND SUBTRACTION DIAGNOSTICS:")
@@ -536,7 +560,11 @@ class SinglePassAccumulator:
         # Note: set_offset_fitting() is now called inside fit_windows_openmp()
         # on each worker process (due to process isolation with Dask workers)
 
-        logging.info(f"Pass {pass_idx + 1}: Starting OpenMP Gaussian fitting...")
+        fit_method = self.config.ensemble_fit_method
+        if fit_method == "kspace":
+            logging.info(f"Pass {pass_idx + 1}: Starting K-space transfer function fitting...")
+        else:
+            logging.info(f"Pass {pass_idx + 1}: Starting OpenMP Gaussian fitting...")
         n_workers = len(client.scheduler_info()['workers'])
         workers = list(client.scheduler_info()["workers"].keys())
         windows_per_worker = (total_windows + n_workers - 1) // n_workers
@@ -588,21 +616,45 @@ class SinglePassAccumulator:
                     sigma_dict_futures[worker_idx][k]=None
 
 
+        # Choose fitting method based on config
+        fit_method = self.config.ensemble_fit_method
+
+        if fit_method == "kspace":
+            # K-space transfer function fitting
+            from pivtools_cli.piv.piv_backend.kspace_fitting import fit_windows_kspace
+            futures = [
+                client.submit(
+                    fit_windows_kspace,
+                    R_AA_futures[i],
+                    R_BB_futures[i],
+                    R_AB_futures[i],
+                    mask_flat_futures[i],
+                    corr_size,
+                    self.config,
+                    pass_idx,
+                    self.config.ensemble_kspace_snr_threshold,
+                    self.config.ensemble_kspace_soft_weighting,  # True for anisotropic soft decay
+                    self.config.debug,  # Enable k-space diagnostics when debug=True
+                ) for i in range(len(R_AA_futures))
+            ]
+        else:
+            # Default: Gaussian fitting (Levenberg-Marquardt)
             from pivtools_cli.piv.piv_backend.gaussian_fitting import fit_windows_openmp
             futures = [
-    client.submit(
-        fit_windows_openmp,
-        R_AA_futures[i],
-        R_BB_futures[i],
-        R_AB_futures[i],
-        mask_flat_futures[i],
-        sigma_dict_futures[i],
-        corr_size,
-        self.config,
-        pass_idx,
-        None,  # num_threads (use default)
-        self.config.ensemble_fit_offset,  # Pass fit_offset to worker
-    ) for i in range(len(R_AA_futures))]
+                client.submit(
+                    fit_windows_openmp,
+                    R_AA_futures[i],
+                    R_BB_futures[i],
+                    R_AB_futures[i],
+                    mask_flat_futures[i],
+                    sigma_dict_futures[i],
+                    corr_size,
+                    self.config,
+                    pass_idx,
+                    None,  # num_threads (use default)
+                    self.config.ensemble_fit_offset,  # Pass fit_offset to worker
+                ) for i in range(len(R_AA_futures))
+            ]
 
         results = client.gather(futures) 
         gauss_flat = np.concatenate([r[0] for r in results])

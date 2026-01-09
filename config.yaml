@@ -1,6 +1,6 @@
 paths:
   base_paths:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/validation
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/window_validation
   source_paths:
   - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images
   active_paths:
@@ -10,7 +10,7 @@ paths:
   camera_count: 1
   camera_subfolders: []
 images:
-  num_images: 100
+  num_images: 1000
   image_format:
   - B%05d_A.tif
   - B%05d_B.tif
@@ -21,7 +21,7 @@ images:
   zero_based_indexing: false
   pairing_mode: sequential
   pairing_skip: 0
-  num_frame_pairs: 100
+  num_frame_pairs: 1000
   image_type: standard
   use_camera_subfolders: false
 batches:
@@ -34,10 +34,10 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 10
-  dask_workers_per_node: 5
+  omp_threads: 5
+  dask_workers_per_node: 2
   dask_threads_per_worker: 1
-  dask_memory_limit: 4GB
+  dask_memory_limit: 8GB
   always_batch: true
   instantaneous: false
   ensemble: true
@@ -142,16 +142,22 @@ instantaneous_piv:
   peak_finder: gauss6
   secondary_peak: false
 ensemble_piv:
+  fit_method: gaussian
+  skip_background_subtraction: false
+  image_warp_interpolation: cubic
+  predictor_interpolation: cubic
+  kspace_snr_threshold: 3.0
   fit_offset: false
+  background_subtraction_method: correlation
   window_size:
-  - - 128
-    - 128
   - - 64
     - 64
-  - - 32
-    - 32
   - - 16
     - 16
+  - - 16
+    - 16
+  - - 8
+    - 8
   overlap:
   - 50
   - 50
@@ -159,9 +165,9 @@ ensemble_piv:
   - 50
   type:
   - std
-  - std
-  - std
-  - std
+  - single
+  - single
+  - single
   runs:
   - 1
   - 2
@@ -170,9 +176,9 @@ ensemble_piv:
   store_planes: true
   save_diagnostics: true
   sum_window:
-  - 16
-  - 16
-  resume_from_pass: 0
+  - 32
+  - 32
+  resume_from_pass: 4
   window_type: square
 calibration:
   image_format: planar_calibration_plate_%02d.tif

@@ -542,6 +542,7 @@ def correlate_batch_for_accumulation_distributed(
     scattered_cache: dict,
     scattered_masks: Optional[List[np.ndarray]],
     is_first_batch: bool = False,
+    output_path: Optional[str] = None,
 ) -> dict:
     """
     Wrapper for distributed ensemble correlation.
@@ -557,6 +558,7 @@ def correlate_batch_for_accumulation_distributed(
         scattered_cache: Pre-scattered correlator cache
         scattered_masks: Pre-scattered vector masks
         is_first_batch: If True, capture first-pair warped images for diagnostics
+        output_path: Path for saving diagnostic images
 
     Returns:
         Dict with correlation sums (corr_AA_sum, corr_BB_sum, corr_AB_sum, etc.)
@@ -575,6 +577,8 @@ def correlate_batch_for_accumulation_distributed(
         pass_idx=pass_idx,
         predictor_field=scattered_predictor,
         is_first_batch=is_first_batch,
+        save_diagnostics=config.ensemble_save_diagnostics,
+        output_path=output_path,
     )
 
     return result
@@ -641,17 +645,17 @@ def extract_predictor_field(pass_result) -> np.ndarray:
     # NOTE: No padding here - _get_im_mesh() in cpu_ensemble.py handles
     # proper padding using n_pre_all/n_post_all which vary by pass configuration
 
-    # DEBUG: Log edge values of extracted predictor to trace edge artifact source
-    logger.debug(
-        f"Extracted predictor field: shape={predictor_field.shape}, "
-        f"edge values: top-left=({predictor_field[0,0,0]:.4f}, {predictor_field[0,0,1]:.4f}), "
-        f"top-right=({predictor_field[0,-1,0]:.4f}, {predictor_field[0,-1,1]:.4f}), "
-        f"bot-left=({predictor_field[-1,0,0]:.4f}, {predictor_field[-1,0,1]:.4f}), "
-        f"bot-right=({predictor_field[-1,-1,0]:.4f}, {predictor_field[-1,-1,1]:.4f}), "
-        f"center=({predictor_field[predictor_field.shape[0]//2, predictor_field.shape[1]//2, 0]:.4f}, "
-        f"{predictor_field[predictor_field.shape[0]//2, predictor_field.shape[1]//2, 1]:.4f}), "
-        f"uy range=[{np.nanmin(uy):.4f}, {np.nanmax(uy):.4f}], "
-        f"ux range=[{np.nanmin(ux):.4f}, {np.nanmax(ux):.4f}]"
+    # DEBUG: Log predictor field statistics to prove it's the WHOLE-PASS MEAN
+    # This proves the predictor is NOT batch-dependent - it's computed from
+    # ALL images accumulated across ALL batches in the previous pass
+    logger.info(
+        f"[PREDICTOR DEBUG] Extracted from pass_result (whole-pass mean field):\n"
+        f"  Shape: {predictor_field.shape} (n_win_y, n_win_x, 2)\n"
+        f"  ux (mean displacement x): mean={np.nanmean(ux):.6f}, std={np.nanstd(ux):.6f}, "
+        f"range=[{np.nanmin(ux):.4f}, {np.nanmax(ux):.4f}]\n"
+        f"  uy (mean displacement y): mean={np.nanmean(uy):.6f}, std={np.nanstd(uy):.6f}, "
+        f"range=[{np.nanmin(uy):.4f}, {np.nanmax(uy):.4f}]\n"
+        f"  Source: pass_result.ux_mat, pass_result.uy_mat (ensemble mean from ALL batches)"
     )
 
     return predictor_field
@@ -668,6 +672,7 @@ def correlate_and_reduce_on_worker(
     scattered_predictor: Optional[np.ndarray],
     scattered_cache: dict,
     scattered_masks: Optional[List[np.ndarray]],
+    output_path: Optional[str] = None,
 ) -> dict:
     """
     Process multiple batches on one worker, returning single accumulated result.
@@ -686,6 +691,7 @@ def correlate_and_reduce_on_worker(
         scattered_predictor: Pre-scattered predictor field (or None for pass 0)
         scattered_cache: Pre-scattered correlator cache
         scattered_masks: Pre-scattered vector masks
+        output_path: Path for saving diagnostic images
 
     Returns:
         Dict with accumulated correlation sums:
@@ -696,6 +702,9 @@ def correlate_and_reduce_on_worker(
             - smoothed_predictor, vector_mask: Metadata from last batch
     """
     from pivtools_cli.piv.piv_backend.cpu_ensemble import EnsembleCorrelatorCPU
+
+    # NOTE: This function is deprecated in favor of correlate_single_batch_and_accumulate
+    # which uses chained submission for lazy loading. Kept for reference/fallback.
 
     # Create correlator once for all batches on this worker
     correlator = EnsembleCorrelatorCPU(
@@ -719,6 +728,8 @@ def correlate_and_reduce_on_worker(
             pass_idx=pass_idx,
             predictor_field=scattered_predictor,
             is_first_batch=not is_first_batch_processed,
+            save_diagnostics=config.ensemble_save_diagnostics,
+            output_path=output_path,
         )
         is_first_batch_processed = True
 
@@ -761,3 +772,465 @@ def correlate_and_reduce_on_worker(
         raise ValueError("No valid batches to process on this worker")
 
     return accumulated
+
+
+def compute_warp_sums_on_worker(
+    batch_list: List[np.ndarray],
+    config: Config,
+    pass_idx: int,
+    scattered_predictor: Optional[np.ndarray],
+    scattered_cache: dict,
+    scattered_masks: Optional[List[np.ndarray]],
+) -> dict:
+    """
+    First pass for 'image' background method: compute warped image sums only.
+
+    This is the first half of the two-pass 'image' background subtraction method.
+    It loads images, warps them if pass > 0, and accumulates the warped image sums
+    to compute mean images (Ā, B̄).
+
+    Args:
+        batch_list: List of image batches, each of shape (N, 2, H, W)
+        config: Configuration object
+        pass_idx: Current pass index
+        scattered_predictor: Pre-scattered predictor field (or None for pass 0)
+        scattered_cache: Pre-scattered correlator cache
+        scattered_masks: Pre-scattered vector masks
+
+    Returns:
+        Dict with accumulated warp sums:
+            - warp_A_sum: Summed warped A images (H, W)
+            - warp_B_sum: Summed warped B images (H, W)
+            - n_images: Total image count processed
+            - smoothed_predictor: Smoothed predictor from last batch
+    """
+    from pivtools_cli.piv.piv_backend.cpu_ensemble import EnsembleCorrelatorCPU
+
+    # NOTE: This function is deprecated in favor of warp_single_batch_and_accumulate
+    # which uses chained submission for lazy loading. Kept for reference/fallback.
+
+    # Create correlator once for all batches on this worker
+    correlator = EnsembleCorrelatorCPU(
+        config,
+        precomputed_cache=scattered_cache,
+        vector_masks=scattered_masks,
+    )
+
+    accumulated = None
+
+    for batch in batch_list:
+        # Skip empty batches
+        if batch is None or (hasattr(batch, 'shape') and batch.shape[0] == 0):
+            continue
+
+        # Compute warp sums only (no correlation)
+        result = correlator.compute_warp_sums_only(
+            batch,
+            config,
+            pass_idx=pass_idx,
+            predictor_field=scattered_predictor,
+        )
+
+        if accumulated is None:
+            accumulated = {
+                "warp_A_sum": result["warp_A_sum"].copy(),
+                "warp_B_sum": result["warp_B_sum"].copy(),
+                "n_images": result["n_images"],
+                "smoothed_predictor": result.get("smoothed_predictor"),
+            }
+        else:
+            accumulated["warp_A_sum"] += result["warp_A_sum"]
+            accumulated["warp_B_sum"] += result["warp_B_sum"]
+            accumulated["n_images"] += result["n_images"]
+            if result.get("smoothed_predictor") is not None:
+                accumulated["smoothed_predictor"] = result["smoothed_predictor"]
+
+    if accumulated is None:
+        raise ValueError("No valid batches to process on this worker")
+
+    return accumulated
+
+
+def correlate_mean_subtracted_on_worker(
+    batch_list: List[np.ndarray],
+    config: Config,
+    pass_idx: int,
+    scattered_predictor: Optional[np.ndarray],
+    scattered_means: dict,
+    scattered_cache: dict,
+    scattered_masks: Optional[List[np.ndarray]],
+) -> dict:
+    """
+    Second pass for 'image' background method: correlate mean-subtracted images.
+
+    This is the second half of the two-pass 'image' background subtraction method.
+    It loads images, warps them if pass > 0, subtracts the pre-computed mean images,
+    then correlates the mean-subtracted images.
+
+    Formula: R_ensemble = <(A - Ā) ⊗ (B - B̄)>
+
+    Args:
+        batch_list: List of image batches, each of shape (N, 2, H, W)
+        config: Configuration object
+        pass_idx: Current pass index
+        scattered_predictor: Pre-scattered predictor field (or None for pass 0)
+        scattered_means: Dict with 'A_mean' and 'B_mean' arrays (H, W)
+        scattered_cache: Pre-scattered correlator cache
+        scattered_masks: Pre-scattered vector masks
+
+    Returns:
+        Dict with accumulated correlation sums:
+            - corr_AA_sum, corr_BB_sum, corr_AB_sum: Summed correlation planes
+            - n_images: Total image count processed
+            - n_win_x, n_win_y: Grid dimensions
+            - smoothed_predictor, vector_mask: Metadata from last batch
+    """
+    from pivtools_cli.piv.piv_backend.cpu_ensemble import EnsembleCorrelatorCPU
+
+    # Create correlator once for all batches on this worker
+    correlator = EnsembleCorrelatorCPU(
+        config,
+        precomputed_cache=scattered_cache,
+        vector_masks=scattered_masks,
+    )
+
+    # Extract mean images
+    A_mean = scattered_means["A_mean"]
+    B_mean = scattered_means["B_mean"]
+
+    accumulated = None
+    is_first_batch_processed = False
+
+    for batch in batch_list:
+        # Skip empty batches
+        if batch is None or (hasattr(batch, 'shape') and batch.shape[0] == 0):
+            continue
+
+        # Correlate mean-subtracted images
+        result = correlator.correlate_mean_subtracted_batch(
+            batch,
+            config,
+            pass_idx=pass_idx,
+            A_mean=A_mean,
+            B_mean=B_mean,
+            predictor_field=scattered_predictor,
+            is_first_batch=not is_first_batch_processed,
+        )
+        is_first_batch_processed = True
+
+        if accumulated is None:
+            # Get image shape from first pair for dummy warp sums
+            H, W = batch.shape[2], batch.shape[3]
+            accumulated = {
+                "corr_AA_sum": result["corr_AA_sum"].copy(),
+                "corr_BB_sum": result["corr_BB_sum"].copy(),
+                "corr_AB_sum": result["corr_AB_sum"].copy(),
+                # Dummy warp sums (zeros) - not needed for 'image' method but
+                # required for reduce_ensemble_results compatibility
+                "warp_A_sum": np.zeros((H, W), dtype=np.float32),
+                "warp_B_sum": np.zeros((H, W), dtype=np.float32),
+                "n_images": result["n_images"],
+                "n_win_x": result["n_win_x"],
+                "n_win_y": result["n_win_y"],
+                "smoothed_predictor": result.get("smoothed_predictor"),
+                "vector_mask": result.get("vector_mask"),
+                "n_pre": result.get("n_pre"),
+                "n_post": result.get("n_post"),
+                "first_pair_A": result.get("first_pair_A"),
+                "first_pair_B": result.get("first_pair_B"),
+            }
+        else:
+            accumulated["corr_AA_sum"] += result["corr_AA_sum"]
+            accumulated["corr_BB_sum"] += result["corr_BB_sum"]
+            accumulated["corr_AB_sum"] += result["corr_AB_sum"]
+            accumulated["n_images"] += result["n_images"]
+            # warp sums stay at zero for 'image' method
+            if result.get("smoothed_predictor") is not None:
+                accumulated["smoothed_predictor"] = result["smoothed_predictor"]
+            if result.get("vector_mask") is not None:
+                accumulated["vector_mask"] = result["vector_mask"]
+
+    if accumulated is None:
+        raise ValueError("No valid batches to process on this worker")
+
+    return accumulated
+
+
+# =============================================================================
+# SINGLE-BATCH CHAINED ACCUMULATION FUNCTIONS
+# =============================================================================
+#
+# These functions process ONE batch at a time and are designed for chained
+# Dask submission. This preserves lazy loading - Dask only resolves the
+# dependencies needed for each task (one batch + previous accumulated sum).
+#
+# CRITICAL: Use `+` NOT `+=` to create NEW arrays. This ensures idempotency -
+# if Dask retries a failed task, the input `accumulated` is untouched.
+
+
+def correlate_single_batch_and_accumulate(
+    accumulated: Optional[dict],
+    batch: np.ndarray,
+    config: Config,
+    pass_idx: int,
+    predictor_field: Optional[np.ndarray],
+    cache: dict,
+    masks: Optional[List[np.ndarray]],
+    is_first_batch: bool = False,
+    output_path: Optional[str] = None,
+) -> dict:
+    """
+    Correlate ONE batch and accumulate with previous sum.
+
+    Designed for chained submission where each task depends on:
+    - accumulated: Future from previous task (or None for first batch)
+    - batch: ONE batch Future (lazily resolved by Dask)
+
+    This keeps memory usage to ~100MB (1 batch + accumulated sum) instead
+    of loading all batches upfront.
+
+    CRITICAL: We use `+` NOT `+=` to create NEW arrays. This ensures
+    idempotency - if Dask retries a failed task, the input `accumulated`
+    is untouched and won't cause double-counting.
+
+    Args:
+        accumulated: Previous accumulated result (None for first batch)
+        batch: Single image batch of shape (N, 2, H, W)
+        config: Configuration object
+        pass_idx: Current pass index
+        predictor_field: Predictor field (or None for pass 0)
+        cache: Correlator cache
+        masks: Vector masks
+        is_first_batch: Whether this is the first batch (for diagnostics)
+        output_path: Path for saving diagnostic images
+
+    Returns:
+        Dict with accumulated correlation sums
+    """
+    from pivtools_cli.piv.piv_backend.cpu_ensemble import EnsembleCorrelatorCPU
+
+    # Skip empty batches
+    if batch is None or (hasattr(batch, 'shape') and batch.shape[0] == 0):
+        return accumulated if accumulated is not None else {}
+
+    # TEMPORARY DEBUG: Monitor memory per batch to confirm lazy loading
+    import psutil
+    import os as os_module
+    process = psutil.Process(os_module.getpid())
+    mem_before = process.memory_info().rss / 1024**3
+    n_images_so_far = accumulated["n_images"] if accumulated else 0
+    batch_images = batch.shape[0] if hasattr(batch, 'shape') else 0
+
+    correlator = EnsembleCorrelatorCPU(config, precomputed_cache=cache, vector_masks=masks)
+
+    result = correlator.correlate_batch_for_accumulation(
+        batch,
+        config,
+        pass_idx=pass_idx,
+        predictor_field=predictor_field,
+        is_first_batch=is_first_batch,
+        save_diagnostics=config.ensemble_save_diagnostics,
+        output_path=output_path,
+    )
+
+    mem_after = process.memory_info().rss / 1024**3
+    logger.info(
+        f"[CHAINED] Batch +{batch_images} images (total: {n_images_so_far + batch_images}), "
+        f"mem: {mem_before:.2f} -> {mem_after:.2f} GB"
+    )
+
+    # DIAGNOSTIC: Track data locality across batches
+    from distributed import get_worker
+    try:
+        worker = get_worker()
+        worker_addr = worker.address
+        # Check if accumulated data has a provenance marker
+        acc_from = accumulated.get("_worker_addr", "none") if accumulated else "none"
+        logger.debug(
+            f"[LOCALITY] Worker {worker_addr[-20:]}: batch +{batch_images} images, "
+            f"accumulated_from={acc_from[-20:] if acc_from != 'none' else 'none'}"
+        )
+        # Tag this result with our worker address for tracking
+        result["_worker_addr"] = worker_addr
+    except Exception:
+        pass  # Running outside worker context
+
+    if accumulated is None:
+        # First batch - return result directly (makes copies)
+        return {
+            "corr_AA_sum": result["corr_AA_sum"].copy(),
+            "corr_BB_sum": result["corr_BB_sum"].copy(),
+            "corr_AB_sum": result["corr_AB_sum"].copy(),
+            "warp_A_sum": result["warp_A_sum"].copy(),
+            "warp_B_sum": result["warp_B_sum"].copy(),
+            "n_images": result["n_images"],
+            "n_win_x": result["n_win_x"],
+            "n_win_y": result["n_win_y"],
+            "smoothed_predictor": result.get("smoothed_predictor"),
+            "vector_mask": result.get("vector_mask"),
+            "n_pre": result.get("n_pre"),
+            "n_post": result.get("n_post"),
+            "first_pair_A": result.get("first_pair_A"),
+            "first_pair_B": result.get("first_pair_B"),
+            "_worker_addr": result.get("_worker_addr"),  # DIAGNOSTIC: track locality
+        }
+    else:
+        # SAFE: Create shallow copy of container, then NEW arrays for sums
+        # This leaves `accumulated` untouched for Dask retry safety
+        new_accumulated = accumulated.copy()
+        new_accumulated["corr_AA_sum"] = accumulated["corr_AA_sum"] + result["corr_AA_sum"]
+        new_accumulated["corr_BB_sum"] = accumulated["corr_BB_sum"] + result["corr_BB_sum"]
+        new_accumulated["corr_AB_sum"] = accumulated["corr_AB_sum"] + result["corr_AB_sum"]
+        new_accumulated["warp_A_sum"] = accumulated["warp_A_sum"] + result["warp_A_sum"]
+        new_accumulated["warp_B_sum"] = accumulated["warp_B_sum"] + result["warp_B_sum"]
+        new_accumulated["n_images"] = accumulated["n_images"] + result["n_images"]
+        # Metadata updates (overwrite is fine - scalars/small refs)
+        for key in ["smoothed_predictor", "vector_mask", "n_pre", "n_post", "_worker_addr"]:
+            if result.get(key) is not None:
+                new_accumulated[key] = result[key]
+        return new_accumulated
+
+
+def warp_single_batch_and_accumulate(
+    accumulated: Optional[dict],
+    batch: np.ndarray,
+    config: Config,
+    pass_idx: int,
+    predictor_field: Optional[np.ndarray],
+    cache: dict,
+    masks: Optional[List[np.ndarray]],
+) -> dict:
+    """
+    Compute warp sums for ONE batch (first pass of 'image' background method).
+
+    Single-batch version of compute_warp_sums_on_worker for chained submission.
+
+    Args:
+        accumulated: Previous accumulated result (None for first batch)
+        batch: Single image batch of shape (N, 2, H, W)
+        config: Configuration object
+        pass_idx: Current pass index
+        predictor_field: Predictor field (or None for pass 0)
+        cache: Correlator cache
+        masks: Vector masks
+
+    Returns:
+        Dict with accumulated warp sums
+    """
+    from pivtools_cli.piv.piv_backend.cpu_ensemble import EnsembleCorrelatorCPU
+
+    # Skip empty batches
+    if batch is None or (hasattr(batch, 'shape') and batch.shape[0] == 0):
+        return accumulated if accumulated is not None else {}
+
+    correlator = EnsembleCorrelatorCPU(config, precomputed_cache=cache, vector_masks=masks)
+
+    result = correlator.compute_warp_sums_only(
+        batch,
+        config,
+        pass_idx=pass_idx,
+        predictor_field=predictor_field,
+    )
+
+    if accumulated is None:
+        return {
+            "warp_A_sum": result["warp_A_sum"].copy(),
+            "warp_B_sum": result["warp_B_sum"].copy(),
+            "n_images": result["n_images"],
+            "smoothed_predictor": result.get("smoothed_predictor"),
+        }
+    else:
+        # SAFE: Create NEW arrays using + (not +=) for retry safety
+        new_accumulated = accumulated.copy()
+        new_accumulated["warp_A_sum"] = accumulated["warp_A_sum"] + result["warp_A_sum"]
+        new_accumulated["warp_B_sum"] = accumulated["warp_B_sum"] + result["warp_B_sum"]
+        new_accumulated["n_images"] = accumulated["n_images"] + result["n_images"]
+        if result.get("smoothed_predictor") is not None:
+            new_accumulated["smoothed_predictor"] = result["smoothed_predictor"]
+        return new_accumulated
+
+
+def correlate_mean_subtracted_single_batch(
+    accumulated: Optional[dict],
+    batch: np.ndarray,
+    config: Config,
+    pass_idx: int,
+    predictor_field: Optional[np.ndarray],
+    mean_images: dict,
+    cache: dict,
+    masks: Optional[List[np.ndarray]],
+    is_first_batch: bool = False,
+) -> dict:
+    """
+    Correlate mean-subtracted images for ONE batch (second pass of 'image' method).
+
+    Single-batch version of correlate_mean_subtracted_on_worker for chained submission.
+
+    Args:
+        accumulated: Previous accumulated result (None for first batch)
+        batch: Single image batch of shape (N, 2, H, W)
+        config: Configuration object
+        pass_idx: Current pass index
+        predictor_field: Predictor field (or None for pass 0)
+        mean_images: Dict with 'A_mean' and 'B_mean' arrays
+        cache: Correlator cache
+        masks: Vector masks
+        is_first_batch: Whether this is the first batch (for diagnostics)
+
+    Returns:
+        Dict with accumulated correlation sums
+    """
+    from pivtools_cli.piv.piv_backend.cpu_ensemble import EnsembleCorrelatorCPU
+
+    # Skip empty batches
+    if batch is None or (hasattr(batch, 'shape') and batch.shape[0] == 0):
+        return accumulated if accumulated is not None else {}
+
+    correlator = EnsembleCorrelatorCPU(config, precomputed_cache=cache, vector_masks=masks)
+
+    A_mean = mean_images["A_mean"]
+    B_mean = mean_images["B_mean"]
+
+    result = correlator.correlate_mean_subtracted_batch(
+        batch,
+        config,
+        pass_idx=pass_idx,
+        A_mean=A_mean,
+        B_mean=B_mean,
+        predictor_field=predictor_field,
+        is_first_batch=is_first_batch,
+    )
+
+    if accumulated is None:
+        # Get image shape from first pair for dummy warp sums
+        H, W = batch.shape[2], batch.shape[3]
+        return {
+            "corr_AA_sum": result["corr_AA_sum"].copy(),
+            "corr_BB_sum": result["corr_BB_sum"].copy(),
+            "corr_AB_sum": result["corr_AB_sum"].copy(),
+            # Dummy warp sums (zeros) - not needed for 'image' method but
+            # required for reduce_ensemble_results compatibility
+            "warp_A_sum": np.zeros((H, W), dtype=np.float32),
+            "warp_B_sum": np.zeros((H, W), dtype=np.float32),
+            "n_images": result["n_images"],
+            "n_win_x": result["n_win_x"],
+            "n_win_y": result["n_win_y"],
+            "smoothed_predictor": result.get("smoothed_predictor"),
+            "vector_mask": result.get("vector_mask"),
+            "n_pre": result.get("n_pre"),
+            "n_post": result.get("n_post"),
+            "first_pair_A": result.get("first_pair_A"),
+            "first_pair_B": result.get("first_pair_B"),
+        }
+    else:
+        # SAFE: Create NEW arrays using + (not +=) for retry safety
+        new_accumulated = accumulated.copy()
+        new_accumulated["corr_AA_sum"] = accumulated["corr_AA_sum"] + result["corr_AA_sum"]
+        new_accumulated["corr_BB_sum"] = accumulated["corr_BB_sum"] + result["corr_BB_sum"]
+        new_accumulated["corr_AB_sum"] = accumulated["corr_AB_sum"] + result["corr_AB_sum"]
+        new_accumulated["n_images"] = accumulated["n_images"] + result["n_images"]
+        # warp sums stay at zero for 'image' method
+        for key in ["smoothed_predictor", "vector_mask", "n_pre", "n_post"]:
+            if result.get(key) is not None:
+                new_accumulated[key] = result[key]
+        return new_accumulated
