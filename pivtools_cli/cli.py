@@ -1151,6 +1151,7 @@ video:
   fps: 30
   crf: 15
   resolution: 1080p
+  source_endpoint: regular
 statistics:
   enabled_methods:
     mean_velocity: true
@@ -1200,6 +1201,13 @@ instantaneous_piv:
   peak_finder: gauss6
   secondary_peak: false
 ensemble_piv:
+  fit_method: gaussian
+  skip_background_subtraction: false
+  image_warp_interpolation: cubic
+  predictor_interpolation: cubic
+  kspace_snr_threshold: 3.0
+  fit_offset: false
+  background_subtraction_method: correlation
   window_size:
   - - 128
     - 128
@@ -1225,6 +1233,7 @@ ensemble_piv:
   - 16
   - 16
   resume_from_pass: 0
+  window_type: square
 calibration:
   image_format: planar_calibration_plate_%02d.tif
   num_images: 19
