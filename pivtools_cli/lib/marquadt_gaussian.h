@@ -18,6 +18,8 @@ extern "C" {
  * directly without storing the full Jacobian matrix. This keeps data in L1 cache
  * and achieves ~10-20x speedup over the GSL multifit approach.
  *
+ * Supports rectangular windows (win_height != win_width).
+ *
  * Model: f(x,y) = amplitude * exp(-0.5 * quadratic_form) + offset
  *
  * Parameters per window (16 total):
@@ -39,7 +41,9 @@ extern "C" {
  *   [15] y0_AB          - Y-displacement (cross-correlation peak)
  *
  * @param num_windows     Number of windows to fit
- * @param n_per_window    Number of grid points per plane (win_h * win_w)
+ * @param n_per_window    Number of grid points per plane (win_height * win_width)
+ * @param win_height      Window height in pixels (rows)
+ * @param win_width       Window width in pixels (columns)
  * @param X1              Y-grid coordinates (length n_per_window, shared)
  * @param X2              X-grid coordinates (length n_per_window, shared)
  * @param y_all           Stacked data for all windows (length num_windows * 3 * n_per_window)
@@ -51,6 +55,8 @@ extern "C" {
 int fit_stacked_gaussian_batch_export(
     size_t num_windows,
     size_t n_per_window,
+    size_t win_height,
+    size_t win_width,
     const double *X1,
     const double *X2,
     const double *y_all,

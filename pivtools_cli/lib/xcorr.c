@@ -105,7 +105,8 @@ unsigned xcorr_create_plan(const int *N, sPlan *pPlanStruct)
 
     /* Compute sizes using 64-bit temporaries to detect overflow */
     numel_ull = (unsigned long long)N[0] * (unsigned long long)N[1];
-    numel_fft_ull = (unsigned long long)N[1] * (unsigned long long)(N[0]/2 + 1);
+    /* For r2c transform: output shape is (N[0], N[1]/2+1) */
+    numel_fft_ull = (unsigned long long)N[0] * (unsigned long long)(N[1]/2 + 1);
 
     /* Sane upper bound check (prevent crazy values). Adjust as appropriate. */
     const unsigned long long MAX_PIXELS = 1ULL << 30; /* ~1 billion elements */
@@ -121,8 +122,9 @@ unsigned xcorr_create_plan(const int *N, sPlan *pPlanStruct)
 
     /* Debug print to see exactly what sizes are requested */
 
-    Nbackwards[0] = N[1];
-    Nbackwards[1] = N[0];
+    /* FFTW uses row-major order: first dim = rows (height), second dim = cols (width) */
+    Nbackwards[0] = N[0];
+    Nbackwards[1] = N[1];
 
     /* allocate aligned memory for plan scratch */
     ab_copy = (fftwf_real *)fftwf_alloc_real((size_t)numel * 2);
@@ -151,7 +153,7 @@ unsigned xcorr_create_plan(const int *N, sPlan *pPlanStruct)
                                          1, (int)numel_fft,
                                          flags_measure);
 
-    plan_C_ifft = fftwf_plan_dft_c2r_2d(N[1], N[0], C, c_copy, flags_measure);
+    plan_C_ifft = fftwf_plan_dft_c2r_2d(N[0], N[1], C, c_copy, flags_measure);
 
     if (!plan_AB_fft || !plan_C_ifft) {
         fprintf(stderr, "xcorr_create_plan: MEASURE plan failed for N=(%d,%d). Falling back to ESTIMATE\n", N[0], N[1]);
@@ -165,7 +167,7 @@ unsigned xcorr_create_plan(const int *N, sPlan *pPlanStruct)
                                              1, (int)numel_fft,
                                              flags_estimate);
 
-        plan_C_ifft = fftwf_plan_dft_c2r_2d(N[1], N[0], C, c_copy, flags_estimate);
+        plan_C_ifft = fftwf_plan_dft_c2r_2d(N[0], N[1], C, c_copy, flags_estimate);
 
         if (!plan_AB_fft || !plan_C_ifft) {
             fprintf(stderr, "xcorr_create_plan: ESTIMATE plan also failed for N=(%d,%d). plan_AB=%p plan_C=%p\n",
@@ -263,7 +265,7 @@ unsigned xcorr_preplanned(const float *a, const float *b, float *c, sPlan *pPlan
 	 * initialise variables to be used for later
 	 */
 	numel			= N[0] * N[1];
-	numel_fft	= N[1] * (N[0]/2+1);
+	numel_fft	= N[0] * (N[1]/2+1);  /* r2c output shape: (N[0], N[1]/2+1) */
 
 	/****
 	 * copy in a and b, should be done after planning stage as fftwf_plan can overwrite 

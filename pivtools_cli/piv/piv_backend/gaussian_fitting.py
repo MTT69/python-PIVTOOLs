@@ -533,9 +533,12 @@ def _fit_windows_batch_optimized(
         y_all[offset:offset + 3 * n_per_window] = real_corr
 
     # Call batch C function with OpenMP parallelization
+    # Pass win_height and win_width separately to support rectangular windows
     success_count = marquadt_lib.fit_stacked_gaussian_batch_export(
         ctypes.c_size_t(n_valid),
         ctypes.c_size_t(n_per_window),
+        ctypes.c_size_t(win_size[0]),  # win_height
+        ctypes.c_size_t(win_size[1]),  # win_width
         X2.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),  # Note: X2 is x-coord
         X1.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),  # Note: X1 is y-coord
         y_all.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
@@ -1315,10 +1318,13 @@ def fit_windows_openmp(
     statuses_valid = np.zeros(n_valid, dtype=np.int32)
 
     # Call batch C function - OpenMP parallelizes internally
+    # Pass win_height and win_width separately to support rectangular windows
     logger.debug(f"fit_windows_openmp: Calling C batch function with {n_valid} windows")
     success_count = marquadt_lib.fit_stacked_gaussian_batch_export(
         ctypes.c_size_t(n_valid),
         ctypes.c_size_t(n_per_window),
+        ctypes.c_size_t(win_size[0]),  # win_height
+        ctypes.c_size_t(win_size[1]),  # win_width
         X2.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),  # X2 is x-coord
         X1.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),  # X1 is y-coord
         y_all.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),

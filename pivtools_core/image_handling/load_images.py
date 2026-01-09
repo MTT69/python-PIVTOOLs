@@ -479,6 +479,7 @@ def load_mask_for_camera(
 def compute_vector_mask(
     pixel_mask: np.ndarray,
     config: Config,
+    ensemble: bool = None,
 ) -> List[np.ndarray]:
     """
     Compute binary vector masks for each PIV pass based on pixel mask.
@@ -504,6 +505,10 @@ def compute_vector_mask(
         Boolean pixel mask of shape (H, W) where True indicates masked regions
     config : Config
         Configuration object containing window sizes, overlap, and mask threshold
+    ensemble : bool, optional
+        If True, use ensemble config (ensemble_window_sizes, etc.).
+        If False, use instantaneous config (window_sizes, etc.).
+        If None (default), auto-detect from config.ensemble_piv flag.
 
     Returns
     -------
@@ -524,15 +529,36 @@ def compute_vector_mask(
     if pixel_mask is None:
         return []
 
-    # Ensure mask is float for convolution
-    im_mask = pixel_mask.astype(np.float32)
-    H, W = im_mask.shape
+    # CRITICAL: Use config.image_shape for window grid computation to match
+    # correlator/accumulator, NOT pixel_mask.shape. This ensures the vector
+    # mask grid dimensions match the PIV data grid.
+    H, W = config.image_shape
+    logging.info(f"compute_vector_mask: Using config.image_shape = ({H}, {W})")
+    logging.info(f"compute_vector_mask: pixel_mask.shape = {pixel_mask.shape}")
+
+    # Validate mask dimensions match config.image_shape
+    if pixel_mask.shape != (H, W):
+        logging.warning(
+            f"Pixel mask shape {pixel_mask.shape} differs from config.image_shape {(H, W)}. "
+            f"Resizing mask to match image dimensions."
+        )
+        from scipy.ndimage import zoom
+        zoom_factors = (H / pixel_mask.shape[0], W / pixel_mask.shape[1])
+        # Use order=0 (nearest neighbor) to preserve binary nature of mask
+        pixel_mask = zoom(pixel_mask.astype(np.float32), zoom_factors, order=0) > 0.5
 
     vector_masks = []
     threshold = config.mask_threshold
 
     # Determine if we're in ensemble mode
-    is_ensemble = hasattr(config, 'ensemble_piv') and config.ensemble_piv
+    # If explicit parameter is provided, use it; otherwise use config.ensemble_piv flag
+    if ensemble is not None:
+        is_ensemble = ensemble
+    else:
+        # Fall back to config flag (should be set correctly by caller)
+        is_ensemble = hasattr(config, 'ensemble_piv') and config.ensemble_piv
+    logging.info(f"compute_vector_mask: is_ensemble={is_ensemble} (explicit={ensemble}, config.ensemble_piv={getattr(config, 'ensemble_piv', None)})")
+
     if is_ensemble:
         num_passes = len(config.ensemble_window_sizes)
     else:
@@ -606,6 +632,12 @@ def compute_vector_mask(
                     b_mask_pass[iy, ix] = overlap_fraction > threshold
 
         vector_masks.append(b_mask_pass)
+
+        # Log mask shape for debugging rectangular window support
+        logging.info(
+            f"compute_vector_mask: Pass {pass_idx}: window=({win_y}, {win_x}), "
+            f"grid=({n_win_y}, {n_win_x}), mask_shape={b_mask_pass.shape}"
+        )
 
         # Log statistics for this pass (debug level only)
         masked_vectors = np.sum(b_mask_pass)

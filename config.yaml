@@ -1,6 +1,6 @@
 paths:
   base_paths:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/window_validation
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/rectangle
   source_paths:
   - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images
   active_paths:
@@ -10,7 +10,7 @@ paths:
   camera_count: 1
   camera_subfolders: []
 images:
-  num_images: 1000
+  num_images: 50
   image_format:
   - B%05d_A.tif
   - B%05d_B.tif
@@ -21,7 +21,7 @@ images:
   zero_based_indexing: false
   pairing_mode: sequential
   pairing_skip: 0
-  num_frame_pairs: 1000
+  num_frame_pairs: 50
   image_type: standard
   use_camera_subfolders: false
 batches:
@@ -39,8 +39,8 @@ processing:
   dask_threads_per_worker: 1
   dask_memory_limit: 8GB
   always_batch: true
-  instantaneous: false
-  ensemble: true
+  instantaneous: true
+  ensemble: false
 outlier_detection:
   enabled: true
   methods:
@@ -83,7 +83,7 @@ video:
   data_source: calibrated
   variable: ux
   run: 4
-  piv_type: ensemble
+  piv_type: instantaneous
   cmap: jet
   lower: ''
   upper: ''
@@ -114,20 +114,17 @@ statistics:
     inst_stresses: false
   gamma_radius: 4
   save_figures: true
-  type_name: ensemble
+  type_name: instantaneous
   source_endpoint: regular
 instantaneous_piv:
   window_size:
-  - - 128
-    - 128
   - - 64
-    - 64
+    - 128
   - - 32
-    - 32
+    - 64
   - - 16
-    - 16
+    - 32
   overlap:
-  - 50
   - 50
   - 50
   - 50
@@ -135,7 +132,6 @@ instantaneous_piv:
   - 1
   - 2
   - 3
-  - 4
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
@@ -150,35 +146,25 @@ ensemble_piv:
   fit_offset: false
   background_subtraction_method: correlation
   window_size:
-  - - 64
+  - - 32
     - 64
-  - - 16
-    - 16
-  - - 16
-    - 16
   - - 8
-    - 8
+    - 16
   overlap:
-  - 50
-  - 50
   - 50
   - 50
   type:
   - std
   - single
-  - single
-  - single
   runs:
   - 1
   - 2
-  - 3
-  - 4
   store_planes: true
   save_diagnostics: true
   sum_window:
   - 32
   - 32
-  resume_from_pass: 4
+  resume_from_pass: 0
   window_type: square
 calibration:
   image_format: planar_calibration_plate_%02d.tif
@@ -280,11 +266,11 @@ masking:
     left: 0
     right: 0
 merging:
-  type_name: ensemble
+  type_name: instantaneous
   base_path_idx: 0
 transforms:
   base_path_idx: 0
-  type_name: ensemble
+  type_name: instantaneous
   cameras:
     1:
       operations: null

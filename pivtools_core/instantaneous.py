@@ -305,7 +305,7 @@ def main():
                 vector_masks = None
                 if config.masking_enabled and mask is not None:
                     logger.info("Computing vector masks...")
-                    vector_masks = compute_vector_mask(mask, config)
+                    vector_masks = compute_vector_mask(mask, config, ensemble=False)
                     logger.info(f"  Vector masks: {len(vector_masks)} passes")
 
                 # Get output path

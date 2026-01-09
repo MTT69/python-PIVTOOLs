@@ -551,6 +551,14 @@ class SinglePassAccumulator:
         if self.vector_masks and pass_idx < len(self.vector_masks):
             mask_flat = self.vector_masks[pass_idx].ravel(order='C').astype(bool)
             logging.info(f"mask shape: {self.vector_masks[pass_idx].shape}, flat shape: {mask_flat.shape}")
+            # Validate mask size matches data grid
+            if mask_flat.size != total_windows:
+                raise ValueError(
+                    f"Vector mask size mismatch in pass {pass_idx + 1}: "
+                    f"mask has {mask_flat.size} elements (shape {self.vector_masks[pass_idx].shape}) "
+                    f"but data grid has {total_windows} windows ({n_win_y}×{n_win_x}). "
+                    f"The mask must match the PIV grid dimensions for each pass."
+                )
         else:
             mask_flat = np.zeros(total_windows, dtype=bool)
 

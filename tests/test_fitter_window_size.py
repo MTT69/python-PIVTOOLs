@@ -71,6 +71,8 @@ def fit_single_window(AA, BB, AB, initial_guess, win_size):
     lib.fit_stacked_gaussian_batch_export(
         ctypes.c_size_t(1),
         ctypes.c_size_t(n_per_window),
+        ctypes.c_size_t(h),  # win_height
+        ctypes.c_size_t(w),  # win_width
         X2.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
         X1.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
         y_all.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),

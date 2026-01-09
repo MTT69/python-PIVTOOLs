@@ -571,8 +571,8 @@ void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPe
 		fPeakHeight = 0;
 		for(i = N[0]/8; i < N[0]*7/8; ++i) {
 			for(j = N[1]/8; j < N[1]*7/8; ++j) {
-				if(xcorr_copy[SUB2IND_2D(i, j, N[0])] > fPeakHeight) {
-					fPeakHeight = xcorr_copy[SUB2IND_2D(i, j, N[0])];
+				if(xcorr_copy[SUB2IND_2D(i, j, N[1])] > fPeakHeight) {
+					fPeakHeight = xcorr_copy[SUB2IND_2D(i, j, N[1])];
 					i0 = i;
 					j0 = j;
 				}
@@ -582,10 +582,10 @@ void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPe
 		if(fPeakHeight <= 0 ||
 		   i0 < (PKSIZE_X-1)/2 || i0 >= N[0]-(PKSIZE_X-1)/2  ||
 		   j0 < (PKSIZE_Y-1)/2 || j0 >= N[1]-(PKSIZE_Y-1)/2 ||
-		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0-1, j0, N[0])] ||
-		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0+1, j0, N[0])] ||
-		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0, j0-1, N[0])] ||
-		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0, j0+1, N[0])])
+		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0-1, j0, N[1])] ||
+		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0+1, j0, N[1])] ||
+		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0, j0-1, N[1])] ||
+		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0, j0+1, N[1])])
 		{
 			peak_loc[SUB2IND_2D(0, iPeak, nPeaks)] = NAN;
 			peak_loc[SUB2IND_2D(1, iPeak, nPeaks)] = NAN;
@@ -599,7 +599,7 @@ void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPe
 		/* Extract subwindow */
 		for(i = 0; i < PKSIZE_X; ++i) {
 			for(j = 0; j < PKSIZE_Y; ++j) {
-				subxcorr[i * PKSIZE_Y + j] = xcorr_copy[SUB2IND_2D(i0 + i - (PKSIZE_X-1)/2, j0 + j - (PKSIZE_Y-1)/2, N[0])];
+				subxcorr[i * PKSIZE_Y + j] = xcorr_copy[SUB2IND_2D(i0 + i - (PKSIZE_X-1)/2, j0 + j - (PKSIZE_Y-1)/2, N[1])];
 			}
 		}
 		
@@ -661,7 +661,7 @@ void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPe
 		/* Subtract fit from correlation plane */
 		for(i = 0; i < PKSIZE_X; ++i) {
 			for(j = 0; j < PKSIZE_Y; ++j) {
-				idx = SUB2IND_2D(i0 + i - (PKSIZE_X-1)/2, j0 + j - (PKSIZE_Y-1)/2, N[0]);
+				idx = SUB2IND_2D(i0 + i - (PKSIZE_X-1)/2, j0 + j - (PKSIZE_Y-1)/2, N[1]);
 				xcorr_copy[idx] = MAX(0, xcorr_copy[idx] - fitval[i * PKSIZE_Y + j]);
 			}
 		}

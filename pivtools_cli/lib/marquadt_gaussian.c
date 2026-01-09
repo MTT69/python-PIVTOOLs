@@ -304,9 +304,12 @@ static int fit_one_reuse(
 }
 
 // --- Batch Export ---
+// Note: win_height and win_width support rectangular windows (height != width)
 PIV_EXPORT int fit_stacked_gaussian_batch_export(
     size_t num_windows,
     size_t n_per_window,
+    size_t win_height,
+    size_t win_width,
     const double *X1,
     const double *X2,
     const double *y_all,
@@ -320,14 +323,16 @@ PIV_EXPORT int fit_stacked_gaussian_batch_export(
     }
 
     int success_count = 0;
-    int win_w = (int)sqrt((double)n_per_window);
+    int win_h = (int)win_height;
+    int win_w = (int)win_width;
 
-    // Determine extraction region size (min of EXTRACT_SIZE and window size)
+    // Determine extraction region size (min of EXTRACT_SIZE and window size for each dimension)
+    int extract_h = (win_h < EXTRACT_SIZE) ? win_h : EXTRACT_SIZE;
     int extract_w = (win_w < EXTRACT_SIZE) ? win_w : EXTRACT_SIZE;
-    size_t n_extract = (size_t)(extract_w * extract_w);
+    size_t n_extract = (size_t)(extract_h * extract_w);
 
     fprintf(stderr, "[fit] %zu windows, %dx%d -> extracting %dx%d (%zu pts) around peak\n",
-            num_windows, win_w, win_w, extract_w, extract_w, n_extract);
+            num_windows, win_h, win_w, extract_h, extract_w, n_extract);
 
     gsl_set_error_handler_off();
 
@@ -379,25 +384,28 @@ PIV_EXPORT int fit_stacked_gaussian_batch_export(
             double peak_x = guess[12];
             double peak_y = guess[13];
 
-            // Convert to grid indices (coordinates are typically 0..win_w-1)
+            // Convert to grid indices (coordinates are typically 1..win_h/win_w in 1-based)
             int peak_col = (int)(peak_x + 0.5);
             int peak_row = (int)(peak_y + 0.5);
 
             // Compute extraction region bounds (centered on peak)
+            // Use separate half sizes for rectangular extraction regions
+            int half_h = extract_h / 2;
             int half_w = extract_w / 2;
-            int r_start = peak_row - half_w;
+            int r_start = peak_row - half_h;
             int c_start = peak_col - half_w;
 
-            // Clamp to window bounds
+            // Clamp to window bounds (use win_h for rows, win_w for columns)
             if (r_start < 0) r_start = 0;
             if (c_start < 0) c_start = 0;
-            if (r_start + extract_w > win_w) r_start = win_w - extract_w;
+            if (r_start + extract_h > win_h) r_start = win_h - extract_h;
             if (c_start + extract_w > win_w) c_start = win_w - extract_w;
 
-            // Extract region at full resolution
+            // Extract region at full resolution (rectangular)
             size_t k = 0;
-            for (int r = r_start; r < r_start + extract_w; r++) {
+            for (int r = r_start; r < r_start + extract_h; r++) {
                 for (int c = c_start; c < c_start + extract_w; c++) {
+                    // Row-major indexing: row * width + col
                     size_t src = (size_t)(r * win_w + c);
                     ext_X1[k] = X1[src];
                     ext_X2[k] = X2[src];
@@ -434,8 +442,12 @@ PIV_EXPORT int fit_stacked_gaussian_batch_export(
     return success_count;
 }
 
+// Single-window wrapper (for backwards compatibility / testing)
+// For square windows, pass win_height = win_width = sqrt(n)
 PIV_EXPORT int fit_stacked_gaussian_export(
     size_t n,
+    size_t win_height,
+    size_t win_width,
     const double *X1,
     const double *X2,
     const double *y,
@@ -444,7 +456,7 @@ PIV_EXPORT int fit_stacked_gaussian_export(
     int *out_status
 ) {
     int status;
-    int ret = fit_stacked_gaussian_batch_export(1, n, X1, X2, y, initial_guess, out_params, &status);
+    int ret = fit_stacked_gaussian_batch_export(1, n, win_height, win_width, X1, X2, y, initial_guess, out_params, &status);
     if (out_status) *out_status = status ? 0 : -1;
     return ret;
 }

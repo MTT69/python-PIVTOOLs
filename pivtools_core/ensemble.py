@@ -624,13 +624,21 @@ def main():
 
                 # Load mask
                 mask = load_mask_for_camera(camera_num, config, source_path_idx=path_idx)
+                logger.info(f"DEBUG: mask loaded = {mask is not None}, masking_enabled = {config.masking_enabled}")
+                if mask is not None:
+                    logger.info(f"DEBUG: pixel mask shape = {mask.shape}")
 
                 # Compute vector masks
                 vector_masks = None
                 if config.masking_enabled and mask is not None:
                     logger.info("Computing vector masks...")
-                    vector_masks = compute_vector_mask(mask, config)
+                    logger.info(f"DEBUG: config.image_shape = {config.image_shape}")
+                    vector_masks = compute_vector_mask(mask, config, ensemble=True)
                     logger.info(f"  Vector masks: {len(vector_masks)} passes")
+                    for i, vm in enumerate(vector_masks):
+                        logger.info(f"    Pass {i}: mask shape = {vm.shape}")
+                else:
+                    logger.info(f"DEBUG: Skipping vector mask computation (enabled={config.masking_enabled}, mask={mask is not None})")
 
                 # Get output path
                 output_path = get_ensemble_output_path(

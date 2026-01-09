@@ -111,10 +111,12 @@ def fit_correlation_plane(AA, BB, AB, win_size):
     result = np.zeros(16, dtype=np.float64)
     status = np.zeros(1, dtype=np.int32)
 
-    # Call C function
+    # Call C function (pass win_height and win_width for rectangular window support)
     lib.fit_stacked_gaussian_batch_export(
         ctypes.c_size_t(1),
         ctypes.c_size_t(n_per_window),
+        ctypes.c_size_t(h),  # win_height
+        ctypes.c_size_t(w),  # win_width
         X2.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
         X1.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
         y_all.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),

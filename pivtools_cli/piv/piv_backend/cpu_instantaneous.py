@@ -341,9 +341,26 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 n_win_x = int(n_windows[1])
 
                 win_height, win_width = win_size_arr
+
+                # Large displacement threshold: more lenient for first pass (no predictor yet),
+                # stricter for subsequent passes where predictor-corrector reduces residuals
+                if pass_idx == 0:
+                    # First pass: use win/2 threshold to allow larger displacements
+                    thresh_x = win_width / 2.0
+                    thresh_y = win_height / 2.0
+                else:
+                    # Subsequent passes: use win/4 threshold (predictor reduces residuals)
+                    thresh_x = win_width / 4.0
+                    thresh_y = win_height / 4.0
+
+                # Debug: check peak locations before masking
+                logging.info(f"Pass {pass_idx}: win_size=({win_height}, {win_width}), grid=({n_win_y}, {n_win_x})")
+                logging.info(f"Pass {pass_idx}: pk_loc_x range: [{np.nanmin(pk_loc_x):.2f}, {np.nanmax(pk_loc_x):.2f}], threshold={thresh_x:.2f}")
+                logging.info(f"Pass {pass_idx}: pk_loc_y range: [{np.nanmin(pk_loc_y):.2f}, {np.nanmax(pk_loc_y):.2f}], threshold={thresh_y:.2f}")
+
                 mask_batch = np.broadcast_to(b_mask[None, :, :], (N, n_win_y, n_win_x))
                 mask_bool_batch = mask_batch.astype(bool)
-                large_disp_mask = (np.abs(pk_loc_x) >  win_width / 4.0) | (np.abs(pk_loc_y) > win_height / 4.0)
+                large_disp_mask = (np.abs(pk_loc_x) > thresh_x) | (np.abs(pk_loc_y) > thresh_y)
                 # Broadcast mask to match pk_loc_x shape (N, n_peaks, n_win_y, n_win_x)
                 mask_for_peaks = np.broadcast_to(mask_bool_batch[:, None, :, :], pk_loc_x.shape)
                 invalid_peaks = (
