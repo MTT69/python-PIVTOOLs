@@ -436,16 +436,11 @@ def run_ensemble_piv(
             # Use chained submission to preserve lazy loading - each task depends on
             # (previous sum, ONE batch) so Dask only resolves one batch per task
             worker_futures = []
-            total_images = images.shape[0]
-            batch_size = config.batch_size
             for i, worker in enumerate(workers):
                 start_idx = i * chunks_per_worker
                 end_idx = min((i + 1) * chunks_per_worker, num_chunks)
                 if start_idx >= end_idx:
                     continue
-
-                # Calculate global offset for this worker's progress logging
-                global_offset = start_idx * batch_size
 
                 # Chain tasks: each depends on previous sum + one new batch
                 accumulated_future = None
@@ -467,8 +462,6 @@ def run_ensemble_piv(
                         scattered['masks'],
                         j == 0,                # is_first_batch
                         str(output_path) if config.ensemble_save_diagnostics and j == 0 else None,
-                        global_offset,         # For progress logging
-                        total_images,          # For progress logging
                         workers=[worker],      # Keep on same worker!
                         pure=False,
                     )
