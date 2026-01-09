@@ -342,11 +342,13 @@ PIV_EXPORT int fit_stacked_gaussian_batch_export(
     #ifdef _OPENMP
     #pragma omp parallel reduction(+:success_count)
     {
-    #endif
         #pragma omp single
-    {
-        fprintf(stderr, "[fit] OpenMP threads: %d\n", omp_get_num_threads());
-    }
+        {
+            fprintf(stderr, "[fit] OpenMP threads: %d\n", omp_get_num_threads());
+        }
+    #else
+        fprintf(stderr, "[fit] OpenMP threads: 1 (no OpenMP)\n");
+    #endif
         // Thread-local buffers for extracted region
         double *ext_X1 = malloc(n_extract * sizeof(double));
         double *ext_X2 = malloc(n_extract * sizeof(double));
@@ -359,10 +361,11 @@ PIV_EXPORT int fit_stacked_gaussian_batch_export(
             fprintf(stderr, "[fit] thread allocation failed\n");
         }
 
+        int i;  /* Declared outside for MSVC OpenMP 2.0 compatibility */
         #ifdef _OPENMP
         #pragma omp for schedule(dynamic, 16)
         #endif
-        for (int i = 0; i < (int)num_windows; i++) {
+        for (i = 0; i < (int)num_windows; i++) {
             if (!ext_X1 || !ext_X2 || !ext_y || !work) {
                 out_statuses[i] = 0;
                 continue;

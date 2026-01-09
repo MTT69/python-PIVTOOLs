@@ -251,7 +251,7 @@ except Exception:
 
 dummy_ext = Extension(
     "pivtools_cli._cbuild",
-    sources=[],
+    sources=["pivtools_cli/lib/_dummy.c"],
     extra_compile_args=["-isysroot", sdk_path] if sdk_path else [],
     extra_link_args=["-isysroot", sdk_path] if sdk_path else [],
 )
