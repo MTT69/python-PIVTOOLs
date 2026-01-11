@@ -4,9 +4,16 @@ import platform
 import pathlib
 import subprocess
 import sysconfig
-from setuptools import find_packages, setup
+from setuptools import find_packages, setup, Distribution
 from setuptools.command.build import build
 import shutil
+
+
+class BinaryDistribution(Distribution):
+    """Distribution that forces a platform-specific wheel."""
+
+    def has_ext_modules(self):
+        return True
 
 
 class BuildCLibraries(build):
@@ -251,4 +258,5 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     cmdclass={"build": BuildCLibraries},
+    distclass=BinaryDistribution,
 )
