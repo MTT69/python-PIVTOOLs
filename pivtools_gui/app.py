@@ -1454,12 +1454,39 @@ def serve_react_app(path):
         return send_from_directory(app.static_folder, 'index.html')
 
 
+def ensure_config_exists():
+    """Ensure config.yaml exists in the current directory, create if not."""
+    import shutil
+    cwd = Path.cwd()
+    config_path = cwd / "config.yaml"
+
+    if config_path.exists():
+        return  # Config already exists
+
+    # Try to copy from pivtools_core package
+    try:
+        import pivtools_core
+        default_config = Path(pivtools_core.__file__).parent / "config.yaml"
+
+        if default_config.exists():
+            shutil.copy2(default_config, config_path)
+            print(f"Created config.yaml at {config_path}")
+        else:
+            print(f"Warning: Default config not found at {default_config}")
+            print("Run 'pivtools-cli init' to create a config file")
+    except ImportError:
+        print("Warning: pivtools_core not found. Run 'pivtools-cli init' to create a config file")
+
+
 def main():
     """Run the PIVTOOLs GUI"""
+    # Ensure config.yaml exists before starting
+    ensure_config_exists()
+
     # Suppress Flask development server warning by setting production environment
     import os
     os.environ['FLASK_ENV'] = 'production'
-    
+
     print("Starting PIVTOOLs GUI...")
     print("Open your browser to http://localhost:5000")
     

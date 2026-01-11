@@ -1,6 +1,6 @@
 paths:
   base_paths:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/rectangle
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/rectangle-test
   source_paths:
   - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images
   active_paths:
@@ -10,7 +10,7 @@ paths:
   camera_count: 1
   camera_subfolders: []
 images:
-  num_images: 50
+  num_images: 1000
   image_format:
   - B%05d_A.tif
   - B%05d_B.tif
@@ -21,7 +21,7 @@ images:
   zero_based_indexing: false
   pairing_mode: sequential
   pairing_skip: 0
-  num_frame_pairs: 50
+  num_frame_pairs: 1000
   image_type: standard
   use_camera_subfolders: false
 batches:
@@ -83,7 +83,7 @@ video:
   data_source: calibrated
   variable: ux
   run: 4
-  piv_type: instantaneous
+  piv_type: ensemble
   cmap: jet
   lower: ''
   upper: ''
@@ -114,12 +114,10 @@ statistics:
     inst_stresses: false
   gamma_radius: 4
   save_figures: true
-  type_name: instantaneous
+  type_name: ensemble
   source_endpoint: regular
 instantaneous_piv:
   window_size:
-  - - 64
-    - 128
   - - 32
     - 64
   - - 16
@@ -127,11 +125,9 @@ instantaneous_piv:
   overlap:
   - 50
   - 50
-  - 50
   runs:
   - 1
   - 2
-  - 3
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
@@ -266,11 +262,11 @@ masking:
     left: 0
     right: 0
 merging:
-  type_name: instantaneous
+  type_name: ensemble
   base_path_idx: 0
 transforms:
   base_path_idx: 0
-  type_name: instantaneous
+  type_name: ensemble
   cameras:
     1:
       operations: null

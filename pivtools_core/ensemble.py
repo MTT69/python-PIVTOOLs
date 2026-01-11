@@ -82,7 +82,8 @@ def signal_handler(signum, frame):
     # Suppress noisy distributed logs during teardown
     import logging as _logging
     for name in ["distributed.worker", "distributed.scheduler", "distributed.nanny",
-                 "distributed.core", "distributed.comm"]:
+                 "distributed.core", "distributed.comm", "distributed.comm.tcp",
+                 "distributed.batched", "tornado.application", "tornado.general"]:
         _logging.getLogger(name).setLevel(_logging.CRITICAL)
 
     # Close Dask client and cluster if they exist
@@ -686,15 +687,23 @@ def main():
     finally:
         # Clean shutdown - suppress noisy distributed logs during teardown
         import logging as _logging
+        import sys as _sys
+        import io as _io
+
         for name in ["distributed.worker", "distributed.scheduler", "distributed.nanny",
-                     "distributed.core", "distributed.comm"]:
+                     "distributed.core", "distributed.comm", "distributed.comm.tcp",
+                     "distributed.batched", "tornado.application", "tornado.general"]:
             _logging.getLogger(name).setLevel(_logging.CRITICAL)
+
+        # Suppress stderr during cluster shutdown to hide Tornado tracebacks
+        _old_stderr = _sys.stderr
+        _sys.stderr = _io.StringIO()
 
         try:
             if _client is not None:
                 _client.close(timeout=5)
         except Exception as e:
-            logger.warning(f"Error closing client: {e}")
+            pass  # Suppress errors during shutdown
 
         # Small delay to let workers finish cleanly
         time.sleep(0.5)
@@ -703,7 +712,13 @@ def main():
             if _cluster is not None:
                 _cluster.close(timeout=5)
         except Exception as e:
-            logger.warning(f"Error closing cluster: {e}")
+            pass  # Suppress errors during shutdown
+
+        # Wait a bit more for async cleanup to complete
+        time.sleep(0.2)
+
+        # Restore stderr
+        _sys.stderr = _old_stderr
 
         end_time = time.time()
         elapsed = end_time - start_time

@@ -6,6 +6,8 @@ import subprocess
 import sysconfig
 from setuptools import find_packages, setup, Distribution
 from setuptools.command.build import build
+from setuptools.command.develop import develop
+from setuptools.command.install import install
 import shutil
 
 
