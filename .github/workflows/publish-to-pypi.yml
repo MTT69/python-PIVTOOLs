@@ -52,8 +52,8 @@ jobs:
           CIBW_ARCHS_WINDOWS: "AMD64"
           # Use manylinux2014 for broader compatibility
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
-          # Minimum macOS version (Monterey)
-          MACOSX_DEPLOYMENT_TARGET: "12.0"
+          # Minimum macOS version (Sequoia) - required for Homebrew GCC's libgomp
+          MACOSX_DEPLOYMENT_TARGET: "15.0"
           CIBW_BUILD_VERBOSITY: 1
 
       - name: Upload wheels

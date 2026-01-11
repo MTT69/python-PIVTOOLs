@@ -155,6 +155,82 @@ paths:
 - Format: `.mat` files (one per frame pair)
 - Includes: ux, uy, peak_mag, flags
 
+#### Rectangular Windows
+
+PIVTools supports **rectangular interrogation windows** where height ≠ width. This is useful when:
+
+- Flow is predominantly in one direction (e.g., channel flow, boundary layers)
+- Particle images have anisotropic seeding density
+- You need higher spatial resolution in one direction while maintaining signal quality in another
+
+**Configuration Syntax:**
+
+Window size is specified as `[height, width]` in pixels (row-major convention):
+
+```yaml
+instantaneous_piv:
+  window_size:
+    - [64, 128]   # Pass 1: 64 px tall × 128 px wide (wide rectangle)
+    - [32, 64]    # Pass 2: 32 px tall × 64 px wide
+    - [16, 32]    # Pass 3: 16 px tall × 32 px wide
+  overlap:
+    - 50
+    - 50
+    - 50
+```
+
+**Key Considerations:**
+
+| Aspect | Details |
+|--------|---------|
+| **Dimension Order** | Always `[height, width]` — height is vertical (Y), width is horizontal (X) |
+| **Aspect Ratios** | Common ratios: 1:2 (e.g., `[32, 64]`), 1:4 (e.g., `[16, 64]`), 2:1 (e.g., `[64, 32]`) |
+| **Grid Density** | More windows in the direction with smaller dimension |
+| **Displacement Limits** | First pass allows displacements up to `window_size/2` in each direction |
+| **Overlap** | Applied as percentage of each dimension independently |
+
+**Example: Horizontal Channel Flow**
+
+For flow predominantly in the X (horizontal) direction, use wide windows:
+
+```yaml
+instantaneous_piv:
+  window_size:
+    - [32, 128]   # Wide: captures large X displacement, high Y resolution
+    - [16, 64]    # Narrower for refinement
+    - [8, 32]     # Final pass
+  overlap:
+    - 50
+    - 50
+    - 75          # Higher overlap on final pass for dense vectors
+```
+
+**Example: Vertical Jet Flow**
+
+For flow predominantly in the Y (vertical) direction, use tall windows:
+
+```yaml
+instantaneous_piv:
+  window_size:
+    - [128, 32]   # Tall: captures large Y displacement, high X resolution
+    - [64, 16]
+    - [32, 8]
+```
+
+**Grid Calculation:**
+
+For a 2048×2048 image with window `[64, 128]` and 50% overlap:
+
+- Y direction: spacing = 32 px → ~63 windows
+- X direction: spacing = 64 px → ~31 windows
+- Total grid: 63 × 31 = 1,953 vectors
+
+**Notes:**
+- Rectangular windows work with both instantaneous and ensemble modes
+- Masking correctly adapts to rectangular window grids
+- The predictor-corrector handles rectangular windows for multi-pass refinement
+- Very extreme aspect ratios (e.g., 1:8) may reduce correlation quality
+
 ---
 
 ### ensemble
@@ -197,6 +273,16 @@ ensemble_piv:
     - std   # Standard ensemble
     - std
     - std
+```
+
+**Note:** Rectangular windows are fully supported for ensemble PIV. See [Rectangular Windows](#rectangular-windows) under instantaneous PIV for configuration details. Example:
+
+```yaml
+ensemble_piv:
+  window_size:
+    - [64, 128]   # Wide rectangle for horizontal flow
+    - [32, 64]
+  sum_window: [64, 128]  # Sum window must also be rectangular
 ```
 
 **Output:**
