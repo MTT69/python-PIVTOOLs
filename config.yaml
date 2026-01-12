@@ -136,6 +136,7 @@ instantaneous_piv:
 ensemble_piv:
   fit_method: gaussian
   skip_background_subtraction: false
+  gradient_correction: true
   image_warp_interpolation: cubic
   predictor_interpolation: cubic
   kspace_snr_threshold: 3.0

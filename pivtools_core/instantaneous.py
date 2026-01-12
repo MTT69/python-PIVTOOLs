@@ -278,6 +278,10 @@ def main():
         for w, meta in info["workers"].items():
             logger.info(f"Worker {w}: pid={meta.get('pid')}, host={meta.get('host')}")
 
+        # Generate run timestamp for config traceability
+        from datetime import datetime
+        run_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
         # Process each path and camera
         camera_numbers = config.camera_numbers
         active_path_indices = config.active_paths
@@ -295,6 +299,10 @@ def main():
 
             source_path = config.source_paths[path_idx]
             base_path = config.base_paths[path_idx]
+
+            # Save timestamped config copy for traceability
+            config_copy_path = config.save_timestamped_copy(base_path, timestamp=run_timestamp)
+            logger.info(f"Config saved to: {config_copy_path}")
 
             logger.info("")
             logger.info(f"PATH SET {path_set_num} of {len(active_path_indices)}")

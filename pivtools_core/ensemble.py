@@ -528,18 +528,28 @@ def run_ensemble_piv(
             shutil.copy2(existing_path, backup_path)
             logger.info(f"Backed up previous result to {backup_path}")
 
+    # Get correlator cache for coordinates and image height
+    temp_correlator = make_correlator_backend(config, ensemble=True)
+    correlator_cache = temp_correlator.get_cache_data()
+    image_height = temp_correlator.H
+
+    # Check if gradient correction is enabled (only for uncalibrated data)
+    gradient_correction = config.ensemble_gradient_correction
+    if gradient_correction:
+        logger.info("Gradient correction enabled for Reynolds stresses")
+
     logger.info("Saving ensemble result...")
     save_ensemble_result_distributed(
         ensemble_result,
         output_path,
         runs_to_save=config.ensemble_runs_0based,
         filename="ensemble_result.mat",
+        gradient_correction=gradient_correction,
+        image_height=image_height,
     )
 
     # Save coordinates
     logger.info("Saving coordinates...")
-    temp_correlator = make_correlator_backend(config, ensemble=True)
-    correlator_cache = temp_correlator.get_cache_data()
 
     save_ensemble_coordinates_from_config_distributed(
         config,
@@ -592,6 +602,10 @@ def main():
         for w, meta in info["workers"].items():
             logger.info(f"Worker {w}: pid={meta.get('pid')}, host={meta.get('host')}")
 
+        # Generate run timestamp for config traceability
+        from datetime import datetime
+        run_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
         # Process each path and camera
         camera_numbers = config.camera_numbers
         active_path_indices = config.active_paths
@@ -609,6 +623,10 @@ def main():
 
             source_path = config.source_paths[path_idx]
             base_path = config.base_paths[path_idx]
+
+            # Save timestamped config copy for traceability
+            config_copy_path = config.save_timestamped_copy(base_path, timestamp=run_timestamp)
+            logger.info(f"Config saved to: {config_copy_path}")
 
             logger.info("")
             logger.info(f"PATH SET {path_set_num} of {len(active_path_indices)}")

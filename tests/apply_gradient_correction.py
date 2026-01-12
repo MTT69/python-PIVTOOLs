@@ -10,8 +10,9 @@ Corrections based on geometric smearing theory:
 
 import numpy as np
 from pathlib import Path
-from scipy.io import loadmat
+from scipy.io import loadmat, savemat
 import sys
+import copy
 
 def load_ensemble_result(result_path: Path, pass_idx: int = -1) -> dict:
     """Load ensemble result .mat file.
@@ -78,16 +79,23 @@ def compute_gradients(U: np.ndarray, V: np.ndarray, X: np.ndarray, Y: np.ndarray
     Compute velocity gradients using central differences.
 
     Returns dU/dy and dV/dx (the gradients that cause geometric smearing).
+
+    NOTE: Uses SIGNED spacing to correctly handle coordinate orientation.
+    If Y decreases with row index (image coordinates), dy will be negative,
+    and np.gradient will compute the correct physical gradient direction.
+    This matches MATLAB convention: dy = -2 when Y decreases with row index.
     """
-    # Get grid spacing (assuming uniform)
+    # Get grid spacing WITH SIGN (not absolute value!)
+    # Sign is critical for correct gradient direction
     if X.ndim == 2:
-        dx = np.abs(X[0, 1] - X[0, 0]) if X.shape[1] > 1 else 1.0
-        dy = np.abs(Y[1, 0] - Y[0, 0]) if Y.shape[0] > 1 else 1.0
+        dx = X[0, 1] - X[0, 0] if X.shape[1] > 1 else 1.0
+        dy = Y[1, 0] - Y[0, 0] if Y.shape[0] > 1 else 1.0
     else:
-        dx = np.abs(X[1] - X[0]) if len(X) > 1 else 1.0
-        dy = np.abs(Y[1] - Y[0]) if len(Y) > 1 else 1.0
+        dx = X[1] - X[0] if len(X) > 1 else 1.0
+        dy = Y[1] - Y[0] if len(Y) > 1 else 1.0
 
     # Compute gradients using numpy gradient (central differences)
+    # np.gradient with signed spacing gives correct physical gradient
     # dU/dy: gradient of U in the y direction
     dU_dy = np.gradient(U, dy, axis=0)
 
@@ -171,7 +179,7 @@ def analyze_result(name: str, result_path: Path, coord_path: Path, true_uu: floa
     print(f"\nMean Flow:")
     print(f"  U mean: {np.nanmean(data['U']):.4f} px/frame")
     print(f"  V mean: {np.nanmean(data['V']):.4f} px/frame")
-    print(f"  Grid spacing: dx={grads['dx']:.1f}, dy={grads['dy']:.1f} px")
+    print(f"  Grid spacing: dx={grads['dx']:.1f}, dy={grads['dy']:.1f} px (negative dy = Y decreases with row)")
 
     # Print gradient statistics
     print(f"\nVelocity Gradients:")
@@ -230,6 +238,159 @@ def analyze_result(name: str, result_path: Path, coord_path: Path, true_uu: floa
         'dU_dy_max': np.nanmax(np.abs(grads['dU_dy'])),
         'dV_dx_max': np.nanmax(np.abs(grads['dV_dx'])),
     }
+
+def apply_and_save_corrections(result_path: Path, coord_path: Path,
+                                output_path: Path = None, backup: bool = True) -> dict:
+    """
+    Apply gradient corrections and save back to .mat file.
+
+    Args:
+        result_path: Path to ensemble_result.mat
+        coord_path: Path to coordinates.mat
+        output_path: Where to save (default: overwrite result_path)
+        backup: If True and overwriting, create .mat.bak backup first
+
+    Returns:
+        Dictionary with correction statistics
+    """
+    if output_path is None:
+        output_path = result_path
+
+    # Create backup if overwriting
+    if backup and output_path == result_path:
+        backup_path = Path(str(result_path) + '.bak')
+        if not backup_path.exists():
+            import shutil
+            shutil.copy(result_path, backup_path)
+            print(f"Created backup: {backup_path}")
+
+    # Load the raw .mat data (not our parsed version)
+    mat_data = loadmat(str(result_path))
+    coord_data = loadmat(str(coord_path))
+
+    ensemble = mat_data['ensemble_result']
+    num_passes = ensemble.shape[1]
+
+    print(f"\nApplying gradient corrections to {result_path}")
+    print(f"  Processing {num_passes} passes...")
+
+    stats = []
+
+    # Process each pass
+    for pass_idx in range(num_passes):
+        result = ensemble[0, pass_idx]
+        coord = coord_data['coordinates'][0, pass_idx]
+
+        # Extract arrays
+        U = np.squeeze(result['ux'])
+        V = np.squeeze(result['uy'])
+        X = np.squeeze(coord['x'])
+        Y = np.squeeze(coord['y'])
+        sig_A_x = np.squeeze(result['sig_A_x'])
+        sig_A_y = np.squeeze(result['sig_A_y'])
+        UU_stress = np.squeeze(result['UU_stress'])
+        VV_stress = np.squeeze(result['VV_stress'])
+
+        # Check if UV_stress exists
+        has_uv = 'UV_stress' in result.dtype.names
+        if has_uv:
+            UV_stress = np.squeeze(result['UV_stress'])
+
+        # Compute gradients with SIGNED spacing
+        if X.ndim == 2:
+            dx = X[0, 1] - X[0, 0] if X.shape[1] > 1 else 1.0
+            dy = Y[1, 0] - Y[0, 0] if Y.shape[0] > 1 else 1.0
+        else:
+            dx = X[1] - X[0] if len(X) > 1 else 1.0
+            dy = Y[1] - Y[0] if len(Y) > 1 else 1.0
+
+        dU_dy = np.gradient(U, dy, axis=0)
+        dV_dx = np.gradient(V, dx, axis=1)
+
+        # Compute corrections
+        UU_correction = 0.5 * sig_A_x * (dU_dy ** 2)
+        VV_correction = 0.5 * sig_A_y * (dV_dx ** 2)
+
+        # Apply corrections
+        UU_corrected = UU_stress - UU_correction
+        VV_corrected = VV_stress - VV_correction
+
+        # Store back into the struct (direct field assignment)
+        result['UU_stress'][:] = UU_corrected
+        result['VV_stress'][:] = VV_corrected
+
+        if has_uv:
+            UV_correction = 0.5 * sig_A_x * (dU_dy + dV_dx)
+            UV_corrected = UV_stress - UV_correction
+            result['UV_stress'][:] = UV_corrected
+
+            stats.append({
+                'pass': pass_idx + 1,
+                'dy': dy,
+                'UU_mean_correction': np.nanmean(UU_correction),
+                'VV_mean_correction': np.nanmean(VV_correction),
+                'UV_mean_correction': np.nanmean(UV_correction),
+            })
+        else:
+            stats.append({
+                'pass': pass_idx + 1,
+                'dy': dy,
+                'UU_mean_correction': np.nanmean(UU_correction),
+                'VV_mean_correction': np.nanmean(VV_correction),
+            })
+
+        print(f"  Pass {pass_idx + 1}: dy={dy:.1f}, "
+              f"mean UU_corr={np.nanmean(UU_correction):.6f}, "
+              f"mean VV_corr={np.nanmean(VV_correction):.6f}" +
+              (f", mean UV_corr={np.nanmean(UV_correction):.6f}" if has_uv else ""))
+
+    # Save the modified data
+    savemat(str(output_path), mat_data)
+    print(f"\nSaved corrected data to: {output_path}")
+
+    return {'stats': stats, 'output_path': output_path}
+
+
+def apply_corrections_to_directory(base_dir: Path, backup: bool = True):
+    """
+    Apply gradient corrections to all ensemble results in a directory tree.
+
+    Searches for ensemble_result.mat files in uncalibrated_piv directories only.
+    Calibrated data is always skipped (doesn't contain sig_A_x field needed for correction).
+    """
+    base_dir = Path(base_dir)
+
+    # Find all ensemble_result.mat files
+    result_files = list(base_dir.rglob("ensemble_result.mat"))
+
+    if not result_files:
+        print(f"No ensemble_result.mat files found in {base_dir}")
+        return
+
+    # Filter to only uncalibrated_piv paths
+    uncalibrated_files = [f for f in result_files if "uncalibrated_piv" in str(f)]
+    calibrated_files = [f for f in result_files if "calibrated_piv" in str(f)]
+
+    if calibrated_files:
+        print(f"Skipping {len(calibrated_files)} calibrated_piv files (correction only applies to uncalibrated)")
+
+    if not uncalibrated_files:
+        print(f"No uncalibrated_piv ensemble_result.mat files found in {base_dir}")
+        return
+
+    print(f"Found {len(uncalibrated_files)} uncalibrated ensemble result files")
+
+    for result_path in uncalibrated_files:
+        coord_path = result_path.parent / "coordinates.mat"
+
+        if coord_path.exists():
+            try:
+                apply_and_save_corrections(result_path, coord_path, backup=backup)
+            except Exception as e:
+                print(f"Error processing {result_path}: {e}")
+        else:
+            print(f"Skipping {result_path}: coordinates.mat not found")
+
 
 def main():
     base_dir = Path("/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/tests/rs_particle_d3")

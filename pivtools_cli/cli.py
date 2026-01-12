@@ -1208,6 +1208,7 @@ ensemble_piv:
   kspace_snr_threshold: 3.0
   fit_offset: false
   background_subtraction_method: correlation
+  gradient_correction: true
   window_size:
   - - 128
     - 128

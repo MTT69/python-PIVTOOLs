@@ -67,6 +67,40 @@ class Config:
         with open(self._config_path, 'w') as f:
             yaml.dump(self.data, f, default_flow_style=False, sort_keys=False)
 
+    def save_timestamped_copy(self, destination_dir: Path, timestamp: str = None) -> Path:
+        """Save a timestamped copy of the config file for traceability.
+
+        Args:
+            destination_dir: Directory to save the config copy to
+            timestamp: Optional timestamp string. If None, generates current timestamp.
+                       Format: YYYY-MM-DD_HH-MM-SS
+
+        Returns:
+            Path to the saved config file
+        """
+        from datetime import datetime
+
+        # Generate timestamp if not provided
+        if timestamp is None:
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+        # Create destination directory if it doesn't exist
+        destination_dir = Path(destination_dir)
+        destination_dir.mkdir(parents=True, exist_ok=True)
+
+        # Build filename with timestamp
+        dest_path = destination_dir / f"config_{timestamp}.yaml"
+
+        # Copy the original config file (preserves exact formatting and comments)
+        if Path(self._config_path).exists():
+            shutil.copy2(self._config_path, dest_path)
+        else:
+            # Fallback: save current state if original file doesn't exist
+            with open(dest_path, 'w') as f:
+                yaml.dump(self.data, f, default_flow_style=False, sort_keys=False)
+
+        return dest_path
+
     def _normalize_calibration_block(self):
         """Reorder calibration block keys for consistent organization.
 
@@ -2234,6 +2268,26 @@ video:
             "method": "biharmonic",
             "parameters": {"ksize": 3}
         })
+
+    @property
+    def ensemble_gradient_correction(self) -> bool:
+        """Apply gradient correction to Reynolds stresses.
+
+        When True, applies velocity gradient correction to Reynolds stress estimates:
+            UU_corrected = UU_stress - 0.5 * sig_A_x * (dU/dy)²
+            VV_corrected = VV_stress - 0.5 * sig_A_y * (dV/dx)²
+            UV_corrected = UV_stress - 0.5 * sig_A_x * (dU/dy + dV/dx)
+
+        This correction accounts for velocity gradient bias in the stress estimates,
+        which is particularly important in regions with strong velocity gradients
+        (e.g., near walls in boundary layer flows).
+
+        The correction requires sig_A_x and sig_A_y fields from Gaussian fitting,
+        which are only available in uncalibrated ensemble PIV results.
+
+        Default: False
+        """
+        return self.data.get("ensemble_piv", {}).get("gradient_correction", False)
 
     @property
     def secondary_peak(self):

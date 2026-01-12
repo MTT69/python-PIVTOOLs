@@ -15,6 +15,7 @@ from pivtools_cli.piv.piv_result import (
     PIVResult, PIVPassResult,
     PIVEnsembleResult, PIVEnsemblePassResult,
 )
+from pivtools_cli.piv.gradient_correction import apply_gradient_correction_to_pass
 
 
 def save_piv_result_distributed(
@@ -162,6 +163,8 @@ def save_ensemble_result_distributed(
     output_path: Path,
     runs_to_save: Optional[List[int]] = None,
     filename: str = "ensemble_result.mat",
+    gradient_correction: bool = False,
+    image_height: Optional[int] = None,
 ) -> str:
     """
     Save an ensemble PIV result to disk. Designed to be submitted to Dask workers.
@@ -180,6 +183,10 @@ def save_ensemble_result_distributed(
         For passes not in this list, empty arrays will be saved.
     filename : str
         Name of the output file.
+    gradient_correction : bool
+        If True, apply gradient correction to Reynolds stresses before saving.
+    image_height : int, optional
+        Image height for coordinate conversion. Required if gradient_correction=True.
 
     Returns
     -------
@@ -198,7 +205,9 @@ def save_ensemble_result_distributed(
         return str(filepath)
 
     # Create single struct with arrays indexed by pass number
-    mat_data = _create_ensemble_struct_all_passes(ensemble_result, runs_to_save)
+    mat_data = _create_ensemble_struct_all_passes(
+        ensemble_result, runs_to_save, gradient_correction, image_height
+    )
 
     # Save to .mat file with compression to reduce I/O
     scipy.io.savemat(filepath, {"ensemble_result": mat_data}, oned_as="row", do_compression=True)
@@ -308,6 +317,8 @@ def save_ensemble_coordinates_from_config_distributed(
 def _create_ensemble_struct_all_passes(
     ensemble_result: PIVEnsembleResult,
     runs_to_save: Optional[List[int]] = None,
+    gradient_correction: bool = False,
+    image_height: Optional[int] = None,
 ) -> np.ndarray:
     """
     Create a MATLAB-compatible struct array with one element per pass for ensemble results.
@@ -323,6 +334,10 @@ def _create_ensemble_struct_all_passes(
         Ensemble PIV result object containing one or more passes with complete data.
     runs_to_save : Optional[List[int]]
         List of pass indices (0-based) to save with data. If None, save all passes.
+    gradient_correction : bool
+        If True, apply gradient correction to Reynolds stresses.
+    image_height : int, optional
+        Image height for coordinate conversion. Required if gradient_correction=True.
 
     Returns
     -------
@@ -409,19 +424,42 @@ def _create_ensemble_struct_all_passes(
         # Velocity fields - no row reversal needed since win_ctrs_y is now ascending
         # pixel→physical conversion already produces correct row order for MATLAB
         # Negate uy because +uy in image coords means downward, but we want +uy = upward
-        if pass_result.ux_mat is not None:
-            ensemble_struct['ux'][local_idx] = _convert_to_half_precision(pass_result.ux_mat, 'ux')
-        if pass_result.uy_mat is not None:
-            ensemble_struct['uy'][local_idx] = _convert_to_half_precision(-pass_result.uy_mat, 'uy')
+        ux_physical = pass_result.ux_mat
+        uy_physical = -pass_result.uy_mat if pass_result.uy_mat is not None else None
+
+        if ux_physical is not None:
+            ensemble_struct['ux'][local_idx] = _convert_to_half_precision(ux_physical, 'ux')
+        if uy_physical is not None:
+            ensemble_struct['uy'][local_idx] = _convert_to_half_precision(uy_physical, 'uy')
 
         # Stress tensors - no row reversal needed
         # UV_stress is negated because V is negated (UV = u'v' -> u'(-v') = -u'v')
-        if pass_result.UU_stress is not None:
-            ensemble_struct['UU_stress'][local_idx] = _convert_to_half_precision(pass_result.UU_stress, 'UU_stress')
-        if pass_result.VV_stress is not None:
-            ensemble_struct['VV_stress'][local_idx] = _convert_to_half_precision(pass_result.VV_stress, 'VV_stress')
-        if pass_result.UV_stress is not None:
-            ensemble_struct['UV_stress'][local_idx] = _convert_to_half_precision(-pass_result.UV_stress, 'UV_stress')
+        UU_to_save = pass_result.UU_stress
+        VV_to_save = pass_result.VV_stress
+        UV_to_save = -pass_result.UV_stress if pass_result.UV_stress is not None else None
+
+        # Apply gradient correction if enabled
+        if gradient_correction and pass_result.sig_A_x is not None:
+            logging.info(f"Applying gradient correction to pass {global_pass_idx + 1}")
+            UU_to_save, VV_to_save, UV_to_save = apply_gradient_correction_to_pass(
+                ux=ux_physical,
+                uy=uy_physical,
+                UU_stress=UU_to_save,
+                VV_stress=VV_to_save,
+                UV_stress=UV_to_save,
+                sig_A_x=pass_result.sig_A_x,
+                sig_A_y=pass_result.sig_A_y,
+                win_ctrs_x=pass_result.win_ctrs_x,
+                win_ctrs_y=pass_result.win_ctrs_y,
+                image_height=image_height if image_height else 0,
+            )
+
+        if UU_to_save is not None:
+            ensemble_struct['UU_stress'][local_idx] = _convert_to_half_precision(UU_to_save, 'UU_stress')
+        if VV_to_save is not None:
+            ensemble_struct['VV_stress'][local_idx] = _convert_to_half_precision(VV_to_save, 'VV_stress')
+        if UV_to_save is not None:
+            ensemble_struct['UV_stress'][local_idx] = _convert_to_half_precision(UV_to_save, 'UV_stress')
 
         # Normalized peak height - no row reversal needed
         if pass_result.peakheight is not None:
