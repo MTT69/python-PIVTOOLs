@@ -1209,6 +1209,7 @@ ensemble_piv:
   fit_offset: false
   background_subtraction_method: correlation
   gradient_correction: true
+  mask_center_pixel: true
   window_size:
   - - 128
     - 128

@@ -808,19 +808,25 @@ class SinglePassAccumulator:
         c_B = safe_extract(gauss_results[:, :, 4], MAX_AMP, 0.0)
         c_AB = safe_extract(gauss_results[:, :, 5], MAX_AMP, 0.0)
 
-        # Gaussian widths for A autocorrelation (variances, must be positive)
+        # Gaussian widths for A autocorrelation (particle size, from AA/BB peaks)
         sig_A_x = safe_extract(gauss_results[:, :, 6], MAX_SIGMA, 0.0)
         sig_A_y = safe_extract(gauss_results[:, :, 7], MAX_SIGMA, 0.0)
         sig_A_xy = safe_extract(gauss_results[:, :, 8], MAX_SIGMA, 0.0)
 
-        # Gaussian widths for AB cross-correlation (predictor displacement uncertainty)
+        # Gaussian widths for AB cross-correlation (TOTAL width, used directly by C fitter)
+        # With decoupled parameterization, sig_AB is the raw fitted total width,
+        # NOT an additive term on top of sig_A.
         sig_AB_x = safe_extract(gauss_results[:, :, 9], MAX_SIGMA, 0.0)
         sig_AB_y = safe_extract(gauss_results[:, :, 10], MAX_SIGMA, 0.0)
         sig_AB_xy = safe_extract(gauss_results[:, :, 11], MAX_SIGMA, 0.0)
 
-        UU_stress = sig_AB_x
-        VV_stress = sig_AB_y
-        UV_stress = sig_AB_xy
+        # Compute displacement uncertainty = sig_AB - sig_A
+        # This represents the additional width from displacement variance
+        # (what was previously stored directly in sig_AB fields)
+        # Constraint: displacement uncertainty >= 0
+        UU_stress = np.maximum(sig_AB_x - sig_A_x, 0.0)
+        VV_stress = np.maximum(sig_AB_y - sig_A_y, 0.0)
+        UV_stress = sig_AB_xy - sig_A_xy  # Cross-term can be negative
 
         # =========================================================
         # STEP 7a: Apply Vector Mask FIRST (before outlier detection)

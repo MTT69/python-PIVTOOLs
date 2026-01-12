@@ -2054,6 +2054,19 @@ video:
         return self.data.get("ensemble_piv", {}).get("fit_offset", True)
 
     @property
+    def ensemble_mask_center_pixel(self) -> bool:
+        """Enable/disable center pixel masking for autocorrelation.
+
+        When True (default): Exclude center pixel of AA/BB planes from fitting
+        to remove camera self-noise spike at zero lag.
+        When False: Include all pixels (for synthetic data or testing).
+
+        The cross-correlation (AB) center pixel is never masked since it
+        contains valid displacement signal.
+        """
+        return self.data.get("ensemble_piv", {}).get("mask_center_pixel", True)
+
+    @property
     def ensemble_fit_method(self) -> str:
         """Return fitting method for ensemble PIV.
 

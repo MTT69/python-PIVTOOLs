@@ -91,6 +91,10 @@ def _load_marquadt_lib():
     marquadt_lib.set_disable_offset.argtypes = [ctypes.c_int]
     marquadt_lib.set_disable_offset.restype = None
 
+    # Set up ctypes bindings for center pixel masking control
+    marquadt_lib.set_mask_center.argtypes = [ctypes.c_int]
+    marquadt_lib.set_mask_center.restype = None
+
     _marquadt_lib = marquadt_lib
     return marquadt_lib
 
@@ -114,6 +118,25 @@ def set_offset_fitting(enabled: bool = True):
     """
     lib = _load_marquadt_lib()
     lib.set_disable_offset(0 if enabled else 1)
+
+
+def set_center_masking(enabled: bool = True):
+    """
+    Enable or disable center pixel masking for autocorrelation.
+
+    When enabled, the center pixel of AA/BB autocorrelation planes is excluded
+    from fitting to remove the camera self-noise spike at zero lag. The
+    cross-correlation (AB) center pixel is NOT masked since it contains valid
+    displacement signal.
+
+    Parameters
+    ----------
+    enabled : bool, default True
+        If True, mask the center pixel (recommended for real camera data).
+        If False, include all pixels (for synthetic data or testing).
+    """
+    lib = _load_marquadt_lib()
+    lib.set_mask_center(1 if enabled else 0)
 
 
 def _validate_sigma_field(
@@ -913,9 +936,8 @@ def _build_initial_guesses_vectorized(
         # and provides accurate estimates for Gaussian-shaped peaks.
         #
         # sigma_A: from AA autocorrelation (particle image size)
-        # sigma_AB: from AB cross-correlation minus AA contribution (displacement uncertainty)
-        #           sigma^2_total = sigma^2_particle + sigma^2_displacement
-        #           So: HWHM_disp = sqrt(HWHM_total^2 - HWHM_particle^2)
+        # sigma_AB: TOTAL width from AB cross-correlation (NOT difference!)
+        #           The C code now uses sigma_AB directly for cross-correlation model.
 
         # Sigma A: from AA autocorrelation at center (particle image size)
         central_indices = np.full(n_valid, central_index, dtype=np.int64)
@@ -924,41 +946,38 @@ def _build_initial_guesses_vectorized(
         )
         sigma_A_xy = np.zeros(n_valid, dtype=np.float64)  # Assume axis-aligned for pass 0
 
-        # Sigma AB: from AB cross-correlation minus AA contribution
-        sigma_AB_raw_x, sigma_AB_raw_y, hwhm_AB_x, hwhm_AB_y = _estimate_sigma_batch_hwhm(
-            AB_3d, max_indices, win_size, min_sigma=0.1
+        # Sigma AB: TOTAL width from AB cross-correlation (used directly by C code)
+        # This is the raw sigma from the cross-correlation peak, not the difference.
+        sigma_AB_x, sigma_AB_y, hwhm_AB_x, hwhm_AB_y = _estimate_sigma_batch_hwhm(
+            AB_3d, max_indices, win_size, min_sigma=0.5
         )
-
-        # Compute displacement uncertainty by subtracting particle contribution (quadrature)
-        # HWHM_disp = sqrt(HWHM_total^2 - HWHM_particle^2)
-        min_hwhm = 0.1 * np.sqrt(2 * np.log(2))
-        hwhm_diff_x = np.sqrt(np.maximum(hwhm_AB_x**2 - hwhm_A_x**2, min_hwhm**2))
-        hwhm_diff_y = np.sqrt(np.maximum(hwhm_AB_y**2 - hwhm_A_y**2, min_hwhm**2))
-
-        sigma_AB_x = hwhm_diff_x / np.sqrt(2 * np.log(2))
-        sigma_AB_y = hwhm_diff_y / np.sqrt(2 * np.log(2))
         sigma_AB_xy = np.zeros(n_valid, dtype=np.float64)  # Assume axis-aligned for pass 0
 
         # Apply reasonable bounds - extreme values indicate estimation failure
         sigma_A_x = np.clip(sigma_A_x, 0.5, 20.0)
         sigma_A_y = np.clip(sigma_A_y, 0.5, 20.0)
-        sigma_AB_x = np.clip(sigma_AB_x, 0.1, 10.0)
-        sigma_AB_y = np.clip(sigma_AB_y, 0.1, 10.0)
+        # sigma_AB is total width, so should be >= sigma_A
+        sigma_AB_x = np.clip(sigma_AB_x, 0.5, 25.0)
+        sigma_AB_y = np.clip(sigma_AB_y, 0.5, 25.0)
 
         # Fallback: if HWHM estimation produces extreme values, use defaults
         # This handles cases where correlation planes are too noisy
         default_var_A = 3.0
-        default_var_AB = 1.5
+        default_var_AB = 4.0  # Total width default (> sigma_A default)
 
         bad_A = (sigma_A_x > 15.0) | (sigma_A_y > 15.0) | \
                 (sigma_A_x < 0.3) | (sigma_A_y < 0.3)
-        bad_AB = (sigma_AB_x > 8.0) | (sigma_AB_y > 8.0) | \
-                 (sigma_AB_x < 0.05) | (sigma_AB_y < 0.05)
+        bad_AB = (sigma_AB_x > 20.0) | (sigma_AB_y > 20.0) | \
+                 (sigma_AB_x < 0.3) | (sigma_AB_y < 0.3)
 
         sigma_A_x = np.where(bad_A, default_var_A, sigma_A_x)
         sigma_A_y = np.where(bad_A, default_var_A, sigma_A_y)
         sigma_AB_x = np.where(bad_AB, default_var_AB, sigma_AB_x)
         sigma_AB_y = np.where(bad_AB, default_var_AB, sigma_AB_y)
+
+        # Ensure sigma_AB >= sigma_A (physical constraint)
+        sigma_AB_x = np.maximum(sigma_AB_x, sigma_A_x)
+        sigma_AB_y = np.maximum(sigma_AB_y, sigma_A_y)
     else:
         # Pass > 0: Use interpolated values from previous pass
         sigma_A_x = sigma_dict['sig_A_x'][valid_indices].astype(np.float64)
@@ -1030,7 +1049,23 @@ def _build_initial_guesses_vectorized(
         y_all[offset + n_per_window:offset + 2 * n_per_window] = BB_valid[i]
         y_all[offset + 2 * n_per_window:offset + 3 * n_per_window] = AB_valid[i]
 
-    return initial_guesses, y_all
+    # Compute weights for AA/BB residuals (decoupled sigma fitting)
+    # Weight = sqrt(sigma_AB / sigma_A) for variance normalization
+    weights_auto = _compute_autocorrelation_weights(
+        sigma_A_x, sigma_A_y, sigma_AB_x, sigma_AB_y
+    )
+
+    # Log weight statistics for verification
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(
+        f"Decoupled fitting weights: min={weights_auto.min():.3f}, "
+        f"max={weights_auto.max():.3f}, mean={weights_auto.mean():.3f}, "
+        f"sigma_A_mean={np.mean(np.sqrt(sigma_A_x * sigma_A_y)):.2f}, "
+        f"sigma_AB_mean={np.mean(np.sqrt(sigma_AB_x * sigma_AB_y)):.2f}"
+    )
+
+    return initial_guesses, y_all, weights_auto
 
 
 def _estimate_sigma_batch_vectorized(
@@ -1197,6 +1232,51 @@ def _estimate_sigma_batch_hwhm(
     return sigma_x, sigma_y, hwhm_x, hwhm_y
 
 
+def _compute_autocorrelation_weights(
+    sigma_A_x: np.ndarray,
+    sigma_A_y: np.ndarray,
+    sigma_AB_x: np.ndarray,
+    sigma_AB_y: np.ndarray,
+    min_weight: float = 0.5,
+    max_weight: float = 5.0
+) -> np.ndarray:
+    """
+    Compute weights for AA/BB residuals in decoupled sigma fitting.
+
+    The weight is sqrt(sigma_AB / sigma_A), which normalizes the variance
+    contribution of autocorrelation vs cross-correlation data. This ensures
+    both data sources have comparable influence on the optimizer.
+
+    When sigma_AB >> sigma_A (large displacement uncertainty), autocorrelation
+    residuals should be weighted more heavily to preserve sigma_A accuracy.
+
+    Parameters
+    ----------
+    sigma_A_x, sigma_A_y : np.ndarray
+        Particle size sigma (from autocorrelation), shape (n_windows,)
+    sigma_AB_x, sigma_AB_y : np.ndarray
+        Total cross-correlation width (NOT additive term), shape (n_windows,)
+    min_weight, max_weight : float
+        Bounds to prevent extreme weights from destabilizing the optimizer
+
+    Returns
+    -------
+    np.ndarray
+        Per-window weights, shape (n_windows,)
+    """
+    # Use geometric mean of x and y components
+    sigma_A_mean = np.sqrt(sigma_A_x * sigma_A_y)
+    sigma_AB_mean = np.sqrt(sigma_AB_x * sigma_AB_y)
+
+    # Avoid division by zero
+    sigma_A_mean = np.maximum(sigma_A_mean, 0.1)
+
+    # Weight = sqrt(sigma_AB / sigma_A)
+    weights = np.sqrt(sigma_AB_mean / sigma_A_mean)
+
+    return np.clip(weights, min_weight, max_weight)
+
+
 def fit_windows_openmp(
     R_AA: np.ndarray,
     R_BB: np.ndarray,
@@ -1285,6 +1365,11 @@ def fit_windows_openmp(
     # Must be called on the worker, not main process, due to process isolation
     set_offset_fitting(fit_offset)
 
+    # Configure center pixel masking (reads from config)
+    # True = mask AA/BB center pixel to remove camera self-noise spike
+    mask_center = getattr(config, 'ensemble_mask_center_pixel', True)
+    set_center_masking(mask_center)
+
     # Get grid info
     win_size = corr_size  # (height, width)
     num_windows = len(mask_flat)
@@ -1307,8 +1392,9 @@ def fit_windows_openmp(
     n_per_window = win_size[0] * win_size[1]
 
     # Build initial guesses using vectorized implementation (much faster)
+    # Also returns weights for decoupled sigma fitting
     logger.debug(f"fit_windows_openmp: Building initial guesses (vectorized)...{num_windows}")
-    initial_guesses_valid, y_all = _build_initial_guesses_vectorized(
+    initial_guesses_valid, y_all, weights_auto = _build_initial_guesses_vectorized(
         R_AA, R_BB, R_AB, valid_indices, sigma_dict, win_size,
         central_index, x_guess, y_guess, pass_idx, config, num_windows=num_windows
     )
@@ -1319,6 +1405,7 @@ def fit_windows_openmp(
 
     # Call batch C function - OpenMP parallelizes internally
     # Pass win_height and win_width separately to support rectangular windows
+    # Pass weights_auto for decoupled sigma fitting (variance normalization)
     logger.debug(f"fit_windows_openmp: Calling C batch function with {n_valid} windows")
     success_count = marquadt_lib.fit_stacked_gaussian_batch_export(
         ctypes.c_size_t(n_valid),
@@ -1329,6 +1416,7 @@ def fit_windows_openmp(
         X1.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),  # X1 is y-coord
         y_all.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
         initial_guesses_valid.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+        weights_auto.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),  # Per-window weights
         results_valid.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
         statuses_valid.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
     )

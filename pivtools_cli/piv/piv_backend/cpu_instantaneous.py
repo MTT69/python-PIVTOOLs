@@ -353,11 +353,6 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     thresh_x = win_width / 4.0
                     thresh_y = win_height / 4.0
 
-                # Debug: check peak locations before masking
-                logging.info(f"Pass {pass_idx}: win_size=({win_height}, {win_width}), grid=({n_win_y}, {n_win_x})")
-                logging.info(f"Pass {pass_idx}: pk_loc_x range: [{np.nanmin(pk_loc_x):.2f}, {np.nanmax(pk_loc_x):.2f}], threshold={thresh_x:.2f}")
-                logging.info(f"Pass {pass_idx}: pk_loc_y range: [{np.nanmin(pk_loc_y):.2f}, {np.nanmax(pk_loc_y):.2f}], threshold={thresh_y:.2f}")
-
                 mask_batch = np.broadcast_to(b_mask[None, :, :], (N, n_win_y, n_win_x))
                 mask_bool_batch = mask_batch.astype(bool)
                 large_disp_mask = (np.abs(pk_loc_x) > thresh_x) | (np.abs(pk_loc_y) > thresh_y)

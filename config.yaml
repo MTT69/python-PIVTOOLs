@@ -10,7 +10,7 @@ paths:
   camera_count: 1
   camera_subfolders: []
 images:
-  num_images: 1000
+  num_images: 50
   image_format:
   - B%05d_A.tif
   - B%05d_B.tif
@@ -21,7 +21,7 @@ images:
   zero_based_indexing: false
   pairing_mode: sequential
   pairing_skip: 0
-  num_frame_pairs: 1000
+  num_frame_pairs: 50
   image_type: standard
   use_camera_subfolders: false
 batches:
@@ -39,8 +39,8 @@ processing:
   dask_threads_per_worker: 1
   dask_memory_limit: 8GB
   always_batch: true
-  instantaneous: true
-  ensemble: false
+  instantaneous: false
+  ensemble: true
 outlier_detection:
   enabled: true
   methods:
@@ -141,18 +141,19 @@ ensemble_piv:
   predictor_interpolation: cubic
   kspace_snr_threshold: 3.0
   fit_offset: false
+  mask_center_pixel: true
   background_subtraction_method: correlation
   window_size:
   - - 32
     - 64
-  - - 8
-    - 16
+  - - 32
+    - 32
   overlap:
   - 50
   - 50
   type:
   - std
-  - single
+  - std
   runs:
   - 1
   - 2
