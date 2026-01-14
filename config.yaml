@@ -25,7 +25,7 @@ images:
   image_type: standard
   use_camera_subfolders: false
 batches:
-  size: 50
+  size: 25
 logging:
   file: pypiv.log
   level: INFO
@@ -80,10 +80,10 @@ plots:
 video:
   base_path_idx: 0
   camera: 1
-  data_source: calibrated
-  variable: ux
-  run: 4
-  piv_type: ensemble
+  data_source: uncalibrated
+  variable: mag
+  run: 2
+  piv_type: instantaneous
   cmap: jet
   lower: ''
   upper: ''
@@ -114,19 +114,18 @@ statistics:
     inst_stresses: false
   gamma_radius: 4
   save_figures: true
-  type_name: ensemble
+  type_name: instantaneous
   source_endpoint: regular
 instantaneous_piv:
   window_size:
-  - - 32
+  - - 64
     - 64
-  - - 16
-    - 32
+  - - 32
+    - 16
   overlap:
   - 50
   - 50
   runs:
-  - 1
   - 2
   time_resolved: false
   window_type: gaussian
@@ -146,8 +145,8 @@ ensemble_piv:
   window_size:
   - - 32
     - 64
-  - - 32
-    - 32
+  - - 8
+    - 8
   overlap:
   - 50
   - 50
@@ -165,12 +164,12 @@ ensemble_piv:
   resume_from_pass: 0
   window_type: square
 calibration:
-  image_format: planar_calibration_plate_%02d.tif
+  image_format: cal%03d.cam1.tif
   num_images: 19
   image_type: standard
   zero_based_indexing: false
   use_camera_subfolders: false
-  subfolder: enhanced
+  subfolder: charuco
   camera_subfolders:
   - Cam1
   - Cam2
@@ -265,11 +264,11 @@ masking:
     left: 0
     right: 0
 merging:
-  type_name: ensemble
+  type_name: instantaneous
   base_path_idx: 0
 transforms:
   base_path_idx: 0
-  type_name: ensemble
+  type_name: instantaneous
   cameras:
     1:
       operations: null
