@@ -39,3 +39,6 @@ pypiv.log
 # OS
 .DS_Store
 Thumbs.db
+
+# Large generated ground truth data
+/tests/ground_truth/

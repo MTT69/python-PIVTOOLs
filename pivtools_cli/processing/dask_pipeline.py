@@ -355,9 +355,6 @@ def _apply_spatial_filters_numpy(
             bg = spec.get('bg', 0)
             block = np.maximum(0, block - bg)
 
-        elif filter_type == 'transpose':
-            block = block.transpose(0, 1, 3, 2)
-
         else:
             logger.warning(f"Unknown spatial filter type: {filter_type}")
 

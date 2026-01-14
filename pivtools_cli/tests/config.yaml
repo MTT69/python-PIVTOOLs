@@ -42,5 +42,4 @@ preprocessing:
       n: 2.0
     - type: "invert"
       offset: 255
-    - type: "transpose"
     - type: "time"

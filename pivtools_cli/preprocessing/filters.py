@@ -388,18 +388,6 @@ def sbg_filter(images: da.Array, bg=None) -> da.Array:
     return da.maximum(0, images - bg)
 
 
-def _transpose_block(block):
-    return block.transpose(0, 1, 3, 2)
-
-
-def transpose_filter(images: da.Array) -> da.Array:
-
-    if images.ndim != 4:
-        raise ValueError(f"Expected 4D array (N, C, H, W), got {images.ndim}D array.")
-
-    return images.map_blocks(_transpose_block, dtype=images.dtype)
-
-
 def gaussian_filter_dask(images: da.Array, sigma=1.0) -> da.Array:
     """
     Apply a Gaussian filter to a batch of images with shape (N, 2, H, W).
@@ -503,7 +491,6 @@ FILTER_MAP = {
     "median": median_filter_dask,
     "sbg": sbg_filter,
     "norm": norm_filter,
-    "transpose": transpose_filter,
     "gaussian": gaussian_filter_dask,
 }
 
