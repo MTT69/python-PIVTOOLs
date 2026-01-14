@@ -1,8 +1,8 @@
 paths:
   base_paths:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images_reduced/masking_decoupled
+  - /Users/morgan/Documents/PIV_test/process
   source_paths:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images
+  - /Users/morgan/Documents/PIV_test
   active_paths:
   - 0
   camera_numbers:
@@ -10,7 +10,7 @@ paths:
   camera_count: 1
   camera_subfolders: []
 images:
-  num_images: 1000
+  num_images: 50
   image_format:
   - B%05d_A.tif
   - B%05d_B.tif
@@ -21,11 +21,11 @@ images:
   zero_based_indexing: false
   pairing_mode: sequential
   pairing_skip: 0
-  num_frame_pairs: 1000
+  num_frame_pairs: 50
   image_type: standard
   use_camera_subfolders: false
 batches:
-  size: 10
+  size: 50
 logging:
   file: pypiv.log
   level: INFO
@@ -39,8 +39,8 @@ processing:
   dask_threads_per_worker: 1
   dask_memory_limit: 8GB
   always_batch: true
-  instantaneous: false
-  ensemble: true
+  instantaneous: true
+  ensemble: false
 outlier_detection:
   enabled: true
   methods:
@@ -252,7 +252,8 @@ calibration:
     aruco_dict: DICT_4X4_1000
     min_corners: 6
     dt: 0.0057553
-filters: []
+filters:
+- type: time
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat

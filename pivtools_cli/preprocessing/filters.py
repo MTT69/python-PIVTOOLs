@@ -124,7 +124,8 @@ def _pod_filter_block(block, tile_size=2048):
     import gc
 
     N, C, H, W = block.shape
-    output = np.empty_like(block)
+    # POD filtering produces negative values, so output must be float32
+    output = np.empty(block.shape, dtype=np.float32)
 
     # Process each channel (frame 0/1) sequentially to halve memory requirements
     for frame_idx in range(C):
@@ -141,7 +142,7 @@ def _pod_filter_block(block, tile_size=2048):
         # Identify noise floor using Mendez et al. criteria
         n_remove = _find_pod_auto_mode(PSI, S, N)
 
-        logging.debug(f"POD filter: Frame {frame_idx} - found {n_remove} modes to remove")
+        logging.debug(f"POD filter: Frame {frame_idx} - removing {n_remove} modes")
 
         if n_remove == 0:
             output[:, frame_idx] = block[:, frame_idx]
@@ -186,7 +187,8 @@ def _pod_filter_block(block, tile_size=2048):
         del PSI_bad
         gc.collect()
 
-    return output.astype(block.dtype)
+    # Return float32 - POD output has negative values that would be clipped by uint8
+    return output
 
 
 def _find_pod_auto_mode(PSI, eigvals, N):
