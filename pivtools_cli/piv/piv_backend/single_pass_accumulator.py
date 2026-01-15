@@ -297,7 +297,8 @@ class SinglePassAccumulator:
             correl_AB_bg,
         )
 
-        # Auto-correlation AA
+        # Auto-correlation AA - use weight_B (full/bsingle) on both sides
+        # to match the raw AA correlation and get correct background subtraction
         correlator.lib.bulkxcorr2d(
             np.ascontiguousarray(A_mean, dtype=np.float32),
             np.ascontiguousarray(A_mean, dtype=np.float32),
@@ -307,9 +308,9 @@ class SinglePassAccumulator:
             correlator.win_ctrs_x[pass_idx].astype(np.float32),
             correlator.win_ctrs_y[pass_idx].astype(np.float32),
             n_windows,
-            correlator.win_weights_A[pass_idx],
+            correlator.win_weights_B[pass_idx],
             b_ensemble,
-            correlator.win_weights_A[pass_idx],
+            correlator.win_weights_B[pass_idx],
             win_size_arr,
             int(n_peaks),
             int(i_peak_finder),

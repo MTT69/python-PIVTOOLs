@@ -667,6 +667,8 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
 
             # Auto-correlation AA - use full weights (weight_B) on both sides
             # to match BB energy and get true particle sigma
+            # DEBUG: Verify weights are uniform
+            logging.info(f"DEBUG AA weights: min={self.win_weights_B[pass_idx].min():.4f}, max={self.win_weights_B[pass_idx].max():.4f}, shape={self.win_weights_B[pass_idx].shape}, sum={self.win_weights_B[pass_idx].sum():.1f}")
             error_code_AA = self._run_correlation_accumulate(
                 images_a_prime, images_a_prime,
                 self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
@@ -674,6 +676,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             )
 
             # Auto-correlation BB
+            logging.info(f"DEBUG BB weights: min={self.win_weights_B[pass_idx].min():.4f}, max={self.win_weights_B[pass_idx].max():.4f}, shape={self.win_weights_B[pass_idx].shape}, sum={self.win_weights_B[pass_idx].sum():.1f}")
             error_code_BB = self._run_correlation_accumulate(
                 images_b_prime, images_b_prime,
                 self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
@@ -963,6 +966,8 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
 
         # Auto-correlation AA (mean-subtracted) - use full weights (weight_B) on both sides
         # to match BB energy and get true particle sigma
+        # DEBUG: Verify weights are uniform
+        logging.info(f"DEBUG AA (mean-sub) weights: min={self.win_weights_B[pass_idx].min():.4f}, max={self.win_weights_B[pass_idx].max():.4f}, shape={self.win_weights_B[pass_idx].shape}, sum={self.win_weights_B[pass_idx].sum():.1f}")
         error_code_AA = self._run_correlation_accumulate(
             images_a_centered, images_a_centered,
             self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
@@ -970,6 +975,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         )
 
         # Auto-correlation BB (mean-subtracted)
+        logging.info(f"DEBUG BB (mean-sub) weights: min={self.win_weights_B[pass_idx].min():.4f}, max={self.win_weights_B[pass_idx].max():.4f}, shape={self.win_weights_B[pass_idx].shape}, sum={self.win_weights_B[pass_idx].sum():.1f}")
         error_code_BB = self._run_correlation_accumulate(
             images_b_centered, images_b_centered,
             self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
