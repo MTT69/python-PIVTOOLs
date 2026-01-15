@@ -665,10 +665,11 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 b_mask, pass_idx, correl_AB_sum
             )
 
-            # Auto-correlation AA
+            # Auto-correlation AA - use full weights (weight_B) on both sides
+            # to match BB energy and get true particle sigma
             error_code_AA = self._run_correlation_accumulate(
                 images_a_prime, images_a_prime,
-                self.win_weights_A[pass_idx], self.win_weights_A[pass_idx],
+                self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
                 b_mask, pass_idx, correl_AA_sum
             )
 
@@ -960,10 +961,11 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             b_mask, pass_idx, correl_AB_sum
         )
 
-        # Auto-correlation AA (mean-subtracted)
+        # Auto-correlation AA (mean-subtracted) - use full weights (weight_B) on both sides
+        # to match BB energy and get true particle sigma
         error_code_AA = self._run_correlation_accumulate(
             images_a_centered, images_a_centered,
-            self.win_weights_A[pass_idx], self.win_weights_A[pass_idx],
+            self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
             b_mask, pass_idx, correl_AA_sum
         )
 
