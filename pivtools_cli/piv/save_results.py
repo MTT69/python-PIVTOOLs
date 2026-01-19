@@ -367,6 +367,9 @@ def _create_ensemble_struct_all_passes(
         ('UU_stress', object),
         ('VV_stress', object),
         ('UV_stress', object),
+        ('UU_correction', object),
+        ('VV_correction', object),
+        ('UV_correction', object),
         ('peakheight', object),
         ('nan_reason', object),
         ('sig_AB_x', object),
@@ -397,6 +400,9 @@ def _create_ensemble_struct_all_passes(
         ensemble_struct['UU_stress'][i] = empty
         ensemble_struct['VV_stress'][i] = empty
         ensemble_struct['UV_stress'][i] = empty
+        ensemble_struct['UU_correction'][i] = empty
+        ensemble_struct['VV_correction'][i] = empty
+        ensemble_struct['UV_correction'][i] = empty
         ensemble_struct['peakheight'][i] = empty
         ensemble_struct['nan_reason'][i] = empty
         ensemble_struct['sig_AB_x'][i] = empty
@@ -438,10 +444,15 @@ def _create_ensemble_struct_all_passes(
         VV_to_save = pass_result.VV_stress
         UV_to_save = -pass_result.UV_stress if pass_result.UV_stress is not None else None
 
+        # Initialize correction terms as None (will be populated if gradient correction is applied)
+        UU_correction = None
+        VV_correction = None
+        UV_correction = None
+
         # Apply gradient correction if enabled
         if gradient_correction and pass_result.sig_A_x is not None:
             logging.info(f"Applying gradient correction to pass {global_pass_idx + 1}")
-            UU_to_save, VV_to_save, UV_to_save = apply_gradient_correction_to_pass(
+            UU_to_save, VV_to_save, UV_to_save, UU_correction, VV_correction, UV_correction = apply_gradient_correction_to_pass(
                 ux=ux_physical,
                 uy=uy_physical,
                 UU_stress=UU_to_save,
@@ -460,6 +471,14 @@ def _create_ensemble_struct_all_passes(
             ensemble_struct['VV_stress'][local_idx] = _convert_to_half_precision(VV_to_save, 'VV_stress')
         if UV_to_save is not None:
             ensemble_struct['UV_stress'][local_idx] = _convert_to_half_precision(UV_to_save, 'UV_stress')
+
+        # Store gradient correction terms (only populated when gradient correction is applied)
+        if UU_correction is not None:
+            ensemble_struct['UU_correction'][local_idx] = _convert_to_half_precision(UU_correction, 'UU_correction')
+        if VV_correction is not None:
+            ensemble_struct['VV_correction'][local_idx] = _convert_to_half_precision(VV_correction, 'VV_correction')
+        if UV_correction is not None:
+            ensemble_struct['UV_correction'][local_idx] = _convert_to_half_precision(UV_correction, 'UV_correction')
 
         # Normalized peak height - no row reversal needed
         if pass_result.peakheight is not None:

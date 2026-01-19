@@ -1011,10 +1011,6 @@ def correlate_single_batch_and_accumulate(
         return accumulated if accumulated is not None else {}
 
     # TEMPORARY DEBUG: Monitor memory per batch to confirm lazy loading
-    import psutil
-    import os as os_module
-    process = psutil.Process(os_module.getpid())
-    mem_before = process.memory_info().rss / 1024**3
     n_images_so_far = accumulated["n_images"] if accumulated else 0
     batch_images = batch.shape[0] if hasattr(batch, 'shape') else 0
 
@@ -1030,12 +1026,10 @@ def correlate_single_batch_and_accumulate(
         output_path=output_path,
     )
 
-    mem_after = process.memory_info().rss / 1024**3
     worker_total = n_images_so_far + batch_images
-    logger.info(
-        f"Batch +{batch_images} images ({worker_total} processed), "
-        f"mem: {mem_before:.2f} -> {mem_after:.2f} GB"
-    )
+    total_pairs = config.num_frame_pairs or 1
+    percent_complete = 100.0 * worker_total / total_pairs
+    logger.info(f"Progress: {percent_complete:.1f}% ({worker_total}/{total_pairs} pairs)")
 
     # DIAGNOSTIC: Track data locality across batches
     from distributed import get_worker

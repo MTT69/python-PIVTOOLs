@@ -27,7 +27,7 @@ def compute_gradient_corrections(
     UV_stress: np.ndarray,
     dx: float,
     dy: float,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Compute gradient-corrected Reynolds stresses.
 
@@ -55,7 +55,8 @@ def compute_gradient_corrections(
     Returns
     -------
     tuple
-        (UU_corrected, VV_corrected, UV_corrected)
+        (UU_corrected, VV_corrected, UV_corrected, UU_correction, VV_correction, UV_correction)
+        First three are corrected stresses, last three are the correction terms that were subtracted.
     """
     # Compute velocity gradients using SIGNED spacing
     # axis=0 is rows (y direction), axis=1 is columns (x direction)
@@ -77,7 +78,7 @@ def compute_gradient_corrections(
     VV_corrected = VV_stress - VV_correction
     UV_corrected = UV_stress - UV_correction
 
-    return UU_corrected, VV_corrected, UV_corrected
+    return UU_corrected, VV_corrected, UV_corrected, UU_correction, VV_correction, UV_correction
 
 
 def apply_gradient_correction_to_pass(
@@ -91,7 +92,7 @@ def apply_gradient_correction_to_pass(
     win_ctrs_x: np.ndarray,
     win_ctrs_y: np.ndarray,
     image_height: int,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]]:
     """
     Apply gradient correction to a single pass result.
 
@@ -124,20 +125,22 @@ def apply_gradient_correction_to_pass(
     Returns
     -------
     tuple
-        (UU_corrected, VV_corrected, UV_corrected) or original stresses if correction not possible
+        (UU_corrected, VV_corrected, UV_corrected, UU_correction, VV_correction, UV_correction)
+        First three are corrected stresses, last three are the correction terms that were subtracted.
+        If correction not possible, returns original stresses with None for correction terms.
     """
     # Check if we have required parameters
     if sig_A_x is None or sig_A_y is None:
         logging.warning("sig_A_x or sig_A_y not available, skipping gradient correction")
-        return UU_stress, VV_stress, UV_stress
+        return UU_stress, VV_stress, UV_stress, None, None, None
 
     if ux is None or uy is None:
         logging.warning("Velocity fields not available, skipping gradient correction")
-        return UU_stress, VV_stress, UV_stress
+        return UU_stress, VV_stress, UV_stress, None, None, None
 
     if UU_stress is None or VV_stress is None or UV_stress is None:
         logging.warning("Stress fields not available, skipping gradient correction")
-        return UU_stress, VV_stress, UV_stress
+        return UU_stress, VV_stress, UV_stress, None, None, None
 
     # Compute grid spacing from window centers
     # X spacing (always positive)
@@ -159,7 +162,7 @@ def apply_gradient_correction_to_pass(
     logging.debug(f"Gradient correction: dx={dx:.2f}, dy={dy:.2f} (physical coords)")
 
     # Apply correction
-    UU_corrected, VV_corrected, UV_corrected = compute_gradient_corrections(
+    UU_corrected, VV_corrected, UV_corrected, UU_correction, VV_correction, UV_correction = compute_gradient_corrections(
         U=ux,
         V=uy,
         sig_A_x=sig_A_x,
@@ -171,4 +174,4 @@ def apply_gradient_correction_to_pass(
         dy=dy,
     )
 
-    return UU_corrected, VV_corrected, UV_corrected
+    return UU_corrected, VV_corrected, UV_corrected, UU_correction, VV_correction, UV_correction
