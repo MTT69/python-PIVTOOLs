@@ -374,6 +374,18 @@ def _validate_fitted_params(
     # Check 1: AB peak height validity
     if AA_central > 1e-12 and BB_central > 1e-12:
         AB_normalized = amp_AB / np.sqrt(AA_central * BB_central)
+
+        # In single mode, AB correlation uses asymmetric weighting:
+        # - A uses center pixels only (sum_window size, e.g., 16×16 = 256)
+        # - B uses full window (e.g., 32×32 = 1024)
+        # This reduces AB amplitude by factor of (sum_area / full_area).
+        # Apply inverse correction to get true normalized peak height.
+        # Verified: observed AB ratio 0.045/0.181 = 0.25 matches 256/1024.
+        if runtype == 'single':
+            sum_area = sum_window[0] * sum_window[1]
+            full_area = win_size[0] * win_size[1]
+            AB_normalized *= (full_area / sum_area)
+
         if not np.isreal(AB_normalized) or AB_normalized < 0 or AB_normalized > 1:
             return False, 2
 
