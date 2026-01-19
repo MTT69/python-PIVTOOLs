@@ -1061,21 +1061,11 @@ def _build_initial_guesses_vectorized(
         y_all[offset + n_per_window:offset + 2 * n_per_window] = BB_valid[i]
         y_all[offset + 2 * n_per_window:offset + 3 * n_per_window] = AB_valid[i]
 
-    # Compute weights for AA/BB residuals (decoupled sigma fitting)
-    # Weight = sqrt(sigma_AB / sigma_A) for variance normalization
-    weights_auto = _compute_autocorrelation_weights(
-        sigma_A_x, sigma_A_y, sigma_AB_x, sigma_AB_y
-    )
-
-    # Log weight statistics for verification
-    import logging
-    logger = logging.getLogger(__name__)
-    logger.info(
-        f"Decoupled fitting weights: min={weights_auto.min():.3f}, "
-        f"max={weights_auto.max():.3f}, mean={weights_auto.mean():.3f}, "
-        f"sigma_A_mean={np.mean(np.sqrt(sigma_A_x * sigma_A_y)):.2f}, "
-        f"sigma_AB_mean={np.mean(np.sqrt(sigma_AB_x * sigma_AB_y)):.2f}"
-    )
+    # Uniform weights for AA/BB residuals - no physics-dependent weighting
+    # Previous implementation weighted by sqrt(sigma_AB / sigma_A), but this
+    # introduced spatial bias that suppressed displacement signal in high-shear regions.
+    # The constraint sigma_AB >= sigma_A in the C solver provides sufficient coupling.
+    weights_auto = np.ones(n_valid, dtype=np.float64)
 
     return initial_guesses, y_all, weights_auto
 
@@ -1244,51 +1234,6 @@ def _estimate_sigma_batch_hwhm(
     return sigma_x, sigma_y, hwhm_x, hwhm_y
 
 
-def _compute_autocorrelation_weights(
-    sigma_A_x: np.ndarray,
-    sigma_A_y: np.ndarray,
-    sigma_AB_x: np.ndarray,
-    sigma_AB_y: np.ndarray,
-    min_weight: float = 0.5,
-    max_weight: float = 5.0
-) -> np.ndarray:
-    """
-    Compute weights for AA/BB residuals in decoupled sigma fitting.
-
-    The weight is sqrt(sigma_AB / sigma_A), which normalizes the variance
-    contribution of autocorrelation vs cross-correlation data. This ensures
-    both data sources have comparable influence on the optimizer.
-
-    When sigma_AB >> sigma_A (large displacement uncertainty), autocorrelation
-    residuals should be weighted more heavily to preserve sigma_A accuracy.
-
-    Parameters
-    ----------
-    sigma_A_x, sigma_A_y : np.ndarray
-        Particle size sigma (from autocorrelation), shape (n_windows,)
-    sigma_AB_x, sigma_AB_y : np.ndarray
-        Total cross-correlation width (NOT additive term), shape (n_windows,)
-    min_weight, max_weight : float
-        Bounds to prevent extreme weights from destabilizing the optimizer
-
-    Returns
-    -------
-    np.ndarray
-        Per-window weights, shape (n_windows,)
-    """
-    # Use geometric mean of x and y components
-    sigma_A_mean = np.sqrt(sigma_A_x * sigma_A_y)
-    sigma_AB_mean = np.sqrt(sigma_AB_x * sigma_AB_y)
-
-    # Avoid division by zero
-    sigma_A_mean = np.maximum(sigma_A_mean, 0.1)
-
-    # Weight = sqrt(sigma_AB / sigma_A)
-    weights = np.sqrt(sigma_AB_mean / sigma_A_mean)
-
-    return np.clip(weights, min_weight, max_weight)
-
-
 def fit_windows_openmp(
     R_AA: np.ndarray,
     R_BB: np.ndarray,
@@ -1404,7 +1349,7 @@ def fit_windows_openmp(
     n_per_window = win_size[0] * win_size[1]
 
     # Build initial guesses using vectorized implementation (much faster)
-    # Also returns weights for decoupled sigma fitting
+    # Returns uniform weights (all 1.0) - no physics-dependent weighting
     logger.debug(f"fit_windows_openmp: Building initial guesses (vectorized)...{num_windows}")
     initial_guesses_valid, y_all, weights_auto = _build_initial_guesses_vectorized(
         R_AA, R_BB, R_AB, valid_indices, sigma_dict, win_size,
@@ -1417,9 +1362,9 @@ def fit_windows_openmp(
 
     # Call batch C function - OpenMP parallelizes internally
     # Pass win_height and win_width separately to support rectangular windows
-    # Pass weights_auto for decoupled sigma fitting (variance normalization)
+    # weights_auto is uniform (1.0) - AA/BB/AB residuals treated equally
     logger.debug(f"fit_windows_openmp: Calling C batch function with {n_valid} windows")
-    success_count = marquadt_lib.fit_stacked_gaussian_batch_export(
+    marquadt_lib.fit_stacked_gaussian_batch_export(
         ctypes.c_size_t(n_valid),
         ctypes.c_size_t(n_per_window),
         ctypes.c_size_t(win_size[0]),  # win_height
@@ -1428,7 +1373,7 @@ def fit_windows_openmp(
         X1.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),  # X1 is y-coord
         y_all.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
         initial_guesses_valid.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-        weights_auto.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),  # Per-window weights
+        weights_auto.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),  # Uniform weights (1.0)
         results_valid.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
         statuses_valid.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
     )
