@@ -1092,10 +1092,10 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 2
-  dask_workers_per_node: 4
+  omp_threads: 4
+  dask_workers_per_node: 1
   dask_threads_per_worker: 1
-  dask_memory_limit: 3GB
+  dask_memory_limit: 8GB
   always_batch: true
   instantaneous: true
   ensemble: false
@@ -1234,6 +1234,10 @@ ensemble_piv:
   sum_window:
   - 16
   - 16
+  sum_fitting_window_enabled: true
+  sum_fitting_window:
+  - 32
+  - 32
   resume_from_pass: 0
   window_type: square
 calibration:

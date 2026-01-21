@@ -231,7 +231,7 @@ class SinglePassAccumulator:
                 B_mean, win_size, sum_window, pad_value=0.0
             )
 
-        # Allocate output correlation planes
+        # Allocate output correlation planes (at output/fitting size)
         correl_AA_bg = np.ascontiguousarray(
             np.zeros(total_windows * corr_size[0] * corr_size[1], dtype=np.float32)
         )
@@ -242,67 +242,57 @@ class SinglePassAccumulator:
             np.zeros(total_windows * corr_size[0] * corr_size[1], dtype=np.float32)
         )
 
-        # Create temporary correlator to get library and arguments
+        # Create temporary correlator to get library and window weights
         from pivtools_cli.piv.piv_backend.factory import make_correlator_backend
         correlator = make_correlator_backend(self.config, ensemble=True)
 
-        # Set up correlation arguments
-        (
-            win_size_arr,
-            n_windows,
-            b_mask,
-            n_peaks,
-            i_peak_finder,
-            b_ensemble,
-            pk_loc_x,
-            pk_loc_y,
-            pk_height,
-            sx, 
-            sy,
-            sxy,
-            correl_out,
-            point_spread_a,
-            point_spread_b,
-        ) = correlator._set_lib_arguments_ensemble(
-            config=self.config,
-            win_size=win_size,
-            pass_idx=pass_idx,
-            N=1
-        )
+        # Get computation size (for FFT) and output size (for extraction)
+        # These must match how raw correlations are computed in bulkxcorr2d_accumulate
+        comp_size = correlator.window_sizes_for_computation[pass_idx]
+        out_size = correlator.window_sizes_for_corr[pass_idx]
 
-        # Image size for correlation
+        # Set up arrays for bulkxcorr2d_accumulate
+        n_windows = np.array([n_win_y, n_win_x], dtype=np.int32)
         image_size = np.array([A_mean.shape[0], A_mean.shape[1]], dtype=np.int32)
+        win_size_arr = np.array([comp_size[0], comp_size[1]], dtype=np.int32)
+        fit_size_arr = np.array([out_size[0], out_size[1]], dtype=np.int32)
 
-        # Cross-correlation AB
-        correlator.lib.bulkxcorr2d(
-            np.ascontiguousarray(A_mean, dtype=np.float32),
-            np.ascontiguousarray(B_mean, dtype=np.float32),
+        # Create mask
+        if correlator.vector_masks and pass_idx < len(correlator.vector_masks):
+            b_mask = np.ascontiguousarray(
+                correlator.vector_masks[pass_idx].astype(np.float32)
+            )
+        else:
+            b_mask = np.ascontiguousarray(np.zeros((n_win_y, n_win_x), dtype=np.float32))
+
+        # Use bulkxcorr2d_accumulate with N=1 for background correlations
+        # This ensures the same FFT computation size and central extraction as raw correlations
+        # Stack mean image as (1, H, W) for the N_images=1 interface
+        A_mean_stack = np.ascontiguousarray(A_mean[np.newaxis, :, :].astype(np.float32))
+        B_mean_stack = np.ascontiguousarray(B_mean[np.newaxis, :, :].astype(np.float32))
+
+        # Cross-correlation AB background
+        correlator.lib.bulkxcorr2d_accumulate(
+            A_mean_stack,
+            B_mean_stack,
             b_mask,
             image_size,
-            1,
+            1,  # N_images = 1
             correlator.win_ctrs_x[pass_idx].astype(np.float32),
             correlator.win_ctrs_y[pass_idx].astype(np.float32),
             n_windows,
             correlator.win_weights_A[pass_idx],
-            b_ensemble,
             correlator.win_weights_B[pass_idx],
-            win_size_arr,
-            int(n_peaks),
-            int(i_peak_finder),
-            pk_loc_x,
-            pk_loc_y,
-            pk_height,
-            sx,
-            sy,
-            sxy,
+            win_size_arr,   # FFT computation size
+            fit_size_arr,   # Output size (central extraction)
             correl_AB_bg,
         )
 
-        # Auto-correlation AA - use weight_B (full/bsingle) on both sides
-        # to match the raw AA correlation and get correct background subtraction
-        correlator.lib.bulkxcorr2d(
-            np.ascontiguousarray(A_mean, dtype=np.float32),
-            np.ascontiguousarray(A_mean, dtype=np.float32),
+        # Auto-correlation AA background - use weight_B on both sides
+        # to match the raw AA correlation
+        correlator.lib.bulkxcorr2d_accumulate(
+            A_mean_stack,
+            A_mean_stack,
             b_mask,
             image_size,
             1,
@@ -310,25 +300,17 @@ class SinglePassAccumulator:
             correlator.win_ctrs_y[pass_idx].astype(np.float32),
             n_windows,
             correlator.win_weights_B[pass_idx],
-            b_ensemble,
             correlator.win_weights_B[pass_idx],
             win_size_arr,
-            int(n_peaks),
-            int(i_peak_finder),
-            pk_loc_x,
-            pk_loc_y,
-            pk_height,
-            sx,
-            sy,
-            sxy,
+            fit_size_arr,
             correl_AA_bg,
         )
-        logging.debug(f"Pass {pass_idx}: AA_bg after bulkxcorr2d: [{correl_AA_bg.min():.3e}, {correl_AA_bg.max():.3e}], has_inf={np.isinf(correl_AA_bg).any()}, has_nan={np.isnan(correl_AA_bg).any()}")
+        logging.debug(f"Pass {pass_idx}: AA_bg after bulkxcorr2d_accumulate: [{correl_AA_bg.min():.3e}, {correl_AA_bg.max():.3e}]")
 
-        # Auto-correlation BB
-        correlator.lib.bulkxcorr2d(
-            np.ascontiguousarray(B_mean, dtype=np.float32),
-            np.ascontiguousarray(B_mean, dtype=np.float32),
+        # Auto-correlation BB background
+        correlator.lib.bulkxcorr2d_accumulate(
+            B_mean_stack,
+            B_mean_stack,
             b_mask,
             image_size,
             1,
@@ -336,20 +318,12 @@ class SinglePassAccumulator:
             correlator.win_ctrs_y[pass_idx].astype(np.float32),
             n_windows,
             correlator.win_weights_B[pass_idx],
-            b_ensemble,
             correlator.win_weights_B[pass_idx],
             win_size_arr,
-            int(n_peaks),
-            int(i_peak_finder),
-            pk_loc_x,
-            pk_loc_y,
-            pk_height,
-            sx,
-            sy,
-            sxy,
+            fit_size_arr,
             correl_BB_bg,
         )
-        logging.debug(f"Pass {pass_idx}: BB_bg after bulkxcorr2d: [{correl_BB_bg.min():.3e}, {correl_BB_bg.max():.3e}], has_inf={np.isinf(correl_BB_bg).any()}, has_nan={np.isnan(correl_BB_bg).any()}")
+        logging.debug(f"Pass {pass_idx}: BB_bg after bulkxcorr2d_accumulate: [{correl_BB_bg.min():.3e}, {correl_BB_bg.max():.3e}]")
 
         logging.debug(f"Pass {pass_idx}: Computed background correlations from mean images")
 

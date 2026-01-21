@@ -1027,9 +1027,7 @@ def correlate_single_batch_and_accumulate(
     )
 
     worker_total = n_images_so_far + batch_images
-    total_pairs = config.num_frame_pairs or 1
-    percent_complete = 100.0 * worker_total / total_pairs
-    logger.info(f"Progress: {percent_complete:.1f}% ({worker_total}/{total_pairs} pairs)")
+    logger.info(f"Worker processed {worker_total} pairs so far")
 
     # DIAGNOSTIC: Track data locality across batches
     from distributed import get_worker

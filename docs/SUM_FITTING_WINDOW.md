@@ -143,9 +143,22 @@ The Marquardt-Levenberg fitter in `marquadt_gaussian.c` also extracts a region a
 | `pivtools_cli/lib/PIV_2d_cross_correlate.h` | Added `nFitWindowSize` parameter |
 | `pivtools_cli/lib/PIV_2d_cross_correlate.c` | Central extraction in accumulation loop |
 | `pivtools_cli/piv/piv_backend/cpu_ensemble.py` | Track computation vs output sizes, pass both to C |
-| `pivtools_cli/piv/piv_backend/single_pass_accumulator.py` | Use fit_window for corr_size |
+| `pivtools_cli/piv/piv_backend/single_pass_accumulator.py` | Use fit_window for corr_size; background correlations use `bulkxcorr2d_accumulate` for consistent extraction |
 | `pivtools_cli/piv/piv_backend/gaussian_fitting.py` | Grid coordinates use fit_window, validation updated |
 | `pivtools_cli/lib/marquadt_gaussian.c` | Pass-dependent extraction (peak vs center) |
+
+## Background Subtraction
+
+The ensemble PIV formula requires background subtraction:
+```
+R_AB = <A⋆B> - <A>⋆<B>
+```
+
+With `fit_window` enabled, both the raw correlations and background correlations must use:
+1. **Same FFT computation size** (sum_window, e.g., 32×32)
+2. **Same central extraction** (fit_window, e.g., 16×16)
+
+The `_correlate_mean_images()` function uses `bulkxcorr2d_accumulate` with N=1 to ensure the background correlation physics matches the raw correlation physics. This guarantees proper subtraction of the DC component.
 
 ## Backward Compatibility
 
