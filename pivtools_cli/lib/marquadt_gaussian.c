@@ -358,6 +358,7 @@ static int fit_one_reuse(
 
 // --- Batch Export ---
 // Note: win_height and win_width support rectangular windows (height != width)
+// pass_idx: 0 for first pass (find peak), >0 for subsequent passes (use center)
 PIV_EXPORT int fit_stacked_gaussian_batch_export(
     size_t num_windows,
     size_t n_per_window,
@@ -368,6 +369,7 @@ PIV_EXPORT int fit_stacked_gaussian_batch_export(
     const double *y_all,
     const double *initial_guesses,
     const double *weights_auto,  // Per-window weights: sqrt(sigma_AB / sigma_A)
+    int pass_idx,                // 0 for first pass (peak-centered), >0 for center-centered
     double *out_params,
     int *out_statuses
 ) {
@@ -451,13 +453,20 @@ PIV_EXPORT int fit_stacked_gaussian_batch_export(
             const double *guess = initial_guesses + (size_t)i * P_PARAMS;
             double *params = out_params + (size_t)i * P_PARAMS;
 
-            // Get peak location from initial guess (x0_A, y0_A)
-            double peak_x = guess[12];
-            double peak_y = guess[13];
-
-            // Convert to grid indices (coordinates are typically 1..win_h/win_w in 1-based)
-            int peak_col = (int)(peak_x + 0.5);
-            int peak_row = (int)(peak_y + 0.5);
+            // Determine extraction center based on pass index
+            int peak_row, peak_col;
+            if (pass_idx == 0) {
+                // Pass 0: Find peak location from initial guess (x0_A, y0_A)
+                double peak_x = guess[12];
+                double peak_y = guess[13];
+                // Convert to grid indices (coordinates are typically 1..win_h/win_w in 1-based)
+                peak_col = (int)(peak_x + 0.5);
+                peak_row = (int)(peak_y + 0.5);
+            } else {
+                // Pass > 0: Extract from center (after warping, peak should be centered)
+                peak_row = win_h / 2;
+                peak_col = win_w / 2;
+            }
 
             // Compute extraction region bounds (centered on peak)
             // Use separate half sizes for rectangular extraction regions
@@ -521,24 +530,4 @@ PIV_EXPORT int fit_stacked_gaussian_batch_export(
     fprintf(stderr, "[fit] completed: %d/%zu succeeded\n", success_count, num_windows);
 
     return success_count;
-}
-
-// Single-window wrapper (for backwards compatibility / testing)
-// For square windows, pass win_height = win_width = sqrt(n)
-PIV_EXPORT int fit_stacked_gaussian_export(
-    size_t n,
-    size_t win_height,
-    size_t win_width,
-    const double *X1,
-    const double *X2,
-    const double *y,
-    const double *initial_guess,
-    double weight_auto,  // Weight for AA/BB residuals: sqrt(sigma_AB / sigma_A)
-    double *out_params,
-    int *out_status
-) {
-    int status;
-    int ret = fit_stacked_gaussian_batch_export(1, n, win_height, win_width, X1, X2, y, initial_guess, &weight_auto, out_params, &status);
-    if (out_status) *out_status = status ? 0 : -1;
-    return ret;
 }

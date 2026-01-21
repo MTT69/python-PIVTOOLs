@@ -161,6 +161,10 @@ ensemble_piv:
   sum_window:
   - 32
   - 32
+  sum_fitting_window_enabled: false
+  sum_fitting_window:
+  - 16
+  - 16
   resume_from_pass: 0
   window_type: square
 calibration:

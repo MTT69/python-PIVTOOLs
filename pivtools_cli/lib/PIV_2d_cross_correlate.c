@@ -196,6 +196,9 @@ return uError;
 /**
  * Ensemble-optimized cross-correlation with internal accumulation.
  * Option C: Parallel over windows, sequential over images.
+ *
+ * If nFitWindowSize is not NULL, extracts only the central region of each
+ * correlation plane for accumulation. This reduces memory usage and fitting time.
  */
 unsigned char bulkxcorr2d_accumulate(
     const float *fImageA_stack, const float *fImageB_stack, const float *fMask,
@@ -203,13 +206,23 @@ unsigned char bulkxcorr2d_accumulate(
     const float *fWinCtrsX, const float *fWinCtrsY, const int *nWindows,
     const float *fWindowWeightA, const float *fWindowWeightB,
     const int *nWindowSize,
+    const int *nFitWindowSize,  /* NEW: output size, NULL = use full nWindowSize */
     float *fCorrelPlane_Sum)
 {
     int nWindowsTotal = nWindows[0] * nWindows[1];
-    int nPxPerWindow = nWindowSize[0] * nWindowSize[1];
+    int nPxPerWindow = nWindowSize[0] * nWindowSize[1];  /* FFT computation size */
     int nImagePixels = nImageSize[0] * nImageSize[1];
     unsigned uError = ERROR_NONE;
     int i, j, n, iWindowIdx, ii, jj;
+
+    /* Determine output dimensions */
+    int out_h = nFitWindowSize ? nFitWindowSize[0] : nWindowSize[0];
+    int out_w = nFitWindowSize ? nFitWindowSize[1] : nWindowSize[1];
+    int nPxPerOutput = out_h * out_w;
+
+    /* Extraction offsets (centered) */
+    int start_y = (nWindowSize[0] - out_h) / 2;
+    int start_x = (nWindowSize[1] - out_w) / 2;
 
     /* Initialize FFTW threads */
     fftw_library_init();
@@ -219,19 +232,20 @@ unsigned char bulkxcorr2d_accumulate(
     xcorr_cache_get_default_wisdom_path(wisdom_path, sizeof(wisdom_path));
     xcorr_cache_init(wisdom_path);
 
-    /* Initialize output to zero */
-    memset(fCorrelPlane_Sum, 0, nWindowsTotal * nPxPerWindow * sizeof(float));
+    /* Initialize output to zero - NOTE: uses output size, not computation size! */
+    memset(fCorrelPlane_Sum, 0, nWindowsTotal * nPxPerOutput * sizeof(float));
 
     /* OPTION C: Parallel over windows, sequential over images */
     #pragma omp parallel \
         default(none) \
         shared(fImageA_stack, fImageB_stack, fMask, nImageSize, N_images, \
                fWinCtrsX, fWinCtrsY, nWindows, fWindowWeightA, fWindowWeightB, \
-               nWindowSize, fCorrelPlane_Sum, nPxPerWindow, nWindowsTotal, nImagePixels) \
+               nWindowSize, fCorrelPlane_Sum, nPxPerWindow, nWindowsTotal, nImagePixels, \
+               out_h, out_w, nPxPerOutput, start_y, start_x) \
         private(i, j, n, iWindowIdx, ii, jj) \
         reduction(|:uError)
     {
-        /* Thread-local workspace - small! Only one correlation plane */
+        /* Thread-local workspace - uses computation size for FFT */
         float *fCorrelPlane = (float*)fftwf_malloc(nPxPerWindow * sizeof(float));
         float *fWindowA = (float*)fftwf_malloc(nPxPerWindow * sizeof(float));
         float *fWindowB = (float*)fftwf_malloc(nPxPerWindow * sizeof(float));
@@ -267,7 +281,8 @@ unsigned char bulkxcorr2d_accumulate(
                 col_min + nWindowSize[1] > nImageSize[1]) continue;
 
             /* Pointer to this window's output (this thread owns it!) */
-            float *out_ptr = &fCorrelPlane_Sum[iWindowIdx * nPxPerWindow];
+            /* NOTE: uses nPxPerOutput for offset, not nPxPerWindow */
+            float *out_ptr = &fCorrelPlane_Sum[iWindowIdx * nPxPerOutput];
 
             /* Inner loop: sequential over images, accumulating */
             for (n = 0; n < N_images; ++n)
@@ -301,9 +316,13 @@ unsigned char bulkxcorr2d_accumulate(
                 /* Cross-correlation via FFT */
                 xcorr_preplanned(fWindowB, fWindowA, fCorrelPlane, &sCCPlan);
 
-                /* Accumulate to output (no atomics - this thread owns this window!) */
-                for (i = 0; i < nPxPerWindow; ++i) {
-                    out_ptr[i] += fCorrelPlane[i];
+                /* Accumulate only the central region to output */
+                for (i = 0; i < out_h; ++i) {
+                    for (j = 0; j < out_w; ++j) {
+                        int src_idx = (start_y + i) * nWindowSize[1] + (start_x + j);
+                        int dst_idx = i * out_w + j;
+                        out_ptr[dst_idx] += fCorrelPlane[src_idx];
+                    }
                 }
             }
         }

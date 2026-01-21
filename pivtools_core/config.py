@@ -1951,6 +1951,56 @@ video:
         return sum_window
 
     @property
+    def ensemble_sum_fitting_window_enabled(self):
+        """
+        Return whether sum_fitting_window extraction is enabled.
+
+        Returns
+        -------
+        bool
+            True if extraction is enabled, False otherwise (default)
+        """
+        return self.data.get("ensemble_piv", {}).get("sum_fitting_window_enabled", False)
+
+    @property
+    def ensemble_sum_fitting_window(self):
+        """
+        Return fitting window size for ensemble correlation planes.
+
+        Only used when sum_fitting_window_enabled is True.
+        Correlations are computed on full sum_window but only the central
+        sum_fitting_window region is extracted for storage and fitting.
+
+        Returns
+        -------
+        list or None
+            [height, width] of fitting window, or None if disabled
+        """
+        # Check if feature is enabled
+        if not self.ensemble_sum_fitting_window_enabled:
+            return None
+
+        fit_window = self.data.get("ensemble_piv", {}).get("sum_fitting_window", None)
+
+        if fit_window is None:
+            raise ValueError(
+                "sum_fitting_window_enabled is True but sum_fitting_window is not set"
+            )
+
+        # Validate: must be smaller than or equal to sum_window
+        sum_window = self.ensemble_sum_window
+        if fit_window[0] > sum_window[0] or fit_window[1] > sum_window[1]:
+            raise ValueError(
+                f"sum_fitting_window {fit_window} must be <= sum_window {sum_window}"
+            )
+
+        # Validate: must be positive and even (for symmetric extraction)
+        if fit_window[0] <= 0 or fit_window[1] <= 0:
+            raise ValueError(f"sum_fitting_window must be positive, got {fit_window}")
+
+        return fit_window
+
+    @property
     def ensemble_type(self):
         """
         Return ensemble type for each pass.

@@ -101,7 +101,8 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nWindows
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWindowWeightA
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWindowWeightB
-            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nWindowSize
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nWindowSize (FFT computation)
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nFitWindowSize (output size)
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fCorrelPlane_Sum (output)
         ]
 
@@ -109,7 +110,11 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         # For single mode, Frame A and Frame B use different weights
         self.win_weights_A = []
         self.win_weights_B = []
-        self.window_sizes_for_corr = []  # Actual correlation size
+        self.window_sizes_for_computation = []  # FFT computation size (sum_window)
+        self.window_sizes_for_corr = []  # Output size for storage/fitting
+
+        # Get fit_window if enabled (applies only to single mode passes)
+        fit_window = config.ensemble_sum_fitting_window  # None if disabled
 
         for pass_idx, win_size in enumerate(config.ensemble_window_sizes):
             runtype = config.ensemble_type[pass_idx]
@@ -123,7 +128,10 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 weight_B = np.ascontiguousarray(
                     self._window_weight_fun(sum_window, 'bsingle', sum_window)
                 )
-                corr_size = sum_window  # Correlation uses SumWindow size
+                # Computation uses full sum_window for FFT
+                self.window_sizes_for_computation.append(sum_window)
+                # Output size: fit_window if enabled, else full sum_window
+                corr_size = tuple(fit_window) if fit_window else sum_window
             else:
                 # Standard mode: both frames use same window
                 weight = np.ascontiguousarray(
@@ -131,6 +139,8 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 )
                 weight_A = weight
                 weight_B = weight
+                # Standard mode: compute and output at same size
+                self.window_sizes_for_computation.append(win_size)
                 corr_size = win_size
 
             self.win_weights_A.append(weight_A)
@@ -345,8 +355,13 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         n_win_y = len(self.win_ctrs_y[pass_idx])
         n_win_x = len(self.win_ctrs_x[pass_idx])
         n_windows = np.array([n_win_y, n_win_x], dtype=np.int32)
-        corr_size = self.window_sizes_for_corr[pass_idx]
-        win_size_arr = np.array([corr_size[0], corr_size[1]], dtype=np.int32)
+
+        # Get computation size (FFT) and output size (storage/fitting)
+        comp_size = self.window_sizes_for_computation[pass_idx]
+        out_size = self.window_sizes_for_corr[pass_idx]
+
+        win_size_arr = np.array([comp_size[0], comp_size[1]], dtype=np.int32)
+        fit_size_arr = np.array([out_size[0], out_size[1]], dtype=np.int32)
 
         error_code = self.lib.bulkxcorr2d_accumulate(
             np.ascontiguousarray(images_a, dtype=np.float32),
@@ -359,7 +374,8 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             n_windows,
             weight_a,
             weight_b,
-            win_size_arr,
+            win_size_arr,   # FFT computation size
+            fit_size_arr,   # Output size (may be smaller for central extraction)
             correl_sum,
         )
 

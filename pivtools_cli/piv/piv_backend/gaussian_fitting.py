@@ -326,7 +326,8 @@ def _validate_fitted_params(
     runtype: str,
     sum_window: tuple,
     AA_central: float,
-    BB_central: float
+    BB_central: float,
+    particle_window: tuple = None,
 ) -> tuple[bool, int]:
     """
     Validate fitted Gaussian parameters following MATLAB logic.
@@ -350,6 +351,9 @@ def _validate_fitted_params(
         Central value of AA autocorrelation
     BB_central : float
         Central value of BB autocorrelation
+    particle_window : tuple, optional
+        (height, width) of the particle window (small window in single mode).
+        Required for single mode amplitude correction.
 
     Returns
     -------
@@ -376,30 +380,27 @@ def _validate_fitted_params(
         AB_normalized = amp_AB / np.sqrt(AA_central * BB_central)
 
         # In single mode, AB correlation uses asymmetric weighting:
-        # - A uses center pixels only (sum_window size, e.g., 16×16 = 256)
-        # - B uses full window (e.g., 32×32 = 1024)
-        # This reduces AB amplitude by factor of (sum_area / full_area).
-        # Apply inverse correction to get true normalized peak height.
-        # Verified: observed AB ratio 0.045/0.181 = 0.25 matches 256/1024.
-        if runtype == 'single':
+        # - A uses particle window (small) embedded in sum_window
+        # - B uses full sum_window
+        # This reduces AB amplitude by sqrt(particle_area / sum_area).
+        # We correct by multiplying by sqrt(sum_area / particle_area).
+        if runtype == 'single' and particle_window is not None:
+            particle_area = particle_window[0] * particle_window[1]
             sum_area = sum_window[0] * sum_window[1]
-            full_area = win_size[0] * win_size[1]
-            AB_normalized *= (full_area / sum_area)
+            # Correction factor: sqrt(sum_area / particle_area)
+            AB_normalized *= np.sqrt(sum_area / particle_area)
 
         if not np.isreal(AB_normalized) or AB_normalized < 0 or AB_normalized > 1:
             return False, 2
 
-    # Check 2: 1/2 displacement rule 
-    if runtype == 'single':
-        center_x = sum_window[1] / 2.0
-        center_y = sum_window[0] / 2.0
-        half_x = sum_window[1] / 2.0
-        half_y = sum_window[0] / 2.0
-    else:
-        center_x = win_size[1] / 2.0
-        center_y = win_size[0] / 2.0
-        half_x = win_size[1] / 2.0
-        half_y = win_size[0] / 2.0
+    # Check 2: 1/2 displacement rule
+    # For single mode, use win_size (which is the actual fitting grid size,
+    # either fit_window if enabled, or sum_window otherwise)
+    # This ensures peak position validation matches the coordinate system used for fitting
+    center_x = win_size[1] / 2.0
+    center_y = win_size[0] / 2.0
+    half_x = win_size[1] / 2.0
+    half_y = win_size[0] / 2.0
 
     # For pass > 0 or single mode, check peak is within central half
     if pass_idx > 0 or runtype == 'single':
@@ -569,7 +570,9 @@ def _fit_windows_batch_optimized(
 
     # Call batch C function with OpenMP parallelization
     # Pass win_height and win_width separately to support rectangular windows
-    success_count = marquadt_lib.fit_stacked_gaussian_batch_export(
+    # Create uniform weights (1.0) for this legacy path
+    weights_auto = np.ones(n_valid, dtype=np.float64)
+    marquadt_lib.fit_stacked_gaussian_batch_export(
         ctypes.c_size_t(n_valid),
         ctypes.c_size_t(n_per_window),
         ctypes.c_size_t(win_size[0]),  # win_height
@@ -578,11 +581,15 @@ def _fit_windows_batch_optimized(
         X1.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),  # Note: X1 is y-coord
         y_all.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
         initial_guesses_valid.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+        weights_auto.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),  # Uniform weights
+        ctypes.c_int(pass_idx),  # Pass index for extraction logic
         results_valid.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
         statuses_valid.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
     )
 
     # Post-process: validate fitted parameters (C returns 1 for success)
+    # Get particle window size for amplitude correction in single mode
+    particle_window = tuple(config.ensemble_window_sizes[pass_idx])
     for i, idx in enumerate(valid_indices):
         if statuses_valid[i] == 1:  # 1 = success from C code
             AA_win = _get_window(AA_chunk, idx, win_size)
@@ -592,7 +599,8 @@ def _fit_windows_batch_optimized(
                 config.ensemble_type[pass_idx],
                 tuple(config.ensemble_sum_window),
                 float(AA_win[central_index]),
-                float(BB_win[central_index])
+                float(BB_win[central_index]),
+                particle_window=particle_window,
             )
             if not is_valid:
                 statuses_valid[i] = nan_reason_code
@@ -619,26 +627,34 @@ def _get_window(flat_array, idx, win_size):
 
 
 def _get_pass_grid(pass_idx, config):
-    """Get grid coordinates for Gaussian fitting."""
+    """Get grid coordinates for Gaussian fitting.
+
+    For single mode passes with sum_fitting_window enabled, uses the fitting
+    window size (smaller, extracted central region) rather than full sum_window.
+    """
     runtype = config.ensemble_type[pass_idx]
     wsize = config.ensemble_window_sizes[pass_idx]
     sum_window = config.ensemble_sum_window
+    fit_window = config.ensemble_sum_fitting_window  # None if disabled
 
     if runtype == "single":
+        # Use fitting window size if enabled, otherwise full sum_window
+        grid_size = fit_window if fit_window else sum_window
+
         X1, X2 = np.meshgrid(
-            np.linspace(1, sum_window[0], sum_window[0]),
-            np.linspace(1, sum_window[1], sum_window[1]),
+            np.linspace(1, grid_size[0], grid_size[0]),
+            np.linspace(1, grid_size[1], grid_size[1]),
             indexing="ij",
         )
         X1 = X1.ravel(order="C")
         X2 = X2.ravel(order="C")
-        
+
         # FIX: Integer math, 0-based indexing for flat array access
         # center_y * width + center_x
-        central_index = (sum_window[0] // 2) * sum_window[1] + (sum_window[1] // 2)
-        
-        x_guess = sum_window[1] / 2 + 1
-        y_guess = sum_window[0] / 2 + 1
+        central_index = (grid_size[0] // 2) * grid_size[1] + (grid_size[1] // 2)
+
+        x_guess = grid_size[1] / 2 + 1
+        y_guess = grid_size[0] / 2 + 1
     else:
         X1, X2 = np.meshgrid(
             np.linspace(1, wsize[0], wsize[0]),
@@ -647,9 +663,9 @@ def _get_pass_grid(pass_idx, config):
         )
         X1 = X1.ravel(order="C")
         X2 = X2.ravel(order="C")
-        
+
         central_index = (wsize[0] // 2) * wsize[1] + (wsize[1] // 2)
-        
+
         x_guess = wsize[1] / 2 + 1
         y_guess = wsize[0] / 2 + 1
 
@@ -1374,6 +1390,7 @@ def fit_windows_openmp(
         y_all.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
         initial_guesses_valid.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
         weights_auto.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),  # Uniform weights (1.0)
+        ctypes.c_int(pass_idx),  # Pass index: 0=peak-centered, >0=center-centered
         results_valid.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
         statuses_valid.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
     )
@@ -1397,6 +1414,9 @@ def fit_windows_openmp(
     # Track rejection reasons for debugging
     rejection_counts = {2: 0, 3: 0, 5: 0}  # AB height, displacement rule, negative sigma
 
+    # Get particle window size for amplitude correction in single mode
+    particle_window = tuple(config.ensemble_window_sizes[pass_idx])
+
     for i in range(n_valid):
         if statuses_valid[i] == 1:  # 1 = success from C code
             is_valid, nan_reason_code = _validate_fitted_params(
@@ -1404,7 +1424,8 @@ def fit_windows_openmp(
                 config.ensemble_type[pass_idx],
                 tuple(config.ensemble_sum_window),
                 float(AA_central_valid[i]),
-                float(BB_central_valid[i])
+                float(BB_central_valid[i]),
+                particle_window=particle_window,
             )
             if not is_valid:
                 statuses_valid[i] = nan_reason_code

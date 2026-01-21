@@ -52,9 +52,10 @@ class SinglePassAccumulator:
             overlap = config.ensemble_overlaps[pass_idx]
             runtype = config.ensemble_type[pass_idx]
 
-            # Determine correlation size
+            # Determine correlation size (output size after central extraction)
             if runtype == 'single':
-                corr_size = tuple(config.ensemble_sum_window)
+                fit_window = config.ensemble_sum_fitting_window
+                corr_size = tuple(fit_window) if fit_window else tuple(config.ensemble_sum_window)
             else:
                 corr_size = win_size
 
@@ -801,8 +802,27 @@ class SinglePassAccumulator:
         amp_AB = safe_extract(gauss_results[:, :, 2], MAX_AMP, 0.0)
 
         # Normalized peak height: AB / sqrt(A * B), clamped to [0, 1]
+        # In single mode, apply amplitude correction for asymmetric weighting:
+        # AB uses (particle_window × sum_window) while AA/BB use (sum_window × sum_window)
+        # This reduces AB amplitude by sqrt(particle_area / sum_area)
+        # Correction factor: sqrt(sum_area / particle_area)
         geom_mean = np.sqrt(np.maximum(amp_A * amp_B, 1e-12))
-        peakheight = np.clip(amp_AB / geom_mean, 0.0, 1.0).astype(np.float32)
+        peakheight_raw = amp_AB / geom_mean
+
+        runtype = self.config.ensemble_type[pass_idx]
+        if runtype == 'single':
+            particle_window = self.config.ensemble_window_sizes[pass_idx]
+            sum_window = self.config.ensemble_sum_window
+            particle_area = particle_window[0] * particle_window[1]
+            sum_area = sum_window[0] * sum_window[1]
+            amplitude_correction = np.sqrt(sum_area / particle_area)
+            peakheight_raw *= amplitude_correction
+            logging.debug(
+                f"Pass {pass_idx + 1}: Applied single mode amplitude correction "
+                f"sqrt({sum_area}/{particle_area}) = {amplitude_correction:.3f}"
+            )
+
+        peakheight = np.clip(peakheight_raw, 0.0, 1.0).astype(np.float32)
 
         # Gaussian offset terms (can be negative after background subtraction)
         c_A = safe_extract(gauss_results[:, :, 3], MAX_AMP, 0.0)

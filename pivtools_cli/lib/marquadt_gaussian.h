@@ -48,6 +48,8 @@ extern "C" {
  * @param X2              X-grid coordinates (length n_per_window, shared)
  * @param y_all           Stacked data for all windows (length num_windows * 3 * n_per_window)
  * @param initial_guesses Initial parameter guesses (length num_windows * 16)
+ * @param weights_auto    Per-window weights for AA/BB residuals (length num_windows)
+ * @param pass_idx        Pass index: 0 for first pass (peak-centered), >0 for center-centered
  * @param out_params      Output fitted parameters (length num_windows * 16)
  * @param out_statuses    Output status codes (length num_windows), 1=success, 0=fail
  * @return                Number of successfully fitted windows
@@ -61,6 +63,8 @@ int fit_stacked_gaussian_batch_export(
     const double *X2,
     const double *y_all,
     const double *initial_guesses,
+    const double *weights_auto,
+    int pass_idx,
     double *out_params,
     int *out_statuses
 );

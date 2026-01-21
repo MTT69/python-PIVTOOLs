@@ -22,7 +22,8 @@ EXPORT unsigned char bulkxcorr2d(const float *fImageA, const float *fImageB,cons
  * this function accumulates across all N images internally and
  * outputs only the SUM (one plane per window).
  *
- * Output size: nWindows[0] * nWindows[1] * nWindowSize[0] * nWindowSize[1]
+ * Output size: nWindows[0] * nWindows[1] * nFitWindowSize[0] * nFitWindowSize[1]
+ * (or nWindowSize if nFitWindowSize is NULL)
  * (NOT multiplied by N_images)
  *
  * Loop structure: Parallel over windows, sequential over images.
@@ -39,7 +40,8 @@ EXPORT unsigned char bulkxcorr2d_accumulate(
     const int *nWindows,             /* [n_win_y, n_win_x] */
     const float *fWindowWeightA,     /* Taper weights for image A */
     const float *fWindowWeightB,     /* Taper weights for image B */
-    const int *nWindowSize,          /* [corr_h, corr_w] */
+    const int *nWindowSize,          /* [corr_h, corr_w] - FFT computation size */
+    const int *nFitWindowSize,       /* [out_h, out_w] - output size, NULL = use nWindowSize */
     float *fCorrelPlane_Sum          /* Output: accumulated correlation planes */
 );
 
