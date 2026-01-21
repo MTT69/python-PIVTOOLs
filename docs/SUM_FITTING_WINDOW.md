@@ -160,6 +160,31 @@ With `fit_window` enabled, both the raw correlations and background correlations
 
 The `_correlate_mean_images()` function uses `bulkxcorr2d_accumulate` with N=1 to ensure the background correlation physics matches the raw correlation physics. This guarantees proper subtraction of the DC component.
 
+## Normalization Correction for Single Mode
+
+In single mode, the window weighting is asymmetric:
+- **AA autocorrelation**: `weight_B × weight_B` (full sum_window on both sides)
+- **BB autocorrelation**: `weight_B × weight_B` (full sum_window on both sides)
+- **AB cross-correlation**: `weight_A × weight_B` (particle window × sum_window)
+
+The standard normalization `AB / sqrt(AA × BB)` assumes symmetric scaling, but in single mode:
+- `AA` and `BB` scale with `sum_window²`
+- `AB` scales with `particle_window × sum_window`
+
+Without correction, larger `sum_window` would give artificially lower peak heights.
+
+The correction factor applied to AB before normalization:
+```
+ab_scale_correction = sqrt(sum_window_area / particle_window_area)
+```
+
+For example, with `sum_window=[32,32]` and `particle_window=[8,8]`:
+```
+correction = sqrt(1024 / 64) = sqrt(16) = 4
+```
+
+This ensures peak heights are independent of `sum_window` size.
+
 ## Backward Compatibility
 
 - Feature is **disabled by default** (`sum_fitting_window_enabled: false`)

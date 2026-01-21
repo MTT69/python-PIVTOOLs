@@ -487,6 +487,26 @@ class SinglePassAccumulator:
         # Reshape for broadcasting: (n_windows, 1, 1)
         norm_factors_3d = norm_factors[:, np.newaxis, np.newaxis]
 
+        # For single mode, apply asymmetric window correction to AB
+        # AA/BB use weight_B (full sum_window) on both sides, so they scale with sum_window^2
+        # AB uses weight_A (particle window) × weight_B (sum_window), so it scales with
+        # particle_window × sum_window. The normalization by sqrt(AA*BB) over-corrects AB.
+        # We need to scale AB up by sqrt(sum_window_area / particle_window_area) to compensate.
+        runtype = self.config.ensemble_type[pass_idx]
+        if runtype == 'single':
+            sum_window = self.config.ensemble_sum_window
+            particle_window = win_size
+            sum_area = sum_window[0] * sum_window[1]
+            particle_area = particle_window[0] * particle_window[1]
+            # AB scales as sqrt(particle × sum), but norm_factors assumes sqrt(sum × sum)
+            # Correction factor: sqrt(sum_area / particle_area)
+            ab_scale_correction = np.sqrt(sum_area / particle_area)
+            logging.debug(
+                f"Pass {pass_idx + 1}: Single mode AB scale correction = {ab_scale_correction:.3f} "
+                f"(sum_window={sum_window}, particle_window={particle_window})"
+            )
+            AB_3d = AB_3d * ab_scale_correction
+
         # Normalize all three planes
         AA_3d_norm = AA_3d / norm_factors_3d
         BB_3d_norm = BB_3d / norm_factors_3d
