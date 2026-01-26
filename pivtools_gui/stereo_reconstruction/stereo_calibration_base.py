@@ -511,6 +511,9 @@ class BaseStereoCalibrator(ABC):
 
             if len(image.shape) == 2:
                 vis = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+            elif image.shape[-1] == 1:
+                # Handle (H, W, 1) grayscale images
+                vis = cv2.cvtColor(image[:, :, 0], cv2.COLOR_GRAY2BGR)
             else:
                 vis = image.copy()
 

@@ -291,7 +291,10 @@ class ChArUcoCalibrator:
     ) -> Tuple[bool, Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]]:
         """Detect ChArUco corners in an image."""
         if len(image.shape) == 3:
-            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            if image.shape[-1] == 1:
+                gray = image[:, :, 0]  # Squeeze singleton channel
+            else:
+                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         else:
             gray = image
 

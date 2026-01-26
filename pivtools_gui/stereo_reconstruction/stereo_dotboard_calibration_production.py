@@ -250,7 +250,10 @@ class StereoDotboardCalibrator(BaseStereoCalibrator):
         """
         # Convert to grayscale if needed
         if image.ndim == 3:
-            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            if image.shape[-1] == 1:
+                gray = image[:, :, 0]  # Squeeze singleton channel
+            else:
+                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         else:
             gray = image.copy()
 

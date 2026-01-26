@@ -243,7 +243,10 @@ class MultiViewCalibrator:
     def detect_grid(self, img):
         """Detect grid points with subpixel refinement for accurate dot centers"""
         if img.ndim == 3:
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            if img.shape[-1] == 1:
+                gray = img[:, :, 0]  # Squeeze singleton channel
+            else:
+                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         else:
             gray = img.copy()
 
@@ -286,7 +289,10 @@ class MultiViewCalibrator:
         try:
             fig, ax = plt.subplots(figsize=(10, 8))
             if img.ndim == 3:
-                img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                if img.shape[-1] == 1:
+                    img = img[:, :, 0]  # Squeeze singleton channel
+                else:
+                    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             
             ax.imshow(img, cmap="gray")
             cols = self.pattern_size[0]

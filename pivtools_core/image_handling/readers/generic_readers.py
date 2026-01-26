@@ -21,6 +21,9 @@ def read_tiff(file_path: str) -> np.ndarray:
             img = cv2.cvtColor(img, cv2.COLOR_RGBA2GRAY)
         else:
             img = np.mean(img, axis=-1).astype(img.dtype)
+    # Handle (H, W, 1) grayscale images - squeeze singleton channel
+    if img.ndim == 3 and img.shape[-1] == 1:
+        img = img[:, :, 0]
     return img
 
 
@@ -50,6 +53,9 @@ def read_png_jpeg(file_path: str) -> np.ndarray:
                 img = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
             else:
                 img = np.mean(img, axis=-1).astype(img.dtype)
+        # Handle (H, W, 1) grayscale images - squeeze singleton channel
+        if img.ndim == 3 and img.shape[-1] == 1:
+            img = img[:, :, 0]
         return img
 
 
@@ -71,6 +77,9 @@ def read_raw(file_path: str) -> np.ndarray:
                     img = cv2.cvtColor(img, cv2.COLOR_RGBA2GRAY)
                 else:
                     img = np.mean(img, axis=-1).astype(img.dtype)
+            # Handle (H, W, 1) grayscale images - squeeze singleton channel
+            if img.ndim == 3 and img.shape[-1] == 1:
+                img = img[:, :, 0]
             return img
     except ImportError:
         raise ImportError("rawpy is required for RAW image support")
