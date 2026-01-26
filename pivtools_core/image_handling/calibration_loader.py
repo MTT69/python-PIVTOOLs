@@ -27,7 +27,6 @@ def read_calibration_image(
     config: Config,
     source_path_idx: int = 0,
     image_format: Optional[str] = None,
-    subfolder: Optional[str] = None,
     image_type: Optional[str] = None,
 ) -> np.ndarray:
     """Read a single calibration image.
@@ -48,11 +47,9 @@ def read_calibration_image(
     config : Config
         Configuration object with calibration settings
     source_path_idx : int, optional
-        Index into source_paths list, defaults to 0
+        Index into calibration_sources list, defaults to 0
     image_format : str, optional
         Override for calibration_image_format from config
-    subfolder : str, optional
-        Override for calibration_subfolder from config
     image_type : str, optional
         Override for calibration_image_type from config
 
@@ -66,14 +63,14 @@ def read_calibration_image(
     FileNotFoundError
         If the image file does not exist
     ValueError
-        If the image cannot be read
+        If the image cannot be read or calibration_sources not configured
     """
     # Use passed values or fall back to config
     cal_image_type = image_type if image_type is not None else config.calibration_image_type
     fmt = image_format if image_format is not None else config.calibration_image_format
 
     # Build calibration path using shared utility
-    camera_path = build_calibration_camera_path(config, source_path_idx, camera, subfolder)
+    camera_path = build_calibration_camera_path(config, source_path_idx, camera)
 
     # Resolve file path based on image type
     file_path = resolve_file_path(
@@ -109,7 +106,6 @@ def validate_calibration_images(
     source_path_idx: int = 0,
     image_format: Optional[str] = None,
     num_images: Optional[int] = None,
-    subfolder: Optional[str] = None,
     image_type: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Validate calibration images exist and are readable.
@@ -124,13 +120,11 @@ def validate_calibration_images(
     config : Config
         Configuration object with calibration settings
     source_path_idx : int, optional
-        Index into source_paths list, defaults to 0
+        Index into calibration_sources list, defaults to 0
     image_format : str, optional
         Override for calibration_image_format from config
     num_images : int, optional
         Override for calibration_image_count from config
-    subfolder : str, optional
-        Override for calibration_subfolder from config
     image_type : str, optional
         Override for calibration_image_type from config
 
@@ -153,16 +147,15 @@ def validate_calibration_images(
     cal_image_type = image_type if image_type is not None else config.calibration_image_type
     fmt = image_format if image_format is not None else config.calibration_image_format
     expected_count = num_images if num_images is not None else config.calibration_image_count
-    cal_subfolder = subfolder
 
     # Build calibration path using shared utility
-    camera_path = build_calibration_camera_path(config, source_path_idx, camera, cal_subfolder)
+    camera_path = build_calibration_camera_path(config, source_path_idx, camera)
 
     # Create a frame reader function for preview generation
     def read_frame(idx: int) -> np.ndarray:
         return read_calibration_image(
             idx, camera, config, source_path_idx,
-            image_format=fmt, subfolder=cal_subfolder, image_type=cal_image_type
+            image_format=fmt, image_type=cal_image_type
         )
 
     # Use the generic validator

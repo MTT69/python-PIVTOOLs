@@ -1336,11 +1336,11 @@ video:
         """Return True if calibration images use camera subfolders (Cam1/, Cam2/).
 
         When True, calibration images are expected in camera subdirectories:
-        - source_path/Cam1/calibration_subfolder/image.tif
-        - source_path/Cam2/calibration_subfolder/image.tif
+        - calibration_source/Cam1/image.tif
+        - calibration_source/Cam2/image.tif
 
         When False (default), all calibration images are in a single directory:
-        - source_path/calibration_subfolder/image.tif
+        - calibration_source/image.tif
 
         This applies to both standard formats (TIFF, PNG, etc.) and IM7 files.
         Container formats (.set, .cine) never use camera subfolders.
@@ -1349,15 +1349,52 @@ video:
         return calib_block.get("use_camera_subfolders", False)
 
     @property
-    def calibration_subfolder(self) -> str:
-        """Return subfolder for calibration images.
+    def calibration_sources(self) -> list:
+        """Return list of calibration source paths (REQUIRED for calibration).
 
-        Path structure depends on calibration_path_order:
-        - camera_first: source_path / camera_subfolder / calibration_subfolder / image_file
-        - calibration_first: source_path / calibration_subfolder / camera_subfolder / image_file
+        These are direct paths to calibration image locations:
+        - For container formats (.set, .cine): path to the container file
+        - For standard formats (.tiff, etc.): path to directory containing images
+
+        Camera subfolders (Cam1/, Cam2/) are applied relative to these paths
+        when use_camera_subfolders is True.
         """
         calib_block = self.data.get("calibration", {}) or {}
-        return calib_block.get("subfolder", "")
+        sources = calib_block.get("calibration_sources", [])
+        return [Path(s) for s in sources] if sources else []
+
+    def get_calibration_source(self, source_path_idx: int = 0) -> Path:
+        """Get calibration source path for the given index.
+
+        Parameters
+        ----------
+        source_path_idx : int
+            Index into calibration_sources list (default: 0)
+
+        Returns
+        -------
+        Path
+            Calibration source path
+
+        Raises
+        ------
+        ValueError
+            If calibration_sources is not configured
+        IndexError
+            If source_path_idx is out of range
+        """
+        sources = self.calibration_sources
+        if not sources:
+            raise ValueError(
+                "calibration.calibration_sources not configured in config.yaml. "
+                "Please specify direct paths to calibration images."
+            )
+        if source_path_idx >= len(sources):
+            raise IndexError(
+                f"calibration_sources index {source_path_idx} out of range "
+                f"(have {len(sources)} sources)"
+            )
+        return sources[source_path_idx]
 
     @property
     def calibration_camera_subfolders(self) -> list:
@@ -1375,9 +1412,11 @@ video:
     def calibration_path_order(self) -> str:
         """Return path order for calibration images.
 
-        Controls the order of camera folder and calibration subfolder in the path:
-        - 'camera_first': source/camera_folder/calibration_subfolder/file (default)
-        - 'calibration_first': source/calibration_subfolder/camera_folder/file
+        Note: This property is deprecated. With calibration_sources, camera folders
+        are simply appended to the calibration source path when use_camera_subfolders
+        is True: calibration_source/camera_folder/file
+
+        Kept for backwards compatibility but no longer actively used by path resolution.
 
         Returns
         -------
@@ -1420,7 +1459,8 @@ video:
     def get_calibration_image_path(self, camera: int, index: int, source_path_idx: int = 0) -> Path:
         """Build full path to a calibration image.
 
-        Path structure: source_path / camera_subfolder / calibration_subfolder / image_file
+        Uses calibration_sources for the base path, then applies camera subfolders
+        if applicable based on image type.
 
         Parameters
         ----------
@@ -1429,34 +1469,26 @@ video:
         index : int
             Image index (1-based or 0-based depending on calibration_zero_based_indexing)
         source_path_idx : int
-            Index into source_paths list
+            Index into calibration_sources list
 
         Returns
         -------
         Path
             Full path to the calibration image file
         """
-        source_path = self.source_paths[source_path_idx]
-        camera_folder = self.get_calibration_camera_folder(camera)
+        from pivtools_core.image_handling.path_utils import build_calibration_camera_path
 
-        # Build base path: source_path / camera_subfolder
-        if camera_folder:
-            camera_path = source_path / camera_folder
-        else:
-            camera_path = source_path
-
-        # Add calibration subfolder if specified
-        if self.calibration_subfolder:
-            camera_path = camera_path / self.calibration_subfolder
-
+        camera_path = build_calibration_camera_path(self, source_path_idx, camera)
         image_type = self.calibration_image_type
         fmt = self.calibration_image_format
 
-        # For container formats, the path is just the container file
+        # For container formats, the camera_path is already the full path
         if image_type == "lavision_set":
-            return camera_path / fmt
+            return camera_path if camera_path.suffix else camera_path / fmt
         elif image_type == "cine":
             # CINE pattern uses %d for camera number
+            if camera_path.suffix:
+                return camera_path
             if "%" in fmt:
                 return camera_path / (fmt % camera)
             return camera_path / fmt

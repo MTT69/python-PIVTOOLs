@@ -186,15 +186,12 @@ def planar_generate_model():
 
             # Get paths
             base_root = Path(cfg.base_paths[source_path_idx])
-            subfolder = cfg.calibration_subfolder
 
-            # Build source directory path
-            # For calibration images, the source is typically base_path/Cam{N}/subfolder
-            source_dir = build_calibration_camera_path(cfg, source_path_idx, camera, subfolder)
+            # Build source directory path using calibration_sources
+            source_dir = build_calibration_camera_path(cfg, source_path_idx, camera)
 
             # Debug logging
             logger.info(f"[DEBUG] base_root: {base_root}")
-            logger.info(f"[DEBUG] subfolder from config: '{subfolder}'")
             logger.info(f"[DEBUG] source_dir (from build_calibration_camera_path): {source_dir}")
             logger.info(f"[DEBUG] source_dir exists: {source_dir.exists()}")
             logger.info(f"[DEBUG] calibration_image_format: {cfg.calibration_image_format}")
@@ -214,7 +211,7 @@ def planar_generate_model():
                 dot_spacing_mm=dotboard_cfg.get("dot_spacing_mm", 28.89),
                 asymmetric=dotboard_cfg.get("asymmetric", False),
                 enhance_dots=dotboard_cfg.get("enhance_dots", True),
-                calibration_subfolder="",  # Already included in source_dir
+                config=cfg,
             )
 
             def progress_callback(progress_data):
@@ -425,7 +422,6 @@ def planar_generate_model_all():
                 camera_results = {}
                 dotboard_cfg = cfg.data.get("calibration", {}).get("dotboard", {})
                 base_root = Path(cfg.base_paths[source_path_idx])
-                subfolder = cfg.calibration_subfolder
 
                 for idx, camera in enumerate(camera_numbers):
                     # Update job with current camera
@@ -437,9 +433,9 @@ def planar_generate_model_all():
                     )
 
                     try:
-                        # Build source directory path
+                        # Build source directory path using calibration_sources
                         source_dir = build_calibration_camera_path(
-                            cfg, source_path_idx, camera, subfolder
+                            cfg, source_path_idx, camera
                         )
 
                         logger.info(f"Processing camera {camera} from {source_dir}")
@@ -455,7 +451,7 @@ def planar_generate_model_all():
                             dot_spacing_mm=dotboard_cfg.get("dot_spacing_mm", 28.89),
                             asymmetric=dotboard_cfg.get("asymmetric", False),
                             enhance_dots=dotboard_cfg.get("enhance_dots", True),
-                            calibration_subfolder="",
+                            config=cfg,
                         )
 
                         # Run calibration

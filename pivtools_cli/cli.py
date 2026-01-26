@@ -216,6 +216,11 @@ def detect_planar_command(args):
 
     config = get_config()
 
+    # Apply CLI calibration source override
+    if args.calibration_source:
+        config.data.setdefault("calibration", {})["calibration_sources"] = [args.calibration_source]
+        print(f"Using calibration source override: {args.calibration_source}")
+
     # Determine cameras to process
     cameras = [args.camera] if args.camera else config.camera_numbers
 
@@ -241,7 +246,6 @@ def detect_planar_command(args):
 
     calib_cfg = config.data.get("calibration", {})
     file_pattern = calib_cfg.get("image_format", "calib%05d.tif")
-    subfolder = calib_cfg.get("subfolder", "")
 
     print(f"Grid: {pattern_cols}x{pattern_rows}, spacing: {dot_spacing_mm}mm")
 
@@ -265,7 +269,6 @@ def detect_planar_command(args):
                 dot_spacing_mm=dot_spacing_mm,
                 asymmetric=asymmetric,
                 enhance_dots=enhance_dots,
-                calibration_subfolder=subfolder,
                 config=config,
             )
 
@@ -310,6 +313,11 @@ def detect_charuco_command(args):
 
     config = get_config()
 
+    # Apply CLI calibration source override
+    if args.calibration_source:
+        config.data.setdefault("calibration", {})["calibration_sources"] = [args.calibration_source]
+        print(f"Using calibration source override: {args.calibration_source}")
+
     # Determine cameras to process
     cameras = [args.camera] if args.camera else config.camera_numbers
 
@@ -337,7 +345,6 @@ def detect_charuco_command(args):
 
     calib_cfg = config.data.get("calibration", {})
     file_pattern = calib_cfg.get("image_format", "calib%05d.tif")
-    subfolder = calib_cfg.get("subfolder", "")
 
     print(f"Board: {squares_h}x{squares_v} squares, size: {square_size}m")
 
@@ -363,7 +370,6 @@ def detect_charuco_command(args):
                 aruco_dict=aruco_dict,
                 min_corners=min_corners,
                 dt=dt,
-                calibration_subfolder=subfolder,
                 config=config,
             )
 
@@ -408,6 +414,11 @@ def detect_stereo_planar_command(args):
 
     config = get_config()
 
+    # Apply CLI calibration source override
+    if args.calibration_source:
+        config.data.setdefault("calibration", {})["calibration_sources"] = [args.calibration_source]
+        print(f"Using calibration source override: {args.calibration_source}")
+
     # Get paths
     active_paths = get_active_paths_from_args(args, config)
     if not active_paths:
@@ -430,7 +441,6 @@ def detect_stereo_planar_command(args):
 
     calib_cfg = config.data.get("calibration", {})
     file_pattern = calib_cfg.get("image_format", "calib%05d.tif")
-    subfolder = calib_cfg.get("subfolder", "")
 
     print(f"Camera pair: {camera_pair}")
     print(f"Grid: {pattern_cols}x{pattern_rows}, spacing: {dot_spacing_mm}mm")
@@ -455,7 +465,6 @@ def detect_stereo_planar_command(args):
                 dot_spacing_mm=dot_spacing_mm,
                 asymmetric=asymmetric,
                 enhance_dots=enhance_dots,
-                calibration_subfolder=subfolder,
                 config=config,
             )
 
@@ -495,6 +504,11 @@ def detect_stereo_charuco_command(args):
 
     config = get_config()
 
+    # Apply CLI calibration source override
+    if args.calibration_source:
+        config.data.setdefault("calibration", {})["calibration_sources"] = [args.calibration_source]
+        print(f"Using calibration source override: {args.calibration_source}")
+
     # Get paths
     active_paths = get_active_paths_from_args(args, config)
     if not active_paths:
@@ -520,7 +534,6 @@ def detect_stereo_charuco_command(args):
 
     calib_cfg = config.data.get("calibration", {})
     file_pattern = calib_cfg.get("image_format", "calib%05d.tif")
-    subfolder = calib_cfg.get("subfolder", "")
 
     print(f"Camera pair: {camera_pair}")
     print(f"Board: {squares_h}x{squares_v} squares, size: {square_size}m")
@@ -546,7 +559,6 @@ def detect_stereo_charuco_command(args):
                 marker_ratio=marker_ratio,
                 aruco_dict=aruco_dict,
                 min_corners=min_corners,
-                calibration_subfolder=subfolder,
                 config=config,
             )
 
@@ -1246,11 +1258,10 @@ calibration:
   image_type: standard
   zero_based_indexing: false
   use_camera_subfolders: false
-  subfolder: enhanced
+  calibration_sources: []
   camera_subfolders:
   - Cam1
   - Cam2
-  path_order: camera_first
   active: dotboard
   piv_type: instantaneous
   scale_factor:
@@ -1462,6 +1473,10 @@ def main():
         "--active-paths", "-p", default=None,
         help="Comma-separated path indices to process (e.g., '0,1,2')"
     )
+    detect_planar_parser.add_argument(
+        "--calibration-source", "-cs", default=None,
+        help="Direct path to calibration images (overrides config.calibration_sources)"
+    )
     detect_planar_parser.set_defaults(func=detect_planar_command)
 
     # detect-charuco command (single camera)
@@ -1477,6 +1492,10 @@ def main():
         "--active-paths", "-p", default=None,
         help="Comma-separated path indices to process (e.g., '0,1,2')"
     )
+    detect_charuco_parser.add_argument(
+        "--calibration-source", "-cs", default=None,
+        help="Direct path to calibration images (overrides config.calibration_sources)"
+    )
     detect_charuco_parser.set_defaults(func=detect_charuco_command)
 
     # detect-stereo-planar command
@@ -1488,6 +1507,10 @@ def main():
         "--active-paths", "-p", default=None,
         help="Comma-separated path indices to process (e.g., '0,1,2')"
     )
+    detect_stereo_planar_parser.add_argument(
+        "--calibration-source", "-cs", default=None,
+        help="Direct path to calibration images (overrides config.calibration_sources)"
+    )
     detect_stereo_planar_parser.set_defaults(func=detect_stereo_planar_command)
 
     # detect-stereo-charuco command
@@ -1498,6 +1521,10 @@ def main():
     detect_stereo_charuco_parser.add_argument(
         "--active-paths", "-p", default=None,
         help="Comma-separated path indices to process (e.g., '0,1,2')"
+    )
+    detect_stereo_charuco_parser.add_argument(
+        "--calibration-source", "-cs", default=None,
+        help="Direct path to calibration images (overrides config.calibration_sources)"
     )
     detect_stereo_charuco_parser.set_defaults(func=detect_stereo_charuco_command)
 

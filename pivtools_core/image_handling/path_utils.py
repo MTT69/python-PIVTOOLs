@@ -22,89 +22,53 @@ def build_calibration_camera_path(
     config: "Config",
     source_path_idx: int = 0,
     camera: int = 1,
-    subfolder_override: Optional[str] = None,
 ) -> Path:
-    """Build the path to calibration images for a specific camera.
+    """Build path to calibration images for a specific camera.
 
-    Path structure depends on calibration_image_type, use_camera_subfolders,
-    and calibration_path_order:
+    Uses calibration_sources directly - no legacy subfolder logic.
 
-    path_order='camera_first' (default):
-    - Container formats (.set, .cine): source_directory / calibration_subfolder
-    - IM7 with use_camera_subfolders=False: source_directory / calibration_subfolder
-    - IM7 with use_camera_subfolders=True: source_directory / camera_folder / calibration_subfolder
-    - Standard formats: source_directory / camera_folder / calibration_subfolder
-
-    path_order='calibration_first':
-    - Container formats (.set, .cine): source_directory / calibration_subfolder
-    - IM7 with use_camera_subfolders=False: source_directory / calibration_subfolder
-    - IM7 with use_camera_subfolders=True: source_directory / calibration_subfolder / camera_folder
-    - Standard formats: source_directory / calibration_subfolder / camera_folder
-
-    Note: For .set PIV files, source_path is the file itself, so we use
-    get_source_directory() to get the parent directory for calibration images.
-    This allows calibration images to be in a different format (e.g., .tif).
-
-    This is the single source of truth for calibration path building,
-    used by calibration_loader.py and the Flask calibration views.
+    Path structure:
+    - Container formats (.set, .cine): calibration_source path directly (no camera subfolders)
+    - IM7 with use_camera_subfolders=False: calibration_source path directly
+    - IM7/Standard with use_camera_subfolders=True: calibration_source / camera_folder
 
     Args:
         config: Configuration object with calibration settings
-        source_path_idx: Index into source_paths list (default: 0)
+        source_path_idx: Index into calibration_sources list (default: 0)
         camera: Camera number (1-based, default: 1)
-        subfolder_override: Override for calibration_subfolder from config.
-                           If None, uses config.calibration_subfolder.
 
     Returns:
-        Path: Full path to calibration image directory
+        Path: Full path to calibration image directory or container file
+
+    Raises:
+        ValueError: If calibration_sources is not configured
+        IndexError: If source_path_idx is out of range
 
     Examples:
-        >>> # camera_first (default): source/Cam1/calibration/
+        >>> # Standard format with camera subfolders: /data/calibration/Cam1/
         >>> path = build_calibration_camera_path(config, 0, 1)
 
-        >>> # calibration_first: source/calibration/Cam1/
-        >>> # (when config.calibration_path_order = 'calibration_first')
+        >>> # Container format: /data/calibration/data.set (no camera folder)
         >>> path = build_calibration_camera_path(config, 0, 1)
     """
-    # Use get_source_directory() which returns parent for .set files
-    # This allows calibration images to be in a different format than PIV
-    source_dir = config.get_source_directory(source_path_idx)
+    cal_source = config.get_calibration_source(source_path_idx)
     cal_image_type = config.calibration_image_type
-    path_order = config.calibration_path_order
-    subfolder = subfolder_override if subfolder_override is not None else config.calibration_subfolder
 
-    # Container formats (SET, CINE) never use camera subfolders
+    # Container formats: path is directly to file, no camera subfolder
     if cal_image_type in ("lavision_set", "cine"):
-        camera_path = source_dir
-        if subfolder:
-            camera_path = camera_path / subfolder
-        return camera_path
+        return cal_source
 
-    # Determine if camera folder should be used
-    # Standard and IM7 formats respect the use_camera_subfolders setting
-    # Container formats (SET, CINE) are handled above and never use camera subfolders
-    use_camera_folder = config.calibration_use_camera_subfolders
+    # IM7 without camera subfolders: return source directly
+    if cal_image_type == "lavision_im7" and not config.calibration_use_camera_subfolders:
+        return cal_source
 
-    # Get camera folder name
-    camera_folder = config.get_calibration_camera_folder(camera) if use_camera_folder else ""
-
-    # Build path based on order preference
-    if path_order == "calibration_first":
-        # source_dir / calibration_subfolder / camera_folder
-        camera_path = source_dir
-        if subfolder:
-            camera_path = camera_path / subfolder
+    # Standard/IM7 with subfolders: apply camera folder
+    if config.calibration_use_camera_subfolders:
+        camera_folder = config.get_calibration_camera_folder(camera)
         if camera_folder:
-            camera_path = camera_path / camera_folder
-    else:
-        # camera_first (default): source_dir / camera_folder / calibration_subfolder
-        camera_path = source_dir
-        if camera_folder:
-            camera_path = camera_path / camera_folder
-        if subfolder:
-            camera_path = camera_path / subfolder
+            return cal_source / camera_folder
 
-    return camera_path
+    return cal_source
 
 
 def build_piv_camera_path(

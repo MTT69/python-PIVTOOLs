@@ -337,10 +337,9 @@ def calibration_validate_images():
 
     Request JSON:
         camera: int - Camera number (1-based)
-        source_path_idx: int - Index into source_paths list (default: 0)
+        source_path_idx: int - Index into calibration_sources list (default: 0)
         image_format: str - Override for calibration image pattern (optional)
         num_images: int - Override for expected image count (optional)
-        subfolder: str - Override for calibration subfolder (optional)
         image_type: str - Override for image type (optional)
 
     Returns:
@@ -355,7 +354,6 @@ def calibration_validate_images():
     num_images = data.get("num_images")
     if num_images is not None:
         num_images = int(num_images)
-    subfolder = data.get("subfolder")
     image_type = data.get("image_type")
 
     try:
@@ -368,7 +366,6 @@ def calibration_validate_images():
             source_path_idx,
             image_format=image_format,
             num_images=num_images,
-            subfolder=subfolder,
             image_type=image_type,
         )
 
@@ -405,9 +402,9 @@ def calibration_config():
         num_images: int - Number of calibration images expected
         image_type: str - 'standard' | 'cine' | 'lavision_set' | 'lavision_im7'
         zero_based_indexing: bool - Start indexing from 0
-        subfolder: str - Subfolder for calibration images (e.g., "calibration")
-
-    Note: use_camera_subfolders is read-only - derived from paths.camera_subfolders
+        calibration_sources: list[str] - Direct paths to calibration images (REQUIRED)
+        use_camera_subfolders: bool - Whether to use camera subfolders
+        camera_subfolders: list[str] - Custom camera folder names
 
     Returns:
         JSON with current calibration config
@@ -421,10 +418,9 @@ def calibration_config():
             "image_type": cfg.calibration_image_type,
             "zero_based_indexing": cfg.calibration_zero_based_indexing,
             "use_camera_subfolders": cfg.calibration_use_camera_subfolders,
-            "subfolder": cfg.calibration_subfolder,
+            "calibration_sources": [str(p) for p in cfg.calibration_sources],
             "is_container_format": cfg.calibration_is_container_format,
             "camera_subfolders": cfg.calibration_camera_subfolders,
-            "path_order": cfg.calibration_path_order,
         })
 
     # POST - Update config
@@ -449,14 +445,12 @@ def calibration_config():
         # use_camera_subfolders can now be set explicitly (especially for IM7 formats)
         if "use_camera_subfolders" in data:
             cal_block["use_camera_subfolders"] = bool(data["use_camera_subfolders"])
-        if "subfolder" in data:
-            cal_block["subfolder"] = str(data["subfolder"])
-        # NEW: camera_subfolders - independent from PIV camera subfolders
+        # calibration_sources - direct paths to calibration images
+        if "calibration_sources" in data:
+            cal_block["calibration_sources"] = list(data["calibration_sources"]) if data["calibration_sources"] else []
+        # camera_subfolders - independent from PIV camera subfolders
         if "camera_subfolders" in data:
             cal_block["camera_subfolders"] = list(data["camera_subfolders"]) if data["camera_subfolders"] else []
-        # NEW: path_order - controls whether camera folder comes before or after calibration subfolder
-        if "path_order" in data:
-            cal_block["path_order"] = str(data["path_order"])
 
         # Save config
         cfg.save()
@@ -468,10 +462,9 @@ def calibration_config():
             "image_type": cfg.calibration_image_type,
             "zero_based_indexing": cfg.calibration_zero_based_indexing,
             "use_camera_subfolders": cfg.calibration_use_camera_subfolders,
-            "subfolder": cfg.calibration_subfolder,
+            "calibration_sources": [str(p) for p in cfg.calibration_sources],
             "is_container_format": cfg.calibration_is_container_format,
             "camera_subfolders": cfg.calibration_camera_subfolders,
-            "path_order": cfg.calibration_path_order,
         })
 
     except Exception as e:

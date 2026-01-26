@@ -65,12 +65,13 @@ def polynomial_validate_xml():
         if xml_path_config:
             xml_path = Path(xml_path_config)
         else:
-            # Fallback to derived path
-            source_root = Path(cfg.source_paths[source_path_idx])
-            calib_subfolder = cfg.calibration_subfolder
-            if calib_subfolder:
-                xml_path = source_root / calib_subfolder / "Calibration.xml"
+            # Fallback to derived path from calibration_sources
+            calib_sources = cfg.calibration_sources
+            if calib_sources and len(calib_sources) > source_path_idx:
+                xml_path = calib_sources[source_path_idx] / "Calibration.xml"
             else:
+                # Last resort: source_paths
+                source_root = Path(cfg.source_paths[source_path_idx])
                 xml_path = source_root / "Calibration.xml"
 
         if not xml_path.exists():

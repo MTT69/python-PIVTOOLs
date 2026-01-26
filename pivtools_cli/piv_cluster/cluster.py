@@ -10,6 +10,12 @@ from dask_jobqueue import SLURMCluster
 from pivtools_core.config import Config
 
 
+class _UnresponsiveEventLoopFilter(logging.Filter):
+    """Filter out 'Event loop was unresponsive' messages from Dask workers."""
+    def filter(self, record):
+        return "Event loop was unresponsive" not in record.getMessage()
+
+
 def _suppress_dask_verbose_logging():
     """Suppress verbose Dask internal logging to reduce noise."""
     # Suppress worker startup/shutdown messages
@@ -23,6 +29,9 @@ def _suppress_dask_verbose_logging():
         "bokeh.server.views.ws",
     ]:
         logging.getLogger(logger_name).setLevel(logging.WARNING)
+
+    # Filter out "Event loop was unresponsive" warnings
+    logging.getLogger("distributed").addFilter(_UnresponsiveEventLoopFilter())
 
 
 def make_cluster(
