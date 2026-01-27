@@ -1,5 +1,7 @@
 .DS_Store/
 .venv/
+.env/
+.conda_env/
 env/
 test/
 check_mat.ipynb

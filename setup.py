@@ -25,6 +25,25 @@ class BuildCLib(build_ext):
         src_dir = self.pkg_dir / "pivtools_cli" / "lib"
         self.fftw_inc = os.environ.get("FFTW_INC_DIR")
         self.fftw_lib = os.environ.get("FFTW_LIB_DIR")
+        if self.fftw_inc:
+            fftw_inc_list = [pathlib.Path(p) for p in self.fftw_inc.split(":")]
+        else:
+            fftw_inc_list = [self.fftw_inc]
+
+        if self.fftw_lib:
+            fftw_lib_list = [pathlib.Path(p) for p in self.fftw_lib.split(":")]
+        else:
+            fftw_lib_list = [self.fftw_lib]
+
+        gcc_include_flags = []
+        for p in fftw_inc_list:
+            if p:
+                gcc_include_flags.append(f"-I{p}")
+
+        gcc_lib_flags = []
+        for p in fftw_lib_list:
+            if p:
+                gcc_lib_flags.append(f"-L{p}")
         sys_name = platform.system().lower()
         static_root = self.pkg_dir / "static_fftw"
 
@@ -91,9 +110,12 @@ class BuildCLib(build_ext):
 
         # === Linux ===
         else:
+            print("Detected Linux system")
+
             if self.fftw_inc and self.fftw_lib:
                 self.fftw_inc = pathlib.Path(self.fftw_inc)
                 self.fftw_lib = pathlib.Path(self.fftw_lib)
+                print(f"Using FFTW from environment: INC={self.fftw_inc}, LIB={self.fftw_lib}")
 
             else:
                 fftw_dir = static_root / "linux"
@@ -108,12 +130,12 @@ class BuildCLib(build_ext):
 
             compiler = os.environ.get("CC", "gcc")
             shared_flag = "-shared"
-            extra_compile = ["-O3", "-fPIC", "-fopenmp"]
-            extra_link = [ "-lm", "-fopenmp"]
+            self.extra_compile = ["-O3", "-fPIC", "-fopenmp"] + gcc_include_flags
+            self.extra_link = [ "-lm", "-fopenmp"] + gcc_lib_flags + ["-lfftw3", "-lfftw3_threads", "-lfftw3f", "-lfftw3f_threads","-lm"]
             lib_ext = ".so"
-            extra_link += [f"-L{self.fftw_lib}", "-lfftw3f", "-lfftw3f_threads"]
-            extra_compile += [f"-I{self.fftw_inc}"]
-            extra_compile += [ f"-I{self.python_include}"]
+            #self.extra_link += [f"-L{self.fftw_lib}", "-lfftw3", "-lfftw3_threads"]
+            #self.extra_compile += [f"-I{self.fftw_inc}"]
+            self.extra_compile += [ f"-I{self.python_include}"]
             use_msvc = False
 
         # --- Build libbulkxcorr2d ---
@@ -123,6 +145,7 @@ class BuildCLib(build_ext):
             "xcorr.c",
             "xcorr_cache.c",
         ]
+        print(f"Building C libraries with compiler: {compiler}")
 
         if use_msvc:
             # MSVC command structure: cl [flags] [sources] /I[include] /Fe[output] /link [libs]
@@ -142,6 +165,7 @@ class BuildCLib(build_ext):
                 f"-I{src_dir}", f"-I{self.fftw_inc}",
                 "-o", str(build_dir / f"libbulkxcorr2d{lib_ext}")
             ] + self.extra_link
+            print("GCC Build Command:", " ".join(cmd1))
         self._run(cmd1)
         if not (build_dir / f"libbulkxcorr2d{lib_ext}").exists():
             raise RuntimeError(f"Build failed: {build_dir / f'libbulkxcorr2d{lib_ext}'} not created")
@@ -181,53 +205,57 @@ class BuildCLib(build_ext):
 
         # --- Build libmarquadt (for ensemble PIV) ---
         # Requires GSL (GNU Scientific Library)
+
         marquadt_src = src_dir / "marquadt_gaussian.c"
         if marquadt_src.exists():
-            # Use static GSL from static_gsl folder
-            #self.pkg_dir = pathlib.Path(__file__).parent
-            if sys_name == "macos":
-                arch = platform.machine().lower()
-                if arch == "arm64":
-                    gsl_dir = self.pkg_dir / "static_gsl" / "macos_arm64"
-                else:
-                    raise RuntimeError(f"Unsupported macOS architecture: {arch}. Only Apple Silicon (arm64) is supported.")
-            elif sys_name == "windows":
-                gsl_dir = self.pkg_dir / "static_gsl" / "windows"
-            else:  # Linux
-                gsl_dir = self.pkg_dir / "static_gsl" / "linux"
+            print("Building libmarquadt (requires GSL)")
+        # Use system GSL if provided via environment
+            gsl_dir = os.environ.get("GSL_DIR")
+    
+            if gsl_dir:
+                gsl_dir = pathlib.Path(gsl_dir)
+                gsl_inc = gsl_dir / "include"
+                gsl_lib = gsl_dir / "lib"
+                print(f"Using GSL from environment: INC={gsl_inc}, LIB={gsl_lib}")
+            else:
+                if sys_name == "macos":
+                    arch = platform.machine().lower()
+                    if arch == "arm64":
+                        gsl_dir = self.pkg_dir / "static_gsl" / "macos_arm64"
+                    else:
+                        raise RuntimeError(f"Unsupported macOS architecture: {arch}")
+                elif sys_name == "windows":
+                    gsl_dir = self.pkg_dir / "static_gsl" / "windows"
+                else:  # Linux
+                    gsl_dir = self.pkg_dir / "static_gsl" / "linux"
 
-            if not gsl_dir.exists():
-                raise RuntimeError(f"Static GSL not found: {gsl_dir}")
-
-            gsl_inc = gsl_dir / "include"
-            gsl_lib = gsl_dir / "lib"
+                gsl_inc = gsl_dir / "include"
+                gsl_lib = gsl_dir / "lib"
 
             if use_msvc:
-                # MSVC style
                 gsl_compile_flags = [f"/I{gsl_inc}"]
                 gsl_link_flags = [str(gsl_lib / "gsl.lib"), str(gsl_lib / "gslcblas.lib")]
                 output_file = build_dir / f"libmarquadt{lib_ext}"
                 cmd_marquadt = [
-                    compiler, *self.extra_compile, shared_flag,
-                    f"/Fo{build_dir}/",
-                    *gsl_compile_flags,
-                    str(marquadt_src),
-                    f"/I{src_dir}",
-                    f"/Fe{output_file}",
-                    *gsl_link_flags
-                ]
+                compiler, *self.extra_compile, shared_flag,
+                f"/Fo{build_dir}/",
+                *gsl_compile_flags,
+                str(marquadt_src),
+                f"/I{src_dir}",
+                f"/Fe{output_file}",
+                *gsl_link_flags
+        ]
             else:
-                # GCC style
                 gsl_compile_flags = [f"-I{gsl_inc}"]
-                gsl_link_flags = [str(gsl_lib / "libgsl.a"), str(gsl_lib / "libgslcblas.a"), "-lm"]
+                gsl_link_flags = ["-lgsl", "-lgslcblas", "-lm"]  # use dynamic linking
+                output_file = build_dir / f"libmarquadt{lib_ext}"
                 cmd_marquadt = [
-                    compiler, *self.extra_compile, shared_flag,
-                    *gsl_compile_flags,
-                    str(marquadt_src),
-                    f"-I{src_dir}",
-                    "-o", str(build_dir / f"libmarquadt{lib_ext}"),
-                    *gsl_link_flags
-                ]
+                compiler, "-shared",*self.extra_compile,
+                *gsl_compile_flags,
+                str(marquadt_src),
+                f"-I{src_dir}",
+                "-o", str(output_file),
+            ] + gsl_link_flags
 
             try:
                 self._run(cmd_marquadt)
@@ -267,7 +295,7 @@ dummy_ext = Extension(
 setup(
     packages=find_packages(),
     include_package_data=True,
-    ext_modules=[dummy_ext],
+   # ext_modules=[dummy_ext],
     cmdclass={"build_ext": BuildCLib},
 
 )

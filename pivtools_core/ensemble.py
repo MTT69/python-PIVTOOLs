@@ -204,9 +204,12 @@ def run_ensemble_piv(
         # Worker-side accumulation: distribute chunks across workers
         # Each worker processes multiple chunks and returns one accumulated result
         # This reduces network traffic from O(num_chunks) to O(num_workers)
-        workers = list(client.scheduler_info()["workers"].keys())
+        workers = list(client.ncores().keys()) 
         num_workers = len(workers)
         chunks_per_worker = (num_chunks + num_workers - 1) // num_workers
+
+        logger.info(f"Distributing {num_chunks} chunks across {num_workers} workers (~{chunks_per_worker} each)")
+
 
         logger.info(f"  Distributing {num_chunks} chunks across {num_workers} workers...")
         logger.info(f"  (~{chunks_per_worker} chunks per worker)")
