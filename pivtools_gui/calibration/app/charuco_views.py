@@ -57,7 +57,6 @@ def charuco_validate_images():
     num_images = data.get("num_images")
     if num_images is not None:
         num_images = int(num_images)
-    subfolder = data.get("subfolder")
 
     try:
         cfg = get_config()
@@ -69,7 +68,6 @@ def charuco_validate_images():
             source_path_idx,
             image_format=image_format,
             num_images=num_images,
-            subfolder=subfolder,
         )
 
         # Add extra context
@@ -124,7 +122,6 @@ def charuco_calibrate():
 
     # Get calibration path settings from unified config
     file_pattern = cfg.calibration_image_format
-    calibration_subfolder = cfg.calibration_subfolder
 
     # Create job
     job_id = job_manager.create_job(
@@ -139,7 +136,7 @@ def charuco_calibrate():
         try:
             job_manager.update_job(job_id, status="running")
 
-            # Get calibration input path using config settings
+            # Get calibration input path using config settings (calibration_sources)
             cam_input_path = build_calibration_camera_path(cfg, source_path_idx, camera)
 
             # Use config-based paths with explicit input path override
@@ -155,8 +152,8 @@ def charuco_calibrate():
                 aruco_dict=aruco_dict,
                 min_corners=min_corners,
                 dt=dt,
-                calibration_subfolder=calibration_subfolder,
                 calibration_input_path=cam_input_path,
+                config=cfg,
             )
 
             def progress_callback(progress_data):
@@ -245,7 +242,6 @@ def charuco_calibrate_all():
 
     # Get calibration path settings from unified config
     file_pattern = cfg.calibration_image_format
-    calibration_subfolder = cfg.calibration_subfolder
 
     # Create job with camera-aware tracking
     job_id = job_manager.create_job(
@@ -263,7 +259,7 @@ def charuco_calibrate_all():
         try:
             job_manager.update_job(job_id, status="running")
 
-            # Get calibration input path using config settings
+            # Get calibration input path using config settings (calibration_sources)
             # When camera_subfolders is empty, path is same for all cameras
             first_camera = camera_numbers[0] if camera_numbers else 1
             cam_input_path = build_calibration_camera_path(cfg, source_path_idx, first_camera)
@@ -281,8 +277,8 @@ def charuco_calibrate_all():
                 aruco_dict=aruco_dict,
                 min_corners=min_corners,
                 dt=dt,
-                calibration_subfolder=calibration_subfolder,
                 calibration_input_path=cam_input_path,
+                config=cfg,
             )
 
             def progress_callback(progress_data):
@@ -587,7 +583,6 @@ def charuco_calibrate_batch():
         min_corners = int(charuco_cfg.get("min_corners", 6))
         dt = float(charuco_cfg.get("dt", 1.0))
         file_pattern = cfg.calibration_image_format
-        calibration_subfolder = cfg.calibration_subfolder
 
         # Launch a job for each target
         for target in targets:
@@ -630,7 +625,6 @@ def charuco_calibrate_batch():
                     min_corners,
                     dt,
                     file_pattern,
-                    calibration_subfolder,
                 ),
             )
             thread.daemon = True
@@ -669,7 +663,6 @@ def _run_charuco_calibration_job(
     min_corners: int,
     dt: float,
     file_pattern: str,
-    calibration_subfolder: str,
 ):
     """Run ChArUco calibration job in a background thread."""
     try:
@@ -677,7 +670,7 @@ def _run_charuco_calibration_job(
 
         job_manager.update_job(job_id, status="running")
 
-        # Build camera input path
+        # Build camera input path using calibration_sources
         cam_input_path = build_calibration_camera_path(cfg, path_idx, camera)
 
         # Create calibrator
@@ -693,8 +686,8 @@ def _run_charuco_calibration_job(
             aruco_dict=aruco_dict,
             min_corners=min_corners,
             dt=dt,
-            calibration_subfolder=calibration_subfolder,
             calibration_input_path=cam_input_path,
+            config=cfg,
         )
 
         def progress_callback(progress_data):

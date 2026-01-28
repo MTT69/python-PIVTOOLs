@@ -22,89 +22,53 @@ def build_calibration_camera_path(
     config: "Config",
     source_path_idx: int = 0,
     camera: int = 1,
-    subfolder_override: Optional[str] = None,
 ) -> Path:
-    """Build the path to calibration images for a specific camera.
+    """Build path to calibration images for a specific camera.
 
-    Path structure depends on calibration_image_type, use_camera_subfolders,
-    and calibration_path_order:
+    Uses calibration_sources directly - no legacy subfolder logic.
 
-    path_order='camera_first' (default):
-    - Container formats (.set, .cine): source_directory / calibration_subfolder
-    - IM7 with use_camera_subfolders=False: source_directory / calibration_subfolder
-    - IM7 with use_camera_subfolders=True: source_directory / camera_folder / calibration_subfolder
-    - Standard formats: source_directory / camera_folder / calibration_subfolder
-
-    path_order='calibration_first':
-    - Container formats (.set, .cine): source_directory / calibration_subfolder
-    - IM7 with use_camera_subfolders=False: source_directory / calibration_subfolder
-    - IM7 with use_camera_subfolders=True: source_directory / calibration_subfolder / camera_folder
-    - Standard formats: source_directory / calibration_subfolder / camera_folder
-
-    Note: For .set PIV files, source_path is the file itself, so we use
-    get_source_directory() to get the parent directory for calibration images.
-    This allows calibration images to be in a different format (e.g., .tif).
-
-    This is the single source of truth for calibration path building,
-    used by calibration_loader.py and the Flask calibration views.
+    Path structure:
+    - Container formats (.set, .cine): calibration_source path directly (no camera subfolders)
+    - IM7 with use_camera_subfolders=False: calibration_source path directly
+    - IM7/Standard with use_camera_subfolders=True: calibration_source / camera_folder
 
     Args:
         config: Configuration object with calibration settings
-        source_path_idx: Index into source_paths list (default: 0)
+        source_path_idx: Index into calibration_sources list (default: 0)
         camera: Camera number (1-based, default: 1)
-        subfolder_override: Override for calibration_subfolder from config.
-                           If None, uses config.calibration_subfolder.
 
     Returns:
-        Path: Full path to calibration image directory
+        Path: Full path to calibration image directory or container file
+
+    Raises:
+        ValueError: If calibration_sources is not configured
+        IndexError: If source_path_idx is out of range
 
     Examples:
-        >>> # camera_first (default): source/Cam1/calibration/
+        >>> # Standard format with camera subfolders: /data/calibration/Cam1/
         >>> path = build_calibration_camera_path(config, 0, 1)
 
-        >>> # calibration_first: source/calibration/Cam1/
-        >>> # (when config.calibration_path_order = 'calibration_first')
+        >>> # Container format: /data/calibration/data.set (no camera folder)
         >>> path = build_calibration_camera_path(config, 0, 1)
     """
-    # Use get_source_directory() which returns parent for .set files
-    # This allows calibration images to be in a different format than PIV
-    source_dir = config.get_source_directory(source_path_idx)
+    cal_source = config.get_calibration_source(source_path_idx)
     cal_image_type = config.calibration_image_type
-    path_order = config.calibration_path_order
-    subfolder = subfolder_override if subfolder_override is not None else config.calibration_subfolder
 
-    # Container formats (SET, CINE) never use camera subfolders
+    # Container formats: path is directly to file, no camera subfolder
     if cal_image_type in ("lavision_set", "cine"):
-        camera_path = source_dir
-        if subfolder:
-            camera_path = camera_path / subfolder
-        return camera_path
+        return cal_source
 
-    # Determine if camera folder should be used
-    # Standard and IM7 formats respect the use_camera_subfolders setting
-    # Container formats (SET, CINE) are handled above and never use camera subfolders
-    use_camera_folder = config.calibration_use_camera_subfolders
+    # IM7 without camera subfolders: return source directly
+    if cal_image_type == "lavision_im7" and not config.calibration_use_camera_subfolders:
+        return cal_source
 
-    # Get camera folder name
-    camera_folder = config.get_calibration_camera_folder(camera) if use_camera_folder else ""
-
-    # Build path based on order preference
-    if path_order == "calibration_first":
-        # source_dir / calibration_subfolder / camera_folder
-        camera_path = source_dir
-        if subfolder:
-            camera_path = camera_path / subfolder
+    # Standard/IM7 with subfolders: apply camera folder
+    if config.calibration_use_camera_subfolders:
+        camera_folder = config.get_calibration_camera_folder(camera)
         if camera_folder:
-            camera_path = camera_path / camera_folder
-    else:
-        # camera_first (default): source_dir / camera_folder / calibration_subfolder
-        camera_path = source_dir
-        if camera_folder:
-            camera_path = camera_path / camera_folder
-        if subfolder:
-            camera_path = camera_path / subfolder
+            return cal_source / camera_folder
 
-    return camera_path
+    return cal_source
 
 
 def build_piv_camera_path(
@@ -307,6 +271,74 @@ def _suggest_pattern(filename: str, forced_ext: Optional[str] = None) -> str:
     return filename
 
 
+def _detect_ab_pair_pattern(
+    sample_files: List[str], forced_ext: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """Detect if files follow A/B naming convention and suggest both patterns.
+
+    Looks for paired files with _A/_B or _a/_b suffixes in the filename.
+    Returns both pattern_a and pattern_b if A/B pairs are detected.
+
+    Parameters
+    ----------
+    sample_files : List[str]
+        List of filenames to analyze (just names, not full paths)
+    forced_ext : str, optional
+        Force a specific extension
+
+    Returns
+    -------
+    Optional[Dict[str, Any]]
+        If A/B pairs detected:
+        {
+            "pattern_a": str,  # Pattern for A files (e.g., "B%05d_A.tif")
+            "pattern_b": str,  # Pattern for B files (e.g., "B%05d_B.tif")
+            "mode": "ab_format"
+        }
+        If not A/B format, returns None
+    """
+    if not sample_files:
+        return None
+
+    # Look for A/B pattern in filenames
+    # Common patterns: _A.tif/_B.tif, _a.png/_b.png, -A.jpg/-B.jpg
+    a_pattern = re.compile(r'[_-][Aa]\.[a-zA-Z]+$')
+    b_pattern = re.compile(r'[_-][Bb]\.[a-zA-Z]+$')
+
+    a_files = [f for f in sample_files if a_pattern.search(f)]
+    b_files = [f for f in sample_files if b_pattern.search(f)]
+
+    # Need both A and B files present, with similar counts
+    if not a_files or not b_files:
+        return None
+
+    # Check that counts are roughly similar (within factor of 2)
+    if max(len(a_files), len(b_files)) > 2 * min(len(a_files), len(b_files)):
+        return None
+
+    # Generate patterns from the first A and B files
+    first_a = sorted(a_files)[0]
+    first_b = sorted(b_files)[0]
+
+    # Use existing _suggest_pattern but preserve the _A/_B suffix
+    pattern_a = _suggest_pattern(first_a, forced_ext)
+    pattern_b = _suggest_pattern(first_b, forced_ext)
+
+    # Verify the patterns differ only in A/B
+    pattern_a_normalized = re.sub(r'[_-][Aa]\.', '_X.', pattern_a)
+    pattern_b_normalized = re.sub(r'[_-][Bb]\.', '_X.', pattern_b)
+
+    if pattern_a_normalized != pattern_b_normalized:
+        # Patterns don't match in structure - not a valid A/B pair
+        return None
+
+    return {
+        "pattern_a": pattern_a,
+        "pattern_b": pattern_b,
+        "mode": "ab_format",
+    }
+
+
 def validate_images_generic(
     camera_path: Path,
     camera: int,
@@ -365,6 +397,8 @@ def validate_images_generic(
         "format_detected": None,
         "error": None,
         "suggested_pattern": None,
+        "suggested_pattern_b": None,  # For A/B pair detection
+        "suggested_mode": None,  # "ab_format" or None
     }
 
     start_idx = 0 if zero_based_indexing else 1
@@ -510,9 +544,19 @@ def validate_images_generic(
                 all_images.extend(camera_path.glob(ext))
 
             if all_images:
-                suggested = _suggest_pattern(sorted(all_images)[0].name)
-                result["suggested_pattern"] = suggested
-                result["sample_files"] = [f.name for f in sorted(all_images)[:5]]
+                all_image_names = [f.name for f in sorted(all_images)]
+                result["sample_files"] = all_image_names[:5]
+
+                # First try to detect A/B pairs
+                ab_result = _detect_ab_pair_pattern(all_image_names)
+                if ab_result:
+                    result["suggested_pattern"] = ab_result["pattern_a"]
+                    result["suggested_pattern_b"] = ab_result["pattern_b"]
+                    result["suggested_mode"] = ab_result["mode"]
+                else:
+                    # Fall back to single pattern suggestion
+                    suggested = _suggest_pattern(all_image_names[0])
+                    result["suggested_pattern"] = suggested
             return result
 
         result["found_count"] = len(matching_files)

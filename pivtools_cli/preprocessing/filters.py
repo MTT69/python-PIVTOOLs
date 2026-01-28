@@ -124,7 +124,8 @@ def _pod_filter_block(block, tile_size=2048):
     import gc
 
     N, C, H, W = block.shape
-    output = np.empty_like(block)
+    # POD filtering produces negative values, so output must be float32
+    output = np.empty(block.shape, dtype=np.float32)
 
     # Process each channel (frame 0/1) sequentially to halve memory requirements
     for frame_idx in range(C):
@@ -141,7 +142,7 @@ def _pod_filter_block(block, tile_size=2048):
         # Identify noise floor using Mendez et al. criteria
         n_remove = _find_pod_auto_mode(PSI, S, N)
 
-        logging.debug(f"POD filter: Frame {frame_idx} - found {n_remove} modes to remove")
+        logging.debug(f"POD filter: Frame {frame_idx} - removing {n_remove} modes")
 
         if n_remove == 0:
             output[:, frame_idx] = block[:, frame_idx]
@@ -186,7 +187,8 @@ def _pod_filter_block(block, tile_size=2048):
         del PSI_bad
         gc.collect()
 
-    return output.astype(block.dtype)
+    # Return float32 - POD output has negative values that would be clipped by uint8
+    return output
 
 
 def _find_pod_auto_mode(PSI, eigvals, N):
@@ -388,18 +390,6 @@ def sbg_filter(images: da.Array, bg=None) -> da.Array:
     return da.maximum(0, images - bg)
 
 
-def _transpose_block(block):
-    return block.transpose(0, 1, 3, 2)
-
-
-def transpose_filter(images: da.Array) -> da.Array:
-
-    if images.ndim != 4:
-        raise ValueError(f"Expected 4D array (N, C, H, W), got {images.ndim}D array.")
-
-    return images.map_blocks(_transpose_block, dtype=images.dtype)
-
-
 def gaussian_filter_dask(images: da.Array, sigma=1.0) -> da.Array:
     """
     Apply a Gaussian filter to a batch of images with shape (N, 2, H, W).
@@ -503,7 +493,6 @@ FILTER_MAP = {
     "median": median_filter_dask,
     "sbg": sbg_filter,
     "norm": norm_filter,
-    "transpose": transpose_filter,
     "gaussian": gaussian_filter_dask,
 }
 

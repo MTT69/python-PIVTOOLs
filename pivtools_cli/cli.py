@@ -98,7 +98,7 @@ def apply_calibration_command(args):
                         image_count=config.num_frame_pairs,
                     )
                 else:
-                    # pinhole or charuco
+                    # dotboard or charuco
                     from pivtools_gui.calibration.vector_calibration_production import VectorCalibrator
                     calibrator = VectorCalibrator(
                         base_dir=base_dir,
@@ -148,9 +148,9 @@ def apply_stereo_command(args):
     if args.camera_pair:
         camera_pair = [int(c.strip()) for c in args.camera_pair.split(",")]
     else:
-        camera_pair = config.data.get("calibration", {}).get("stereo", {}).get("camera_pair", [1, 2])
+        camera_pair = config.data.get("calibration", {}).get("stereo_dotboard", {}).get("camera_pair", [1, 2])
 
-    method = args.method  # "pinhole" or "charuco", None uses config default
+    method = args.method  # "dotboard" or "charuco", None uses config default
     type_name = args.type_name or "instantaneous"
     runs_to_process = [int(r) for r in args.runs.split(",")] if args.runs else None
 
@@ -216,6 +216,11 @@ def detect_planar_command(args):
 
     config = get_config()
 
+    # Apply CLI calibration source override
+    if args.calibration_source:
+        config.data.setdefault("calibration", {})["calibration_sources"] = [args.calibration_source]
+        print(f"Using calibration source override: {args.calibration_source}")
+
     # Determine cameras to process
     cameras = [args.camera] if args.camera else config.camera_numbers
 
@@ -232,16 +237,15 @@ def detect_planar_command(args):
     print(f"Active paths: {len(active_paths)}")
 
     # Get calibration settings from config
-    pinhole_cfg = config.data.get("calibration", {}).get("pinhole", {})
-    pattern_cols = pinhole_cfg.get("pattern_cols", 10)
-    pattern_rows = pinhole_cfg.get("pattern_rows", 10)
-    dot_spacing_mm = pinhole_cfg.get("dot_spacing_mm", 28.89)
-    asymmetric = pinhole_cfg.get("asymmetric", False)
-    enhance_dots = pinhole_cfg.get("enhance_dots", True)
+    dotboard_cfg = config.data.get("calibration", {}).get("dotboard", {})
+    pattern_cols = dotboard_cfg.get("pattern_cols", 10)
+    pattern_rows = dotboard_cfg.get("pattern_rows", 10)
+    dot_spacing_mm = dotboard_cfg.get("dot_spacing_mm", 28.89)
+    asymmetric = dotboard_cfg.get("asymmetric", False)
+    enhance_dots = dotboard_cfg.get("enhance_dots", True)
 
     calib_cfg = config.data.get("calibration", {})
     file_pattern = calib_cfg.get("image_format", "calib%05d.tif")
-    subfolder = calib_cfg.get("subfolder", "")
 
     print(f"Grid: {pattern_cols}x{pattern_rows}, spacing: {dot_spacing_mm}mm")
 
@@ -265,7 +269,6 @@ def detect_planar_command(args):
                 dot_spacing_mm=dot_spacing_mm,
                 asymmetric=asymmetric,
                 enhance_dots=enhance_dots,
-                calibration_subfolder=subfolder,
                 config=config,
             )
 
@@ -310,6 +313,11 @@ def detect_charuco_command(args):
 
     config = get_config()
 
+    # Apply CLI calibration source override
+    if args.calibration_source:
+        config.data.setdefault("calibration", {})["calibration_sources"] = [args.calibration_source]
+        print(f"Using calibration source override: {args.calibration_source}")
+
     # Determine cameras to process
     cameras = [args.camera] if args.camera else config.camera_numbers
 
@@ -337,7 +345,6 @@ def detect_charuco_command(args):
 
     calib_cfg = config.data.get("calibration", {})
     file_pattern = calib_cfg.get("image_format", "calib%05d.tif")
-    subfolder = calib_cfg.get("subfolder", "")
 
     print(f"Board: {squares_h}x{squares_v} squares, size: {square_size}m")
 
@@ -363,7 +370,6 @@ def detect_charuco_command(args):
                 aruco_dict=aruco_dict,
                 min_corners=min_corners,
                 dt=dt,
-                calibration_subfolder=subfolder,
                 config=config,
             )
 
@@ -404,9 +410,14 @@ def detect_charuco_command(args):
 def detect_stereo_planar_command(args):
     """Detect dot/circle grid and generate stereo camera model."""
     from pivtools_core.config import get_config
-    from pivtools_gui.stereo_reconstruction.stereo_pinhole_calibration_production import StereoPinholeCalibrator
+    from pivtools_gui.stereo_reconstruction.stereo_dotboard_calibration_production import StereoDotboardCalibrator
 
     config = get_config()
+
+    # Apply CLI calibration source override
+    if args.calibration_source:
+        config.data.setdefault("calibration", {})["calibration_sources"] = [args.calibration_source]
+        print(f"Using calibration source override: {args.calibration_source}")
 
     # Get paths
     active_paths = get_active_paths_from_args(args, config)
@@ -420,17 +431,16 @@ def detect_stereo_planar_command(args):
     print(f"Active paths: {len(active_paths)}")
 
     # Get calibration settings from config
-    stereo_cfg = config.data.get("calibration", {}).get("stereo", {})
-    camera_pair = stereo_cfg.get("camera_pair", [1, 2])
-    pattern_cols = stereo_cfg.get("pattern_cols", 10)
-    pattern_rows = stereo_cfg.get("pattern_rows", 10)
-    dot_spacing_mm = stereo_cfg.get("dot_spacing_mm", 28.89)
-    asymmetric = stereo_cfg.get("asymmetric", False)
-    enhance_dots = stereo_cfg.get("enhance_dots", True)
+    stereo_dotboard_cfg = config.data.get("calibration", {}).get("stereo_dotboard", {})
+    camera_pair = stereo_dotboard_cfg.get("camera_pair", [1, 2])
+    pattern_cols = stereo_dotboard_cfg.get("pattern_cols", 10)
+    pattern_rows = stereo_dotboard_cfg.get("pattern_rows", 10)
+    dot_spacing_mm = stereo_dotboard_cfg.get("dot_spacing_mm", 28.89)
+    asymmetric = stereo_dotboard_cfg.get("asymmetric", False)
+    enhance_dots = stereo_dotboard_cfg.get("enhance_dots", True)
 
     calib_cfg = config.data.get("calibration", {})
     file_pattern = calib_cfg.get("image_format", "calib%05d.tif")
-    subfolder = calib_cfg.get("subfolder", "")
 
     print(f"Camera pair: {camera_pair}")
     print(f"Grid: {pattern_cols}x{pattern_rows}, spacing: {dot_spacing_mm}mm")
@@ -445,7 +455,7 @@ def detect_stereo_planar_command(args):
         print("-" * 40)
 
         try:
-            calibrator = StereoPinholeCalibrator(
+            calibrator = StereoDotboardCalibrator(
                 source_dir=source_dir,
                 base_dir=base_dir,
                 camera_pair=camera_pair,
@@ -455,7 +465,6 @@ def detect_stereo_planar_command(args):
                 dot_spacing_mm=dot_spacing_mm,
                 asymmetric=asymmetric,
                 enhance_dots=enhance_dots,
-                calibration_subfolder=subfolder,
                 config=config,
             )
 
@@ -495,6 +504,11 @@ def detect_stereo_charuco_command(args):
 
     config = get_config()
 
+    # Apply CLI calibration source override
+    if args.calibration_source:
+        config.data.setdefault("calibration", {})["calibration_sources"] = [args.calibration_source]
+        print(f"Using calibration source override: {args.calibration_source}")
+
     # Get paths
     active_paths = get_active_paths_from_args(args, config)
     if not active_paths:
@@ -507,8 +521,8 @@ def detect_stereo_charuco_command(args):
     print(f"Active paths: {len(active_paths)}")
 
     # Get calibration settings from config
-    stereo_cfg = config.data.get("calibration", {}).get("stereo", {})
-    camera_pair = stereo_cfg.get("camera_pair", [1, 2])
+    stereo_charuco_cfg = config.data.get("calibration", {}).get("stereo_charuco", {})
+    camera_pair = stereo_charuco_cfg.get("camera_pair", [1, 2])
 
     charuco_cfg = config.data.get("calibration", {}).get("charuco", {})
     squares_h = charuco_cfg.get("squares_h", 10)
@@ -520,7 +534,6 @@ def detect_stereo_charuco_command(args):
 
     calib_cfg = config.data.get("calibration", {})
     file_pattern = calib_cfg.get("image_format", "calib%05d.tif")
-    subfolder = calib_cfg.get("subfolder", "")
 
     print(f"Camera pair: {camera_pair}")
     print(f"Board: {squares_h}x{squares_v} squares, size: {square_size}m")
@@ -546,7 +559,6 @@ def detect_stereo_charuco_command(args):
                 marker_ratio=marker_ratio,
                 aruco_dict=aruco_dict,
                 min_corners=min_corners,
-                calibration_subfolder=subfolder,
                 config=config,
             )
 
@@ -600,7 +612,28 @@ def transform_command(args):
             sys.exit(1)
 
     type_name = args.type_name or config.transforms_type_name or "instantaneous"
-    use_merged = args.merged if args.merged else False
+
+    # Determine source_endpoint
+    # Priority: new --source-endpoint flag > legacy --merged flag > config
+    source_endpoint = args.source_endpoint
+
+    # Handle legacy --merged flag for backward compatibility
+    if source_endpoint is None and args.merged:
+        source_endpoint = "merged"
+
+    # Fall back to config
+    if source_endpoint is None:
+        source_endpoint = config.transforms_source_endpoint
+
+    # Determine use_merged and use_stereo from source_endpoint
+    use_merged = source_endpoint == "merged"
+    use_stereo = source_endpoint == "stereo"
+
+    # Update config if CLI specified source_endpoint
+    if args.source_endpoint or args.merged:
+        config.data.setdefault("transforms", {})["source_endpoint"] = source_endpoint or "regular"
+        config.save()
+        print(f"Updated config: transforms.source_endpoint = {source_endpoint or 'regular'}")
 
     active_paths = get_active_paths_from_args(args, config)
     if not active_paths:
@@ -613,7 +646,7 @@ def transform_command(args):
     print(f"Active paths: {len(active_paths)}")
     print(f"Camera transforms: {camera_transforms}")
     print(f"Type: {type_name}")
-    print(f"Use merged: {use_merged}")
+    print(f"Source endpoint: {source_endpoint or 'regular'}")
 
     results = []
     for path_idx in active_paths:
@@ -729,6 +762,7 @@ def merge_command(args):
 def statistics_command(args):
     """Compute PIV statistics (mean, Reynolds stresses, TKE, vorticity, etc.)."""
     from pivtools_core.config import get_config
+    from pivtools_core.paths import get_data_paths
     from pivtools_gui.vector_statistics.instantaneous_statistics import VectorStatisticsProcessor
 
     config = get_config()
@@ -736,7 +770,44 @@ def statistics_command(args):
     # Apply CLI overrides
     cameras = [args.camera] if args.camera else config.camera_numbers
     type_name = args.type_name or "instantaneous"
-    use_merged = args.merged if args.merged else False
+
+    # Determine workflow and source_endpoint
+    # Priority: new flags > legacy flags > config
+    source_endpoint = args.source_endpoint
+    workflow = args.workflow
+
+    # Handle legacy flags for backward compatibility
+    if source_endpoint is None:
+        if args.stereo:
+            source_endpoint = "stereo"
+        elif args.merged:
+            source_endpoint = "merged"
+
+    if workflow is None:
+        if source_endpoint == "stereo":
+            workflow = "stereo"
+        elif source_endpoint == "merged":
+            workflow = "after_merge"
+
+    # Determine final flags based on source_endpoint/workflow
+    use_stereo = source_endpoint == "stereo" or workflow == "stereo"
+    use_merged = source_endpoint == "merged" or workflow == "after_merge"
+
+    if use_stereo:
+        # Update config to persist stereo workflow
+        config.data.setdefault("statistics", {})["workflow"] = "stereo"
+        config.data["statistics"]["source_endpoint"] = "stereo"
+        config.save()
+        print("Updated config: statistics.workflow = stereo, statistics.source_endpoint = stereo")
+    elif use_merged:
+        # Update config to persist the workflow
+        config.data.setdefault("statistics", {})["workflow"] = "after_merge"
+        config.data["statistics"]["source_endpoint"] = "merged"
+        config.save()
+        print("Updated config: statistics.workflow = after_merge, statistics.source_endpoint = merged")
+    else:
+        # Fall back to config workflow
+        use_merged = config.statistics_workflow == "after_merge"
 
     active_paths = get_active_paths_from_args(args, config)
     if not active_paths:
@@ -749,7 +820,13 @@ def statistics_command(args):
     print(f"Active paths: {len(active_paths)}")
     print(f"Cameras: {cameras}")
     print(f"Type: {type_name}")
-    print(f"Use merged: {use_merged}")
+    print(f"Source endpoint: {source_endpoint or 'regular'}")
+    print(f"Workflow: {workflow or 'per_camera'}")
+
+    # Get required config values
+    num_frame_pairs = config.num_frame_pairs
+    vector_format = config.vector_format[0] if isinstance(config.vector_format, list) else config.vector_format
+    gamma_radius = config.statistics_gamma_radius
 
     results = []
     for path_idx in active_paths:
@@ -757,35 +834,86 @@ def statistics_command(args):
         print(f"\nPath {path_idx + 1}/{len(active_paths)}: {base_dir}")
         print("-" * 40)
 
-        targets = ["merged"] if use_merged else cameras
-        for target in targets:
+        # Determine targets based on workflow
+        if use_stereo:
+            # Stereo: single combined 3D result
+            stereo_pairs = config.stereo_pairs
+            cam_pair = stereo_pairs[0] if stereo_pairs else (config.camera_numbers[0], config.camera_numbers[1] if len(config.camera_numbers) > 1 else 2)
+            targets = [("stereo", cam_pair)]
+        elif use_merged:
+            targets = [("merged", None)]
+        else:
+            targets = [("camera", cam) for cam in cameras]
+
+        for target_type, target_value in targets:
             try:
-                if target == "merged":
-                    processor = VectorStatisticsProcessor(
+                # Construct data_dir based on target type
+                if target_type == "stereo":
+                    cam_pair = target_value
+                    paths = get_data_paths(
                         base_dir=base_dir,
-                        camera=1,  # Merged uses camera 1 path structure
+                        num_frame_pairs=num_frame_pairs,
+                        cam=cam_pair[0],
                         type_name=type_name,
-                        use_merged=True,
+                        use_stereo=True,
+                        stereo_camera_pair=cam_pair
                     )
-                else:
+                    data_dir = paths["data_dir"]
+                    label = f"Stereo Cam{cam_pair[0]}_Cam{cam_pair[1]}"
                     processor = VectorStatisticsProcessor(
+                        data_dir=data_dir,
                         base_dir=base_dir,
-                        camera=target,
+                        num_frame_pairs=num_frame_pairs,
+                        vector_format=vector_format,
                         type_name=type_name,
                         use_merged=False,
+                        use_stereo=True,
+                        stereo_camera_pair=cam_pair,
+                        camera=cam_pair[0],
+                        gamma_radius=gamma_radius,
+                        config=config,
+                    )
+                elif target_type == "merged":
+                    data_dir = base_dir / "calibrated_piv" / str(num_frame_pairs) / "Merged" / type_name
+                    label = "Merged"
+                    processor = VectorStatisticsProcessor(
+                        data_dir=data_dir,
+                        base_dir=base_dir,
+                        num_frame_pairs=num_frame_pairs,
+                        vector_format=vector_format,
+                        type_name=type_name,
+                        use_merged=True,
+                        camera=1,
+                        gamma_radius=gamma_radius,
+                        config=config,
+                    )
+                else:  # camera
+                    cam = target_value
+                    data_dir = base_dir / "calibrated_piv" / str(num_frame_pairs) / f"Cam{cam}" / type_name
+                    label = f"Camera {cam}"
+                    processor = VectorStatisticsProcessor(
+                        data_dir=data_dir,
+                        base_dir=base_dir,
+                        num_frame_pairs=num_frame_pairs,
+                        vector_format=vector_format,
+                        type_name=type_name,
+                        use_merged=False,
+                        camera=cam,
+                        gamma_radius=gamma_radius,
+                        config=config,
                     )
                 result = processor.process()
                 result["path_idx"] = path_idx
-                result["target"] = target
+                result["target"] = label
                 results.append(result)
 
                 if result.get("success"):
-                    print(f"  {'Merged' if target == 'merged' else f'Camera {target}'}: OK")
+                    print(f"  {label}: OK")
                 else:
-                    print(f"  {'Merged' if target == 'merged' else f'Camera {target}'}: FAILED - {result.get('error', 'Unknown')}")
+                    print(f"  {label}: FAILED - {result.get('error', 'Unknown')}")
             except Exception as e:
-                print(f"  {'Merged' if target == 'merged' else f'Camera {target}'}: FAILED - {e}")
-                results.append({"success": False, "error": str(e), "path_idx": path_idx, "target": target})
+                print(f"  {label}: FAILED - {e}")
+                results.append({"success": False, "error": str(e), "path_idx": path_idx, "target": label})
 
     # Summary
     print("\n" + "=" * 60)
@@ -862,6 +990,7 @@ def video_command(args):
                 base_dir=base_dir,
                 camera=camera,
                 type_name="instantaneous",  # Video always from instantaneous
+                config=config,  # Pass config for stereo pair access
             )
 
             result = maker.create_video(
@@ -941,18 +1070,30 @@ def create_default_config(config_path):
     default_config = """
 paths:
   base_paths:
-  - ./data
+  - /setme
   source_paths:
-  - ./images
+  - /setme
+  active_paths:
+  - 0
   camera_numbers:
   - 1
   camera_count: 1
+  camera_subfolders: []
 images:
   num_images: 100
-  image_format: B%05d.tif
-  vector_format: '%05d.mat'
+  image_format:
+  - B%05d_A.tif
+  - B%05d_B.tif
+  vector_format:
+  - '%05d.mat'
   time_resolved: false
   dtype: float32
+  zero_based_indexing: false
+  pairing_mode: sequential
+  pairing_skip: 0
+  num_frame_pairs: 100
+  image_type: standard
+  use_camera_subfolders: false
 batches:
   size: 25
 logging:
@@ -960,25 +1101,41 @@ logging:
   level: INFO
   console: true
 processing:
-  instantaneous: true
-  ensemble: false
-  stereo: false
   backend: cpu
   debug: false
   auto_compute_params: false
   omp_threads: 4
-  dask_workers_per_node: 5
+  dask_workers_per_node: 1
   dask_threads_per_worker: 1
-  dask_memory_limit: 12GB
+  dask_memory_limit: 8GB
+  always_batch: true
+  instantaneous: true
+  ensemble: false
 outlier_detection:
   enabled: true
   methods:
-  - threshold: 0.25
+  - threshold: 0.2
     type: peak_mag
   - epsilon: 0.2
     threshold: 2
     type: median_2d
 infilling:
+  mid_pass:
+    method: biharmonic
+    parameters:
+      ksize: 3
+  final_pass:
+    enabled: true
+    method: biharmonic
+    parameters:
+      ksize: 3
+ensemble_outlier_detection:
+  enabled: true
+  methods:
+  - epsilon: 0.2
+    threshold: 2
+    type: median_2d
+ensemble_infilling:
   mid_pass:
     method: biharmonic
     parameters:
@@ -994,22 +1151,30 @@ plots:
   fontsize: 14
   title_fontsize: 16
 video:
+  base_path_idx: 0
   camera: 1
-  variable: ux
-  run: 1
   data_source: calibrated
+  variable: uu_inst
+  run: 4
   piv_type: instantaneous
-  cmap: default
+  cmap: viridis
   lower: ''
   upper: ''
   fps: 30
   crf: 15
   resolution: 1080p
+  source_endpoint: regular
 statistics:
   enabled_methods:
     mean_velocity: true
+    fluctuating_velocity: true
     reynolds_stress: true
     normal_stress: true
+    tke: true
+    vorticity: true
+    divergence: true
+    gamma1: true
+    gamma2: true
     mean_tke: true
     mean_vorticity: true
     mean_divergence: true
@@ -1018,16 +1183,45 @@ statistics:
     inst_vorticity: true
     inst_divergence: true
     inst_gamma: true
-  gamma_radius: 5
-  save_figures: false
-  type_name: instantaneous
-transforms:
-  type_name: instantaneous
-  cameras: {}
-merging:
-  type_name: instantaneous
-  cameras: []
+    mean_stresses: true
+    inst_stresses: true
+  gamma_radius: 4
+  save_figures: true
+  type_name: ensemble
+  source_endpoint: regular
 instantaneous_piv:
+  window_size:
+  - - 128
+    - 128
+  - - 64
+    - 64
+  - - 32
+    - 32
+  - - 16
+    - 16
+  overlap:
+  - 50
+  - 50
+  - 50
+  - 50
+  runs:
+  - 3
+  - 4
+  time_resolved: false
+  window_type: gaussian
+  num_peaks: 1
+  peak_finder: gauss6
+  secondary_peak: false
+ensemble_piv:
+  fit_method: gaussian
+  skip_background_subtraction: false
+  image_warp_interpolation: cubic
+  predictor_interpolation: cubic
+  kspace_snr_threshold: 3.0
+  fit_offset: false
+  background_subtraction_method: correlation
+  gradient_correction: true
+  mask_center_pixel: true
   window_size:
   - - 128
     - 128
@@ -1039,34 +1233,53 @@ instantaneous_piv:
   - 50
   - 50
   - 50
+  type:
+  - std
+  - std
+  - std
   runs:
+  - 1
+  - 2
   - 3
-  time_resolved: false
-  window_type: gaussian
-  num_peaks: 1
-  peak_finder: gauss3
-  secondary_peak: false
+  store_planes: true
+  save_diagnostics: true
+  sum_window:
+  - 16
+  - 16
+  sum_fitting_window_enabled: true
+  sum_fitting_window:
+  - 32
+  - 32
+  resume_from_pass: 0
+  window_type: square
 calibration:
-  image_format: calib%05d.tif
-  num_images: 10
+  image_format: planar_calibration_plate_%02d.tif
+  num_images: 19
   image_type: standard
   zero_based_indexing: false
   use_camera_subfolders: false
-  subfolder: ''
-  active: pinhole
+  calibration_sources: []
+  camera_subfolders:
+  - Cam1
+  - Cam2
+  active: dotboard
+  piv_type: instantaneous
   scale_factor:
     dt: 0.56
     px_per_mm: 3.41
-  pinhole:
+    source_path_idx: 0
+  dotboard:
     camera: 1
     pattern_cols: 10
     pattern_rows: 10
-    dot_spacing_mm: 28.89
-    enhance_dots: true
+    dot_spacing_mm: 12.22
+    enhance_dots: false
     asymmetric: false
     grid_tolerance: 0.5
     ransac_threshold: 3
-    dt: 0.0275
+    dt: 0.0057553
+    source_path_idx: 0
+    image_index: 0
   charuco:
     camera: 1
     squares_h: 10
@@ -1075,29 +1288,80 @@ calibration:
     marker_ratio: 0.5
     aruco_dict: DICT_4X4_1000
     min_corners: 6
-    dt: 1
-  stereo:
+    dt: 0.0057553
+    source_path_idx: 0
+    file_pattern: '*.tif'
+  stereo_dotboard:
     camera_pair:
     - 1
     - 2
     pattern_cols: 10
     pattern_rows: 10
-    dot_spacing_mm: 28.89
-    enhance_dots: true
+    dot_spacing_mm: 12.2222
+    enhance_dots: false
     asymmetric: false
-    dt: 2
-filters:
-- type: pod
+    dt: 0.0057553
+    stereo_model_type: dotboard
+  polynomial:
+    xml_path: ''
+    use_xml: true
+    dt: 0.0057553
+    source_path_idx: 0
+    cameras:
+      1:
+        origin:
+          x: 0.0
+          y: 0.0
+        normalisation:
+          nx: 512.0
+          ny: 384.0
+        mm_per_pixel: 0.0
+        coefficients_x: []
+        coefficients_y: []
+      2:
+        origin:
+          x: 0.0
+          y: 0.0
+        normalisation:
+          nx: 512.0
+          ny: 384.0
+        mm_per_pixel: 0.0
+        coefficients_x: []
+        coefficients_y: []
+  stereo_charuco:
+    camera_pair:
+    - 1
+    - 2
+    squares_h: 10
+    squares_v: 9
+    square_size: 0.03
+    marker_ratio: 0.5
+    aruco_dict: DICT_4X4_1000
+    min_corners: 6
+    dt: 0.0057553
+filters: []
 masking:
-  enabled: true
+  enabled: false
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
-  mode: file
+  mode: rectangular
   rectangular:
-    top: 64
-    bottom: 64
+    top: 0
+    bottom: 0
     left: 0
     right: 0
+merging:
+  type_name: ensemble
+  base_path_idx: 0
+transforms:
+  base_path_idx: 0
+  type_name: ensemble
+  cameras:
+    1:
+      operations:
+      - rotate_90_cw
+  source_endpoint: regular
+
 """
 
     with open(config_path, 'w') as f:
@@ -1209,6 +1473,10 @@ def main():
         "--active-paths", "-p", default=None,
         help="Comma-separated path indices to process (e.g., '0,1,2')"
     )
+    detect_planar_parser.add_argument(
+        "--calibration-source", "-cs", default=None,
+        help="Direct path to calibration images (overrides config.calibration_sources)"
+    )
     detect_planar_parser.set_defaults(func=detect_planar_command)
 
     # detect-charuco command (single camera)
@@ -1224,6 +1492,10 @@ def main():
         "--active-paths", "-p", default=None,
         help="Comma-separated path indices to process (e.g., '0,1,2')"
     )
+    detect_charuco_parser.add_argument(
+        "--calibration-source", "-cs", default=None,
+        help="Direct path to calibration images (overrides config.calibration_sources)"
+    )
     detect_charuco_parser.set_defaults(func=detect_charuco_command)
 
     # detect-stereo-planar command
@@ -1235,6 +1507,10 @@ def main():
         "--active-paths", "-p", default=None,
         help="Comma-separated path indices to process (e.g., '0,1,2')"
     )
+    detect_stereo_planar_parser.add_argument(
+        "--calibration-source", "-cs", default=None,
+        help="Direct path to calibration images (overrides config.calibration_sources)"
+    )
     detect_stereo_planar_parser.set_defaults(func=detect_stereo_planar_command)
 
     # detect-stereo-charuco command
@@ -1245,6 +1521,10 @@ def main():
     detect_stereo_charuco_parser.add_argument(
         "--active-paths", "-p", default=None,
         help="Comma-separated path indices to process (e.g., '0,1,2')"
+    )
+    detect_stereo_charuco_parser.add_argument(
+        "--calibration-source", "-cs", default=None,
+        help="Direct path to calibration images (overrides config.calibration_sources)"
     )
     detect_stereo_charuco_parser.set_defaults(func=detect_stereo_charuco_command)
 
@@ -1272,7 +1552,7 @@ def main():
     )
     apply_calibration_parser.add_argument(
         "--method", "-m", default=None,
-        choices=["pinhole", "charuco", "scale_factor"],
+        choices=["dotboard", "charuco", "scale_factor"],
         help="Calibration method (default: from config.yaml calibration.active)"
     )
     apply_calibration_parser.set_defaults(func=apply_calibration_command)
@@ -1284,8 +1564,8 @@ def main():
     )
     apply_stereo_parser.add_argument(
         "--method", "-m", default=None,
-        choices=["pinhole", "charuco"],
-        help="Stereo calibration method (default: from config stereo.stereo_model_type)"
+        choices=["dotboard", "charuco"],
+        help="Stereo calibration method (default: from config stereo_dotboard.stereo_model_type)"
     )
     apply_stereo_parser.add_argument(
         "--camera-pair", "-c", default=None,
@@ -1326,7 +1606,12 @@ def main():
     )
     transform_parser.add_argument(
         "--merged", "-m", action="store_true",
-        help="Transform merged data instead of per-camera"
+        help="Transform merged data instead of per-camera (deprecated: use --source-endpoint merged)"
+    )
+    transform_parser.add_argument(
+        "--source-endpoint", "-s", default=None,
+        choices=["regular", "merged", "stereo"],
+        help="Data source: regular (per-camera), merged, or stereo"
     )
     transform_parser.add_argument(
         "--active-paths", "-p", default=None,
@@ -1376,6 +1661,20 @@ def main():
         "--active-paths", "-p", default=None,
         help="Comma-separated path indices to process (e.g., '0,1,2')"
     )
+    statistics_parser.add_argument(
+        "--stereo", action="store_true",
+        help="Process stereo PIV data (deprecated: use --source-endpoint stereo)"
+    )
+    statistics_parser.add_argument(
+        "--source-endpoint", "-s", default=None,
+        choices=["regular", "merged", "stereo"],
+        help="Data source: regular (per-camera), merged, or stereo"
+    )
+    statistics_parser.add_argument(
+        "--workflow", "-w", default=None,
+        choices=["per_camera", "after_merge", "both", "stereo"],
+        help="Workflow: per_camera, after_merge, both, or stereo"
+    )
     statistics_parser.set_defaults(func=statistics_command)
 
     # video command
@@ -1397,7 +1696,7 @@ def main():
     )
     video_parser.add_argument(
         "--data-source", "-d", default=None,
-        choices=["calibrated", "uncalibrated", "merged", "inst_stats"],
+        choices=["calibrated", "uncalibrated", "merged", "stereo", "inst_stats"],
         help="Data source (default: calibrated)"
     )
     video_parser.add_argument(

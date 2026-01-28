@@ -4,7 +4,7 @@ stereo_reconstruction_production.py
 
 Production script for 3D velocity reconstruction from stereo camera pairs.
 Takes uncalibrated 2D velocity fields from two cameras and reconstructs 3D velocities (ux, uy, uz).
-Supports both ChArUco and Pinhole (circle grid) stereo calibration models.
+Supports both ChArUco and Dotboard (circle grid) stereo calibration models.
 Uses ProcessPoolExecutor for parallel frame processing.
 """
 
@@ -32,7 +32,7 @@ BASE_DIR = "/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/
 CAMERA_PAIR = [1, 2]  # Single pair [cam1_num, cam2_num]
 NUM_FRAME_PAIRS = 100  # Number of frame pairs to process
 DT_SECONDS = 0.0057553   # Time step between frames in seconds
-MODEL_TYPE = "pinhole"  # "charuco" or "pinhole" - determines stereo model expectation
+MODEL_TYPE = "dotboard"  # "charuco" or "dotboard" - determines stereo model expectation
 VECTOR_PATTERN = "%05d.mat"  # Pattern for vector files
 TYPE_NAME = "instantaneous"  # Type name for data directory
 MIN_TRIANGULATION_ANGLE = 5.0  # Minimum angle in degrees for triangulation quality
@@ -237,6 +237,7 @@ def _reconstruct_3d_velocities(
     coords2_px: Tuple[np.ndarray, np.ndarray],
     stereo_params: Dict[str, np.ndarray],
     min_angle: float,
+    combined_input_mask: Optional[np.ndarray] = None,
 ) -> Dict[str, Any]:
     """
     Reconstruct 3D velocities from stereo 2D velocity fields.
@@ -248,6 +249,7 @@ def _reconstruct_3d_velocities(
         coords2_px: (x, y) pixel coordinates for camera 2
         stereo_params: Stereo calibration parameters
         min_angle: Minimum triangulation angle in degrees
+        combined_input_mask: Combined boolean mask from cam1 and cam2 (True = invalid)
 
     Returns:
         Dict with velocities_3d, positions_3d, indices1, num_valid, num_total
@@ -281,6 +283,13 @@ def _reconstruct_3d_velocities(
     angles = _compute_triangulation_angles(pts_3d, stereo_params)
     angle_mask = angles > min_angle
 
+    # Combine with input mask (conservative: both cams must be valid)
+    if combined_input_mask is not None:
+        combined_flat = combined_input_mask.flatten()[indices1]
+        valid_mask = angle_mask & (~combined_flat)  # True if angle OK AND not masked
+    else:
+        valid_mask = angle_mask
+
     # Triangulate displaced positions
     pts1_displaced = pts1_px + vel1
     pts2_displaced = pts2_px + vel2
@@ -292,12 +301,12 @@ def _reconstruct_3d_velocities(
     vel_3d_mm = pts_3d_displaced - pts_3d
 
     return {
-        "velocities_3d": vel_3d_mm[angle_mask],
-        "positions_3d": pts_3d[angle_mask],
-        "indices1": indices1[angle_mask],
-        "triangulation_angles": angles[angle_mask],
-        "num_valid": np.sum(angle_mask),
-        "num_total": len(angle_mask),
+        "velocities_3d": vel_3d_mm[valid_mask],
+        "positions_3d": pts_3d[valid_mask],
+        "indices1": indices1[valid_mask],
+        "triangulation_angles": angles[valid_mask],
+        "num_valid": np.sum(valid_mask),
+        "num_total": len(valid_mask),
     }
 
 
@@ -305,84 +314,196 @@ def _process_stereo_frame(args: Tuple) -> Optional[Dict[str, Any]]:
     """
     Process a single stereo frame for 3D velocity reconstruction.
 
+    Processes ALL valid runs in a single pass (like dotboard's pattern).
     Module-level function for ProcessPoolExecutor compatibility.
 
     Args:
         args: Tuple containing all parameters needed for processing
+              - frame_idx: Frame number
+              - vector_file_path_cam1, vector_file_path_cam2: Paths to vector files
+              - output_file_path: Path to save output
+              - coords_by_run: Dict mapping run_num -> (x1, y1, x2, y2) coordinates
+              - stereo_params: Stereo calibration parameters
+              - dt: Time step
+              - min_angle: Minimum triangulation angle
+              - max_run: Maximum run number
+              - valid_run_nums: Set of valid run numbers
 
     Returns:
-        Dict with results or None if failed
+        Dict with results including per-run num_valid counts, or None if failed
     """
     (
         frame_idx,
         vector_file_path_cam1,
         vector_file_path_cam2,
         output_file_path,
-        coords1_x_px,
-        coords1_y_px,
-        coords2_x_px,
-        coords2_y_px,
+        coords_by_run,
         stereo_params,
         dt,
         min_angle,
         max_run,
         valid_run_nums,
-        run_idx,
     ) = args
 
     try:
-        # Load uncalibrated vectors for both cameras
-        vectors1 = read_mat_contents(vector_file_path_cam1)
-        vectors2 = read_mat_contents(vector_file_path_cam2)
+        # Load uncalibrated vectors for both cameras using structured format
+        # (matching dotboard's pattern from vector_calibration_production.py:200-210)
+        # This allows each run to have different grid dimensions
+        mat1 = loadmat(vector_file_path_cam1, struct_as_record=False, squeeze_me=True)
+        mat2 = loadmat(vector_file_path_cam2, struct_as_record=False, squeeze_me=True)
 
-        # Extract velocity components for this run
-        ux1_px, uy1_px = _extract_velocity_components(vectors1, run_idx)
-        ux2_px, uy2_px = _extract_velocity_components(vectors2, run_idx)
+        # Get piv_result struct arrays
+        piv_result_raw1 = mat1.get("piv_result")
+        piv_result_raw2 = mat2.get("piv_result")
 
-        # Perform 3D reconstruction
-        result_3d = _reconstruct_3d_velocities(
-            ux1_px,
-            uy1_px,
-            ux2_px,
-            uy2_px,
-            (coords1_x_px, coords1_y_px),
-            (coords2_x_px, coords2_y_px),
-            stereo_params,
-            min_angle,
-        )
+        if piv_result_raw1 is None or piv_result_raw2 is None:
+            return {"frame": frame_idx, "success": False, "error": "piv_result not found"}
 
-        # Create output grid matching camera 1 coordinates
-        ref_shape = coords1_x_px.shape
-        ux_grid = np.full(ref_shape, np.nan, dtype=np.float64)
-        uy_grid = np.full(ref_shape, np.nan, dtype=np.float64)
-        uz_grid = np.full(ref_shape, np.nan, dtype=np.float64)
+        # Ensure iterable (handle single-run case)
+        if not hasattr(piv_result_raw1, '__len__') or isinstance(piv_result_raw1, np.void):
+            piv_result_raw1 = [piv_result_raw1]
+        if not hasattr(piv_result_raw2, '__len__') or isinstance(piv_result_raw2, np.void):
+            piv_result_raw2 = [piv_result_raw2]
 
-        if result_3d["num_valid"] > 0:
-            # Convert mm to m and divide by dt for velocity (m/s)
-            velocities_mps = (result_3d["velocities_3d"] / 1000.0) / max(dt, 1e-12)
-            valid_indices = result_3d["indices1"]
-            row_indices, col_indices = np.unravel_index(valid_indices, ref_shape)
-            ux_grid[row_indices, col_indices] = velocities_mps[:, 0]
-            uy_grid[row_indices, col_indices] = velocities_mps[:, 1]
-            uz_grid[row_indices, col_indices] = velocities_mps[:, 2]
-
-        # Create piv_result structure array (with uz for 3D)
-        piv_dtype = np.dtype([("ux", "O"), ("uy", "O"), ("uz", "O")])
+        # Create output piv_result structure array (with uz for 3D)
+        piv_dtype = np.dtype([("ux", "O"), ("uy", "O"), ("uz", "O"), ("b_mask", "O")])
         piv_result = np.empty(max_run, dtype=piv_dtype)
 
+        # Initialize all runs with empty arrays
         for r in range(1, max_run + 1):
-            if r == run_idx:
-                piv_result[r - 1] = (ux_grid, uy_grid, uz_grid)
-            else:
-                piv_result[r - 1] = (np.array([]), np.array([]), np.array([]))
+            piv_result[r - 1] = (np.array([]), np.array([]), np.array([]), np.array([]))
 
-        # Save result
+        # Track per-run results for coordinate saving
+        run_results = {}
+        total_valid = 0
+
+        # Process ALL valid runs for this frame
+        for run_num in sorted(valid_run_nums):
+            if run_num not in coords_by_run:
+                continue
+
+            x1, y1, x2, y2 = coords_by_run[run_num]
+
+            try:
+                # Extract velocity components for this run directly from struct
+                # (matching dotboard's pattern from vector_calibration_production.py:302-306)
+                run_idx = run_num - 1  # 0-based index
+                if run_idx >= len(piv_result_raw1) or run_idx >= len(piv_result_raw2):
+                    continue
+
+                cell1 = piv_result_raw1[run_idx]
+                cell2 = piv_result_raw2[run_idx]
+
+                ux1_px = getattr(cell1, "ux", None)
+                uy1_px = getattr(cell1, "uy", None)
+                ux2_px = getattr(cell2, "ux", None)
+                uy2_px = getattr(cell2, "uy", None)
+
+                # Skip if velocity data is missing or empty
+                if ux1_px is None or uy1_px is None or ux2_px is None or uy2_px is None:
+                    if frame_idx == 1:
+                        logger.warning(f"Run {run_num}: velocity data is None")
+                    continue
+                if not hasattr(ux1_px, 'size') or ux1_px.size == 0:
+                    if frame_idx == 1:
+                        logger.warning(f"Run {run_num}: velocity data is empty")
+                    continue
+
+                # Convert to numpy arrays
+                ux1_px = np.asarray(ux1_px)
+                uy1_px = np.asarray(uy1_px)
+                ux2_px = np.asarray(ux2_px)
+                uy2_px = np.asarray(uy2_px)
+
+                # Extract b_mask from each camera (True = invalid)
+                b_mask_1 = getattr(cell1, "b_mask", None)
+                b_mask_2 = getattr(cell2, "b_mask", None)
+
+                # Combine masks: conservative (invalid if EITHER masked)
+                if b_mask_1 is not None and b_mask_2 is not None:
+                    b_mask_1 = np.asarray(b_mask_1).astype(bool)
+                    b_mask_2 = np.asarray(b_mask_2).astype(bool)
+                    combined_input_mask = b_mask_1 | b_mask_2
+                elif b_mask_1 is not None:
+                    combined_input_mask = np.asarray(b_mask_1).astype(bool)
+                elif b_mask_2 is not None:
+                    combined_input_mask = np.asarray(b_mask_2).astype(bool)
+                else:
+                    combined_input_mask = np.zeros_like(ux1_px, dtype=bool)
+
+                # Shape validation (matching dotboard's pattern from vector_calibration_production.py:318-326)
+                # Ensures coordinates and velocities have compatible grid sizes
+                if x1.shape != ux1_px.shape or y1.shape != uy1_px.shape:
+                    # Grid size mismatch for camera 1 - log and continue
+                    # Only log once per run (on first frame) to avoid spam
+                    if frame_idx == 1:
+                        logger.warning(
+                            f"Run {run_num}: Cam1 shape mismatch - "
+                            f"coords {x1.shape} vs velocity {ux1_px.shape}"
+                        )
+                    continue
+
+                if x2.shape != ux2_px.shape or y2.shape != uy2_px.shape:
+                    # Grid size mismatch for camera 2 - log and continue
+                    if frame_idx == 1:
+                        logger.warning(
+                            f"Run {run_num}: Cam2 shape mismatch - "
+                            f"coords {x2.shape} vs velocity {ux2_px.shape}"
+                        )
+                    continue
+
+                # Perform 3D reconstruction
+                result_3d = _reconstruct_3d_velocities(
+                    ux1_px,
+                    uy1_px,
+                    ux2_px,
+                    uy2_px,
+                    (x1, y1),
+                    (x2, y2),
+                    stereo_params,
+                    min_angle,
+                    combined_input_mask,
+                )
+
+                # Create output grid matching camera 1 coordinates
+                ref_shape = x1.shape
+                ux_grid = np.full(ref_shape, np.nan, dtype=np.float64)
+                uy_grid = np.full(ref_shape, np.nan, dtype=np.float64)
+                uz_grid = np.full(ref_shape, np.nan, dtype=np.float64)
+                # Create output mask: True where NOT successfully reconstructed
+                output_mask = np.full(ref_shape, True, dtype=bool)  # Default: all masked
+
+                if result_3d["num_valid"] > 0:
+                    # Convert mm to m and divide by dt for velocity (m/s)
+                    velocities_mps = (result_3d["velocities_3d"] / 1000.0) / max(dt, 1e-12)
+                    valid_indices = result_3d["indices1"]
+                    row_indices, col_indices = np.unravel_index(valid_indices, ref_shape)
+                    ux_grid[row_indices, col_indices] = velocities_mps[:, 0]
+                    uy_grid[row_indices, col_indices] = velocities_mps[:, 1]
+                    # Negate uz because OpenCV stereo Z-axis convention differs from physical coords
+                    # This matches the uy negation done in save_results.py for planar PIV
+                    uz_grid[row_indices, col_indices] = -velocities_mps[:, 2]
+                    output_mask[row_indices, col_indices] = False  # Valid points: not masked
+
+                    # Store result for this run (for coordinate saving)
+                    run_results[run_num] = result_3d
+                    total_valid += result_3d["num_valid"]
+
+                # Store in piv_result array
+                piv_result[run_num - 1] = (ux_grid, uy_grid, uz_grid, output_mask)
+
+            except Exception as run_error:
+                # Log error but continue with other runs
+                logger.warning(f"Run {run_num}: Failed to process frame {frame_idx} - {run_error}")
+
+        # Save result with ALL runs
         savemat(output_file_path, {"piv_result": piv_result})
 
         return {
             "frame": frame_idx,
             "success": True,
-            "num_valid": result_3d["num_valid"],
+            "num_valid": total_valid,
+            "run_results": run_results,  # Per-run 3D results for coordinate saving
         }
 
     except Exception as e:
@@ -398,7 +519,7 @@ def _load_stereo_model(
     Args:
         base_dir: Base directory for calibrated data
         cam1, cam2: Camera numbers
-        model_type: 'charuco' or 'pinhole' - sets expectation but doesn't change path
+        model_type: 'charuco' or 'dotboard' - sets expectation but doesn't change path
 
     Returns:
         Dict with stereo calibration parameters (numpy arrays)
@@ -440,7 +561,7 @@ def _load_stereo_model(
         if hasattr(params, "pattern_type"):
             detected_type = params.pattern_type
             if detected_type == "circle_grid":
-                detected_type = "pinhole"
+                detected_type = "dotboard"
             if detected_type != model_type:
                 logger.warning(
                     f"Model type mismatch: config says '{model_type}', "
@@ -498,7 +619,7 @@ class StereoReconstructor:
         Args:
             base_dir: Base directory containing data (or from config.base_paths[0])
             camera_pair: Camera pair [cam1, cam2] (or from config.stereo_calibration)
-            model_type: 'charuco' or 'pinhole' (or from config.stereo_calibration)
+            model_type: 'charuco' or 'dotboard' (or from config.stereo_dotboard_calibration)
             dt: Time step between frames in seconds (or from config.dt)
             vector_pattern: Pattern for vector files (or from config.vector_format)
             type_name: Type name for data directory
@@ -512,7 +633,7 @@ class StereoReconstructor:
         # Read from config if provided
         if config is not None:
             self.base_dir = Path(base_dir) if base_dir else config.base_paths[0]
-            stereo_cfg = config.stereo_calibration
+            stereo_cfg = config.stereo_dotboard_calibration
             self.camera_pair = camera_pair or stereo_cfg.get("camera_pair", [1, 2])
             self.model_type = model_type or stereo_cfg.get("stereo_model_type", "charuco")
             self.dt = dt if dt is not None else config.dt
@@ -534,8 +655,8 @@ class StereoReconstructor:
         self.min_angle = min_angle
 
         # Validate model type
-        if self.model_type not in ("charuco", "pinhole"):
-            raise ValueError(f"model_type must be 'charuco' or 'pinhole', got '{self.model_type}'")
+        if self.model_type not in ("charuco", "dotboard"):
+            raise ValueError(f"model_type must be 'charuco' or 'dotboard', got '{self.model_type}'")
 
         # Load stereo calibration model
         self.stereo_params = _load_stereo_model(
@@ -602,27 +723,23 @@ class StereoReconstructor:
         self,
         valid_runs: List[Tuple],
         output_dir: Path,
-        first_result_3d: Dict[str, Any],
-        coords1_x: np.ndarray,
+        run_results: Dict[int, Dict[str, Any]],
     ):
         """
         Save 3D coordinates from stereo reconstruction.
+        Matches dotboard's VectorCalibrator pattern (vector_calibration_production.py lines 830-853).
 
         Args:
-            valid_runs: List of valid run tuples
+            valid_runs: List of valid run tuples (list_idx, run_num, x1, y1, x2, y2)
             output_dir: Output directory
-            first_result_3d: First successful 3D result (for positions)
-            coords1_x: Reference coordinate shape
+            run_results: Dict mapping run_num -> 3D reconstruction result
         """
-        if first_result_3d is None or first_result_3d["num_valid"] == 0:
+        if not run_results:
             logger.warning("No valid 3D positions to save for coordinates")
             return
 
-        ref_shape = coords1_x.shape
+        # Step 1: Create coordinate structure (like dotboard lines 830-837)
         max_run = max(r[1] for r in valid_runs)
-        valid_run_nums = set(r[1] for r in valid_runs)
-
-        # Create coordinate structure with x, y, z
         coord_dtype = np.dtype([("x", "O"), ("y", "O"), ("z", "O")])
         coordinates = np.empty(max_run, dtype=coord_dtype)
 
@@ -630,49 +747,50 @@ class StereoReconstructor:
         for run_num in range(1, max_run + 1):
             coordinates[run_num - 1] = (np.array([]), np.array([]), np.array([]))
 
-        # Fill in valid runs
-        for _, run_num, _, _, _, _ in valid_runs:
-            if run_num in valid_run_nums and first_result_3d["num_valid"] > 0:
-                x_grid = np.full(ref_shape, np.nan, dtype=np.float64)
-                y_grid = np.full(ref_shape, np.nan, dtype=np.float64)
-                z_grid = np.full(ref_shape, np.nan, dtype=np.float64)
+        # Get Z offset from first calibration image (shared across all runs)
+        z_offset = 0.0
+        if "tvecs_1" in self.stereo_params:
+            tvecs_1 = self.stereo_params["tvecs_1"]
+            if tvecs_1.size > 0:
+                z_offset = tvecs_1[0, 2]
+                logger.info(f"Z reference (first calibration image): {z_offset:.2f} mm")
 
-                valid_indices = first_result_3d["indices1"]
-                row_indices, col_indices = np.unravel_index(valid_indices, ref_shape)
+        # Step 2: Fill in each run using its OWN result (like dotboard lines 840-847)
+        for _, run_num, x1, _, _, _ in valid_runs:
+            if run_num not in run_results:
+                continue
 
-                positions_3d = first_result_3d["positions_3d"]
+            result_3d = run_results[run_num]  # THIS run's result
+            if result_3d["num_valid"] == 0:
+                continue
 
-                # Get Z offset from first calibration image (calibration plate position)
-                # tvecs_1[0] is the translation vector to the first calibration image
-                # tvecs_1[0][2] is the Z-distance from Camera 1 to the calibration plate
-                z_offset = 0.0
-                if "tvecs_1" in self.stereo_params:
-                    tvecs_1 = self.stereo_params["tvecs_1"]
-                    if tvecs_1.size > 0:
-                        z_offset = tvecs_1[0, 2]
-                        logger.info(f"Z reference (first calibration image): {z_offset:.2f} mm")
+            ref_shape = x1.shape
+            x_grid = np.full(ref_shape, np.nan, dtype=np.float64)
+            y_grid = np.full(ref_shape, np.nan, dtype=np.float64)
+            z_grid = np.full(ref_shape, np.nan, dtype=np.float64)
 
-                # Center X,Y only; reference Z to calibration plate plane (Z=0 at first calibration image)
-                mean_xy = np.mean(positions_3d[:, :2], axis=0)
+            valid_indices = result_3d["indices1"]
+            row_indices, col_indices = np.unravel_index(valid_indices, ref_shape)
+            positions_3d = result_3d["positions_3d"]
 
-                x_grid[row_indices, col_indices] = positions_3d[:, 0] - mean_xy[0]
-                y_grid[row_indices, col_indices] = positions_3d[:, 1] - mean_xy[1]
-                z_grid[row_indices, col_indices] = positions_3d[:, 2] - z_offset
+            # Center X,Y only; reference Z to calibration plate plane
+            mean_xy = np.mean(positions_3d[:, :2], axis=0)
 
-                coordinates[run_num - 1] = (x_grid, y_grid, z_grid)
+            x_grid[row_indices, col_indices] = positions_3d[:, 0] - mean_xy[0]
+            y_grid[row_indices, col_indices] = positions_3d[:, 1] - mean_xy[1]
+            z_grid[row_indices, col_indices] = positions_3d[:, 2] - z_offset
 
-        # Save coordinates
+            coordinates[run_num - 1] = (x_grid, y_grid, z_grid)
+            logger.info(f"Run {run_num}: saved {result_3d['num_valid']} 3D positions")
+
+        # Step 3: Save all coordinates (like dotboard lines 849-853)
         coords_path = output_dir / "coordinates.mat"
         savemat(str(coords_path), {"coordinates": coordinates})
         logger.info(f"Saved 3D coordinates: {coords_path}")
 
-    def _process_run_frames_parallel(
+    def _process_all_frames_parallel(
         self,
-        run_num: int,
-        x1: np.ndarray,
-        y1: np.ndarray,
-        x2: np.ndarray,
-        y2: np.ndarray,
+        coords_by_run: Dict[int, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
         uncalib_dir1: Path,
         uncalib_dir2: Path,
         output_dir: Path,
@@ -680,14 +798,12 @@ class StereoReconstructor:
         max_run: int,
         valid_run_nums: Set[int],
         progress_cb: Optional[Callable[[Dict[str, Any]], None]],
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Dict[int, Dict[str, Any]]:
         """
-        Process all frames for a run using parallel workers.
+        Process all frames for ALL runs in a single pass (like dotboard's pattern).
 
         Args:
-            run_num: Current run number (1-indexed)
-            x1, y1: Coordinates for camera 1
-            x2, y2: Coordinates for camera 2
+            coords_by_run: Dict mapping run_num -> (x1, y1, x2, y2) coordinates
             uncalib_dir1, uncalib_dir2: Uncalibrated data directories
             output_dir: Output directory
             num_frames: Total number of frames
@@ -696,11 +812,11 @@ class StereoReconstructor:
             progress_cb: Optional progress callback
 
         Returns:
-            First successful 3D result for coordinate saving, or None
+            Dict mapping run_num -> 3D result for coordinate saving
         """
-        logger.info(f"Processing run {run_num} with {self.num_workers} workers")
+        logger.info(f"Processing all {len(valid_run_nums)} runs with {self.num_workers} workers")
 
-        # Build task list
+        # Build task list - ONE task per frame (not per run!)
         tasks = []
         for frame_idx in range(1, num_frames + 1):
             vec_file1 = uncalib_dir1 / (self.vector_pattern % frame_idx)
@@ -713,30 +829,27 @@ class StereoReconstructor:
 
             tasks.append((
                 frame_idx,
-                str(vec_file1),  # Convert Path to str for pickling
+                str(vec_file1),
                 str(vec_file2),
                 str(output_file),
-                x1,
-                y1,
-                x2,
-                y2,
+                coords_by_run,  # Pass ALL runs' coordinates
                 self.stereo_params,
                 self.dt,
                 self.min_angle,
                 max_run,
                 valid_run_nums,
-                run_num,
             ))
 
         if not tasks:
-            logger.warning(f"No vector files found for run {run_num}")
-            return None
+            logger.warning("No vector files found")
+            return {}
 
-        logger.info(f"Processing {len(tasks)} frames")
+        logger.info(f"Processing {len(tasks)} frames for {len(valid_run_nums)} runs")
 
         successful = 0
         failed = 0
-        first_result_3d = None
+        # Accumulate per-run results across all frames
+        all_run_results: Dict[int, Dict[str, Any]] = {}
 
         with ProcessPoolExecutor(max_workers=self.num_workers) as executor:
             futures = {
@@ -748,47 +861,37 @@ class StereoReconstructor:
                 result = future.result()
                 if result and result.get("success"):
                     successful += 1
-                    # Capture first successful result for coordinate saving
-                    if first_result_3d is None and result.get("num_valid", 0) > 0:
-                        # Re-compute 3D result for coordinate saving
-                        # (We need the actual positions, not just the count)
-                        frame_idx = result["frame"]
-                        vec_file1 = uncalib_dir1 / (self.vector_pattern % frame_idx)
-                        vec_file2 = uncalib_dir2 / (self.vector_pattern % frame_idx)
-                        try:
-                            vectors1 = read_mat_contents(str(vec_file1))
-                            vectors2 = read_mat_contents(str(vec_file2))
-                            ux1_px, uy1_px = _extract_velocity_components(vectors1, run_num)
-                            ux2_px, uy2_px = _extract_velocity_components(vectors2, run_num)
-                            first_result_3d = _reconstruct_3d_velocities(
-                                ux1_px, uy1_px, ux2_px, uy2_px,
-                                (x1, y1), (x2, y2),
-                                self.stereo_params, self.min_angle
-                            )
-                        except Exception:
-                            pass
+
+                    # Capture first successful result per run for coordinate saving
+                    frame_run_results = result.get("run_results", {})
+                    for run_num, run_result in frame_run_results.items():
+                        if run_num not in all_run_results and run_result.get("num_valid", 0) > 0:
+                            all_run_results[run_num] = run_result
+                            logger.info(f"Run {run_num}: captured 3D result with {run_result['num_valid']} valid positions")
                 else:
                     failed += 1
                     if result and "error" in result:
                         logger.debug(f"Frame {result['frame']} failed: {result['error']}")
 
-                # Progress callback
+                # Progress callback - single progress bar for all runs
+                # Field names match dotboard's vector_calibration_production.py for consistency
                 if progress_cb:
                     total_done = successful + failed
                     try:
                         progress_cb({
                             "camera_pair": self.camera_pair,
-                            "run": run_num,
-                            "processed": total_done,
-                            "successful": successful,
-                            "total": len(tasks),
+                            "processed_frames": total_done,
+                            "total_frames": len(tasks),
                             "progress": (total_done / len(tasks)) * 100,
+                            "successful_frames": successful,
+                            "failed_frames": failed,
                         })
                     except Exception:
                         pass
 
-        logger.info(f"Run {run_num}: {successful} successful, {failed} failed")
-        return first_result_3d
+        logger.info(f"Processing complete: {successful} successful, {failed} failed")
+        logger.info(f"Captured 3D results for {len(all_run_results)} runs: {sorted(all_run_results.keys())}")
+        return all_run_results
 
     def process_run(
         self,
@@ -836,13 +939,18 @@ class StereoReconstructor:
         logger.info(f"Uncalibrated data camera {cam1}: {uncalib_dir1}")
         logger.info(f"Uncalibrated data camera {cam2}: {uncalib_dir2}")
 
-        # Output uses camera 1 as reference
+        # Output uses dedicated stereo path structure
         output_paths = get_data_paths(
-            self.base_dir, num_frame_pairs, cam1, self.type_name
+            self.base_dir,
+            num_frame_pairs,
+            cam=cam1,  # Reference camera (not used for stereo path construction)
+            type_name=self.type_name,
+            use_stereo=True,
+            stereo_camera_pair=self.camera_pair,
         )
         output_dir = output_paths["data_dir"]
         output_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Output directory: {output_dir}")
+        logger.info(f"Output directory (stereo): {output_dir}")
 
         # Check directories exist
         if not uncalib_dir1.exists():
@@ -880,27 +988,26 @@ class StereoReconstructor:
         max_run = max(r[1] for r in valid_runs)
         valid_run_nums = set(r[1] for r in valid_runs)
 
-        # Process each valid run
-        total_successful_frames = 0
-        first_result_3d = None
+        # Build coords_by_run dict mapping run_num -> (x1, y1, x2, y2)
+        # Following dotboard's pattern (vector_calibration_production.py lines 859-862)
+        coords_by_run = {
+            run_num: (x1, y1, x2, y2)
+            for _, run_num, x1, y1, x2, y2 in valid_runs
+        }
+        logger.info(f"Coordinates available for runs: {sorted(coords_by_run.keys())}")
 
-        for list_idx, run_num, x1, y1, x2, y2 in valid_runs:
-            result = self._process_run_frames_parallel(
-                run_num,
-                x1, y1, x2, y2,
-                uncalib_dir1, uncalib_dir2, output_dir,
-                num_frame_pairs, max_run, valid_run_nums,
-                progress_cb,
-            )
+        # Process ALL frames in a single pass (like dotboard)
+        # This ensures one progress bar and all runs processed together
+        run_results = self._process_all_frames_parallel(
+            coords_by_run,
+            uncalib_dir1, uncalib_dir2, output_dir,
+            num_frame_pairs, max_run, valid_run_nums,
+            progress_cb,
+        )
 
-            if result is not None and first_result_3d is None:
-                first_result_3d = result
-
-        # Save 3D coordinates using first valid run's data
-        if first_result_3d is not None:
-            self._save_stereo_coordinates(
-                valid_runs, output_dir, first_result_3d, valid_runs[0][2]
-            )
+        # Save 3D coordinates using each run's own data
+        if run_results:
+            self._save_stereo_coordinates(valid_runs, output_dir, run_results)
 
         # Save reconstruction summary
         summary_data = {

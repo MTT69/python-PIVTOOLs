@@ -481,6 +481,8 @@ def check_all_vars():
                 type_name="ensemble",
                 use_uncalibrated=params["use_uncalibrated"],
                 use_merged=params["use_merged"],
+                use_stereo=params.get("use_stereo", False),
+                stereo_camera_pair=params.get("stereo_camera_pair"),
             )
             ensemble_file = Path(ens_paths["data_dir"]) / "ensemble_result.mat"
             result["ensemble"] = get_plottable_vars(ensemble_file, var_name="ensemble_result")
@@ -688,6 +690,8 @@ def check_available_data():
         num_frame_pairs = cfg.num_frame_pairs
         vector_fmt = cfg.vector_format
 
+        is_stereo = cfg.is_stereo_setup
+
         available = {
             "uncalibrated_instantaneous": {"exists": False, "frame_count": 0, "variables": []},
             "calibrated_instantaneous": {"exists": False, "frame_count": 0, "variables": []},
@@ -697,6 +701,9 @@ def check_available_data():
             "merged_ensemble": {"exists": False, "frame_count": 1, "variables": []},
             "statistics": {"exists": False, "variables": []},
             "merged_statistics": {"exists": False, "variables": []},
+            "stereo_instantaneous": {"exists": False, "frame_count": 0, "variables": [], "camera_pair": None},
+            "stereo_ensemble": {"exists": False, "frame_count": 1, "variables": [], "camera_pair": None},
+            "stereo_statistics": {"exists": False, "variables": [], "camera_pair": None},
         }
 
         def check_directory_for_frames(data_dir: Path, is_ensemble: bool = False, source_name: str = "") -> dict:
@@ -774,20 +781,21 @@ def check_available_data():
             Path(uncal_inst_paths["data_dir"]), is_ensemble=False, source_name="uncalibrated_instantaneous"
         )
 
-        cal_inst_paths = get_data_paths(
-            base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=camera,
-            type_name="instantaneous", use_uncalibrated=False
-        )
-        available["calibrated_instantaneous"] = check_directory_for_frames(
-            Path(cal_inst_paths["data_dir"]), is_ensemble=False, source_name="calibrated_instantaneous"
-        )
-
         uncal_ens_paths = get_data_paths(
             base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=camera,
             type_name="ensemble", use_uncalibrated=True
         )
         available["uncalibrated_ensemble"] = check_directory_for_frames(
             Path(uncal_ens_paths["data_dir"]), is_ensemble=True, source_name="uncalibrated_ensemble"
+        )
+
+        # Always check calibrated and merged paths (non-stereo)
+        cal_inst_paths = get_data_paths(
+            base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=camera,
+            type_name="instantaneous", use_uncalibrated=False
+        )
+        available["calibrated_instantaneous"] = check_directory_for_frames(
+            Path(cal_inst_paths["data_dir"]), is_ensemble=False, source_name="calibrated_instantaneous"
         )
 
         cal_ens_paths = get_data_paths(
@@ -817,10 +825,53 @@ def check_available_data():
         available["statistics"] = check_statistics(Path(cal_inst_paths["stats_dir"]))
         available["merged_statistics"] = check_statistics(Path(merged_inst_paths["stats_dir"]))
 
+        # Always check stereo paths (file-based detection)
+        # Get stereo camera pair from config, or derive from camera_numbers
+        stereo_pairs = cfg.stereo_pairs
+        if stereo_pairs:
+            cam_pair = stereo_pairs[0]
+        elif len(cfg.camera_numbers) >= 2:
+            cam_pair = (cfg.camera_numbers[0], cfg.camera_numbers[1])
+        else:
+            cam_pair = (1, 2)  # Default fallback
+
+        stereo_inst_paths = get_data_paths(
+            base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=cam_pair[0],
+            type_name="instantaneous", use_stereo=True, stereo_camera_pair=cam_pair
+        )
+        stereo_result = check_directory_for_frames(
+            Path(stereo_inst_paths["data_dir"]), is_ensemble=False, source_name="stereo_instantaneous"
+        )
+        stereo_result["camera_pair"] = list(cam_pair)
+        available["stereo_instantaneous"] = stereo_result
+
+        stereo_ens_paths = get_data_paths(
+            base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=cam_pair[0],
+            type_name="ensemble", use_stereo=True, stereo_camera_pair=cam_pair
+        )
+        stereo_ens_result = check_directory_for_frames(
+            Path(stereo_ens_paths["data_dir"]), is_ensemble=True, source_name="stereo_ensemble"
+        )
+        stereo_ens_result["camera_pair"] = list(cam_pair)
+        available["stereo_ensemble"] = stereo_ens_result
+
+        # Stereo statistics
+        stereo_stats_result = check_statistics(Path(stereo_inst_paths["stats_dir"]))
+        stereo_stats_result["camera_pair"] = list(cam_pair)
+        available["stereo_statistics"] = stereo_stats_result
+
+        # File-based stereo detection: has_stereo_data is True if stereo data exists
+        has_stereo_data = (
+            available["stereo_instantaneous"]["exists"] or
+            available["stereo_ensemble"]["exists"]
+        )
+
         return jsonify({
             "success": True,
             "camera": camera,
             "base_path": str(base_path),
+            "is_stereo": is_stereo,
+            "has_stereo_data": has_stereo_data,
             "available": available,
         })
 
@@ -943,30 +994,49 @@ def get_vector_at_position():
         x_percent = float(request.args.get("x_percent"))
         y_percent = float(request.args.get("y_percent"))
 
+        # Determine data source - must be done BEFORE path resolution
+        var_source = request.args.get("var_source", default="inst", type=str)
+
+        # Override type_name for ensemble data so path resolution uses ensemble directory
+        if var_source == "ens":
+            params["type_name"] = "ensemble"
+
         paths = validate_and_get_paths(params)
         data_dir = Path(paths["data_dir"])
         stats_dir = Path(paths["stats_dir"])
         vec_fmt = get_config().vector_format
 
-        # Determine data source - matches plot_vector logic
-        var_source = request.args.get("var_source", default="inst", type=str)
-
         if var_source == "mean":
             mat_path = stats_dir / "mean_stats" / "mean_stats.mat"
         elif var_source == "inst_stat":
             mat_path = stats_dir / "instantaneous_stats" / (vec_fmt % params["frame"])
+        elif var_source == "ens":
+            mat_path = data_dir / "ensemble_result.mat"
         else:
             mat_path = data_dir / (vec_fmt % params["frame"])
 
         if not mat_path.exists():
             raise ValueError(f"Vector mat not found: {mat_path}")
 
-        piv_result = load_piv_result(mat_path)
-        pr, effective_run = find_non_empty_run(piv_result, params["var"], params["run"])
+        # Handle ensemble-specific loading
+        if var_source == "ens":
+            mat = loadmat(str(mat_path), struct_as_record=False, squeeze_me=True)
+            if "ensemble_result" not in mat:
+                raise ValueError("Variable 'ensemble_result' not found in mat file")
+            piv_result = mat["ensemble_result"]
+            # Strip variable prefix if present (e.g., "inst:ux" -> "ux")
+            var_name = params["var"]
+            if ':' in var_name:
+                _, var_name = var_name.split(':', 1)
+        else:
+            piv_result = load_piv_result(mat_path)
+            var_name = params["var"]
+
+        pr, effective_run = find_non_empty_run(piv_result, var_name, params["run"])
         if pr is None:
             raise ValueError("No non-empty run found")
 
-        var_arr = np.asarray(getattr(pr, params["var"]))
+        var_arr = np.asarray(getattr(pr, var_name))
         if var_arr.ndim < 2:
             var_arr = var_arr.reshape(var_arr.shape[0], -1)
         H, W = var_arr.shape

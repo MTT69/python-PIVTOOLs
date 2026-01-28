@@ -198,6 +198,13 @@ def plot_scalar_field(variable, mask, settings): # efe
     # Use ax.contourf (object-oriented)
     im = ax.contourf(X, Y, masked_var, levels=settings.levels, cmap=cmap, norm=norm)
 
+    # Force axis limits to match coordinate data extent.
+    # Matplotlib's contourf doesn't update ax.dataLim, so autoscaling fails
+    # and matplotlib falls back to default limits. This is essential for
+    # stereo data where coordinates are in world space (mm).
+    ax.set_xlim(np.nanmin(X), np.nanmax(X))
+    ax.set_ylim(np.nanmin(Y), np.nanmax(Y))
+
     sm = ScalarMappable(norm=norm, cmap=cmap)
     sm.set_array([])  # required for some Matplotlib versions
 

@@ -1,8 +1,8 @@
 paths:
   base_paths:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/refactor
+  - /Users/morgan/Documents/PIV_test/process
   source_paths:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images
+  - /Users/morgan/Documents/PIV_test
   active_paths:
   - 0
   camera_numbers:
@@ -10,7 +10,7 @@ paths:
   camera_count: 1
   camera_subfolders: []
 images:
-  num_images: 100
+  num_images: 50
   image_format:
   - B%05d_A.tif
   - B%05d_B.tif
@@ -21,7 +21,7 @@ images:
   zero_based_indexing: false
   pairing_mode: sequential
   pairing_skip: 0
-  num_frame_pairs: 100
+  num_frame_pairs: 50
   image_type: standard
   use_camera_subfolders: false
 batches:
@@ -34,10 +34,10 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 2
-  dask_workers_per_node: 4
+  omp_threads: 5
+  dask_workers_per_node: 2
   dask_threads_per_worker: 1
-  dask_memory_limit: 3GB
+  dask_memory_limit: 8GB
   always_batch: true
   instantaneous: true
   ensemble: false
@@ -52,29 +52,26 @@ outlier_detection:
 infilling:
   mid_pass:
     method: biharmonic
-    parameters:
-      ksize: 3
+    parameters: {}
   final_pass:
     enabled: true
     method: biharmonic
-    parameters:
-      ksize: 3
+    parameters: {}
 ensemble_outlier_detection:
   enabled: true
   methods:
   - epsilon: 0.2
-    threshold: 2
+    threshold: 3
     type: median_2d
 ensemble_infilling:
   mid_pass:
-    method: biharmonic
+    method: local_median
     parameters:
-      ksize: 3
+      ksize: 7
   final_pass:
     enabled: true
     method: biharmonic
-    parameters:
-      ksize: 3
+    parameters: {}
 plots:
   save_extension: .png
   save_pickle: true
@@ -83,16 +80,17 @@ plots:
 video:
   base_path_idx: 0
   camera: 1
-  data_source: calibrated
-  variable: uu_inst
-  run: 4
+  data_source: uncalibrated
+  variable: mag
+  run: 2
   piv_type: instantaneous
-  cmap: viridis
+  cmap: jet
   lower: ''
   upper: ''
   fps: 30
   crf: 15
   resolution: 1080p
+  source_endpoint: regular
 statistics:
   enabled_methods:
     mean_velocity: true
@@ -104,86 +102,89 @@ statistics:
     divergence: true
     gamma1: true
     gamma2: true
-    mean_tke: true
-    mean_vorticity: true
-    mean_divergence: true
-    inst_velocity: true
+    mean_tke: false
+    mean_vorticity: false
+    mean_divergence: false
+    inst_velocity: false
     inst_fluctuations: true
-    inst_vorticity: true
-    inst_divergence: true
-    inst_gamma: true
+    inst_vorticity: false
+    inst_divergence: false
+    inst_gamma: false
     mean_stresses: true
-    inst_stresses: true
+    inst_stresses: false
   gamma_radius: 4
   save_figures: true
   type_name: instantaneous
+  source_endpoint: regular
 instantaneous_piv:
   window_size:
-  - - 128
-    - 128
   - - 64
     - 64
   - - 32
-    - 32
-  - - 16
     - 16
   overlap:
   - 50
   - 50
-  - 50
-  - 50
   runs:
-  - 3
-  - 4
+  - 2
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
   peak_finder: gauss6
   secondary_peak: false
 ensemble_piv:
+  fit_method: gaussian
+  skip_background_subtraction: false
+  gradient_correction: true
+  image_warp_interpolation: cubic
+  predictor_interpolation: cubic
+  kspace_snr_threshold: 3.0
+  fit_offset: false
+  mask_center_pixel: true
+  background_subtraction_method: correlation
   window_size:
-  - - 128
-    - 128
-  - - 64
-    - 64
   - - 32
-    - 32
+    - 64
+  - - 8
+    - 8
   overlap:
-  - 50
   - 50
   - 50
   type:
   - std
   - std
-  - std
   runs:
   - 1
   - 2
-  - 3
   store_planes: true
   save_diagnostics: true
   sum_window:
+  - 32
+  - 32
+  sum_fitting_window_enabled: false
+  sum_fitting_window:
   - 16
   - 16
   resume_from_pass: 0
+  window_type: square
 calibration:
-  image_format: planar_calibration_plate_%02d.tif
+  image_format: cal%03d.cam1.tif
   num_images: 19
   image_type: standard
   zero_based_indexing: false
   use_camera_subfolders: false
-  subfolder: enhanced
+  subfolder: charuco
   camera_subfolders:
   - Cam1
   - Cam2
   path_order: camera_first
-  active: pinhole
-  piv_type: instantaneous
+  active: dotboard
+  piv_type: ensemble
   scale_factor:
     dt: 0.56
     px_per_mm: 3.41
     source_path_idx: 0
-  pinhole:
+  dotboard:
     camera: 1
     pattern_cols: 10
     pattern_rows: 10
@@ -206,7 +207,7 @@ calibration:
     dt: 0.0057553
     source_path_idx: 0
     file_pattern: '*.tif'
-  stereo:
+  stereo_dotboard:
     camera_pair:
     - 1
     - 2
@@ -216,7 +217,7 @@ calibration:
     enhance_dots: false
     asymmetric: false
     dt: 0.0057553
-    stereo_model_type: pinhole
+    stereo_model_type: dotboard
   polynomial:
     xml_path: ''
     use_xml: true
@@ -254,12 +255,14 @@ calibration:
     aruco_dict: DICT_4X4_1000
     min_corners: 6
     dt: 0.0057553
-filters: []
+  calibration_sources: []
+filters:
+- type: time
 masking:
-  enabled: false
+  enabled: true
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
-  mode: rectangular
+  mode: file
   rectangular:
     top: 0
     bottom: 0
@@ -273,5 +276,5 @@ transforms:
   type_name: instantaneous
   cameras:
     1:
-      operations:
-      - rotate_90_ccw
+      operations: null
+  source_endpoint: regular

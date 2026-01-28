@@ -7,13 +7,26 @@ import shutil
 import yaml
 
 # ===================== ENDPOINT CONSTRAINTS =====================
-# Tool-specific endpoint constraints - defines what data sources each tool can use
-TOOL_ALLOWED_ENDPOINTS = {
-    "video": ["instantaneous", "merged"],  # No ensemble (no temporal sequence)
-    "merging": ["instantaneous", "ensemble"],  # No stereo (3D vectors can't merge)
-    "statistics": ["instantaneous", "ensemble", "merged", "stereo"],
-    "transforms": ["instantaneous", "ensemble", "merged", "stereo"],
+# Tool-specific source_endpoint constraints - defines what data sources each tool can use
+# source_endpoint values: "regular" (per-camera), "merged" (multi-camera merged), "stereo" (3D stereo PIV)
+TOOL_ALLOWED_SOURCE_ENDPOINTS = {
+    "video": ["regular", "merged", "stereo"],  # All source endpoints allowed
+    "merging": ["regular"],  # Only regular (per-camera) data can be merged
+    "statistics": ["regular", "merged", "stereo"],
+    "transforms": ["regular", "merged", "stereo"],
 }
+
+# Tool-specific type_name constraints - defines what temporal types each tool can use
+# type_name values: "instantaneous" (frame-by-frame), "ensemble" (averaged result)
+TOOL_ALLOWED_TYPE_NAMES = {
+    "video": ["instantaneous"],  # No ensemble (no temporal sequence for animation)
+    "merging": ["instantaneous", "ensemble"],  # Both temporal types can be merged
+    "statistics": ["instantaneous", "ensemble"],  # Statistics on either type
+    "transforms": ["instantaneous", "ensemble"],  # Transforms on either type
+}
+
+# Legacy alias for backward compatibility
+TOOL_ALLOWED_ENDPOINTS = TOOL_ALLOWED_SOURCE_ENDPOINTS
 
 _CONFIG = None  # singleton cache
 _LOGGING_INITIALIZED = False  # Track if logging has been set up
@@ -54,6 +67,40 @@ class Config:
         with open(self._config_path, 'w') as f:
             yaml.dump(self.data, f, default_flow_style=False, sort_keys=False)
 
+    def save_timestamped_copy(self, destination_dir: Path, timestamp: str = None) -> Path:
+        """Save a timestamped copy of the config file for traceability.
+
+        Args:
+            destination_dir: Directory to save the config copy to
+            timestamp: Optional timestamp string. If None, generates current timestamp.
+                       Format: YYYY-MM-DD_HH-MM-SS
+
+        Returns:
+            Path to the saved config file
+        """
+        from datetime import datetime
+
+        # Generate timestamp if not provided
+        if timestamp is None:
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+        # Create destination directory if it doesn't exist
+        destination_dir = Path(destination_dir)
+        destination_dir.mkdir(parents=True, exist_ok=True)
+
+        # Build filename with timestamp
+        dest_path = destination_dir / f"config_{timestamp}.yaml"
+
+        # Copy the original config file (preserves exact formatting and comments)
+        if Path(self._config_path).exists():
+            shutil.copy2(self._config_path, dest_path)
+        else:
+            # Fallback: save current state if original file doesn't exist
+            with open(dest_path, 'w') as f:
+                yaml.dump(self.data, f, default_flow_style=False, sort_keys=False)
+
+        return dest_path
+
     def _normalize_calibration_block(self):
         """Reorder calibration block keys for consistent organization.
 
@@ -79,9 +126,9 @@ class Config:
         meta_settings = ["active", "piv_type"]
         method_configs = [
             "scale_factor",
-            "pinhole",
+            "dotboard",
             "charuco",
-            "stereo",
+            "stereo_dotboard",
             "polynomial",
             "stereo_charuco",
         ]
@@ -269,7 +316,7 @@ calibration:
     dt: 0.56
     px_per_mm: 3.41
     source_path_idx: 0
-  pinhole:
+  dotboard:
     camera: 1
     pattern_cols: 10
     pattern_rows: 10
@@ -290,7 +337,7 @@ calibration:
     min_corners: 6
     dt: 1
     source_path_idx: 0
-  stereo:
+  stereo_dotboard:
     camera_pair:
     - 1
     - 2
@@ -533,7 +580,7 @@ video:
     def is_stereo_setup(self) -> bool:
         """Return True if this is a stereo PIV setup.
 
-        Determined by calibration.active being 'stereo' or 'stereo_charuco'.
+        Determined by calibration.active being 'stereo_dotboard' or 'stereo_charuco'.
 
         Returns
         -------
@@ -541,7 +588,7 @@ video:
             True if stereo calibration is active
         """
         active = self.active_calibration_method
-        return active in ("stereo", "stereo_charuco")
+        return active in ("stereo_dotboard", "stereo_charuco")
 
     @property
     def camera_folders(self):
@@ -996,9 +1043,9 @@ video:
         Returns
         -------
         str
-            Source endpoint (default 'instantaneous')
+            Source endpoint (default 'regular')
         """
-        return self.statistics.get("source_endpoint", "instantaneous")
+        return self.statistics.get("source_endpoint", "regular")
 
     @property
     def statistics_workflow(self) -> str:
@@ -1190,9 +1237,9 @@ video:
         Returns
         -------
         str
-            Source endpoint (default 'instantaneous')
+            Source endpoint (default 'regular')
         """
-        return self.video.get("source_endpoint", "instantaneous")
+        return self.video.get("source_endpoint", "regular")
 
     @property
     def videos(self):
@@ -1289,11 +1336,11 @@ video:
         """Return True if calibration images use camera subfolders (Cam1/, Cam2/).
 
         When True, calibration images are expected in camera subdirectories:
-        - source_path/Cam1/calibration_subfolder/image.tif
-        - source_path/Cam2/calibration_subfolder/image.tif
+        - calibration_source/Cam1/image.tif
+        - calibration_source/Cam2/image.tif
 
         When False (default), all calibration images are in a single directory:
-        - source_path/calibration_subfolder/image.tif
+        - calibration_source/image.tif
 
         This applies to both standard formats (TIFF, PNG, etc.) and IM7 files.
         Container formats (.set, .cine) never use camera subfolders.
@@ -1302,15 +1349,52 @@ video:
         return calib_block.get("use_camera_subfolders", False)
 
     @property
-    def calibration_subfolder(self) -> str:
-        """Return subfolder for calibration images.
+    def calibration_sources(self) -> list:
+        """Return list of calibration source paths (REQUIRED for calibration).
 
-        Path structure depends on calibration_path_order:
-        - camera_first: source_path / camera_subfolder / calibration_subfolder / image_file
-        - calibration_first: source_path / calibration_subfolder / camera_subfolder / image_file
+        These are direct paths to calibration image locations:
+        - For container formats (.set, .cine): path to the container file
+        - For standard formats (.tiff, etc.): path to directory containing images
+
+        Camera subfolders (Cam1/, Cam2/) are applied relative to these paths
+        when use_camera_subfolders is True.
         """
         calib_block = self.data.get("calibration", {}) or {}
-        return calib_block.get("subfolder", "")
+        sources = calib_block.get("calibration_sources", [])
+        return [Path(s) for s in sources] if sources else []
+
+    def get_calibration_source(self, source_path_idx: int = 0) -> Path:
+        """Get calibration source path for the given index.
+
+        Parameters
+        ----------
+        source_path_idx : int
+            Index into calibration_sources list (default: 0)
+
+        Returns
+        -------
+        Path
+            Calibration source path
+
+        Raises
+        ------
+        ValueError
+            If calibration_sources is not configured
+        IndexError
+            If source_path_idx is out of range
+        """
+        sources = self.calibration_sources
+        if not sources:
+            raise ValueError(
+                "calibration.calibration_sources not configured in config.yaml. "
+                "Please specify direct paths to calibration images."
+            )
+        if source_path_idx >= len(sources):
+            raise IndexError(
+                f"calibration_sources index {source_path_idx} out of range "
+                f"(have {len(sources)} sources)"
+            )
+        return sources[source_path_idx]
 
     @property
     def calibration_camera_subfolders(self) -> list:
@@ -1328,9 +1412,11 @@ video:
     def calibration_path_order(self) -> str:
         """Return path order for calibration images.
 
-        Controls the order of camera folder and calibration subfolder in the path:
-        - 'camera_first': source/camera_folder/calibration_subfolder/file (default)
-        - 'calibration_first': source/calibration_subfolder/camera_folder/file
+        Note: This property is deprecated. With calibration_sources, camera folders
+        are simply appended to the calibration source path when use_camera_subfolders
+        is True: calibration_source/camera_folder/file
+
+        Kept for backwards compatibility but no longer actively used by path resolution.
 
         Returns
         -------
@@ -1373,7 +1459,8 @@ video:
     def get_calibration_image_path(self, camera: int, index: int, source_path_idx: int = 0) -> Path:
         """Build full path to a calibration image.
 
-        Path structure: source_path / camera_subfolder / calibration_subfolder / image_file
+        Uses calibration_sources for the base path, then applies camera subfolders
+        if applicable based on image type.
 
         Parameters
         ----------
@@ -1382,34 +1469,26 @@ video:
         index : int
             Image index (1-based or 0-based depending on calibration_zero_based_indexing)
         source_path_idx : int
-            Index into source_paths list
+            Index into calibration_sources list
 
         Returns
         -------
         Path
             Full path to the calibration image file
         """
-        source_path = self.source_paths[source_path_idx]
-        camera_folder = self.get_calibration_camera_folder(camera)
+        from pivtools_core.image_handling.path_utils import build_calibration_camera_path
 
-        # Build base path: source_path / camera_subfolder
-        if camera_folder:
-            camera_path = source_path / camera_folder
-        else:
-            camera_path = source_path
-
-        # Add calibration subfolder if specified
-        if self.calibration_subfolder:
-            camera_path = camera_path / self.calibration_subfolder
-
+        camera_path = build_calibration_camera_path(self, source_path_idx, camera)
         image_type = self.calibration_image_type
         fmt = self.calibration_image_format
 
-        # For container formats, the path is just the container file
+        # For container formats, the camera_path is already the full path
         if image_type == "lavision_set":
-            return camera_path / fmt
+            return camera_path if camera_path.suffix else camera_path / fmt
         elif image_type == "cine":
             # CINE pattern uses %d for camera number
+            if camera_path.suffix:
+                return camera_path
             if "%" in fmt:
                 return camera_path / (fmt % camera)
             return camera_path / fmt
@@ -1431,15 +1510,15 @@ video:
 
     @property
     def active_calibration_method(self):
-        """Return the active calibration method name (e.g., 'pinhole', 'scale_factor')."""
+        """Return the active calibration method name (e.g., 'dotboard', 'scale_factor')."""
         cal = self.calibration
-        return cal.get("active", "pinhole")
+        return cal.get("active", "dotboard")
 
     @property
     def active_calibration_params(self):
         """Return the parameters dict for the active calibration method."""
         cal = self.calibration
-        active = cal.get("active", "pinhole")
+        active = cal.get("active", "dotboard")
         return cal.get(active, {})
 
     @property
@@ -1448,14 +1527,19 @@ video:
         return self.calibration.get("scale_factor", {})
 
     @property
-    def pinhole_calibration(self):
-        """Return pinhole calibration parameters."""
-        return self.calibration.get("pinhole", {})
+    def dotboard_calibration(self):
+        """Return dotboard calibration parameters."""
+        return self.calibration.get("dotboard", {})
 
     @property
     def stereo_calibration(self):
-        """Return stereo calibration parameters."""
+        """Return stereo calibration parameters (shared stereo settings)."""
         return self.calibration.get("stereo", {})
+
+    @property
+    def stereo_dotboard_calibration(self):
+        """Return stereo dotboard calibration parameters."""
+        return self.calibration.get("stereo_dotboard", {})
 
     @property
     def charuco_calibration(self):
@@ -1509,7 +1593,7 @@ video:
 
     def set_active_calibration_method(self, method: str):
         """Set the active calibration method."""
-        if method in ["scale_factor", "pinhole", "stereo", "charuco", "polynomial", "stereo_charuco"]:
+        if method in ["scale_factor", "dotboard", "stereo_dotboard", "charuco", "polynomial", "stereo_charuco"]:
             self.data["calibration"]["active"] = method
         else:
             raise ValueError(f"Unknown calibration method: {method}")
@@ -1571,9 +1655,9 @@ video:
         Returns
         -------
         str
-            Source endpoint (default 'instantaneous')
+            Source endpoint (default 'regular')
         """
-        return self.merging.get("source_endpoint", "instantaneous")
+        return self.merging.get("source_endpoint", "regular")
 
     # --- PIV-specific properties from pypivtools ---
     @property
@@ -1600,14 +1684,18 @@ video:
         """Return time difference between frames."""
         # Check active calibration method
         active_method = self.active_calibration_method
-        if active_method == "stereo":
-            return self.stereo_calibration.get("dt", 1)
-        elif active_method == "pinhole":
-            return self.pinhole_calibration.get("dt", 1)
+        if active_method == "stereo_dotboard":
+            return self.stereo_dotboard_calibration.get("dt", 1)
+        elif active_method == "dotboard":
+            return self.dotboard_calibration.get("dt", 1)
         elif active_method == "scale_factor":
             return self.scale_factor_calibration.get("dt", 1)
         elif active_method == "charuco":
             return self.charuco_calibration.get("dt", 1)
+        elif active_method == "stereo_charuco":
+            return self.stereo_charuco_calibration.get("dt", 1)
+        elif active_method == "polynomial":
+            return self.polynomial_calibration.get("dt", 1)
         return 1
 
     @property
@@ -1784,9 +1872,20 @@ video:
     def ensemble_overlaps(self):
         """Return ensemble PIV overlap percentages."""
         overlaps = self.data.get("ensemble_piv", {}).get("overlap", self.overlap)
-        # Ensure we have as many overlaps as window sizes
-        if overlaps and len(overlaps) == 1 and len(self.ensemble_window_sizes) > 1:
-            overlaps = overlaps * len(self.ensemble_window_sizes)
+        n_passes = len(self.ensemble_window_sizes)
+
+        # Broadcast single overlap to all passes
+        if overlaps and len(overlaps) == 1 and n_passes > 1:
+            overlaps = overlaps * n_passes
+
+        # Validate array length matches window_sizes
+        if overlaps and len(overlaps) != n_passes:
+            raise ValueError(
+                f"ensemble_piv.overlap has {len(overlaps)} entries but "
+                f"ensemble_piv.window_size has {n_passes} entries. "
+                f"These must match (or use a single overlap value to broadcast)."
+            )
+
         return overlaps
 
     @property
@@ -1884,6 +1983,56 @@ video:
         return sum_window
 
     @property
+    def ensemble_sum_fitting_window_enabled(self):
+        """
+        Return whether sum_fitting_window extraction is enabled.
+
+        Returns
+        -------
+        bool
+            True if extraction is enabled, False otherwise (default)
+        """
+        return self.data.get("ensemble_piv", {}).get("sum_fitting_window_enabled", False)
+
+    @property
+    def ensemble_sum_fitting_window(self):
+        """
+        Return fitting window size for ensemble correlation planes.
+
+        Only used when sum_fitting_window_enabled is True.
+        Correlations are computed on full sum_window but only the central
+        sum_fitting_window region is extracted for storage and fitting.
+
+        Returns
+        -------
+        list or None
+            [height, width] of fitting window, or None if disabled
+        """
+        # Check if feature is enabled
+        if not self.ensemble_sum_fitting_window_enabled:
+            return None
+
+        fit_window = self.data.get("ensemble_piv", {}).get("sum_fitting_window", None)
+
+        if fit_window is None:
+            raise ValueError(
+                "sum_fitting_window_enabled is True but sum_fitting_window is not set"
+            )
+
+        # Validate: must be smaller than or equal to sum_window
+        sum_window = self.ensemble_sum_window
+        if fit_window[0] > sum_window[0] or fit_window[1] > sum_window[1]:
+            raise ValueError(
+                f"sum_fitting_window {fit_window} must be <= sum_window {sum_window}"
+            )
+
+        # Validate: must be positive and even (for symmetric extraction)
+        if fit_window[0] <= 0 or fit_window[1] <= 0:
+            raise ValueError(f"sum_fitting_window must be positive, got {fit_window}")
+
+        return fit_window
+
+    @property
     def ensemble_type(self):
         """
         Return ensemble type for each pass.
@@ -1978,6 +2127,189 @@ video:
         return self.data.get("ensemble_piv", {}).get("resume_from_pass", 0)
 
     @property
+    def ensemble_fit_offset(self) -> bool:
+        """Enable/disable offset (+C) term in stacked Gaussian fitting.
+
+        When True (default): y = amp * exp(...) + c
+        When False: y = amp * exp(...) (no offset term)
+        """
+        return self.data.get("ensemble_piv", {}).get("fit_offset", True)
+
+    @property
+    def ensemble_mask_center_pixel(self) -> bool:
+        """Enable/disable center pixel masking for autocorrelation.
+
+        When True (default): Exclude center pixel of AA/BB planes from fitting
+        to remove camera self-noise spike at zero lag.
+        When False: Include all pixels (for synthetic data or testing).
+
+        The cross-correlation (AB) center pixel is never masked since it
+        contains valid displacement signal.
+        """
+        return self.data.get("ensemble_piv", {}).get("mask_center_pixel", True)
+
+    @property
+    def ensemble_fit_method(self) -> str:
+        """Return fitting method for ensemble PIV.
+
+        Options:
+        - 'gaussian': Levenberg-Marquardt 16-parameter stacked Gaussian (default)
+        - 'kspace': K-space transfer function with 6 parameters
+
+        The k-space method offers better noise robustness by:
+        - Algebraic cancellation of particle shape (6 params vs 16)
+        - Adaptive SNR-based wavenumber bounds
+        - Forward-model fitting that emphasizes high-SNR components
+        """
+        method = self.data.get("ensemble_piv", {}).get("fit_method", "gaussian")
+        valid_methods = {'gaussian', 'kspace'}
+        if method not in valid_methods:
+            raise ValueError(
+                f"Invalid ensemble_fit_method '{method}'. "
+                f"Must be one of {valid_methods}"
+            )
+        return method
+
+    @property
+    def ensemble_kspace_snr_threshold(self) -> float:
+        """Return SNR threshold for k-space adaptive bounds.
+
+        Wavenumbers with SNR below this threshold are excluded from fitting.
+        Higher values are more conservative (exclude more noise).
+
+        Default: 3.0
+        """
+        return self.data.get("ensemble_piv", {}).get("kspace_snr_threshold", 3.0)
+
+    @property
+    def ensemble_kspace_soft_weighting(self) -> bool:
+        """Return whether to use anisotropic soft decay weighting in k-space fitting.
+
+        When True (default): Uses combined SNR × anisotropic soft decay weighting:
+            w(k) = w_snr(k) * exp(-k_x²/k0_x² - k_y²/k0_y²)
+
+        where k0_x and k0_y are computed from Sigma_xx and Sigma_yy estimates.
+
+        This naturally down-weights high-k regions where:
+        - Signal-to-noise is poor
+        - The Gaussian model becomes less accurate
+
+        Benefits:
+        - Avoids hard k_max cutoffs
+        - Automatically adapts to signal quality
+        - Handles anisotropic stresses (different turbulence in x vs y)
+        - Reduces bias from model mismatch at high k
+
+        When False: Uses uniform weighting within k_max bounds.
+
+        Default: True
+        """
+        return self.data.get("ensemble_piv", {}).get("kspace_soft_weighting", True)
+
+    @property
+    def ensemble_image_warp_interpolation(self) -> str:
+        """Return interpolation method for image warping in ensemble PIV.
+
+        This controls the cv2.remap interpolation when warping images based on
+        the predictor field from the previous pass. The choice of interpolation
+        may affect:
+        - Particle image sharpness (PSF)
+        - Measured Reynolds stress (peak width)
+        - Processing speed
+
+        Options:
+        - 'nearest': cv2.INTER_NEAREST (fastest, no smoothing, may cause aliasing)
+        - 'linear': cv2.INTER_LINEAR (bilinear, moderate smoothing)
+        - 'cubic': cv2.INTER_CUBIC (bicubic, smoothest, default)
+
+        Default: 'cubic'
+        """
+        method = self.data.get("ensemble_piv", {}).get(
+            "image_warp_interpolation", "cubic"
+        )
+        valid_methods = {'nearest', 'linear', 'cubic'}
+        if method not in valid_methods:
+            raise ValueError(
+                f"Invalid ensemble_image_warp_interpolation '{method}'. "
+                f"Must be one of {valid_methods}"
+            )
+        return method
+
+    @property
+    def ensemble_predictor_interpolation(self) -> str:
+        """Return interpolation method for predictor field in ensemble PIV.
+
+        This controls the cv2.remap interpolation when upsampling the predictor
+        field from coarse to fine grids and from window centers to dense pixel
+        coordinates.
+
+        Options:
+        - 'nearest': cv2.INTER_NEAREST (fastest, may cause blocky artifacts)
+        - 'linear': cv2.INTER_LINEAR (bilinear, good balance)
+        - 'cubic': cv2.INTER_CUBIC (bicubic, smoothest, default)
+
+        Default: 'cubic'
+        """
+        method = self.data.get("ensemble_piv", {}).get(
+            "predictor_interpolation", "cubic"
+        )
+        valid_methods = {'nearest', 'linear', 'cubic'}
+        if method not in valid_methods:
+            raise ValueError(
+                f"Invalid ensemble_predictor_interpolation '{method}'. "
+                f"Must be one of {valid_methods}"
+            )
+        return method
+
+    @property
+    def ensemble_skip_background_subtraction(self) -> bool:
+        """Skip background subtraction in ensemble PIV (debug/testing only).
+
+        When True, skips the single-pass optimization formula:
+            R_ensemble = <A⊗B> - <A>⊗<B>
+
+        And instead uses raw correlation planes directly:
+            R_ensemble = <A⊗B>
+
+        WARNING: This is for testing/debugging only. Without background
+        subtraction, correlation planes will have elevated noise floors
+        which may affect fitting quality.
+
+        Default: False
+        """
+        return self.data.get("ensemble_piv", {}).get("skip_background_subtraction", False)
+
+    @property
+    def ensemble_background_subtraction_method(self) -> str:
+        """Background subtraction method for ensemble PIV.
+
+        Options:
+        - 'correlation': R = <A⊗B> - <A>⊗<B> (current default, single-pass)
+          Correlates raw images, then subtracts correlation of mean images.
+          More memory efficient (single pass through data).
+
+        - 'image': R = <(A-Ā)⊗(B-B̄)> (two-pass, subtract mean images first)
+          First pass computes mean images, second pass correlates mean-subtracted
+          images. Requires two iterations through the data but may be more
+          numerically stable for certain fitting methods (e.g., k-space).
+
+        Both methods are mathematically equivalent but may differ numerically
+        due to order of operations and floating-point precision.
+
+        Default: 'correlation'
+        """
+        method = self.data.get("ensemble_piv", {}).get(
+            "background_subtraction_method", "correlation"
+        )
+        valid_methods = {'correlation', 'image'}
+        if method not in valid_methods:
+            raise ValueError(
+                f"Invalid ensemble_background_subtraction_method '{method}'. "
+                f"Must be one of {valid_methods}"
+            )
+        return method
+
+    @property
     def outlier_detection_enabled(self):
         """Return True if outlier detection is enabled."""
         return self.data.get("outlier_detection", {}).get("enabled", True)
@@ -2031,6 +2363,26 @@ video:
             "method": "biharmonic",
             "parameters": {"ksize": 3}
         })
+
+    @property
+    def ensemble_gradient_correction(self) -> bool:
+        """Apply gradient correction to Reynolds stresses.
+
+        When True, applies velocity gradient correction to Reynolds stress estimates:
+            UU_corrected = UU_stress - 0.5 * sig_A_x * (dU/dy)²
+            VV_corrected = VV_stress - 0.5 * sig_A_y * (dV/dx)²
+            UV_corrected = UV_stress - 0.5 * sig_A_x * (dU/dy + dV/dx)
+
+        This correction accounts for velocity gradient bias in the stress estimates,
+        which is particularly important in regions with strong velocity gradients
+        (e.g., near walls in boundary layer flows).
+
+        The correction requires sig_A_x and sig_A_y fields from Gaussian fitting,
+        which are only available in uncalibrated ensemble PIV results.
+
+        Default: False
+        """
+        return self.data.get("ensemble_piv", {}).get("gradient_correction", False)
 
     @property
     def secondary_peak(self):
@@ -2407,9 +2759,9 @@ video:
         Returns
         -------
         str
-            Source endpoint (default 'instantaneous')
+            Source endpoint (default 'regular')
         """
-        return self.transforms.get("source_endpoint", "instantaneous")
+        return self.transforms.get("source_endpoint", "regular")
 
     def get_camera_folder(self, camera_num: int) -> str:
         """Get the subfolder name for a specific camera.
@@ -2457,19 +2809,34 @@ video:
         Returns
         -------
         List[str]
-            List of allowed endpoint names
+            List of allowed source endpoint names: 'regular', 'merged', 'stereo'
         """
-        return TOOL_ALLOWED_ENDPOINTS.get(tool, [])
+        return TOOL_ALLOWED_SOURCE_ENDPOINTS.get(tool, [])
+
+    def get_allowed_type_names(self, tool: str) -> List[str]:
+        """Get allowed type names for a specific tool.
+
+        Parameters
+        ----------
+        tool : str
+            Tool name: 'video', 'merging', 'statistics', 'transforms'
+
+        Returns
+        -------
+        List[str]
+            List of allowed type names: 'instantaneous', 'ensemble'
+        """
+        return TOOL_ALLOWED_TYPE_NAMES.get(tool, [])
 
     def validate_endpoint_for_tool(self, tool: str, endpoint: str) -> Tuple[bool, str]:
-        """Validate that an endpoint is allowed for a tool.
+        """Validate that a source endpoint is allowed for a tool.
 
         Parameters
         ----------
         tool : str
             Tool name: 'video', 'merging', 'statistics', 'transforms'
         endpoint : str
-            Endpoint to validate: 'instantaneous', 'ensemble', 'merged', 'stereo'
+            Source endpoint to validate: 'regular', 'merged', 'stereo'
 
         Returns
         -------
@@ -2479,7 +2846,28 @@ video:
         """
         allowed = self.get_allowed_endpoints(tool)
         if endpoint not in allowed:
-            return False, f"Endpoint '{endpoint}' not allowed for {tool}. Allowed: {allowed}"
+            return False, f"Source endpoint '{endpoint}' not allowed for {tool}. Allowed: {allowed}"
+        return True, ""
+
+    def validate_type_name_for_tool(self, tool: str, type_name: str) -> Tuple[bool, str]:
+        """Validate that a type name is allowed for a tool.
+
+        Parameters
+        ----------
+        tool : str
+            Tool name: 'video', 'merging', 'statistics', 'transforms'
+        type_name : str
+            Type name to validate: 'instantaneous', 'ensemble'
+
+        Returns
+        -------
+        Tuple[bool, str]
+            (is_valid, error_message)
+            If valid, error_message is empty string.
+        """
+        allowed = self.get_allowed_type_names(tool)
+        if type_name not in allowed:
+            return False, f"Type name '{type_name}' not allowed for {tool}. Allowed: {allowed}"
         return True, ""
     
     @property

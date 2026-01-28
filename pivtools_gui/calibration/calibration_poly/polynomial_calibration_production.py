@@ -61,7 +61,7 @@ TYPE_NAME = "instantaneous"     # Type of data: "instantaneous" or "ensemble"
 
 # USE_CONFIG_DIRECTLY: If True, skip updating config.yaml with above parameters
 # and load calibration settings directly from the existing config.yaml
-USE_CONFIG_DIRECTLY = False
+USE_CONFIG_DIRECTLY = True
 
 # ============================================================================
 
@@ -101,7 +101,6 @@ def apply_cli_settings_to_config():
     config.save()
     logger.info("Updated config.yaml with CLI settings")
     logger.info(f"  dt = {DT} seconds")
-    logger.info(f"  calibration_subfolder = {CALIBRATION_SUBFOLDER}")
     logger.info(f"  cameras = {CAMERA_NUMS}")
 
     # Reload to ensure fresh state
@@ -924,7 +923,6 @@ def main():
         # Extract settings from config
         base_dir = cfg.data["paths"]["base_paths"][0]
         camera_nums = cfg.data["paths"].get("camera_numbers", [1, 2])
-        calibration_subfolder = cfg.data["calibration"].get("subfolder", "")
         dt = cfg.data["calibration"].get("polynomial", {}).get("dt", 1.0)
         type_name = cfg.data.get("processing", {}).get("type_name", "instantaneous")
         # Get xml_path and use_xml from config
@@ -937,7 +935,6 @@ def main():
         # Use hardcoded settings
         base_dir = BASE_DIR
         camera_nums = CAMERA_NUMS
-        calibration_subfolder = CALIBRATION_SUBFOLDER
         dt = DT
         type_name = TYPE_NAME
         xml_path = XML_PATH

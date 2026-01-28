@@ -2,7 +2,7 @@
 """
 planar_calibration_multiview.py
 
-Pure Multi-View Pinhole Calibration script.
+Pure Multi-View Dotboard Calibration script.
 - Aggregates multiple views of a calibration board.
 - Solves for Intrinsics (Camera Matrix + Distortion) using OpenCV.
 - Saves grid detections and final model to .mat files.
@@ -27,8 +27,8 @@ from pivtools_core.image_handling.load_images import read_image
 # SOURCE_DIR: Root directory containing data
 SOURCE_DIR = "/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images/enhanced"
 
-# BASE_DIR: Output directory. 
-# Results save to: {BASE_DIR}/calibration/Cam{N}/pinhole_planar/...
+# BASE_DIR: Output directory.
+# Results save to: {BASE_DIR}/calibration/Cam{N}/dotboard_planar/...
 BASE_DIR = "/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/query_JHTDB/download_from_jhtdb/bottom_channel/planar_images"
 
 # CALIBRATION_SUBFOLDER: Subfolder for images (leave "" if in root)
@@ -90,12 +90,12 @@ def apply_cli_settings_to_config():
     if NUM_CALIBRATION_IMAGES is not None:
         config.data["calibration"]["num_images"] = NUM_CALIBRATION_IMAGES
 
-    # Pinhole-specific params (for planar calibration)
-    config.data["calibration"]["pinhole"]["pattern_cols"] = PATTERN_COLS
-    config.data["calibration"]["pinhole"]["pattern_rows"] = PATTERN_ROWS
-    config.data["calibration"]["pinhole"]["dot_spacing_mm"] = DOT_SPACING_MM
-    config.data["calibration"]["pinhole"]["asymmetric"] = ASYMMETRIC
-    config.data["calibration"]["pinhole"]["enhance_dots"] = ENHANCE_DOTS
+    # Dotboard-specific params (for planar calibration)
+    config.data["calibration"]["dotboard"]["pattern_cols"] = PATTERN_COLS
+    config.data["calibration"]["dotboard"]["pattern_rows"] = PATTERN_ROWS
+    config.data["calibration"]["dotboard"]["dot_spacing_mm"] = DOT_SPACING_MM
+    config.data["calibration"]["dotboard"]["asymmetric"] = ASYMMETRIC
+    config.data["calibration"]["dotboard"]["enhance_dots"] = ENHANCE_DOTS
 
     # Save to disk so centralized loader picks up changes
     config.save()
@@ -117,7 +117,6 @@ class MultiViewCalibrator:
         dot_spacing_mm=28.89,
         asymmetric=False,
         enhance_dots=False,
-        calibration_subfolder="",
         config=None,
     ):
         self.source_dir = Path(source_dir)
@@ -128,7 +127,6 @@ class MultiViewCalibrator:
         self.dot_spacing_mm = dot_spacing_mm
         self.asymmetric = asymmetric
         self.enable_dot_enhancement = enhance_dots
-        self.calibration_subfolder = calibration_subfolder
         self._config = config
 
         # Create blob detector
@@ -152,10 +150,10 @@ class MultiViewCalibrator:
         return cv2.SimpleBlobDetector_create(params)
 
     def _setup_directories(self):
-        """Create output directories with /pinhole_planar structure"""
+        """Create output directories with /dotboard_planar structure"""
         for cam_num in range(1, self.camera_count + 1):
-            # NEW PATH STRUCTURE: .../CamX/pinhole_planar/
-            cam_base = self.base_dir / "calibration" / f"Cam{cam_num}" / "pinhole_planar"
+            # NEW PATH STRUCTURE: .../CamX/dotboard_planar/
+            cam_base = self.base_dir / "calibration" / f"Cam{cam_num}" / "dotboard_planar"
             (cam_base / "indices").mkdir(parents=True, exist_ok=True)
             (cam_base / "model").mkdir(parents=True, exist_ok=True)
             (cam_base / "figures").mkdir(parents=True, exist_ok=True)
@@ -163,21 +161,15 @@ class MultiViewCalibrator:
     def _get_camera_input_dir(self, cam_num: int) -> Path:
         """Get the input directory for calibration images.
 
-        Path structure: source / camera_folder / calibration_subfolder
+        Uses build_calibration_camera_path for path resolution from
+        calibration_sources config.
         """
-        base_path = self.source_dir
-
-        # Get camera folder from config
         if self._config is not None:
-            camera_folder = self._config.get_calibration_camera_folder(cam_num)
-            if camera_folder:
-                base_path = base_path / camera_folder
+            from pivtools_core.image_handling.path_utils import build_calibration_camera_path
+            return build_calibration_camera_path(self._config, source_path_idx=0, camera=cam_num)
 
-        # Add calibration subfolder if set
-        if self.calibration_subfolder:
-            base_path = base_path / self.calibration_subfolder
-
-        return base_path
+        # Fallback: use source_dir directly
+        return self.source_dir
 
     def _is_container_format(self):
         """Check if file pattern is a container format (.set, .im7, .cine)."""
@@ -251,7 +243,10 @@ class MultiViewCalibrator:
     def detect_grid(self, img):
         """Detect grid points with subpixel refinement for accurate dot centers"""
         if img.ndim == 3:
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            if img.shape[-1] == 1:
+                gray = img[:, :, 0]  # Squeeze singleton channel
+            else:
+                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         else:
             gray = img.copy()
 
@@ -294,7 +289,10 @@ class MultiViewCalibrator:
         try:
             fig, ax = plt.subplots(figsize=(10, 8))
             if img.ndim == 3:
-                img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                if img.shape[-1] == 1:
+                    img = img[:, :, 0]  # Squeeze singleton channel
+                else:
+                    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             
             ax.imshow(img, cmap="gray")
             cols = self.pattern_size[0]
@@ -323,16 +321,16 @@ class MultiViewCalibrator:
             logger.warning(f"Failed to save visualization for {filename}: {e}")
 
     def run(self):
-        logger.info("Starting Multi-View Pinhole Calibration...")
+        logger.info("Starting Multi-View Dotboard Calibration...")
         
         objp_base = self.make_object_points() # Shape: (N, 3)
 
         for cam_num in range(1, self.camera_count + 1):
             logger.info(f"--- Processing Camera {cam_num} ---")
 
-            # Path setup: source / camera_folder / calibration_subfolder
+            # Path setup: calibration_source / camera_folder (via build_calibration_camera_path)
             cam_input_dir = self._get_camera_input_dir(cam_num)
-            cam_output_base = self.base_dir / "calibration" / f"Cam{cam_num}" / "pinhole_planar"
+            cam_output_base = self.base_dir / "calibration" / f"Cam{cam_num}" / "dotboard_planar"
 
             # Find images
             image_files = []
@@ -442,7 +440,7 @@ class MultiViewCalibrator:
                 "dot_spacing_mm": self.dot_spacing_mm
             }
 
-            out_file = cam_output_base / "model" / "pinhole_model.mat"
+            out_file = cam_output_base / "model" / "dotboard_model.mat"
             savemat(str(out_file), model_data)
             logger.info(f"Saved model to: {out_file}")
 
@@ -514,9 +512,9 @@ class MultiViewCalibrator:
 
         objp_base = self.make_object_points()
 
-        # Path setup: source / camera_folder / calibration_subfolder
+        # Path setup: calibration_source / camera_folder (via build_calibration_camera_path)
         cam_input_dir = self._get_camera_input_dir(cam_num)
-        cam_output_base = self.base_dir / "calibration" / f"Cam{cam_num}" / "pinhole_planar"
+        cam_output_base = self.base_dir / "calibration" / f"Cam{cam_num}" / "dotboard_planar"
 
         # Ensure directories exist
         (cam_output_base / "indices").mkdir(parents=True, exist_ok=True)
@@ -656,7 +654,7 @@ class MultiViewCalibrator:
             "dot_spacing_mm": self.dot_spacing_mm
         }
 
-        out_file = cam_output_base / "model" / "pinhole_model.mat"
+        out_file = cam_output_base / "model" / "dotboard_model.mat"
         savemat(str(out_file), model_data)
         logger.info(f"Saved model to: {out_file}")
 
@@ -711,12 +709,11 @@ if __name__ == "__main__":
         base_dir = config.data["paths"]["base_paths"][0]
         camera_nums = config.data["paths"].get("camera_numbers", [1])
         file_pattern = config.data["calibration"]["image_format"]
-        calibration_subfolder = config.data["calibration"].get("subfolder", "")
-        pattern_cols = config.data["calibration"]["pinhole"]["pattern_cols"]
-        pattern_rows = config.data["calibration"]["pinhole"]["pattern_rows"]
-        dot_spacing_mm = config.data["calibration"]["pinhole"]["dot_spacing_mm"]
-        asymmetric = config.data["calibration"]["pinhole"].get("asymmetric", False)
-        enhance_dots = config.data["calibration"]["pinhole"].get("enhance_dots", False)
+        pattern_cols = config.data["calibration"]["dotboard"]["pattern_cols"]
+        pattern_rows = config.data["calibration"]["dotboard"]["pattern_rows"]
+        dot_spacing_mm = config.data["calibration"]["dotboard"]["dot_spacing_mm"]
+        asymmetric = config.data["calibration"]["dotboard"].get("asymmetric", False)
+        enhance_dots = config.data["calibration"]["dotboard"].get("enhance_dots", False)
     else:
         # Apply CLI settings to config.yaml so centralized loaders work correctly
         config = apply_cli_settings_to_config()
@@ -726,7 +723,6 @@ if __name__ == "__main__":
         base_dir = BASE_DIR
         camera_nums = CAMERA_NUMS
         file_pattern = FILE_PATTERN
-        calibration_subfolder = CALIBRATION_SUBFOLDER
         pattern_cols = PATTERN_COLS
         pattern_rows = PATTERN_ROWS
         dot_spacing_mm = DOT_SPACING_MM
@@ -743,7 +739,7 @@ if __name__ == "__main__":
     for camera_num in camera_nums:
         logger.info(f"Processing Camera {camera_num}...")
         try:
-            # Create calibrator using config - all settings are now in config.yaml
+            # Create calibrator using config - calibration_sources paths are used
             calibrator = MultiViewCalibrator(
                 source_dir=source_dir,
                 base_dir=base_dir,
@@ -754,7 +750,6 @@ if __name__ == "__main__":
                 dot_spacing_mm=dot_spacing_mm,
                 asymmetric=asymmetric,
                 enhance_dots=enhance_dots,
-                calibration_subfolder=calibration_subfolder,
                 config=config,
             )
             result = calibrator.process_single_camera(camera_num, save_visualizations=True)

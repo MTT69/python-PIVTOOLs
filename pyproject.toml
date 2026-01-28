@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pivtools"
-version = "0.3.2"
+version = "0.4.2"
 description = "PIVTOOLs - Particle Image Velocimetry Tools with CLI and GUI"
 readme = "README.md"
-license = {file = "LICENSE"}
+license = "BSD-3-Clause"
 requires-python = ">=3.12"
 authors = [
     {name = "Morgan Taylor", email = "m.t.taylor@soton.ac.uk"}
@@ -15,7 +15,6 @@ authors = [
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: BSD License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",

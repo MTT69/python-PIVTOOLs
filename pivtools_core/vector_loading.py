@@ -295,6 +295,30 @@ def find_non_empty_run(
     return pr, run
 
 
+def _stack_velocity_components(pr, ux: np.ndarray, uy: np.ndarray) -> np.ndarray:
+    """
+    Stack velocity components into array, including uz for stereo data if present.
+
+    Returns:
+        Stacked array of shape (3, H, W) for 2D or (4, H, W) for stereo.
+        Components: [ux, uy, b_mask] or [ux, uy, uz, b_mask]
+    """
+    b_mask = (
+        np.asarray(pr.b_mask).astype(ux.dtype, copy=False)
+        if ux.size > 0
+        else np.array([])
+    )
+
+    # Check for uz (stereo data)
+    uz_raw = getattr(pr, 'uz', None)
+    if uz_raw is not None:
+        uz = np.asarray(uz_raw)
+        if uz.size > 0 and uz.shape == ux.shape:
+            return np.stack([ux, uy, uz, b_mask], axis=0)  # (4, H, W) for stereo
+
+    return np.stack([ux, uy, b_mask], axis=0)  # (3, H, W) for 2D
+
+
 def read_mat_contents(
     file_path: str,
     run_index: Optional[int] = None,
@@ -305,8 +329,11 @@ def read_mat_contents(
     Reads piv_result or ensemble_result from a .mat file.
     If multiple runs are present, selects the specified run_index (0-based).
     If run_index is None, selects the first run with valid (non-empty) data.
-    If return_all_runs is True, returns all runs in shape (R, 3, H, W).
-    Otherwise returns shape (1, 3, H, W) for the selected run.
+    If return_all_runs is True, returns all runs in shape (R, 3_or_4, H, W).
+    Otherwise returns shape (1, 3_or_4, H, W) for the selected run.
+
+    For stereo data (with uz), returns 4 components: [ux, uy, uz, b_mask].
+    For 2D data, returns 3 components: [ux, uy, b_mask].
 
     Args:
         file_path: Path to the .mat file
@@ -330,23 +357,16 @@ def read_mat_contents(
                 pr = piv_result[idx]
                 ux = np.asarray(pr.ux)
                 uy = np.asarray(pr.uy)
-                b_mask = (
-                    np.asarray(pr.b_mask).astype(ux.dtype, copy=False)
-                    if ux.size > 0
-                    else np.array([])
-                )
-                
-                print(f"DEBUG: Run {idx}: ux.shape={ux.shape}, uy.shape={uy.shape}, b_mask.shape={b_mask.shape}")
-                
+
                 if ux.size > 0 and uy.size > 0:
-                    stacked = np.stack([ux, uy, b_mask], axis=0)  # (3, H, W)
+                    stacked = _stack_velocity_components(pr, ux, uy)  # (3 or 4, H, W)
                 else:
                     # Empty run - create placeholder with consistent shape if possible
                     stacked = np.array([[], [], []])  # Will be reshaped later
                 all_runs.append(stacked)
             
             try:
-                return np.array(all_runs)  # (R, 3, H, W)
+                return np.array(all_runs)  # (R, 3_or_4, H, W)
             except ValueError as e:
                 # Fallback to object array if shapes are inconsistent
                 # Use manual assignment to avoid numpy broadcasting errors with mixed shapes
@@ -373,8 +393,7 @@ def read_mat_contents(
         pr = piv_result[run_index]
         ux = np.asarray(pr.ux)
         uy = np.asarray(pr.uy)
-        b_mask = np.asarray(pr.b_mask).astype(ux.dtype, copy=False)
-        stacked = np.stack([ux, uy, b_mask], axis=0)[None, ...]  # (1, 3, H, W)
+        stacked = _stack_velocity_components(pr, ux, uy)[None, ...]  # (1, 3_or_4, H, W)
         return stacked
 
     # Single run struct
@@ -385,14 +404,8 @@ def read_mat_contents(
     pr = piv_result
     ux = np.asarray(pr.ux)
     uy = np.asarray(pr.uy)
-    b_mask = np.asarray(pr.b_mask).astype(ux.dtype, copy=False)
-
-    if return_all_runs:
-        stacked = np.stack([ux, uy, b_mask], axis=0)[None, ...]  # (1, 3, H, W)
-        return stacked
-    else:
-        stacked = np.stack([ux, uy, b_mask], axis=0)[None, ...]  # (1, 3, H, W)
-        return stacked
+    stacked = _stack_velocity_components(pr, ux, uy)[None, ...]  # (1, 3_or_4, H, W)
+    return stacked
 
 
 def load_vectors_from_directory(
@@ -401,7 +414,7 @@ def load_vectors_from_directory(
     """
     Load .mat vector files for requested runs.
     - runs: list of 1-based run numbers to include; if None or empty, include all runs in the files.
-    Returns Dask array with shape (N_existing, R, 3, H, W).
+    Returns Dask array with shape (N_existing, R, C, H, W) where C=3 for 2D or C=4 for stereo.
     """
     data_dir = Path(data_dir)
     fmt = config.vector_format  # e.g. "B%05d.mat"
@@ -444,7 +457,7 @@ def load_vectors_from_directory(
     if first_arr is None:
         raise FileNotFoundError(f"Could not read any valid vector files in {data_dir}")
 
-    shape, dtype = first_arr.shape, first_arr.dtype  # (R, 3, H, W), dtype
+    shape, dtype = first_arr.shape, first_arr.dtype  # (R, C, H, W) where C=3 or 4
 
     delayed_items = [
         dask.delayed(read_mat_contents)(

@@ -26,11 +26,10 @@ pivtools_cli/lib/*.dll
 pivtools_cli/lib/*.pdb
 pivtools_cli/lib/*.lib
 pivtools_cli/lib/*.obj
-pivtools_gui/static/*
+tests/reynolds_stress_test/*
 logs/*
-manual_tools/stereo_ensemble_3d/debug_output/
-manual_tools/stereo_ensemble_3d/pipeline_viz_500/
-manual_tools/stereo_ensemble_3d/pipeline_viz_2000_3x/
+manual_tools/
+pypiv.log
 
 # IDE
 .vscode/
@@ -42,3 +41,6 @@ manual_tools/stereo_ensemble_3d/pipeline_viz_2000_3x/
 # OS
 .DS_Store
 Thumbs.db
+
+# Large generated ground truth data
+/tests/ground_truth/

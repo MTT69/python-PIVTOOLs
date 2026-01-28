@@ -58,7 +58,7 @@ MIN_CORNERS = 6             # Minimum number of corners required to accept an im
 
 # USE_CONFIG_DIRECTLY: If True, skip updating config.yaml with above parameters
 # and load calibration settings directly from the existing config.yaml
-USE_CONFIG_DIRECTLY = False
+USE_CONFIG_DIRECTLY = True
 
 # ===================================================================
 
@@ -143,7 +143,6 @@ class ChArUcoCalibrator:
         aruco_dict="DICT_4X4_1000",
         min_corners=6,
         dt=1.0,
-        calibration_subfolder="",
         calibration_input_path=None,
         config=None,
     ):
@@ -158,7 +157,6 @@ class ChArUcoCalibrator:
         self.aruco_dict_name = aruco_dict
         self.min_corners = min_corners
         self.dt = dt
-        self.calibration_subfolder = calibration_subfolder
         self.calibration_input_path = Path(calibration_input_path) if calibration_input_path else None
         self._config = config
 
@@ -200,25 +198,19 @@ class ChArUcoCalibrator:
     def _get_camera_input_dir(self, cam_num: int) -> Path:
         """Get the input directory for calibration images.
 
-        Path structure: source / camera_folder / calibration_subfolder
+        Uses build_calibration_camera_path for path resolution from
+        calibration_sources config.
         """
         # If explicit calibration_input_path is provided, use it
         if self.calibration_input_path:
             return self.calibration_input_path
 
-        base_path = self.source_dir
-
-        # Get camera folder from config
         if self._config is not None:
-            camera_folder = self._config.get_calibration_camera_folder(cam_num)
-            if camera_folder:
-                base_path = base_path / camera_folder
+            from pivtools_core.image_handling.path_utils import build_calibration_camera_path
+            return build_calibration_camera_path(self._config, source_path_idx=0, camera=cam_num)
 
-        # Add calibration subfolder if set
-        if self.calibration_subfolder:
-            base_path = base_path / self.calibration_subfolder
-
-        return base_path
+        # Fallback: use source_dir directly
+        return self.source_dir
 
     def _is_container_format(self) -> bool:
         """Check if file pattern is a container format (.set, .im7, .cine)."""
@@ -299,7 +291,10 @@ class ChArUcoCalibrator:
     ) -> Tuple[bool, Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]]:
         """Detect ChArUco corners in an image."""
         if len(image.shape) == 3:
-            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            if image.shape[-1] == 1:
+                gray = image[:, :, 0]  # Squeeze singleton channel
+            else:
+                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         else:
             gray = image
 
@@ -801,7 +796,6 @@ def main():
         base_dir = config.data["paths"]["base_paths"][0]
         camera_nums = config.data["paths"].get("camera_numbers", [1])
         file_pattern = config.data["calibration"]["image_format"]
-        calibration_subfolder = config.data["calibration"].get("subfolder", "")
         squares_h = config.data["calibration"]["charuco"]["squares_h"]
         squares_v = config.data["calibration"]["charuco"]["squares_v"]
         square_size_m = config.data["calibration"]["charuco"]["square_size"]
@@ -817,7 +811,6 @@ def main():
         base_dir = BASE_DIR
         camera_nums = CAMERA_NUMS
         file_pattern = FILE_PATTERN
-        calibration_subfolder = CALIBRATION_SUBFOLDER
         squares_h = SQUARES_H
         squares_v = SQUARES_V
         square_size_m = SQUARE_SIZE_M
@@ -835,7 +828,7 @@ def main():
     for camera_num in camera_nums:
         logger.info(f"Processing Camera {camera_num}...")
         try:
-            # Create calibrator using config - all settings are now in config.yaml
+            # Create calibrator using config - calibration_sources paths are used
             calibrator = ChArUcoCalibrator(
                 source_dir=source_dir,
                 base_dir=base_dir,
@@ -847,7 +840,6 @@ def main():
                 marker_ratio=marker_ratio,
                 aruco_dict=aruco_dict,
                 min_corners=min_corners,
-                calibration_subfolder=calibration_subfolder,
                 config=config,
             )
             result = calibrator.process_camera(camera_num, save_visualizations=True)

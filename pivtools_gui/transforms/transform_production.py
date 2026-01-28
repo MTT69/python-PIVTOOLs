@@ -62,12 +62,19 @@ logger = logging.getLogger(__name__)
 
 
 def get_data_dir(base_dir: Path, num_frame_pairs: int, camera: int,
-                 type_name: str, use_merged: bool) -> Path:
+                 type_name: str, use_merged: bool, use_stereo: bool = False,
+                 stereo_camera_pair: Optional[tuple] = None) -> Path:
     """Build path to calibrated PIV data directory."""
-    if use_merged:
-        return base_dir / "calibrated_piv" / str(num_frame_pairs) / "merged" / f"Cam{camera}" / type_name
+    num_str = str(num_frame_pairs)
+    if use_stereo:
+        if stereo_camera_pair is None:
+            raise ValueError("stereo_camera_pair required when use_stereo=True")
+        cam_pair_str = f"Cam{stereo_camera_pair[0]}_Cam{stereo_camera_pair[1]}"
+        return base_dir / "stereo_calibrated" / num_str / cam_pair_str / type_name
+    elif use_merged:
+        return base_dir / "calibrated_piv" / num_str / "merged" / f"Cam{camera}" / type_name
     else:
-        return base_dir / "calibrated_piv" / str(num_frame_pairs) / f"Cam{camera}" / type_name
+        return base_dir / "calibrated_piv" / num_str / f"Cam{camera}" / type_name
 
 
 # ===================== PROCESSOR CLASS =====================
@@ -92,6 +99,8 @@ class TransformProcessor:
         camera_transforms: Dict[int, List[str]],
         type_name: str = "instantaneous",
         use_merged: bool = False,
+        use_stereo: bool = False,
+        stereo_camera_pair: Optional[tuple] = None,
         config: Optional[Config] = None,
     ):
         """
@@ -107,12 +116,18 @@ class TransformProcessor:
             Data type ('instantaneous', 'ensemble')
         use_merged : bool
             Whether to transform merged data
+        use_stereo : bool
+            Whether to transform stereo data
+        stereo_camera_pair : tuple, optional
+            Camera pair (cam1, cam2) for stereo paths
         config : Config, optional
             Config object for accessing settings
         """
         self.base_dir = Path(base_dir)
         self.type_name = type_name
         self.use_merged = use_merged
+        self.use_stereo = use_stereo
+        self.stereo_camera_pair = stereo_camera_pair
         self._config = config or get_config()
 
         # Simplify transforms before storing
@@ -172,6 +187,8 @@ class TransformProcessor:
                 camera,
                 self.type_name,
                 self.use_merged,
+                self.use_stereo,
+                self.stereo_camera_pair,
             )
 
             if not data_dir.exists():

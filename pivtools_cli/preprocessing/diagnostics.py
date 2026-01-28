@@ -136,6 +136,35 @@ def save_filter_diagnostics(
     logging.info(f"Saved filter diagnostic images to {filters_dir}")
 
 
+def _compute_image_stats(image: np.ndarray) -> dict:
+    """
+    Compute intensity statistics for an image.
+
+    Parameters
+    ----------
+    image : np.ndarray
+        Image array (H, W)
+
+    Returns
+    -------
+    dict
+        Statistics: mean, std, min, max, histogram_counts, histogram_bins
+    """
+    img = image.astype(np.float32)
+    # Compute histogram with 256 bins for intensity analysis
+    hist_counts, hist_bins = np.histogram(img.ravel(), bins=256)
+
+    return {
+        'mean': float(img.mean()),
+        'std': float(img.std()),
+        'min': float(img.min()),
+        'max': float(img.max()),
+        'shape': list(img.shape),
+        'histogram_counts': hist_counts.tolist(),
+        'histogram_bins': hist_bins.tolist(),
+    }
+
+
 def save_warped_diagnostics(
     image_a_warped: np.ndarray,
     image_b_warped: np.ndarray,
@@ -146,10 +175,10 @@ def save_warped_diagnostics(
     image_b_original: Optional[np.ndarray] = None,
 ) -> None:
     """
-    Save warped image pair for a pass.
+    Save warped image pair for a pass with intensity statistics.
 
     For pass 1 only: also saves the original (post-filter, pre-warp) images once.
-    For all passes: saves the warped images.
+    For all passes: saves the warped images and intensity statistics JSON.
 
     Only saves the first image pair of each pass.
 
@@ -170,11 +199,27 @@ def save_warped_diagnostics(
     image_b_original : Optional[np.ndarray]
         Original (pre-warp) frame B, shape (H, W). Only saved for pass 1.
     """
+    import json
+
     if pair_idx != 0:
         return
 
     filters_dir = output_dir / "filters"
     filters_dir.mkdir(parents=True, exist_ok=True)
+
+    # Check if diagnostics for this pass already saved by another worker
+    # (race condition with multiple Dask workers)
+    stats_file = filters_dir / f"pass{pass_idx + 1}_intensity_stats.json"
+    if stats_file.exists():
+        logging.debug(f"Pass {pass_idx + 1} diagnostics already saved by another worker, skipping")
+        return
+
+    # Collect stats for JSON output
+    pass_stats = {
+        'pass_idx': pass_idx + 1,
+        'frame_A_warped': _compute_image_stats(image_a_warped),
+        'frame_B_warped': _compute_image_stats(image_b_warped),
+    }
 
     # Save original (post-filter, pre-warp) images only for pass 1
     # These are the same for all passes, so only need to save once
@@ -183,10 +228,12 @@ def save_warped_diagnostics(
             save_diagnostic_image(
                 image_a_original, filters_dir, "filtered_A.tif"
             )
+            pass_stats['frame_A_original'] = _compute_image_stats(image_a_original)
         if image_b_original is not None:
             save_diagnostic_image(
                 image_b_original, filters_dir, "filtered_B.tif"
             )
+            pass_stats['frame_B_original'] = _compute_image_stats(image_b_original)
 
     # Save warped images for each pass
     save_diagnostic_image(
@@ -196,6 +243,17 @@ def save_warped_diagnostics(
         image_b_warped, filters_dir, f"pass{pass_idx + 1}_B_warped.tif"
     )
 
+    # Save intensity statistics as JSON for quantitative analysis
+    with open(stats_file, 'w') as f:
+        json.dump(pass_stats, f, indent=2)
+
     logging.info(
         f"Saved warped diagnostic images for pass {pass_idx + 1} to {filters_dir}"
+    )
+    logging.info(
+        f"Pass {pass_idx + 1} intensity stats: "
+        f"A_mean={pass_stats['frame_A_warped']['mean']:.2f}, "
+        f"A_std={pass_stats['frame_A_warped']['std']:.2f}, "
+        f"B_mean={pass_stats['frame_B_warped']['mean']:.2f}, "
+        f"B_std={pass_stats['frame_B_warped']['std']:.2f}"
     )

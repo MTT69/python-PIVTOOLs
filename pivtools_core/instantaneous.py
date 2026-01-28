@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import List, Optional
 
 import dask.array as da
-from dask.distributed import Client
+from dask.distributed import Client, as_completed
 
 from pivtools_core.config import Config
 from pivtools_core.validation import (
@@ -68,6 +68,13 @@ def signal_handler(signum, frame):
     logger.info(f"Received signal {sig_name}, initiating clean shutdown...")
     print(f"\n[CANCELLED] Received signal {sig_name}, shutting down...", flush=True)
 
+    # Suppress noisy distributed logs during teardown
+    import logging as _logging
+    for name in ["distributed.worker", "distributed.scheduler", "distributed.nanny",
+                 "distributed.core", "distributed.comm", "distributed.comm.tcp",
+                 "distributed.batched", "tornado.application", "tornado.general"]:
+        _logging.getLogger(name).setLevel(_logging.CRITICAL)
+
     # Close Dask client and cluster if they exist
     try:
         if _client is not None:
@@ -81,6 +88,10 @@ def signal_handler(signum, frame):
             _client.close(timeout=5)
     except Exception as e:
         logger.warning(f"Error closing client: {e}")
+
+    # Small delay to let workers finish cleanly
+    import time as _time
+    _time.sleep(0.5)
 
     try:
         if _cluster is not None:
@@ -150,7 +161,7 @@ def run_instantaneous_piv(
     batch_size = config.batch_size
     logger.info(f"Rechunking to batch_size={batch_size}...")
     images = rechunk_for_batched_processing(images, batch_size)
-    logger.info(f"  Rechunked: chunks={images.chunks[0]}")
+    logger.info(f"  Rechunked: {len(images.chunks[0])} chunks of size {images.chunks[0][0]}")
 
     # 4. Apply all filters via map_blocks
     logger.info("Creating filter pipeline...")
@@ -192,11 +203,25 @@ def run_instantaneous_piv(
         )
         correlation_futures.append(future)
 
-    # 7. Gather results
-    logger.info("Gathering results...")
+    # 7. Gather results with progress tracking
+    num_futures = len(correlation_futures)
     all_saved_paths = []
-    for batch_paths in client.gather(correlation_futures):
+    gather_start = time.time()
+
+    for i, future in enumerate(as_completed(correlation_futures)):
+        batch_paths = future.result()
         all_saved_paths.extend(batch_paths)
+
+        # Progress update every 10% (minimum 1 update)
+        update_interval = max(1, num_futures // 10)
+        if (i + 1) % update_interval == 0 or i == num_futures - 1:
+            elapsed = time.time() - gather_start
+            rate = (i + 1) / elapsed if elapsed > 0 else 0
+            remaining = (num_futures - i - 1) / rate if rate > 0 else 0
+            logger.info(
+                f"Progress: {i+1}/{num_futures} batches "
+                f"({100*(i+1)/num_futures:.0f}%) - ETA: {remaining:.0f}s"
+            )
 
     # Save coordinates
     logger.info("Saving coordinates...")
@@ -253,6 +278,10 @@ def main():
         for w, meta in info["workers"].items():
             logger.info(f"Worker {w}: pid={meta.get('pid')}, host={meta.get('host')}")
 
+        # Generate run timestamp for config traceability
+        from datetime import datetime
+        run_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
         # Process each path and camera
         camera_numbers = config.camera_numbers
         active_path_indices = config.active_paths
@@ -270,6 +299,10 @@ def main():
 
             source_path = config.source_paths[path_idx]
             base_path = config.base_paths[path_idx]
+
+            # Save timestamped config copy for traceability
+            config_copy_path = config.save_timestamped_copy(base_path, timestamp=run_timestamp)
+            logger.info(f"Config saved to: {config_copy_path}")
 
             logger.info("")
             logger.info(f"PATH SET {path_set_num} of {len(active_path_indices)}")
@@ -291,7 +324,7 @@ def main():
                 vector_masks = None
                 if config.masking_enabled and mask is not None:
                     logger.info("Computing vector masks...")
-                    vector_masks = compute_vector_mask(mask, config)
+                    vector_masks = compute_vector_mask(mask, config, ensemble=False)
                     logger.info(f"  Vector masks: {len(vector_masks)} passes")
 
                 # Get output path
@@ -300,6 +333,7 @@ def main():
                     camera_num,
                     use_uncalibrated=True,
                     base_path_idx=path_idx,
+                    piv_type="instantaneous",
                 )
 
                 # Run PIV
@@ -327,9 +361,8 @@ def main():
                 logger.info(f"INSTANTANEOUS PIV COMPLETE: {len(saved_paths)} results saved")
                 logger.info("=" * 60)
 
-                # Clean up
+                # Clean up (local only - gc.collect on workers causes SIGSEGV with FFTW)
                 gc.collect()
-                client.run(gc.collect)
 
     except Exception as e:
         import traceback
@@ -337,18 +370,40 @@ def main():
         traceback.print_exc()
 
     finally:
-        # Clean shutdown
+        # Clean shutdown - suppress noisy distributed logs during teardown
+        import logging as _logging
+        import sys as _sys
+        import io as _io
+
+        for name in ["distributed.worker", "distributed.scheduler", "distributed.nanny",
+                     "distributed.core", "distributed.comm", "distributed.comm.tcp",
+                     "distributed.batched", "tornado.application", "tornado.general"]:
+            _logging.getLogger(name).setLevel(_logging.CRITICAL)
+
+        # Suppress stderr during cluster shutdown to hide Tornado tracebacks
+        _old_stderr = _sys.stderr
+        _sys.stderr = _io.StringIO()
+
         try:
             if _client is not None:
-                _client.close()
+                _client.close(timeout=5)
         except Exception as e:
-            logger.warning(f"Error closing client: {e}")
+            pass  # Suppress errors during shutdown
+
+        # Small delay to let workers finish cleanly
+        time.sleep(0.5)
 
         try:
             if _cluster is not None:
-                _cluster.close()
+                _cluster.close(timeout=5)
         except Exception as e:
-            logger.warning(f"Error closing cluster: {e}")
+            pass  # Suppress errors during shutdown
+
+        # Wait a bit more for async cleanup to complete
+        time.sleep(0.2)
+
+        # Restore stderr
+        _sys.stderr = _old_stderr
 
         end_time = time.time()
         elapsed = end_time - start_time

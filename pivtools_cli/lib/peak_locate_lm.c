@@ -524,13 +524,14 @@ static void lm_gauss6_fit(const float *xcorr, const int *N, float *peak_loc, flo
 	
 	peak_loc[0] = i0;
 	peak_loc[1] = j0;
-	/* WARNING: Output parameters are swapped! sig[0]=sy, sig[1]=sx
-	 * This is confusing and should be refactored. The 6-DOF model uses
-	 * inverse covariance parameterization which differs from standard
-	 * Gaussian parameterization used in 4-DOF and 5-DOF models. */
-	sig[0] = sy;
-	sig[1] = sx;
-	sig[2] = -(sxy * (sx * sy - sxy * sxy));
+	/* Output convention (consistent with 4-DOF and 5-DOF):
+	 * sig[0] = variance in row (i) direction
+	 * sig[1] = variance in col (j) direction
+	 * sig[2] = covariance term (sxy)
+	 * Note: 6-DOF uses inverse covariance parameterization (variances, not sigmas) */
+	sig[0] = sx;  /* Row direction variance */
+	sig[1] = sy;  /* Col direction variance */
+	sig[2] = sxy; /* Covariance term */
 	
 	if(fitval) {
 		for(ii = 0; ii < N[0]; ++ii) {
@@ -570,8 +571,8 @@ void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPe
 		fPeakHeight = 0;
 		for(i = N[0]/8; i < N[0]*7/8; ++i) {
 			for(j = N[1]/8; j < N[1]*7/8; ++j) {
-				if(xcorr_copy[SUB2IND_2D(i, j, N[0])] > fPeakHeight) {
-					fPeakHeight = xcorr_copy[SUB2IND_2D(i, j, N[0])];
+				if(xcorr_copy[SUB2IND_2D(i, j, N[1])] > fPeakHeight) {
+					fPeakHeight = xcorr_copy[SUB2IND_2D(i, j, N[1])];
 					i0 = i;
 					j0 = j;
 				}
@@ -581,24 +582,24 @@ void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPe
 		if(fPeakHeight <= 0 ||
 		   i0 < (PKSIZE_X-1)/2 || i0 >= N[0]-(PKSIZE_X-1)/2  ||
 		   j0 < (PKSIZE_Y-1)/2 || j0 >= N[1]-(PKSIZE_Y-1)/2 ||
-		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0-1, j0, N[0])] ||
-		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0+1, j0, N[0])] ||
-		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0, j0-1, N[0])] ||
-		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0, j0+1, N[0])])
+		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0-1, j0, N[1])] ||
+		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0+1, j0, N[1])] ||
+		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0, j0-1, N[1])] ||
+		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0, j0+1, N[1])])
 		{
-			peak_loc[SUB2IND_2D(0, iPeak, 3)] = NAN;
-			peak_loc[SUB2IND_2D(1, iPeak, 3)] = NAN;
-			peak_loc[SUB2IND_2D(2, iPeak, 3)] = 0;
-			std_dev[SUB2IND_2D(0, iPeak, 3)] = 0;
-			std_dev[SUB2IND_2D(1, iPeak, 3)] = 0;
-			std_dev[SUB2IND_2D(2, iPeak, 3)] = 0;
+			peak_loc[SUB2IND_2D(0, iPeak, nPeaks)] = NAN;
+			peak_loc[SUB2IND_2D(1, iPeak, nPeaks)] = NAN;
+			peak_loc[SUB2IND_2D(2, iPeak, nPeaks)] = 0;
+			std_dev[SUB2IND_2D(0, iPeak, nPeaks)] = 0;
+			std_dev[SUB2IND_2D(1, iPeak, nPeaks)] = 0;
+			std_dev[SUB2IND_2D(2, iPeak, nPeaks)] = 0;
 			continue;
 		}
 		
 		/* Extract subwindow */
 		for(i = 0; i < PKSIZE_X; ++i) {
 			for(j = 0; j < PKSIZE_Y; ++j) {
-				subxcorr[i * PKSIZE_Y + j] = xcorr_copy[SUB2IND_2D(i0 + i - (PKSIZE_X-1)/2, j0 + j - (PKSIZE_Y-1)/2, N[0])];
+				subxcorr[i * PKSIZE_Y + j] = xcorr_copy[SUB2IND_2D(i0 + i - (PKSIZE_X-1)/2, j0 + j - (PKSIZE_Y-1)/2, N[1])];
 			}
 		}
 		
@@ -650,17 +651,17 @@ void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPe
 		}
 		
 		/* Save results */
-		peak_loc[SUB2IND_2D(0, iPeak, 3)] = peak[0] + i0;
-		peak_loc[SUB2IND_2D(1, iPeak, 3)] = peak[1] + j0;
-		peak_loc[SUB2IND_2D(2, iPeak, 3)] = fPeakHeight;
-		std_dev[SUB2IND_2D(0, iPeak, 3)] = sig[0];
-		std_dev[SUB2IND_2D(1, iPeak, 3)] = sig[1];
-		std_dev[SUB2IND_2D(2, iPeak, 3)] = sig[2];
+		peak_loc[SUB2IND_2D(0, iPeak, nPeaks)] = peak[0] + i0;
+		peak_loc[SUB2IND_2D(1, iPeak, nPeaks)] = peak[1] + j0;
+		peak_loc[SUB2IND_2D(2, iPeak, nPeaks)] = fPeakHeight;
+		std_dev[SUB2IND_2D(0, iPeak, nPeaks)] = sig[0];
+		std_dev[SUB2IND_2D(1, iPeak, nPeaks)] = sig[1];
+		std_dev[SUB2IND_2D(2, iPeak, nPeaks)] = sig[2];
 		
 		/* Subtract fit from correlation plane */
 		for(i = 0; i < PKSIZE_X; ++i) {
 			for(j = 0; j < PKSIZE_Y; ++j) {
-				idx = SUB2IND_2D(i0 + i - (PKSIZE_X-1)/2, j0 + j - (PKSIZE_Y-1)/2, N[0]);
+				idx = SUB2IND_2D(i0 + i - (PKSIZE_X-1)/2, j0 + j - (PKSIZE_Y-1)/2, N[1]);
 				xcorr_copy[idx] = MAX(0, xcorr_copy[idx] - fitval[i * PKSIZE_Y + j]);
 			}
 		}

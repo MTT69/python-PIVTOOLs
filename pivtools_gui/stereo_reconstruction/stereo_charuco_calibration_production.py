@@ -51,7 +51,7 @@ NUM_CALIBRATION_IMAGES = None
 
 # USE_CONFIG_DIRECTLY: If True, skip updating config.yaml with above parameters
 # and load calibration settings directly from the existing config.yaml
-USE_CONFIG_DIRECTLY = False
+USE_CONFIG_DIRECTLY = True
 
 # ===================================================================
 
@@ -189,7 +189,6 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
         base_dir: Optional[Union[str, Path]] = None,
         camera_pair: Optional[List[int]] = None,
         file_pattern: Optional[str] = None,
-        calibration_subfolder: str = "",
         camera_subfolders: Optional[List[str]] = None,
         source_path_idx: int = 0,
         dt: float = 1.0,
@@ -203,6 +202,9 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
             marker_ratio = charuco_cfg.get('marker_ratio', marker_ratio)
             aruco_dict = charuco_cfg.get('aruco_dict', aruco_dict)
             min_corners = charuco_cfg.get('min_corners', min_corners)
+            # Get dt from stereo_charuco config (not charuco_calibration)
+            stereo_cfg = config.stereo_charuco_calibration
+            dt = stereo_cfg.get('dt', dt)
 
         self.squares_h = squares_h
         self.squares_v = squares_v
@@ -217,7 +219,6 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
             base_dir=base_dir,
             camera_pair=camera_pair,
             file_pattern=file_pattern,
-            calibration_subfolder=calibration_subfolder,
             camera_subfolders=camera_subfolders,
             source_path_idx=source_path_idx,
             dt=dt,
@@ -267,7 +268,10 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
         """
         # Convert to grayscale if needed
         if image.ndim == 3:
-            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            if image.shape[-1] == 1:
+                gray = image[:, :, 0]  # Squeeze singleton channel
+            else:
+                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         else:
             gray = image
 

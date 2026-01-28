@@ -1,6 +1,8 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+#include <math.h>  /* For NAN macro - include before our fallback definition */
+
 /**** useful macros ****/
 /* Row-major (C-contiguous) indexing for 2D arrays
  * For array[i,j] with shape [M, N]:

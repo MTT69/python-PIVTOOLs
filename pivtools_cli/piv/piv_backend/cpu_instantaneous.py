@@ -1,4 +1,6 @@
+import atexit
 import ctypes
+import gc
 import logging
 import os
 import sys
@@ -26,6 +28,10 @@ import matplotlib
 matplotlib.use("Agg") 
 from matplotlib import pyplot as plt
 class InstantaneousCorrelatorCPU(CrossCorrelator):
+    # Class variable to track if FFTW cleanup has been registered
+    _cleanup_registered = False
+    _lib_for_cleanup = None
+
     def __init__(self, config: Config, precomputed_cache: Optional[dict] = None) -> None:
         super().__init__()
         # Use platform-appropriate library extension
@@ -37,6 +43,11 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         if not os.path.isfile(lib_path):
             raise FileNotFoundError(f"Required library file not found: {lib_path}")
         self.lib = ctypes.CDLL(lib_path)
+
+        # Register FFTW cleanup to run at interpreter exit (once per process)
+        if not InstantaneousCorrelatorCPU._cleanup_registered:
+            self._register_fftw_cleanup()
+            InstantaneousCorrelatorCPU._cleanup_registered = True
         self.lib.bulkxcorr2d.restype = ctypes.c_ubyte
         self.delta_ab_pred = None
         self.delta_ab_old = None
@@ -80,9 +91,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             np.ctypeslib.ndpointer(
                 dtype=np.float32, flags="C_CONTIGUOUS"
             ),  # fSxy (output)
-            np.ctypeslib.ndpointer(
-                dtype=np.float32, flags="C_CONTIGUOUS"
-            ),  # fCorrelPlane_Out (output)
+            ctypes.c_void_p,  # fCorrelPlane_Out (nullable - use c_void_p for instantaneous NULL)
         ]
         # Window weights should be C-contiguous with shape (win_height, win_width)
         self.win_weights = [
@@ -105,9 +114,33 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         # Store pass times for profiling
         self.pass_times = []
 
+    def _register_fftw_cleanup(self) -> None:
+        """Register FFTW cleanup to run at interpreter exit.
+
+        This prevents segfaults during garbage collection by ensuring
+        FFTW threads and wisdom are properly cleaned up before the
+        library is unloaded.
+        """
+        # Store library reference at class level to keep it alive
+        InstantaneousCorrelatorCPU._lib_for_cleanup = self.lib
+
+        # Declare the cleanup function signature
+        if hasattr(self.lib, 'fftw_library_cleanup'):
+            self.lib.fftw_library_cleanup.argtypes = []
+            self.lib.fftw_library_cleanup.restype = None
+
+            @atexit.register
+            def _cleanup_fftw():
+                lib = InstantaneousCorrelatorCPU._lib_for_cleanup
+                if lib is not None:
+                    try:
+                        lib.fftw_library_cleanup()
+                    except Exception:
+                        pass  # Ignore errors during cleanup
+
     def _load_precomputed_cache(self, cache: dict) -> None:
         """Load precomputed cache data to avoid redundant computation.
-        
+
         :param cache: Dictionary containing precomputed cache data
         :type cache: dict
         """
@@ -194,7 +227,8 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         x_coords = np.arange(self.W, dtype=np.float32)
         y_mesh, x_mesh = np.meshgrid(y_coords, x_coords, indexing="ij")
         self.im_mesh = np.stack([y_mesh, x_mesh], axis=-1)
-        logging.info(f"About to start correlation passes for batch of {N} image pairs")
+        logging.debug(f"Processing batch of {N} image pairs")
+
         try:
                 # Convert images to C-contiguous (row-major) format
             #images_a = images[:, 0, :, :].astype(np.float32, copy=False)
@@ -210,8 +244,12 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             batch_results = [PIVResult() for _ in range(N)]
 
             for pass_idx, win_size in enumerate(config.window_sizes):
-               
+
                 pass_start = time.perf_counter()
+                logging.debug(f"\n{'='*60}")
+                logging.debug(f"PASS {pass_idx + 1} of {len(config.window_sizes)} (window_size={win_size})")
+                logging.debug(f"{'='*60}")
+
                 images_a_prime, images_b_prime, self.delta_ab_pred = (
                         self._predictor_corrector_batch(
                             pass_idx,
@@ -220,7 +258,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                             config=config
                         )
                     )
-                #logging.info(f"Predictor-corrector completed for pass {pass_idx + 1}")
+
                 (
                         win_size_arr,
                         n_windows,
@@ -275,6 +313,9 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     logging.error(f"    Exception type: {type(e).__name__}")
                     logging.error(traceback.format_exc())
                     raise
+                # Free warped images immediately after C library call to reduce peak memory
+                del images_a_prime, images_b_prime, image_a_prime_c, image_b_prime_c
+
                 n_win_y = len(self.win_ctrs_y[pass_idx])
                 n_win_x = len(self.win_ctrs_x[pass_idx])
                 #plot_corr_planes(
@@ -298,17 +339,29 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     raise RuntimeError(f"bulkxcorr2d failed with error {error_code}: {error_msg}")
                 n_win_y = int(n_windows[0])
                 n_win_x = int(n_windows[1])
-                #logging.info(f"pk_loc_x: {pk_loc_x.shape} {pk_loc_x} max={np.nanmax(pk_loc_x)} min={np.nanmin(pk_loc_x)}")
-                #logging.info(f"pk_loc_y: {pk_loc_y.shape}{pk_loc_y} max={np.nanmax(pk_loc_y)} min={np.nanmin(pk_loc_y)}")
-                mask_bool = b_mask.astype(bool)
+
                 win_height, win_width = win_size_arr
+
+                # Large displacement threshold: more lenient for first pass (no predictor yet),
+                # stricter for subsequent passes where predictor-corrector reduces residuals
+                if pass_idx == 0:
+                    # First pass: use win/2 threshold to allow larger displacements
+                    thresh_x = win_width / 2.0
+                    thresh_y = win_height / 2.0
+                else:
+                    # Subsequent passes: use win/4 threshold (predictor reduces residuals)
+                    thresh_x = win_width / 4.0
+                    thresh_y = win_height / 4.0
+
                 mask_batch = np.broadcast_to(b_mask[None, :, :], (N, n_win_y, n_win_x))
                 mask_bool_batch = mask_batch.astype(bool)
-                large_disp_mask = (np.abs(pk_loc_x) >  win_width / 4.0) | (np.abs(pk_loc_y) > win_height / 4.0)
-                mask_for_peaks = mask_bool_batch[:, None, :, :]
+                large_disp_mask = (np.abs(pk_loc_x) > thresh_x) | (np.abs(pk_loc_y) > thresh_y)
+                # Broadcast mask to match pk_loc_x shape (N, n_peaks, n_win_y, n_win_x)
+                mask_for_peaks = np.broadcast_to(mask_bool_batch[:, None, :, :], pk_loc_x.shape)
                 invalid_peaks = (
                     mask_for_peaks | large_disp_mask
                 )
+
                 pk_loc_x[invalid_peaks] = np.nan
                 pk_loc_y[invalid_peaks] = np.nan
                 pk_height[invalid_peaks] = np.nan
@@ -319,8 +372,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 dy_exp = dy[:, None, :, :]
                 pk_loc_x += dx_exp
                 pk_loc_y += dy_exp
-                #logging.info(f"{pk_loc_x}")
-                #logging.info(f"pk_loc_x after dx addition: min={np.nanmin(pk_loc_x)}, max={np.nanmax(pk_loc_x)}")
+
                 primary_idx = np.zeros((N, 1, n_win_y, n_win_x), dtype=np.intp)
 
                 ux_mat = np.take_along_axis(pk_loc_x, primary_idx, axis=1)[
@@ -328,28 +380,29 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 ]  # (N, ny, nx)
                 uy_mat = np.take_along_axis(pk_loc_y, primary_idx, axis=1)[:, 0, :, :]
 
-
                 nan_mask = (
                     np.isnan(ux_mat)
                     | np.isnan(uy_mat)
                     | mask_bool_batch
                 )
+
                 ux_mat[nan_mask] = 0.0
                 uy_mat[nan_mask] = 0.0
-                #logging.info(f"av ux:{np.max(ux_mat)} uy:{np.max(uy_mat)}")
                 peak_choice = np.ones((N, n_win_y, n_win_x), dtype=np.intp)
 
+                outliers_detected_count = 0
                 if config.outlier_detection_enabled:
                     outlier_methods = config.outlier_detection_methods
                     if outlier_methods:
                         for im_idx in range(N):
                             primary_peak_mag_0 = pk_height[im_idx, 0]
                             outlier_mask = apply_outlier_detection(
-                ux_mat[im_idx],
-                uy_mat[im_idx],
-                outlier_methods,
-                peak_mag=primary_peak_mag_0,
-            )
+                                ux_mat[im_idx],
+                                uy_mat[im_idx],
+                                outlier_methods,
+                                peak_mag=primary_peak_mag_0,
+                            )
+                            outliers_detected_count += outlier_mask.sum()
                             nan_mask[im_idx] |= outlier_mask
 
                 if config.secondary_peak:
@@ -404,6 +457,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
 
                 is_final_pass = (pass_idx == len(config.window_sizes) - 1)
 
+                # Apply infilling to outlier/invalid vectors
                 for im_idx in range(N):
                     if np.isnan(ux_mat[im_idx]).any() or np.isnan(uy_mat[im_idx]).any():
                         infill_mask = np.isnan(ux_mat[im_idx]) | np.isnan(uy_mat[im_idx])
@@ -412,6 +466,10 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                             if is_final_pass
                             else config.infilling_mid_pass
                         )
+
+                        if infill_mask.sum() == infill_mask.size:
+                            logging.error(f"CRITICAL: 100% of data needs infilling for image {im_idx}!")
+
                         if cfg.get("enabled", True):
                             ux_mat[im_idx], uy_mat[im_idx] = apply_infilling(
                                 ux_mat[im_idx],
@@ -420,16 +478,27 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                                 cfg,
                             )
 
+                # Pass summary - only warn if >20% invalid vectors (excluding masked regions)
+                mask_count = mask_bool_batch.sum()
+                unmasked_total = ux_mat.size - mask_count
+                true_invalid_count = nan_mask.sum() - mask_count  # nan_mask includes mask, subtract it
+                invalid_rate = true_invalid_count / unmasked_total if unmasked_total > 0 else 0
+                if invalid_rate > 0.20:
+                    logging.warning(
+                        f"Pass {pass_idx + 1}: {invalid_rate*100:.1f}% invalid vectors "
+                        f"({true_invalid_count}/{unmasked_total})"
+                    )
+
                 pre_y, pre_x = self.n_pre_all[pass_idx]
                 post_y, post_x = self.n_post_all[pass_idx]
 
                 stacked = np.stack([uy_mat, ux_mat], axis=-1)  # (N, ny, nx, 2)
 
                 self.delta_ab_old = np.pad(
-    stacked,
-    ((0, 0), (pre_y, post_y), (pre_x, post_x), (0, 0)),
-    mode="edge",
-)
+                    stacked,
+                    ((0, 0), (pre_y, post_y), (pre_x, post_x), (0, 0)),
+                    mode="edge",
+                )
 
 
 
@@ -459,16 +528,14 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     self.pass_times.append((im_idx, pass_idx, pass_time))
                     batch_results[im_idx].add_pass(pass_result)
 
-                    
-                    # Explicit memory cleanup to prevent accumulation
-                    # These large intermediate arrays can consume 500+ MB per pass
-                    #del pk_loc_x, pk_loc_y, pk_height, correl_plane_out
-                    #del images_a_prime, images_b_prime
-                    #del sx, sy, sxy, Q_mat
-                    # Force garbage collection after last pass to release memory
-                if pass_idx == len(config.window_sizes) - 1:
-                    import gc
-                    gc.collect()
+                # Explicit memory cleanup after each pass to prevent accumulation
+                # Delete large intermediate arrays that are no longer needed
+                del pk_loc_x, pk_loc_y, pk_height, Q_mat
+                del sx, sy, sxy  # These are returned by C lib but not used
+                del stacked, mask_batch, mask_bool_batch, mask_for_peaks
+                del invalid_peaks, large_disp_mask
+                # NOTE: gc.collect() was causing SIGSEGV during FFTW cleanup
+                # The explicit del statements above should be sufficient
 
         except Exception as exc:
             logging.error("Error in correlate_batch: %s", exc)
@@ -479,7 +546,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
 
     def _compute_window_centres(
         self, pass_idx: int, config: Config
-    ) -> tuple[int, int, np.ndarray, np.ndarray]:
+    ) -> tuple[int, int, np.ndarray, np.ndarray, tuple]:
         """
         Compute window centers and spacing for a given pass using centralized utilities.
 
@@ -490,8 +557,10 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         :type pass_idx: int
         :param config: Configuration object containing window sizes, overlap, and image shape.
         :type config: Config
-        :return: Tuple containing window spacing in x and y, and arrays of window center coordinates in x and y.
-        :rtype: tuple[int, int, np.ndarray, np.ndarray]
+        :return: Tuple containing window spacing in x and y, arrays of window center coordinates
+                 in x and y, and padding tuple (top, bottom, left, right) - always (0,0,0,0) for
+                 instantaneous mode.
+        :rtype: tuple[int, int, np.ndarray, np.ndarray, tuple]
         """
         win_height, win_width = config.window_sizes[pass_idx]
         overlap = config.overlap[pass_idx]
@@ -533,6 +602,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             result.win_spacing_y,
             np.ascontiguousarray(result.win_ctrs_x),
             np.ascontiguousarray(result.win_ctrs_y),
+            (0, 0, 0, 0),  # No padding for instantaneous mode
         )
     def _predictor_corrector_batch(
         self,
@@ -568,6 +638,12 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 raise RuntimeError(
                     "delta_ab_old is uninitialised before predictor step"
                 )
+
+            # DEBUG: Check delta_ab_old from previous pass
+            logging.debug(f"  delta_ab_old from prev pass: shape={self.delta_ab_old.shape}, "
+                        f"nan_count={np.isnan(self.delta_ab_old).sum()}, "
+                        f"dx range=[{np.nanmin(self.delta_ab_old[...,1]):.4f}, {np.nanmax(self.delta_ab_old[...,1]):.4f}], "
+                        f"dy range=[{np.nanmin(self.delta_ab_old[...,0]):.4f}, {np.nanmax(self.delta_ab_old[...,0]):.4f}]")
 
             sigma = self.sd[pass_idx]
             truncate = (self.ksize_filt[pass_idx][0] - 1) / (2 * sigma)
@@ -824,7 +900,9 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             b_mask = np.ascontiguousarray(np.zeros((n_win_y, n_win_x), dtype=np.float32))
             logging.debug("No vector mask applied for pass %d", pass_idx)
 
-        n_peaks = np.int32(config.num_peaks)
+        n_peaks = np.int32(config.num_peaks if config.num_peaks else 1)
+        if n_peaks < 1:
+            raise ValueError(f"num_peaks must be >= 1, got {n_peaks}")
         i_peak_finder = np.int32(config.peak_finder)
         b_ensemble = False  # Instantaneous PIV, not ensemble
 
@@ -838,9 +916,8 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         sy = np.zeros(out_shape, dtype=np.float32)
         sxy = np.zeros(out_shape, dtype=np.float32)
 
-        correl_plane_out = np.ascontiguousarray(
-            np.zeros(N * total_windows * win_size[0] * win_size[1], dtype=np.float32)
-        )
+        # Instantaneous mode doesn't need correlation planes - pass None to skip memcpy in C
+        correl_plane_out = None
         if config.debug:
             args = [
                 ("mask", b_mask),

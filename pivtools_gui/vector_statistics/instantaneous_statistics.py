@@ -16,7 +16,7 @@ import logging
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -399,6 +399,8 @@ class VectorStatisticsProcessor:
         camera: int = 1,
         gamma_radius: int = 5,
         config=None,
+        use_stereo: bool = False,
+        stereo_camera_pair: Optional[Tuple[int, int]] = None,
     ):
         """
         Initialize the statistics processor.
@@ -423,6 +425,10 @@ class VectorStatisticsProcessor:
             Radius for gamma function calculations (default 5)
         config : Config, optional
             Config object for accessing settings
+        use_stereo : bool
+            Whether processing stereo (3D) data
+        stereo_camera_pair : tuple, optional
+            Camera pair for stereo data (e.g., (1, 2))
         """
         self.data_dir = Path(data_dir)
         self.base_dir = Path(base_dir)
@@ -433,22 +439,31 @@ class VectorStatisticsProcessor:
         self.camera = camera
         self.gamma_radius = gamma_radius
         self._config = config
+        self.use_stereo = use_stereo
+        self.stereo_camera_pair = stereo_camera_pair
 
         # Determine camera folder name
-        self.cam_folder = "Merged" if use_merged else f"Cam{camera}"
+        if use_stereo and stereo_camera_pair:
+            self.cam_folder = f"Cam{stereo_camera_pair[0]}_Cam{stereo_camera_pair[1]}"
+        elif use_merged:
+            self.cam_folder = "Merged"
+        else:
+            self.cam_folder = f"Cam{camera}"
 
         # Setup output directories using centralized paths
         self._setup_directories()
 
     def _setup_directories(self):
         """Create output directory structure using centralized get_data_paths()."""
-        # Use centralized path construction
+        # Use centralized path construction with stereo support
         paths = get_data_paths(
             base_dir=self.base_dir,
             num_frame_pairs=self.num_frame_pairs,
             cam=self.camera,
             type_name=self.type_name,
             use_merged=self.use_merged,
+            use_stereo=self.use_stereo,
+            stereo_camera_pair=self.stereo_camera_pair,
         )
 
         self.stats_dir = paths["stats_dir"]
@@ -846,9 +861,12 @@ class VectorStatisticsProcessor:
                 if res["stereo"]:
                     means_dict[run_num]["mean_uz"] = res.get("mean_uz")
 
-        # Get coordinates (use first run's coords)
-        cx = coords_x_list[0] if coords_x_list else None
-        cy = coords_y_list[0] if coords_y_list else None
+        # Build coords dict for parallel workers (per-run coordinates)
+        # Different runs may have different grid sizes (especially for stereo data)
+        coords_dict = {}
+        for idx, run_num in enumerate(valid_runs):
+            if idx < len(coords_x_list) and idx < len(coords_y_list):
+                coords_dict[run_num] = (coords_x_list[idx], coords_y_list[idx])
 
         # Find all frame files
         glob_pattern = re.sub(r"%[0-9]*[diuoxXfFeEgG]", "*", self.vector_format)
@@ -874,8 +892,7 @@ class VectorStatisticsProcessor:
                     str(out_path),
                     means_dict,
                     calc_flags,
-                    cx,
-                    cy,
+                    coords_dict,
                 )
                 futures[future] = i
 
@@ -1089,12 +1106,15 @@ def _process_frame_parallel(
     out_path: str,
     means_dict: dict,
     calc_flags: dict,
-    cx: Optional[np.ndarray],
-    cy: Optional[np.ndarray],
+    coords_dict: dict,
 ):
     """
     Process a single frame for instantaneous statistics.
     Designed to run in a separate process.
+
+    Args:
+        coords_dict: Dict mapping run_num -> (cx, cy) coordinates for each run.
+                     Different runs may have different grid sizes (especially for stereo).
     """
     try:
         mat_data = scipy.io.loadmat(file_path, squeeze_me=True, struct_as_record=False)
@@ -1120,6 +1140,12 @@ def _process_frame_parallel(
             run_num = i + 1
             run_data = {}
             src_obj = piv_result_in[i]
+
+            # Get coordinates for THIS run (different runs may have different grid sizes)
+            if run_num in coords_dict:
+                cx, cy = coords_dict[run_num]
+            else:
+                cx, cy = None, None
 
             # Copy existing fields
             if hasattr(src_obj, "_fieldnames"):

@@ -4,7 +4,7 @@ stereo_calibration_base.py
 
 Base class for stereo camera calibration.
 Provides shared stereo calibration logic (stereoCalibrate, stereoRectify) that is
-inherited by both pinhole (circle grid) and ChArUco stereo calibrators.
+inherited by both dotboard (circle grid) and ChArUco stereo calibrators.
 """
 
 import math
@@ -47,7 +47,6 @@ class BaseStereoCalibrator(ABC):
         base_dir: Optional[Union[str, Path]] = None,
         camera_pair: Optional[List[int]] = None,
         file_pattern: Optional[str] = None,
-        calibration_subfolder: str = "",
         camera_subfolders: Optional[List[str]] = None,
         source_path_idx: int = 0,
         dt: float = 1.0,
@@ -66,13 +65,11 @@ class BaseStereoCalibrator(ABC):
             Override for [cam1, cam2] pair (e.g., [1, 2])
         file_pattern : str, optional
             Override for calibration image pattern (e.g., "calib%05d.tif")
-        calibration_subfolder : str, optional
-            Subfolder under camera folder for calibration images
         camera_subfolders : list[str], optional
             List of camera folder names (e.g., ["Cam1", "Cam2"]). Index = camera_num - 1.
             Set to None or [] for containers or when images are in source_dir directly.
         source_path_idx : int, optional
-            Index into config.source_paths (default: 0)
+            Index into config.calibration_sources (default: 0)
         dt : float, optional
             Time step between frames in seconds
         """
@@ -113,16 +110,13 @@ class BaseStereoCalibrator(ABC):
         # Camera subfolders (CLI override, otherwise use config)
         self.camera_subfolders = camera_subfolders
 
-        # Calibration subfolder
-        if calibration_subfolder:
-            self.calibration_subfolder = calibration_subfolder
+        # Time step - use explicit dt, or fall back to unified config.dt
+        if dt != 1.0:  # Explicit dt was passed (not default)
+            self.dt = dt
         elif self._config is not None:
-            self.calibration_subfolder = self._config.calibration_subfolder
+            self.dt = self._config.dt
         else:
-            self.calibration_subfolder = ""
-
-        # Time step
-        self.dt = dt or stereo_cfg.get('dt', 1.0)
+            self.dt = 1.0
 
         # Initialize detector (implemented by subclass)
         self.detector = self._create_detector()
@@ -134,7 +128,7 @@ class BaseStereoCalibrator(ABC):
         Returns
         -------
         Any
-            Detector object (e.g., SimpleBlobDetector for pinhole,
+            Detector object (e.g., SimpleBlobDetector for dotboard,
             (CharucoBoard, CharucoDetector) tuple for ChArUco)
         """
         pass
@@ -212,7 +206,6 @@ class BaseStereoCalibrator(ABC):
                 camera=camera,
                 config=self._config,
                 source_path_idx=self._source_path_idx,
-                subfolder=self.calibration_subfolder if self.calibration_subfolder else None,
             )
 
             if img is None:
@@ -239,10 +232,8 @@ class BaseStereoCalibrator(ABC):
     def _get_camera_input_dir(self, cam_num: int) -> Path:
         """Get the input directory for calibration images.
 
-        Path structure: source / camera_folder / calibration_subfolder
-
-        Uses camera_subfolders array when provided (CLI mode),
-        otherwise falls back to config.get_calibration_camera_folder() (GUI mode).
+        Uses build_calibration_camera_path for path resolution from
+        calibration_sources config.
 
         Parameters
         ----------
@@ -254,25 +245,16 @@ class BaseStereoCalibrator(ABC):
         Path
             Path to calibration images for this camera
         """
-        base_path = self.source_dir
+        if self._config is not None:
+            from pivtools_core.image_handling.path_utils import build_calibration_camera_path
+            return build_calibration_camera_path(
+                self._config,
+                source_path_idx=self._source_path_idx,
+                camera=cam_num
+            )
 
-        # Get camera folder - prefer CLI array, fall back to config
-        if self.camera_subfolders is not None and len(self.camera_subfolders) > 0:
-            # CLI mode: use explicit array
-            idx = cam_num - 1  # Convert 1-based to 0-based index
-            if idx < len(self.camera_subfolders) and self.camera_subfolders[idx]:
-                base_path = base_path / self.camera_subfolders[idx]
-        elif self._config is not None:
-            # GUI mode: use config's camera folder logic
-            camera_folder = self._config.get_calibration_camera_folder(cam_num)
-            if camera_folder:
-                base_path = base_path / camera_folder
-
-        # Add calibration subfolder if set
-        if self.calibration_subfolder:
-            base_path = base_path / self.calibration_subfolder
-
-        return base_path
+        # Fallback: use source_dir directly
+        return self.source_dir
 
     def _get_output_dir(self, cam1: int, cam2: int) -> Path:
         """Get the output directory for stereo calibration results.
@@ -529,6 +511,9 @@ class BaseStereoCalibrator(ABC):
 
             if len(image.shape) == 2:
                 vis = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+            elif image.shape[-1] == 1:
+                # Handle (H, W, 1) grayscale images
+                vis = cv2.cvtColor(image[:, :, 0], cv2.COLOR_GRAY2BGR)
             else:
                 vis = image.copy()
 
@@ -615,11 +600,8 @@ class BaseStereoCalibrator(ABC):
 
         # For container formats, validate the container exists
         if is_container:
-            if self.calibration_subfolder:
-                calibration_dir = self.source_dir / self.calibration_subfolder
-            else:
-                calibration_dir = self.source_dir
-            container_file = calibration_dir / self.file_pattern
+            # Container file path comes from calibration_sources (no camera subfolders)
+            container_file = self._get_camera_input_dir(cam1)
             if not container_file.exists():
                 return {'success': False, 'error': f'Container file not found: {container_file}'}
             logger.info(f"Using container file: {container_file}")

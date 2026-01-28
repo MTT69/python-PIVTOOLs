@@ -10,6 +10,30 @@ from dask_jobqueue import SLURMCluster
 from pivtools_core.config import Config
 
 
+class _UnresponsiveEventLoopFilter(logging.Filter):
+    """Filter out 'Event loop was unresponsive' messages from Dask workers."""
+    def filter(self, record):
+        return "Event loop was unresponsive" not in record.getMessage()
+
+
+def _suppress_dask_verbose_logging():
+    """Suppress verbose Dask internal logging to reduce noise."""
+    # Suppress worker startup/shutdown messages
+    for logger_name in [
+        "distributed.worker",
+        "distributed.scheduler",
+        "distributed.nanny",
+        "distributed.core",
+        "distributed.comm",
+        "distributed.http.proxy",
+        "bokeh.server.views.ws",
+    ]:
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
+
+    # Filter out "Event loop was unresponsive" warnings
+    logging.getLogger("distributed").addFilter(_UnresponsiveEventLoopFilter())
+
+
 def make_cluster(
     config: Config,
 ) -> Tuple[object, Client]:
@@ -27,7 +51,14 @@ def make_cluster(
             memory_limit=config.dask_memory_limit,
             nanny=False,
             processes=True,
-            config={"distributed.worker.profile.enabled": False},
+            config={
+                "distributed.worker.profile.enabled": False,
+                # Increase heartbeat tolerance for long-running C calls
+                # that block the worker thread (e.g., dense PIV passes with 700+ windows)
+                "distributed.scheduler.worker-ttl": "120s",  # Default: 60s
+                "distributed.worker.heartbeat": "5s",  # Default: 1s
+                "distributed.comm.timeouts.connect": "60s",  # Default: 30s
+            },
             dashboard_address=":8788"
         )
         client = Client(cluster)
@@ -37,6 +68,13 @@ def make_cluster(
         if not hasattr(config, "n_nodes"):
             raise ValueError("config.n_nodes must be set for Slurm cluster")
         import socket
+        import dask
+        # Set heartbeat tolerance for long-running C calls on SLURM too
+        dask.config.set({
+            "distributed.scheduler.worker-ttl": "120s",
+            "distributed.worker.heartbeat": "5s",
+            "distributed.comm.timeouts.connect": "60s",
+        })
         cluster = SLURMCluster(
             queue=config.slurm_partition,
             walltime=config.slurm_walltime,
@@ -47,7 +85,7 @@ def make_cluster(
             job_extra=config.slurm_job_extra,
             job_script_prologue=config.slurm_job_prologue,
             scheduler_options={"host": socket.gethostname()},
-            )
+        )
 
         if config.n_nodes is not None:
             cluster.scale(jobs=config.n_nodes)
@@ -89,6 +127,9 @@ def start_cluster(
         client: Dask Client
         piv_workers: list of workers to use for PIV
     """
+    # Suppress verbose Dask internal logging
+    _suppress_dask_verbose_logging()
+
     cluster = None
     client = None
 

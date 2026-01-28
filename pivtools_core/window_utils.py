@@ -246,9 +246,13 @@ def compute_window_centers(
         n_win_x,
         dtype=np.float32
     )
+    # Anchor to BOTTOM of image, but return ASCENDING order for np.interp compatibility
+    # Gap will be at TOP (pixels 0 to first_ctr_y - window/2 are unmeasured)
+    # Same positions as descending, just ascending array order
+    first_ctr_y_anchored = last_ctr_y - win_spacing_y * (n_win_y - 1)
     win_ctrs_y = np.linspace(
-        first_ctr_y,
-        first_ctr_y + win_spacing_y * (n_win_y - 1),
+        first_ctr_y_anchored,  # Near top (low pixel y, high physical y)
+        last_ctr_y,            # At bottom (high pixel y, low physical y)
         n_win_y,
         dtype=np.float32
     )
@@ -370,28 +374,22 @@ def compute_window_centers_single_mode(
     win_spacing_x = max(1, win_spacing_x)
     win_spacing_y = max(1, win_spacing_y)
 
-    # Window center positioning relative to LARGE SumWindow
-    # Special handling for single-pixel windows (rare but included for MATLAB compatibility)
-    if win_width == 1:
-        # Integer center position
-        first_ctr_x = 1.0 + sum_width / 2.0
-    else:
-        # Half-pixel center position
-        first_ctr_x = 0.5 + sum_width / 2.0
+    # Window center positioning in padded coordinates
+    # Uses same formula as standard mode: (win_size - 1) / 2.0 for first center
+    # Shifted by padding offset to place grid correctly in padded image
+    #
+    # This ensures consistency with standard mode and correct 0-based C indexing:
+    # - C extraction: row_min = floor(center - (size-1)/2 + 0.5)
+    # - For center=7.5, window=16: row_min = floor(7.5 - 7.5 + 0.5) = 0
+    # - Extracts pixels [0, 15] which is correct
+    first_ctr_x = pad_left + (win_width - 1) / 2.0
+    first_ctr_y = pad_top + (win_height - 1) / 2.0
 
-    if win_height == 1:
-        first_ctr_y = 1.0 + sum_height / 2.0
-    else:
-        first_ctr_y = 0.5 + sum_height / 2.0
-
-    # Last center must allow full window extraction within padded image
-    # C code does: row_min = floor(center - (size-1)/2 + 0.5)
-    # For window to fit: row_min + size <= Nx
-    # Therefore: center <= Nx - size/2 - 0.5 (for even sizes)
-    # This matches MATLAB: Nx - (SumWindow/2) + 0.5 becomes Nx - sum_width/2 - 0.5
-    # when accounting for 0-based vs 1-based indexing
-    last_ctr_x = Nx - sum_width / 2.0 - 0.5
-    last_ctr_y = Ny - sum_height / 2.0 - 0.5
+    # Last center: mirror of standard mode formula in padded coordinates
+    # Standard mode uses: image_size - (win_size + 1) / 2.0
+    # In padded coords: pad + original_size - (win_size + 1) / 2.0
+    last_ctr_x = pad_left + W - (win_width + 1) / 2.0
+    last_ctr_y = pad_top + H - (win_height + 1) / 2.0
 
     # Compute number of windows
     n_win_x = int(np.floor((last_ctr_x - first_ctr_x) / win_spacing_x)) + 1
@@ -406,16 +404,19 @@ def compute_window_centers_single_mode(
         n_win_x,
         dtype=np.float32
     )
+    # Anchor to BOTTOM of image, but return ASCENDING order for np.interp compatibility
+    # Gap will be at TOP (pixels 0 to first_ctr_y - window/2 are unmeasured)
+    first_ctr_y_anchored = last_ctr_y - win_spacing_y * (n_win_y - 1)
     win_ctrs_y = np.linspace(
-        first_ctr_y,
-        first_ctr_y + win_spacing_y * (n_win_y - 1),
+        first_ctr_y_anchored,  # Near top (low pixel y, high physical y)
+        last_ctr_y,            # At bottom (high pixel y, low physical y)
         n_win_y,
         dtype=np.float32
     )
 
     # Verify last window fits within padded image (catches off-by-one errors early)
     max_ctr_x = win_ctrs_x[-1]
-    max_ctr_y = win_ctrs_y[-1]
+    max_ctr_y = win_ctrs_y[-1]  # Last element is largest (ascending order)
     half_win_x = (sum_width - 1) / 2.0
     half_win_y = (sum_height - 1) / 2.0
 

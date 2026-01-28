@@ -4,7 +4,7 @@ Shared Calibration Views.
 Provides utility endpoints used across calibration methods, including:
 - Unified calibration image fetching
 - Calibration configuration management
-- Vector calibration (unified for pinhole and charuco)
+- Vector calibration (unified for dotboard and charuco)
 """
 
 import threading
@@ -35,44 +35,53 @@ calibration_shared_bp = Blueprint("calibration_shared", __name__)
 @calibration_shared_bp.route("/calibration/set_datum", methods=["POST"])
 def calibration_set_datum():
     """
-    Set a new datum (origin) for the coordinates of a given run, and/or apply offsets.
+    Set a new datum (origin) and/or apply offsets to ALL runs in the specified type's coordinates.
 
     Request JSON:
         base_path_idx or source_path_idx: int
         camera: int
-        run: int
-        type_name: str (default: "instantaneous")
-        x: float (optional) - New x origin
-        y: float (optional) - New y origin
-        x_offset: float (optional) - X offset to apply
-        y_offset: float (optional) - Y offset to apply
+        run: int (used only for logging, offsets apply to ALL runs)
+        type_name: str (default: "instantaneous") - which coordinates file to update
+        x: float (optional) - New x origin (subtracted from all coordinates)
+        y: float (optional) - New y origin (subtracted from all coordinates)
+        x_offset: float (optional) - X offset to apply (added to all coordinates)
+        y_offset: float (optional) - Y offset to apply (added to all coordinates)
+        use_stereo: bool (optional) - Whether to use stereo data paths
+        camera_pair: list[int] (optional) - Camera pair for stereo data (e.g., [1, 2])
 
     Returns:
-        JSON with status, run, shape
+        JSON with status and updated file path
     """
     data = request.get_json() or {}
     base_path_idx = int(data.get("base_path_idx", data.get("source_path_idx", 0)))
     camera = camera_number(data.get("camera", 1))
-    run = int(data.get("run", 1))
+    run = int(data.get("run", 1))  # For logging only
     type_name = data.get("type_name", "instantaneous")
     x0 = data.get("x")
     y0 = data.get("y")
     x_offset = data.get("x_offset", 0)
     y_offset = data.get("y_offset", 0)
+    use_stereo = data.get("use_stereo", False)
+    camera_pair = data.get("camera_pair")
+    if camera_pair and isinstance(camera_pair, list):
+        camera_pair = tuple(camera_pair)
 
-    logger.debug("updating datum for run %d", run)
+    logger.debug(f"updating datum/offset for all runs in {type_name} (triggered from run {run}, stereo={use_stereo})")
 
     try:
         cfg = get_config()
         source_root = Path(
             getattr(cfg, "base_paths", getattr(cfg, "source_paths", []))[base_path_idx]
         )
+
         paths = get_data_paths(
             base_dir=source_root,
             num_frame_pairs=cfg.num_frame_pairs,
             cam=camera,
             type_name=type_name,
             calibration=False,
+            use_stereo=use_stereo,
+            stereo_camera_pair=camera_pair,
         )
         data_dir = paths["data_dir"]
         coords_path = data_dir / "coordinates.mat"
@@ -80,67 +89,90 @@ def calibration_set_datum():
         if not coords_path.exists():
             return jsonify({"error": f"Coordinates file not found: {coords_path}"}), 404
 
-        mat = scipy.io.loadmat(coords_path, struct_as_record=False, squeeze_me=True)
+        mat = scipy.io.loadmat(str(coords_path), struct_as_record=False, squeeze_me=True)
         if "coordinates" not in mat:
-            return (
-                jsonify({"error": "Variable 'coordinates' not found in coords mat"}),
-                400,
-            )
+            return jsonify({"error": "Variable 'coordinates' not found in mat"}), 400
+
         coordinates = mat["coordinates"]
 
-        run_idx = run - 1
-
-        # Use extract_coordinates from pivtools_core.coordinate_utils
-        cx, cy = extract_coordinates(coordinates, run)
-
-        logger.debug(
-            f"[set_datum] Run {run} - original first x,y: {cx.flat[0]}, {cy.flat[0]}"
-        )
-        logger.debug(
-            f"[set_datum] Datum to set: x0={x0}, y0={y0}, x_offset={x_offset}, y_offset={y_offset}"
-        )
-
-        # Only apply datum shift if x/y are provided
-        if x0 is not None and y0 is not None:
-            x0 = float(x0)
-            y0 = float(y0)
-            cx = cx - x0
-            cy = cy - y0
-            logger.debug(
-                f"[set_datum] After datum shift, first x,y: {cx.flat[0]}, {cy.flat[0]}"
-            )
-
-        # Always apply offsets if present
-        if x_offset is not None and y_offset is not None:
-            x_offset = float(x_offset)
-            y_offset = float(y_offset)
-            cx = cx + x_offset
-            cy = cy + y_offset
-            logger.debug(f"[set_datum] After offset, first x,y: {cx.flat[0]}, {cy.flat[0]}")
-
-        # Convert to proper MATLAB struct format
-        num_runs = len(coordinates) if hasattr(coordinates, "__len__") else 1
-        if num_runs == 1 and not hasattr(coordinates, "__len__"):
+        # Determine number of runs in this coordinates file
+        if hasattr(coordinates, "__len__") and not isinstance(coordinates, np.void):
+            num_runs = len(coordinates)
+        else:
             num_runs = 1
-            coordinates = [coordinates]
 
-        dtype = [("x", object), ("y", object)]
+        # Check if stereo coordinates (has z field)
+        first_coord = coordinates[0] if num_runs > 0 else coordinates
+        has_z = hasattr(first_coord, 'z') if hasattr(first_coord, '__getattr__') else 'z' in first_coord.dtype.names if hasattr(first_coord, 'dtype') and first_coord.dtype.names else False
+
+        logger.debug(f"[set_datum] Processing {type_name} with {num_runs} runs, has_z={has_z}")
+
+        # Use appropriate dtype based on whether stereo (with z) or planar (x,y only)
+        if has_z:
+            dtype = [("x", object), ("y", object), ("z", object)]
+        else:
+            dtype = [("x", object), ("y", object)]
         coords_struct = np.empty((num_runs,), dtype=dtype)
 
-        # Copy all existing coordinates
+        # Apply datum/offset to ALL runs
         for i in range(num_runs):
-            if i == run_idx:
-                coords_struct["x"][i] = cx
-                coords_struct["y"][i] = cy
-            else:
-                existing_x, existing_y = extract_coordinates(coordinates, i + 1)
-                coords_struct["x"][i] = existing_x
-                coords_struct["y"][i] = existing_y
+            cx, cy = extract_coordinates(mat["coordinates"], i + 1)
+
+            # Extract z if stereo
+            if has_z:
+                c_el = coordinates[i] if num_runs > 1 else coordinates
+                cz = np.asarray(c_el.z) if hasattr(c_el, 'z') else np.asarray(c_el['z'])
+
+            # Log first valid (non-NaN) values for debugging
+            if i == 0:
+                # Find first non-NaN value for better logging
+                valid_x = cx[~np.isnan(cx)] if cx.size > 0 else cx
+                valid_y = cy[~np.isnan(cy)] if cy.size > 0 else cy
+                first_x = valid_x.flat[0] if valid_x.size > 0 else np.nan
+                first_y = valid_y.flat[0] if valid_y.size > 0 else np.nan
+                logger.debug(
+                    f"[set_datum] {type_name} run 1 - original first valid x,y: {first_x}, {first_y}"
+                )
+
+            # Apply datum shift if x/y are provided
+            if x0 is not None and y0 is not None:
+                cx = cx - float(x0)
+                cy = cy - float(y0)
+
+            # Apply offsets if present
+            if x_offset is not None and y_offset is not None:
+                cx = cx + float(x_offset)
+                cy = cy + float(y_offset)
+
+            coords_struct["x"][i] = cx
+            coords_struct["y"][i] = cy
+            if has_z:
+                coords_struct["z"][i] = cz  # Preserve z unchanged
+
+            if i == 0:
+                valid_x = cx[~np.isnan(cx)] if cx.size > 0 else cx
+                valid_y = cy[~np.isnan(cy)] if cy.size > 0 else cy
+                first_x = valid_x.flat[0] if valid_x.size > 0 else np.nan
+                first_y = valid_y.flat[0] if valid_y.size > 0 else np.nan
+                logger.debug(
+                    f"[set_datum] {type_name} run 1 - after transform first valid x,y: {first_x}, {first_y}"
+                )
 
         scipy.io.savemat(
-            coords_path, {"coordinates": coords_struct}, do_compression=True
+            str(coords_path), {"coordinates": coords_struct}, do_compression=True
         )
-        return jsonify({"status": "ok", "run": run, "shape": [cx.shape, cy.shape]})
+        logger.info(f"[set_datum] Updated {type_name} coordinates ({num_runs} runs): {coords_path}")
+
+        return jsonify({
+            "status": "ok",
+            "type_name": type_name,
+            "num_runs_updated": num_runs,
+            "coords_path": str(coords_path),
+            "x0": x0,
+            "y0": y0,
+            "x_offset": x_offset,
+            "y_offset": y_offset,
+        })
 
     except Exception as e:
         logger.error(f"[set_datum] ERROR: {e}")
@@ -305,10 +337,9 @@ def calibration_validate_images():
 
     Request JSON:
         camera: int - Camera number (1-based)
-        source_path_idx: int - Index into source_paths list (default: 0)
+        source_path_idx: int - Index into calibration_sources list (default: 0)
         image_format: str - Override for calibration image pattern (optional)
         num_images: int - Override for expected image count (optional)
-        subfolder: str - Override for calibration subfolder (optional)
         image_type: str - Override for image type (optional)
 
     Returns:
@@ -323,7 +354,6 @@ def calibration_validate_images():
     num_images = data.get("num_images")
     if num_images is not None:
         num_images = int(num_images)
-    subfolder = data.get("subfolder")
     image_type = data.get("image_type")
 
     try:
@@ -336,7 +366,6 @@ def calibration_validate_images():
             source_path_idx,
             image_format=image_format,
             num_images=num_images,
-            subfolder=subfolder,
             image_type=image_type,
         )
 
@@ -373,9 +402,9 @@ def calibration_config():
         num_images: int - Number of calibration images expected
         image_type: str - 'standard' | 'cine' | 'lavision_set' | 'lavision_im7'
         zero_based_indexing: bool - Start indexing from 0
-        subfolder: str - Subfolder for calibration images (e.g., "calibration")
-
-    Note: use_camera_subfolders is read-only - derived from paths.camera_subfolders
+        calibration_sources: list[str] - Direct paths to calibration images (REQUIRED)
+        use_camera_subfolders: bool - Whether to use camera subfolders
+        camera_subfolders: list[str] - Custom camera folder names
 
     Returns:
         JSON with current calibration config
@@ -389,10 +418,9 @@ def calibration_config():
             "image_type": cfg.calibration_image_type,
             "zero_based_indexing": cfg.calibration_zero_based_indexing,
             "use_camera_subfolders": cfg.calibration_use_camera_subfolders,
-            "subfolder": cfg.calibration_subfolder,
+            "calibration_sources": [str(p) for p in cfg.calibration_sources],
             "is_container_format": cfg.calibration_is_container_format,
             "camera_subfolders": cfg.calibration_camera_subfolders,
-            "path_order": cfg.calibration_path_order,
         })
 
     # POST - Update config
@@ -417,14 +445,12 @@ def calibration_config():
         # use_camera_subfolders can now be set explicitly (especially for IM7 formats)
         if "use_camera_subfolders" in data:
             cal_block["use_camera_subfolders"] = bool(data["use_camera_subfolders"])
-        if "subfolder" in data:
-            cal_block["subfolder"] = str(data["subfolder"])
-        # NEW: camera_subfolders - independent from PIV camera subfolders
+        # calibration_sources - direct paths to calibration images
+        if "calibration_sources" in data:
+            cal_block["calibration_sources"] = list(data["calibration_sources"]) if data["calibration_sources"] else []
+        # camera_subfolders - independent from PIV camera subfolders
         if "camera_subfolders" in data:
             cal_block["camera_subfolders"] = list(data["camera_subfolders"]) if data["camera_subfolders"] else []
-        # NEW: path_order - controls whether camera folder comes before or after calibration subfolder
-        if "path_order" in data:
-            cal_block["path_order"] = str(data["path_order"])
 
         # Save config
         cfg.save()
@@ -436,10 +462,9 @@ def calibration_config():
             "image_type": cfg.calibration_image_type,
             "zero_based_indexing": cfg.calibration_zero_based_indexing,
             "use_camera_subfolders": cfg.calibration_use_camera_subfolders,
-            "subfolder": cfg.calibration_subfolder,
+            "calibration_sources": [str(p) for p in cfg.calibration_sources],
             "is_container_format": cfg.calibration_is_container_format,
             "camera_subfolders": cfg.calibration_camera_subfolders,
-            "path_order": cfg.calibration_path_order,
         })
 
     except Exception as e:
@@ -463,7 +488,7 @@ def detect_calibration_model_type(base_dir: Path, camera_num: int) -> Optional[s
         camera_num: Camera number (1-based)
 
     Returns:
-        'charuco' if charuco model exists, 'planar' if pinhole model exists, None otherwise
+        'charuco' if charuco model exists, 'dotboard' if dotboard model exists, None otherwise
     """
     calib_base = base_dir / "calibration" / f"Cam{camera_num}"
 
@@ -472,10 +497,10 @@ def detect_calibration_model_type(base_dir: Path, camera_num: int) -> Optional[s
     if charuco_model.exists():
         return "charuco"
 
-    # Check for pinhole/planar model
-    pinhole_model = calib_base / "pinhole_planar" / "model" / "pinhole_model.mat"
-    if pinhole_model.exists():
-        return "planar"
+    # Check for dotboard model
+    dotboard_model = calib_base / "dotboard_planar" / "model" / "dotboard_model.mat"
+    if dotboard_model.exists():
+        return "dotboard"
 
     return None
 
@@ -511,12 +536,8 @@ def vectors_calibrate():
         base_root = Path(cfg.base_paths[source_path_idx])
         num_frame_pairs = cfg.num_frame_pairs
 
-        # Get dt from the active calibration type or pinhole config
-        active_type = getattr(cfg, "calibration_active", "pinhole")
-        if active_type == "charuco":
-            dt = getattr(cfg, "calibration_charuco_dt", 1.0)
-        else:
-            dt = getattr(cfg, "calibration_pinhole_dt", 1.0)
+        # Get dt from config (uses active calibration method to determine source)
+        dt = cfg.dt
 
         # Create multi-camera job
         job_id = job_manager.create_job(

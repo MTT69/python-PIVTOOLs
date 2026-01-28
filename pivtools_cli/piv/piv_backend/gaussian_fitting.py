@@ -3,6 +3,45 @@ Gaussian Fitting Utilities for Ensemble PIV
 
 This module contains helper functions for Gaussian fitting
 in ensemble PIV processing.
+
+NaN Reason Codes (nan_reason / status codes)
+============================================
+These codes indicate why a vector was marked as invalid or failed.
+Stored in PIVPassResult.nan_reason array.
+
+Code  Stage                   Description
+----  -----                   -----------
+ -1   Pre-fitting             Masked vector (not correlated, e.g., outside ROI)
+  0   Success                 Fit succeeded and passed all validation
+  1   C solver                Levenberg-Marquardt solver did not converge
+  2   Post-fit validation     AB peak height invalid (normalized height not in [0,1])
+  3   Post-fit validation     Breaks 1/2 displacement rule (peak too far from center)
+  5   Post-fit validation     Negative sigma values (unphysical Gaussian width)
+  6   Displacement check      Displacement exceeds 3/4 window rule (too large)
+ 10   Outlier detection       Fit succeeded but vector flagged as outlier by
+                              median-based displacement outlier detection
+
+Validation Pipeline
+===================
+1. C solver attempts Levenberg-Marquardt fit → code 1 if fails
+2. _validate_fitted_params() checks fitted parameters → codes 2, 3, 5
+3. Displacement magnitude check (3/4 rule) → code 6
+4. Median-based outlier detection on displacement field → code 10
+5. Vectors with code 0 after all checks are valid
+
+Initial Guess Sources
+=====================
+For pass 0:
+  - Amplitudes: Peak values from current correlation planes
+  - Offsets: 5th percentile of current correlation planes
+  - Sigmas: HWHM estimation from AA (particle size) and AB (displacement uncertainty)
+  - Positions: Peak finding in AB cross-correlation
+
+For pass > 0:
+  - Amplitudes: Peak values from WARPED correlation planes (re-computed)
+  - Offsets: 5th percentile of WARPED correlation planes (re-computed)
+  - Sigmas: Interpolated from previous pass (outlier-detected + infilled + validated)
+  - Positions: Peak finding in WARPED AB cross-correlation
 """
 
 import ctypes
@@ -31,12 +70,10 @@ def _load_marquadt_lib():
 
     # Try multiple possible paths for the library
     possible_paths = [
-        # Absolute path to the project lib directory
+        # Installed package location (relative to this file)
         os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "lib", f"libmarquadt{lib_extension}")),
-        # From current working directory
+        # Development: from current working directory
         os.path.abspath(os.path.join("pivtools_cli", "lib", f"libmarquadt{lib_extension}")),
-        # Hardcoded absolute path (for debugging)
-        os.path.abspath("/Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/pivtools_cli/lib/libmarquadt.so"),
     ]
 
     for path in possible_paths:
@@ -47,12 +84,16 @@ def _load_marquadt_lib():
         raise FileNotFoundError(
             f"Marquadt library not found. Tried paths: {possible_paths}"
         )
-    logging.info(f"Loading Marquadt library from: {marquadt_libpath}")
+    logging.debug(f"Loading Marquadt library from: {marquadt_libpath}")
     marquadt_lib = ctypes.CDLL(marquadt_libpath)
 
     # Set up ctypes bindings for the offset control function
     marquadt_lib.set_disable_offset.argtypes = [ctypes.c_int]
     marquadt_lib.set_disable_offset.restype = None
+
+    # Set up ctypes bindings for center pixel masking control
+    marquadt_lib.set_mask_center.argtypes = [ctypes.c_int]
+    marquadt_lib.set_mask_center.restype = None
 
     _marquadt_lib = marquadt_lib
     return marquadt_lib
@@ -77,6 +118,74 @@ def set_offset_fitting(enabled: bool = True):
     """
     lib = _load_marquadt_lib()
     lib.set_disable_offset(0 if enabled else 1)
+
+
+def set_center_masking(enabled: bool = True):
+    """
+    Enable or disable center pixel masking for autocorrelation.
+
+    When enabled, the center pixel of AA/BB autocorrelation planes is excluded
+    from fitting to remove the camera self-noise spike at zero lag. The
+    cross-correlation (AB) center pixel is NOT masked since it contains valid
+    displacement signal.
+
+    Parameters
+    ----------
+    enabled : bool, default True
+        If True, mask the center pixel (recommended for real camera data).
+        If False, include all pixels (for synthetic data or testing).
+    """
+    lib = _load_marquadt_lib()
+    lib.set_mask_center(1 if enabled else 0)
+
+
+def _validate_sigma_field(
+    sigma_field: np.ndarray,
+    min_val: float = 0.1,
+    max_val: float = 20.0
+) -> np.ndarray:
+    """
+    Validate and clean sigma field before propagation to next pass.
+
+    Replaces invalid values (NaN, inf, out-of-bounds) with local median.
+    This prevents bad sigma estimates from propagating through passes
+    and causing "pockets of bad results".
+
+    Parameters
+    ----------
+    sigma_field : np.ndarray
+        2D sigma field from previous pass
+    min_val : float
+        Minimum valid sigma value
+    max_val : float
+        Maximum valid sigma value
+
+    Returns
+    -------
+    np.ndarray
+        Validated sigma field with same shape
+    """
+    from scipy.ndimage import median_filter
+
+    # Identify invalid values
+    invalid = ~np.isfinite(sigma_field) | (sigma_field < min_val) | (sigma_field > max_val)
+
+    if invalid.any():
+        # Use median of valid neighbors to fill invalid values
+        # First, set invalid to nan for median calculation
+        temp_field = np.where(invalid, np.nan, sigma_field)
+
+        # Median filter with nan handling
+        median_field = median_filter(
+            np.nan_to_num(temp_field, nan=np.nanmedian(temp_field)),
+            size=3,
+            mode='nearest'
+        )
+
+        sigma_field = np.where(invalid, median_field, sigma_field)
+
+    # Final clip to bounds
+    return np.clip(sigma_field, min_val, max_val)
 
 
 def _get_sigma_from_previous_pass(
@@ -147,6 +256,19 @@ def _get_sigma_from_previous_pass(
         'sig_A_xy': prev_pass.sig_A_xy.copy().astype(np.float32),
     }
 
+    # Validate sigma fields before interpolation to prevent bad values from propagating
+    # Use different bounds for different sigma types:
+    # - sig_A (particle size): typically 0.5-15 pixels
+    # - sig_AB (displacement uncertainty): typically 0.1-10 pixels
+    # - sig_xy (cross-terms): can be negative, typically -10 to 10
+    sigma_fields['sig_AB_x'] = _validate_sigma_field(sigma_fields['sig_AB_x'], 0.1, 15.0)
+    sigma_fields['sig_AB_y'] = _validate_sigma_field(sigma_fields['sig_AB_y'], 0.1, 15.0)
+    sigma_fields['sig_A_x'] = _validate_sigma_field(sigma_fields['sig_A_x'], 0.3, 20.0)
+    sigma_fields['sig_A_y'] = _validate_sigma_field(sigma_fields['sig_A_y'], 0.3, 20.0)
+    # Cross-terms can be negative, use symmetric bounds
+    sigma_fields['sig_AB_xy'] = _validate_sigma_field(sigma_fields['sig_AB_xy'], -15.0, 15.0)
+    sigma_fields['sig_A_xy'] = _validate_sigma_field(sigma_fields['sig_A_xy'], -20.0, 20.0)
+
     result = {}
 
     # Interpolate each field to current grid
@@ -155,15 +277,24 @@ def _get_sigma_from_previous_pass(
         for key, field in sigma_fields.items():
             result[key] = field.ravel(order="C")
     else:
-        # Different grid size - use cubic interpolation for smooth upsampling
-        map_y, map_x = np.meshgrid(
-            np.linspace(0, old_h - 1, new_h).astype(np.float32),
-            np.linspace(0, old_w - 1, new_w).astype(np.float32),
-            indexing="ij"
-        )
+        # Different grid size - pad before interpolation to avoid edge zeros
+        # Pad with 2 pixels on each side (matches cubic interpolation kernel requirement)
+        # This mirrors velocity field handling in cpu_ensemble.py lines 878-882
+        pad_size = 2
         for key, field in sigma_fields.items():
+            # Pad field with edge values before interpolation (like velocity fields)
+            padded = np.pad(field, pad_size, mode='edge')
+
+            # Adjust interpolation coordinates to account for padding
+            map_y, map_x = np.meshgrid(
+                np.linspace(pad_size, old_h - 1 + pad_size, new_h).astype(np.float32),
+                np.linspace(pad_size, old_w - 1 + pad_size, new_w).astype(np.float32),
+                indexing="ij"
+            )
+
             result[key] = cv2.remap(
-                field, map_x, map_y, cv2.INTER_CUBIC
+                padded, map_x, map_y, cv2.INTER_CUBIC,
+                borderMode=cv2.BORDER_REPLICATE  # Extra safety for any remaining edge cases
             ).ravel(order="C")
 
     return result
@@ -195,7 +326,8 @@ def _validate_fitted_params(
     runtype: str,
     sum_window: tuple,
     AA_central: float,
-    BB_central: float
+    BB_central: float,
+    particle_window: tuple = None,
 ) -> tuple[bool, int]:
     """
     Validate fitted Gaussian parameters following MATLAB logic.
@@ -219,6 +351,9 @@ def _validate_fitted_params(
         Central value of AA autocorrelation
     BB_central : float
         Central value of BB autocorrelation
+    particle_window : tuple, optional
+        (height, width) of the particle window (small window in single mode).
+        Required for single mode amplitude correction.
 
     Returns
     -------
@@ -243,20 +378,29 @@ def _validate_fitted_params(
     # Check 1: AB peak height validity
     if AA_central > 1e-12 and BB_central > 1e-12:
         AB_normalized = amp_AB / np.sqrt(AA_central * BB_central)
+
+        # In single mode, AB correlation uses asymmetric weighting:
+        # - A uses particle window (small) embedded in sum_window
+        # - B uses full sum_window
+        # This reduces AB amplitude by sqrt(particle_area / sum_area).
+        # We correct by multiplying by sqrt(sum_area / particle_area).
+        if runtype == 'single' and particle_window is not None:
+            particle_area = particle_window[0] * particle_window[1]
+            sum_area = sum_window[0] * sum_window[1]
+            # Correction factor: sqrt(sum_area / particle_area)
+            AB_normalized *= np.sqrt(sum_area / particle_area)
+
         if not np.isreal(AB_normalized) or AB_normalized < 0 or AB_normalized > 1:
             return False, 2
 
-    # Check 2: 1/2 displacement rule 
-    if runtype == 'single':
-        center_x = sum_window[1] / 2.0
-        center_y = sum_window[0] / 2.0
-        half_x = sum_window[1] / 2.0
-        half_y = sum_window[0] / 2.0
-    else:
-        center_x = win_size[1] / 2.0
-        center_y = win_size[0] / 2.0
-        half_x = win_size[1] / 2.0
-        half_y = win_size[0] / 2.0
+    # Check 2: 1/2 displacement rule
+    # For single mode, use win_size (which is the actual fitting grid size,
+    # either fit_window if enabled, or sum_window otherwise)
+    # This ensures peak position validation matches the coordinate system used for fitting
+    center_x = win_size[1] / 2.0
+    center_y = win_size[0] / 2.0
+    half_x = win_size[1] / 2.0
+    half_y = win_size[0] / 2.0
 
     # For pass > 0 or single mode, check peak is within central half
     if pass_idx > 0 or runtype == 'single':
@@ -425,18 +569,27 @@ def _fit_windows_batch_optimized(
         y_all[offset:offset + 3 * n_per_window] = real_corr
 
     # Call batch C function with OpenMP parallelization
-    success_count = marquadt_lib.fit_stacked_gaussian_batch_export(
+    # Pass win_height and win_width separately to support rectangular windows
+    # Create uniform weights (1.0) for this legacy path
+    weights_auto = np.ones(n_valid, dtype=np.float64)
+    marquadt_lib.fit_stacked_gaussian_batch_export(
         ctypes.c_size_t(n_valid),
         ctypes.c_size_t(n_per_window),
+        ctypes.c_size_t(win_size[0]),  # win_height
+        ctypes.c_size_t(win_size[1]),  # win_width
         X2.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),  # Note: X2 is x-coord
         X1.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),  # Note: X1 is y-coord
         y_all.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
         initial_guesses_valid.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+        weights_auto.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),  # Uniform weights
+        ctypes.c_int(pass_idx),  # Pass index for extraction logic
         results_valid.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
         statuses_valid.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
     )
 
     # Post-process: validate fitted parameters (C returns 1 for success)
+    # Get particle window size for amplitude correction in single mode
+    particle_window = tuple(config.ensemble_window_sizes[pass_idx])
     for i, idx in enumerate(valid_indices):
         if statuses_valid[i] == 1:  # 1 = success from C code
             AA_win = _get_window(AA_chunk, idx, win_size)
@@ -446,7 +599,8 @@ def _fit_windows_batch_optimized(
                 config.ensemble_type[pass_idx],
                 tuple(config.ensemble_sum_window),
                 float(AA_win[central_index]),
-                float(BB_win[central_index])
+                float(BB_win[central_index]),
+                particle_window=particle_window,
             )
             if not is_valid:
                 statuses_valid[i] = nan_reason_code
@@ -473,26 +627,34 @@ def _get_window(flat_array, idx, win_size):
 
 
 def _get_pass_grid(pass_idx, config):
-    """Get grid coordinates for Gaussian fitting."""
+    """Get grid coordinates for Gaussian fitting.
+
+    For single mode passes with sum_fitting_window enabled, uses the fitting
+    window size (smaller, extracted central region) rather than full sum_window.
+    """
     runtype = config.ensemble_type[pass_idx]
     wsize = config.ensemble_window_sizes[pass_idx]
     sum_window = config.ensemble_sum_window
+    fit_window = config.ensemble_sum_fitting_window  # None if disabled
 
     if runtype == "single":
+        # Use fitting window size if enabled, otherwise full sum_window
+        grid_size = fit_window if fit_window else sum_window
+
         X1, X2 = np.meshgrid(
-            np.linspace(1, sum_window[0], sum_window[0]),
-            np.linspace(1, sum_window[1], sum_window[1]),
+            np.linspace(1, grid_size[0], grid_size[0]),
+            np.linspace(1, grid_size[1], grid_size[1]),
             indexing="ij",
         )
         X1 = X1.ravel(order="C")
         X2 = X2.ravel(order="C")
-        
+
         # FIX: Integer math, 0-based indexing for flat array access
         # center_y * width + center_x
-        central_index = (sum_window[0] // 2) * sum_window[1] + (sum_window[1] // 2)
-        
-        x_guess = sum_window[1] / 2 + 1
-        y_guess = sum_window[0] / 2 + 1
+        central_index = (grid_size[0] // 2) * grid_size[1] + (grid_size[1] // 2)
+
+        x_guess = grid_size[1] / 2 + 1
+        y_guess = grid_size[0] / 2 + 1
     else:
         X1, X2 = np.meshgrid(
             np.linspace(1, wsize[0], wsize[0]),
@@ -501,9 +663,9 @@ def _get_pass_grid(pass_idx, config):
         )
         X1 = X1.ravel(order="C")
         X2 = X2.ravel(order="C")
-        
+
         central_index = (wsize[0] // 2) * wsize[1] + (wsize[1] // 2)
-        
+
         x_guess = wsize[1] / 2 + 1
         y_guess = wsize[0] / 2 + 1
 
@@ -680,9 +842,15 @@ def _build_initial_guess(
         sigma_AB_xy = float(sigma_vals['sig_AB_xy']) if sigma_vals['sig_AB_xy'] is not None else 0.0
 
     # Estimate offset values from correlation plane backgrounds (5th percentile)
-    c_A_guess = _estimate_offset(AA_win)
-    c_B_guess = _estimate_offset(BB_win)
-    c_AB_guess = _estimate_offset(AB_win)
+    # OR zero if offset fitting is disabled
+    if config.ensemble_fit_offset:
+        c_A_guess = _estimate_offset(AA_win)
+        c_B_guess = _estimate_offset(BB_win)
+        c_AB_guess = _estimate_offset(AB_win)
+    else:
+        c_A_guess = 0.0
+        c_B_guess = 0.0
+        c_AB_guess = 0.0
 
     # Build 16-parameter initial guess:
     # [0-2] amplitudes, [3-5] offsets, [6-8] sigma_A, [9-11] sigma_AB, [12-15] positions
@@ -789,42 +957,57 @@ def _build_initial_guesses_vectorized(
     )
 
     if pass_idx == 0 or not has_prev_sigmas:
-        # Pass 0: Use reasonable default VARIANCES (fixed, not scaled by window size)
+        # Pass 0: Estimate sigmas from HWHM of correlation planes
+        # Data-driven initial guesses instead of fixed defaults.
         #
-        # For Levenberg-Marquardt, initial guesses don't need to be precise -
-        # they just need to be in the right ballpark. Using fixed defaults
-        # is more robust than moment-based estimation which fails on noisy
-        # or non-Gaussian real data.
+        # Uses Half-Width at Half-Maximum (HWHM) which is robust to background
+        # and provides accurate estimates for Gaussian-shaped peaks.
         #
-        # Typical PIV correlation peak:
-        # - Particle image diameter: 2-4 pixels
-        # - Autocorrelation FWHM: ~1.5x particle diameter = 3-6 pixels
-        # - Variance (σ²) = (FWHM / 2.355)² ≈ 2-6 for typical PIV
-        #
-        # NOTE: Peak width is determined by particle image size, NOT window size.
-        # The variance is an intrinsic property and should NOT be scaled.
+        # sigma_A: from AA autocorrelation (particle image size)
+        # sigma_AB: TOTAL width from AB cross-correlation (NOT difference!)
+        #           The C code now uses sigma_AB directly for cross-correlation model.
 
-        # Default variance for autocorrelation (AA, BB peaks)
-        # Typical PIV: σ² ≈ 3
+        # Sigma A: from AA autocorrelation at center (particle image size)
+        central_indices = np.full(n_valid, central_index, dtype=np.int64)
+        sigma_A_x, sigma_A_y, hwhm_A_x, hwhm_A_y = _estimate_sigma_batch_hwhm(
+            AA_3d, central_indices, win_size, min_sigma=0.5
+        )
+        sigma_A_xy = np.zeros(n_valid, dtype=np.float64)  # Assume axis-aligned for pass 0
+
+        # Sigma AB: TOTAL width from AB cross-correlation (used directly by C code)
+        # This is the raw sigma from the cross-correlation peak, not the difference.
+        sigma_AB_x, sigma_AB_y, hwhm_AB_x, hwhm_AB_y = _estimate_sigma_batch_hwhm(
+            AB_3d, max_indices, win_size, min_sigma=0.5
+        )
+        sigma_AB_xy = np.zeros(n_valid, dtype=np.float64)  # Assume axis-aligned for pass 0
+
+        # Apply reasonable bounds - extreme values indicate estimation failure
+        sigma_A_x = np.clip(sigma_A_x, 0.5, 20.0)
+        sigma_A_y = np.clip(sigma_A_y, 0.5, 20.0)
+        # sigma_AB is total width, so should be >= sigma_A
+        sigma_AB_x = np.clip(sigma_AB_x, 0.5, 25.0)
+        sigma_AB_y = np.clip(sigma_AB_y, 0.5, 25.0)
+
+        # Fallback: if HWHM estimation produces extreme values, use defaults
+        # This handles cases where correlation planes are too noisy
         default_var_A = 3.0
+        default_var_AB = 4.0  # Total width default (> sigma_A default)
 
-        # Default variance for displacement uncertainty (AB peak width beyond AA)
-        # This is typically smaller: σ² ≈ 1.5
-        default_var_AB = 1.5
+        bad_A = (sigma_A_x > 15.0) | (sigma_A_y > 15.0) | \
+                (sigma_A_x < 0.3) | (sigma_A_y < 0.3)
+        bad_AB = (sigma_AB_x > 20.0) | (sigma_AB_y > 20.0) | \
+                 (sigma_AB_x < 0.3) | (sigma_AB_y < 0.3)
 
-        sigma_A_x = np.full(n_valid, default_var_A, dtype=np.float64)
-        sigma_A_y = np.full(n_valid, default_var_A, dtype=np.float64)
-        sigma_A_xy = np.zeros(n_valid, dtype=np.float64)
+        sigma_A_x = np.where(bad_A, default_var_A, sigma_A_x)
+        sigma_A_y = np.where(bad_A, default_var_A, sigma_A_y)
+        sigma_AB_x = np.where(bad_AB, default_var_AB, sigma_AB_x)
+        sigma_AB_y = np.where(bad_AB, default_var_AB, sigma_AB_y)
 
-        sigma_AB_x = np.full(n_valid, default_var_AB, dtype=np.float64)
-        sigma_AB_y = np.full(n_valid, default_var_AB, dtype=np.float64)
-        sigma_AB_xy = np.zeros(n_valid, dtype=np.float64)
+        # Ensure sigma_AB >= sigma_A (physical constraint)
+        sigma_AB_x = np.maximum(sigma_AB_x, sigma_A_x)
+        sigma_AB_y = np.maximum(sigma_AB_y, sigma_A_y)
     else:
         # Pass > 0: Use interpolated values from previous pass
-        import logging
-        logging.info(f"Keys in sigma_dict: {list(sigma_dict.keys())}")
-        logging.info(f"sigma_dict sig_AB_x sample: {sigma_dict['sig_AB_x'][:5] if sigma_dict['sig_AB_x'] is not None else None} ")
-        logging.info(f"Shapes in sigma_dict: {[sigma_dict[key].shape if sigma_dict[key] is not None else None for key in sigma_dict.keys()]}")
         sigma_A_x = sigma_dict['sig_A_x'][valid_indices].astype(np.float64)
         sigma_A_y = sigma_dict['sig_A_y'][valid_indices].astype(np.float64)
         sigma_A_xy = sigma_dict['sig_A_xy'][valid_indices].astype(np.float64) if sigma_dict['sig_A_xy'] is not None else np.zeros(n_valid)
@@ -840,16 +1023,23 @@ def _build_initial_guesses_vectorized(
         sigma_AB_y = np.where(np.isnan(sigma_AB_y), 1.0, sigma_AB_y)
         sigma_AB_xy = np.where(np.isnan(sigma_AB_xy), 0.0, sigma_AB_xy)
 
-    # Estimate offsets from 5th percentile (vectorized)
+    # Estimate offsets from 5th percentile (vectorized) OR zero if disabled
     # This represents the background level in each correlation plane
-    c_A = np.percentile(AA_valid, 5, axis=1)
-    c_B = np.percentile(BB_valid, 5, axis=1)
-    c_AB = np.percentile(AB_valid, 5, axis=1)
+    if config.ensemble_fit_offset:
+        c_A = np.percentile(AA_valid, 5, axis=1)
+        c_B = np.percentile(BB_valid, 5, axis=1)
+        c_AB = np.percentile(AB_valid, 5, axis=1)
+    else:
+        # Offsets disabled - set to zero
+        c_A = np.zeros(n_valid, dtype=np.float64)
+        c_B = np.zeros(n_valid, dtype=np.float64)
+        c_AB = np.zeros(n_valid, dtype=np.float64)
 
     # CRITICAL: Amplitudes must be peak value ABOVE offset, not raw peak value!
     # Model: f(x) = amp * exp(...) + c
     # At peak: peak_value = amp * exp(0) + c = amp + c
     # Therefore: amp = peak_value - c
+    # When offsets are zero, amp = peak_value (no correction needed)
     amp_A_corrected = amp_A - c_A
     amp_B_corrected = amp_B - c_B
     amp_AB_corrected = amp_AB - c_AB
@@ -887,7 +1077,13 @@ def _build_initial_guesses_vectorized(
         y_all[offset + n_per_window:offset + 2 * n_per_window] = BB_valid[i]
         y_all[offset + 2 * n_per_window:offset + 3 * n_per_window] = AB_valid[i]
 
-    return initial_guesses, y_all
+    # Uniform weights for AA/BB residuals - no physics-dependent weighting
+    # Previous implementation weighted by sqrt(sigma_AB / sigma_A), but this
+    # introduced spatial bias that suppressed displacement signal in high-shear regions.
+    # The constraint sigma_AB >= sigma_A in the C solver provides sufficient coupling.
+    weights_auto = np.ones(n_valid, dtype=np.float64)
+
+    return initial_guesses, y_all, weights_auto
 
 
 def _estimate_sigma_batch_vectorized(
@@ -976,6 +1172,84 @@ def _estimate_sigma_batch_vectorized(
     return sigma_x, sigma_y
 
 
+def _estimate_sigma_batch_hwhm(
+    corr_planes_3d: np.ndarray,
+    peak_indices: np.ndarray,
+    win_size: tuple,
+    min_sigma: float = 0.5,
+) -> tuple:
+    """
+    Vectorized HWHM-based sigma estimation for correlation planes.
+
+    Uses Half-Width at Half-Maximum (HWHM) to estimate Gaussian sigma:
+        sigma = HWHM / sqrt(2 * ln(2))
+
+    This is more robust than moment-based for peaks with clear structure
+    and handles background subtraction implicitly (threshold = peak/2).
+
+    Parameters
+    ----------
+    corr_planes_3d : np.ndarray
+        Correlation planes, shape (n_windows, win_h, win_w)
+    peak_indices : np.ndarray
+        Flat indices of peaks in each window, shape (n_windows,)
+    win_size : tuple
+        (height, width) of window
+    min_sigma : float
+        Minimum sigma value (standard deviation)
+
+    Returns
+    -------
+    sigma_x, sigma_y : np.ndarray
+        Estimated standard deviations, shape (n_windows,)
+    hwhm_x, hwhm_y : np.ndarray
+        Raw HWHM values for debugging/subtraction, shape (n_windows,)
+    """
+    n_windows = corr_planes_3d.shape[0]
+    win_h, win_w = win_size
+
+    # Convert flat indices to 2D coordinates
+    peak_y = peak_indices // win_w
+    peak_x = peak_indices % win_w
+
+    # Initialize outputs with defaults
+    sigma_x = np.full(n_windows, min_sigma, dtype=np.float64)
+    sigma_y = np.full(n_windows, min_sigma, dtype=np.float64)
+    hwhm_x = np.full(n_windows, min_sigma * np.sqrt(2 * np.log(2)), dtype=np.float64)
+    hwhm_y = np.full(n_windows, min_sigma * np.sqrt(2 * np.log(2)), dtype=np.float64)
+
+    # HWHM to sigma conversion factor
+    hwhm_to_sigma = 1.0 / np.sqrt(2 * np.log(2))  # ~0.849
+
+    # Get peak values for all windows (vectorized)
+    peak_vals = corr_planes_3d[np.arange(n_windows), peak_y, peak_x]
+
+    # Process each window (loop required for profile thresholding)
+    for i in range(n_windows):
+        if peak_vals[i] < 1e-6:
+            continue
+
+        py, px = int(peak_y[i]), int(peak_x[i])
+        plane = corr_planes_3d[i]
+        threshold = peak_vals[i] / 2.0
+
+        # X-direction: profile at peak_y
+        x_profile = plane[py, :]
+        x_above = np.where(x_profile >= threshold)[0]
+        if len(x_above) >= 2:
+            hwhm_x[i] = (x_above[-1] - x_above[0]) / 2.0
+            sigma_x[i] = max(hwhm_x[i] * hwhm_to_sigma, min_sigma)
+
+        # Y-direction: profile at peak_x
+        y_profile = plane[:, px]
+        y_above = np.where(y_profile >= threshold)[0]
+        if len(y_above) >= 2:
+            hwhm_y[i] = (y_above[-1] - y_above[0]) / 2.0
+            sigma_y[i] = max(hwhm_y[i] * hwhm_to_sigma, min_sigma)
+
+    return sigma_x, sigma_y, hwhm_x, hwhm_y
+
+
 def fit_windows_openmp(
     R_AA: np.ndarray,
     R_BB: np.ndarray,
@@ -986,7 +1260,7 @@ def fit_windows_openmp(
     config,
     pass_idx: int,
     num_threads: int = None,
-
+    fit_offset: bool = True,
 ) -> tuple:
     """
     Fit Gaussian peaks using pure OpenMP (no Dask overhead).
@@ -1062,6 +1336,15 @@ def fit_windows_openmp(
     # Load library AFTER setting thread count
     marquadt_lib = _load_marquadt_lib()
 
+    # Configure offset fitting for THIS worker process
+    # Must be called on the worker, not main process, due to process isolation
+    set_offset_fitting(fit_offset)
+
+    # Configure center pixel masking (reads from config)
+    # True = mask AA/BB center pixel to remove camera self-noise spike
+    mask_center = getattr(config, 'ensemble_mask_center_pixel', True)
+    set_center_masking(mask_center)
+
     # Get grid info
     win_size = corr_size  # (height, width)
     num_windows = len(mask_flat)
@@ -1072,7 +1355,7 @@ def fit_windows_openmp(
     valid_indices = np.where(~mask_flat)[0]
     n_valid = len(valid_indices)
 
-    logger.info(f"fit_windows_openmp: Fitting {n_valid}/{num_windows} windows (pass {pass_idx + 1})")
+    logger.debug(f"fit_windows_openmp: Fitting {n_valid}/{num_windows} windows (pass {pass_idx + 1})")
 
     if n_valid == 0:
         # All windows masked - return immediately
@@ -1084,8 +1367,9 @@ def fit_windows_openmp(
     n_per_window = win_size[0] * win_size[1]
 
     # Build initial guesses using vectorized implementation (much faster)
+    # Returns uniform weights (all 1.0) - no physics-dependent weighting
     logger.debug(f"fit_windows_openmp: Building initial guesses (vectorized)...{num_windows}")
-    initial_guesses_valid, y_all = _build_initial_guesses_vectorized(
+    initial_guesses_valid, y_all, weights_auto = _build_initial_guesses_vectorized(
         R_AA, R_BB, R_AB, valid_indices, sigma_dict, win_size,
         central_index, x_guess, y_guess, pass_idx, config, num_windows=num_windows
     )
@@ -1095,14 +1379,20 @@ def fit_windows_openmp(
     statuses_valid = np.zeros(n_valid, dtype=np.int32)
 
     # Call batch C function - OpenMP parallelizes internally
+    # Pass win_height and win_width separately to support rectangular windows
+    # weights_auto is uniform (1.0) - AA/BB/AB residuals treated equally
     logger.debug(f"fit_windows_openmp: Calling C batch function with {n_valid} windows")
-    success_count = marquadt_lib.fit_stacked_gaussian_batch_export(
+    marquadt_lib.fit_stacked_gaussian_batch_export(
         ctypes.c_size_t(n_valid),
         ctypes.c_size_t(n_per_window),
+        ctypes.c_size_t(win_size[0]),  # win_height
+        ctypes.c_size_t(win_size[1]),  # win_width
         X2.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),  # X2 is x-coord
         X1.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),  # X1 is y-coord
         y_all.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
         initial_guesses_valid.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+        weights_auto.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),  # Uniform weights (1.0)
+        ctypes.c_int(pass_idx),  # Pass index: 0=peak-centered, >0=center-centered
         results_valid.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
         statuses_valid.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
     )
@@ -1126,6 +1416,9 @@ def fit_windows_openmp(
     # Track rejection reasons for debugging
     rejection_counts = {2: 0, 3: 0, 5: 0}  # AB height, displacement rule, negative sigma
 
+    # Get particle window size for amplitude correction in single mode
+    particle_window = tuple(config.ensemble_window_sizes[pass_idx])
+
     for i in range(n_valid):
         if statuses_valid[i] == 1:  # 1 = success from C code
             is_valid, nan_reason_code = _validate_fitted_params(
@@ -1133,7 +1426,8 @@ def fit_windows_openmp(
                 config.ensemble_type[pass_idx],
                 tuple(config.ensemble_sum_window),
                 float(AA_central_valid[i]),
-                float(BB_central_valid[i])
+                float(BB_central_valid[i]),
+                particle_window=particle_window,
             )
             if not is_valid:
                 statuses_valid[i] = nan_reason_code

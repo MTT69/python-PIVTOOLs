@@ -2,7 +2,7 @@
 Unified job manager for calibration jobs.
 
 Provides thread-safe job tracking with timing calculations,
-shared across all calibration types (scale factor, pinhole, charuco).
+shared across all calibration types (scale factor, dotboard, charuco).
 """
 
 import threading
