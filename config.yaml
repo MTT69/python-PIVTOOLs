@@ -2,7 +2,7 @@ paths:
   base_paths:
   - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\test_calib
   source_paths:
-  - C:\Users\mtt1e23\Downloads\EUROPIV_synthetic_image_generator\SIG\src\sig\images_low_dudx
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\download_from_jhtdb\bottom_channel\planar_images
   active_paths:
   - 0
   camera_numbers:
@@ -39,8 +39,8 @@ processing:
   dask_threads_per_worker: 1
   dask_memory_limit: 16GB
   always_batch: true
-  instantaneous: false
-  ensemble: true
+  instantaneous: true
+  ensemble: false
 outlier_detection:
   enabled: true
   methods:
