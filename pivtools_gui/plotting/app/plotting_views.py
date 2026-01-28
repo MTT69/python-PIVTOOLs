@@ -25,6 +25,7 @@ from pivtools_core.vector_loading import find_non_empty_run, get_plottable_vars
 from ..plot_maker import make_scalar_settings
 from ...utils import camera_number
 from .shared_utils import (
+    VARIABLE_UNITS,
     build_response_meta,
     create_and_return_plot,
     extract_var_and_mask,
@@ -89,6 +90,10 @@ def plot_vector():
                 else None
             )
 
+        # Determine units based on calibration status
+        length_units = "px" if params["use_uncalibrated"] else "mm"
+        variable_units = "px" if params["use_uncalibrated"] else VARIABLE_UNITS.get(params["var"], "m/s")
+
         b64_img, W, H, extra, effective_run = load_and_plot_data(
             mat_path=data_path,
             coords_path=coords_path,
@@ -102,6 +107,8 @@ def plot_vector():
             xlim=params["xlim"],
             ylim=params["ylim"],
             custom_title=params["custom_title"],
+            length_units=length_units,
+            variable_units=variable_units,
         )
         meta = build_response_meta(effective_run, params["var"], W, H, extra)
         return jsonify({"success": True, "image": b64_img, "meta": meta})
@@ -921,7 +928,7 @@ def get_uncalibrated_image():
             lower_limit=params["lower_limit"],
             upper_limit=params["upper_limit"],
             cmap=params["cmap"],
-            variable_units="px/frame",
+            variable_units="px",
             length_units="px",
             raw=params["raw"],
             xlim=params["xlim"],

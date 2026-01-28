@@ -1370,7 +1370,7 @@ def check_output_exists():
             details[path_key][cam_key] = {"instantaneous": False, "ensemble": False}
 
             # Check instantaneous output
-            inst_paths = get_data_paths(base, cfg.num_frame_pairs, cam_num, "instantaneous", True)
+            inst_paths = get_data_paths(base, cfg.num_frame_pairs, cam_num, "instantaneous")
             inst_dir = inst_paths["data_dir"]
             logger.info(f"[check_output_exists] Instantaneous dir: {inst_dir}, exists: {inst_dir.exists()}")
             if inst_dir.exists():
@@ -1384,7 +1384,7 @@ def check_output_exists():
                     logger.error(f"[check_output_exists] Error listing instantaneous dir: {e}")
 
             # Check ensemble output
-            ens_paths = get_data_paths(base, cfg.num_frame_pairs, cam_num, "ensemble", True)
+            ens_paths = get_data_paths(base, cfg.num_frame_pairs, cam_num, "ensemble")
             ens_dir = ens_paths["data_dir"]
             logger.info(f"[check_output_exists] Ensemble dir: {ens_dir}, exists: {ens_dir.exists()}")
             if ens_dir.exists():
@@ -1422,7 +1422,7 @@ def clear_output():
         for cam_num in camera_numbers:
             for type_name in ["instantaneous", "ensemble"]:
                 try:
-                    paths = get_data_paths(base, cfg.num_frame_pairs, cam_num, type_name, True)
+                    paths = get_data_paths(base, cfg.num_frame_pairs, cam_num, type_name)
                     data_dir = paths["data_dir"]
                     if data_dir.exists():
                         shutil.rmtree(data_dir)

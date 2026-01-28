@@ -10,7 +10,7 @@ paths:
   camera_count: 1
   camera_subfolders: []
 images:
-  num_images: 500
+  num_images: 50
   image_format:
   - B%05d_A.tif
   - B%05d_B.tif
@@ -21,7 +21,7 @@ images:
   zero_based_indexing: false
   pairing_mode: sequential
   pairing_skip: 0
-  num_frame_pairs: 500
+  num_frame_pairs: 50
   image_type: standard
   use_camera_subfolders: false
 batches:
