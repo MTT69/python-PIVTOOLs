@@ -66,7 +66,7 @@ def planar_validate():
         )
 
         # Add extra fields
-        result["container_format"] = cfg.calibration_image_type in ("lavision_set", "lavision_im7", "cine")
+        result["container_format"] = cfg.calibration_is_container_format
 
         return jsonify(result)
 
@@ -469,9 +469,11 @@ def planar_generate_model_all():
                             }
                             logger.info(f"Camera {camera} calibration completed")
                         else:
+                            error_msg = result.get("error", "Unknown error")
+                            logger.error(f"Camera {camera} calibration failed: {error_msg}")
                             camera_results[camera] = {
                                 "status": "failed",
-                                "error": result.get("error", "Unknown error"),
+                                "error": error_msg,
                             }
 
                     except Exception as e:

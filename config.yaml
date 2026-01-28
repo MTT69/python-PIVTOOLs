@@ -1,8 +1,8 @@
 paths:
   base_paths:
-  - /Users/morgan/Documents/PIV_test/process
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\test_calib
   source_paths:
-  - /Users/morgan/Documents/PIV_test
+  - C:\Users\mtt1e23\Downloads\EUROPIV_synthetic_image_generator\SIG\src\sig\images_low_dudx
   active_paths:
   - 0
   camera_numbers:
@@ -10,7 +10,7 @@ paths:
   camera_count: 1
   camera_subfolders: []
 images:
-  num_images: 50
+  num_images: 500
   image_format:
   - B%05d_A.tif
   - B%05d_B.tif
@@ -21,11 +21,11 @@ images:
   zero_based_indexing: false
   pairing_mode: sequential
   pairing_skip: 0
-  num_frame_pairs: 50
+  num_frame_pairs: 500
   image_type: standard
   use_camera_subfolders: false
 batches:
-  size: 25
+  size: 10
 logging:
   file: pypiv.log
   level: INFO
@@ -35,12 +35,12 @@ processing:
   debug: false
   auto_compute_params: false
   omp_threads: 5
-  dask_workers_per_node: 2
+  dask_workers_per_node: 3
   dask_threads_per_worker: 1
-  dask_memory_limit: 8GB
+  dask_memory_limit: 16GB
   always_batch: true
-  instantaneous: true
-  ensemble: false
+  instantaneous: false
+  ensemble: true
 outlier_detection:
   enabled: true
   methods:
@@ -80,9 +80,9 @@ plots:
 video:
   base_path_idx: 0
   camera: 1
-  data_source: uncalibrated
-  variable: mag
-  run: 2
+  data_source: calibrated
+  variable: ux
+  run: 4
   piv_type: instantaneous
   cmap: jet
   lower: ''
@@ -118,14 +118,15 @@ statistics:
   source_endpoint: regular
 instantaneous_piv:
   window_size:
-  - - 64
-    - 64
   - - 32
-    - 16
+    - 64
+  - - 16
+    - 32
   overlap:
   - 50
   - 50
   runs:
+  - 1
   - 2
   time_resolved: false
   window_type: gaussian
@@ -135,7 +136,7 @@ instantaneous_piv:
 ensemble_piv:
   fit_method: gaussian
   skip_background_subtraction: false
-  gradient_correction: true
+  gradient_correction: false
   image_warp_interpolation: cubic
   predictor_interpolation: cubic
   kspace_snr_threshold: 3.0
@@ -144,15 +145,15 @@ ensemble_piv:
   background_subtraction_method: correlation
   window_size:
   - - 32
-    - 64
-  - - 8
-    - 8
+    - 32
+  - - 16
+    - 16
   overlap:
-  - 50
-  - 50
+  - 0
+  - 0
   type:
   - std
-  - std
+  - single
   runs:
   - 1
   - 2
@@ -161,21 +162,21 @@ ensemble_piv:
   sum_window:
   - 32
   - 32
-  sum_fitting_window_enabled: false
+  sum_fitting_window_enabled: true
   sum_fitting_window:
   - 16
   - 16
   resume_from_pass: 0
   window_type: square
 calibration:
-  image_format: cal%03d.cam1.tif
-  num_images: 19
-  image_type: standard
+  image_format: B%05d.im7
+  num_images: 1
+  image_type: lavision_im7
   zero_based_indexing: false
   use_camera_subfolders: false
-  subfolder: charuco
+  subfolder: enhanced
   camera_subfolders:
-  - Cam1
+  - test
   - Cam2
   path_order: camera_first
   active: dotboard
@@ -186,14 +187,14 @@ calibration:
     source_path_idx: 0
   dotboard:
     camera: 1
-    pattern_cols: 10
-    pattern_rows: 10
-    dot_spacing_mm: 12.22
+    pattern_cols: 30
+    pattern_rows: 20
+    dot_spacing_mm: 10
     enhance_dots: false
     asymmetric: false
     grid_tolerance: 0.5
     ransac_threshold: 3
-    dt: 0.0057553
+    dt: 4.96e-05
     source_path_idx: 0
     image_index: 0
   charuco:
@@ -255,9 +256,9 @@ calibration:
     aruco_dict: DICT_4X4_1000
     min_corners: 6
     dt: 0.0057553
-  calibration_sources: []
-filters:
-- type: time
+  calibration_sources:
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\test_calib
+filters: []
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat

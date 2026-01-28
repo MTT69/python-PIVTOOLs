@@ -20,6 +20,9 @@ from scipy.io import savemat
 
 from pivtools_core.config import get_config, reload_config
 from pivtools_core.image_handling.load_images import read_image
+from pivtools_core.image_handling.calibration_loader import (
+    read_calibration_image as core_read_calibration_image,
+)
 
 # ===================== CONFIGURATION VARIABLES =====================
 
@@ -213,22 +216,83 @@ class ChArUcoCalibrator:
         return self.source_dir
 
     def _is_container_format(self) -> bool:
-        """Check if file pattern is a container format (.set, .im7, .cine)."""
+        """Check if file pattern is a container format (.set, .cine).
+
+        Uses config.calibration_is_container_format when available, otherwise
+        falls back to pattern-based detection.
+
+        Note: IM7 files with % patterns (e.g., B%05d.im7) are individual files,
+        not containers. Only treat as container if it's a single file without
+        a printf-style pattern.
+        """
+        if self._config is not None:
+            return self._config.calibration_is_container_format
+
+        # Fallback: pattern-based detection
         pattern_lower = self.file_pattern.lower()
-        return ".set" in pattern_lower or ".im7" in pattern_lower or ".cine" in pattern_lower
+        # If pattern has %, it's individual numbered files, not a container
+        if "%" in self.file_pattern:
+            return False
+        # Only .set and .cine are true multi-frame containers
+        return ".set" in pattern_lower or ".cine" in pattern_lower
 
     def _read_calibration_image(
         self, img_path: Path, camera: int = 1, img_index: int = 1
     ) -> Optional[np.ndarray]:
-        """Read calibration image with container format support (.set, .im7, .cine, standard formats)."""
+        """Read calibration image using core utilities.
+
+        When config is available, uses the unified core reader which handles
+        all formats consistently. Falls back to direct reading for CLI mode.
+
+        Parameters
+        ----------
+        img_path : Path
+            Path to image file (used for fallback/CLI mode)
+        camera : int
+            Camera number (1-based)
+        img_index : int
+            Image index (1-based)
+
+        Returns
+        -------
+        np.ndarray or None
+            Image as uint8 array, or None if reading failed
+        """
+        # Use core reader when config is available
+        if self._config is not None:
+            try:
+                img = core_read_calibration_image(
+                    idx=img_index,
+                    camera=camera,
+                    config=self._config,
+                    source_path_idx=0,
+                    normalize_uint8=True,
+                )
+                if img is not None and img.ndim == 3:
+                    img = img[0]  # Extract single frame if needed
+                return img
+            except (FileNotFoundError, ValueError) as e:
+                logger.warning(f"Error reading image {img_index}: {e}")
+                return None
+            except Exception as e:
+                logger.warning(f"Unexpected error reading image {img_index}: {e}")
+                return None
+
+        # Fallback: direct reading for CLI mode without config
+        return self._read_calibration_image_direct(img_path, camera, img_index)
+
+    def _read_calibration_image_direct(
+        self, img_path: Path, camera: int = 1, img_index: int = 1
+    ) -> Optional[np.ndarray]:
+        """Direct image reading fallback for CLI mode without config."""
         try:
             if self._is_container_format():
                 if ".set" in str(img_path).lower():
                     img = read_image(str(img_path), camera_no=camera, im_no=img_index)
                 elif ".im7" in str(img_path).lower():
-                    img = read_image(str(img_path), camera_no=camera)
+                    # Fixed: add frames=1, frames_per_camera=1 to get single frame
+                    img = read_image(str(img_path), camera_no=camera, frames=1, frames_per_camera=1)
                 elif ".cine" in str(img_path).lower():
-                    # .cine files: use dedicated single-frame reader
                     from pivtools_core.image_handling.readers.cine_reader import read_cine_single
                     img = read_cine_single(str(img_path), idx=img_index)
                 else:

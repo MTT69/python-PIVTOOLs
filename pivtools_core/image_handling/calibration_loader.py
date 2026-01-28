@@ -21,6 +21,33 @@ from .load_images import read_single_frame
 from .path_utils import build_calibration_camera_path, resolve_file_path, validate_images_generic
 
 
+def _normalize_to_uint8(img: np.ndarray) -> np.ndarray:
+    """Normalize image array to uint8 for OpenCV detection.
+
+    Parameters
+    ----------
+    img : np.ndarray
+        Input image of any dtype
+
+    Returns
+    -------
+    np.ndarray
+        Image normalized to uint8 (0-255)
+    """
+    if img.dtype == np.uint8:
+        return img
+    elif img.dtype == np.uint16:
+        return (img / 256).astype(np.uint8)
+    elif img.dtype in (np.float32, np.float64):
+        img_min, img_max = img.min(), img.max()
+        if img_max > img_min:
+            return ((img - img_min) / (img_max - img_min) * 255).astype(np.uint8)
+        return np.zeros_like(img, dtype=np.uint8)
+    elif img.dtype == np.bool_:
+        return img.astype(np.uint8) * 255
+    return img.astype(np.uint8)
+
+
 def read_calibration_image(
     idx: int,
     camera: int,
@@ -28,6 +55,7 @@ def read_calibration_image(
     source_path_idx: int = 0,
     image_format: Optional[str] = None,
     image_type: Optional[str] = None,
+    normalize_uint8: bool = True,
 ) -> np.ndarray:
     """Read a single calibration image.
 
@@ -52,11 +80,13 @@ def read_calibration_image(
         Override for calibration_image_format from config
     image_type : str, optional
         Override for calibration_image_type from config
+    normalize_uint8 : bool, optional
+        If True, normalize output to uint8 for OpenCV detection (default True)
 
     Returns
     -------
     np.ndarray
-        Image data as 2D array (H, W)
+        Image data as 2D array (H, W), normalized to uint8 if normalize_uint8=True
 
     Raises
     ------
@@ -88,16 +118,18 @@ def read_calibration_image(
         img = read_image(str(file_path))
         if img.ndim == 3:
             img = img[0]  # Extract single frame
-        return img
+        return _normalize_to_uint8(img) if normalize_uint8 else img
 
     # Use the unified core reader (passes camera_no for multi-camera containers)
-    return read_single_frame(
+    img = read_single_frame(
         file_path=file_path,
         camera=camera,
         frame_idx=idx,
         image_type=cal_image_type,
         time_resolved=True,  # Calibration always reads single frames
     )
+
+    return _normalize_to_uint8(img) if normalize_uint8 else img
 
 
 def validate_calibration_images(

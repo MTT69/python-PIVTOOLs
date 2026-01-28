@@ -3,8 +3,6 @@ from typing import Optional
 from loguru import logger
 import numpy as np
 
-from . import register_reader
-
 
 def read_lavision_im7(
     file_path: str,
@@ -257,7 +255,3 @@ def read_lavision_ims(
 def read_lavision_ims_pair(file_path: str, **kwargs) -> np.ndarray:
     """Read LaVision .set file and return as frame pair."""
     return read_lavision_ims(file_path, **kwargs)
-
-
-register_reader([".im7"], read_lavision_pair)
-register_reader([".set"], read_lavision_ims_pair)

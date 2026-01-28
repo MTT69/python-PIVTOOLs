@@ -487,12 +487,24 @@ video:
     def is_container_format(self) -> bool:
         """Return True if format stores multiple frames in single container.
 
-        Container formats:
+        Container formats (one file holds many timestamps):
         - cine: Single-camera video container (one file per camera)
         - lavision_set: Multi-camera container (all cameras in one file)
-        - lavision_im7: Multi-camera container (all cameras per file)
+
+        NOT containers (one file per timestamp):
+        - lavision_im7 with % pattern: Each IM7 file is one timestamp,
+          even though it may contain multiple cameras within that timestamp.
+          We count IM7 files to get the number of frame pairs.
         """
-        return self.image_type in ("cine", "lavision_set", "lavision_im7")
+        image_type = self.image_type
+        image_format = self.image_format
+
+        # IM7 files with % pattern are individual numbered files (one per timestamp)
+        if image_type == "lavision_im7" and "%" in image_format:
+            return False
+
+        # Only .set and .cine are true multi-timestamp containers
+        return image_type in ("cine", "lavision_set")
 
     @property
     def is_single_camera_container(self) -> bool:
@@ -1322,8 +1334,20 @@ video:
 
     @property
     def calibration_is_container_format(self) -> bool:
-        """Return True if calibration format stores multiple frames in single container."""
-        return self.calibration_image_type in ("cine", "lavision_set", "lavision_im7")
+        """Return True if calibration format stores multiple frames in single container.
+
+        Note: IM7 files with % patterns (e.g., B%05d.im7) are individual files,
+        not containers. Only .set and .cine files are true multi-frame containers.
+        """
+        image_type = self.calibration_image_type
+        image_format = self.calibration_image_format
+
+        # IM7 files with % pattern are individual numbered files, not containers
+        if image_type == "lavision_im7" and "%" in image_format:
+            return False
+
+        # Only .set and .cine are true multi-frame containers
+        return image_type in ("cine", "lavision_set")
 
     @property
     def calibration_zero_based_indexing(self) -> bool:

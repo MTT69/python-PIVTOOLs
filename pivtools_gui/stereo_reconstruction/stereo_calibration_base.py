@@ -174,12 +174,21 @@ class BaseStereoCalibrator(ABC):
         pass
 
     def _is_container_format(self) -> bool:
-        """Check if file pattern is a container format (.set, .im7, .cine)."""
+        """Check if file pattern is a container format (.set, .cine).
+
+        Note: IM7 files with % patterns (e.g., B%05d.im7) are individual files,
+        not containers. Only .set and .cine files are true multi-frame containers.
+        """
         if self._config is not None:
-            image_type = self._config.calibration_image_type
-            return image_type in ("lavision_set", "lavision_im7", "cine")
+            return self._config.calibration_is_container_format
+
+        # Fallback: pattern-based detection
         pattern_lower = self.file_pattern.lower()
-        return '.set' in pattern_lower or '.im7' in pattern_lower or '.cine' in pattern_lower
+        # If pattern has %, it's individual numbered files, not a container
+        if "%" in self.file_pattern:
+            return False
+        # Only .set and .cine are true multi-frame containers
+        return '.set' in pattern_lower or '.cine' in pattern_lower
 
     def _read_calibration_image_centralized(
         self,
@@ -206,23 +215,8 @@ class BaseStereoCalibrator(ABC):
                 camera=camera,
                 config=self._config,
                 source_path_idx=self._source_path_idx,
+                normalize_uint8=True,  # Core reader handles uint8 normalization
             )
-
-            if img is None:
-                return None
-
-            # Normalize to uint8 for pattern detection
-            if img.dtype == np.bool_:
-                img = img.astype(np.uint8) * 255
-            elif img.dtype in [np.float32, np.float64]:
-                img_min, img_max = img.min(), img.max()
-                if img_max > img_min:
-                    img = ((img - img_min) / (img_max - img_min) * 255).astype(np.uint8)
-                else:
-                    img = np.zeros_like(img, dtype=np.uint8)
-            elif img.dtype == np.uint16:
-                img = (img / 256).astype(np.uint8)
-
             return img
 
         except Exception as e:

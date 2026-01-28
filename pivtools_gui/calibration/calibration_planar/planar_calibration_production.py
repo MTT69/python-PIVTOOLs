@@ -21,6 +21,10 @@ from scipy.io import savemat
 
 from pivtools_core.config import get_config, reload_config
 from pivtools_core.image_handling.load_images import read_image
+from pivtools_core.image_handling.calibration_loader import (
+    read_calibration_image as core_read_calibration_image,
+    get_calibration_frame_count,
+)
 
 # ===================== CONFIGURATION =====================
 
@@ -172,29 +176,91 @@ class MultiViewCalibrator:
         return self.source_dir
 
     def _is_container_format(self):
-        """Check if file pattern is a container format (.set, .im7, .cine)."""
-        pattern_lower = self.file_pattern.lower()
-        return '.set' in pattern_lower or '.im7' in pattern_lower or '.cine' in pattern_lower
+        """Check if file pattern is a container format (.set, .cine).
 
-    def _read_image(self, img_path, camera=1, img_index=1):
-        """Robust image reader handling standard and container formats (.tif, .set, .im7, .cine)"""
+        Uses config.calibration_is_container_format when available, otherwise
+        falls back to pattern-based detection.
+
+        Note: IM7 files with % patterns (e.g., B%05d.im7) are individual files,
+        not containers. Only treat as container if it's a single file without
+        a printf-style pattern.
+        """
+        if self._config is not None:
+            return self._config.calibration_is_container_format
+
+        # Fallback: pattern-based detection
+        pattern_lower = self.file_pattern.lower()
+        # If pattern has %, it's individual numbered files, not a container
+        if "%" in self.file_pattern:
+            return False
+        # Only .set and .cine are true multi-frame containers
+        return '.set' in pattern_lower or '.cine' in pattern_lower
+
+    def _read_image(self, img_path=None, camera=1, img_index=1):
+        """Read calibration image using core utilities.
+
+        When config is available, uses the unified core reader which handles
+        all formats consistently. Falls back to direct reading for CLI mode.
+
+        Parameters
+        ----------
+        img_path : str or Path, optional
+            Path to image file (used for fallback/CLI mode)
+        camera : int
+            Camera number (1-based)
+        img_index : int
+            Image index (1-based)
+
+        Returns
+        -------
+        np.ndarray or None
+            Image as uint8 array, or None if reading failed
+        """
+        # Use core reader when config is available
+        if self._config is not None:
+            try:
+                img = core_read_calibration_image(
+                    idx=img_index,
+                    camera=camera,
+                    config=self._config,
+                    source_path_idx=0,
+                    normalize_uint8=True,
+                )
+                if img is not None and img.ndim == 3:
+                    img = img[0]  # Extract single frame if needed
+                logger.info(f"Read image {img_index} shape: {img.shape}, dtype: {img.dtype}")
+                return img
+            except (FileNotFoundError, ValueError) as e:
+                logger.warning(f"Error reading image {img_index}: {e}")
+                return None
+            except Exception as e:
+                logger.warning(f"Unexpected error reading image {img_index}: {e}")
+                return None
+
+        # Fallback: direct reading for CLI mode without config
+        return self._read_image_direct(img_path, camera, img_index)
+
+    def _read_image_direct(self, img_path, camera=1, img_index=1):
+        """Direct image reading fallback for CLI mode without config."""
         try:
+            img_path_lower = str(img_path).lower()
             if self._is_container_format():
-                if '.set' in str(img_path).lower():
+                if '.set' in img_path_lower:
                     img = read_image(str(img_path), camera_no=camera, im_no=img_index)
-                elif '.im7' in str(img_path).lower():
-                    img = read_image(str(img_path), camera_no=camera)
-                elif '.cine' in str(img_path).lower():
-                    # .cine files: use dedicated single-frame reader
+                elif '.cine' in img_path_lower:
                     from pivtools_core.image_handling.readers.cine_reader import read_cine_single
                     img = read_cine_single(str(img_path), idx=img_index)
                 else:
                     img = read_image(str(img_path))
+            elif '.im7' in img_path_lower:
+                img = read_image(str(img_path), camera_no=camera, frames=1, frames_per_camera=1)
             else:
                 img = read_image(str(img_path))
 
             if img is None:
                 return None
+
+            logger.info(f"Read image shape: {img.shape}, dtype: {img.dtype}")
 
             # Normalize to uint8
             if img.dtype == np.bool_:
@@ -206,9 +272,8 @@ class MultiViewCalibrator:
                 else:
                     img = np.zeros_like(img, dtype=np.uint8)
             elif img.dtype == np.uint16:
-                # Simple downscale for detection, usually safe for grids
                 img = (img / 256).astype(np.uint8)
-                
+
             return img
         except Exception as e:
             logger.warning(f"Error reading image {img_path}: {e}")
@@ -243,10 +308,20 @@ class MultiViewCalibrator:
     def detect_grid(self, img):
         """Detect grid points with subpixel refinement for accurate dot centers"""
         if img.ndim == 3:
-            if img.shape[-1] == 1:
-                gray = img[:, :, 0]  # Squeeze singleton channel
-            else:
+            if img.shape[0] == 1:
+                # Shape (1, H, W) - squeeze first dimension
+                gray = img[0, :, :]
+            elif img.shape[-1] == 1:
+                # Shape (H, W, 1) - squeeze last dimension
+                gray = img[:, :, 0]
+            elif img.shape[-1] in (3, 4):
+                # Shape (H, W, 3) or (H, W, 4) - convert to grayscale
                 gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            else:
+                # Unknown 3D shape, try to squeeze or use as-is
+                gray = np.squeeze(img)
+                if gray.ndim == 3:
+                    gray = cv2.cvtColor(gray, cv2.COLOR_BGR2GRAY)
         else:
             gray = img.copy()
 
@@ -289,10 +364,14 @@ class MultiViewCalibrator:
         try:
             fig, ax = plt.subplots(figsize=(10, 8))
             if img.ndim == 3:
-                if img.shape[-1] == 1:
-                    img = img[:, :, 0]  # Squeeze singleton channel
-                else:
+                if img.shape[0] == 1:
+                    img = img[0, :, :]  # Shape (1, H, W)
+                elif img.shape[-1] == 1:
+                    img = img[:, :, 0]  # Shape (H, W, 1)
+                elif img.shape[-1] in (3, 4):
                     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                else:
+                    img = np.squeeze(img)
             
             ax.imshow(img, cmap="gray")
             cols = self.pattern_size[0]
@@ -404,8 +483,8 @@ class MultiViewCalibrator:
                 else:
                     logger.debug(f"  [-] Image {idx}: Grid not found.")
 
-            if processed_count < 3:
-                logger.error("Not enough valid images for calibration (Need > 3).")
+            if processed_count < 1:
+                logger.error("Not enough valid images for calibration (Need >= 1).")
                 continue
 
             # --- CALIBRATION ---
@@ -525,6 +604,7 @@ class MultiViewCalibrator:
         # Find images
         image_files = []
         is_container = self._is_container_format()
+        logger.info(f"Looking for images in {cam_input_dir} with pattern '{self.file_pattern}' (container={is_container})")
 
         if is_container:
             container = cam_input_dir / self.file_pattern
@@ -541,6 +621,7 @@ class MultiViewCalibrator:
         else:
             image_files = sorted([str(f) for f in cam_input_dir.glob(self.file_pattern)])
 
+        logger.info(f"Found {len(image_files)} image files for Camera {cam_num}")
         if not image_files:
             return {"success": False, "error": f"No images found for Camera {cam_num} in {cam_input_dir}"}
 
@@ -617,8 +698,8 @@ class MultiViewCalibrator:
             else:
                 logger.debug(f"  [-] Image {idx}: Grid not found.")
 
-        if valid_count < 3:
-            return {"success": False, "error": f"Only {valid_count} valid detections, need at least 3"}
+        if valid_count < 1:
+            return {"success": False, "error": f"Only {valid_count} valid detections, need at least 1"}
 
         # --- CALIBRATION ---
         logger.info(f"Calibrating with {valid_count} valid views...")
