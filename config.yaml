@@ -197,6 +197,7 @@ calibration:
     dt: 4.96e-05
     source_path_idx: 0
     image_index: 0
+    datum_frame: 1
   charuco:
     camera: 1
     squares_h: 10

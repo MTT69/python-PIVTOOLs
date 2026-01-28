@@ -653,18 +653,27 @@ class BaseStereoCalibrator(ABC):
                 logger.debug(f"Pattern not found in pair {filename}")
                 continue
 
-            # Verify point count matches
-            if len(grid1) != len(grid2):
-                msg = f"Point count mismatch in {filename}: {len(grid1)} vs {len(grid2)}"
-                logger.warning(msg)
-                continue
-
-            # For ChArUco, need to match points by ID
-            # (Subclass can override this behavior)
-            obj_pts = self._match_object_points(objp, result1, result2)
-            if obj_pts is None:
+            # Match points between cameras
+            # Subclass can override _match_object_points for automatic detection with variable grids
+            match_result = self._match_object_points(objp, result1, result2)
+            if match_result is None:
                 logger.warning(f"Could not match object points in {filename}")
                 continue
+
+            # Handle both return types:
+            # - Tuple (obj_pts, img_pts_1, img_pts_2) for automatic detection with variable grids
+            # - Single array for fixed-size patterns
+            if isinstance(match_result, tuple) and len(match_result) == 3:
+                obj_pts, matched_grid1, matched_grid2 = match_result
+                grid1 = matched_grid1
+                grid2 = matched_grid2
+            else:
+                obj_pts = match_result
+                # Verify point count matches for fixed-size patterns
+                if len(grid1) != len(grid2):
+                    msg = f"Point count mismatch in {filename}: {len(grid1)} vs {len(grid2)}"
+                    logger.warning(msg)
+                    continue
 
             # Add to calibration data
             objpoints.append(obj_pts)
@@ -778,16 +787,17 @@ class BaseStereoCalibrator(ABC):
         objp: np.ndarray,
         result1: Tuple,
         result2: Tuple,
-    ) -> Optional[np.ndarray]:
+    ) -> Optional[Union[np.ndarray, Tuple[np.ndarray, np.ndarray, np.ndarray]]]:
         """Match object points to detected image points.
 
         This base implementation assumes all points are detected in order.
-        Subclasses (e.g., ChArUco) can override to match by corner ID.
+        Subclasses can override to match by corner ID (ChArUco) or grid index
+        (automatic dotboard detection with variable grid sizes).
 
         Parameters
         ----------
         objp : np.ndarray
-            Full object points array (N, 3)
+            Full object points array (N, 3) - may be empty for automatic detection
         result1 : tuple
             Detection result from camera 1
         result2 : tuple
@@ -795,8 +805,10 @@ class BaseStereoCalibrator(ABC):
 
         Returns
         -------
-        np.ndarray or None
-            Matched object points, or None if matching failed
+        np.ndarray or tuple or None
+            For fixed-size patterns: matched object points array
+            For automatic detection: tuple of (obj_pts, img_pts_1, img_pts_2)
+            None if matching failed
         """
         # Base implementation: assume all points detected in order
         grid1 = result1[1]

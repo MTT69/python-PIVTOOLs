@@ -7,17 +7,23 @@ Pure Multi-View Dotboard Calibration script.
 - Solves for Intrinsics (Camera Matrix + Distortion) using OpenCV.
 - Saves grid detections and final model to .mat files.
 - Visualizes detections for every image.
+
+Now uses RANSAC-based automatic grid detection (no pattern size required).
 """
 
-import glob
 import logging
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, Optional, Tuple
 
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.io import savemat
+
+from scipy.sparse import csr_matrix
+from scipy.sparse.csgraph import connected_components
 
 from pivtools_core.config import get_config, reload_config
 from pivtools_core.image_handling.load_images import read_image
@@ -50,10 +56,8 @@ CAMERA_SUBFOLDERS = []
 FILE_PATTERN = "planar_calibration_plate_%02d.tif"
 
 # GRID PARAMETERS
-PATTERN_COLS = 10
-PATTERN_ROWS = 10
-DOT_SPACING_MM = 12.22
-ASYMMETRIC = False
+# NOTE: PATTERN_COLS and PATTERN_ROWS are no longer needed - grid is auto-detected
+DOT_SPACING_MM = 12.22  # Physical dot spacing in mm (required for calibration)
 ENHANCE_DOTS = False
 
 # Number of calibration images to use (set to None to use all available)
@@ -66,6 +70,394 @@ USE_CONFIG_DIRECTLY = True
 # LOGGING SETUP
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
+
+# ==========================================================================
+# AUTOMATIC GRID DETECTION FUNCTIONS
+# ==========================================================================
+
+def to_grayscale_2d(img: np.ndarray) -> np.ndarray:
+    """Convert image to 2D grayscale."""
+    if img.ndim == 3:
+        if img.shape[0] == 1:
+            return img[0, :, :]
+        elif img.shape[-1] == 1:
+            return img[:, :, 0]
+        elif img.shape[-1] in (3, 4):
+            return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = np.squeeze(img)
+            if gray.ndim == 3:
+                return cv2.cvtColor(gray, cv2.COLOR_BGR2GRAY)
+            return gray
+    return img.copy()
+
+
+def apply_mask_to_image(img: np.ndarray, mask: np.ndarray, fill_value: int = 255) -> np.ndarray:
+    """Apply mask: fill excluded regions (mask=0) with fill_value."""
+    masked_img = img.copy()
+    masked_img[mask == 0] = fill_value
+    return masked_img
+
+
+def find_largest_grid_component(
+    grid_indices: np.ndarray,
+) -> Tuple[np.ndarray, int, np.ndarray]:
+    """
+    Find the largest connected component of grid points.
+
+    Two points are connected if they are grid-neighbors:
+    - Same row, adjacent columns (|col_diff| == 1, row_diff == 0)
+    - Same column, adjacent rows (col_diff == 0, |row_diff| == 1)
+
+    This is used to filter out reflections, which form separate grid components
+    that are not connected to the main calibration grid.
+
+    Parameters
+    ----------
+    grid_indices : np.ndarray
+        Array of (col, row) grid indices for each point, shape (N, 2)
+
+    Returns
+    -------
+    mask : np.ndarray
+        Boolean mask of points belonging to largest component
+    n_components : int
+        Total number of connected components found
+    component_sizes : np.ndarray
+        Size of each component
+    """
+    n_points = len(grid_indices)
+
+    if n_points == 0:
+        return np.array([], dtype=bool), 0, np.array([])
+
+    # Build adjacency based on grid-neighbor relationship
+    # Create lookup: grid_index -> point_index
+    index_to_point: Dict[Tuple[int, int], int] = {}
+    for i, gi in enumerate(grid_indices):
+        key = (int(gi[0]), int(gi[1]))
+        index_to_point[key] = i
+
+    # Find all neighbor pairs (4-connected in grid space)
+    rows = []
+    cols = []
+
+    for i, gi in enumerate(grid_indices):
+        col, row = int(gi[0]), int(gi[1])
+        # Check 4-connected neighbors: right, left, down, up
+        for dc, dr in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+            neighbor_key = (col + dc, row + dr)
+            if neighbor_key in index_to_point:
+                j = index_to_point[neighbor_key]
+                rows.append(i)
+                cols.append(j)
+
+    if len(rows) == 0:
+        # No connections found - each point is its own component
+        # Return all points (can't determine which is "main" grid)
+        return np.ones(n_points, dtype=bool), n_points, np.ones(n_points, dtype=int)
+
+    # Build sparse adjacency matrix
+    data = np.ones(len(rows), dtype=np.int8)
+    adjacency = csr_matrix((data, (rows, cols)), shape=(n_points, n_points))
+
+    # Find connected components
+    n_components, labels = connected_components(adjacency, directed=False)
+
+    # Compute component sizes
+    component_sizes = np.bincount(labels)
+
+    # Find largest component
+    largest_component = np.argmax(component_sizes)
+
+    # Return mask for largest component
+    mask = labels == largest_component
+
+    return mask, n_components, component_sizes
+
+
+def detect_grid_automatic(
+    img: np.ndarray,
+    detector: cv2.SimpleBlobDetector,
+    mask: Optional[np.ndarray] = None,
+    grid_spacing_mm: Optional[float] = None,
+) -> Tuple[bool, Optional[Dict[str, Any]], Dict[str, Any]]:
+    """
+    Automatically detect grid from blob positions - NO pattern size needed.
+
+    Uses OpenCV primitives:
+    - SimpleBlobDetector for blob detection
+    - Neighbor analysis to find grid vectors
+    - RANSAC for robust affine fitting and outlier rejection
+
+    Parameters
+    ----------
+    img : ndarray
+        Input image
+    detector : cv2.SimpleBlobDetector
+        Blob detector
+    mask : ndarray, optional
+        Binary mask (255=keep, 0=exclude)
+    grid_spacing_mm : float, optional
+        Known grid spacing in mm (for calibration output)
+
+    Returns
+    -------
+    success : bool
+    grid_data : dict or None
+        Contains: centers, grid_indices, n_cols, n_rows, spacing_px, angle_deg, grid_spacing_mm
+    info : dict
+        Detection metadata and diagnostics
+    """
+    gray = to_grayscale_2d(img)
+    original_gray = gray.copy()
+
+    if mask is not None:
+        gray = apply_mask_to_image(gray, mask, fill_value=255)
+
+    info: Dict[str, Any] = {'method': 'automatic_grid_detection'}
+
+    # Step 1: Detect blobs
+    keypoints_orig = detector.detect(gray)
+    keypoints_inv = detector.detect(255 - gray)
+
+    if len(keypoints_inv) > len(keypoints_orig):
+        keypoints = keypoints_inv
+        info['image_mode'] = 'inverted'
+    else:
+        keypoints = keypoints_orig
+        info['image_mode'] = 'original'
+
+    if len(keypoints) < 9:
+        info['error'] = f'Too few blobs detected: {len(keypoints)}'
+        return False, None, info
+
+    centers = np.array([kp.pt for kp in keypoints], dtype=np.float32)
+    info['n_blobs_detected'] = len(centers)
+    logger.debug(f"Detected {len(centers)} blobs")
+
+    # Step 2: Find grid spacing
+    n_points = len(centers)
+
+    # Compute all pairwise distances
+    all_distances = np.zeros((n_points, n_points))
+    for i in range(n_points):
+        all_distances[i] = np.sqrt(np.sum((centers - centers[i]) ** 2, axis=1))
+        all_distances[i, i] = np.inf
+
+    # Find nearest neighbor distance for each point
+    nn_distances = np.min(all_distances, axis=1)
+    spacing_px = np.median(nn_distances)
+    info['spacing_px'] = float(spacing_px)
+    logger.debug(f"Estimated grid spacing: {spacing_px:.1f} pixels")
+
+    # Step 3: Find HORIZONTAL and VERTICAL grid vectors separately
+    horizontal_vecs = []  # Neighbors mostly horizontal (|dy| < |dx|)
+    vertical_vecs = []    # Neighbors mostly vertical (|dx| < |dy|)
+
+    angle_tolerance_deg = 20  # Max deviation from axis in degrees
+    angle_tolerance = np.radians(angle_tolerance_deg)
+
+    for i in range(n_points):
+        for j in range(n_points):
+            dist = all_distances[i, j]
+            if i != j and dist < spacing_px * 1.4 and dist > spacing_px * 0.6:
+                vec = centers[j] - centers[i]
+                angle_from_horiz = np.arctan2(abs(vec[1]), abs(vec[0]))
+
+                if angle_from_horiz < angle_tolerance:
+                    # Nearly horizontal
+                    horizontal_vecs.append(vec)
+                elif angle_from_horiz > (np.pi/2 - angle_tolerance):
+                    # Nearly vertical
+                    vertical_vecs.append(vec)
+
+    logger.debug(f"Found {len(horizontal_vecs)} horizontal, {len(vertical_vecs)} vertical neighbor pairs")
+
+    if len(horizontal_vecs) < 10 or len(vertical_vecs) < 10:
+        info['error'] = f'Not enough axis-aligned neighbors found'
+        return False, None, info
+
+    horizontal_vecs_arr = np.array(horizontal_vecs)
+    vertical_vecs_arr = np.array(vertical_vecs)
+
+    # Normalize horizontal vectors to point RIGHT (+x)
+    for i in range(len(horizontal_vecs_arr)):
+        if horizontal_vecs_arr[i, 0] < 0:
+            horizontal_vecs_arr[i] = -horizontal_vecs_arr[i]
+
+    # Normalize vertical vectors to point UP (-y in image pixel coords)
+    for i in range(len(vertical_vecs_arr)):
+        if vertical_vecs_arr[i, 1] > 0:  # In image coords, +y is down
+            vertical_vecs_arr[i] = -vertical_vecs_arr[i]
+
+    # Take median to get robust grid vectors
+    vec1 = np.median(horizontal_vecs_arr, axis=0)  # X direction (right)
+    vec2 = np.median(vertical_vecs_arr, axis=0)    # Y direction (up in Cartesian = -y in image)
+
+    info['grid_vec1'] = vec1.tolist()
+    info['grid_vec2'] = vec2.tolist()
+    logger.debug(f"Grid vector 1 (col): [{vec1[0]:.1f}, {vec1[1]:.1f}]")
+    logger.debug(f"Grid vector 2 (row): [{vec2[0]:.1f}, {vec2[1]:.1f}]")
+
+    # Step 4: Compute grid coordinates for each point
+    # Solve: point = origin + col * vec1 + row * vec2
+    # Use BOTTOM-LEFT point as origin (min x, max y in image pixel coords)
+    origin_idx = np.argmin(centers[:, 0] - centers[:, 1])  # Bottom-left
+    origin = centers[origin_idx]
+
+    logger.debug(f"Origin (bottom-left): ({origin[0]:.1f}, {origin[1]:.1f})")
+
+    # Build transformation matrix: [vec1, vec2] @ [col, row].T = point - origin
+    A = np.column_stack([vec1, vec2])
+    A_inv = np.linalg.inv(A)
+
+    grid_coords_float = []
+    for pt in centers:
+        delta = pt - origin
+        coords = A_inv @ delta  # [col, row]
+        grid_coords_float.append(coords)
+
+    grid_coords_float = np.array(grid_coords_float)
+
+    # Round to nearest integer for grid indices
+    grid_indices = np.round(grid_coords_float).astype(np.int32)
+
+    # Shift so minimum is (0, 0) - ensures top-left of detected grid is (0,0)
+    col_min, row_min = grid_indices[:, 0].min(), grid_indices[:, 1].min()
+    grid_indices[:, 0] -= col_min
+    grid_indices[:, 1] -= row_min
+
+    logger.debug(f"Grid index range: x=[0, {grid_indices[:, 0].max()}], y=[0, {grid_indices[:, 1].max()}]")
+
+    # Step 4.5: Filter out reflections using connected component analysis
+    # Real grid and reflections form separate connected components in grid-index space
+    # Keep only the largest component (the real calibration grid)
+    component_mask, n_components, component_sizes = find_largest_grid_component(grid_indices)
+
+    info['n_components_found'] = n_components
+    info['component_sizes'] = component_sizes.tolist()
+
+    if n_components > 1:
+        n_rejected = np.sum(~component_mask)
+        n_kept = np.sum(component_mask)
+        logger.info(
+            f"Reflection filtering: Found {n_components} grid components, "
+            f"keeping largest ({n_kept} points), rejecting {n_rejected} points (likely reflections)"
+        )
+        info['n_reflection_points_rejected'] = int(n_rejected)
+
+        # Apply filter
+        centers = centers[component_mask]
+        grid_indices = grid_indices[component_mask]
+
+        # Re-normalize grid indices after filtering
+        col_min, row_min = grid_indices[:, 0].min(), grid_indices[:, 1].min()
+        grid_indices[:, 0] -= col_min
+        grid_indices[:, 1] -= row_min
+
+        logger.debug(f"After reflection filter - Grid index range: x=[0, {grid_indices[:, 0].max()}], y=[0, {grid_indices[:, 1].max()}]")
+    else:
+        info['n_reflection_points_rejected'] = 0
+        logger.debug("No reflections detected (single connected component)")
+
+    # Step 5: Use RANSAC to robustly fit affine transform and reject outliers
+    src_pts = grid_indices.astype(np.float32)
+    dst_pts = centers.astype(np.float32)
+
+    ransac_thresh = 0.3 * spacing_px  # Max reprojection error
+    affine_matrix, inliers = cv2.estimateAffine2D(
+        src_pts, dst_pts,
+        method=cv2.RANSAC,
+        ransacReprojThreshold=ransac_thresh,
+        maxIters=2000,
+        confidence=0.99
+    )
+
+    if affine_matrix is None:
+        info['error'] = 'RANSAC failed to fit affine transform'
+        return False, None, info
+
+    inliers = inliers.flatten().astype(bool)
+    n_inliers = np.sum(inliers)
+    n_outliers = len(inliers) - n_inliers
+    logger.debug(f"RANSAC: {n_inliers} inliers, {n_outliers} outliers rejected")
+
+    centers = centers[inliers]
+    grid_indices = grid_indices[inliers]
+
+    # Step 6: Remove duplicate grid positions (keep best fit)
+    # Compute residuals for remaining points
+    src_clean = grid_indices.astype(np.float32)
+    predicted = cv2.transform(src_clean.reshape(-1, 1, 2), affine_matrix).reshape(-1, 2)
+    residuals = np.sqrt(np.sum((centers - predicted) ** 2, axis=1))
+
+    pos_to_points: Dict[Tuple[int, int], list] = defaultdict(list)
+    for i, gi in enumerate(grid_indices):
+        pos_key = (gi[0], gi[1])
+        pos_to_points[pos_key].append((i, residuals[i]))
+
+    keep_indices = []
+    n_dups = 0
+    for pos_key, point_list in pos_to_points.items():
+        if len(point_list) == 1:
+            keep_indices.append(point_list[0][0])
+        else:
+            best_idx = min(point_list, key=lambda x: x[1])[0]
+            keep_indices.append(best_idx)
+            n_dups += len(point_list) - 1
+
+    if n_dups > 0:
+        logger.debug(f"Removed {n_dups} duplicate grid positions")
+
+    keep_indices_arr = np.array(keep_indices)
+    centers = centers[keep_indices_arr]
+    grid_indices = grid_indices[keep_indices_arr]
+
+    # Recompute dimensions
+    n_cols = grid_indices[:, 0].max() + 1
+    n_rows = grid_indices[:, 1].max() + 1
+    info['n_cols'] = int(n_cols)
+    info['n_rows'] = int(n_rows)
+
+    # Extract rotation angle from affine matrix
+    angle_deg = np.degrees(np.arctan2(affine_matrix[1, 0], affine_matrix[0, 0]))
+    info['angle_deg'] = float(angle_deg)
+    info['affine_matrix'] = affine_matrix.tolist()
+
+    logger.info(f"Automatic detection: {n_cols} cols x {n_rows} rows, {len(centers)} points")
+
+    # Step 7: Subpixel refinement on original image
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.001)
+    try:
+        centers_refined = cv2.cornerSubPix(
+            original_gray,
+            centers.reshape(-1, 1, 2),
+            (11, 11),
+            (-1, -1),
+            criteria
+        )
+        centers = centers_refined.reshape(-1, 2)
+    except cv2.error:
+        pass  # Keep original if refinement fails
+
+    # Build output
+    grid_data = {
+        'centers': centers,
+        'grid_indices': grid_indices,
+        'n_cols': int(n_cols),
+        'n_rows': int(n_rows),
+        'spacing_px': spacing_px,
+        'angle_deg': angle_deg,
+        'grid_spacing_mm': grid_spacing_mm,
+    }
+
+    info['success'] = True
+    info['n_grid_points'] = len(centers)
+    logger.info(f"Grid detection SUCCESS: {n_cols}x{n_rows} grid with {len(centers)} points")
+
+    return True, grid_data, info
 
 
 def apply_cli_settings_to_config():
@@ -95,11 +487,10 @@ def apply_cli_settings_to_config():
         config.data["calibration"]["num_images"] = NUM_CALIBRATION_IMAGES
 
     # Dotboard-specific params (for planar calibration)
-    config.data["calibration"]["dotboard"]["pattern_cols"] = PATTERN_COLS
-    config.data["calibration"]["dotboard"]["pattern_rows"] = PATTERN_ROWS
+    # NOTE: pattern_cols and pattern_rows are no longer required - grid is auto-detected
     config.data["calibration"]["dotboard"]["dot_spacing_mm"] = DOT_SPACING_MM
-    config.data["calibration"]["dotboard"]["asymmetric"] = ASYMMETRIC
     config.data["calibration"]["dotboard"]["enhance_dots"] = ENHANCE_DOTS
+    config.data["calibration"]["dotboard"]["datum_frame"] = 1  # Default datum frame
 
     # Save to disk so centralized loader picks up changes
     config.save()
@@ -110,28 +501,66 @@ def apply_cli_settings_to_config():
 
 
 class MultiViewCalibrator:
+    """
+    Multi-view dotboard calibrator using automatic RANSAC-based grid detection.
+
+    No longer requires pattern_cols/pattern_rows - grid dimensions are automatically
+    detected from the calibration images.
+    """
+
     def __init__(
         self,
         source_dir,
         base_dir,
         camera_count,
         file_pattern,
-        pattern_cols=10,
-        pattern_rows=10,
         dot_spacing_mm=28.89,
-        asymmetric=False,
         enhance_dots=False,
         config=None,
+        datum_frame=1,
+        # Legacy params (ignored but kept for backward compatibility)
+        pattern_cols=None,
+        pattern_rows=None,
+        asymmetric=False,
     ):
+        """
+        Initialize the multi-view calibrator.
+
+        Parameters
+        ----------
+        source_dir : str or Path
+            Directory containing calibration images
+        base_dir : str or Path
+            Output directory for calibration results
+        camera_count : int
+            Number of cameras to process
+        file_pattern : str
+            Image file naming pattern (e.g., 'calib%05d.tif')
+        dot_spacing_mm : float
+            Physical spacing between dots in millimeters (required for calibration)
+        enhance_dots : bool
+            Whether to apply dot enhancement for better detection
+        config : Config, optional
+            Configuration object
+        datum_frame : int
+            Which calibration image defines the world coordinate origin (1-based, default: 1)
+        pattern_cols, pattern_rows : int, optional
+            DEPRECATED: Grid dimensions are now automatically detected
+        asymmetric : bool
+            DEPRECATED: Only symmetric grids supported with automatic detection
+        """
         self.source_dir = Path(source_dir)
         self.base_dir = Path(base_dir)
         self.camera_count = camera_count
         self.file_pattern = file_pattern
-        self.pattern_size = (pattern_cols, pattern_rows)
         self.dot_spacing_mm = dot_spacing_mm
-        self.asymmetric = asymmetric
         self.enable_dot_enhancement = enhance_dots
         self._config = config
+        self.datum_frame = datum_frame
+
+        # These will be populated during detection
+        self._detected_cols: Optional[int] = None
+        self._detected_rows: Optional[int] = None
 
         # Create blob detector
         self.detector = self._create_blob_detector()
@@ -290,76 +719,90 @@ class MultiViewCalibrator:
             cv2.circle(output, center, fixed_radius, (255,), -1)
         return output
 
-    def make_object_points(self):
-        """Create real-world 3D coordinates (Z=0) for the board"""
-        cols, rows = self.pattern_size
-        objp = []
-        for i in range(rows):
-            for j in range(cols):
-                if self.asymmetric:
-                    x = j * self.dot_spacing_mm + (0.5 * self.dot_spacing_mm if (i % 2 == 1) else 0.0)
-                    y = i * self.dot_spacing_mm
-                else:
-                    x = j * self.dot_spacing_mm
-                    y = i * self.dot_spacing_mm
-                objp.append([x, y, 0.0])
-        return np.array(objp, dtype=np.float32)
+    def make_object_points_dynamic(
+        self,
+        grid_indices: np.ndarray,
+        n_cols: int,
+        n_rows: int,
+    ) -> np.ndarray:
+        """
+        Create real-world 3D coordinates (Z=0) for detected grid points.
 
-    def detect_grid(self, img):
-        """Detect grid points with subpixel refinement for accurate dot centers"""
-        if img.ndim == 3:
-            if img.shape[0] == 1:
-                # Shape (1, H, W) - squeeze first dimension
-                gray = img[0, :, :]
-            elif img.shape[-1] == 1:
-                # Shape (H, W, 1) - squeeze last dimension
-                gray = img[:, :, 0]
-            elif img.shape[-1] in (3, 4):
-                # Shape (H, W, 3) or (H, W, 4) - convert to grayscale
-                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            else:
-                # Unknown 3D shape, try to squeeze or use as-is
-                gray = np.squeeze(img)
-                if gray.ndim == 3:
-                    gray = cv2.cvtColor(gray, cv2.COLOR_BGR2GRAY)
-        else:
-            gray = img.copy()
+        Unlike the old make_object_points(), this maps each detected point
+        to its world coordinates based on its grid index.
+
+        Parameters
+        ----------
+        grid_indices : np.ndarray
+            Array of (col, row) indices for each detected point, shape (N, 2)
+        n_cols : int
+            Detected number of columns
+        n_rows : int
+            Detected number of rows
+
+        Returns
+        -------
+        np.ndarray
+            3D object points, shape (N, 3), with Z=0
+        """
+        obj_points = []
+        for idx in grid_indices:
+            col, row = idx[0], idx[1]
+            x = col * self.dot_spacing_mm
+            y = row * self.dot_spacing_mm
+            obj_points.append([x, y, 0.0])
+        return np.array(obj_points, dtype=np.float32)
+
+    def detect_grid(self, img) -> Tuple[bool, Optional[np.ndarray], Optional[Dict[str, Any]]]:
+        """
+        Detect grid points using automatic RANSAC-based detection.
+
+        No pattern size required - grid dimensions are automatically detected.
+
+        Parameters
+        ----------
+        img : np.ndarray
+            Input image
+
+        Returns
+        -------
+        success : bool
+            Whether detection succeeded
+        centers : np.ndarray or None
+            Detected dot centers, shape (N, 2)
+        grid_data : dict or None
+            Detection metadata including grid_indices, n_cols, n_rows
+        """
+        gray = to_grayscale_2d(img)
 
         if self.enable_dot_enhancement:
             gray = self.enhance_dots_image(gray)
 
-        flags = cv2.CALIB_CB_ASYMMETRIC_GRID if self.asymmetric else cv2.CALIB_CB_SYMMETRIC_GRID
+        # Use automatic detection
+        success, grid_data, info = detect_grid_automatic(
+            gray,
+            self.detector,
+            mask=None,
+            grid_spacing_mm=self.dot_spacing_mm
+        )
 
-        for test_img, label in [(gray, "Original"), (255 - gray, "Inverted")]:
-            found, centers = cv2.findCirclesGrid(
-                test_img, self.pattern_size, flags=flags, blobDetector=self.detector
-            )
-            if found:
-                centers = centers.reshape(-1, 2).astype(np.float32)
+        if success and grid_data is not None:
+            # Store detected dimensions
+            self._detected_cols = grid_data['n_cols']
+            self._detected_rows = grid_data['n_rows']
+            return True, grid_data['centers'], grid_data
 
-                # Subpixel refinement using cornerSubPix
-                # This significantly improves center accuracy for circular dots
-                criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.001)
+        return False, None, None
 
-                # Window size for subpixel search - adjust based on typical dot size
-                # Using ~half the expected dot diameter gives good results
-                win_size = (11, 11)  # Search window
-                zero_zone = (-1, -1)  # No dead zone
-
-                # cornerSubPix expects (N, 1, 2) shape
-                centers_refined = cv2.cornerSubPix(
-                    gray,  # Use original gray (not inverted) for refinement
-                    centers.reshape(-1, 1, 2),
-                    win_size,
-                    zero_zone,
-                    criteria
-                )
-
-                return True, centers_refined.reshape(-1, 2).astype(np.float32)
-
-        return False, None
-
-    def save_visualization(self, img, grid_points, img_idx, cam_base, filename):
+    def save_visualization(
+        self,
+        img,
+        grid_points,
+        img_idx,
+        cam_base,
+        filename,
+        grid_data: Optional[Dict[str, Any]] = None,
+    ):
         """Save a figure showing the detected grid indices"""
         try:
             fig, ax = plt.subplots(figsize=(10, 8))
@@ -372,27 +815,39 @@ class MultiViewCalibrator:
                     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
                 else:
                     img = np.squeeze(img)
-            
+
             ax.imshow(img, cmap="gray")
-            cols = self.pattern_size[0]
 
             # Plot points
             ax.scatter(grid_points[:, 0], grid_points[:, 1], c='r', s=20)
 
-            # Annotate corners or all points to show orientation
-            # Annotating first and last point to verify ordering
-            ax.text(grid_points[0,0], grid_points[0,1], "Start (0,0)", color='cyan', fontsize=12)
-            ax.text(grid_points[-1,0], grid_points[-1,1], "End", color='cyan', fontsize=12)
+            # Annotate with grid indices if available
+            if grid_data is not None and 'grid_indices' in grid_data:
+                grid_indices = grid_data['grid_indices']
+                n_cols = grid_data.get('n_cols', 0)
+                n_rows = grid_data.get('n_rows', 0)
 
-            # Optional: Annotate every 10th point
-            for i, (x,y) in enumerate(grid_points):
-                if i % 10 == 0:
-                    r, c = divmod(i, cols)
-                    ax.text(x, y, f"{r},{c}", color='yellow', fontsize=8)
+                # Mark origin (0,0)
+                origin_mask = (grid_indices[:, 0] == 0) & (grid_indices[:, 1] == 0)
+                if np.any(origin_mask):
+                    origin_pt = grid_points[origin_mask][0]
+                    ax.scatter(origin_pt[0], origin_pt[1], c='cyan', s=100, marker='*', zorder=10)
+                    ax.text(origin_pt[0] + 5, origin_pt[1], "(0,0)", color='cyan', fontsize=10)
 
-            ax.set_title(f"Detection: {filename}")
+                # Annotate every 10th point with its grid index
+                for i, (pt, gi) in enumerate(zip(grid_points, grid_indices)):
+                    if i % 10 == 0:
+                        ax.text(pt[0], pt[1], f"{gi[0]},{gi[1]}", color='yellow', fontsize=8)
+
+                ax.set_title(f"Detection: {filename} ({n_cols}x{n_rows} grid, {len(grid_points)} points)")
+            else:
+                # Legacy behavior for fixed pattern size
+                ax.text(grid_points[0, 0], grid_points[0, 1], "Start (0,0)", color='cyan', fontsize=12)
+                ax.text(grid_points[-1, 0], grid_points[-1, 1], "End", color='cyan', fontsize=12)
+                ax.set_title(f"Detection: {filename}")
+
             ax.axis('off')
-            
+
             out_path = cam_base / "figures" / f"detected_{img_idx:03d}.png"
             plt.savefig(out_path, bbox_inches='tight', dpi=100)
             plt.close(fig)
@@ -400,9 +855,8 @@ class MultiViewCalibrator:
             logger.warning(f"Failed to save visualization for {filename}: {e}")
 
     def run(self):
-        logger.info("Starting Multi-View Dotboard Calibration...")
-        
-        objp_base = self.make_object_points() # Shape: (N, 3)
+        """Run calibration using automatic grid detection (no pattern size required)."""
+        logger.info("Starting Multi-View Dotboard Calibration (Automatic Detection)...")
 
         for cam_num in range(1, self.camera_count + 1):
             logger.info(f"--- Processing Camera {cam_num} ---")
@@ -414,15 +868,17 @@ class MultiViewCalibrator:
             # Find images
             image_files = []
             is_container = self._is_container_format()
-            
+
             if is_container:
                 container = cam_input_dir / self.file_pattern
-                if container.exists(): image_files = [str(container)]
+                if container.exists():
+                    image_files = [str(container)]
             elif "%" in self.file_pattern:
                 i = 1
                 while True:
                     f = cam_input_dir / (self.file_pattern % i)
-                    if not f.exists(): break
+                    if not f.exists():
+                        break
                     image_files.append(str(f))
                     i += 1
             else:
@@ -432,54 +888,74 @@ class MultiViewCalibrator:
                 logger.error(f"No images found for Camera {cam_num}")
                 continue
 
-            # Containers are treated as 1 file, but might have many frames. 
-            # If standard files, we iterate list. If container, we might need a fixed range or metadata.
-            # Assuming standard files or single container loop for now.
-            
-            all_objpoints = [] # 3d point in real world space
-            all_imgpoints = [] # 2d points in image plane.
-            valid_indices_map = {} # Store pixel values for saving later
-            
+            all_objpoints = []  # 3D points in real world space
+            all_imgpoints = []  # 2D points in image plane
+            valid_indices_map = {}  # Store pixel values and grid data for saving
+            grid_data_map = {}  # Store grid_data per image for visualization
+
             img_shape = None
             processed_count = 0
+            detected_cols = None
+            detected_rows = None
 
             # Loop logic adjustment for containers vs files
-            loop_range = range(1, len(image_files) + 1) if not is_container else range(1, 101) # Arbitrary limit for container safety if length unknown
+            loop_range = range(1, len(image_files) + 1) if not is_container else range(1, 101)
 
-            logger.info(f"Scanning images...")
+            logger.info(f"Scanning images with automatic grid detection...")
 
             for idx in loop_range:
                 if not is_container:
-                    img_path = image_files[idx-1]
+                    img_path = image_files[idx - 1]
                     img_name = Path(img_path).name
                 else:
                     img_path = image_files[0]
                     img_name = f"frame_{idx}"
-                    # Check if we've run out of container frames by trying to read
                     try:
                         test = self._read_image(img_path, cam_num, idx)
-                        if test is None: break
-                    except: break
+                        if test is None:
+                            break
+                    except Exception:
+                        break
 
                 img = self._read_image(img_path, cam_num, idx)
-                if img is None: continue
-                
+                if img is None:
+                    continue
+
                 if img_shape is None:
-                    img_shape = img.shape[:2][::-1] # (width, height)
+                    img_shape = img.shape[:2][::-1]  # (width, height)
 
-                found, corners = self.detect_grid(img)
+                # Use automatic detection (returns centers + grid_data)
+                found, corners, grid_data = self.detect_grid(img)
 
-                if found:
-                    all_objpoints.append(objp_base)
+                if found and grid_data is not None:
+                    # Create object points dynamically based on detected grid indices
+                    obj_pts = self.make_object_points_dynamic(
+                        grid_data['grid_indices'],
+                        grid_data['n_cols'],
+                        grid_data['n_rows']
+                    )
+
+                    all_objpoints.append(obj_pts)
                     all_imgpoints.append(corners)
-                    
-                    # Store for .mat saving
-                    valid_indices_map[idx] = corners
-                    
-                    # Visualization
-                    self.save_visualization(img, corners, idx, cam_output_base, img_name)
+
+                    # Store for saving
+                    valid_indices_map[idx] = {
+                        'centers': corners,
+                        'grid_indices': grid_data['grid_indices'],
+                        'n_cols': grid_data['n_cols'],
+                        'n_rows': grid_data['n_rows'],
+                    }
+                    grid_data_map[idx] = grid_data
+
+                    # Track detected dimensions
+                    if detected_cols is None:
+                        detected_cols = grid_data['n_cols']
+                        detected_rows = grid_data['n_rows']
+
+                    # Visualization with grid data
+                    self.save_visualization(img, corners, idx, cam_output_base, img_name, grid_data)
                     processed_count += 1
-                    logger.info(f"  [+] Image {idx}: Grid detected.")
+                    logger.info(f"  [+] Image {idx}: Grid detected ({grid_data['n_cols']}x{grid_data['n_rows']}, {len(corners)} points)")
                 else:
                     logger.debug(f"  [-] Image {idx}: Grid not found.")
 
@@ -489,20 +965,24 @@ class MultiViewCalibrator:
 
             # --- CALIBRATION ---
             logger.info(f"Calibrating with {processed_count} valid views...")
-            
+
             ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(
                 all_objpoints, all_imgpoints, img_shape, None, None
             )
 
             logger.info(f"Calibration Complete. RMS Error: {ret:.4f} pixels")
 
-            # --- SAVE RESULTS ---
+            # Apply datum frame transformation if specified
+            if self.datum_frame > 0 and (self.datum_frame - 1) < len(rvecs):
+                datum_idx = self.datum_frame - 1
+                logger.info(f"Using frame {self.datum_frame} as datum (world origin)")
+                # The datum frame's extrinsics define the world coordinate system
+                # All rvecs/tvecs are already relative to each calibration plane
 
-            # Prepare detections dictionary for .mat
-            # We want to save the pixel locations of every point for every valid image
+            # --- SAVE RESULTS ---
             detections_struct = {}
-            for img_idx, points in valid_indices_map.items():
-                detections_struct[f"image_{img_idx}"] = points
+            for img_idx, data in valid_indices_map.items():
+                detections_struct[f"image_{img_idx}"] = data['centers']
 
             model_data = {
                 "camera_matrix": mtx,
@@ -512,11 +992,15 @@ class MultiViewCalibrator:
                 "rms_error": ret,
                 "image_width": img_shape[0],
                 "image_height": img_shape[1],
-                "detections_pixel_coords": detections_struct, # Store the raw grid points
+                "detections_pixel_coords": detections_struct,
                 "timestamp": datetime.now().isoformat(),
-                "pattern_cols": self.pattern_size[0],
-                "pattern_rows": self.pattern_size[1],
-                "dot_spacing_mm": self.dot_spacing_mm
+                "detected_cols": detected_cols,
+                "detected_rows": detected_rows,
+                "dot_spacing_mm": self.dot_spacing_mm,
+                "datum_frame": self.datum_frame,
+                # Legacy fields (set to detected values for backward compat)
+                "pattern_cols": detected_cols,
+                "pattern_rows": detected_rows,
             }
 
             out_file = cam_output_base / "model" / "dotboard_model.mat"
@@ -524,30 +1008,27 @@ class MultiViewCalibrator:
             logger.info(f"Saved model to: {out_file}")
 
             # --- SAVE INDIVIDUAL DOT CENTERS TO INDICES DIRECTORY ---
-            # Save per-image .mat files with dot centers for overlay purposes
-            # Each file contains: centers (Nx2), grid_indices (Nx2 for row,col)
-            cols, rows = self.pattern_size
-            for img_idx, points in valid_indices_map.items():
-                # Create grid indices (row, col) for each detected point
-                # Points are ordered row-major: (0,0), (0,1), ..., (0,cols-1), (1,0), ...
-                grid_indices = np.zeros((len(points), 2), dtype=np.int32)
-                for i in range(len(points)):
-                    row, col = divmod(i, cols)
-                    grid_indices[i] = [row, col]
+            for img_idx, data in valid_indices_map.items():
+                grid_indices = data['grid_indices']
 
                 indices_data = {
-                    "centers_px": points,  # Nx2 array of (x, y) pixel coordinates
-                    "grid_row": grid_indices[:, 0],  # Row index for each dot
-                    "grid_col": grid_indices[:, 1],  # Column index for each dot
-                    "pattern_cols": cols,
-                    "pattern_rows": rows,
-                    "dot_spacing_mm": self.dot_spacing_mm
+                    "centers_px": data['centers'],
+                    "grid_points": data['centers'],  # Alias for compatibility
+                    "grid_indices": grid_indices,
+                    "grid_row": grid_indices[:, 1],  # Row index (y)
+                    "grid_col": grid_indices[:, 0],  # Column index (x)
+                    "pattern_cols": data['n_cols'],
+                    "pattern_rows": data['n_rows'],
+                    "detected_cols": data['n_cols'],
+                    "detected_rows": data['n_rows'],
+                    "dot_spacing_mm": self.dot_spacing_mm,
+                    "frame_index": img_idx,
                 }
 
-                indices_file = cam_output_base / "indices" / f"dot_centers_{img_idx:03d}.mat"
+                indices_file = cam_output_base / "indices" / f"indexing_{img_idx}.mat"
                 savemat(str(indices_file), indices_data)
 
-            logger.info(f"Saved {len(valid_indices_map)} dot center files to indices directory")
+            logger.info(f"Saved {len(valid_indices_map)} detection files to indices directory")
 
     def process_single_camera(
         self,
@@ -556,12 +1037,13 @@ class MultiViewCalibrator:
         save_visualizations: bool = False,
     ) -> dict:
         """
-        Process a single camera for calibration with progress callback support.
+        Process a single camera for calibration with automatic grid detection.
 
         This method is designed for GUI integration where we need:
         - Progress updates during processing
         - Return value with results (instead of just saving files)
         - Optional visualization saving
+        - Automatic grid detection (no pattern size required)
 
         Parameters
         ----------
@@ -584,12 +1066,12 @@ class MultiViewCalibrator:
             dist_coeffs: list
             rms_error: float
             num_images_used: int
+            detected_cols: int
+            detected_rows: int
             model_path: str
             error: str (if failed)
         """
-        logger.info(f"--- Processing Camera {cam_num} ---")
-
-        objp_base = self.make_object_points()
+        logger.info(f"--- Processing Camera {cam_num} (Automatic Detection) ---")
 
         # Path setup: calibration_source / camera_folder (via build_calibration_camera_path)
         cam_input_dir = self._get_camera_input_dir(cam_num)
@@ -627,12 +1109,11 @@ class MultiViewCalibrator:
 
         # Determine loop range
         if is_container:
-            # For containers, we need to probe the number of frames
-            loop_range = range(1, 101)  # Arbitrary limit
+            loop_range = range(1, 101)  # Arbitrary limit for containers
         else:
             loop_range = range(1, len(image_files) + 1)
 
-        total_images = len(image_files) if not is_container else 100  # Estimate for containers
+        total_images = len(image_files) if not is_container else 100
 
         all_objpoints = []
         all_imgpoints = []
@@ -641,8 +1122,10 @@ class MultiViewCalibrator:
         img_shape = None
         processed_count = 0
         valid_count = 0
+        detected_cols = None
+        detected_rows = None
 
-        logger.info("Scanning images...")
+        logger.info("Scanning images with automatic grid detection...")
 
         for idx in loop_range:
             processed_count += 1
@@ -665,7 +1148,6 @@ class MultiViewCalibrator:
             else:
                 img_path = image_files[0]
                 img_name = f"frame_{idx}"
-                # Check if we've run out of container frames
                 try:
                     test = self._read_image(img_path, cam_num, idx)
                     if test is None:
@@ -679,22 +1161,39 @@ class MultiViewCalibrator:
 
             if img_shape is None:
                 img_shape = img.shape[:2][::-1]  # (width, height)
-                # Update total_images estimate for containers
                 if is_container:
-                    total_images = processed_count  # Will be updated as we go
+                    total_images = processed_count
 
-            found, corners = self.detect_grid(img)
+            # Use automatic detection
+            found, corners, grid_data = self.detect_grid(img)
 
-            if found:
-                all_objpoints.append(objp_base)
+            if found and grid_data is not None:
+                # Create object points dynamically
+                obj_pts = self.make_object_points_dynamic(
+                    grid_data['grid_indices'],
+                    grid_data['n_cols'],
+                    grid_data['n_rows']
+                )
+
+                all_objpoints.append(obj_pts)
                 all_imgpoints.append(corners)
-                valid_indices_map[idx] = corners
+                valid_indices_map[idx] = {
+                    'centers': corners,
+                    'grid_indices': grid_data['grid_indices'],
+                    'n_cols': grid_data['n_cols'],
+                    'n_rows': grid_data['n_rows'],
+                }
                 valid_count += 1
 
-                if save_visualizations:
-                    self.save_visualization(img, corners, idx, cam_output_base, img_name)
+                # Track detected dimensions
+                if detected_cols is None:
+                    detected_cols = grid_data['n_cols']
+                    detected_rows = grid_data['n_rows']
 
-                logger.info(f"  [+] Image {idx}: Grid detected.")
+                if save_visualizations:
+                    self.save_visualization(img, corners, idx, cam_output_base, img_name, grid_data)
+
+                logger.info(f"  [+] Image {idx}: Grid detected ({grid_data['n_cols']}x{grid_data['n_rows']}, {len(corners)} points)")
             else:
                 logger.debug(f"  [-] Image {idx}: Grid not found.")
 
@@ -715,8 +1214,8 @@ class MultiViewCalibrator:
 
         # --- SAVE RESULTS ---
         detections_struct = {}
-        for img_idx, points in valid_indices_map.items():
-            detections_struct[f"image_{img_idx}"] = points
+        for img_idx, data in valid_indices_map.items():
+            detections_struct[f"image_{img_idx}"] = data['centers']
 
         model_data = {
             "camera_matrix": mtx,
@@ -730,9 +1229,13 @@ class MultiViewCalibrator:
             "image_height": img_shape[1],
             "detections_pixel_coords": detections_struct,
             "timestamp": datetime.now().isoformat(),
-            "pattern_cols": self.pattern_size[0],
-            "pattern_rows": self.pattern_size[1],
-            "dot_spacing_mm": self.dot_spacing_mm
+            "detected_cols": detected_cols,
+            "detected_rows": detected_rows,
+            "dot_spacing_mm": self.dot_spacing_mm,
+            "datum_frame": self.datum_frame,
+            # Legacy fields for backward compat
+            "pattern_cols": detected_cols,
+            "pattern_rows": detected_rows,
         }
 
         out_file = cam_output_base / "model" / "dotboard_model.mat"
@@ -740,17 +1243,21 @@ class MultiViewCalibrator:
         logger.info(f"Saved model to: {out_file}")
 
         # Save per-image detection files
-        cols, rows = self.pattern_size
-        for img_idx, points in valid_indices_map.items():
+        for img_idx, data in valid_indices_map.items():
+            grid_indices = data['grid_indices']
             indices_data = {
-                "grid_points": points,  # Use grid_points for consistency with loader
-                "centers_px": points,   # Keep for backwards compat
-                "pattern_cols": cols,
-                "pattern_rows": rows,
+                "grid_points": data['centers'],
+                "centers_px": data['centers'],
+                "grid_indices": grid_indices,
+                "grid_row": grid_indices[:, 1],
+                "grid_col": grid_indices[:, 0],
+                "pattern_cols": data['n_cols'],
+                "pattern_rows": data['n_rows'],
+                "detected_cols": data['n_cols'],
+                "detected_rows": data['n_rows'],
                 "dot_spacing_mm": self.dot_spacing_mm,
                 "frame_index": img_idx,
             }
-            # Use indexing_N.mat naming for consistency with loader
             indices_file = cam_output_base / "indices" / f"indexing_{img_idx}.mat"
             savemat(str(indices_file), indices_data)
 
@@ -771,13 +1278,15 @@ class MultiViewCalibrator:
             "dist_coeffs": dist.flatten().tolist(),
             "rms_error": float(ret),
             "num_images_used": valid_count,
+            "detected_cols": detected_cols,
+            "detected_rows": detected_rows,
             "model_path": str(out_file),
         }
 
 
 if __name__ == "__main__":
     logger.info("=" * 60)
-    logger.info("Planar Calibration - Starting")
+    logger.info("Planar Calibration - Starting (Automatic Grid Detection)")
     logger.info("=" * 60)
 
     if USE_CONFIG_DIRECTLY:
@@ -790,11 +1299,10 @@ if __name__ == "__main__":
         base_dir = config.data["paths"]["base_paths"][0]
         camera_nums = config.data["paths"].get("camera_numbers", [1])
         file_pattern = config.data["calibration"]["image_format"]
-        pattern_cols = config.data["calibration"]["dotboard"]["pattern_cols"]
-        pattern_rows = config.data["calibration"]["dotboard"]["pattern_rows"]
+        # pattern_cols and pattern_rows are no longer required - automatic detection
         dot_spacing_mm = config.data["calibration"]["dotboard"]["dot_spacing_mm"]
-        asymmetric = config.data["calibration"]["dotboard"].get("asymmetric", False)
         enhance_dots = config.data["calibration"]["dotboard"].get("enhance_dots", False)
+        datum_frame = config.data["calibration"]["dotboard"].get("datum_frame", 1)
     else:
         # Apply CLI settings to config.yaml so centralized loaders work correctly
         config = apply_cli_settings_to_config()
@@ -804,38 +1312,36 @@ if __name__ == "__main__":
         base_dir = BASE_DIR
         camera_nums = CAMERA_NUMS
         file_pattern = FILE_PATTERN
-        pattern_cols = PATTERN_COLS
-        pattern_rows = PATTERN_ROWS
         dot_spacing_mm = DOT_SPACING_MM
-        asymmetric = ASYMMETRIC
         enhance_dots = ENHANCE_DOTS
+        datum_frame = 1  # Default
 
     logger.info(f"Source: {source_dir}")
     logger.info(f"Output: {base_dir}")
     logger.info(f"Cameras: {camera_nums}")
-    logger.info(f"Pattern: {pattern_cols}x{pattern_rows}, {dot_spacing_mm}mm spacing")
+    logger.info(f"Dot spacing: {dot_spacing_mm}mm (grid size auto-detected)")
+    logger.info(f"Datum frame: {datum_frame}")
 
     failed_cameras = []
 
     for camera_num in camera_nums:
         logger.info(f"Processing Camera {camera_num}...")
         try:
-            # Create calibrator using config - calibration_sources paths are used
+            # Create calibrator - no pattern_cols/pattern_rows needed
             calibrator = MultiViewCalibrator(
                 source_dir=source_dir,
                 base_dir=base_dir,
                 camera_count=1,  # Process one at a time
                 file_pattern=file_pattern,
-                pattern_cols=pattern_cols,
-                pattern_rows=pattern_rows,
                 dot_spacing_mm=dot_spacing_mm,
-                asymmetric=asymmetric,
                 enhance_dots=enhance_dots,
                 config=config,
+                datum_frame=datum_frame,
             )
             result = calibrator.process_single_camera(camera_num, save_visualizations=True)
             if result.get("success"):
-                logger.info(f"Camera {camera_num} completed: RMS={result['rms_error']:.4f} px, {result['num_images_used']} images")
+                detected_info = f"{result.get('detected_cols', '?')}x{result.get('detected_rows', '?')} grid"
+                logger.info(f"Camera {camera_num} completed: RMS={result['rms_error']:.4f} px, {result['num_images_used']} images, {detected_info}")
             else:
                 logger.error(f"Camera {camera_num} failed: {result.get('error', 'Unknown error')}")
                 failed_cameras.append(camera_num)
