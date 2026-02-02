@@ -6,8 +6,6 @@ import subprocess
 import sysconfig
 from setuptools import find_packages, setup, Distribution
 from setuptools.command.build import build
-from setuptools.command.develop import develop
-from setuptools.command.install import install
 import shutil
 
 
@@ -35,26 +33,40 @@ class BuildCLibraries(build):
         src_dir = self.pkg_dir / "pivtools_cli" / "lib"
         sys_name = platform.system().lower()
 
+        # Check for user-provided FFTW paths (allows system library usage)
+        fftw_inc_env = os.environ.get("FFTW_INC_DIR")
+        fftw_lib_env = os.environ.get("FFTW_LIB_DIR")
+        use_system_fftw = bool(fftw_inc_env and fftw_lib_env)
+
         # === macOS ===
         if sys_name == "darwin":
             sys_name = "macos"
             arch = platform.machine().lower()
 
-            # Always use static FFTW from bundled libraries
-            if arch == "arm64":
-                fftw_static_dir = self.pkg_dir / "static_fftw" / "macos_arm64"
+            if use_system_fftw:
+                # User-provided system FFTW
+                self.fftw_inc = pathlib.Path(fftw_inc_env)
+                self.fftw_lib = pathlib.Path(fftw_lib_env)
+                print(f"Using system FFTW from: INC={self.fftw_inc}, LIB={self.fftw_lib}")
+                use_static_fftw = False
             else:
-                raise RuntimeError(f"Unsupported macOS architecture: {arch}. Only arm64 is supported.")
+                # Bundled static FFTW
+                if arch == "arm64":
+                    fftw_static_dir = self.pkg_dir / "static_fftw" / "macos_arm64"
+                else:
+                    raise RuntimeError(f"Unsupported macOS architecture: {arch}. Only arm64 is supported.")
 
-            self.fftw_inc = fftw_static_dir / "include"
-            self.fftw_lib = fftw_static_dir / "lib"
-            fftw_lib_file = self.fftw_lib / "libfftw3f.a"
-            fftw_omp_file = self.fftw_lib / "libfftw3f_omp.a"
-            if not fftw_lib_file.exists():
-                raise RuntimeError(f"FFTW static lib not found: {fftw_lib_file}")
-            print(f"Using static FFTW from: {fftw_static_dir}")
+                if not fftw_static_dir.exists():
+                    raise RuntimeError(
+                        f"Static FFTW not found: {fftw_static_dir}\n"
+                        "Set FFTW_INC_DIR and FFTW_LIB_DIR to use system FFTW."
+                    )
+                self.fftw_inc = fftw_static_dir / "include"
+                self.fftw_lib = fftw_static_dir / "lib"
+                use_static_fftw = True
+                print(f"Using static FFTW from: {fftw_static_dir}")
 
-            # Prefer Homebrew GCC (has OpenMP support) over Apple clang (no OpenMP)
+            # Compiler setup
             compiler = (
                 shutil.which("gcc-15") or
                 shutil.which("gcc-14") or
@@ -62,63 +74,110 @@ class BuildCLibraries(build):
                 shutil.which("gcc")
             )
             if compiler is None or "/usr/bin/gcc" in str(compiler):
-                # /usr/bin/gcc is actually Apple clang, not real GCC
                 raise RuntimeError("No suitable GCC compiler found. Install via: brew install gcc")
             print(f"Using compiler: {compiler}")
 
             sdk_path = subprocess.check_output(["xcrun", "--show-sdk-path"], text=True).strip()
             print(f"Using SDK path: {sdk_path}")
-            self.extra_compile = ["-O3", "-fPIC", "-fopenmp", "-DFFTW_THREADS", f"-I{self.fftw_inc}", "-isysroot", sdk_path]
-            # Link statically with FFTW .a files
-            self.extra_link = ["-lm", "-fopenmp", str(fftw_lib_file), str(fftw_omp_file), "-isysroot", sdk_path]
-            shared_flag = "-shared"
 
-            lib_ext = ".so"  # Use .so on macOS for compatibility with Python ctypes
+            self.extra_compile = ["-O3", "-fPIC", "-fopenmp", "-DFFTW_THREADS",
+                                  f"-I{self.fftw_inc}", "-isysroot", sdk_path]
+
+            if use_static_fftw:
+                fftw_lib_file = self.fftw_lib / "libfftw3f.a"
+                fftw_omp_file = self.fftw_lib / "libfftw3f_omp.a"
+                self.extra_link = ["-lm", "-fopenmp", str(fftw_lib_file), str(fftw_omp_file), "-isysroot", sdk_path]
+            else:
+                self.extra_link = ["-lm", "-fopenmp", f"-L{self.fftw_lib}",
+                                   "-lfftw3f", "-lfftw3f_omp", "-isysroot", sdk_path]
+
+            shared_flag = "-shared"
+            lib_ext = ".so"
             use_msvc = False
 
         # === Windows ===
         elif sys_name == "windows":
-            # Always use static FFTW from bundled libraries
-            fftw_dir = self.pkg_dir / "static_fftw" / "windows"
-            if not fftw_dir.exists():
-                raise RuntimeError(f"Static FFTW not found: {fftw_dir}")
-
-            self.fftw_inc = fftw_dir / "include"
-            self.fftw_lib = fftw_dir / "lib"
-            fftw_lib_file = self.fftw_lib / "libfftw3f-3.lib"
-            if not fftw_lib_file.exists():
-                raise RuntimeError(f"FFTW static lib not found: {fftw_lib_file}")
-            print(f"Using static FFTW from: {fftw_dir}")
+            if use_system_fftw:
+                # User-provided system FFTW
+                self.fftw_inc = pathlib.Path(fftw_inc_env)
+                self.fftw_lib = pathlib.Path(fftw_lib_env)
+                print(f"Using system FFTW from: INC={self.fftw_inc}, LIB={self.fftw_lib}")
+                use_static_fftw = False
+            else:
+                # Bundled static FFTW
+                fftw_dir = self.pkg_dir / "static_fftw" / "windows"
+                if not fftw_dir.exists():
+                    raise RuntimeError(
+                        f"Static FFTW not found: {fftw_dir}\n"
+                        "Set FFTW_INC_DIR and FFTW_LIB_DIR to use system FFTW."
+                    )
+                self.fftw_inc = fftw_dir / "include"
+                self.fftw_lib = fftw_dir / "lib"
+                use_static_fftw = True
+                print(f"Using static FFTW from: {fftw_dir}")
 
             compiler = "cl"
-            shared_flag = "/LD"  # Create DLL
+            shared_flag = "/LD"
             self.extra_compile = ["/O2", "/std:c11", "/experimental:c11atomics", "/openmp:experimental", "/MT"]
-            self.extra_link = [str(fftw_lib_file)]
+
+            if use_static_fftw:
+                fftw_lib_file = self.fftw_lib / "libfftw3f-3.lib"
+                self.extra_link = [str(fftw_lib_file)]
+            else:
+                # Dynamic linking - user must have fftw3f.lib available
+                self.extra_link = [f"/LIBPATH:{self.fftw_lib}", "fftw3f.lib"]
+
             lib_ext = ".dll"
             use_msvc = True
 
         # === Linux ===
         else:
-            # Always use static FFTW from bundled libraries
-            fftw_static_dir = self.pkg_dir / "static_fftw" / "linux"
-            if not fftw_static_dir.exists():
-                raise RuntimeError(f"Static FFTW not found: {fftw_static_dir}")
-
-            self.fftw_inc = fftw_static_dir / "include"
-            self.fftw_lib = fftw_static_dir / "lib"
-            fftw_lib_file = self.fftw_lib / "libfftw3f.a"
-            fftw_omp_file = self.fftw_lib / "libfftw3f_omp.a"
-            if not fftw_lib_file.exists():
-                raise RuntimeError(f"FFTW static lib not found: {fftw_lib_file}")
-            print(f"Using static FFTW from: {fftw_static_dir}")
+            if use_system_fftw:
+                # User-provided system FFTW (dynamic linking)
+                self.fftw_inc = pathlib.Path(fftw_inc_env)
+                self.fftw_lib = pathlib.Path(fftw_lib_env)
+                print(f"Using system FFTW from: INC={self.fftw_inc}, LIB={self.fftw_lib}")
+                use_static_fftw = False
+            else:
+                # Bundled static FFTW
+                fftw_static_dir = self.pkg_dir / "static_fftw" / "linux"
+                if not fftw_static_dir.exists():
+                    raise RuntimeError(
+                        f"Static FFTW not found: {fftw_static_dir}\n"
+                        "Either set FFTW_INC_DIR and FFTW_LIB_DIR environment variables,\n"
+                        "or ensure static_fftw/linux directory exists."
+                    )
+                self.fftw_inc = fftw_static_dir / "include"
+                self.fftw_lib = fftw_static_dir / "lib"
+                use_static_fftw = True
+                print(f"Using static FFTW from: {fftw_static_dir}")
 
             compiler = os.environ.get("CC", "gcc")
             shared_flag = "-shared"
-            self.extra_compile = ["-O3", "-fPIC", "-fopenmp", "-DFFTW_THREADS", f"-I{self.fftw_inc}", f"-I{self.python_include}"]
-            # Link statically with FFTW .a files
-            self.extra_link = ["-lm", "-fopenmp", str(fftw_lib_file), str(fftw_omp_file)]
+            self.extra_compile = ["-O3", "-fPIC", "-fopenmp", "-DFFTW_THREADS",
+                                  f"-I{self.fftw_inc}", f"-I{self.python_include}"]
+
+            if use_static_fftw:
+                fftw_lib_file = self.fftw_lib / "libfftw3f.a"
+                fftw_omp_file = self.fftw_lib / "libfftw3f_omp.a"
+                self.extra_link = ["-lm", "-fopenmp", str(fftw_lib_file), str(fftw_omp_file)]
+            else:
+                # Dynamic linking with system FFTW
+                self.extra_link = ["-lm", "-fopenmp", f"-L{self.fftw_lib}",
+                                   "-lfftw3f", "-lfftw3f_omp"]
+
             lib_ext = ".so"
             use_msvc = False
+
+        # Store for marquadt build
+        self.use_static_fftw = use_static_fftw
+        self.use_msvc = use_msvc
+        self.compiler = compiler
+        self.shared_flag = shared_flag
+        self.lib_ext = lib_ext
+        self.sys_name = sys_name
+        self.build_dir = build_dir
+        self.src_dir = src_dir
 
         # --- Build libbulkxcorr2d ---
         sources1 = [
@@ -129,7 +188,6 @@ class BuildCLibraries(build):
         ]
 
         if use_msvc:
-            # MSVC command structure: cl [flags] [sources] /I[include] /Fe[output] /link [libs]
             output_file = build_dir / f"libbulkxcorr2d{lib_ext}"
             cmd1 = [
                 compiler, *self.extra_compile, shared_flag,
@@ -139,25 +197,21 @@ class BuildCLibraries(build):
                 f"/Fe{output_file}"
             ] + self.extra_link
         else:
-            # GCC command structure: gcc [flags] [sources] -I[include] -o [output] [libs]
             cmd1 = [
                 compiler, *self.extra_compile, shared_flag,
                 *[str(src_dir / s) for s in sources1],
                 f"-I{src_dir}", f"-I{self.fftw_inc}",
                 "-o", str(build_dir / f"libbulkxcorr2d{lib_ext}")
             ] + self.extra_link
+
         self._run(cmd1)
         if not (build_dir / f"libbulkxcorr2d{lib_ext}").exists():
             raise RuntimeError(f"Build failed: {build_dir / f'libbulkxcorr2d{lib_ext}'} not created")
 
-        # Clean up intermediate build files
-        for pattern in ['*.obj', '*.exp', '*.lib']:
-            for file in build_dir.glob(pattern):
-                file.unlink()
+        self._cleanup_intermediates(build_dir)
 
         # --- Build libinterp2custom ---
         if use_msvc:
-            # MSVC command structure
             output_file = build_dir / f"libinterp2custom{lib_ext}"
             cmd2 = [
                 compiler, *self.extra_compile, shared_flag,
@@ -167,82 +221,110 @@ class BuildCLibraries(build):
                 f"/Fe{output_file}"
             ]
         else:
-            # GCC command structure
             cmd2 = [
                 compiler, *self.extra_compile, shared_flag,
                 str(src_dir / "interp2custom.c"),
                 f"-I{src_dir}",
                 "-o", str(build_dir / f"libinterp2custom{lib_ext}")
             ]
+
         self._run(cmd2)
         if not (build_dir / f"libinterp2custom{lib_ext}").exists():
             raise RuntimeError(f"Build failed: {build_dir / f'libinterp2custom{lib_ext}'} not created")
 
-        # Clean up intermediate build files
-        for pattern in ['*.obj', '*.exp', '*.lib']:
-            for file in build_dir.glob(pattern):
-                file.unlink()
+        self._cleanup_intermediates(build_dir)
 
         # --- Build libmarquadt (for ensemble PIV) ---
-        # Requires GSL (GNU Scientific Library)
-        marquadt_src = src_dir / "marquadt_gaussian.c"
-        if marquadt_src.exists():
-            # Use static GSL from static_gsl folder
-            if sys_name == "macos":
+        self._build_marquadt()
+
+    def _build_marquadt(self):
+        """Build libmarquadt with GSL support."""
+        marquadt_src = self.src_dir / "marquadt_gaussian.c"
+        if not marquadt_src.exists():
+            raise RuntimeError(f"marquadt source not found: {marquadt_src}")
+
+        print("Building libmarquadt (requires GSL)")
+
+        # Check for user-provided GSL
+        gsl_dir_env = os.environ.get("GSL_DIR")
+
+        if gsl_dir_env:
+            gsl_dir = pathlib.Path(gsl_dir_env)
+            gsl_inc = gsl_dir / "include"
+            gsl_lib = gsl_dir / "lib"
+            use_static_gsl = False
+            print(f"Using system GSL from: {gsl_dir}")
+        else:
+            # Bundled static GSL
+            if self.sys_name == "macos":
                 arch = platform.machine().lower()
                 if arch == "arm64":
                     gsl_dir = self.pkg_dir / "static_gsl" / "macos_arm64"
                 else:
-                    raise RuntimeError(f"Unsupported macOS architecture: {arch}. Only Apple Silicon (arm64) is supported.")
-            elif sys_name == "windows":
+                    raise RuntimeError(f"Unsupported macOS architecture: {arch}")
+            elif self.sys_name == "windows":
                 gsl_dir = self.pkg_dir / "static_gsl" / "windows"
             else:  # Linux
                 gsl_dir = self.pkg_dir / "static_gsl" / "linux"
 
             if not gsl_dir.exists():
-                raise RuntimeError(f"Static GSL not found: {gsl_dir}")
+                raise RuntimeError(
+                    f"Static GSL not found: {gsl_dir}\n"
+                    "Set GSL_DIR environment variable to use system GSL."
+                )
 
             gsl_inc = gsl_dir / "include"
             gsl_lib = gsl_dir / "lib"
+            use_static_gsl = True
+            print(f"Using static GSL from: {gsl_dir}")
 
-            if use_msvc:
-                # MSVC style
-                gsl_compile_flags = [f"/I{gsl_inc}"]
+        if self.use_msvc:
+            # MSVC style
+            gsl_compile_flags = [f"/I{gsl_inc}"]
+            if use_static_gsl:
                 gsl_link_flags = [str(gsl_lib / "gsl.lib"), str(gsl_lib / "gslcblas.lib")]
-                output_file = build_dir / f"libmarquadt{lib_ext}"
-                cmd_marquadt = [
-                    compiler, *self.extra_compile, shared_flag,
-                    f"/Fo{build_dir}/",
-                    *gsl_compile_flags,
-                    str(marquadt_src),
-                    f"/I{src_dir}",
-                    f"/Fe{output_file}",
-                    *gsl_link_flags
-                ]
             else:
-                # GCC style
-                gsl_compile_flags = [f"-I{gsl_inc}"]
-                gsl_link_flags = [str(gsl_lib / "libgsl.a"), str(gsl_lib / "libgslcblas.a"), "-lm"]
-                cmd_marquadt = [
-                    compiler, *self.extra_compile, shared_flag,
-                    *gsl_compile_flags,
-                    str(marquadt_src),
-                    f"-I{src_dir}",
-                    "-o", str(build_dir / f"libmarquadt{lib_ext}"),
-                    *gsl_link_flags
-                ]
+                gsl_link_flags = [f"/LIBPATH:{gsl_lib}", "gsl.lib", "gslcblas.lib"]
 
-            try:
-                self._run(cmd_marquadt)
-                if (build_dir / f"libmarquadt{lib_ext}").exists():
-                    print(f"Successfully built libmarquadt{lib_ext}")
-                else:
-                    print(f"WARNING: libmarquadt{lib_ext} build may have failed")
-            except RuntimeError as e:
-                print(f"WARNING: Failed to build libmarquadt: {e}")
-                print("Ensemble PIV will not be available.")
+            output_file = self.build_dir / f"libmarquadt{self.lib_ext}"
+            cmd_marquadt = [
+                self.compiler, *self.extra_compile, self.shared_flag,
+                f"/Fo{self.build_dir}/",
+                *gsl_compile_flags,
+                str(marquadt_src),
+                f"/I{self.src_dir}",
+                f"/Fe{output_file}",
+                *gsl_link_flags
+            ]
+        else:
+            # GCC style
+            gsl_compile_flags = [f"-I{gsl_inc}"]
+            if use_static_gsl:
+                # Static linking - include -fopenmp for OpenMP support
+                gsl_link_flags = [str(gsl_lib / "libgsl.a"), str(gsl_lib / "libgslcblas.a"),
+                                  "-lm", "-fopenmp"]
+            else:
+                # Dynamic linking
+                gsl_link_flags = [f"-L{gsl_lib}", "-lgsl", "-lgslcblas", "-lm", "-fopenmp"]
 
-        # Clean up intermediate build files
+            cmd_marquadt = [
+                self.compiler, *self.extra_compile, self.shared_flag,
+                *gsl_compile_flags,
+                str(marquadt_src),
+                f"-I{self.src_dir}",
+                "-o", str(self.build_dir / f"libmarquadt{self.lib_ext}"),
+                *gsl_link_flags
+            ]
+
+        self._run(cmd_marquadt)
+        if not (self.build_dir / f"libmarquadt{self.lib_ext}").exists():
+            raise RuntimeError(f"Build failed: {self.build_dir / f'libmarquadt{self.lib_ext}'} not created")
+        print(f"Successfully built libmarquadt{self.lib_ext}")
+
+        self._cleanup_intermediates(self.build_dir)
+
+    def _cleanup_intermediates(self, build_dir):
+        """Clean up intermediate build files."""
         for pattern in ['*.obj', '*.exp', '*.lib']:
             for file in build_dir.glob(pattern):
                 file.unlink()

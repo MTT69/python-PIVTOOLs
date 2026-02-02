@@ -367,9 +367,18 @@ def _create_ensemble_struct_all_passes(
         ('UU_stress', object),
         ('VV_stress', object),
         ('UV_stress', object),
-        ('UU_correction', object),
+        ('UU_stress_uncorrected', object),  # Original stresses before gradient correction
+        ('VV_stress_uncorrected', object),
+        ('UV_stress_uncorrected', object),
+        ('UU_correction', object),          # Total correction (window + particle)
         ('VV_correction', object),
         ('UV_correction', object),
+        ('UU_window_correction', object),   # Window averaging L²/12 effect
+        ('VV_window_correction', object),
+        ('UV_window_correction', object),
+        ('UU_particle_correction', object), # Particle extent σ_A effect
+        ('VV_particle_correction', object),
+        ('UV_particle_correction', object),
         ('peakheight', object),
         ('nan_reason', object),
         ('sig_AB_x', object),
@@ -400,9 +409,18 @@ def _create_ensemble_struct_all_passes(
         ensemble_struct['UU_stress'][i] = empty
         ensemble_struct['VV_stress'][i] = empty
         ensemble_struct['UV_stress'][i] = empty
+        ensemble_struct['UU_stress_uncorrected'][i] = empty
+        ensemble_struct['VV_stress_uncorrected'][i] = empty
+        ensemble_struct['UV_stress_uncorrected'][i] = empty
         ensemble_struct['UU_correction'][i] = empty
         ensemble_struct['VV_correction'][i] = empty
         ensemble_struct['UV_correction'][i] = empty
+        ensemble_struct['UU_window_correction'][i] = empty
+        ensemble_struct['VV_window_correction'][i] = empty
+        ensemble_struct['UV_window_correction'][i] = empty
+        ensemble_struct['UU_particle_correction'][i] = empty
+        ensemble_struct['VV_particle_correction'][i] = empty
+        ensemble_struct['UV_particle_correction'][i] = empty
         ensemble_struct['peakheight'][i] = empty
         ensemble_struct['nan_reason'][i] = empty
         ensemble_struct['sig_AB_x'][i] = empty
@@ -440,31 +458,49 @@ def _create_ensemble_struct_all_passes(
 
         # Stress tensors - no row reversal needed
         # UV_stress is negated because V is negated (UV = u'v' -> u'(-v') = -u'v')
-        UU_to_save = pass_result.UU_stress
-        VV_to_save = pass_result.VV_stress
-        UV_to_save = -pass_result.UV_stress if pass_result.UV_stress is not None else None
+        UU_uncorrected = pass_result.UU_stress
+        VV_uncorrected = pass_result.VV_stress
+        UV_uncorrected = -pass_result.UV_stress if pass_result.UV_stress is not None else None
 
         # Initialize correction terms as None (will be populated if gradient correction is applied)
-        UU_correction = None
-        VV_correction = None
-        UV_correction = None
+        UU_window_corr = None
+        VV_window_corr = None
+        UV_window_corr = None
+        UU_particle_corr = None
+        VV_particle_corr = None
+        UV_particle_corr = None
+
+        # By default, save uncorrected stresses
+        UU_to_save = UU_uncorrected
+        VV_to_save = VV_uncorrected
+        UV_to_save = UV_uncorrected
 
         # Apply gradient correction if enabled
         if gradient_correction and pass_result.sig_A_x is not None:
-            logging.info(f"Applying gradient correction to pass {global_pass_idx + 1}")
-            UU_to_save, VV_to_save, UV_to_save, UU_correction, VV_correction, UV_correction = apply_gradient_correction_to_pass(
-                ux=ux_physical,
-                uy=uy_physical,
-                UU_stress=UU_to_save,
-                VV_stress=VV_to_save,
-                UV_stress=UV_to_save,
-                sig_A_x=pass_result.sig_A_x,
-                sig_A_y=pass_result.sig_A_y,
-                win_ctrs_x=pass_result.win_ctrs_x,
-                win_ctrs_y=pass_result.win_ctrs_y,
-                image_height=image_height if image_height else 0,
-            )
+            # Get window size from pass_result (L_y, L_x)
+            window_size = pass_result.window_size
 
+            if window_size is not None:
+                logging.info(f"Applying gradient correction to pass {global_pass_idx + 1} with window_size={window_size}")
+                (UU_to_save, VV_to_save, UV_to_save,
+                 UU_window_corr, VV_window_corr, UV_window_corr,
+                 UU_particle_corr, VV_particle_corr, UV_particle_corr) = apply_gradient_correction_to_pass(
+                    ux=ux_physical,
+                    uy=uy_physical,
+                    UU_stress=UU_uncorrected,
+                    VV_stress=VV_uncorrected,
+                    UV_stress=UV_uncorrected,
+                    sig_A_x=pass_result.sig_A_x,
+                    sig_A_y=pass_result.sig_A_y,
+                    win_ctrs_x=pass_result.win_ctrs_x,
+                    win_ctrs_y=pass_result.win_ctrs_y,
+                    image_height=image_height if image_height else 0,
+                    window_size=window_size,
+                )
+            else:
+                logging.warning(f"Pass {global_pass_idx + 1}: window_size not available, skipping gradient correction")
+
+        # Save corrected stresses (or uncorrected if no correction applied)
         if UU_to_save is not None:
             ensemble_struct['UU_stress'][local_idx] = _convert_to_half_precision(UU_to_save, 'UU_stress')
         if VV_to_save is not None:
@@ -472,13 +508,40 @@ def _create_ensemble_struct_all_passes(
         if UV_to_save is not None:
             ensemble_struct['UV_stress'][local_idx] = _convert_to_half_precision(UV_to_save, 'UV_stress')
 
-        # Store gradient correction terms (only populated when gradient correction is applied)
-        if UU_correction is not None:
-            ensemble_struct['UU_correction'][local_idx] = _convert_to_half_precision(UU_correction, 'UU_correction')
-        if VV_correction is not None:
-            ensemble_struct['VV_correction'][local_idx] = _convert_to_half_precision(VV_correction, 'VV_correction')
-        if UV_correction is not None:
-            ensemble_struct['UV_correction'][local_idx] = _convert_to_half_precision(UV_correction, 'UV_correction')
+        # Save uncorrected stresses (always, for reference and verification)
+        if UU_uncorrected is not None:
+            ensemble_struct['UU_stress_uncorrected'][local_idx] = _convert_to_half_precision(UU_uncorrected, 'UU_stress_uncorrected')
+        if VV_uncorrected is not None:
+            ensemble_struct['VV_stress_uncorrected'][local_idx] = _convert_to_half_precision(VV_uncorrected, 'VV_stress_uncorrected')
+        if UV_uncorrected is not None:
+            ensemble_struct['UV_stress_uncorrected'][local_idx] = _convert_to_half_precision(UV_uncorrected, 'UV_stress_uncorrected')
+
+        # Save window averaging corrections (L²/12 effect)
+        if UU_window_corr is not None:
+            ensemble_struct['UU_window_correction'][local_idx] = _convert_to_half_precision(UU_window_corr, 'UU_window_correction')
+        if VV_window_corr is not None:
+            ensemble_struct['VV_window_correction'][local_idx] = _convert_to_half_precision(VV_window_corr, 'VV_window_correction')
+        if UV_window_corr is not None:
+            ensemble_struct['UV_window_correction'][local_idx] = _convert_to_half_precision(UV_window_corr, 'UV_window_correction')
+
+        # Save particle extent corrections (σ_A effect)
+        if UU_particle_corr is not None:
+            ensemble_struct['UU_particle_correction'][local_idx] = _convert_to_half_precision(UU_particle_corr, 'UU_particle_correction')
+        if VV_particle_corr is not None:
+            ensemble_struct['VV_particle_correction'][local_idx] = _convert_to_half_precision(VV_particle_corr, 'VV_particle_correction')
+        if UV_particle_corr is not None:
+            ensemble_struct['UV_particle_correction'][local_idx] = _convert_to_half_precision(UV_particle_corr, 'UV_particle_correction')
+
+        # Save total correction (window + particle) for backward compatibility
+        if UU_window_corr is not None and UU_particle_corr is not None:
+            UU_total_corr = UU_window_corr + UU_particle_corr
+            ensemble_struct['UU_correction'][local_idx] = _convert_to_half_precision(UU_total_corr, 'UU_correction')
+        if VV_window_corr is not None and VV_particle_corr is not None:
+            VV_total_corr = VV_window_corr + VV_particle_corr
+            ensemble_struct['VV_correction'][local_idx] = _convert_to_half_precision(VV_total_corr, 'VV_correction')
+        if UV_window_corr is not None and UV_particle_corr is not None:
+            UV_total_corr = UV_window_corr + UV_particle_corr
+            ensemble_struct['UV_correction'][local_idx] = _convert_to_half_precision(UV_total_corr, 'UV_correction')
 
         # Normalized peak height - no row reversal needed
         if pass_result.peakheight is not None:
