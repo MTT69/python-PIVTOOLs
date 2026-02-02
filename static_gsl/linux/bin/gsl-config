@@ -1,8 +1,8 @@
 #! /bin/sh
 
-prefix=/workspace/static_gsl/linux
-exec_prefix=/workspace/static_gsl/linux
-includedir=/workspace/static_gsl/linux/include
+prefix=/output/linux
+exec_prefix=/output/linux
+includedir=/output/linux/include
 
 usage()
 {
@@ -58,16 +58,16 @@ while test $# -gt 0; do
 	;;
 
     --cflags)
-       	echo -I/workspace/static_gsl/linux/include 
+       	echo -I/output/linux/include 
        	;;
 
     --libs)
         : ${GSL_CBLAS_LIB=-lgslcblas}
-	echo -L/workspace/static_gsl/linux/lib -lgsl $GSL_CBLAS_LIB -lm
+	echo -L/output/linux/lib -lgsl $GSL_CBLAS_LIB -lm
        	;;
 
     --libs-without-cblas)
-	echo -L/workspace/static_gsl/linux/lib -lgsl -lm
+	echo -L/output/linux/lib -lgsl -lm
        	;;
     *)
 	usage
