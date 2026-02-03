@@ -593,3 +593,165 @@ def _append_folder_contents(error_msg: str, folder_path: Path) -> str:
         else:
             error_msg += f". Folder is empty: {folder_path}"
     return error_msg
+
+
+def _suggest_pattern_for_role(
+    sample_files: List[str],
+    role: Optional[str] = None,
+    forced_ext: Optional[str] = None,
+) -> Optional[str]:
+    """Suggest a pattern from sample files, optionally filtering by role (A/B).
+
+    Parameters
+    ----------
+    sample_files : List[str]
+        List of filenames to analyze
+    role : str, optional
+        If "A", filter to files with _A suffix. If "B", filter to _B suffix.
+    forced_ext : str, optional
+        Force a specific extension
+
+    Returns
+    -------
+    Optional[str]
+        Suggested pattern, or None if no matching files found
+    """
+    if not sample_files:
+        return None
+
+    candidates = sample_files
+
+    # Filter by role if specified
+    if role == "A":
+        # Match files with _A or -A before extension
+        candidates = [f for f in sample_files if re.search(r'[_-][Aa]\.[a-zA-Z]+$', f)]
+    elif role == "B":
+        # Match files with _B or -B before extension
+        candidates = [f for f in sample_files if re.search(r'[_-][Bb]\.[a-zA-Z]+$', f)]
+
+    if not candidates:
+        # No files match the role filter, fall back to all files
+        candidates = sample_files
+
+    # Sort and use first file to generate pattern
+    candidates = sorted(candidates)
+    return _suggest_pattern(candidates[0], forced_ext)
+
+
+def validate_single_pattern(
+    camera_path: Path,
+    pattern: str,
+    image_type: str,
+    expected_count: int,
+    zero_based_indexing: bool,
+    role: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Validate a single image pattern.
+
+    This function validates one pattern (e.g., pattern A or pattern B) independently,
+    returning pattern-specific validation results including suggestions filtered by role.
+
+    Parameters
+    ----------
+    camera_path : Path
+        Path to the camera directory
+    pattern : str
+        Image format pattern to validate (e.g., "B%05d_A.tif")
+    image_type : str
+        One of "lavision_set", "lavision_im7", "cine", "standard"
+    expected_count : int
+        Expected number of files matching this pattern
+    zero_based_indexing : bool
+        Whether file indices are 0-based
+    role : str, optional
+        "A", "B", or None. Used to filter suggestions to matching role.
+
+    Returns
+    -------
+    Dict[str, Any]
+        Validation result with keys:
+        - valid: bool - Whether pattern validation passed
+        - found_count: int - Number of files matching pattern
+        - error: str or None - Error message if validation failed
+        - suggested_pattern: str or None - Role-aware suggestion if pattern doesn't match
+        - sample_files: List[str] - Sample of matching filenames
+    """
+    result = {
+        "valid": False,
+        "found_count": 0,
+        "error": None,
+        "suggested_pattern": None,
+        "sample_files": [],
+    }
+
+    # Container formats don't use per-pattern validation
+    if image_type in ("lavision_set", "cine"):
+        result["valid"] = True
+        result["found_count"] = "container"
+        return result
+
+    if not camera_path.exists():
+        result["error"] = f"Camera path does not exist: {camera_path}"
+        return result
+
+    if not camera_path.is_dir():
+        result["error"] = f"Camera path is not a directory: {camera_path}"
+        return result
+
+    # Convert pattern to glob pattern
+    glob_pattern = re.sub(r'%\d*d', '*', pattern)
+    matching_files = sorted(camera_path.glob(glob_pattern))
+
+    # Calculate the first expected filename
+    start_idx = 0 if zero_based_indexing else 1
+    try:
+        first_expected = pattern % start_idx
+    except (TypeError, ValueError):
+        first_expected = pattern
+
+    # Check if the first expected file actually exists
+    first_file_path = camera_path / first_expected
+    first_file_exists = first_file_path.exists()
+
+    # Find all image files (for suggestions)
+    all_images = []
+    if image_type == "lavision_im7":
+        all_images = list(camera_path.glob("*.im7"))
+    else:
+        for ext in ["*.tif", "*.tiff", "*.png", "*.jpg", "*.jpeg"]:
+            all_images.extend(camera_path.glob(ext))
+    all_image_names = [f.name for f in sorted(all_images)] if all_images else []
+
+    if not matching_files:
+        result["error"] = f"No files matching pattern '{pattern}'"
+        if all_image_names:
+            result["sample_files"] = all_image_names[:5]
+            # Get role-aware suggestion
+            suggested = _suggest_pattern_for_role(all_image_names, role)
+            if suggested:
+                result["suggested_pattern"] = suggested
+        return result
+
+    # Files match the glob, but check if first expected file actually exists
+    # This catches cases like "B%05d" matching "B00001_A.tif" via glob "B*"
+    # but the actual file "B00001" doesn't exist
+    if not first_file_exists:
+        result["error"] = f"Pattern incomplete: '{first_expected}' not found"
+        result["sample_files"] = all_image_names[:5] if all_image_names else [f.name for f in matching_files[:5]]
+        # Suggest a corrected pattern based on role
+        suggested = _suggest_pattern_for_role(all_image_names, role)
+        if suggested and suggested != pattern:
+            result["suggested_pattern"] = suggested
+        return result
+
+    result["found_count"] = len(matching_files)
+    result["sample_files"] = [f.name for f in matching_files[:5]]
+
+    # Validate count
+    if len(matching_files) < expected_count:
+        result["error"] = f"Found {len(matching_files)} files, expected {expected_count}"
+        result["valid"] = False
+    else:
+        result["valid"] = True
+
+    return result

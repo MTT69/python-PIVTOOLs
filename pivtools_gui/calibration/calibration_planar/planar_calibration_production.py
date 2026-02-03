@@ -237,14 +237,13 @@ def detect_grid_automatic(
     info['n_blobs_detected'] = len(centers)
     logger.debug(f"Detected {len(centers)} blobs")
 
-    # Step 2: Find grid spacing
+    # Step 2: Find grid spacing (vectorized for speed)
     n_points = len(centers)
 
-    # Compute all pairwise distances
-    all_distances = np.zeros((n_points, n_points))
-    for i in range(n_points):
-        all_distances[i] = np.sqrt(np.sum((centers - centers[i]) ** 2, axis=1))
-        all_distances[i, i] = np.inf
+    # Compute all pairwise distances using broadcasting (much faster than loop)
+    diff = centers[:, np.newaxis, :] - centers[np.newaxis, :, :]  # (N, N, 2)
+    all_distances = np.sqrt(np.sum(diff ** 2, axis=2))  # (N, N)
+    np.fill_diagonal(all_distances, np.inf)
 
     # Find nearest neighbor distance for each point
     nn_distances = np.min(all_distances, axis=1)
@@ -252,49 +251,45 @@ def detect_grid_automatic(
     info['spacing_px'] = float(spacing_px)
     logger.debug(f"Estimated grid spacing: {spacing_px:.1f} pixels")
 
-    # Step 3: Find HORIZONTAL and VERTICAL grid vectors separately
-    horizontal_vecs = []  # Neighbors mostly horizontal (|dy| < |dx|)
-    vertical_vecs = []    # Neighbors mostly vertical (|dx| < |dy|)
-
-    angle_tolerance_deg = 20  # Max deviation from axis in degrees
+    # Step 3: Find HORIZONTAL and VERTICAL grid vectors (vectorized)
+    angle_tolerance_deg = 20
     angle_tolerance = np.radians(angle_tolerance_deg)
 
-    for i in range(n_points):
-        for j in range(n_points):
-            dist = all_distances[i, j]
-            if i != j and dist < spacing_px * 1.4 and dist > spacing_px * 0.6:
-                vec = centers[j] - centers[i]
-                angle_from_horiz = np.arctan2(abs(vec[1]), abs(vec[0]))
+    # Find all neighbor pairs within distance tolerance
+    dist_mask = (all_distances > spacing_px * 0.6) & (all_distances < spacing_px * 1.4)
+    i_idx, j_idx = np.where(dist_mask)
 
-                if angle_from_horiz < angle_tolerance:
-                    # Nearly horizontal
-                    horizontal_vecs.append(vec)
-                elif angle_from_horiz > (np.pi/2 - angle_tolerance):
-                    # Nearly vertical
-                    vertical_vecs.append(vec)
-
-    logger.debug(f"Found {len(horizontal_vecs)} horizontal, {len(vertical_vecs)} vertical neighbor pairs")
-
-    if len(horizontal_vecs) < 10 or len(vertical_vecs) < 10:
-        info['error'] = f'Not enough axis-aligned neighbors found'
+    if len(i_idx) < 20:
+        info['error'] = 'Not enough neighbor pairs found'
         return False, None, info
 
-    horizontal_vecs_arr = np.array(horizontal_vecs)
-    vertical_vecs_arr = np.array(vertical_vecs)
+    # Compute vectors for all valid pairs
+    all_vecs = centers[j_idx] - centers[i_idx]  # (M, 2)
+    angles_from_horiz = np.arctan2(np.abs(all_vecs[:, 1]), np.abs(all_vecs[:, 0]))
 
-    # Normalize horizontal vectors to point RIGHT (+x)
-    for i in range(len(horizontal_vecs_arr)):
-        if horizontal_vecs_arr[i, 0] < 0:
-            horizontal_vecs_arr[i] = -horizontal_vecs_arr[i]
+    # Separate horizontal and vertical
+    horiz_mask = angles_from_horiz < angle_tolerance
+    vert_mask = angles_from_horiz > (np.pi / 2 - angle_tolerance)
 
-    # Normalize vertical vectors to point UP (-y in image pixel coords)
-    for i in range(len(vertical_vecs_arr)):
-        if vertical_vecs_arr[i, 1] > 0:  # In image coords, +y is down
-            vertical_vecs_arr[i] = -vertical_vecs_arr[i]
+    horizontal_vecs_arr = all_vecs[horiz_mask]
+    vertical_vecs_arr = all_vecs[vert_mask]
+
+    logger.debug(f"Found {len(horizontal_vecs_arr)} horizontal, {len(vertical_vecs_arr)} vertical neighbor pairs")
+
+    if len(horizontal_vecs_arr) < 10 or len(vertical_vecs_arr) < 10:
+        info['error'] = 'Not enough axis-aligned neighbors found'
+        return False, None, info
+
+    # Normalize horizontal vectors to point RIGHT (+x) - vectorized
+    horizontal_vecs_arr[horizontal_vecs_arr[:, 0] < 0] *= -1
+
+    # Normalize vertical vectors to point DOWN (+y in image pixel coords)
+    # This matches the old OpenCV findCirclesGrid convention where row 0 is at the top
+    vertical_vecs_arr[vertical_vecs_arr[:, 1] < 0] *= -1
 
     # Take median to get robust grid vectors
     vec1 = np.median(horizontal_vecs_arr, axis=0)  # X direction (right)
-    vec2 = np.median(vertical_vecs_arr, axis=0)    # Y direction (up in Cartesian = -y in image)
+    vec2 = np.median(vertical_vecs_arr, axis=0)    # Y direction (down in image = +y in pixels)
 
     info['grid_vec1'] = vec1.tolist()
     info['grid_vec2'] = vec2.tolist()
@@ -366,7 +361,7 @@ def detect_grid_automatic(
     src_pts = grid_indices.astype(np.float32)
     dst_pts = centers.astype(np.float32)
 
-    ransac_thresh = 0.3 * spacing_px  # Max reprojection error
+    ransac_thresh = 0.15 * spacing_px  # Tighter tolerance for better outlier rejection
     affine_matrix, inliers = cv2.estimateAffine2D(
         src_pts, dst_pts,
         method=cv2.RANSAC,
@@ -572,14 +567,17 @@ class MultiViewCalibrator:
         """Create optimized blob detector for circle grid detection"""
         params = cv2.SimpleBlobDetector_Params()
         params.filterByArea = True
-        params.minArea = 200
-        params.maxArea = 5000 # Increased slightly for varying depths
-        params.filterByCircularity = False
-        params.filterByConvexity = False
-        params.filterByInertia = False
+        params.minArea = 50  # Reduced to catch smaller dots
+        params.maxArea = 5000
+        # Shape filtering to reject distorted reflections (relaxed thresholds)
+        params.filterByCircularity = True
+        params.minCircularity = 0.4
+        params.filterByInertia = True
+        params.minInertiaRatio = 0.3
+        params.filterByConvexity = False  # Keep disabled - not useful for dots
         params.minThreshold = 0
         params.maxThreshold = 255
-        params.thresholdStep = 5
+        params.thresholdStep = 10  # Faster detection (was 5)
         return cv2.SimpleBlobDetector_create(params)
 
     def _setup_directories(self):

@@ -1,8 +1,8 @@
 paths:
   base_paths:
-  - C:\Users\mtt1e23\Downloads\EUROPIV_synthetic_image_generator\SIG\src\sig\images_all_gradients\16_48
+  - C:\Users\mtt1e23\Downloads\pivtools_test
   source_paths:
-  - C:\Users\mtt1e23\Downloads\EUROPIV_synthetic_image_generator\SIG\src\sig\images_all_gradients
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\download_from_jhtdb\bottom_channel\planar_images
   active_paths:
   - 0
   camera_numbers:
@@ -10,7 +10,7 @@ paths:
   camera_count: 1
   camera_subfolders: []
 images:
-  num_images: 500
+  num_images: 1000
   image_format:
   - B%05d_A.tif
   - B%05d_B.tif
@@ -21,7 +21,7 @@ images:
   zero_based_indexing: false
   pairing_mode: sequential
   pairing_skip: 0
-  num_frame_pairs: 500
+  num_frame_pairs: 1000
   image_type: standard
   use_camera_subfolders: false
 batches:
@@ -35,7 +35,7 @@ processing:
   debug: false
   auto_compute_params: false
   omp_threads: 5
-  dask_workers_per_node: 3
+  dask_workers_per_node: 4
   dask_threads_per_worker: 1
   dask_memory_limit: 16GB
   always_batch: true
@@ -136,7 +136,7 @@ instantaneous_piv:
 ensemble_piv:
   fit_method: gaussian
   skip_background_subtraction: false
-  gradient_correction: false
+  gradient_correction: true
   image_warp_interpolation: cubic
   predictor_interpolation: cubic
   kspace_snr_threshold: 3.0
@@ -148,15 +148,25 @@ ensemble_piv:
     - 64
   - - 16
     - 16
+  - - 16
+    - 16
+  - - 8
+    - 8
   overlap:
   - 50
-  - 0
+  - 50
+  - 50
+  - 50
   type:
   - std
+  - single
+  - single
   - single
   runs:
   - 1
   - 2
+  - 3
+  - 4
   store_planes: true
   save_diagnostics: true
   sum_window:
@@ -166,18 +176,21 @@ ensemble_piv:
   sum_fitting_window:
   - 16
   - 16
-  resume_from_pass: 0
+  resume_from_pass: 4
   window_type: square
 calibration:
   image_format: B%05d.im7
   num_images: 1
   image_type: lavision_im7
   zero_based_indexing: false
-  use_camera_subfolders: false
+  use_camera_subfolders: true
   subfolder: enhanced
   camera_subfolders:
-  - test
-  - Cam2
+  - camera1
+  - camera2
+  - camera3
+  - camera4
+  - camera5
   path_order: camera_first
   active: dotboard
   piv_type: ensemble
@@ -220,6 +233,7 @@ calibration:
     asymmetric: false
     dt: 0.0057553
     stereo_model_type: dotboard
+    datum_camera: 1
   polynomial:
     xml_path: ''
     use_xml: true
@@ -258,7 +272,7 @@ calibration:
     min_corners: 6
     dt: 0.0057553
   calibration_sources:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\test_calib
+  - C:\Users\mtt1e23\Downloads\pivtools_test
 filters: []
 masking:
   enabled: true

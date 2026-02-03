@@ -248,6 +248,15 @@ def calibration_get_frame():
     try:
         cfg = get_config()
 
+        # Early bounds validation
+        frame_count = get_calibration_frame_count(camera, cfg, source_path_idx)
+        if frame_count > 0 and idx > frame_count:
+            return jsonify({
+                "error": f"Frame index {idx} exceeds available frames ({frame_count})",
+                "frame_count": frame_count,
+                "requested_idx": idx
+            }), 400
+
         # Read calibration image using centralized loader
         img = read_calibration_image(idx, camera, cfg, source_path_idx)
 

@@ -757,21 +757,60 @@ def validate_files():
     results = {}
     overall_valid = True
 
+    # Import per-pattern validator
+    from pivtools_core.image_handling.path_utils import validate_single_pattern
+
     for camera_num in camera_numbers:
         try:
             # Build camera path using shared utility
             camera_path = build_piv_camera_path(cfg, source_path_idx, camera_num)
-            format_str = cfg.image_format[0]
             image_type = cfg.image_type
             num_images = cfg.num_images
             num_pairs = cfg.num_frame_pairs
+
+            # Get all patterns (may be single pattern or A/B patterns)
+            patterns = cfg.image_format if isinstance(cfg.image_format, (list, tuple)) else [cfg.image_format]
+            format_str = patterns[0]  # Primary pattern for generic validation
 
             # Create a frame reader function for preview generation
             def read_frame(idx: int):
                 pair = read_pair(idx, camera_path, camera_num, cfg)
                 return pair[0]  # Return first frame of pair for preview
 
-            # Use generic validator for core file detection
+            # --- Per-pattern validation ---
+            pattern_validations = []
+            for idx, pattern in enumerate(patterns):
+                # Determine role based on position: first=A, second=B (for A/B mode)
+                role = None
+                label = "pattern"
+                if len(patterns) == 2:
+                    role = "A" if idx == 0 else "B"
+                    label = role
+
+                pattern_result = validate_single_pattern(
+                    camera_path=camera_path,
+                    pattern=pattern,
+                    image_type=image_type,
+                    expected_count=num_images,
+                    zero_based_indexing=cfg.zero_based_indexing,
+                    role=role,
+                )
+                pattern_result["index"] = idx
+                pattern_result["label"] = label
+                pattern_result["pattern"] = pattern
+                pattern_validations.append(pattern_result)
+
+            # Check A/B count consistency (warn if counts differ by >10%)
+            ab_count_warning = None
+            if len(pattern_validations) == 2:
+                count_a = pattern_validations[0].get("found_count", 0)
+                count_b = pattern_validations[1].get("found_count", 0)
+                if isinstance(count_a, int) and isinstance(count_b, int) and count_a > 0 and count_b > 0:
+                    diff_ratio = abs(count_a - count_b) / max(count_a, count_b)
+                    if diff_ratio > 0.1:
+                        ab_count_warning = f"A/B count mismatch: {count_a} A files vs {count_b} B files"
+
+            # Use generic validator for core file detection (preview, image size, etc.)
             validation = validate_images_generic(
                 camera_path=camera_path,
                 camera=camera_num,
@@ -863,6 +902,19 @@ def validate_files():
                 status = "ok"
                 error_msg = f"Processing subset: {num_images} of {actual_count} files available"
 
+            # Check if any per-pattern validation failed
+            any_pattern_invalid = any(not pv.get("valid", True) for pv in pattern_validations)
+            if any_pattern_invalid:
+                status = "error"
+                # Build per-pattern error summary
+                pattern_errors = [
+                    f"Pattern {pv['label']}: {pv.get('error', 'invalid')}"
+                    for pv in pattern_validations
+                    if not pv.get("valid", True)
+                ]
+                if pattern_errors and not error_msg:
+                    error_msg = "; ".join(pattern_errors)
+
             if status == "error":
                 overall_valid = False
 
@@ -878,9 +930,13 @@ def validate_files():
                 "error": error_msg,
                 "first_image_preview": validation.get("first_image_preview"),
                 "image_size": validation.get("image_size"),
+                # Legacy fields for backward compatibility
                 "suggested_pattern": validation.get("suggested_pattern"),
                 "suggested_pattern_b": validation.get("suggested_pattern_b"),
                 "suggested_mode": validation.get("suggested_mode"),
+                # New per-pattern validation fields
+                "pattern_validations": pattern_validations,
+                "ab_count_warning": ab_count_warning,
             }
 
         except Exception as e:

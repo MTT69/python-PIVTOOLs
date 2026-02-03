@@ -197,50 +197,54 @@ def detect_grid_automatic(
     centers = np.array([kp.pt for kp in keypoints], dtype=np.float32)
     info['n_blobs_detected'] = len(centers)
 
-    # Step 2: Find grid spacing
+    # Step 2: Find grid spacing (vectorized for speed)
     n_points = len(centers)
-    all_distances = np.zeros((n_points, n_points))
-    for i in range(n_points):
-        all_distances[i] = np.sqrt(np.sum((centers - centers[i]) ** 2, axis=1))
-        all_distances[i, i] = np.inf
+
+    # Compute all pairwise distances using broadcasting (much faster than loop)
+    diff = centers[:, np.newaxis, :] - centers[np.newaxis, :, :]  # (N, N, 2)
+    all_distances = np.sqrt(np.sum(diff ** 2, axis=2))  # (N, N)
+    np.fill_diagonal(all_distances, np.inf)
 
     nn_distances = np.min(all_distances, axis=1)
     spacing_px = np.median(nn_distances)
     info['spacing_px'] = float(spacing_px)
 
-    # Step 3: Find grid vectors
-    horizontal_vecs = []
-    vertical_vecs = []
+    # Step 3: Find grid vectors (vectorized)
     angle_tolerance = np.radians(20)
 
-    for i in range(n_points):
-        for j in range(n_points):
-            dist = all_distances[i, j]
-            if i != j and dist < spacing_px * 1.4 and dist > spacing_px * 0.6:
-                vec = centers[j] - centers[i]
-                angle_from_horiz = np.arctan2(abs(vec[1]), abs(vec[0]))
-                if angle_from_horiz < angle_tolerance:
-                    horizontal_vecs.append(vec)
-                elif angle_from_horiz > (np.pi / 2 - angle_tolerance):
-                    vertical_vecs.append(vec)
+    # Find all neighbor pairs within distance tolerance
+    dist_mask = (all_distances > spacing_px * 0.6) & (all_distances < spacing_px * 1.4)
+    i_idx, j_idx = np.where(dist_mask)
 
-    if len(horizontal_vecs) < 10 or len(vertical_vecs) < 10:
+    if len(i_idx) < 20:
+        info['error'] = 'Not enough neighbor pairs found'
+        return False, None, info
+
+    # Compute vectors for all valid pairs
+    all_vecs = centers[j_idx] - centers[i_idx]  # (M, 2)
+    angles_from_horiz = np.arctan2(np.abs(all_vecs[:, 1]), np.abs(all_vecs[:, 0]))
+
+    # Separate horizontal and vertical
+    horiz_mask = angles_from_horiz < angle_tolerance
+    vert_mask = angles_from_horiz > (np.pi / 2 - angle_tolerance)
+
+    horizontal_vecs_arr = all_vecs[horiz_mask]
+    vertical_vecs_arr = all_vecs[vert_mask]
+
+    if len(horizontal_vecs_arr) < 10 or len(vertical_vecs_arr) < 10:
         info['error'] = 'Not enough axis-aligned neighbors found'
         return False, None, info
 
-    horizontal_vecs_arr = np.array(horizontal_vecs)
-    vertical_vecs_arr = np.array(vertical_vecs)
+    # Normalize horizontal vectors to point RIGHT (+x) - vectorized
+    horizontal_vecs_arr[horizontal_vecs_arr[:, 0] < 0] *= -1
 
-    for i in range(len(horizontal_vecs_arr)):
-        if horizontal_vecs_arr[i, 0] < 0:
-            horizontal_vecs_arr[i] = -horizontal_vecs_arr[i]
+    # Normalize vertical vectors to point DOWN (+y in image pixel coords)
+    # This matches the old OpenCV findCirclesGrid convention where row 0 is at the top
+    vertical_vecs_arr[vertical_vecs_arr[:, 1] < 0] *= -1
 
-    for i in range(len(vertical_vecs_arr)):
-        if vertical_vecs_arr[i, 1] > 0:
-            vertical_vecs_arr[i] = -vertical_vecs_arr[i]
-
-    vec1 = np.median(horizontal_vecs_arr, axis=0)
-    vec2 = np.median(vertical_vecs_arr, axis=0)
+    # Take median to get robust grid vectors
+    vec1 = np.median(horizontal_vecs_arr, axis=0)  # X direction (right)
+    vec2 = np.median(vertical_vecs_arr, axis=0)    # Y direction (down in image = +y in pixels)
 
     info['grid_vec1'] = vec1.tolist()
     info['grid_vec2'] = vec2.tolist()
@@ -296,7 +300,7 @@ def detect_grid_automatic(
     # Step 5: RANSAC fitting
     src_pts = grid_indices.astype(np.float32)
     dst_pts = centers.astype(np.float32)
-    ransac_thresh = 0.3 * spacing_px
+    ransac_thresh = 0.15 * spacing_px  # Tighter tolerance for better outlier rejection
 
     affine_matrix, inliers = cv2.estimateAffine2D(
         src_pts, dst_pts,
@@ -490,14 +494,17 @@ class StereoDotboardCalibrator(BaseStereoCalibrator):
         """Create optimized blob detector for circle grid detection."""
         params = cv2.SimpleBlobDetector_Params()
         params.filterByArea = True
-        params.minArea = 200
+        params.minArea = 50  # Reduced to catch smaller dots
         params.maxArea = 5000
-        params.filterByCircularity = False
-        params.filterByConvexity = False
-        params.filterByInertia = False
+        # Shape filtering to reject distorted reflections (relaxed thresholds)
+        params.filterByCircularity = True
+        params.minCircularity = 0.4
+        params.filterByInertia = True
+        params.minInertiaRatio = 0.3
+        params.filterByConvexity = False  # Keep disabled - not useful for dots
         params.minThreshold = 0
         params.maxThreshold = 255
-        params.thresholdStep = 5
+        params.thresholdStep = 10  # Faster detection (was 5)
         return cv2.SimpleBlobDetector_create(params)
 
     def _enhance_dots_image(self, img: np.ndarray, fixed_radius: int = 9) -> np.ndarray:
