@@ -227,7 +227,7 @@ def pod_filter_batch(
     n_pairs = batch.shape[0]
 
     if verbose:
-        logger.info(f"POD Filter: Processing {n_pairs} image pairs")
+        logger.debug(f"POD Filter: Processing {n_pairs} image pairs")
 
     # Process A channel (index 0)
     if verbose:
@@ -249,7 +249,7 @@ def pod_filter_batch(
     gc.collect()
 
     if verbose:
-        logger.info("POD Filter: Complete")
+        logger.debug("POD Filter: Complete")
 
     return batch
 
@@ -274,7 +274,7 @@ def time_filter_batch(batch: np.ndarray, verbose: bool = True) -> np.ndarray:
         Filtered batch of same shape
     """
     if verbose:
-        logger.info(f"Time Filter: Processing {batch.shape[0]} image pairs")
+        logger.debug(f"Time Filter: Processing {batch.shape[0]} image pairs")
 
     # Process each channel
     for channel in range(batch.shape[1]):
@@ -284,7 +284,7 @@ def time_filter_batch(batch: np.ndarray, verbose: bool = True) -> np.ndarray:
         batch[:, channel] -= min_vals
 
     if verbose:
-        logger.info("Time Filter: Complete")
+        logger.debug("Time Filter: Complete")
 
     return batch
 

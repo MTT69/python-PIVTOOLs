@@ -182,7 +182,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
     @classmethod
     def _load_libraries(cls):
         """Load C libraries once per process to avoid DLL thrashing."""
-        logging.info("Loading C libraries (One-time init)...")
+        logging.debug("Loading C libraries (One-time init)...")
 
         lib_extension = ".dll" if os.name == "nt" else ".so"
 

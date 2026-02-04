@@ -238,10 +238,7 @@ def find_non_empty_run(
     Returns:
         Tuple of (piv_result_element, run_number) where:
         - piv_result_element: The valid piv_result struct, or None if not found
-        - run_number: The 1-based run number of the valid data
-
-    Raises:
-        ValueError: If run != 1 for single-run data and run is out of range
+        - run_number: The 1-based run number of the valid data (always 1 for single-run data)
 
     Example:
         >>> mat = loadmat("B00001.mat", struct_as_record=False, squeeze_me=True)
@@ -279,8 +276,7 @@ def find_non_empty_run(
             current_run += 1
     else:
         # Single-run case (scalar struct or squeezed single-element array)
-        if run != 1:
-            raise ValueError("piv_result contains a single run; use run=1")
+        # Silently use run=1 regardless of requested run number
         if is_run_valid(
             piv_result,
             fields=(var,),

@@ -228,58 +228,61 @@ def _find_pod_auto_mode(PSI, eigvals, N):
     return 0
 
 
-def clip_filter(images: da.Array, threshold=None, n=2.0) -> da.Array:
-    """Clip images to a specified threshold or use a median-based threshold.
-
-    Args:
-        images (da.Array): Dask array of shape (N, 2, H, W).
-        threshold (tuple[float, float], optional): Clipping threshold. Defaults to None.
-        n (float, optional): Number of standard deviations for upper limit if threshold is None. Defaults to 2.0.
-
-    Returns:
-        da.Array: Clipped images, same shape & chunking as input.
-    """
-    if threshold is not None:
-        lower, upper = threshold
-        return da.clip(images, lower, upper)
-    else:
-        med = da.median(images, axis=(2, 3), keepdims=True)
-        std = da.std(images, axis=(2, 3), keepdims=True)
-        upper = med + n * std
-        lower = da.zeros_like(upper)
-        return da.clip(images, lower, upper)
-
-
-def invert_filter(images: da.Array, offset: float = 0) -> da.Array:
-    """
-    Invert images per-frame using Dask, with a scalar offset.
-
-    Args:
-        images (da.Array): Dask array of shape (N,2,H,W)
-        offset (float): scalar offset to subtract the image from
-
-    Returns:
-        da.Array: inverted images, same shape & chunking as input
-    """
-    return offset - images
+# COMMENTED OUT: Unused filter
+# def clip_filter(images: da.Array, threshold=None, n=2.0) -> da.Array:
+#     """Clip images to a specified threshold or use a median-based threshold.
+#
+#     Args:
+#         images (da.Array): Dask array of shape (N, 2, H, W).
+#         threshold (tuple[float, float], optional): Clipping threshold. Defaults to None.
+#         n (float, optional): Number of standard deviations for upper limit if threshold is None. Defaults to 2.0.
+#
+#     Returns:
+#         da.Array: Clipped images, same shape & chunking as input.
+#     """
+#     if threshold is not None:
+#         lower, upper = threshold
+#         return da.clip(images, lower, upper)
+#     else:
+#         med = da.median(images, axis=(2, 3), keepdims=True)
+#         std = da.std(images, axis=(2, 3), keepdims=True)
+#         upper = med + n * std
+#         lower = da.zeros_like(upper)
+#         return da.clip(images, lower, upper)
 
 
-def levelize_filter(images: da.Array, white: da.Array = None) -> da.Array:
-    """
-    Levelize images by dividing by a 'white' reference image.
-    If white is None, returns the images unchanged.
+# COMMENTED OUT: Unused filter
+# def invert_filter(images: da.Array, offset: float = 0) -> da.Array:
+#     """
+#     Invert images per-frame using Dask, with a scalar offset.
+#
+#     Args:
+#         images (da.Array): Dask array of shape (N,2,H,W)
+#         offset (float): scalar offset to subtract the image from
+#
+#     Returns:
+#         da.Array: inverted images, same shape & chunking as input
+#     """
+#     return offset - images
 
-    Args:
-        images (da.Array): Dask array of shape (N,2,H,W)
-        white (da.Array or None): white image, shape (H,W)
 
-    Returns:
-        da.Array: Levelized images
-    """
-    if white is None:
-        return images
-
-    return images / white
+# COMMENTED OUT: Unused filter
+# def levelize_filter(images: da.Array, white: da.Array = None) -> da.Array:
+#     """
+#     Levelize images by dividing by a 'white' reference image.
+#     If white is None, returns the images unchanged.
+#
+#     Args:
+#         images (da.Array): Dask array of shape (N,2,H,W)
+#         white (da.Array or None): white image, shape (H,W)
+#
+#     Returns:
+#         da.Array: Levelized images
+#     """
+#     if white is None:
+#         return images
+#
+#     return images / white
 
 
 def lmax_filter(images: da.Array, size=(7, 7)) -> da.Array:
@@ -301,7 +304,7 @@ def lmax_filter(images: da.Array, size=(7, 7)) -> da.Array:
 
 def maxnorm_filter(images: da.Array, size=(7, 7), max_gain=1.0) -> da.Array:
     """
-    Normalize images by local max-min contrast with smoothing and max gain limit.
+    Normalize images by smoothed local maximum with max gain limit.
 
     Args:
         images (da.Array): Dask array of shape (N,2,H,W)
@@ -317,11 +320,9 @@ def maxnorm_filter(images: da.Array, size=(7, 7), max_gain=1.0) -> da.Array:
     images_float = images.astype("float32")
 
     local_max = maximum_filter(images_float, size=spatial_size)
-    local_min = minimum_filter(images_float, size=spatial_size)
-    contrast = local_max - local_min
-    smoothed = uniform_filter(contrast, size=spatial_size)
+    smoothed_max = uniform_filter(local_max, size=spatial_size)
 
-    denom = da.maximum(smoothed, 1.0 / max_gain)
+    denom = da.maximum(smoothed_max, 1.0 / max_gain)
     normalized = da.maximum(images_float, 0) / denom
 
     return normalized.astype(images.dtype)
@@ -371,23 +372,24 @@ def norm_filter(images: da.Array, size=(7, 7), max_gain=1.0) -> da.Array:
     return normalized.astype(images.dtype)
 
 
-def sbg_filter(images: da.Array, bg=None) -> da.Array:
-    """
-    Subtract a background image from each input image and clip at zero.
-
-    Args:
-        images (da.Array): Dask array of shape (N, 2, H, W).
-        bg (np.ndarray or da.Array or None): Background image to subtract.
-            If None, defaults to zeros (no effect).
-            Must be broadcastable to (N, 2, H, W).
-
-    Returns:
-        da.Array: Background-subtracted and clipped images.
-    """
-    if bg is None:
-        bg = 0
-
-    return da.maximum(0, images - bg)
+# COMMENTED OUT: Unused filter
+# def sbg_filter(images: da.Array, bg=None) -> da.Array:
+#     """
+#     Subtract a background image from each input image and clip at zero.
+#
+#     Args:
+#         images (da.Array): Dask array of shape (N, 2, H, W).
+#         bg (np.ndarray or da.Array or None): Background image to subtract.
+#             If None, defaults to zeros (no effect).
+#             Must be broadcastable to (N, 2, H, W).
+#
+#     Returns:
+#         da.Array: Background-subtracted and clipped images.
+#     """
+#     if bg is None:
+#         bg = 0
+#
+#     return da.maximum(0, images - bg)
 
 
 def gaussian_filter_dask(images: da.Array, sigma=1.0) -> da.Array:
@@ -485,13 +487,14 @@ def apply_pixel_mask_to_batch(batch: np.ndarray, mask: np.ndarray) -> np.ndarray
 FILTER_MAP = {
     "time": time_filter,
     "pod": pod_filter,
-    "clip": clip_filter,
-    "invert": invert_filter,
-    "levelize": levelize_filter,
+    # COMMENTED OUT: Unused filters
+    # "clip": clip_filter,
+    # "invert": invert_filter,
+    # "levelize": levelize_filter,
+    # "sbg": sbg_filter,
     "lmax": lmax_filter,
     "maxnorm": maxnorm_filter,
     "median": median_filter_dask,
-    "sbg": sbg_filter,
     "norm": norm_filter,
     "gaussian": gaussian_filter_dask,
 }

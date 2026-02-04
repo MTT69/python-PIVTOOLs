@@ -10,6 +10,7 @@ import numpy as np
 from pivtools_core.config import Config
 
 from pivtools_cli.preprocessing.filters import filter_images, requires_batch
+from pivtools_cli.processing.dask_pipeline import _apply_spatial_filters_numpy
 
 
 def get_batch_size_for_filters(config: Config) -> int:
@@ -174,28 +175,28 @@ def apply_filters_to_batch(
     if not filters:
         return batch
 
-    # Offset filter indices if pixel mask was applied
-    filter_offset = 2 if pixel_mask is not None else 1
+    # Separate filters into spatial and temporal
+    spatial_specs = [f for f in filters if f.get("type") not in ("pod", "time")]
+    temporal_specs = [f for f in filters if f.get("type") in ("pod", "time")]
 
-    for filter_idx, filter_spec in enumerate(filters):
+    # Apply spatial filters using unified numpy function
+    if spatial_specs:
+        batch = _apply_spatial_filters_numpy(batch, spatial_specs)
+        if save_diagnostics and batch_idx == 0:
+            filter_stages["02_spatial_filters"] = batch.copy()
+
+    # Apply temporal filters
+    for filter_spec in temporal_specs:
         filter_type = filter_spec.get("type")
-
         if filter_type == "pod":
-            # Call POD filter block function directly (already have numpy array)
             from pivtools_cli.preprocessing.filters import _pod_filter_block
             batch = _pod_filter_block(batch)
         elif filter_type == "time":
-            # Call time filter block function directly (already have numpy array)
             from pivtools_cli.preprocessing.filters import _subtract_local_min
             batch = _subtract_local_min(batch)
-        else:
-            # Spatial filters (gaussian, median, etc.)
-            batch = apply_spatial_filter_to_batch(batch, filter_spec, config)
 
-        # Save after each filter for diagnostics
         if save_diagnostics and batch_idx == 0:
-            stage_name = f"{filter_idx + filter_offset:02d}_{filter_type}"
-            filter_stages[stage_name] = batch.copy()
+            filter_stages[f"03_{filter_type}"] = batch.copy()
 
     # Save diagnostic images if enabled
     if save_diagnostics and batch_idx == 0 and output_dir is not None:
@@ -211,56 +212,58 @@ def apply_filters_to_batch(
     return batch
 
 
-def apply_spatial_filter_to_batch(
-    batch: np.ndarray,
-    filter_spec: dict,
-    config: Config,
-) -> np.ndarray:
-    """
-    Apply spatial filter to each frame in batch.
-
-    Args:
-        batch: Shape (N, 2, H, W)
-        filter_spec: Filter specification dict
-        config: Configuration
-
-    Returns:
-        Filtered batch of same shape
-    """
-    from pivtools_cli.preprocessing.filters import (
-        gaussian_filter_dask,
-        median_filter_dask,
-        norm_filter,
-        sbg_filter,
-    )
-
-    filter_type = filter_spec.get("type")
-    N = batch.shape[0]
-
-    # Apply to each frame
-    for n in range(N):
-        for frame_idx in range(2):  # A and B frames
-            frame_da = da.from_array(batch[n, frame_idx], chunks=batch[n, frame_idx].shape)
-            if filter_type == "gaussian":
-                sigma = filter_spec.get("sigma", 1.0)
-                batch[n, frame_idx] = gaussian_filter_dask(frame_da, sigma=sigma).compute()
-            elif filter_type == "median":
-                size = filter_spec.get("size", (5, 5))
-                if isinstance(size, list):
-                    size = tuple(size)
-                batch[n, frame_idx] = median_filter_dask(frame_da, size=size).compute()
-            elif filter_type == "norm":
-                size = filter_spec.get("size", (7, 7))
-                max_gain = filter_spec.get("max_gain", 1.0)
-                if isinstance(size, list):
-                    size = tuple(size)
-                batch[n, frame_idx] = norm_filter(frame_da, size=size, max_gain=max_gain).compute()
-            elif filter_type == "sbg":
-                bg = filter_spec.get("bg", None)
-                batch[n, frame_idx] = sbg_filter(frame_da, bg=bg).compute()
-            # Add other spatial filters as needed
-
-    return batch
+# DEPRECATED: This function is no longer used. GUI and CLI now use
+# _apply_spatial_filters_numpy from dask_pipeline.py for unified filter handling.
+# def apply_spatial_filter_to_batch(
+#     batch: np.ndarray,
+#     filter_spec: dict,
+#     config: Config,
+# ) -> np.ndarray:
+#     """
+#     Apply spatial filter to each frame in batch.
+#
+#     Args:
+#         batch: Shape (N, 2, H, W)
+#         filter_spec: Filter specification dict
+#         config: Configuration
+#
+#     Returns:
+#         Filtered batch of same shape
+#     """
+#     from pivtools_cli.preprocessing.filters import (
+#         gaussian_filter_dask,
+#         median_filter_dask,
+#         norm_filter,
+#         sbg_filter,
+#     )
+#
+#     filter_type = filter_spec.get("type")
+#     N = batch.shape[0]
+#
+#     # Apply to each frame
+#     for n in range(N):
+#         for frame_idx in range(2):  # A and B frames
+#             frame_da = da.from_array(batch[n, frame_idx], chunks=batch[n, frame_idx].shape)
+#             if filter_type == "gaussian":
+#                 sigma = filter_spec.get("sigma", 1.0)
+#                 batch[n, frame_idx] = gaussian_filter_dask(frame_da, sigma=sigma).compute()
+#             elif filter_type == "median":
+#                 size = filter_spec.get("size", (5, 5))
+#                 if isinstance(size, list):
+#                     size = tuple(size)
+#                 batch[n, frame_idx] = median_filter_dask(frame_da, size=size).compute()
+#             elif filter_type == "norm":
+#                 size = filter_spec.get("size", (7, 7))
+#                 max_gain = filter_spec.get("max_gain", 1.0)
+#                 if isinstance(size, list):
+#                     size = tuple(size)
+#                 batch[n, frame_idx] = norm_filter(frame_da, size=size, max_gain=max_gain).compute()
+#             elif filter_type == "sbg":
+#                 bg = filter_spec.get("bg", None)
+#                 batch[n, frame_idx] = sbg_filter(frame_da, bg=bg).compute()
+#             # Add other spatial filters as needed
+#
+#     return batch
 
 
 def has_batch_filters(config: Config) -> bool:

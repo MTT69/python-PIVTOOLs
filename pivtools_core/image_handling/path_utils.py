@@ -403,6 +403,31 @@ def validate_images_generic(
 
     start_idx = 0 if zero_based_indexing else 1
 
+    # Check for empty pattern first (glob('') throws ValueError)
+    if not image_format or not image_format.strip():
+        result["error"] = "Pattern is empty"
+        # Still provide suggestions from files in directory
+        if camera_path.exists() and camera_path.is_dir():
+            all_images = []
+            if image_type == "lavision_im7":
+                all_images = list(camera_path.glob("*.im7"))
+            else:
+                for ext in ["*.tif", "*.tiff", "*.png", "*.jpg", "*.jpeg"]:
+                    all_images.extend(camera_path.glob(ext))
+            if all_images:
+                all_image_names = [f.name for f in sorted(all_images)]
+                result["sample_files"] = all_image_names[:5]
+                # Try to detect A/B pairs
+                ab_result = _detect_ab_pair_pattern(all_image_names)
+                if ab_result:
+                    result["suggested_pattern"] = ab_result["pattern_a"]
+                    result["suggested_pattern_b"] = ab_result["pattern_b"]
+                    result["suggested_mode"] = ab_result["mode"]
+                else:
+                    suggested = _suggest_pattern(all_image_names[0])
+                    result["suggested_pattern"] = suggested
+        return result
+
     # Handle container formats
     if image_type == "lavision_set":
         # For .set files, camera_path IS the .set file itself
@@ -621,16 +646,43 @@ def _suggest_pattern_for_role(
 
     candidates = sample_files
 
+    # Patterns to match A/B suffixes:
+    # - [_-][Aa] matches _A, -A, _a, -a (with separator)
+    # - \d[Aa] matches 1A, 2A, etc. (directly after digit, like IMG00001A.tif)
+    pattern_a = r'(?:[_-]|(?<=\d))[Aa]\.[a-zA-Z0-9]+$'
+    pattern_b = r'(?:[_-]|(?<=\d))[Bb]\.[a-zA-Z0-9]+$'
+
     # Filter by role if specified
     if role == "A":
-        # Match files with _A or -A before extension
-        candidates = [f for f in sample_files if re.search(r'[_-][Aa]\.[a-zA-Z]+$', f)]
+        candidates = [f for f in sample_files if re.search(pattern_a, f)]
     elif role == "B":
-        # Match files with _B or -B before extension
-        candidates = [f for f in sample_files if re.search(r'[_-][Bb]\.[a-zA-Z]+$', f)]
+        candidates = [f for f in sample_files if re.search(pattern_b, f)]
 
-    if not candidates:
-        # No files match the role filter, fall back to all files
+    if not candidates and role:
+        # No files match this role - try to derive from opposite role
+        opposite_pattern = pattern_b if role == "A" else pattern_a
+        opposite_files = [f for f in sample_files if re.search(opposite_pattern, f)]
+
+        if opposite_files:
+            # Generate pattern from opposite role, then transform A<->B
+            opposite_suggestion = _suggest_pattern(sorted(opposite_files)[0], forced_ext)
+            if opposite_suggestion:
+                if role == "A":
+                    # Transform B to A (preserving case) - handles both _B and digit+B
+                    return re.sub(
+                        r'([Bb])(\.[a-zA-Z0-9]+$)',
+                        lambda m: ('A' if m.group(1) == 'B' else 'a') + m.group(2),
+                        opposite_suggestion
+                    )
+                else:
+                    # Transform A to B (preserving case) - handles both _A and digit+A
+                    return re.sub(
+                        r'([Aa])(\.[a-zA-Z0-9]+$)',
+                        lambda m: ('B' if m.group(1) == 'A' else 'b') + m.group(2),
+                        opposite_suggestion
+                    )
+
+        # No A/B files at all - fall back to first file (non-A/B naming)
         candidates = sample_files
 
     # Sort and use first file to generate pattern
@@ -683,6 +735,25 @@ def validate_single_pattern(
         "suggested_pattern": None,
         "sample_files": [],
     }
+
+    # Check for empty pattern first
+    if not pattern or not pattern.strip():
+        result["error"] = "Pattern is empty"
+        # Still provide suggestions from files in directory
+        if camera_path.exists() and camera_path.is_dir():
+            all_images = []
+            if image_type == "lavision_im7":
+                all_images = list(camera_path.glob("*.im7"))
+            else:
+                for ext in ["*.tif", "*.tiff", "*.png", "*.jpg", "*.jpeg"]:
+                    all_images.extend(camera_path.glob(ext))
+            if all_images:
+                all_image_names = [f.name for f in sorted(all_images)]
+                result["sample_files"] = all_image_names[:5]
+                suggested = _suggest_pattern_for_role(all_image_names, role)
+                if suggested:
+                    result["suggested_pattern"] = suggested
+        return result
 
     # Container formats don't use per-pattern validation
     if image_type in ("lavision_set", "cine"):

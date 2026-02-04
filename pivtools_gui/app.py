@@ -40,6 +40,27 @@ app = Flask(__name__, static_folder='static', static_url_path='')
 CORS(app)
 dask_config.set(scheduler="threads")
 
+# Configure loguru logging level from config
+def configure_logging():
+    """Configure loguru to use the log level from config.yaml."""
+    try:
+        cfg = get_config()
+        log_level = cfg.log_level  # e.g., "INFO", "DEBUG", "WARNING"
+        # Remove default handler and add one with the configured level
+        logger.remove()
+        logger.add(
+            lambda msg: print(msg, end=""),  # Console output
+            level=log_level,
+            format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+            colorize=True,
+        )
+        logger.debug(f"Loguru configured with level: {log_level}")
+    except Exception as e:
+        # If config isn't available yet, keep default loguru config
+        logger.warning(f"Could not configure logging from config: {e}")
+
+configure_logging()
+
 # Create API blueprint with /backend prefix
 api_bp = Blueprint('api', __name__, url_prefix='/backend')
 
@@ -108,9 +129,9 @@ def _log_cache_contents():
         raw_str = f"raw {min(raw_frames)}-{max(raw_frames)}"
         if proc_frames:
             proc_str = f"processed {min(proc_frames)}-{max(proc_frames)}"
-            logger.info(f"Cache: {raw_str} | {proc_str}")
+            logger.debug(f"Cache: {raw_str} | {proc_str}")
         else:
-            logger.info(f"Cache: {raw_str}")
+            logger.debug(f"Cache: {raw_str}")
 
 
 def cam_folder_key(camera, cfg):
@@ -281,7 +302,7 @@ def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: 
 
         manage_cache_size()
         if preloaded > 0:
-            logger.info(f"Preloaded {preloaded} {img_format} frames for camera {camera}")
+            logger.debug(f"Preloaded {preloaded} {img_format} frames for camera {camera}")
             _log_cache_contents()
     except Exception as e:
         logger.debug(f"Error in background preload: {e}")
@@ -875,7 +896,10 @@ def validate_files():
             if first_frame_status == "missing":
                 status = "error"
                 start_idx = 0 if cfg.zero_based_indexing else 1
-                if image_type == "lavision_set":
+                # Handle empty pattern case
+                if not format_str or not format_str.strip():
+                    error_msg = "Pattern is empty"
+                elif image_type == "lavision_set":
                     error_msg = f"First frame not found. Container file: {format_str}"
                 elif image_type == "cine":
                     error_msg = f"First frame not found. CINE file: {format_str % camera_num}"
@@ -885,7 +909,7 @@ def validate_files():
                 if validation.get("sample_files"):
                     error_msg += f". Found files: {', '.join(validation['sample_files'][:5])}"
                 if validation.get("suggested_pattern"):
-                    error_msg += f". Try pattern: {validation['suggested_pattern']}"
+                    error_msg += f". Did you mean: {validation['suggested_pattern']}"
 
             elif last_frame_status == "missing":
                 status = "error"
@@ -955,7 +979,7 @@ def validate_files():
                 args=(source_path_idx, camera_num, 1, cfg, 10, "jpeg", True),
                 daemon=True
             ).start()
-        logger.info(f"Validation passed - preloading first 10 frames for {len(camera_numbers)} camera(s)")
+        logger.debug(f"Validation passed - preloading first 10 frames for {len(camera_numbers)} camera(s)")
 
     return jsonify({
         "valid": overall_valid,
@@ -1536,12 +1560,12 @@ def ensure_config_exists():
 
 def main():
     """Run the PIVTOOLs GUI"""
+    # Suppress Werkzeug startup logs (uses standard logging, not loguru)
+    import logging
+    logging.getLogger('werkzeug').setLevel(logging.ERROR)
+
     # Ensure config.yaml exists before starting
     ensure_config_exists()
-
-    # Suppress Flask development server warning by setting production environment
-    import os
-    os.environ['FLASK_ENV'] = 'production'
 
     print("Starting PIVTOOLs GUI...")
     print("Open your browser to http://localhost:5000")

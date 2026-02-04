@@ -55,13 +55,19 @@ def plot_vector():
             - mean: mean_stats/mean_stats.mat
     """
     try:
-        logger.info("plot_vector: received request")
+        logger.debug("plot_vector: received request")
         params = parse_plot_params(request)
         paths = validate_and_get_paths(params)
 
         data_dir = Path(paths["data_dir"])
         stats_dir = Path(paths["stats_dir"])
         vector_fmt = get_config().vector_format
+
+        # Strip variable prefix (inst:, mean:, inst_stat:) if present
+        # Frontend sends prefixed names like "inst:ux" but mat structs use raw names like "ux"
+        raw_var = params["var"]
+        if ':' in raw_var:
+            _, raw_var = raw_var.split(':', 1)
 
         # Determine data source
         var_source = request.args.get("var_source", default="inst", type=str)
@@ -92,12 +98,12 @@ def plot_vector():
 
         # Determine units based on calibration status
         length_units = "px" if params["use_uncalibrated"] else "mm"
-        variable_units = "px" if params["use_uncalibrated"] else VARIABLE_UNITS.get(params["var"], "m/s")
+        variable_units = "px" if params["use_uncalibrated"] else VARIABLE_UNITS.get(raw_var, "m/s")
 
         b64_img, W, H, extra, effective_run = load_and_plot_data(
             mat_path=data_path,
             coords_path=coords_path,
-            var=params["var"],
+            var=raw_var,
             run=params["run"],
             save_basepath=Path("plot_vector_tmp"),
             lower_limit=params["lower_limit"],
@@ -110,7 +116,7 @@ def plot_vector():
             length_units=length_units,
             variable_units=variable_units,
         )
-        meta = build_response_meta(effective_run, params["var"], W, H, extra)
+        meta = build_response_meta(effective_run, raw_var, W, H, extra)
         return jsonify({"success": True, "image": b64_img, "meta": meta})
     except ValueError as e:
         logger.warning(f"plot_vector: validation error: {e}")
@@ -160,7 +166,7 @@ def plot_stats():
 def plot_ensemble():
     """Plot ensemble PIV data (single result file with mean fields)."""
     try:
-        logger.info("plot_ensemble: received request")
+        logger.debug("plot_ensemble: received request")
         params = parse_plot_params(request)
         params["type_name"] = "ensemble"  # Override type
 

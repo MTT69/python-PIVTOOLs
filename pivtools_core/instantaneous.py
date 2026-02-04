@@ -4,7 +4,7 @@ Dask-Native Instantaneous PIV Processing
 Entry point for instantaneous PIV with true Dask patterns:
 - rechunk: Group images for batched processing
 - map_blocks: Apply filters lazily per-chunk
-- persist: Cache filtered chunks on workers
+- sliding window: Parallel I/O with bounded memory
 - submit: One task per chunk for correlation
 
 Usage:
@@ -25,7 +25,6 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
-import dask.array as da
 from dask.distributed import Client, as_completed
 
 from pivtools_core.config import Config
@@ -53,6 +52,100 @@ from pivtools_cli.processing.dask_pipeline import (
 
 
 logger = logging.getLogger(__name__)
+
+
+def process_instantaneous_sliding_window(
+    client,
+    images,
+    num_chunks,
+    scattered_config,
+    scattered,
+    output_path,
+    config,
+):
+    """
+    Process instantaneous PIV using sliding window.
+
+    Unlike ensemble, no accumulation chain - tasks are independent.
+    Can process in any order using as_completed().
+
+    Memory: ~2 batches per worker (bounded)
+    I/O: Parallel (max_in_flight concurrent disk reads)
+    """
+    from dask.distributed import as_completed
+
+    num_workers = config.dask_workers_per_node
+    max_in_flight = min(num_workers * 2, num_chunks)
+
+    pending = {}  # correlation Future -> chunk_idx
+    next_to_submit = 0
+    all_saved_paths = []
+    completed_count = 0
+    last_reported_pct = -1  # Track last reported percentage to avoid duplicates
+
+    logger.debug(f"  Sliding window: max_in_flight={max_in_flight}")
+
+    # Fill initial window (NO worker pinning → parallel I/O!)
+    while next_to_submit < min(max_in_flight, num_chunks):
+        # Calculate frame number for this chunk
+        chunk_start = sum(images.chunks[0][:next_to_submit])
+
+        # Submit filter (parallel I/O - no worker pinning)
+        filter_future = client.compute(images.blocks[next_to_submit])
+
+        corr_future = client.submit(
+            correlate_and_save_batch,
+            filter_future,
+            chunk_start + 1,  # 1-indexed frame number
+            scattered_config,
+            scattered['cache'],
+            scattered['masks'],
+            output_path,
+            config.instantaneous_runs_0based,
+            config.vector_format,
+            pure=False,
+        )
+        pending[corr_future] = next_to_submit
+        next_to_submit += 1
+
+    logger.debug(f"  Initial window: {len(pending)} tasks in flight")
+
+    # Process as tasks complete (any order is fine for instantaneous)
+    for completed in as_completed(pending.keys()):
+        chunk_idx = pending[completed]
+        saved_paths = completed.result()
+        all_saved_paths.extend(saved_paths)
+
+        del pending[completed]
+        completed_count += 1
+
+        # Submit replacement to keep window full
+        if next_to_submit < num_chunks:
+            chunk_start = sum(images.chunks[0][:next_to_submit])
+            filter_future = client.compute(images.blocks[next_to_submit])
+            corr_future = client.submit(
+                correlate_and_save_batch,
+                filter_future,
+                chunk_start + 1,
+                scattered_config,
+                scattered['cache'],
+                scattered['masks'],
+                output_path,
+                config.instantaneous_runs_0based,
+                config.vector_format,
+                pure=False,
+            )
+            pending[corr_future] = next_to_submit
+            next_to_submit += 1
+
+        # Progress logging - report each new percentage point
+        current_pct = round((completed_count / num_chunks) * 100)
+        if current_pct > last_reported_pct:
+            logger.info(f"  Correlation progress: {current_pct}%")
+            last_reported_pct = current_pct
+
+    return all_saved_paths
+
 
 # Global references for clean shutdown
 _client = None
@@ -129,9 +222,8 @@ def run_instantaneous_piv(
     1. Load images (lazy)
     2. Rechunk for batched processing
     3. Apply all filters via map_blocks
-    4. Persist filtered chunks on workers
-    5. Submit batched correlation tasks
-    6. Gather results and save coordinates
+    4. Process using sliding window (parallel I/O with bounded memory)
+    5. Save coordinates
 
     Args:
         config: Configuration object
@@ -169,59 +261,23 @@ def run_instantaneous_piv(
     save_intermediate = base_path if config.filters else None
     images = create_filter_pipeline(images, config, pixel_mask, save_intermediate_base=save_intermediate)
 
-    # 5. Persist filtered chunks on workers (don't wait - enables pipelining!)
-    logger.info("Persisting filtered images on workers...")
-    images = images.persist()
-    # NOTE: No wait() here! Dask handles dependencies automatically.
-    # Correlation tasks will start as soon as their specific chunk is ready.
-    logging.info(f"Images shape{images.shape}")
-    # 6. Submit correlation tasks using futures_of for proper dependency tracking
-    from dask.distributed import futures_of
-    block_futures = futures_of(images)
-    num_chunks = len(block_futures)
-    logger.info(f"Submitting {num_chunks} correlation tasks...")
+    # 5. Process using sliding window for parallel I/O with bounded memory
+    num_chunks = len(images.chunks[0])
+    logger.info(f"Processing {num_chunks} chunks using sliding window...")
 
     # Scatter config once to avoid repeated serialization
     scattered_config = client.scatter(config, broadcast=True)
 
-    correlation_futures = []
-    for chunk_idx, block_future in enumerate(block_futures):
-        # Calculate frame number for this chunk
-        chunk_start = sum(images.chunks[0][:chunk_idx])
-        # Submit correlation task with explicit future dependency
-        future = client.submit(
-            correlate_and_save_batch,
-            block_future,  # Pass the future directly - proper dependency!
-            chunk_start + 1,  # 1-indexed frame number
-            scattered_config,
-            scattered['cache'],
-            scattered['masks'],
-            output_path,
-            config.instantaneous_runs_0based,
-            config.vector_format,
-            pure=False,  # Has side effects (saving to disk)
-        )
-        correlation_futures.append(future)
-
-    # 7. Gather results with progress tracking
-    num_futures = len(correlation_futures)
-    all_saved_paths = []
-    gather_start = time.time()
-
-    for i, future in enumerate(as_completed(correlation_futures)):
-        batch_paths = future.result()
-        all_saved_paths.extend(batch_paths)
-
-        # Progress update every 10% (minimum 1 update)
-        update_interval = max(1, num_futures // 10)
-        if (i + 1) % update_interval == 0 or i == num_futures - 1:
-            elapsed = time.time() - gather_start
-            rate = (i + 1) / elapsed if elapsed > 0 else 0
-            remaining = (num_futures - i - 1) / rate if rate > 0 else 0
-            logger.info(
-                f"Progress: {i+1}/{num_futures} batches "
-                f"({100*(i+1)/num_futures:.0f}%) - ETA: {remaining:.0f}s"
-            )
+    # Use sliding window: parallel I/O without loading all data into RAM
+    all_saved_paths = process_instantaneous_sliding_window(
+        client=client,
+        images=images,
+        num_chunks=num_chunks,
+        scattered_config=scattered_config,
+        scattered=scattered,
+        output_path=output_path,
+        config=config,
+    )
 
     # Save coordinates
     logger.info("Saving coordinates...")

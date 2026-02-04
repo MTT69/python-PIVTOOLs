@@ -183,7 +183,7 @@ def apply_all_filters_slim(
     if save_intermediate:
         batch_no = block_id[0]  # First dimension is the batch index
         save_dir = Path(save_intermediate_base) / "basic_filters" / str(num_frame_pairs) / f"batch_{batch_no:04d}"
-        logger.info(f"Saving intermediate filter outputs to {save_dir}")
+        logger.debug(f"Saving intermediate filter outputs to {save_dir}")
 
     # Single copy at start - all subsequent operations modify in-place
     # This avoids multiple copies if both mask and filters are applied
@@ -321,10 +321,8 @@ def _apply_spatial_filters_numpy(
 
             block_float = block.astype(np.float32)
             local_max = scipy_maximum(block_float, size=spatial_size)
-            local_min = scipy_minimum(block_float, size=spatial_size)
-            contrast = local_max - local_min
-            smoothed = scipy_uniform(contrast, size=spatial_size)
-            denom = np.maximum(smoothed, 1.0 / max_gain)
+            smoothed_max = scipy_uniform(local_max, size=spatial_size)
+            denom = np.maximum(smoothed_max, 1.0 / max_gain)
             block = (np.maximum(block_float, 0) / denom).astype(block.dtype)
 
         elif filter_type == 'lmax':
@@ -334,26 +332,27 @@ def _apply_spatial_filters_numpy(
             size = tuple(s + (s + 1) % 2 for s in size)
             block = scipy_maximum(block, size=(1, 1) + size)
 
-        elif filter_type == 'clip':
-            threshold = spec.get('threshold')
-            n = spec.get('n', 2.0)
-            if threshold is not None:
-                lower, upper = threshold
-                block = np.clip(block, lower, upper)
-            else:
-                # Median-based threshold
-                med = np.median(block, axis=(2, 3), keepdims=True)
-                std = np.std(block, axis=(2, 3), keepdims=True)
-                upper = med + n * std
-                block = np.clip(block, 0, upper)
+        # COMMENTED OUT: Unused filters (clip, invert, sbg)
+        # elif filter_type == 'clip':
+        #     threshold = spec.get('threshold')
+        #     n = spec.get('n', 2.0)
+        #     if threshold is not None:
+        #         lower, upper = threshold
+        #         block = np.clip(block, lower, upper)
+        #     else:
+        #         # Median-based threshold
+        #         med = np.median(block, axis=(2, 3), keepdims=True)
+        #         std = np.std(block, axis=(2, 3), keepdims=True)
+        #         upper = med + n * std
+        #         block = np.clip(block, 0, upper)
 
-        elif filter_type == 'invert':
-            offset = spec.get('offset', 0)
-            block = offset - block
+        # elif filter_type == 'invert':
+        #     offset = spec.get('offset', 0)
+        #     block = offset - block
 
-        elif filter_type == 'sbg':
-            bg = spec.get('bg', 0)
-            block = np.maximum(0, block - bg)
+        # elif filter_type == 'sbg':
+        #     bg = spec.get('bg', 0)
+        #     block = np.maximum(0, block - bg)
 
         else:
             logger.warning(f"Unknown spatial filter type: {filter_type}")
@@ -1027,7 +1026,7 @@ def correlate_single_batch_and_accumulate(
     )
 
     worker_total = n_images_so_far + batch_images
-    logger.info(f"Worker processed {worker_total} pairs so far")
+    logger.debug(f"Worker processed {worker_total} pairs so far")
 
     # DIAGNOSTIC: Track data locality across batches
     from distributed import get_worker
