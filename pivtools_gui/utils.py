@@ -35,17 +35,6 @@ def camera_number(camera: Union[str, int]) -> int:
     return cam_int
 
 
-def camera_folder(camera: Union[str, int]) -> str:
-    """
-    Return canonical folder name (e.g. Cam1) for a camera reference.
-
-    DEPRECATED: This function returns hardcoded 'CamN' folders and does not respect
-    custom camera_subfolders configuration. Use config.get_camera_folder() instead.
-
-    This function is kept for backward compatibility only.
-    """
-    return f"Cam{camera_number(camera)}"
-
 
 def numpy_to_png_base64(arr: np.ndarray, compress_level: int = 1) -> str:
     """Convert a numpy array (uint8 or convertible) to a base64 PNG string.

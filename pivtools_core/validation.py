@@ -132,12 +132,11 @@ def validate_config(config: Config) -> Tuple[bool, str, List[str]]:
                         pass
                 if indices:
                     min_idx = min(indices)
-                    expected_min = 0 if config.zero_based_indexing else 1
+                    expected_min = config.start_index
                     if min_idx != expected_min:
                         warnings.append(
                             f"Camera {camera_num}: File indexing mismatch - found files starting at {min_idx}, "
-                            f"but zero_based_indexing is {'enabled' if config.zero_based_indexing else 'disabled'} "
-                            f"(expects {expected_min})"
+                            f"but start_index is {expected_min}"
                         )
 
             if len(matching_files) < expected:
@@ -159,7 +158,114 @@ def validate_config(config: Config) -> Tuple[bool, str, List[str]]:
     if errors:
         return False, "\n".join(errors), warnings
 
+    # Ensemble-specific validation (when ensemble processing is enabled)
+    if config.data.get("processing", {}).get("ensemble", False):
+        ens_valid, ens_errors, ens_warnings = validate_ensemble_config(config)
+        errors.extend(ens_errors)
+        warnings.extend(ens_warnings)
+        if not ens_valid:
+            return False, "\n".join(errors), warnings
+
     return True, "", warnings
+
+
+def validate_ensemble_config(config: Config) -> Tuple[bool, List[str], List[str]]:
+    """
+    Validate ensemble PIV configuration before processing starts.
+
+    Catches ValueError from config properties (which validate internally)
+    and adds additional cross-field checks not covered by individual properties.
+
+    Args:
+        config: Configuration object
+
+    Returns:
+        Tuple of (is_valid, errors, warnings)
+    """
+    errors = []
+    warnings = []
+
+    # 1. Validate ensemble_type list (length, valid values)
+    try:
+        ensemble_types = config.ensemble_type
+    except ValueError as e:
+        errors.append(f"Ensemble type: {e}")
+        return False, errors, warnings
+
+    # 2. Validate window sizes and overlaps
+    try:
+        window_sizes = config.ensemble_window_sizes
+    except ValueError as e:
+        errors.append(f"Ensemble window sizes: {e}")
+        return False, errors, warnings
+
+    try:
+        overlaps = config.ensemble_overlaps
+    except ValueError as e:
+        errors.append(f"Ensemble overlaps: {e}")
+        return False, errors, warnings
+
+    # 3. Validate overlap values are in range
+    for i, ovlp in enumerate(overlaps):
+        if ovlp < 0 or ovlp > 95:
+            errors.append(
+                f"Pass {i+1}: overlap {ovlp}% out of range (0-95%)"
+            )
+
+    # 4. Window sizes should decrease or stay the same across passes
+    for i in range(1, len(window_sizes)):
+        prev = window_sizes[i - 1]
+        curr = window_sizes[i]
+        if curr[0] > prev[0] or curr[1] > prev[1]:
+            warnings.append(
+                f"Pass {i+1}: window size {curr} is larger than pass {i} ({prev}). "
+                "Typically window sizes decrease across passes."
+            )
+
+    # 5. Validate sum_window when single mode is used
+    if 'single' in ensemble_types:
+        try:
+            config.ensemble_sum_window
+        except ValueError as e:
+            errors.append(f"Ensemble sum window: {e}")
+
+    # 6. Validate sum_fitting_window when enabled
+    if config.ensemble_sum_fitting_window_enabled:
+        try:
+            config.ensemble_sum_fitting_window
+        except ValueError as e:
+            errors.append(f"Ensemble sum fitting window: {e}")
+
+    # 7. Validate fit_method
+    try:
+        fit_method = config.ensemble_fit_method
+    except ValueError as e:
+        errors.append(f"Ensemble fit method: {e}")
+        fit_method = None
+
+    # 8. K-space SNR threshold must be positive
+    if fit_method == 'kspace':
+        snr = config.ensemble_kspace_snr_threshold
+        if snr <= 0:
+            errors.append(
+                f"kspace_snr_threshold must be positive, got {snr}"
+            )
+        warnings.append(
+            "K-space fitting is BETA. Results should be validated against Gaussian fitting."
+        )
+
+    # 9. Validate resume_from_pass
+    resume = config.ensemble_resume_from_pass
+    num_passes = config.ensemble_num_passes
+    if resume != 0:
+        if resume < 1 or resume > num_passes:
+            errors.append(
+                f"resume_from_pass={resume} is out of range. "
+                f"Must be 0 (disabled) or 1-{num_passes}."
+            )
+
+    is_valid = len(errors) == 0
+    return is_valid, errors, warnings
 
 
 def validate_batch_size_for_pod(config: Config, batch_size: int) -> Tuple[bool, str]:

@@ -61,6 +61,110 @@ class Config:
         # Store the config path for saving
         self._config_path = path if path is not None else self._get_config_path()
 
+        # Migrate old pairing keys to new stride-based model
+        self._migrate_pairing_config()
+
+    def _migrate_pairing_config(self):
+        """Migrate old pairing keys (time_resolved, zero_based_indexing, etc.)
+        to new stride-based model (start_index, frame_stride, pair_stride).
+
+        Called on every load. Only runs if old keys exist and new keys don't.
+        Auto-saves the config after migration so it doesn't re-run.
+        """
+        images = self.data.get("images", {})
+
+        # Only migrate if old keys exist and new keys don't
+        has_old = "time_resolved" in images or "pairing_mode" in images
+        has_new = "frame_stride" in images
+        if not has_old or has_new:
+            return
+
+        # Read old values BEFORE removing them (direct dict access, not properties)
+        old_time_resolved = images.get("time_resolved", False)
+        old_zero_based = images.get("zero_based_indexing", False)
+
+        # Determine image type from format (direct dict access, not property)
+        image_type_val = images.get("image_type")
+        if not image_type_val:
+            fmt_raw = images.get("image_format")
+            if fmt_raw:
+                fmt = fmt_raw[0] if isinstance(fmt_raw, (list, tuple)) else fmt_raw
+                fmt_lower = fmt.lower()
+                if '.cine' in fmt_lower:
+                    image_type_val = "cine"
+                elif '.set' in fmt_lower:
+                    image_type_val = "lavision_set"
+                elif '.im7' in fmt_lower or '.ims' in fmt_lower:
+                    image_type_val = "lavision_im7"
+                else:
+                    image_type_val = "standard"
+            else:
+                image_type_val = "standard"
+
+        # Determine format count for A/B detection
+        fmt_raw = images.get("image_format")
+        format_count = 1
+        if isinstance(fmt_raw, (list, tuple)):
+            format_count = len(fmt_raw)
+
+        # start_index: cine always 1 (reader handles FirstImageNo), others from zero_based
+        if image_type_val == "cine":
+            images["start_index"] = 1
+        else:
+            images["start_index"] = 0 if old_zero_based else 1
+
+        # Determine strides and preset
+        if format_count == 2:
+            # A/B format (separate A and B files)
+            images["frame_stride"] = 0
+            images["pair_stride"] = 1
+            images["pairing_preset"] = "ab_format"
+        elif image_type_val in ("lavision_set", "lavision_im7"):
+            if old_time_resolved:
+                images["frame_stride"] = 1
+                images["pair_stride"] = 1
+                images["pairing_preset"] = "time_resolved"
+            else:
+                images["frame_stride"] = 0
+                images["pair_stride"] = 1
+                images["pairing_preset"] = "pre_paired"
+        elif image_type_val == "cine":
+            if old_time_resolved:
+                images["frame_stride"] = 1
+                images["pair_stride"] = 1
+                images["pairing_preset"] = "time_resolved"
+            else:
+                images["frame_stride"] = 1
+                images["pair_stride"] = 2
+                images["pairing_preset"] = "skip_frames"
+        else:
+            # Standard format with single pattern
+            if old_time_resolved:
+                images["frame_stride"] = 1
+                images["pair_stride"] = 1
+                images["pairing_preset"] = "time_resolved"
+            else:
+                images["frame_stride"] = 1
+                images["pair_stride"] = 2
+                images["pairing_preset"] = "skip_frames"
+
+        # Remove old keys
+        images.pop("time_resolved", None)
+        images.pop("zero_based_indexing", None)
+        images.pop("pairing_mode", None)
+        images.pop("pairing_skip", None)
+        images.pop("num_frame_pairs", None)  # Was a dead key, now fully computed
+
+        logging.info(
+            "Migrated pairing config: start_index=%s, frame_stride=%s, "
+            "pair_stride=%s, preset=%s",
+            images["start_index"], images["frame_stride"],
+            images["pair_stride"], images["pairing_preset"]
+        )
+
+        # Auto-save so migration doesn't re-run
+        self.save()
+
     def save(self):
         """Save current config state to YAML file."""
         self._normalize_calibration_block()
@@ -187,12 +291,11 @@ images:
   - B%05d_B.tif
   vector_format:
   - '%05d.mat'
-  time_resolved: false
   dtype: float32
-  zero_based_indexing: false
-  pairing_mode: sequential
-  pairing_skip: 0
-  num_frame_pairs: 1000
+  start_index: 1
+  frame_stride: 0
+  pair_stride: 1
+  pairing_preset: ab_format
 batches:
   size: 25
 logging:
@@ -207,7 +310,6 @@ processing:
   auto_compute_params: false
   omp_threads: 2
   dask_workers_per_node: 4
-  dask_threads_per_worker: 1
   dask_memory_limit: 3GB
   always_batch: true
 outlier_detection:
@@ -425,7 +527,47 @@ video:
 
     @property
     def time_resolved(self):
-        return self.data["images"].get("time_resolved", False)
+        """Backward-compatible: True when frames are individual (not pre-paired).
+
+        Derives from frame_stride: frame_stride > 0 means individual frames
+        that need to be paired across files/entries.
+        """
+        return self.frame_stride > 0
+
+    # ===================== STRIDE-BASED PAIRING PROPERTIES =====================
+
+    @property
+    def start_index(self):
+        """Return the starting file/frame index (0 or 1)."""
+        return self.data.get("images", {}).get("start_index", 1)
+
+    @property
+    def frame_stride(self):
+        """Gap between frame A and frame B within one pair.
+
+        0 = pre-paired (A/B files or container with A+B in one entry)
+        1 = consecutive frames (1+2, or 3+4, etc.)
+        N = custom gap (frame 1 paired with frame 1+N)
+        """
+        return self.data.get("images", {}).get("frame_stride", 1)
+
+    @property
+    def pair_stride(self):
+        """Gap between the start of consecutive pairs.
+
+        1 = overlapping (time-resolved: 1+2, 2+3, 3+4)
+        2 = non-overlapping (skip: 1+2, 3+4, 5+6)
+        N = custom gap
+        """
+        return self.data.get("images", {}).get("pair_stride", 1)
+
+    @property
+    def pairing_preset(self):
+        """Return the pairing preset name.
+
+        Values: 'time_resolved', 'skip_frames', 'ab_format', 'pre_paired', 'custom'
+        """
+        return self.data.get("images", {}).get("pairing_preset", "time_resolved")
 
     @property
     def image_format(self):
@@ -613,89 +755,53 @@ video:
 
     @property
     def num_frame_pairs(self):
-        """
-        Calculate the number of frame pairs based on image type and pairing mode.
+        """Calculate the number of frame pairs from num_images and stride settings.
 
-        The calculation depends on the image type and time_resolved setting:
+        Uses the unified stride formula:
+        - frame_stride == 0 (pre-paired/A-B): num_images pairs
+        - frame_stride > 0: (num_images - 1 - frame_stride) // pair_stride + 1
 
-        Container formats:
-        - lavision_set: Each .set entry is one pair → num_images pairs
-        - lavision_im7: Each .im7 file is one pair → num_images pairs
-        - cine + time_resolved: Sequential overlapping → num_images - 1 pairs
-        - cine + skip: Non-overlapping → num_images // 2 pairs
-
-        Standard formats:
-        - A/B format (len=2): num_images pairs (1A+1B, 2A+2B, ...)
-        - time_resolved: num_images - 1 pairs (1+2, 2+3, 3+4, ...)
-        - skip: num_images // 2 pairs (1+2, 3+4, 5+6, ...)
+        Examples:
+            time_resolved (fs=1, ps=1): 100 images → 99 pairs
+            skip_frames   (fs=1, ps=2): 100 images → 50 pairs
+            ab_format     (fs=0, ps=1): 100 images → 100 pairs
+            pre_paired    (fs=0, ps=1): 100 images → 100 pairs
 
         Returns
         -------
         int
-            Number of frame pairs that can be formed from the image files
+            Number of frame pairs (always >= 0)
         """
         num_images = self.num_images
-        image_type = self.image_type
+        fs = self.frame_stride
+        ps = self.pair_stride
 
-        # LaVision .set: depends on time_resolved
-        # - Non-time-resolved: each entry has A+B pair internally
-        # - Time-resolved: each entry has ONE frame per camera, pair across entries
-        if image_type == "lavision_set":
-            if self.time_resolved:
-                # Sequential overlapping: 100 entries → 99 pairs
-                return max(0, num_images - 1)
-            else:
-                # Each entry is a complete pair
-                return num_images
-
-        # LaVision .im7: depends on time_resolved
-        # - Non-time-resolved: each file has A+B pair internally
-        # - Time-resolved: each file has ONE frame, pair across files
-        if image_type == "lavision_im7":
-            if self.time_resolved:
-                # Sequential overlapping: 100 files → 99 pairs
-                return max(0, num_images - 1)
-            else:
-                # Each file is a complete pair
-                return num_images
-
-        # CINE: depends on time_resolved setting
-        if image_type == "cine":
-            if self.time_resolved:
-                # Sequential overlapping: 100 frames → 99 pairs
-                return max(0, num_images - 1)
-            else:
-                # Skip mode: 100 frames → 50 non-overlapping pairs
-                return num_images // 2
-
-        # Standard formats: A/B format
-        if len(self.image_format) == 2:
+        if fs == 0:
+            # Pre-paired or A/B format: one pair per image file/entry
             return num_images
 
-        # Standard formats: time-resolved or skip
-        if self.time_resolved:
-            return max(0, num_images - 1)
+        if ps <= 0:
+            ps = 1  # safety guard
 
-        # Skip frames (non-overlapping)
-        return num_images // 2
+        # General formula: last valid pair starts at (N-1)*ps,
+        # last frame is at (N-1)*ps + fs, must be < num_images
+        return max(0, (num_images - 1 - fs) // ps + 1)
 
     @property
     def pairing_mode(self):
-        """
-        Return frame pairing mode.
-
-        Values:
-        - 'sequential': Standard (1+2, 2+3, 3+4, ...) for time-resolved or (1A+1B, 2A+2B) for non-time-resolved
-        - 'skip': Skip frames (1+2, 3+4, 5+6, ...) for time-resolved only
-        """
-        return self.data.get("images", {}).get("pairing_mode", "sequential")
+        """Backward-compatible: derives from pairing_preset."""
+        preset = self.pairing_preset
+        if preset in ("time_resolved", "ab_format", "pre_paired"):
+            return "sequential"
+        return "skip"
 
     def get_frame_pair_indices(self, pair_number: int) -> tuple:
-        """
-        Get the file/frame indices for a given pair number.
+        """Get the file/frame indices for a given pair number.
 
-        For container formats, indexing complexity is hidden from the user.
-        The returned indices are ready to use with the appropriate reader.
+        Uses the unified stride formula:
+            pair_start = start_index + (pair_number - 1) * pair_stride
+            frame_a = pair_start
+            frame_b = pair_start + frame_stride  (or pair_start if frame_stride == 0)
 
         Args:
             pair_number: 1-based pair number (pair 1, pair 2, etc.)
@@ -703,97 +809,28 @@ video:
         Returns:
             tuple: (frame_a_idx, frame_b_idx) for the reader to use
 
-        Examples by image_type:
-            lavision_set (non-time-resolved):
-                pair 1 → (1, 1) - reader extracts A+B from entry 1
-            lavision_set (time-resolved):
-                pair 1 → (1, 2), pair 2 → (2, 3) - pair frames from consecutive entries
-            lavision_im7 (non-time-resolved):
-                pair 1 → (1, 1) - reader extracts A+B from file 1
-            lavision_im7 (time-resolved):
-                pair 1 → (1, 2), pair 2 → (2, 3) - pair frames from consecutive files
-            cine + time_resolved:
-                pair 1 → (1, 2), pair 2 → (2, 3) - overlapping
-            cine + skip:
-                pair 1 → (1, 2), pair 2 → (3, 4) - non-overlapping
-            standard A/B:
-                pair 1 → (1, 1), pair 2 → (2, 2) - same index for A and B files
-            standard time_resolved:
-                pair 1 → (1, 2), pair 2 → (2, 3) - overlapping
-            standard skip:
-                pair 1 → (1, 2), pair 2 → (3, 4) - non-overlapping
+        Examples:
+            ab_format (si=1, fs=0, ps=1):
+                pair 1 → (1, 1), pair 2 → (2, 2)
+            time_resolved (si=1, fs=1, ps=1):
+                pair 1 → (1, 2), pair 2 → (2, 3)
+            skip_frames (si=1, fs=1, ps=2):
+                pair 1 → (1, 2), pair 2 → (3, 4)
+            pre_paired (si=1, fs=0, ps=1):
+                pair 1 → (1, 1), pair 2 → (2, 2)
+            zero-based time_resolved (si=0, fs=1, ps=1):
+                pair 1 → (0, 1), pair 2 → (1, 2)
         """
-        image_type = self.image_type
+        si = self.start_index
+        fs = self.frame_stride
+        ps = self.pair_stride
 
-        # LaVision .set: depends on time_resolved
-        # - Non-time-resolved: A+B pair in same entry
-        # - Time-resolved: pair frames from consecutive entries
-        if image_type == "lavision_set":
-            if self.time_resolved:
-                # Time-resolved: pair across entries (entry N + entry N+1)
-                return (pair_number, pair_number + 1)
-            else:
-                # Non-time-resolved: A+B in same entry
-                return (pair_number, pair_number)
+        pair_start = si + (pair_number - 1) * ps
 
-        # LaVision .im7: depends on time_resolved
-        # - Non-time-resolved: each file has A+B pair → same file index for both
-        # - Time-resolved: each file has ONE frame → pair across consecutive files
-        if image_type == "lavision_im7":
-            if self.time_resolved:
-                # Time-resolved: pair across files (file N + file N+1)
-                # Apply zero-based indexing to both file indices
-                if self.zero_based_indexing:
-                    file_a = pair_number - 1  # Pair 1 → files 0,1
-                    file_b = pair_number
-                else:
-                    file_a = pair_number      # Pair 1 → files 1,2
-                    file_b = pair_number + 1
-                return (file_a, file_b)
-            else:
-                # Non-time-resolved: each file is a complete A+B pair
-                file_idx = (pair_number - 1) if self.zero_based_indexing else pair_number
-                return (file_idx, file_idx)
-
-        # CINE: frame pairing depends on time_resolved
-        # Note: zero_based_indexing is NOT applied for cine - the reader
-        # handles FirstImageNo translation internally
-        if image_type == "cine":
-            if self.time_resolved:
-                # Sequential overlapping: pair n = frames (n, n+1)
-                frame_a = pair_number
-                frame_b = pair_number + 1
-            else:
-                # Skip mode: pair n = frames ((n-1)*2+1, (n-1)*2+2)
-                frame_a = (pair_number - 1) * 2 + 1
-                frame_b = frame_a + 1
-            return (frame_a, frame_b)
-
-        # Standard formats below
-
-        # A/B format (separate A and B files) - always use same index for both
-        if len(self.image_format) == 2:
-            file_idx = (pair_number - 1) if self.zero_based_indexing else pair_number
-            return (file_idx, file_idx)
-
-        # Time-resolved = sequential overlapping pairs
-        if self.time_resolved:
-            # Sequential mode: pair 1=(0,1), pair 2=(1,2), pair 3=(2,3)
-            frame_a_idx = pair_number - 1
-            frame_b_idx = pair_number
+        if fs == 0:
+            return (pair_start, pair_start)
         else:
-            # Non-time-resolved skip mode = non-overlapping pairs
-            # Pair 1=(0,1), pair 2=(2,3), pair 3=(4,5), etc.
-            start_idx = (pair_number - 1) * 2
-            frame_a_idx = start_idx
-            frame_b_idx = start_idx + 1
-
-        # Apply zero-based indexing adjustment (if files start at 0 instead of 1)
-        if not self.zero_based_indexing:
-            frame_a_idx += 1
-            frame_b_idx += 1
-
-        return (frame_a_idx, frame_b_idx)
+            return (pair_start, pair_start + fs)
 
     @property
     def image_shape(self):
@@ -848,7 +885,7 @@ video:
         logging.info(f"Camera path: {camera_path}")
 
         # Determine start index
-        start_idx = 0 if self.zero_based_indexing else 1
+        start_idx = self.start_index
 
         # Construct file path based on image type
         if img_type == "lavision_set":
@@ -1755,8 +1792,8 @@ video:
         Returns
         -------
         dict
-            Dictionary with keys: omp_threads, dask_workers_per_node, 
-            dask_threads_per_worker, dask_memory_limit
+            Dictionary with keys: omp_threads, dask_workers_per_node,
+            dask_memory_limit
         """
         # Return cached result if available
         if self._auto_compute_cache is not None:
@@ -1783,22 +1820,17 @@ video:
         memory_per_worker_gb = available_memory_gb / cpu_count
         dask_memory_limit = f"{memory_per_worker_gb:.2f}GB"
         
-        # Threads per worker = 1 (standard for CPU-bound tasks)
-        threads_per_worker = 1
-        
         logging.info("Auto-detected compute parameters:")
         logging.info("  CPU cores: %d", cpu_count)
         logging.info("  Total memory: %.2f GB", total_memory_gb)
         logging.info("  Workers per node: %d", workers_per_node)
         logging.info("  OMP threads: %d", omp_threads)
         logging.info("  Memory per worker: %s", dask_memory_limit)
-        logging.info("  Threads per worker: %d", threads_per_worker)
-        
+
         # Cache the result
         self._auto_compute_cache = {
             "omp_threads": omp_threads,
             "dask_workers_per_node": workers_per_node,
-            "dask_threads_per_worker": threads_per_worker,
             "dask_memory_limit": dask_memory_limit,
         }
         
@@ -1817,11 +1849,6 @@ video:
         if self.auto_compute_params:
             return self._get_auto_compute_params()["dask_workers_per_node"]
         return self.data.get("processing", {}).get("dask_workers_per_node", 1)
-
-    @property
-    def dask_threads_per_worker(self):
-        """Return number of threads per Dask worker."""
-        return 1
 
     @property
     def dask_memory_limit(self):
@@ -2565,7 +2592,8 @@ video:
 
     @property
     def zero_based_indexing(self):
-        return self.data.get("images", {}).get("zero_based_indexing", False)
+        """Backward-compatible: True when start_index == 0."""
+        return self.start_index == 0
 
     @property
     def camera_subfolders(self):

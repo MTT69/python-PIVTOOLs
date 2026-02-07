@@ -1086,12 +1086,11 @@ images:
   - B%05d_B.tif
   vector_format:
   - '%05d.mat'
-  time_resolved: false
   dtype: float32
-  zero_based_indexing: false
-  pairing_mode: sequential
-  pairing_skip: 0
-  num_frame_pairs: 100
+  start_index: 1
+  frame_stride: 0
+  pair_stride: 1
+  pairing_preset: ab_format
   image_type: standard
   use_camera_subfolders: false
 batches:
@@ -1106,7 +1105,6 @@ processing:
   auto_compute_params: false
   omp_threads: 4
   dask_workers_per_node: 1
-  dask_threads_per_worker: 1
   dask_memory_limit: 8GB
   always_batch: true
   instantaneous: true

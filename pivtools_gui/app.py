@@ -31,7 +31,7 @@ from pivtools_gui.plotting.app.transform_views import transform_bp
 from pivtools_gui.transforms.app.transform_views import transform_bp as transform_new_bp
 from pivtools_cli.preprocessing.preprocess import preprocess_images, apply_filters_to_batch
 # from pivtools_gui.stereo_reconstruction.app.views import stereo_bp
-from pivtools_gui.utils import camera_folder, camera_number, numpy_to_png_base64, numpy_to_base64
+from pivtools_gui.utils import camera_number, numpy_to_png_base64, numpy_to_base64
 from pivtools_gui.vector_statistics.app.views import statistics_bp
 from pivtools_gui.vector_merging.app.views import merging_bp
 from pivtools_gui.video_maker.app.views import video_maker_bp
@@ -813,7 +813,7 @@ def validate_files():
                     pattern=pattern,
                     image_type=image_type,
                     expected_count=num_images,
-                    zero_based_indexing=cfg.zero_based_indexing,
+                    zero_based_indexing=(cfg.start_index == 0),
                     role=role,
                 )
                 pattern_result["index"] = idx
@@ -838,7 +838,7 @@ def validate_files():
                 image_format=format_str,
                 image_type=image_type,
                 expected_count=num_images,
-                zero_based_indexing=cfg.zero_based_indexing,
+                zero_based_indexing=(cfg.start_index == 0),
                 read_frame_fn=read_frame,
             )
 
@@ -873,13 +873,11 @@ def validate_files():
                             indices.append(int(match.group(1)))
                     if indices:
                         min_idx = min(indices)
-                        expected_min = 0 if cfg.zero_based_indexing else 1
+                        expected_min = cfg.start_index
                         if min_idx != expected_min:
                             indexing_warning = (
                                 f"File indexing mismatch: found files starting at {min_idx}, "
-                                f"but zero_based_indexing is "
-                                f"{'enabled' if cfg.zero_based_indexing else 'disabled'} "
-                                f"(expects {expected_min})"
+                                f"but start_index is {expected_min}"
                             )
                 except Exception as e:
                     logger.debug(f"Indexing check failed: {e}")
@@ -895,7 +893,7 @@ def validate_files():
             # Override with PIV-specific pair validation
             if first_frame_status == "missing":
                 status = "error"
-                start_idx = 0 if cfg.zero_based_indexing else 1
+                start_idx = cfg.start_index
                 # Handle empty pattern case
                 if not format_str or not format_str.strip():
                     error_msg = "Pattern is empty"
@@ -913,7 +911,7 @@ def validate_files():
 
             elif last_frame_status == "missing":
                 status = "error"
-                end_idx = (0 if cfg.zero_based_indexing else 1) + num_images - 1
+                end_idx = cfg.start_index + num_images - 1
                 if image_type == "lavision_set":
                     error_msg = f"Last frame not found. Container file: {format_str}"
                 elif image_type == "cine":
@@ -993,7 +991,60 @@ def config_endpoint():
     # Return full nested config as JSON, including computed properties
     config_data = cfg.data.copy()
     config_data["images"]["num_frame_pairs"] = cfg.num_frame_pairs
+    config_data["images"]["start_index"] = cfg.start_index
+    config_data["images"]["frame_stride"] = cfg.frame_stride
+    config_data["images"]["pair_stride"] = cfg.pair_stride
+    config_data["images"]["pairing_preset"] = cfg.pairing_preset
     return jsonify(config_data)
+
+
+@api_bp.route("/preview_frame_pairs", methods=["GET"])
+def preview_frame_pairs():
+    """Return first N frame pairs with resolved filenames for UI preview."""
+    cfg = get_config()
+    count = request.args.get("count", 5, type=int)
+    count = min(count, 20)  # Cap at 20
+
+    num_pairs = cfg.num_frame_pairs
+    format_str = cfg.image_format[0]
+    has_ab = len(cfg.image_format) == 2
+    pairs = []
+
+    for p in range(1, min(count + 1, num_pairs + 1)):
+        idx_a, idx_b = cfg.get_frame_pair_indices(p)
+        if has_ab:
+            try:
+                name_a = cfg.image_format[0] % idx_a
+                name_b = cfg.image_format[1] % idx_a
+            except TypeError:
+                name_a = cfg.image_format[0]
+                name_b = cfg.image_format[1]
+        elif cfg.frame_stride == 0:
+            # Pre-paired container: same file, internal A+B
+            try:
+                name_a = format_str % idx_a
+            except TypeError:
+                name_a = format_str
+            name_b = "(internal B)"
+        else:
+            try:
+                name_a = format_str % idx_a
+                name_b = format_str % idx_b
+            except TypeError:
+                name_a = format_str
+                name_b = format_str
+
+        pairs.append({"pair": p, "frame_a": name_a, "frame_b": name_b})
+
+    return jsonify({
+        "pairs": pairs,
+        "total_pairs": num_pairs,
+        "num_images": cfg.num_images,
+        "preset": cfg.pairing_preset,
+        "frame_stride": cfg.frame_stride,
+        "pair_stride": cfg.pair_stride,
+        "start_index": cfg.start_index,
+    })
 
 
 @api_bp.route("/update_config", methods=["POST"])
@@ -1518,6 +1569,59 @@ def clear_output():
         "directories": cleared,
         "errors": errors
     })
+
+@api_bp.route("/system_info", methods=["GET"])
+def system_info():
+    """Return system diagnostics: version, platform, Dask config, C library status."""
+    import platform
+    import ctypes
+
+    cfg = get_config()
+
+    # Version
+    try:
+        from pivtools_cli import __version__
+        version = __version__
+    except Exception:
+        version = "unknown"
+
+    # Dask config
+    dask_info = {
+        "workers_per_node": cfg.data.get("processing", {}).get("dask_workers_per_node", 1),
+        "memory_limit": cfg.data.get("processing", {}).get("dask_memory_limit", "4GB"),
+        "backend": cfg.data.get("processing", {}).get("backend", "cpu"),
+        "omp_threads": cfg.data.get("processing", {}).get("omp_threads", 1),
+    }
+
+    # C library availability
+    lib_extension = ".dll" if os.name == "nt" else ".so"
+    lib_dir = Path(__file__).parent.parent / "pivtools_cli" / "lib"
+    c_libs = {}
+    for lib_name in ["libbulkxcorr2d", "libinterp2custom", "libmarquadt"]:
+        lib_path = lib_dir / f"{lib_name}{lib_extension}"
+        c_libs[lib_name] = {
+            "found": lib_path.is_file(),
+            "path": str(lib_path) if lib_path.is_file() else None,
+        }
+
+    # FFTW wisdom
+    wisdom_path = Path.home() / ".pypivtools_fftw_wisdom"
+    fftw_wisdom = {
+        "path": str(wisdom_path),
+        "exists": wisdom_path.is_file(),
+        "size_bytes": wisdom_path.stat().st_size if wisdom_path.is_file() else 0,
+    }
+
+    return jsonify({
+        "version": version,
+        "python_version": platform.python_version(),
+        "platform": platform.platform(),
+        "architecture": platform.machine(),
+        "dask": dask_info,
+        "c_libraries": c_libs,
+        "fftw_wisdom": fftw_wisdom,
+    })
+
 
 # Register the main API blueprint
 app.register_blueprint(api_bp)

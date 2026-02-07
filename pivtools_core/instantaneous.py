@@ -111,7 +111,8 @@ def process_instantaneous_sliding_window(
     logger.debug(f"  Initial window: {len(pending)} tasks in flight")
 
     # Process as tasks complete (any order is fine for instantaneous)
-    for completed in as_completed(pending.keys()):
+    ac = as_completed(list(pending.keys()))
+    for completed in ac:
         chunk_idx = pending[completed]
         saved_paths = completed.result()
         all_saved_paths.extend(saved_paths)
@@ -136,6 +137,7 @@ def process_instantaneous_sliding_window(
                 pure=False,
             )
             pending[corr_future] = next_to_submit
+            ac.add(corr_future)
             next_to_submit += 1
 
         # Progress logging - report each new percentage point

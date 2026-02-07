@@ -483,28 +483,6 @@ def apply_single_mode_padding(
     >>> padding
     (6, 6, 6, 6)
     """
-
-def apply_single_mode_padding(
-    image: np.ndarray,
-    window_size: Tuple[int, int],
-    sum_window: Tuple[int, int],
-    pad_value: float = 0.0
-) -> Tuple[np.ndarray, Tuple[int, int, int, int]]:
-    """
-    Apply zero-padding to image for ensemble single mode processing.
-
-    Supports:
-    - (H, W)
-    - (N, H, W)
-    - (N, 2, H, W)
-
-    Returns
-    -------
-    padded_image : np.ndarray
-        Padded image with same number of dimensions as input
-    padding : Tuple[int, int, int, int]
-        (pad_top, pad_bottom, pad_left, pad_right)
-    """
     pad_top, pad_bottom, pad_left, pad_right = compute_padding_for_single_mode(
         window_size, sum_window
     )

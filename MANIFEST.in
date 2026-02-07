@@ -6,11 +6,6 @@ include requirements.txt
 # Include C library source files
 recursive-include pivtools_cli/lib *.c *.h
 
-# Exclude unused C files
-exclude pivtools_cli/lib/peak_locate_gsl.c
-exclude pivtools_cli/lib/peak_locate_gsl.h
-exclude pivtools_cli/lib/peak_locate_gsl_print.c
-
 # Include static FFTW binaries for all platforms
 recursive-include static_fftw *
 
