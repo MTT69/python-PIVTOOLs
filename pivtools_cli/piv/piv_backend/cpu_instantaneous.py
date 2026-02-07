@@ -16,6 +16,7 @@ from dask.distributed import get_worker
 from scipy.ndimage import gaussian_filter
 from scipy.signal import convolve2d
 
+from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pivtools_core.config import Config
 from pivtools_core.window_utils import compute_window_centers
@@ -114,6 +115,10 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         # Store pass times for profiling
         self.pass_times = []
 
+        # Section-level profiling (disabled by default)
+        self.profiling_enabled = False
+        self.profile_data = {}  # {pass_idx: {section_name: elapsed_seconds}}
+
     def _register_fftw_cleanup(self) -> None:
         """Register FFTW cleanup to run at interpreter exit.
 
@@ -137,6 +142,21 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                         lib.fftw_library_cleanup()
                     except Exception:
                         pass  # Ignore errors during cleanup
+
+    @contextmanager
+    def _profile_section(self, pass_idx, section):
+        """Context manager for timing named sections within correlate_batch."""
+        if not self.profiling_enabled:
+            yield
+            return
+        t0 = time.perf_counter()
+        yield
+        elapsed = time.perf_counter() - t0
+        self.profile_data.setdefault(pass_idx, {})[section] = elapsed
+
+    def get_profile_summary(self):
+        """Return a copy of the profile data collected during the last correlate_batch call."""
+        return dict(self.profile_data)
 
     def _load_precomputed_cache(self, cache: dict) -> None:
         """Load precomputed cache data to avoid redundant computation.
@@ -220,6 +240,9 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         # Clear pass times for this batch
         self.pass_times = []
 
+        # Clear profile data for this batch
+        self.profile_data = {}
+
         # Use pre-computed vector masks
         self.vector_masks = vector_masks if vector_masks is not None else []
 
@@ -250,57 +273,24 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 logging.debug(f"PASS {pass_idx + 1} of {len(config.window_sizes)} (window_size={win_size})")
                 logging.debug(f"{'='*60}")
 
-                images_a_prime, images_b_prime, self.delta_ab_pred = (
-                        self._predictor_corrector_batch(
-                            pass_idx,
-                            images[:, 0, :, :].astype(np.float32, copy=False),
-                            images[:, 1, :, :].astype(np.float32, copy=False),
-                            config=config
+                with self._profile_section(pass_idx, "predictor_corrector"):
+                    images_a_prime, images_b_prime, self.delta_ab_pred = (
+                            self._predictor_corrector_batch(
+                                pass_idx,
+                                images[:, 0, :, :].astype(np.float32, copy=False),
+                                images[:, 1, :, :].astype(np.float32, copy=False),
+                                config=config
+                            )
                         )
-                    )
 
-                (
-                        win_size_arr,
-                        n_windows,
-                        b_mask,
-                        n_peaks,
-                        i_peak_finder,
-                        b_ensemble,
-                        pk_loc_x,
-                        pk_loc_y,
-                        pk_height,
-                        sx,
-                        sy,
-                        sxy,
-                        correl_plane_out,
-                    ) = self._set_lib_arguments(
-                        config=config,
-                        win_size=win_size,
-                        pass_idx=pass_idx,
-                        N=N
-                    )
-                
-
-                    # Ensure images are C-contiguous before passing to C library
-                image_a_prime_c = images_a_prime if images_a_prime.flags["C_CONTIGUOUS"] else np.ascontiguousarray(images_a_prime)
-                image_b_prime_c = images_b_prime if images_b_prime.flags["C_CONTIGUOUS"] else np.ascontiguousarray(images_b_prime)
-                    
-                try:
-                    error_code = self.lib.bulkxcorr2d(
-                            image_a_prime_c,
-                            image_b_prime_c,
-                            b_mask,
-                            image_size,
-                            N,
-                            self.win_ctrs_x[pass_idx].astype(np.float32),
-                            self.win_ctrs_y[pass_idx].astype(np.float32),
-                            n_windows,
-                            self.win_weights[pass_idx],
-                            b_ensemble,
-                            self.win_weights[pass_idx],
+                with self._profile_section(pass_idx, "set_lib_args"):
+                    (
                             win_size_arr,
-                            int(n_peaks),
-                            int(i_peak_finder),
+                            n_windows,
+                            b_mask,
+                            n_peaks,
+                            i_peak_finder,
+                            b_ensemble,
                             pk_loc_x,
                             pk_loc_y,
                             pk_height,
@@ -308,175 +298,207 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                             sy,
                             sxy,
                             correl_plane_out,
+                        ) = self._set_lib_arguments(
+                            config=config,
+                            win_size=win_size,
+                            pass_idx=pass_idx,
+                            N=N
                         )
-                except Exception as e:
-                    logging.error(f"    Exception type: {type(e).__name__}")
-                    logging.error(traceback.format_exc())
-                    raise
-                # Free warped images immediately after C library call to reduce peak memory
-                del images_a_prime, images_b_prime, image_a_prime_c, image_b_prime_c
+                
 
-                n_win_y = len(self.win_ctrs_y[pass_idx])
-                n_win_x = len(self.win_ctrs_x[pass_idx])
-                #plot_corr_planes(
-                #    correl_plane_out[0].ravel(order="C"),
-                #    n_win_y,
-                #    n_win_x,
-                #    win_size[0],
-                #    win_size[1],
-                #    pass_idx,
-                #)
-                if error_code != 0:
-                    error_names = {
-                            1: "ERROR_NOMEM (out of memory)",
-                            2: "ERROR_NOPLAN_FWD (FFT forward plan failed)",
-                            4: "ERROR_NOPLAN_BWD (FFT backward plan failed)",
-                            8: "ERROR_NOPLAN (general plan error)",
-                            9: "ERROR_OUT_OF_BOUNDS (array access out of bounds)"
-                        }
-                    error_msg = error_names.get(error_code, f"Unknown error code {error_code}")
-                    logging.error(f"    bulkxcorr2d returned error code {error_code}: {error_msg}")
-                    raise RuntimeError(f"bulkxcorr2d failed with error {error_code}: {error_msg}")
-                n_win_y = int(n_windows[0])
-                n_win_x = int(n_windows[1])
+                with self._profile_section(pass_idx, "bulkxcorr2d"):
+                    # Ensure images are C-contiguous before passing to C library
+                    image_a_prime_c = images_a_prime if images_a_prime.flags["C_CONTIGUOUS"] else np.ascontiguousarray(images_a_prime)
+                    image_b_prime_c = images_b_prime if images_b_prime.flags["C_CONTIGUOUS"] else np.ascontiguousarray(images_b_prime)
 
-                win_height, win_width = win_size_arr
-
-                # Large displacement threshold: more lenient for first pass (no predictor yet),
-                # stricter for subsequent passes where predictor-corrector reduces residuals
-                if pass_idx == 0:
-                    # First pass: use win/2 threshold to allow larger displacements
-                    thresh_x = win_width / 2.0
-                    thresh_y = win_height / 2.0
-                else:
-                    # Subsequent passes: use win/4 threshold (predictor reduces residuals)
-                    thresh_x = win_width / 4.0
-                    thresh_y = win_height / 4.0
-
-                mask_batch = np.broadcast_to(b_mask[None, :, :], (N, n_win_y, n_win_x))
-                mask_bool_batch = mask_batch.astype(bool)
-                large_disp_mask = (np.abs(pk_loc_x) > thresh_x) | (np.abs(pk_loc_y) > thresh_y)
-                # Broadcast mask to match pk_loc_x shape (N, n_peaks, n_win_y, n_win_x)
-                mask_for_peaks = np.broadcast_to(mask_bool_batch[:, None, :, :], pk_loc_x.shape)
-                invalid_peaks = (
-                    mask_for_peaks | large_disp_mask
-                )
-
-                pk_loc_x[invalid_peaks] = np.nan
-                pk_loc_y[invalid_peaks] = np.nan
-                pk_height[invalid_peaks] = np.nan
-                dx = self.delta_ab_pred[..., 1]
-                dy = self.delta_ab_pred[..., 0]
-
-                dx_exp = dx[:, None, :, :]  # (N,1,n_win_y,n_win_x)
-                dy_exp = dy[:, None, :, :]
-                pk_loc_x += dx_exp
-                pk_loc_y += dy_exp
-
-                primary_idx = np.zeros((N, 1, n_win_y, n_win_x), dtype=np.intp)
-
-                ux_mat = np.take_along_axis(pk_loc_x, primary_idx, axis=1)[
-                    :, 0, :, :
-                ]  # (N, ny, nx)
-                uy_mat = np.take_along_axis(pk_loc_y, primary_idx, axis=1)[:, 0, :, :]
-
-                nan_mask = (
-                    np.isnan(ux_mat)
-                    | np.isnan(uy_mat)
-                    | mask_bool_batch
-                )
-
-                ux_mat[nan_mask] = 0.0
-                uy_mat[nan_mask] = 0.0
-                peak_choice = np.ones((N, n_win_y, n_win_x), dtype=np.intp)
-
-                outliers_detected_count = 0
-                if config.outlier_detection_enabled:
-                    outlier_methods = config.outlier_detection_methods
-                    if outlier_methods:
-                        for im_idx in range(N):
-                            primary_peak_mag_0 = pk_height[im_idx, 0]
-                            outlier_mask = apply_outlier_detection(
-                                ux_mat[im_idx],
-                                uy_mat[im_idx],
-                                outlier_methods,
-                                peak_mag=primary_peak_mag_0,
+                    try:
+                        error_code = self.lib.bulkxcorr2d(
+                                image_a_prime_c,
+                                image_b_prime_c,
+                                b_mask,
+                                image_size,
+                                N,
+                                self.win_ctrs_x[pass_idx].astype(np.float32),
+                                self.win_ctrs_y[pass_idx].astype(np.float32),
+                                n_windows,
+                                self.win_weights[pass_idx],
+                                b_ensemble,
+                                self.win_weights[pass_idx],
+                                win_size_arr,
+                                int(n_peaks),
+                                int(i_peak_finder),
+                                pk_loc_x,
+                                pk_loc_y,
+                                pk_height,
+                                sx,
+                                sy,
+                                sxy,
+                                correl_plane_out,
                             )
-                            outliers_detected_count += outlier_mask.sum()
-                            nan_mask[im_idx] |= outlier_mask
+                    except Exception as e:
+                        logging.error(f"    Exception type: {type(e).__name__}")
+                        logging.error(traceback.format_exc())
+                        raise
+                    # Free warped images immediately after C library call to reduce peak memory
+                    del images_a_prime, images_b_prime, image_a_prime_c, image_b_prime_c
 
-                if config.secondary_peak:
-                    for pk in range(1, n_peaks):
-                        active = nan_mask & (peak_choice < n_peaks)
-                        if not active.any():
-                            break
+                with self._profile_section(pass_idx, "post_processing"):
+                    n_win_y = len(self.win_ctrs_y[pass_idx])
+                    n_win_x = len(self.win_ctrs_x[pass_idx])
+                    if error_code != 0:
+                        error_names = {
+                                1: "ERROR_NOMEM (out of memory)",
+                                2: "ERROR_NOPLAN_FWD (FFT forward plan failed)",
+                                4: "ERROR_NOPLAN_BWD (FFT backward plan failed)",
+                                8: "ERROR_NOPLAN (general plan error)",
+                                9: "ERROR_OUT_OF_BOUNDS (array access out of bounds)"
+                            }
+                        error_msg = error_names.get(error_code, f"Unknown error code {error_code}")
+                        logging.error(f"    bulkxcorr2d returned error code {error_code}: {error_msg}")
+                        raise RuntimeError(f"bulkxcorr2d failed with error {error_code}: {error_msg}")
+                    n_win_y = int(n_windows[0])
+                    n_win_x = int(n_windows[1])
 
-                        peak_choice[active] += 1
+                    win_height, win_width = win_size_arr
 
-                        idx = peak_choice[:, None, :, :] - 1
-                        ux_mat = np.take_along_axis(pk_loc_x, idx, axis=1)[:, 0]
-                        uy_mat = np.take_along_axis(pk_loc_y, idx, axis=1)[:, 0]
+                    # Large displacement threshold: more lenient for first pass (no predictor yet),
+                    # stricter for subsequent passes where predictor-corrector reduces residuals
+                    if pass_idx == 0:
+                        # First pass: use win/2 threshold to allow larger displacements
+                        thresh_x = win_width / 2.0
+                        thresh_y = win_height / 2.0
+                    else:
+                        # Subsequent passes: use win/4 threshold (predictor reduces residuals)
+                        thresh_x = win_width / 4.0
+                        thresh_y = win_height / 4.0
 
-                        if config.outlier_detection_enabled and outlier_methods:
-                            primary_peak_mag = np.take_along_axis(pk_height, idx, axis=1)[:, 0]
-                            for im_idx in range(N):
-                                if nan_mask[im_idx].any():
-                                    outlier_mask = apply_outlier_detection(
-                        ux_mat[im_idx],
-                        uy_mat[im_idx],
-                        outlier_methods,
-                        peak_mag=primary_peak_mag[im_idx],
+                    mask_batch = np.broadcast_to(b_mask[None, :, :], (N, n_win_y, n_win_x))
+                    mask_bool_batch = mask_batch.astype(bool)
+                    large_disp_mask = (np.abs(pk_loc_x) > thresh_x) | (np.abs(pk_loc_y) > thresh_y)
+                    # Broadcast mask to match pk_loc_x shape (N, n_peaks, n_win_y, n_win_x)
+                    mask_for_peaks = np.broadcast_to(mask_bool_batch[:, None, :, :], pk_loc_x.shape)
+                    invalid_peaks = (
+                        mask_for_peaks | large_disp_mask
                     )
-                                    nan_mask[im_idx] |= outlier_mask
 
-                idx = peak_choice[:, None, :, :] - 1
-                primary_peak_mag = np.take_along_axis(pk_height, idx, axis=1)[:, 0]
-                nan_mask |= np.isnan(primary_peak_mag)
+                    pk_loc_x[invalid_peaks] = np.nan
+                    pk_loc_y[invalid_peaks] = np.nan
+                    pk_height[invalid_peaks] = np.nan
+                    dx = self.delta_ab_pred[..., 1]
+                    dy = self.delta_ab_pred[..., 0]
 
-                shifted_pk_height = np.roll(pk_height, shift=-1, axis=1)
-                shifted_pk_height[:, -1, :, :] = pk_height[:, -1, :, :]
+                    dx_exp = dx[:, None, :, :]  # (N,1,n_win_y,n_win_x)
+                    dy_exp = dy[:, None, :, :]
+                    pk_loc_x += dx_exp
+                    pk_loc_y += dy_exp
 
-                with np.errstate(divide="ignore", invalid="ignore"):
-                    Q_mat = np.divide(
-        pk_height,
-        shifted_pk_height,
-        out=np.zeros_like(pk_height),
-        where=shifted_pk_height > 0,
-    )
+                    primary_idx = np.zeros((N, 1, n_win_y, n_win_x), dtype=np.intp)
 
-                Q = np.take_along_axis(Q_mat, idx, axis=1)[:, 0]
+                    ux_mat = np.take_along_axis(pk_loc_x, primary_idx, axis=1)[
+                        :, 0, :, :
+                    ]  # (N, ny, nx)
+                    uy_mat = np.take_along_axis(pk_loc_y, primary_idx, axis=1)[:, 0, :, :]
 
-                ux_mat[nan_mask] = np.nan
-                uy_mat[nan_mask] = np.nan
-                primary_peak_mag[nan_mask] = np.nan
-                Q[nan_mask] = 0.0
+                    nan_mask = (
+                        np.isnan(ux_mat)
+                        | np.isnan(uy_mat)
+                        | mask_bool_batch
+                    )
 
-                ux_mat[mask_bool_batch] = 0.0
-                uy_mat[mask_bool_batch] = 0.0
-                peak_choice[nan_mask] = 0
+                    ux_mat[nan_mask] = 0.0
+                    uy_mat[nan_mask] = 0.0
+                    peak_choice = np.ones((N, n_win_y, n_win_x), dtype=np.intp)
+
+                with self._profile_section(pass_idx, "outlier_detection"):
+                    outliers_detected_count = 0
+                    if config.outlier_detection_enabled:
+                        outlier_methods = config.outlier_detection_methods
+                        if outlier_methods:
+                            for im_idx in range(N):
+                                primary_peak_mag_0 = pk_height[im_idx, 0]
+                                outlier_mask = apply_outlier_detection(
+                                    ux_mat[im_idx],
+                                    uy_mat[im_idx],
+                                    outlier_methods,
+                                    peak_mag=primary_peak_mag_0,
+                                )
+                                outliers_detected_count += outlier_mask.sum()
+                                nan_mask[im_idx] |= outlier_mask
+
+                with self._profile_section(pass_idx, "secondary_peaks"):
+                    if config.secondary_peak:
+                        for pk in range(1, n_peaks):
+                            active = nan_mask & (peak_choice < n_peaks)
+                            if not active.any():
+                                break
+
+                            peak_choice[active] += 1
+
+                            idx = peak_choice[:, None, :, :] - 1
+                            ux_mat = np.take_along_axis(pk_loc_x, idx, axis=1)[:, 0]
+                            uy_mat = np.take_along_axis(pk_loc_y, idx, axis=1)[:, 0]
+
+                            if config.outlier_detection_enabled and outlier_methods:
+                                primary_peak_mag = np.take_along_axis(pk_height, idx, axis=1)[:, 0]
+                                for im_idx in range(N):
+                                    if nan_mask[im_idx].any():
+                                        outlier_mask = apply_outlier_detection(
+                                            ux_mat[im_idx],
+                                            uy_mat[im_idx],
+                                            outlier_methods,
+                                            peak_mag=primary_peak_mag[im_idx],
+                                        )
+                                        nan_mask[im_idx] |= outlier_mask
+
+                    idx = peak_choice[:, None, :, :] - 1
+                    primary_peak_mag = np.take_along_axis(pk_height, idx, axis=1)[:, 0]
+                    nan_mask |= np.isnan(primary_peak_mag)
+
+                    shifted_pk_height = np.roll(pk_height, shift=-1, axis=1)
+                    shifted_pk_height[:, -1, :, :] = pk_height[:, -1, :, :]
+
+                    with np.errstate(divide="ignore", invalid="ignore"):
+                        Q_mat = np.divide(
+                            pk_height,
+                            shifted_pk_height,
+                            out=np.zeros_like(pk_height),
+                            where=shifted_pk_height > 0,
+                        )
+
+                    Q = np.take_along_axis(Q_mat, idx, axis=1)[:, 0]
+
+                    ux_mat[nan_mask] = np.nan
+                    uy_mat[nan_mask] = np.nan
+                    primary_peak_mag[nan_mask] = np.nan
+                    Q[nan_mask] = 0.0
+
+                    ux_mat[mask_bool_batch] = 0.0
+                    uy_mat[mask_bool_batch] = 0.0
+                    peak_choice[nan_mask] = 0
 
                 is_final_pass = (pass_idx == len(config.window_sizes) - 1)
 
-                # Apply infilling to outlier/invalid vectors
-                for im_idx in range(N):
-                    if np.isnan(ux_mat[im_idx]).any() or np.isnan(uy_mat[im_idx]).any():
-                        infill_mask = np.isnan(ux_mat[im_idx]) | np.isnan(uy_mat[im_idx])
-                        cfg = (
-                            config.infilling_final_pass
-                            if is_final_pass
-                            else config.infilling_mid_pass
-                        )
-
-                        if infill_mask.sum() == infill_mask.size:
-                            logging.error(f"CRITICAL: 100% of data needs infilling for image {im_idx}!")
-
-                        if cfg.get("enabled", True):
-                            ux_mat[im_idx], uy_mat[im_idx] = apply_infilling(
-                                ux_mat[im_idx],
-                                uy_mat[im_idx],
-                                infill_mask,
-                                cfg,
+                with self._profile_section(pass_idx, "infilling"):
+                    # Apply infilling to outlier/invalid vectors
+                    for im_idx in range(N):
+                        if np.isnan(ux_mat[im_idx]).any() or np.isnan(uy_mat[im_idx]).any():
+                            infill_mask = np.isnan(ux_mat[im_idx]) | np.isnan(uy_mat[im_idx])
+                            cfg = (
+                                config.infilling_final_pass
+                                if is_final_pass
+                                else config.infilling_mid_pass
                             )
+
+                            if infill_mask.sum() == infill_mask.size:
+                                logging.error(f"CRITICAL: 100% of data needs infilling for image {im_idx}!")
+
+                            if cfg.get("enabled", True):
+                                ux_mat[im_idx], uy_mat[im_idx] = apply_infilling(
+                                    ux_mat[im_idx],
+                                    uy_mat[im_idx],
+                                    infill_mask,
+                                    cfg,
+                                )
 
                 # Pass summary - only warn if >20% invalid vectors (excluding masked regions)
                 mask_count = mask_bool_batch.sum()
@@ -489,44 +511,41 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                         f"({true_invalid_count}/{unmasked_total})"
                     )
 
-                pre_y, pre_x = self.n_pre_all[pass_idx]
-                post_y, post_x = self.n_post_all[pass_idx]
+                with self._profile_section(pass_idx, "padding_stacking"):
+                    pre_y, pre_x = self.n_pre_all[pass_idx]
+                    post_y, post_x = self.n_post_all[pass_idx]
 
-                stacked = np.stack([uy_mat, ux_mat], axis=-1)  # (N, ny, nx, 2)
+                    stacked = np.stack([uy_mat, ux_mat], axis=-1)  # (N, ny, nx, 2)
 
-                self.delta_ab_old = np.pad(
-                    stacked,
-                    ((0, 0), (pre_y, post_y), (pre_x, post_x), (0, 0)),
-                    mode="edge",
-                )
-
-
-
-
-                self.previous_win_spacing = (
-                    self.win_spacing_y[pass_idx],
-                    self.win_spacing_x[pass_idx],
-                )
-                self.prev_win_size = (n_win_y, n_win_x)
-                #logging.info(f"Average ux: {np.nanmean(ux_mat):.4f}, uy: {np.nanmean(uy_mat):.4f} for pass {pass_idx + 1}")
-                for im_idx in range(N):
-                    pass_result = PIVPassResult(
-                        n_windows=np.array([n_win_y, n_win_x], dtype=np.int32),
-                        ux_mat=np.copy(ux_mat[im_idx]),
-                        uy_mat=np.copy(uy_mat[im_idx]),
-                        nan_mask=np.copy(nan_mask[im_idx]),
-                        peak_mag=np.copy(pk_height[im_idx]),
-                        peak_choice=np.copy(peak_choice[im_idx]),
-                        predictor_field=np.copy(self.delta_ab_old[im_idx]),
-                        b_mask=b_mask.reshape((n_win_y, n_win_x)).astype(bool),
-                        window_size=win_size,
-                        win_ctrs_x=self.win_ctrs_x[pass_idx],
-                        win_ctrs_y=self.win_ctrs_y[pass_idx],
-
+                    self.delta_ab_old = np.pad(
+                        stacked,
+                        ((0, 0), (pre_y, post_y), (pre_x, post_x), (0, 0)),
+                        mode="edge",
                     )
-                    pass_time = time.perf_counter() - pass_start
-                    self.pass_times.append((im_idx, pass_idx, pass_time))
-                    batch_results[im_idx].add_pass(pass_result)
+
+                    self.previous_win_spacing = (
+                        self.win_spacing_y[pass_idx],
+                        self.win_spacing_x[pass_idx],
+                    )
+                    self.prev_win_size = (n_win_y, n_win_x)
+                with self._profile_section(pass_idx, "result_construction"):
+                    for im_idx in range(N):
+                        pass_result = PIVPassResult(
+                            n_windows=np.array([n_win_y, n_win_x], dtype=np.int32),
+                            ux_mat=np.copy(ux_mat[im_idx]),
+                            uy_mat=np.copy(uy_mat[im_idx]),
+                            nan_mask=np.copy(nan_mask[im_idx]),
+                            peak_mag=np.copy(pk_height[im_idx]),
+                            peak_choice=np.copy(peak_choice[im_idx]),
+                            predictor_field=np.copy(self.delta_ab_old[im_idx]),
+                            b_mask=b_mask.reshape((n_win_y, n_win_x)).astype(bool),
+                            window_size=win_size,
+                            win_ctrs_x=self.win_ctrs_x[pass_idx],
+                            win_ctrs_y=self.win_ctrs_y[pass_idx],
+                        )
+                        pass_time = time.perf_counter() - pass_start
+                        self.pass_times.append((im_idx, pass_idx, pass_time))
+                        batch_results[im_idx].add_pass(pass_result)
 
                 # Explicit memory cleanup after each pass to prevent accumulation
                 # Delete large intermediate arrays that are no longer needed
@@ -647,79 +666,81 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
 
             sigma = self.sd[pass_idx]
             truncate = (self.ksize_filt[pass_idx][0] - 1) / (2 * sigma)
-            # thread over images here
-            with ThreadPoolExecutor(max_workers=int(config.omp_threads)) as ex:
-                futures = [
-                    ex.submit(self._smooth_one_delta_old, i, sigma, truncate)
-                    for i in range(N)
-                ]
-                for f in as_completed(futures):
-                    _ = f.result()
 
-            delta_ab_dense = np.zeros((N, H, W, 2), dtype=np.float32)
-            map_x_2d, map_y_2d = self.cached_dense_maps[pass_idx]
-            if map_x_2d is None or map_y_2d is None:
-                raise ValueError(
-                    f"Dense interpolation maps missing for pass {pass_idx}"
-                )
-            # If installed properly cv2 should be multithreaded here
-            # could explicitly use multithreading over images
-            for i in range(N):
-                for d in range(2):
-                    delta_ab_dense[i, ..., d] = cv2.remap(
-                        self.delta_ab_old[i, ..., d],
-                        map_x_2d,
-                        map_y_2d,
-                        interp_flag,
+            with self._profile_section(pass_idx, "pc_gaussian_smooth"):
+                with ThreadPoolExecutor(max_workers=int(config.omp_threads)) as ex:
+                    futures = [
+                        ex.submit(self._smooth_one_delta_old, i, sigma, truncate)
+                        for i in range(N)
+                    ]
+                    for f in as_completed(futures):
+                        _ = f.result()
+
+            with self._profile_section(pass_idx, "pc_dense_remap"):
+                delta_ab_dense = np.zeros((N, H, W, 2), dtype=np.float32)
+                map_x_2d, map_y_2d = self.cached_dense_maps[pass_idx]
+                if map_x_2d is None or map_y_2d is None:
+                    raise ValueError(
+                        f"Dense interpolation maps missing for pass {pass_idx}"
+                    )
+                for i in range(N):
+                    for d in range(2):
+                        delta_ab_dense[i, ..., d] = cv2.remap(
+                            self.delta_ab_old[i, ..., d],
+                            map_x_2d,
+                            map_y_2d,
+                            interp_flag,
+                            borderMode=cv2.BORDER_CONSTANT,
+                            borderValue=0,
+                        ).astype(np.float32)
+
+            with self._profile_section(pass_idx, "pc_mesh_compute"):
+                im_mesh_base = self.im_mesh.astype(np.float32)
+                im_mesh_base_batched = im_mesh_base[None, ...]  # (1,H,W,2)
+                im_mesh_A = im_mesh_base_batched - 0.5 * delta_ab_dense  # (N,H,W,2)
+                im_mesh_B = im_mesh_base_batched + 0.5 * delta_ab_dense  # (N,H,W,2)
+
+            with self._profile_section(pass_idx, "pc_predictor_remap"):
+                map_x, map_y = self.cached_predictor_maps[pass_idx]
+                if map_x is None or map_y is None:
+                    raise ValueError(
+                        f"Predictor interpolation maps missing for pass {pass_idx}"
+                    )
+                for i in range(N):
+                    for d in range(2):
+                        self.delta_ab_pred[i, ..., d] = cv2.remap(
+                            self.delta_ab_old[i, ..., d],
+                            map_x,
+                            map_y,
+                            interp_flag,
+                            borderMode=cv2.BORDER_CONSTANT,
+                            borderValue=0.0,
+                        ).astype(np.float32)
+
+            with self._profile_section(pass_idx, "pc_image_warp"):
+                image_a_prime_batch = np.zeros_like(images_a, dtype=np.float32)
+                image_b_prime_batch = np.zeros_like(images_b, dtype=np.float32)
+                for i in range(N):
+                    map_x_A = im_mesh_A[i, ..., 1]
+                    map_y_A = im_mesh_A[i, ..., 0]
+                    map_x_B = im_mesh_B[i, ..., 1]
+                    map_y_B = im_mesh_B[i, ..., 0]
+                    image_a_prime_batch[i] = cv2.remap(
+                        images_a[i].astype(np.float32),
+                        map_x_A.astype(np.float32),
+                        map_y_A.astype(np.float32),
+                        cv2.INTER_CUBIC,
                         borderMode=cv2.BORDER_CONSTANT,
                         borderValue=0,
-                    ).astype(np.float32)
-
-            im_mesh_base = self.im_mesh.astype(np.float32)
-            im_mesh_base_batched = im_mesh_base[None, ...]  # (1,H,W,2)
-            im_mesh_A = im_mesh_base_batched - 0.5 * delta_ab_dense  # (N,H,W,2)
-            im_mesh_B = im_mesh_base_batched + 0.5 * delta_ab_dense  # (N,H,W,2)
-            map_x, map_y = self.cached_predictor_maps[pass_idx]
-            if map_x is None or map_y is None:
-                raise ValueError(
-                    f"Predictor interpolation maps missing for pass {pass_idx}"
-                )
-            for i in range(N):
-                for d in range(2):
-                    self.delta_ab_pred[i, ..., d] = cv2.remap(
-                        self.delta_ab_old[i, ..., d],
-                        map_x,
-                        map_y,
-                        interp_flag,
+                    )
+                    image_b_prime_batch[i] = cv2.remap(
+                        images_b[i].astype(np.float32),
+                        map_x_B.astype(np.float32),
+                        map_y_B.astype(np.float32),
+                        cv2.INTER_CUBIC,
                         borderMode=cv2.BORDER_CONSTANT,
-                        borderValue=0.0,
-                    ).astype(np.float32)
-
-            image_a_prime_batch = np.zeros_like(images_a, dtype=np.float32)
-            image_b_prime_batch = np.zeros_like(images_b, dtype=np.float32)
-            # If installed properly cv2 should be multithreaded here
-            # could explicitly use multithreading over images
-            for i in range(N):
-                map_x_A = im_mesh_A[i, ..., 1]
-                map_y_A = im_mesh_A[i, ..., 0]
-                map_x_B = im_mesh_B[i, ..., 1]
-                map_y_B = im_mesh_B[i, ..., 0]
-                image_a_prime_batch[i] = cv2.remap(
-                    images_a[i].astype(np.float32),
-                    map_x_A.astype(np.float32),
-                    map_y_A.astype(np.float32),
-                    cv2.INTER_CUBIC,
-                    borderMode=cv2.BORDER_CONSTANT,
-                    borderValue=0,
-                )
-                image_b_prime_batch[i] = cv2.remap(
-                    images_b[i].astype(np.float32),
-                    map_x_B.astype(np.float32),
-                    map_y_B.astype(np.float32),
-                    cv2.INTER_CUBIC,
-                    borderMode=cv2.BORDER_CONSTANT,
-                    borderValue=0,
-                )
+                        borderValue=0,
+                    )
             return image_a_prime_batch, image_b_prime_batch, self.delta_ab_pred
 
     def _smooth_one_delta_old(self, i, sigma, truncate):

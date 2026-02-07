@@ -9,6 +9,7 @@ inherited by both dotboard (circle grid) and ChArUco stereo calibrators.
 
 import math
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -615,9 +616,12 @@ class BaseStereoCalibrator(ABC):
         for img_index in range(1, num_frame_pairs + 1):
             filename = f"frame_{img_index:05d}"
 
-            # Use centralized image reader
-            img1 = self._read_calibration_image_centralized(camera=cam1_val, img_index=img_index)
-            img2 = self._read_calibration_image_centralized(camera=cam2_val, img_index=img_index)
+            # Use centralized image reader (parallel for both cameras)
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                f1 = executor.submit(self._read_calibration_image_centralized, camera=cam1_val, img_index=img_index)
+                f2 = executor.submit(self._read_calibration_image_centralized, camera=cam2_val, img_index=img_index)
+                img1 = f1.result()
+                img2 = f2.result()
 
             if img1 is None:
                 if img_index == 1:

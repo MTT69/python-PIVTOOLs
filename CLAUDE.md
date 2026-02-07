@@ -362,11 +362,23 @@ POST /calibrate/set_datum              {base_path_idx, type_name, camera, datum_
 
 **Production files** (do the actual calibration work):
 - `scale_factor_calibration_production.py` - Simple px→mm scaling
-- `calibration_planar/planar_calibration_production.py` - Dotboard detection + model
+- `calibration_planar/planar_calibration_production.py` - Dotboard detection + model. Optimized: histogram-based single blob detection, cKDTree neighbor finding, reduced RANSAC iterations, vectorized object points, no double image reads for containers
 - `calibration_charuco/charuco_calibration_production.py` - ChArUco detection
 - `calibration_poly/polynomial_calibration_production.py` - DaVis XML polynomial
 - `vector_calibration_production.py` - Applies calibration to vectors
-- `stereo_reconstruction/stereo_*_calibration_production.py` - Stereo variants
+- `stereo_reconstruction/stereo_dotboard_calibration_production.py` - Stereo dotboard. Same optimizations as planar: histogram blob detection, cKDTree, reduced RANSAC, vectorized object points
+- `stereo_reconstruction/stereo_calibration_base.py` - Stereo base class. Parallel camera image reads via ThreadPoolExecutor
+- `stereo_reconstruction/stereo_charuco_calibration_production.py` - Stereo ChArUco detection
+
+**Dotboard calibration performance optimizations** (shared by planar + stereo):
+- **Blob detection:** Histogram-based single pass (checks `mean_intensity > 127` to decide original vs inverted), with fallback if <9 keypoints found
+- **Neighbor finding:** `scipy.spatial.cKDTree` replaces O(N^2) pairwise distance matrix — O(N log N) for spacing estimation and pair finding
+- **RANSAC:** Reduced to `maxIters=1000, confidence=0.97` (was 2000/0.99). Threshold `0.15 * spacing_px` unchanged
+- **Object points:** Vectorized with NumPy (no Python loop)
+- **Container reads:** Eliminated duplicate image reads (was read-to-test then read-again)
+- **Multi-camera (planar):** `dotboard_views.py` processes all cameras in parallel via `ThreadPoolExecutor`
+- **Stereo reads:** Both camera images read in parallel via `ThreadPoolExecutor(max_workers=2)`
+- **Preserved:** Reflection filtering (connected components), RANSAC outlier threshold, grid deduplication, subpixel refinement
 
 **`services/job_manager.py`** - Shared across all long-running operations:
 ```python
@@ -640,7 +652,7 @@ Defines available image filter types and their parameter schemas for the UI.
 - **`ImagePairViewer.tsx`** - Side-by-side raw/processed image display with frame navigation. Uses `useImagePair`.
 - **`VideoMaker.tsx`** - Video creation UI. Uses `useVideoMaker`.
 - **`CalibrationImageViewer.tsx`** - Calibration image display with detection overlay.
-- **`zoomableCanvas.tsx`** - Reusable pan/zoom canvas component (used by VectorViewer and ImagePairViewer).
+- **`zoomableCanvas.tsx`** - Reusable pan/zoom canvas component (used by VectorViewer and ImagePairViewer). Uses canvas-based overlay for detection dots (not SVG) and Uint32Array LUT for fast colormap pixel writes.
 - **`colorbar.tsx`** - Matplotlib-style colorbar component.
 
 #### Setup Panels
@@ -945,6 +957,28 @@ Triggered on GitHub release or manual dispatch. Builds wheels for {ubuntu, macos
 | `video` | Visualization video (instantaneous only) |
 
 Common flags: `--active-paths`, `--type-name`, `--source-endpoint` (`regular`/`merged`/`stereo`)
+
+### Profiling (`scripts/profile_piv.py`)
+
+Standalone PIV profiling script that bypasses Dask entirely. Loads real images from disk, creates a minimal Config, and calls `InstantaneousCorrelatorCPU.correlate_batch()` directly with per-section timing instrumentation.
+
+**Instrumentation** (in `cpu_instantaneous.py`):
+- `self.profiling_enabled = False` — disabled by default, zero overhead
+- `self._profile_section(pass_idx, section)` — context manager that times named code sections
+- `self.get_profile_summary()` — returns `{pass_idx: {section_name: elapsed_seconds}}`
+
+**9 timed sections in `correlate_batch`:** `predictor_corrector`, `set_lib_args`, `bulkxcorr2d`, `post_processing`, `outlier_detection`, `secondary_peaks`, `infilling`, `padding_stacking`, `result_construction`
+
+**5 sub-timings in `_predictor_corrector_batch` (pass > 0):** `pc_gaussian_smooth`, `pc_dense_remap`, `pc_mesh_compute`, `pc_predictor_remap`, `pc_image_warp`
+
+**Usage:**
+```
+python scripts/profile_piv.py 4mp                    # 4MP images, 3 iterations
+python scripts/profile_piv.py 25mp --iterations 5    # 25MP images, 5 iterations
+python scripts/profile_piv.py both --threads 8       # Both presets, 8 OMP threads
+python scripts/profile_piv.py 4mp --no-outlier       # Disable outlier detection
+python scripts/profile_piv.py 4mp --windows 64,32    # Custom pass sizes
+```
 
 ---
 

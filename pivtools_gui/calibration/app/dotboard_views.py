@@ -11,6 +11,7 @@ Clean API for dotboard calibration:
 """
 
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
@@ -393,7 +394,7 @@ def planar_generate_model_all():
         source_path_idx: int
 
     All calibration parameters are read from config.yaml.
-    Processes each camera in sequence using MultiViewCalibrator.process_single_camera().
+    Processes cameras in parallel using ThreadPoolExecutor (each camera is independent).
 
     Returns:
         JSON with job_id, status, cameras list
@@ -417,71 +418,90 @@ def planar_generate_model_all():
             camera_results={},
         )
 
+        def process_camera(camera):
+            """Process a single camera's calibration. Each camera is fully independent."""
+            source_dir = build_calibration_camera_path(
+                cfg, source_path_idx, camera
+            )
+
+            logger.info(f"Processing camera {camera} from {source_dir}")
+
+            dotboard_cfg = cfg.data.get("calibration", {}).get("dotboard", {})
+            base_root = Path(cfg.base_paths[source_path_idx])
+
+            # Create its own calibrator instance (independent per camera)
+            calibrator = MultiViewCalibrator(
+                source_dir=str(source_dir),
+                base_dir=str(base_root),
+                camera_count=1,
+                file_pattern=cfg.calibration_image_format,
+                pattern_cols=dotboard_cfg.get("pattern_cols", 10),
+                pattern_rows=dotboard_cfg.get("pattern_rows", 10),
+                dot_spacing_mm=dotboard_cfg.get("dot_spacing_mm", 28.89),
+                asymmetric=dotboard_cfg.get("asymmetric", False),
+                enhance_dots=dotboard_cfg.get("enhance_dots", True),
+                config=cfg,
+            )
+
+            # Run calibration
+            result = calibrator.process_single_camera(
+                cam_num=camera,
+                progress_callback=None,
+                save_visualizations=False,
+            )
+
+            return camera, result
+
         def run_calibration():
             try:
                 camera_results = {}
-                dotboard_cfg = cfg.data.get("calibration", {}).get("dotboard", {})
-                base_root = Path(cfg.base_paths[source_path_idx])
 
-                for idx, camera in enumerate(camera_numbers):
-                    # Update job with current camera
-                    job_manager.update_job(
-                        job_id,
-                        status="running",
-                        current_camera=camera,
-                        processed_cameras=idx,
-                    )
+                job_manager.update_job(job_id, status="running")
 
-                    try:
-                        # Build source directory path using calibration_sources
-                        source_dir = build_calibration_camera_path(
-                            cfg, source_path_idx, camera
-                        )
+                with ThreadPoolExecutor(max_workers=len(camera_numbers)) as executor:
+                    futures = {
+                        executor.submit(process_camera, cam): cam
+                        for cam in camera_numbers
+                    }
 
-                        logger.info(f"Processing camera {camera} from {source_dir}")
-
-                        # Create calibrator
-                        calibrator = MultiViewCalibrator(
-                            source_dir=str(source_dir),
-                            base_dir=str(base_root),
-                            camera_count=1,
-                            file_pattern=cfg.calibration_image_format,
-                            pattern_cols=dotboard_cfg.get("pattern_cols", 10),
-                            pattern_rows=dotboard_cfg.get("pattern_rows", 10),
-                            dot_spacing_mm=dotboard_cfg.get("dot_spacing_mm", 28.89),
-                            asymmetric=dotboard_cfg.get("asymmetric", False),
-                            enhance_dots=dotboard_cfg.get("enhance_dots", True),
-                            config=cfg,
-                        )
-
-                        # Run calibration
-                        result = calibrator.process_single_camera(
-                            cam_num=camera,
-                            progress_callback=None,
-                            save_visualizations=False,
-                        )
-
-                        if result.get("success"):
-                            camera_results[camera] = {
-                                "status": "completed",
-                                "rms_error": result.get("rms_error"),
-                                "num_images_used": result.get("num_images_used"),
-                            }
-                            logger.info(f"Camera {camera} calibration completed")
-                        else:
-                            error_msg = result.get("error", "Unknown error")
-                            logger.error(f"Camera {camera} calibration failed: {error_msg}")
-                            camera_results[camera] = {
+                    for future in as_completed(futures):
+                        cam = futures[future]
+                        try:
+                            _, result = future.result()
+                            if result.get("success"):
+                                camera_results[cam] = {
+                                    "status": "completed",
+                                    "rms_error": result.get("rms_error"),
+                                    "num_images_used": result.get("num_images_used"),
+                                }
+                                logger.info(f"Camera {cam} calibration completed")
+                            else:
+                                error_msg = result.get("error", "Unknown error")
+                                logger.error(
+                                    f"Camera {cam} calibration failed: {error_msg}"
+                                )
+                                camera_results[cam] = {
+                                    "status": "failed",
+                                    "error": error_msg,
+                                }
+                        except Exception as e:
+                            logger.error(f"Camera {cam} calibration failed: {e}")
+                            camera_results[cam] = {
                                 "status": "failed",
-                                "error": error_msg,
+                                "error": str(e),
                             }
 
-                    except Exception as e:
-                        logger.error(f"Camera {camera} calibration failed: {e}")
-                        camera_results[camera] = {
-                            "status": "failed",
-                            "error": str(e),
-                        }
+                        # Update progress as each camera finishes
+                        completed = sum(
+                            1
+                            for r in camera_results.values()
+                            if r["status"] in ("completed", "failed")
+                        )
+                        job_manager.update_job(
+                            job_id,
+                            processed_cameras=completed,
+                            camera_results=camera_results,
+                        )
 
                 # Mark job complete
                 job_manager.complete_job(

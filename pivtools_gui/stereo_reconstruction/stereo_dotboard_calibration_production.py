@@ -18,6 +18,7 @@ import numpy as np
 from loguru import logger
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
+from scipy.spatial import cKDTree
 
 from pivtools_core.config import Config, get_config, reload_config
 from pivtools_core.image_handling.calibration_loader import get_calibration_frame_count
@@ -179,16 +180,24 @@ def detect_grid_automatic(
 
     info: Dict[str, Any] = {'method': 'automatic_grid_detection'}
 
-    # Step 1: Detect blobs
-    keypoints_orig = detector.detect(gray)
-    keypoints_inv = detector.detect(255 - gray)
+    # Apply CLAHE to normalize uneven illumination before detection
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    gray = clahe.apply(gray)
 
-    if len(keypoints_inv) > len(keypoints_orig):
-        keypoints = keypoints_inv
-        info['image_mode'] = 'inverted'
-    else:
-        keypoints = keypoints_orig
+    # Step 1: Detect blobs (histogram-based single pass with fallback)
+    mean_intensity = np.mean(gray)
+    if mean_intensity > 127:
+        keypoints = detector.detect(gray)
         info['image_mode'] = 'original'
+    else:
+        keypoints = detector.detect(255 - gray)
+        info['image_mode'] = 'inverted'
+
+    if len(keypoints) < 9:
+        fallback = detector.detect(255 - gray) if mean_intensity > 127 else detector.detect(gray)
+        if len(fallback) > len(keypoints):
+            keypoints = fallback
+            info['image_mode'] = 'inverted' if mean_intensity > 127 else 'original'
 
     if len(keypoints) < 9:
         info['error'] = f'Too few blobs detected: {len(keypoints)}'
@@ -197,24 +206,32 @@ def detect_grid_automatic(
     centers = np.array([kp.pt for kp in keypoints], dtype=np.float32)
     info['n_blobs_detected'] = len(centers)
 
-    # Step 2: Find grid spacing (vectorized for speed)
-    n_points = len(centers)
-
-    # Compute all pairwise distances using broadcasting (much faster than loop)
-    diff = centers[:, np.newaxis, :] - centers[np.newaxis, :, :]  # (N, N, 2)
-    all_distances = np.sqrt(np.sum(diff ** 2, axis=2))  # (N, N)
-    np.fill_diagonal(all_distances, np.inf)
-
-    nn_distances = np.min(all_distances, axis=1)
-    spacing_px = np.median(nn_distances)
+    # Step 2: Find grid spacing using cKDTree (O(N log N) instead of O(N^2))
+    tree = cKDTree(centers)
+    nn_dists, _ = tree.query(centers, k=2)
+    spacing_px = np.median(nn_dists[:, 1])
     info['spacing_px'] = float(spacing_px)
 
     # Step 3: Find grid vectors (vectorized)
     angle_tolerance = np.radians(20)
 
-    # Find all neighbor pairs within distance tolerance
-    dist_mask = (all_distances > spacing_px * 0.6) & (all_distances < spacing_px * 1.4)
-    i_idx, j_idx = np.where(dist_mask)
+    # Find all neighbor pairs within distance tolerance using cKDTree
+    pairs = tree.query_pairs(r=spacing_px * 1.4)
+    # Filter pairs that are too close (below spacing_px * 0.6)
+    valid_pair_list = []
+    for i, j in pairs:
+        d = np.linalg.norm(centers[i] - centers[j])
+        if d > spacing_px * 0.6:
+            valid_pair_list.append((i, j))
+            valid_pair_list.append((j, i))  # Include both directions
+
+    if len(valid_pair_list) == 0:
+        i_idx = np.array([], dtype=np.intp)
+        j_idx = np.array([], dtype=np.intp)
+    else:
+        valid_pair_arr = np.array(valid_pair_list, dtype=np.intp)
+        i_idx = valid_pair_arr[:, 0]
+        j_idx = valid_pair_arr[:, 1]
 
     if len(i_idx) < 20:
         info['error'] = 'Not enough neighbor pairs found'
@@ -306,8 +323,8 @@ def detect_grid_automatic(
         src_pts, dst_pts,
         method=cv2.RANSAC,
         ransacReprojThreshold=ransac_thresh,
-        maxIters=2000,
-        confidence=0.99
+        maxIters=1000,
+        confidence=0.97
     )
 
     if affine_matrix is None:
@@ -557,13 +574,10 @@ class StereoDotboardCalibrator(BaseStereoCalibrator):
         grid_indices: np.ndarray,
     ) -> np.ndarray:
         """Create 3D object points from grid indices."""
-        obj_points = []
-        for idx in grid_indices:
-            col, row = idx[0], idx[1]
-            x = col * self.dot_spacing_mm
-            y = row * self.dot_spacing_mm
-            obj_points.append([x, y, 0.0])
-        return np.array(obj_points, dtype=np.float32)
+        obj_points = np.zeros((len(grid_indices), 3), dtype=np.float32)
+        obj_points[:, 0] = grid_indices[:, 0] * self.dot_spacing_mm
+        obj_points[:, 1] = grid_indices[:, 1] * self.dot_spacing_mm
+        return obj_points
 
     def _match_object_points(
         self,
