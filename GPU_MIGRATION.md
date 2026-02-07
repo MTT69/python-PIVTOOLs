@@ -78,6 +78,141 @@ The C extensions don't need to know a GPU was involved.
 
 ---
 
+## Why Python GPU Wrappers (MLX), Not C/Metal FFT Rewrites
+
+On CPU, the hand-written C+FFTW code is significantly faster than Python scipy FFT wrappers. On GPU, this logic **inverts completely** — Python wrappers are the right choice.
+
+### Why C Beats Python on CPU
+
+The current C code (`xcorr.c`, `PIV_2d_cross_correlate.c`) is faster than scipy because of **per-call overhead**. Each `scipy.fft.fft2()` pays Python dispatch, argument validation, and array allocation. The C code avoids all of this:
+- `xcorr_create_plan()` once, then `xcorr_preplanned()` reuses the plan
+- Pre-allocated `fftwf_malloc` buffers, zero allocation in the hot loop
+- No Python GIL, no interpreter overhead
+- FFTW wisdom selects the optimal algorithm per window size
+
+That per-call overhead matters because the current code calls FFT **per window** — thousands of times.
+
+### Why It Flips on GPU
+
+On GPU, you don't call FFT per window. You call it **once for all windows**:
+
+```python
+# ONE Python call dispatches 25,000 FFTs to the GPU
+result = mx.fft.fft2(all_25000_windows)  # shape (25000, 64, 64)
+```
+
+That single Python dispatch takes ~0.05ms. The GPU then crunches all 25,000 FFTs in parallel for ~5-10ms. The Python overhead is <1% — irrelevant.
+
+Regardless of whether you call it from Python (MLX) or from C (Metal API), the **same Metal GPU shader** executes underneath. MLX's `mx.fft.fft2()` calls Apple's Metal Performance Shaders FFT kernel — the same optimized code you'd be calling if you wrote a C wrapper around the Metal API. Writing a custom FFT in Metal Shading Language would be strictly worse than using Apple's own implementation.
+
+### Comparison
+
+| | CPU: C+FFTW | CPU: scipy | GPU: MLX (Python) | GPU: Metal C API |
+|---|---|---|---|---|
+| FFT kernel quality | FFTW (excellent) | pocketfft | Metal FFT (excellent) | Metal FFT (same) |
+| Per-call overhead | ~0 (ctypes) | ~0.05ms | ~0.05ms | ~0 |
+| Calls per batch | 25,000 | 25,000 | **1** | **1** |
+| Total dispatch overhead | ~0 | ~1.25s | **~0.05ms** | ~0 |
+| Dev effort | Already done | Already done | 2 weeks | 2-3 months |
+
+The Python overhead that kills scipy on CPU (25,000 calls x 0.05ms = 1.25s) becomes irrelevant on GPU (1 call x 0.05ms = 0.05ms).
+
+### Where Metal Shaders Would Help (Later Optimization)
+
+Custom Metal Compute Shaders would only be worth it for **kernel fusion** — combining multiple GPU dispatches into one. For example, fusing extract + taper + mean-subtract into a single shader instead of 3 separate dispatches. This saves GPU launch overhead and intermediate memory. But with unified memory and MLX's lazy evaluation (which already does some fusion), the benefit is marginal (~10-20% on top of the already large speedup). Worth considering only after the MLX approach is validated and profiled.
+
+---
+
+## Current FFT Batching Analysis
+
+Understanding the current CPU data flow is critical for designing the GPU replacement.
+
+### Current: Per-Window FFT (Not Batched)
+
+**At the FFTW level** (`xcorr.c:149`):
+
+```c
+fftwf_plan_many_dft_r2c(2, Nbackwards, 2,   // howmany = 2
+                         ab_copy, ...)
+```
+
+`howmany=2` batches only the **forward FFT of A and B together** (2 transforms per call). The inverse FFT is completely un-batched:
+
+```c
+fftwf_plan_dft_c2r_2d(N[0], N[1], C, c_copy, ...)   // howmany = 1, single transform
+```
+
+**At the C loop level** (`PIV_2d_cross_correlate.c:79-80`):
+
+```c
+#pragma omp for schedule(static)
+for(idx = 0; idx < total_windows; ++idx)   // total_windows = N_images * N_windows
+{
+    // extract ONE window from image
+    // apply taper to ONE window
+    // mean subtract ONE window
+    xcorr_preplanned(...);   // ONE FFT xcorr (fwd batch=2, conj_mult, inv batch=1)
+    // peak find ONE window
+}
+```
+
+Each OpenMP thread processes **one window at a time**. Each thread has its own FFTW plan and scratch buffers. The parallelism is across windows via OpenMP, but each FFT is an individual operation.
+
+### Actual Data Flow (10 images, 2500 windows)
+
+```
+Python passes N=10 images to C:
+  C gets total_windows = 25,000
+    OpenMP splits 25,000 iterations across ~8 threads
+      Each thread does ~3,125 iterations
+        Each iteration:
+          extract 1 window pair from image
+          apply taper weights
+          mean subtract
+          xcorr_preplanned() = 3 FFTW calls:
+            - fwd r2c (batch=2: A and B together)
+            - conj multiply
+            - inv c2r (batch=1)
+          peak_locate_lm() on 5x5 region
+```
+
+Result: **25,000 individual FFTW forward calls** (each batching A+B = 2 transforms) and **25,000 individual inverse calls**.
+
+### GPU Target: Fully Batched
+
+```
+Python passes N=10 images to MLX:
+  GPU: extract ALL 25,000 window pairs at once        (1 gather dispatch)
+  GPU: apply ALL 25,000 tapers at once                (1 element-wise dispatch)
+  GPU: mean subtract ALL 25,000 at once               (1 reduction dispatch)
+  GPU: FFT ALL 25,000 windows_A at once               (1 fft2 dispatch)
+  GPU: FFT ALL 25,000 windows_B at once               (1 fft2 dispatch)
+  GPU: conj multiply ALL 25,000 at once               (1 element-wise dispatch)
+  GPU: IFFT ALL 25,000 at once                        (1 ifft2 dispatch)
+  GPU: fftshift + normalize ALL at once               (1 element-wise dispatch)
+  CPU: peak find 25,000 windows (existing C, zero-copy handoff)
+```
+
+Result: **2 batched FFT calls** (one forward, one inverse), each processing 25,000 transforms in a single GPU dispatch.
+
+### Why Not Batch on CPU Too?
+
+FFTW supports `howmany=N` for arbitrary N, so in theory you could batch all 25,000 windows in FFTW. But this would require:
+1. **Pre-extracting all windows** into a contiguous buffer (the current code extracts inside the loop)
+2. **Losing cache locality**: Each 64x64 window fits in L1 cache. The current fused extract-taper-FFT-peak pipeline keeps data hot. Batching 25,000 windows into a single FFTW call would blow through cache and could actually be *slower* due to memory bandwidth pressure.
+
+On CPU, the current per-window approach is well-optimized — small working set, hot cache, minimal allocation. On GPU, the opposite is true — the GPU wants massive parallelism and has a different memory hierarchy. This is why the GPU migration is a **new correlator class** rather than modifying the existing one: the optimal data flow is fundamentally different.
+
+| | Current CPU | Batched CPU (hypothetical) | GPU (MLX) |
+|---|---|---|---|
+| FFT calls | 25,000 individual | 1 batched | 1 batched |
+| Parallelism | OpenMP (~8 threads) | FFTW internal | GPU (~thousands of cores) |
+| Cache behavior | Excellent (1 window in L1) | Poor (all windows blow cache) | Different model (no L1 concern) |
+| Window extraction | Fused in loop | Separate pre-pass | Separate gather pass |
+| **Verdict** | **Good for CPU** | Likely worse on CPU | **10-50x faster** |
+
+---
+
 ## What Goes to GPU
 
 ### 1. FFT Cross-Correlation (`xcorr.c` -> MLX batched FFT)

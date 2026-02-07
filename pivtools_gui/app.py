@@ -25,10 +25,10 @@ from pivtools_gui.masking.app.views import masking_bp
 from pivtools_core.paths import get_data_paths
 from pivtools_gui.piv_runner import get_runner
 from pivtools_gui.plotting.app.plotting_views import vector_plot_bp
-# Old per-file transform storage (kept for backwards compatibility)
+# Transform endpoints (per-file storage with backup/restore, used by frontend)
 from pivtools_gui.plotting.app.transform_views import transform_bp
-# New config-based transform storage
-from pivtools_gui.transforms.app.transform_views import transform_bp as transform_new_bp
+# Note: transforms/app/transform_views.py exists for CLI batch usage via TransformProcessor
+# but is NOT registered as a Flask blueprint - the frontend uses the plotting transform API
 from pivtools_cli.preprocessing.preprocess import preprocess_images, apply_filters_to_batch
 # from pivtools_gui.stereo_reconstruction.app.views import stereo_bp
 from pivtools_gui.utils import camera_number, numpy_to_png_base64, numpy_to_base64

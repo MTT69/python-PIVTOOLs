@@ -51,7 +51,8 @@ Config is stored as config.yaml (single source of truth), loaded via Config clas
 | Calibration (stereo) | `calibration/app/stereo_*_views.py` | `useStereoCalibration` | `StereoCalibration` |
 | Calibration images | `calibration/app/shared_views.py` | `useCalibrationImageViewer` | `CalibrationImageViewer` |
 | Vector viewing | `plotting/app/plotting_views.py` | `useVectorViewer` | `VectorViewer` |
-| Transforms | `transforms/app/transform_views.py` | (in `useVectorViewer`) | (in `VectorViewer`) |
+| Transforms (GUI) | `plotting/app/transform_views.py` | (in `useVectorViewer`) | (in `VectorViewer`) |
+| Transforms (CLI) | `transforms/transform_production.py` | N/A | N/A |
 | Vector merging | `vector_merging/app/views.py` | `useVectorMerging` | (in `VectorViewer`) |
 | Statistics | `vector_statistics/app/views.py` | `useStatisticsCalculation` | (in `VectorViewer`) |
 | Video maker | `video_maker/app/views.py` | `useVideoMaker` | `VideoMaker` |
@@ -264,8 +265,7 @@ readers/generic_readers.py: read_tiff(...), read_png_jpeg(...)
 |-----------|--------|--------|
 | `api_bp` | `/backend` | app.py (main routes) |
 | `vector_plot_bp` | `/backend/plot` | plotting/app/plotting_views.py |
-| `transform_bp` (old) | `/backend/plot` | plotting/app/transform_views.py |
-| `transform_bp` (new) | `/backend` | transforms/app/transform_views.py |
+| `transform_bp` | `/backend/plot` | plotting/app/transform_views.py (active, used by frontend) |
 | `masking_bp` | `/backend` | masking/app/views.py |
 | `calibration_bp` | `/backend` | calibration/app/views.py (aggregator) |
 | `video_maker_bp` | `/backend/video` | video_maker/app/views.py |
@@ -383,27 +383,35 @@ class JobManager:
 
 ### `transforms/` - Geometric Transformations
 
-**Routes (under `/backend/transform/`):**
+**Two execution paths (shared core logic in `transform_operations.py`):**
+
+| Path | Processor | Used by | Backup/Restore |
+|------|-----------|---------|----------------|
+| GUI (plotting) | `VectorTransformProcessor` | Frontend via `/backend/plot/transform_*` | Yes (per-frame `_original` backup in .mat) |
+| CLI | `TransformProcessor` | `pivtools-cli transform` command | No (direct batch apply) |
+
+**GUI routes (under `/backend/plot/`, registered via `plotting/app/transform_views.py`):**
 ```
-GET  /transform/constraints        -> allowed_source_endpoints
-POST /transform/add                {camera, transformation}
-POST /transform/clear              {camera}
-GET  /transform/status             ?camera=
-GET  /transform/status/all
-POST /transform/simplify           {operations}
-POST /transform/apply              {cameras?, type_name?, base_path_idx?}
-POST /transform/apply_batch        {base_path_idx, process_merged, process_stereo, type_name?}
-GET  /transform/job/<job_id>
-GET  /transform/batch_status/<job_id>
-GET  /transform/valid              -> list of valid transformation names
+POST /plot/transform_frame              {base_path, camera, frame, transformation, merged}
+POST /plot/clear_transform              {base_path, camera, frame, merged}
+GET  /plot/check_transform_status       ?base_path=&camera=&frame=&merged=
+POST /plot/transform_all_frames         {base_path, camera, transformations, merged, image_count}
+GET  /plot/transform_all_frames/status/<job_id>
 ```
 
-**Valid transformations:** `flip_ud`, `flip_lr`, `rotate_90_cw`, `rotate_90_ccw`, `rotate_180`
+**Valid transformations:** `flip_ud`, `flip_lr`, `rotate_90_cw`, `rotate_90_ccw`, `rotate_180`, `swap_ux_uy`, `invert_ux_uy`, `scale_velocity:<factor>`, `scale_coords:<factor>`
+
+**Ensemble-aware:** Transforms correctly handle Reynolds stresses (UU_stress, VV_stress, UV_stress) in calibrated ensemble data:
+- Geometric transforms (flip/rotate): stress fields are spatially transformed alongside velocities
+- `scale_velocity:k`: stresses scaled by k² (velocity² units)
+- `swap_ux_uy`: UU_stress swapped with VV_stress (UV unchanged)
+- `invert_ux_uy`: stresses unchanged (variance is sign-invariant)
 
 **Key files:**
-- `transform_operations.py` - `simplify_transformations(ops: list) -> list` (algebraic simplification)
-- `transform_production.py` - `TransformProcessor` class (applies transforms to .mat files)
-- `vector_transform_processor.py` - Low-level transform logic on numpy arrays
+- `transform_operations.py` - `apply_transformation_to_piv_result()`, `simplify_transformations()` (shared by both paths)
+- `vector_transform_processor.py` - `VectorTransformProcessor` (GUI: per-frame with backup/restore)
+- `transform_production.py` - `TransformProcessor` (CLI: direct batch apply)
+- `plotting/app/transform_views.py` - Flask endpoints (registered at `/backend/plot`)
 
 ### `plotting/` - Vector Field Visualization
 
@@ -423,7 +431,7 @@ GET  /get_uncalibrated_image   ?camera=&frame=&base_path_idx=&type_name=
 ```
 
 **Supporting files:**
-- `shared_utils.py` - `parse_plot_params()`, `validate_and_get_paths()`, `load_piv_result()`, `create_and_return_plot()`, `VARIABLE_UNITS`
+- `shared_utils.py` - `parse_plot_params()`, `validate_and_get_paths()`, `load_piv_result()`, `create_and_return_plot()`, `VARIABLE_UNITS` (NOTE: plot_vector reads .mat from disk each time - no server-side caching of vector plots)
 - `plot_maker.py` - `make_scalar_settings()`, matplotlib rendering
 
 ### `vector_merging/` - Multi-Camera Merging
@@ -459,7 +467,7 @@ GET  /statistics/compute_status/<job_id>
 class VectorStatisticsProcessor:
     __init__(data_dir, stats_dir, config, type_name="instantaneous")
     compute_all(progress_callback=None) -> dict
-    # Computes: mean velocity, Reynolds stress, TKE, vorticity, divergence, gamma
+    # Computes: mean velocity, Reynolds stress, TKE, vorticity, divergence, gamma, mean_peak_height
     # Per-frame: inst_vorticity, inst_divergence, inst_fluctuations, inst_gamma
 ```
 
@@ -594,10 +602,11 @@ useVectorMerging(config) -> {
 
 #### `useStatisticsCalculation.tsx`
 ```typescript
-useStatisticsCalculation(config) -> {
+useStatisticsCalculation(backendUrl, basePathIdx, cameraOptions, imageCount, config, dataSource?) -> {
     compute, jobStatus, constraints, enabledMethods,
 }
-// Calls: POST /backend/statistics/compute, GET /statistics/compute_status/*, /constraints
+// dataSource param: derives type_name/source_endpoint directly (avoids async config race)
+// Calls: POST /backend/statistics/calculate, GET /statistics/status/*, /constraints
 ```
 
 #### `useVideoMaker.tsx`

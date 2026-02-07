@@ -59,6 +59,7 @@ ENABLED_STATISTICS = {
     "mean_tke": True,
     "mean_vorticity": True,
     "mean_divergence": True,
+    "mean_peak_height": True,
     # Instantaneous (per-frame) statistics
     "inst_velocity": True,
     "inst_fluctuations": True,
@@ -323,6 +324,7 @@ class VectorStatisticsProcessor:
         "mean_divergence": ["divergence"],
         "mean_tke": ["tke"],
         "mean_stresses": ["uu", "vv", "uv"],  # Full stress tensor (+ ww, uw, vw for stereo)
+        "mean_peak_height": ["mean_peak_height"],
         # Instantaneous (per-frame) statistics
         "inst_velocity": ["ux", "uy"],  # Per-frame velocity
         "inst_stresses": ["uu_inst", "vv_inst", "uv_inst"],  # Per-frame stress tensor
@@ -350,6 +352,7 @@ class VectorStatisticsProcessor:
         "mean_divergence": "mean_divergence",
         "mean_tke": "mean_tke",
         "mean_stresses": "mean_stresses",  # New canonical name for stress tensor
+        "mean_peak_height": "mean_peak_height",
         # Instantaneous (identity mappings)
         "inst_velocity": "inst_velocity",
         "inst_stresses": "inst_stresses",  # New canonical name for per-frame stresses
@@ -650,6 +653,9 @@ class VectorStatisticsProcessor:
         calc_inst_divergence = "inst_divergence" in active_stats
         calc_inst_gamma = "inst_gamma" in active_stats
 
+        # Peak height
+        calc_peak_height = "mean_peak_height" in active_stats
+
         # Combined flags (calculate if either mean or inst needs it)
         calc_vorticity = calc_mean_vorticity or calc_inst_vorticity
         calc_divergence = calc_mean_divergence or calc_inst_divergence
@@ -669,6 +675,7 @@ class VectorStatisticsProcessor:
             "calc_gamma1": calc_inst_gamma or "gamma1" in active_stats,
             "calc_gamma2": calc_inst_gamma or "gamma2" in active_stats,
             "gamma_radius": self.gamma_radius,
+            "calc_peak_height": calc_peak_height,
             # Granular save flags for separate mean vs inst control
             "save_mean_vorticity": calc_mean_vorticity,
             "save_mean_divergence": calc_mean_divergence,
@@ -829,6 +836,51 @@ class VectorStatisticsProcessor:
                 dvdx = np.gradient(mean_uy, axis=1)
                 dudy = np.gradient(mean_ux, axis=0)
             result["vorticity"] = dvdx - dudy
+
+        # Mean peak height
+        if calc_flags.get("calc_peak_height", False):
+            # Load peak_mag from each frame file individually since it's not in the vector array
+            glob_pattern = re.sub(r"%[0-9]*[diuoxXfFeEgG]", "*", self.vector_format)
+            frame_files = sorted(list(self.data_dir.glob(glob_pattern)))
+
+            peak_sum = None
+            peak_count_arr = None
+
+            for file_path in frame_files:
+                try:
+                    mat_data = scipy.io.loadmat(str(file_path), squeeze_me=True, struct_as_record=False)
+                    if "piv_result" not in mat_data:
+                        continue
+                    piv_result_data = mat_data["piv_result"]
+                    if not isinstance(piv_result_data, np.ndarray):
+                        piv_result_data = np.array([piv_result_data])
+                    elif piv_result_data.ndim == 0:
+                        piv_result_data = np.array([piv_result_data.item()])
+                    if piv_result_data.ndim > 1:
+                        piv_result_data = piv_result_data.flatten()
+
+                    # Access the correct run
+                    run_idx = run_num - 1
+                    if run_idx >= piv_result_data.size:
+                        continue
+                    run_obj = piv_result_data[run_idx]
+
+                    if hasattr(run_obj, "peak_mag"):
+                        pm = np.array(run_obj.peak_mag, dtype=np.float64)
+                        if pm.size > 0 and pm.ndim == 2:
+                            if peak_sum is None:
+                                peak_sum = np.where(np.isnan(pm), 0.0, pm)
+                                peak_count_arr = (~np.isnan(pm)).astype(np.float64)
+                            else:
+                                valid = ~np.isnan(pm)
+                                peak_sum += np.where(valid, pm, 0.0)
+                                peak_count_arr += valid.astype(np.float64)
+                except Exception:
+                    continue
+
+            if peak_sum is not None and peak_count_arr is not None:
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    result["mean_peak_height"] = np.where(peak_count_arr > 0, peak_sum / peak_count_arr, np.nan)
 
         return result
 
@@ -999,6 +1051,9 @@ class VectorStatisticsProcessor:
                     if "vw" in res:
                         save_field(res["vw"], "Stress_vw", "m^2/s^2", cmap="seismic", symmetric=True)
 
+            if "mean_peak_height" in active_stats and "mean_peak_height" in res:
+                save_field(res["mean_peak_height"], "Mean_Peak_Height", "-", cmap="viridis", symmetric=False)
+
     def _save_results(
         self,
         valid_runs: list,
@@ -1025,6 +1080,7 @@ class VectorStatisticsProcessor:
             ("tke", object),
             ("divergence", object),
             ("vorticity", object),
+            ("mean_peak_height", object),
         ]
         if stereo:
             dt_fields.extend([
@@ -1052,7 +1108,7 @@ class VectorStatisticsProcessor:
             piv_result[idx]["uy"] = res["mean_uy"]
             piv_result[idx]["b_mask"] = res["b_mask"]
 
-            for field in ["uu", "uv", "vv", "tke", "divergence", "vorticity"]:
+            for field in ["uu", "uv", "vv", "tke", "divergence", "vorticity", "mean_peak_height"]:
                 if field in res and res[field] is not None:
                     piv_result[idx][field] = res[field]
 

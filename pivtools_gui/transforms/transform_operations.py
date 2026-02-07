@@ -353,8 +353,15 @@ def apply_transformation_to_piv_result(pr: Any, transformation: str) -> None:
         are transformed to maintain physical consistency.
 
     Parametric transforms:
-        - scale_velocity:factor - multiply ux, uy, uz by factor
+        - scale_velocity:factor - multiply ux, uy, uz by factor; stresses by factor²
         - scale_coords:factor - multiply x, y by factor
+
+    Ensemble-aware: Reynolds stresses (UU_stress, VV_stress, UV_stress) are
+    handled correctly for all transforms:
+        - Geometric (flip/rotate): spatial transform applied to stress fields
+        - scale_velocity:k: stresses scaled by k² (velocity² units)
+        - swap_ux_uy: UU_stress <-> VV_stress (UV_stress unchanged: u'v' = v'u')
+        - invert_ux_uy: stresses unchanged (variance is sign-invariant)
     """
     logger.debug(f"Applying transformation {transformation} to piv_result")
 
@@ -362,6 +369,10 @@ def apply_transformation_to_piv_result(pr: Any, transformation: str) -> None:
     base_name, param = parse_parametric_transform(transformation)
 
     vector_attrs = ["ux", "uy", "uz", "b_mask", "x", "y"]
+    # Ensemble stress fields (present in calibrated ensemble data)
+    stress_attrs = ["UU_stress", "VV_stress", "UV_stress"]
+    # All spatial fields: vectors + stresses (for geometric transforms)
+    all_spatial_attrs = vector_attrs + stress_attrs
 
     # Handle parametric transforms first
     if base_name == "scale_velocity":
@@ -374,6 +385,12 @@ def apply_transformation_to_piv_result(pr: Any, transformation: str) -> None:
                 arr = np.asarray(getattr(pr, attr))
                 if arr.ndim >= 2 and arr.size > 0:
                     setattr(pr, attr, arr * param)
+        # Scale Reynolds stresses by factor² (stresses have units of velocity²)
+        for attr in stress_attrs:
+            if hasattr(pr, attr):
+                arr = np.asarray(getattr(pr, attr))
+                if arr.ndim >= 2 and arr.size > 0:
+                    setattr(pr, attr, arr * (param ** 2))
         return
 
     elif base_name == "scale_coords":
@@ -389,9 +406,10 @@ def apply_transformation_to_piv_result(pr: Any, transformation: str) -> None:
         return
 
     # Handle non-parametric transforms (use base_name for comparison)
+    # Geometric transforms apply to all spatial fields (velocities + stresses)
     if base_name == "flip_ud":
         # Flip upside down
-        for attr in vector_attrs:
+        for attr in all_spatial_attrs:
             if hasattr(pr, attr):
                 arr = np.asarray(getattr(pr, attr))
                 if arr.ndim >= 2 and arr.size > 0:
@@ -399,7 +417,7 @@ def apply_transformation_to_piv_result(pr: Any, transformation: str) -> None:
 
     elif base_name == "rotate_90_cw":
         # Rotate 90 degrees clockwise
-        for attr in vector_attrs:
+        for attr in all_spatial_attrs:
             if hasattr(pr, attr):
                 arr = np.asarray(getattr(pr, attr))
                 if arr.ndim >= 2 and arr.size > 0:
@@ -407,7 +425,7 @@ def apply_transformation_to_piv_result(pr: Any, transformation: str) -> None:
 
     elif base_name == "rotate_90_ccw":
         # Rotate 90 degrees counter-clockwise
-        for attr in vector_attrs:
+        for attr in all_spatial_attrs:
             if hasattr(pr, attr):
                 arr = np.asarray(getattr(pr, attr))
                 if arr.ndim >= 2 and arr.size > 0:
@@ -415,7 +433,7 @@ def apply_transformation_to_piv_result(pr: Any, transformation: str) -> None:
 
     elif base_name == "rotate_180":
         # Rotate 180 degrees (equivalent to two 90-degree rotations)
-        for attr in vector_attrs:
+        for attr in all_spatial_attrs:
             if hasattr(pr, attr):
                 arr = np.asarray(getattr(pr, attr))
                 if arr.ndim >= 2 and arr.size > 0:
@@ -428,6 +446,12 @@ def apply_transformation_to_piv_result(pr: Any, transformation: str) -> None:
             uy = getattr(pr, "uy")
             setattr(pr, "ux", uy)
             setattr(pr, "uy", ux)
+        # Swap UU_stress (u'u') <-> VV_stress (v'v'); UV_stress (u'v') is symmetric
+        if hasattr(pr, "UU_stress") and hasattr(pr, "VV_stress"):
+            uu = getattr(pr, "UU_stress")
+            vv = getattr(pr, "VV_stress")
+            setattr(pr, "UU_stress", vv)
+            setattr(pr, "VV_stress", uu)
 
     elif base_name == "invert_ux_uy":
         # Invert (negate) ux and uy velocity components
@@ -437,10 +461,11 @@ def apply_transformation_to_piv_result(pr: Any, transformation: str) -> None:
         if hasattr(pr, "uy"):
             uy = np.asarray(getattr(pr, "uy"))
             setattr(pr, "uy", -uy)
+        # Stresses unchanged: variance(-u) = variance(u), and (-u')(-v') = u'v'
 
     elif base_name == "flip_lr":
         # Flip left-right
-        for attr in vector_attrs:
+        for attr in all_spatial_attrs:
             if hasattr(pr, attr):
                 arr = np.asarray(getattr(pr, attr))
                 if arr.ndim >= 2 and arr.size > 0:

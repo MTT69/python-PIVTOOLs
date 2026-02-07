@@ -46,6 +46,10 @@ VARIABLE_UNITS = {
     "vorticity": "1/s", "divergence": "1/s",
     # Gamma vortex criteria (dimensionless)
     "gamma1": "-", "gamma2": "-",
+    # Peak height (dimensionless)
+    "peak_mag": "-",
+    "peakheight": "-",
+    "mean_peak_height": "-",
 }
 
 
