@@ -25,6 +25,14 @@ MAX_DEPTH = 5  # For deep search
 # Excluded coordinate variables (not plottable as fields)
 EXCLUDED_VARS = {"x", "y"}
 
+
+def _count_vector_files(data_dir: Path, vector_format: str, num_frame_pairs: int) -> int:
+    """Count existing vector files using the configured vector_format pattern."""
+    return sum(
+        1 for i in range(1, num_frame_pairs + 1)
+        if (data_dir / (vector_format % i)).exists()
+    )
+
 # Label formatting for special variables (matching VectorViewer)
 VARIABLE_LABELS = {
     # PIV base variables
@@ -195,7 +203,7 @@ def check_video_data_availability(
         )
         cal_data_dir = Path(cal_paths["data_dir"])
         if cal_data_dir.exists():
-            frame_count = len(list(cal_data_dir.glob("[0-9]*.mat")))
+            frame_count = _count_vector_files(cal_data_dir, vector_format, num_frame_pairs)
             if frame_count > 0:
                 available["calibrated"]["exists"] = True
                 available["calibrated"]["frame_count"] = frame_count
@@ -215,7 +223,7 @@ def check_video_data_availability(
         )
         uncal_data_dir = Path(uncal_paths["data_dir"])
         if uncal_data_dir.exists():
-            frame_count = len(list(uncal_data_dir.glob("[0-9]*.mat")))
+            frame_count = _count_vector_files(uncal_data_dir, vector_format, num_frame_pairs)
             if frame_count > 0:
                 available["uncalibrated"]["exists"] = True
                 available["uncalibrated"]["frame_count"] = frame_count
@@ -236,7 +244,7 @@ def check_video_data_availability(
             )
             merged_data_dir = Path(merged_paths["data_dir"])
             if merged_data_dir.exists():
-                frame_count = len(list(merged_data_dir.glob("[0-9]*.mat")))
+                frame_count = _count_vector_files(merged_data_dir, vector_format, num_frame_pairs)
                 if frame_count > 0:
                     available["merged"]["exists"] = True
                     available["merged"]["frame_count"] = frame_count
@@ -260,7 +268,7 @@ def check_video_data_availability(
                         # Check for instantaneous data in this folder
                         inst_dir = cam_folder / "instantaneous"
                         if inst_dir.exists():
-                            frame_count = len(list(inst_dir.glob("[0-9]*.mat")))
+                            frame_count = _count_vector_files(inst_dir, vector_format, num_frame_pairs)
                             if frame_count > 0:
                                 available["stereo"]["exists"] = True
                                 available["stereo"]["frame_count"] = frame_count
@@ -277,7 +285,7 @@ def check_video_data_availability(
     try:
         stats_dir = base_path / "statistics" / str(num_frame_pairs) / f"Cam{camera}" / "instantaneous" / "instantaneous_stats"
         if stats_dir.exists():
-            frame_count = len(list(stats_dir.glob("[0-9]*.mat")))
+            frame_count = _count_vector_files(stats_dir, vector_format, num_frame_pairs)
             if frame_count > 0:
                 available["inst_stats"]["exists"] = True
                 available["inst_stats"]["frame_count"] = frame_count
@@ -291,7 +299,7 @@ def check_video_data_availability(
             cam_pair = available["stereo"]["camera_pair"]
             stereo_stats_dir = base_path / "statistics" / str(num_frame_pairs) / f"Cam{cam_pair[0]}_Cam{cam_pair[1]}" / "instantaneous" / "instantaneous_stats"
             if stereo_stats_dir.exists():
-                frame_count = len(list(stereo_stats_dir.glob("[0-9]*.mat")))
+                frame_count = _count_vector_files(stereo_stats_dir, vector_format, num_frame_pairs)
                 if frame_count > 0:
                     # Override inst_stats with stereo stats if stereo data is primary
                     available["inst_stats"]["exists"] = True
@@ -531,8 +539,12 @@ def available_variables():
 
         # Extract instantaneous variables from first PIV frame file
         if data_dir.exists():
-            mat_files = sorted(data_dir.glob("[0-9]*.mat"))
-            mat_files = [f for f in mat_files if "coordinate" not in f.name.lower()][:1]
+            fmt = cfg.vector_format
+            mat_files = [
+                data_dir / (fmt % i)
+                for i in range(1, cfg.num_frame_pairs + 1)
+                if (data_dir / (fmt % i)).exists()
+            ][:1]
             if mat_files:
                 inst_vars = _extract_plottable_vars(mat_files[0])
                 grouped_variables["instantaneous"] = inst_vars
@@ -548,10 +560,15 @@ def available_variables():
             cam_folder = f"Cam{camera}"
         stats_base = base_path / "statistics" / str(cfg.num_frame_pairs) / cam_folder / "instantaneous"
         inst_stats_dir = stats_base / "instantaneous_stats"
-        has_inst_stats = inst_stats_dir.exists() and any(inst_stats_dir.glob("*.mat"))
+        has_inst_stats = inst_stats_dir.exists() and _count_vector_files(inst_stats_dir, cfg.vector_format, cfg.num_frame_pairs) > 0
 
         if has_inst_stats:
-            inst_stats_files = sorted(inst_stats_dir.glob("*.mat"))[:1]
+            fmt = cfg.vector_format
+            inst_stats_files = [
+                inst_stats_dir / (fmt % i)
+                for i in range(1, cfg.num_frame_pairs + 1)
+                if (inst_stats_dir / (fmt % i)).exists()
+            ][:1]
             if inst_stats_files:
                 stats_vars = _extract_plottable_vars(inst_stats_files[0])
                 # Filter out base instantaneous vars to avoid duplicates
@@ -1466,7 +1483,7 @@ def check_runs():
                 cam_folders = [d for d in stereo_base_dir.iterdir() if d.is_dir() and d.name.startswith("Cam")]
                 for cam_folder in cam_folders:
                     inst_dir = cam_folder / "instantaneous"
-                    if inst_dir.exists() and list(inst_dir.glob("[0-9]*.mat")):
+                    if inst_dir.exists() and _count_vector_files(inst_dir, cfg.vector_format, cfg.num_frame_pairs) > 0:
                         data_dir = inst_dir
                         break
             if data_dir is None:
@@ -1501,8 +1518,12 @@ def check_runs():
             }), 404
 
         # Find first mat file to check runs
-        mat_files = sorted(data_dir.glob("[0-9]*.mat"))
-        mat_files = [f for f in mat_files if "coordinate" not in f.name.lower()]
+        fmt = cfg.vector_format
+        mat_files = [
+            data_dir / (fmt % i)
+            for i in range(1, cfg.num_frame_pairs + 1)
+            if (data_dir / (fmt % i)).exists()
+        ]
 
         if not mat_files:
             return jsonify({

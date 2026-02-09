@@ -270,6 +270,85 @@ calibration:
     dt: 0.0057553
   calibration_sources:
   - D:\ALK_PIV_250527_085959\Properties\Calibration
+  global_coordinates:
+    enabled: true
+    datum_camera: 1
+    datum_pixel:
+    - 5145.3946492133455
+    - 3046.343876406718
+    datum_physical:
+    - 0
+    - 10
+    datum_frame: 1
+    overlap_points:
+    - target_camera: 2
+      pixel_on_datum_cam:
+      - 124.12766848582066
+      - 3020.3100877833735
+      pixel_on_target:
+      - 5194.208002882116
+      - 3049.598099984636
+      target_frame: 1
+    - target_camera: 3
+      pixel_on_datum_cam:
+      - 124.12766848582066
+      - 3020.3100877833735
+      pixel_on_target: null
+      target_frame: 1
+    - target_camera: 4
+      pixel_on_datum_cam:
+      - 124.12766848582066
+      - 3020.3100877833735
+      pixel_on_target: null
+      target_frame: 1
+    - target_camera: 5
+      pixel_on_datum_cam:
+      - 124.12766848582066
+      - 3020.3100877833735
+      pixel_on_target: null
+      target_frame: 1
+    invert_ux: true
+    overlap_pairs:
+    - camera_a: 1
+      camera_b: 2
+      pixel_on_a:
+      - 124.12766848582066
+      - 3020.3100877833735
+      pixel_on_b:
+      - 5194.208002882116
+      - 3049.598099984636
+      frame_a: 1
+      frame_b: 1
+    - camera_a: 2
+      camera_b: 3
+      pixel_on_a:
+      - 156.85190594448778
+      - 3029.989445920374
+      pixel_on_b:
+      - 5170.530171483093
+      - 2998.3463152122063
+      frame_a: 1
+      frame_b: 1
+    - camera_a: 3
+      camera_b: 4
+      pixel_on_a:
+      - 114.66106500026389
+      - 2994.8304118001874
+      pixel_on_b:
+      - 4249.363477534205
+      - 3026.4735425083554
+      frame_a: 1
+      frame_b: 1
+    - camera_a: 4
+      camera_b: 5
+      pixel_on_a:
+      - 65.43841723200268
+      - 3022.9576390963366
+      pixel_on_b:
+      - 4101.695534229421
+      - 3019.441735684318
+      frame_a: 1
+      frame_b: 1
 filters:
 - type: time
 masking:
@@ -285,6 +364,12 @@ masking:
 merging:
   type_name: instantaneous
   base_path_idx: 0
+  cameras:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
 transforms:
   base_path_idx: 0
   type_name: instantaneous

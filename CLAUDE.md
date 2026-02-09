@@ -51,6 +51,7 @@ Config is stored as config.yaml (single source of truth), loaded via Config clas
 | Calibration (stereo) | `calibration/app/stereo_*_views.py` | `useStereoCalibration` | `StereoCalibration` |
 | Self-calibration | `stereo_reconstruction/self_calibration.py` | N/A (script) | N/A |
 | Calibration images | `calibration/app/shared_views.py` | `useCalibrationImageViewer` | `CalibrationImageViewer` |
+| Global coordinates | `calibration/global_coordinate_alignment.py` | `useGlobalCoordinates` | `GCInlineControls` (inline in CalibrationImageViewer settings bar) |
 | Vector viewing | `plotting/app/plotting_views.py` | `useVectorViewer` | `VectorViewer` |
 | Transforms (GUI) | `plotting/app/transform_views.py` | (in `useVectorViewer`) | (in `VectorViewer`) |
 | Transforms (CLI) | `transforms/transform_production.py` | N/A | N/A |
@@ -114,6 +115,14 @@ class Config:
     # --- Calibration properties ---
     active_calibration_method: str   # "scale_factor" | "dotboard" | "charuco" | "polynomial" | "stereo_*"
     calibration_piv_type: str
+    global_coordinates_config: dict          # calibration.global_coordinates section
+    global_coordinates_enabled: bool
+    global_coordinates_datum_pixel: Optional[List[float]]
+    global_coordinates_datum_physical: List[float]   # [x_mm, y_mm], default [0,0]
+    global_coordinates_datum_frame: int
+    global_coordinates_overlap_points: list  # [{target_camera, pixel_on_datum_cam, pixel_on_target, target_frame}] (legacy)
+    global_coordinates_overlap_pairs: list   # [{camera_a, camera_b, pixel_on_a, pixel_on_b, frame_a, frame_b}] (chain topology, with backward compat from overlap_points)
+    global_coordinates_invert_ux: bool       # True to negate ux + UV_stress + reflect x-coords during alignment
 
     # --- Statistics properties ---
     statistics: dict
@@ -359,10 +368,12 @@ POST /calibrate/stereo_charuco/run     {camera_pair, ...params}
 GET  /calibrate/job/<job_id>           -> job status
 GET  /calibrate/calibration_image      ?camera=&idx=&source_path_idx=
 POST /calibrate/set_datum              {base_path_idx, type_name, camera, datum_x, datum_y}
+POST /calibrate/global_coordinates/pixel_to_physical  {pixel_x, pixel_y, camera, source_path_idx, type_name}
 ```
 
 **Production files** (do the actual calibration work):
 - `scale_factor_calibration_production.py` - Simple px→mm scaling
+- `global_coordinate_alignment.py` - Global coordinate alignment (shifts coordinates.mat after calibration). Uses chain topology (cam N↔cam N+1 pairs) instead of star topology. Supports `invert_ux` to negate ux + UV_stress and reflect x-coordinates around datum_physical_x when x-direction is reversed. Auto-applied when `global_coordinates.enabled` in vectors_calibrate route.
 - `calibration_planar/planar_calibration_production.py` - Dotboard detection + model. Optimized: histogram-based single blob detection, cKDTree neighbor finding, reduced RANSAC iterations, vectorized object points, no double image reads for containers
 - `calibration_charuco/charuco_calibration_production.py` - ChArUco detection
 - `calibration_poly/polynomial_calibration_production.py` - DaVis XML polynomial
@@ -954,7 +965,8 @@ Triggered on GitHub release or manual dispatch. Builds wheels for {ubuntu, macos
 | `ensemble` | Run ensemble PIV |
 | `detect-planar` / `detect-charuco` | Detect calibration targets |
 | `detect-stereo-planar` / `detect-stereo-charuco` | Stereo calibration detection |
-| `apply-calibration` / `apply-stereo` | Apply calibration (px → m/s) |
+| `apply-calibration` / `apply-stereo` | Apply calibration (px → m/s). `--align-coordinates` flag auto-applies global alignment. |
+| `align-coordinates` | Apply global coordinate alignment to calibrated vectors (reads datum/overlap from config) |
 | `transform` | Geometric transforms (`flip_ud`, `flip_lr`, `rotate_90_cw/ccw`, `rotate_180`, `swap_ux_uy`, `invert_ux_uy`, `invert_ux`, `invert_uy`, `scale_velocity:N`, `scale_coords:N`) |
 | `merge` | Multi-camera Hanning window blending |
 | `statistics` | Mean, TKE, vorticity, divergence, gamma |

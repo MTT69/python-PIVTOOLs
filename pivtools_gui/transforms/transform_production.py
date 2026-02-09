@@ -197,9 +197,17 @@ class TransformProcessor:
                     "error": f"Data directory not found: {data_dir}",
                 }
 
-            vector_files = list(data_dir.glob("*.mat"))
-            # Exclude coordinates.mat from parallel processing
-            vector_files = [f for f in vector_files if f.name != "coordinates.mat"]
+            # Build file list from config vector_format
+            if self.type_name == "ensemble":
+                ensemble_file = data_dir / "ensemble_result.mat"
+                vector_files = [ensemble_file] if ensemble_file.exists() else []
+            else:
+                fmt = self._config.vector_format
+                vector_files = [
+                    data_dir / (fmt % i)
+                    for i in range(1, self._config.num_frame_pairs + 1)
+                    if (data_dir / (fmt % i)).exists()
+                ]
 
             total_files = len(vector_files)
             processed_files = 0

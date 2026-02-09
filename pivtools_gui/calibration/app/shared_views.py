@@ -553,7 +553,7 @@ def vectors_calibrate():
                     model_type = detect_calibration_model_type(base_root, camera_num)
                     if not model_type:
                         logger.warning(f"No calibration model found for camera {camera_num}")
-                        camera_results[camera_num] = {
+                        camera_results[str(camera_num)] = {
                             "status": "skipped",
                             "reason": "No calibration model found",
                         }
@@ -598,7 +598,23 @@ def vectors_calibrate():
                         progress_cb=make_progress_cb(camera_num),
                     )
 
-                    camera_results[camera_num] = {"status": "completed"}
+                    camera_results[str(camera_num)] = {"status": "completed"}
+
+                # Auto-apply global coordinate alignment if enabled
+                if cfg.global_coordinates_enabled:
+                    try:
+                        from pivtools_gui.calibration.global_coordinate_alignment import GlobalCoordinateAligner
+                        logger.debug("Applying global coordinate alignment...")
+                        aligner = GlobalCoordinateAligner(base_root, cfg)
+                        alignment_result = aligner.apply_alignment(type_name)
+                        camera_results["global_alignment"] = alignment_result
+                        logger.debug(f"Global coordinate alignment: {alignment_result.get('status')}")
+                    except Exception as align_err:
+                        logger.error(f"Global coordinate alignment failed: {align_err}")
+                        camera_results["global_alignment"] = {
+                            "status": "failed",
+                            "error": str(align_err),
+                        }
 
                 # Mark job complete
                 job_manager.complete_job(
@@ -641,3 +657,53 @@ def vectors_status(job_id):
     if job_data is None:
         return jsonify({"error": "Job not found"}), 404
     return jsonify(job_data)
+
+
+# ============================================================================
+# GLOBAL COORDINATE ALIGNMENT ROUTES
+# ============================================================================
+
+
+@calibration_shared_bp.route("/calibration/global_coordinates/pixel_to_physical", methods=["POST"])
+def global_coordinates_pixel_to_physical():
+    """
+    Preview what physical coordinate a pixel maps to.
+
+    Request JSON:
+        pixel_x: float - Pixel X coordinate
+        pixel_y: float - Pixel Y coordinate
+        camera: int - Camera number (1-based)
+        source_path_idx: int - Index into base_paths
+        type_name: str - 'instantaneous' or 'ensemble'
+
+    Returns:
+        JSON with physical_x, physical_y, method
+    """
+    data = request.get_json() or {}
+    pixel_x = float(data.get("pixel_x", 0))
+    pixel_y = float(data.get("pixel_y", 0))
+    cam = camera_number(data.get("camera", 1))
+    source_path_idx = int(data.get("source_path_idx", 0))
+    type_name = data.get("type_name", "instantaneous")
+
+    try:
+        cfg = get_config()
+        base_root = Path(cfg.base_paths[source_path_idx])
+
+        from pivtools_gui.calibration.global_coordinate_alignment import GlobalCoordinateAligner
+        aligner = GlobalCoordinateAligner(base_root, cfg)
+        physical_x, physical_y = aligner.pixel_to_calibrated_physical(
+            (pixel_x, pixel_y), cam, type_name
+        )
+
+        return jsonify({
+            "physical_x": float(physical_x),
+            "physical_y": float(physical_y),
+            "method": cfg.active_calibration_method,
+        })
+
+    except FileNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        logger.error(f"pixel_to_physical error: {e}")
+        return jsonify({"error": str(e)}), 500

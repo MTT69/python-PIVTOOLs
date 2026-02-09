@@ -468,7 +468,12 @@ def check_all_vars():
         # 2. Check instantaneous_stats folder (per-frame calculated stats)
         if inst_stats_dir.exists():
             # Check first file in inst_stats folder
-            inst_stat_files = sorted(inst_stats_dir.glob("*.mat"))
+            cfg = get_config()
+            inst_stat_files = [
+                inst_stats_dir / (cfg.vector_format % i)
+                for i in range(1, cfg.num_frame_pairs + 1)
+                if (inst_stats_dir / (cfg.vector_format % i)).exists()
+            ]
             if inst_stat_files:
                 inst_stat_path = inst_stat_files[0]
                 inst_vars = get_plottable_vars(inst_stat_path, var_name="piv_result")
@@ -520,9 +525,12 @@ def check_limits():
         paths = validate_and_get_paths(params)
         data_dir = Path(paths["data_dir"])
 
+        cfg = get_config()
+        fmt = cfg.vector_format
         all_mats = [
-            p for p in sorted(data_dir.glob("*.mat"))
-            if not any(x in p.name.lower() for x in ["_coordinates", "_mean"])
+            data_dir / (fmt % i)
+            for i in range(1, cfg.num_frame_pairs + 1)
+            if (data_dir / (fmt % i)).exists()
         ]
         files_total = len(all_mats)
 

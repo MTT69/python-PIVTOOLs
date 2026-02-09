@@ -14,6 +14,7 @@ Contains ScaleFactorCalibrator class that can be:
 """
 
 import logging
+import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
@@ -399,7 +400,7 @@ class ScaleFactorCalibrator:
                 for run, uncal, cal in vector_files
             ]
 
-            max_workers = min(4, len(vector_files))
+            max_workers = min(os.cpu_count() or 1, len(vector_files))
             with ProcessPoolExecutor(max_workers=max_workers) as executor:
                 futures = [
                     executor.submit(_process_vector_file, args)

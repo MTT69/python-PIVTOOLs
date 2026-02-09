@@ -11,6 +11,7 @@ Commands:
   detect-stereo-planar - Detect dot/circle grid, generate stereo model
   detect-stereo-charuco- Detect ChArUco board, generate stereo model
   apply-calibration    - Apply calibration to vectors (pixels to m/s)
+  align-coordinates    - Apply global coordinate alignment to calibrated vectors
   transform            - Apply geometric transforms to vectors
   merge                - Merge multi-camera vector fields
   statistics           - Compute PIV statistics
@@ -123,6 +124,29 @@ def apply_calibration_command(args):
                 print(f"  Camera {camera}: FAILED - {e}")
                 results.append({"success": False, "error": str(e), "path_idx": path_idx, "camera": camera})
 
+    # Global coordinate alignment (after all cameras calibrated)
+    if getattr(args, 'align_coordinates', False) and config.global_coordinates_enabled:
+        print("\n" + "-" * 40)
+        print("Applying global coordinate alignment...")
+        for path_idx in active_paths:
+            base_dir = Path(config.base_paths[path_idx])
+            try:
+                from pivtools_gui.calibration.global_coordinate_alignment import GlobalCoordinateAligner
+                aligner = GlobalCoordinateAligner(base_dir, config)
+                alignment_result = aligner.apply_alignment(type_name)
+                if alignment_result.get("status") == "completed":
+                    print(f"  Path {path_idx}: Alignment applied successfully")
+                    for cam_key, cam_info in alignment_result.get("cameras", {}).items():
+                        print(f"    Cam {cam_key}: dx={cam_info['shift_x']:.4f} mm, dy={cam_info['shift_y']:.4f} mm")
+                    if alignment_result.get("invert_ux"):
+                        print(f"  Path {path_idx}: invert_ux applied")
+                else:
+                    print(f"  Path {path_idx}: Alignment failed - {alignment_result.get('error', 'Unknown')}")
+            except Exception as e:
+                print(f"  Path {path_idx}: Alignment failed - {e}")
+    elif getattr(args, 'align_coordinates', False) and not config.global_coordinates_enabled:
+        print("\nWarning: --align-coordinates specified but global_coordinates.enabled is False in config")
+
     # Summary
     print("\n" + "=" * 60)
     print("SUMMARY")
@@ -131,6 +155,61 @@ def apply_calibration_command(args):
     print(f"Total: {success_count}/{len(results)} operations succeeded")
 
     sys.exit(0 if success_count == len(results) else 1)
+
+
+# =============================================================================
+# ALIGN-COORDINATES COMMAND
+# =============================================================================
+
+def align_coordinates_command(args):
+    """Apply global coordinate alignment to already-calibrated vectors."""
+    from pivtools_core.config import get_config
+    from pivtools_gui.calibration.global_coordinate_alignment import GlobalCoordinateAligner
+
+    config = get_config()
+
+    if not config.global_coordinates_enabled:
+        print("Error: global_coordinates.enabled is False in config.yaml")
+        print("Set calibration.global_coordinates.enabled: true and configure datum/overlap points first.")
+        sys.exit(1)
+
+    type_name = args.type_name or "instantaneous"
+    active_paths = get_active_paths_from_args(args, config)
+    if not active_paths:
+        print("Error: No active paths configured in config.yaml")
+        sys.exit(1)
+
+    print("=" * 60)
+    print("Global Coordinate Alignment")
+    print("=" * 60)
+    print(f"Type: {type_name}")
+    print(f"Active paths: {active_paths}")
+    print(f"Datum pixel: {config.global_coordinates_datum_pixel}")
+    print(f"Datum physical: {config.global_coordinates_datum_physical}")
+
+    success = True
+    for path_idx in active_paths:
+        base_dir = Path(config.base_paths[path_idx])
+        print(f"\nPath {path_idx}: {base_dir}")
+        print("-" * 40)
+
+        try:
+            aligner = GlobalCoordinateAligner(base_dir, config)
+            result = aligner.apply_alignment(type_name)
+            if result.get("status") == "completed":
+                print("  Alignment applied successfully")
+                for cam_key, cam_info in result.get("cameras", {}).items():
+                    print(f"    Cam {cam_key}: dx={cam_info['shift_x']:.4f} mm, dy={cam_info['shift_y']:.4f} mm")
+                if result.get("invert_ux"):
+                    print("  invert_ux applied")
+            else:
+                print(f"  Failed: {result.get('error', 'Unknown')}")
+                success = False
+        except Exception as e:
+            print(f"  Failed: {e}")
+            success = False
+
+    sys.exit(0 if success else 1)
 
 
 # =============================================================================
@@ -1549,6 +1628,10 @@ def main():
         choices=["dotboard", "charuco", "scale_factor"],
         help="Calibration method (default: from config.yaml calibration.active)"
     )
+    apply_calibration_parser.add_argument(
+        "--align-coordinates", action="store_true",
+        help="Apply global coordinate alignment after calibration (reads datum/overlap from config.yaml)"
+    )
     apply_calibration_parser.set_defaults(func=apply_calibration_command)
 
     # apply-stereo command
@@ -1726,6 +1809,22 @@ def main():
         help="Comma-separated path indices to process (e.g., '0,1,2')"
     )
     video_parser.set_defaults(func=video_command)
+
+    # align-coordinates command
+    align_parser = subparsers.add_parser(
+        "align-coordinates",
+        help="Apply global coordinate alignment to calibrated vectors"
+    )
+    align_parser.add_argument(
+        "--type-name", "-t", default=None,
+        choices=["instantaneous", "ensemble"],
+        help="Data type (default: instantaneous)"
+    )
+    align_parser.add_argument(
+        "--active-paths", "-p", default=None,
+        help="Comma-separated path indices to process (e.g., '0,1,2')"
+    )
+    align_parser.set_defaults(func=align_coordinates_command)
 
     args = parser.parse_args()
 

@@ -38,6 +38,8 @@ class Config:
             path = self._get_config_path()
         with open(path, "r") as f:
             self.data = yaml.safe_load(f)
+        if self.data is None:
+            self.data = {}
             # Use the first base_path, first camera, and image_format for dtype detection
             # source_path = Path(self.source_paths[0])
             # camera_folder = f"Cam{self.camera_numbers[0]}"
@@ -1681,6 +1683,71 @@ video:
         else:
             raise ValueError(f"Unknown calibration method: {method}")
 
+    # --- Global coordinate alignment properties ---
+
+    @property
+    def global_coordinates_config(self) -> dict:
+        """Return the global_coordinates sub-block of calibration."""
+        return self.calibration.get("global_coordinates", {})
+
+    @property
+    def global_coordinates_enabled(self) -> bool:
+        """Return True if global coordinate alignment is enabled."""
+        return self.global_coordinates_config.get("enabled", False)
+
+    @property
+    def global_coordinates_datum_pixel(self) -> Optional[List[float]]:
+        """Return datum pixel [x, y] on camera 1, or None if not set."""
+        return self.global_coordinates_config.get("datum_pixel")
+
+    @property
+    def global_coordinates_datum_physical(self) -> List[float]:
+        """Return desired physical [x_mm, y_mm] at the datum point."""
+        return self.global_coordinates_config.get("datum_physical", [0.0, 0.0])
+
+    @property
+    def global_coordinates_datum_frame(self) -> int:
+        """Return which calibration frame the datum was picked on."""
+        return self.global_coordinates_config.get("datum_frame", 1)
+
+    @property
+    def global_coordinates_overlap_points(self) -> list:
+        """Return list of overlap point definitions for multi-camera alignment (legacy format).
+
+        Each entry: {target_camera, pixel_on_datum_cam, pixel_on_target, target_frame}
+        """
+        return self.global_coordinates_config.get("overlap_points", [])
+
+    @property
+    def global_coordinates_overlap_pairs(self) -> list:
+        """Return list of overlap pair definitions for chain alignment.
+
+        Each entry: {camera_a, camera_b, pixel_on_a, pixel_on_b, frame_a, frame_b}
+        Falls back to converting old overlap_points format if overlap_pairs not present.
+        """
+        gc = self.global_coordinates_config
+        pairs = gc.get("overlap_pairs")
+        if pairs is not None:
+            return pairs
+        # Backward compat: convert old overlap_points to pairs
+        old_points = gc.get("overlap_points", [])
+        return [
+            {
+                "camera_a": 1,
+                "camera_b": op["target_camera"],
+                "pixel_on_a": op.get("pixel_on_datum_cam"),
+                "pixel_on_b": op.get("pixel_on_target"),
+                "frame_a": gc.get("datum_frame", 1),
+                "frame_b": op.get("target_frame", 1),
+            }
+            for op in old_points
+        ]
+
+    @property
+    def global_coordinates_invert_ux(self) -> bool:
+        """Return True if ux should be negated for the global coordinate system."""
+        return self.global_coordinates_config.get("invert_ux", False)
+
     # --- Merging properties ---
     @property
     def merging(self) -> dict:
@@ -2513,7 +2580,7 @@ video:
             console_handler.setFormatter(console_formatter)
             root_logger.addHandler(console_handler)
 
-        logging.info(
+        logging.debug(
             "Logging initialized. Level: %s, File: %s", self.log_level, self.log_file
         )
 
