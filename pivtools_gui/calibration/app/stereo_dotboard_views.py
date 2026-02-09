@@ -29,7 +29,7 @@ from pivtools_core.image_handling.calibration_loader import (
 from pivtools_gui.stereo_reconstruction.stereo_dotboard_calibration_production import StereoDotboardCalibrator
 from pivtools_gui.stereo_reconstruction.stereo_reconstruction_production import StereoReconstructor
 from pivtools_gui.calibration.services.job_manager import job_manager
-from pivtools_gui.utils import camera_number, numpy_to_png_base64
+from pivtools_gui.utils import camera_number, numpy_to_base64
 
 stereo_dotboard_bp = Blueprint("stereo_dotboard", __name__)
 
@@ -147,25 +147,29 @@ def stereo_dotboard_frame(idx: int):
         if img is None:
             return jsonify({"error": f"Could not read frame {idx} for camera {camera}"}), 404
 
-        # Calculate stats
+        # Calculate stats - vmin/vmax as percentages (0-100) of the data range
+        img_min = float(img.min())
+        img_max = float(img.max())
+        data_range = img_max - img_min
+        p1 = float(np.percentile(img, 1))
+        p99 = float(np.percentile(img, 99))
+        if data_range > 0:
+            vmin_pct = 100.0 * (p1 - img_min) / data_range
+            vmax_pct = 100.0 * (p99 - img_min) / data_range
+        else:
+            vmin_pct = 0.0
+            vmax_pct = 100.0
         stats = {
-            "min": float(img.min()),
-            "max": float(img.max()),
+            "min": img_min,
+            "max": img_max,
             "mean": float(img.mean()),
-            "vmin_pct": float(np.percentile(img, 1)),
-            "vmax_pct": float(np.percentile(img, 99)),
+            "vmin_pct": vmin_pct,
+            "vmax_pct": vmax_pct,
         }
 
-        # Normalize to uint8 for display
-        vmin = np.percentile(img, 1)
-        vmax = np.percentile(img, 99)
-        if vmax > vmin:
-            disp = ((img - vmin) / (vmax - vmin) * 255).clip(0, 255).astype(np.uint8)
-        else:
-            disp = np.zeros_like(img, dtype=np.uint8)
-
-        # Encode to base64
-        b64 = numpy_to_png_base64(disp)
+        # Encode to base64 using shared utility (min-max normalization for
+        # non-uint8, as-is for uint8).  Matches app.py so frontend vmin/vmax works.
+        b64 = numpy_to_base64(img)
 
         return jsonify({
             "image": b64,

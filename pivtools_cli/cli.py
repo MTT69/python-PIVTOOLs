@@ -242,7 +242,6 @@ def detect_planar_command(args):
     pattern_rows = dotboard_cfg.get("pattern_rows", 10)
     dot_spacing_mm = dotboard_cfg.get("dot_spacing_mm", 28.89)
     asymmetric = dotboard_cfg.get("asymmetric", False)
-    enhance_dots = dotboard_cfg.get("enhance_dots", True)
 
     calib_cfg = config.data.get("calibration", {})
     file_pattern = calib_cfg.get("image_format", "calib%05d.tif")
@@ -268,7 +267,7 @@ def detect_planar_command(args):
                 pattern_rows=pattern_rows,
                 dot_spacing_mm=dot_spacing_mm,
                 asymmetric=asymmetric,
-                enhance_dots=enhance_dots,
+
                 config=config,
             )
 
@@ -437,7 +436,6 @@ def detect_stereo_planar_command(args):
     pattern_rows = stereo_dotboard_cfg.get("pattern_rows", 10)
     dot_spacing_mm = stereo_dotboard_cfg.get("dot_spacing_mm", 28.89)
     asymmetric = stereo_dotboard_cfg.get("asymmetric", False)
-    enhance_dots = stereo_dotboard_cfg.get("enhance_dots", True)
 
     calib_cfg = config.data.get("calibration", {})
     file_pattern = calib_cfg.get("image_format", "calib%05d.tif")
@@ -464,7 +462,7 @@ def detect_stereo_planar_command(args):
                 pattern_rows=pattern_rows,
                 dot_spacing_mm=dot_spacing_mm,
                 asymmetric=asymmetric,
-                enhance_dots=enhance_dots,
+
                 config=config,
             )
 
@@ -1271,7 +1269,6 @@ calibration:
     pattern_cols: 10
     pattern_rows: 10
     dot_spacing_mm: 12.22
-    enhance_dots: false
     asymmetric: false
     grid_tolerance: 0.5
     ransac_threshold: 3
@@ -1296,7 +1293,6 @@ calibration:
     pattern_cols: 10
     pattern_rows: 10
     dot_spacing_mm: 12.2222
-    enhance_dots: false
     asymmetric: false
     dt: 0.0057553
     stereo_model_type: dotboard

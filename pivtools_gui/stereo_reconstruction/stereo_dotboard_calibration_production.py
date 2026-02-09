@@ -46,7 +46,6 @@ CALIBRATION_SUBFOLDER = "calibration"
 # Grid pattern parameters
 # NOTE: PATTERN_COLS and PATTERN_ROWS are no longer required - auto-detected
 DOT_SPACING_MM = 12.2222  # Physical dot spacing (required)
-ENHANCE_DOTS = False
 
 # Number of calibration images to use (set to None to use all available)
 NUM_CALIBRATION_IMAGES = None
@@ -208,15 +207,27 @@ def detect_grid_automatic(
 
     # Step 2: Find grid spacing using cKDTree (O(N log N) instead of O(N^2))
     tree = cKDTree(centers)
-    nn_dists, _ = tree.query(centers, k=2)
+    # Use k=5 to detect perspective-distorted grids (stereo/Scheimpflug)
+    # where the two grid directions have very different spacings.
+    k_query = min(5, len(centers))
+    nn_dists, _ = tree.query(centers, k=k_query)
     spacing_px = np.median(nn_dists[:, 1])
     info['spacing_px'] = float(spacing_px)
+
+    # For perspective-distorted grids, the 3rd-nearest-neighbor captures the
+    # secondary spacing (interior points have 2 short + 2 long neighbors).
+    # Use this to set a search radius that covers both grid directions.
+    if k_query >= 4:
+        secondary_spacing_px = np.median(nn_dists[:, 3])
+        search_radius = secondary_spacing_px * 1.4
+    else:
+        search_radius = spacing_px * 1.4
 
     # Step 3: Find grid vectors (vectorized)
     angle_tolerance = np.radians(20)
 
     # Find all neighbor pairs within distance tolerance using cKDTree
-    pairs = tree.query_pairs(r=spacing_px * 1.4)
+    pairs = tree.query_pairs(r=search_radius)
     # Filter pairs that are too close (below spacing_px * 0.6)
     valid_pair_list = []
     for i, j in pairs:
@@ -421,7 +432,6 @@ def apply_cli_settings_to_config() -> Config:
     # Stereo-specific params - no longer need pattern_cols/rows
     config.data["calibration"]["stereo_dotboard"]["camera_pair"] = CAMERA_PAIR
     config.data["calibration"]["stereo_dotboard"]["dot_spacing_mm"] = DOT_SPACING_MM
-    config.data["calibration"]["stereo_dotboard"]["enhance_dots"] = ENHANCE_DOTS
     config.data["calibration"]["stereo_dotboard"]["datum_camera"] = 1  # Default
 
     config.save()
@@ -442,10 +452,10 @@ class StereoDotboardCalibrator(BaseStereoCalibrator):
         Configuration object
     dot_spacing_mm : float
         Physical spacing between dots in millimeters (required)
-    enhance_dots : bool
-        Whether to apply dot enhancement for better detection
     datum_camera : int
         Which camera defines the coordinate system origin (1 or 2, default: 1)
+    datum_frame : int
+        Which calibration image defines the world coordinate origin (1-based, default: 1)
     **base_kwargs
         Additional arguments passed to BaseStereoCalibrator
 
@@ -465,8 +475,8 @@ class StereoDotboardCalibrator(BaseStereoCalibrator):
         config: Optional[Config] = None,
         # Pattern-specific params
         dot_spacing_mm: float = 28.89,
-        enhance_dots: bool = False,
         datum_camera: int = 1,
+        datum_frame: int = 1,
         # Legacy params (ignored)
         pattern_cols: Optional[int] = None,
         pattern_rows: Optional[int] = None,
@@ -484,13 +494,13 @@ class StereoDotboardCalibrator(BaseStereoCalibrator):
         if config is not None:
             stereo_cfg = config.stereo_dotboard_calibration
             dot_spacing_mm = stereo_cfg.get('dot_spacing_mm', dot_spacing_mm)
-            enhance_dots = stereo_cfg.get('enhance_dots', enhance_dots)
             datum_camera = stereo_cfg.get('datum_camera', datum_camera)
+            datum_frame = stereo_cfg.get('datum_frame', datum_frame)
             dt = stereo_cfg.get('dt', dt)
 
         self.dot_spacing_mm = dot_spacing_mm
-        self.enhance_dots = enhance_dots
         self.datum_camera = datum_camera
+        self.datum_frame = datum_frame
 
         # Track detected dimensions per frame
         self._detected_cols: Optional[int] = None
@@ -524,17 +534,6 @@ class StereoDotboardCalibrator(BaseStereoCalibrator):
         params.thresholdStep = 10  # Faster detection (was 5)
         return cv2.SimpleBlobDetector_create(params)
 
-    def _enhance_dots_image(self, img: np.ndarray, fixed_radius: int = 9) -> np.ndarray:
-        """Enhance white dots for better detection."""
-        _, binary = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        output = img.copy()
-        for cnt in contours:
-            (x, y), _ = cv2.minEnclosingCircle(cnt)
-            center = (int(round(x)), int(round(y)))
-            cv2.circle(output, center, fixed_radius, (255,), -1)
-        return output
-
     def detect_pattern(
         self, image: np.ndarray
     ) -> Tuple[bool, Optional[np.ndarray], Optional[Dict[str, Any]]]:
@@ -547,9 +546,6 @@ class StereoDotboardCalibrator(BaseStereoCalibrator):
             grid_data includes grid_indices, n_cols, n_rows for point matching
         """
         gray = to_grayscale_2d(image)
-
-        if self.enhance_dots:
-            gray = self._enhance_dots_image(gray)
 
         success, grid_data, info = detect_grid_automatic(
             gray, self.detector, mask=None, grid_spacing_mm=self.dot_spacing_mm
@@ -650,8 +646,8 @@ class StereoDotboardCalibrator(BaseStereoCalibrator):
             'detected_cols': self._detected_cols,
             'detected_rows': self._detected_rows,
             'dot_spacing_mm': self.dot_spacing_mm,
-            'enhance_dots': self.enhance_dots,
             'datum_camera': self.datum_camera,
+            'datum_frame': self.datum_frame,
         }
 
 

@@ -49,6 +49,7 @@ Config is stored as config.yaml (single source of truth), loaded via Config clas
 | Calibration (ChArUco) | `calibration/app/charuco_views.py` | `useChArUcoCalibration` | `ChArUcoCalibration` |
 | Calibration (polynomial) | `calibration/app/polynomial_views.py` | `useCalibration` | `PolynomialCalibration` |
 | Calibration (stereo) | `calibration/app/stereo_*_views.py` | `useStereoCalibration` | `StereoCalibration` |
+| Self-calibration | `stereo_reconstruction/self_calibration.py` | N/A (script) | N/A |
 | Calibration images | `calibration/app/shared_views.py` | `useCalibrationImageViewer` | `CalibrationImageViewer` |
 | Vector viewing | `plotting/app/plotting_views.py` | `useVectorViewer` | `VectorViewer` |
 | Transforms (GUI) | `plotting/app/transform_views.py` | (in `useVectorViewer`) | (in `VectorViewer`) |
@@ -369,6 +370,7 @@ POST /calibrate/set_datum              {base_path_idx, type_name, camera, datum_
 - `stereo_reconstruction/stereo_dotboard_calibration_production.py` - Stereo dotboard. Same optimizations as planar: histogram blob detection, cKDTree, reduced RANSAC, vectorized object points
 - `stereo_reconstruction/stereo_calibration_base.py` - Stereo base class. Parallel camera image reads via ThreadPoolExecutor
 - `stereo_reconstruction/stereo_charuco_calibration_production.py` - Stereo ChArUco detection
+- `stereo_reconstruction/self_calibration.py` - Stereo self-calibration (Wieneke 2005). Detects and corrects laser-sheet Z-offset and tilts via iterative disparity minimization. Key exports: `PinholeCamera`, `SelfCalibrationResult`, `run_self_calibration()`, `compute_dewarp_maps()`. Reuses `bulkxcorr2d_accumulate` C library for ensemble cross-camera correlation, `median_outlier_detection` + `infill_local_median` for disparity cleaning. Includes pure-Python FFT fallback when C library unavailable. Test script: `scripts/test_self_calibration.py` (synthetic data + 5 diagnostic figures).
 
 **Dotboard calibration performance optimizations** (shared by planar + stereo):
 - **Blob detection:** Histogram-based single pass (checks `mean_intensity > 127` to decide original vs inverted), with fallback if <9 keypoints found

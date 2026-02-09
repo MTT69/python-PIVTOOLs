@@ -109,13 +109,24 @@ def planar_frame(idx: int):
         if img is None:
             return jsonify({"error": f"Could not read frame {idx}"}), 404
 
-        # Calculate stats
+        # Calculate stats - vmin/vmax as percentages (0-100) of the data range
+        img_min = float(img.min())
+        img_max = float(img.max())
+        data_range = img_max - img_min
+        p1 = float(np.percentile(img, 1))
+        p99 = float(np.percentile(img, 99))
+        if data_range > 0:
+            vmin_pct = 100.0 * (p1 - img_min) / data_range
+            vmax_pct = 100.0 * (p99 - img_min) / data_range
+        else:
+            vmin_pct = 0.0
+            vmax_pct = 100.0
         stats = {
-            "min": float(img.min()),
-            "max": float(img.max()),
+            "min": img_min,
+            "max": img_max,
             "mean": float(img.mean()),
-            "vmin_pct": float(np.percentile(img, 1)),
-            "vmax_pct": float(np.percentile(img, 99)),
+            "vmin_pct": vmin_pct,
+            "vmax_pct": vmax_pct,
         }
 
         # Normalize to uint8 for display
@@ -211,7 +222,7 @@ def planar_generate_model():
                 pattern_rows=dotboard_cfg.get("pattern_rows", 10),
                 dot_spacing_mm=dotboard_cfg.get("dot_spacing_mm", 28.89),
                 asymmetric=dotboard_cfg.get("asymmetric", False),
-                enhance_dots=dotboard_cfg.get("enhance_dots", True),
+
                 config=cfg,
             )
 
@@ -439,7 +450,7 @@ def planar_generate_model_all():
                 pattern_rows=dotboard_cfg.get("pattern_rows", 10),
                 dot_spacing_mm=dotboard_cfg.get("dot_spacing_mm", 28.89),
                 asymmetric=dotboard_cfg.get("asymmetric", False),
-                enhance_dots=dotboard_cfg.get("enhance_dots", True),
+
                 config=cfg,
             )
 

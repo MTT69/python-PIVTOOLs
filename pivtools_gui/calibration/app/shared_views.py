@@ -27,7 +27,7 @@ from pivtools_core.image_handling.calibration_loader import (
 from pivtools_core.coordinate_utils import extract_coordinates
 from pivtools_gui.calibration.vector_calibration_production import VectorCalibrator
 from pivtools_gui.calibration.services.job_manager import job_manager
-from pivtools_gui.utils import camera_number, numpy_to_png_base64
+from pivtools_gui.utils import camera_number, numpy_to_png_base64, numpy_to_base64
 
 calibration_shared_bp = Blueprint("calibration_shared", __name__)
 
@@ -235,10 +235,6 @@ def calibration_get_frame():
         - frame_count: total number of calibration frames
         - current_idx: current frame index
     """
-    import io
-    import base64
-    from PIL import Image
-
     camera = camera_number(request.args.get("camera", default=1, type=int))
     idx = request.args.get("idx", default=1, type=int)
     source_path_idx = request.args.get("source_path_idx", default=0, type=int)
@@ -291,28 +287,11 @@ def calibration_get_frame():
         stats["vmin_pct"] = round(vmin_pct, 2)
         stats["vmax_pct"] = round(vmax_pct, 2)
 
-        # Normalize for display using raw percentile values (not percentages)
-        if p99 > p1:
-            disp = (img_float - p1) / (p99 - p1)
-            disp = np.clip(disp, 0, 1)
-        else:
-            disp = np.zeros_like(img_float)
-
-        disp8 = (disp * 255).astype(np.uint8)
-
-        # Convert to PIL Image
-        pil_img = Image.fromarray(disp8)
-
-        # Encode to base64
-        buffer = io.BytesIO()
-        if output_format == "png":
-            pil_img.save(buffer, format="PNG")
-            mime_type = "image/png"
-        else:
-            pil_img.save(buffer, format="JPEG", quality=quality)
-            mime_type = "image/jpeg"
-
-        b64_image = base64.b64encode(buffer.getvalue()).decode("utf-8")
+        # Encode to base64 using shared utility (min-max normalization for
+        # non-uint8, as-is for uint8).  This matches app.py get_frame_pair
+        # so the frontend vmin/vmax contrast controls work correctly.
+        b64_image = numpy_to_base64(img, format=output_format, jpeg_quality=quality)
+        mime_type = f"image/{output_format}"
 
         # Get total frame count
         frame_count = get_calibration_frame_count(camera, cfg, source_path_idx)

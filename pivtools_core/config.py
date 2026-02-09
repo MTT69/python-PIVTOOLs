@@ -423,7 +423,6 @@ calibration:
     pattern_cols: 10
     pattern_rows: 10
     dot_spacing_mm: 28.89
-    enhance_dots: true
     asymmetric: false
     grid_tolerance: 0.5
     ransac_threshold: 3
@@ -447,7 +446,6 @@ calibration:
     pattern_cols: 10
     pattern_rows: 10
     dot_spacing_mm: 28.89
-    enhance_dots: true
     asymmetric: false
     dt: 2
 filters: []

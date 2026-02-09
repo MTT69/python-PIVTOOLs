@@ -59,7 +59,6 @@ FILE_PATTERN = "planar_calibration_plate_%02d.tif"
 # GRID PARAMETERS
 # NOTE: PATTERN_COLS and PATTERN_ROWS are no longer needed - grid is auto-detected
 DOT_SPACING_MM = 12.22  # Physical dot spacing in mm (required for calibration)
-ENHANCE_DOTS = False
 
 # Number of calibration images to use (set to None to use all available)
 NUM_CALIBRATION_IMAGES = None
@@ -253,18 +252,29 @@ def detect_grid_automatic(
     n_points = len(centers)
 
     tree = cKDTree(centers)
-    # Nearest neighbor distances (k=2: first is self at distance 0, second is nearest)
-    nn_dists, _ = tree.query(centers, k=2)
+    # Use k=5 to detect perspective-distorted grids (stereo/Scheimpflug)
+    # where the two grid directions have very different spacings.
+    k_query = min(5, n_points)
+    nn_dists, _ = tree.query(centers, k=k_query)
     spacing_px = np.median(nn_dists[:, 1])
     info['spacing_px'] = float(spacing_px)
     logger.debug(f"Estimated grid spacing: {spacing_px:.1f} pixels")
+
+    # For perspective-distorted grids, the 3rd-nearest-neighbor captures the
+    # secondary spacing (interior points have 2 short + 2 long neighbors).
+    # Use this to set a search radius that covers both grid directions.
+    if k_query >= 4:
+        secondary_spacing_px = np.median(nn_dists[:, 3])
+        search_radius = secondary_spacing_px * 1.4
+    else:
+        search_radius = spacing_px * 1.4
 
     # Step 3: Find HORIZONTAL and VERTICAL grid vectors (vectorized)
     angle_tolerance_deg = 20
     angle_tolerance = np.radians(angle_tolerance_deg)
 
     # Find all neighbor pairs within distance tolerance using cKDTree
-    pairs = tree.query_pairs(r=spacing_px * 1.4)
+    pairs = tree.query_pairs(r=search_radius)
     # Filter pairs below minimum distance and build directed index arrays
     i_list, j_list = [], []
     min_dist = spacing_px * 0.6
@@ -504,7 +514,6 @@ def apply_cli_settings_to_config():
     # Dotboard-specific params (for planar calibration)
     # NOTE: pattern_cols and pattern_rows are no longer required - grid is auto-detected
     config.data["calibration"]["dotboard"]["dot_spacing_mm"] = DOT_SPACING_MM
-    config.data["calibration"]["dotboard"]["enhance_dots"] = ENHANCE_DOTS
     config.data["calibration"]["dotboard"]["datum_frame"] = 1  # Default datum frame
 
     # Save to disk so centralized loader picks up changes
@@ -530,7 +539,6 @@ class MultiViewCalibrator:
         camera_count,
         file_pattern,
         dot_spacing_mm=28.89,
-        enhance_dots=False,
         config=None,
         datum_frame=1,
         # Legacy params (ignored but kept for backward compatibility)
@@ -553,8 +561,6 @@ class MultiViewCalibrator:
             Image file naming pattern (e.g., 'calib%05d.tif')
         dot_spacing_mm : float
             Physical spacing between dots in millimeters (required for calibration)
-        enhance_dots : bool
-            Whether to apply dot enhancement for better detection
         config : Config, optional
             Configuration object
         datum_frame : int
@@ -569,7 +575,6 @@ class MultiViewCalibrator:
         self.camera_count = camera_count
         self.file_pattern = file_pattern
         self.dot_spacing_mm = dot_spacing_mm
-        self.enable_dot_enhancement = enhance_dots
         self._config = config
         self.datum_frame = datum_frame
 
@@ -726,17 +731,6 @@ class MultiViewCalibrator:
             logger.warning(f"Error reading image {img_path}: {e}")
             return None
 
-    def enhance_dots_image(self, img, fixed_radius=9):
-        """Enhance dots for easier detection"""
-        _, binary = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        output = img.copy()
-        for cnt in contours:
-            (x, y), _ = cv2.minEnclosingCircle(cnt)
-            center = (int(round(x)), int(round(y)))
-            cv2.circle(output, center, fixed_radius, (255,), -1)
-        return output
-
     def make_object_points_dynamic(
         self,
         grid_indices: np.ndarray,
@@ -789,9 +783,6 @@ class MultiViewCalibrator:
             Detection metadata including grid_indices, n_cols, n_rows
         """
         gray = to_grayscale_2d(img)
-
-        if self.enable_dot_enhancement:
-            gray = self.enhance_dots_image(gray)
 
         # Use automatic detection
         success, grid_data, info = detect_grid_automatic(
@@ -1308,7 +1299,6 @@ if __name__ == "__main__":
         file_pattern = config.data["calibration"]["image_format"]
         # pattern_cols and pattern_rows are no longer required - automatic detection
         dot_spacing_mm = config.data["calibration"]["dotboard"]["dot_spacing_mm"]
-        enhance_dots = config.data["calibration"]["dotboard"].get("enhance_dots", False)
         datum_frame = config.data["calibration"]["dotboard"].get("datum_frame", 1)
     else:
         # Apply CLI settings to config.yaml so centralized loaders work correctly
@@ -1320,7 +1310,6 @@ if __name__ == "__main__":
         camera_nums = CAMERA_NUMS
         file_pattern = FILE_PATTERN
         dot_spacing_mm = DOT_SPACING_MM
-        enhance_dots = ENHANCE_DOTS
         datum_frame = 1  # Default
 
     logger.info(f"Source: {source_dir}")
@@ -1341,7 +1330,6 @@ if __name__ == "__main__":
                 camera_count=1,  # Process one at a time
                 file_pattern=file_pattern,
                 dot_spacing_mm=dot_spacing_mm,
-                enhance_dots=enhance_dots,
                 config=config,
                 datum_frame=datum_frame,
             )

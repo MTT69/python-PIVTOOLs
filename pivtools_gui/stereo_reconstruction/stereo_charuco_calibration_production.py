@@ -158,6 +158,10 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
         ArUco dictionary name (e.g., "DICT_4X4_1000")
     min_corners : int
         Minimum number of corners required to accept a detection
+    datum_camera : int
+        Which camera defines the coordinate system origin (1 or 2, default: 1)
+    datum_frame : int
+        Which calibration image defines the world coordinate origin (1-based, default: 1)
     **base_kwargs
         Additional arguments passed to BaseStereoCalibrator
 
@@ -184,6 +188,9 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
         marker_ratio: float = 0.5,
         aruco_dict: str = "DICT_4X4_1000",
         min_corners: int = 6,
+        # Stereo-specific params
+        datum_camera: int = 1,
+        datum_frame: int = 1,
         # Base class params
         source_dir: Optional[Union[str, Path]] = None,
         base_dir: Optional[Union[str, Path]] = None,
@@ -202,9 +209,11 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
             marker_ratio = charuco_cfg.get('marker_ratio', marker_ratio)
             aruco_dict = charuco_cfg.get('aruco_dict', aruco_dict)
             min_corners = charuco_cfg.get('min_corners', min_corners)
-            # Get dt from stereo_charuco config (not charuco_calibration)
+            # Get stereo-specific params from stereo_charuco config
             stereo_cfg = config.stereo_charuco_calibration
             dt = stereo_cfg.get('dt', dt)
+            datum_camera = stereo_cfg.get('datum_camera', datum_camera)
+            datum_frame = stereo_cfg.get('datum_frame', datum_frame)
 
         self.squares_h = squares_h
         self.squares_v = squares_v
@@ -212,6 +221,8 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
         self.marker_ratio = marker_ratio
         self.aruco_dict_name = aruco_dict
         self.min_corners = min_corners
+        self.datum_camera = datum_camera
+        self.datum_frame = datum_frame
 
         super().__init__(
             config=config,
@@ -315,6 +326,8 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
             'marker_ratio': self.marker_ratio,
             'aruco_dict': self.aruco_dict_name,
             'min_corners': self.min_corners,
+            'datum_camera': self.datum_camera,
+            'datum_frame': self.datum_frame,
         }
 
     def _match_object_points(

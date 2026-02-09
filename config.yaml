@@ -1,31 +1,34 @@
 paths:
   base_paths:
-  - C:\Users\mtt1e23\Downloads\pivtools_test
+  - C:\Users\mtt1e23\Downloads\testwithkwong
   source_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\download_from_jhtdb\bottom_channel\4000_images_channel\planar_images
+  - D:\ALK_PIV_250527_085959\y235_aoan04_aoafn06\loop=0.set
   active_paths:
   - 0
   camera_numbers:
   - 1
-  camera_count: 1
+  - 2
+  - 3
+  - 4
+  - 5
+  camera_count: 5
   camera_subfolders: []
 images:
-  num_images: 4000
+  num_images: 10
   image_format:
-  - B%05d_A.tif
-  - B%05d_B.tif
+  - data.set
   vector_format:
   - '%05d.mat'
   dtype: float32
-  image_type: standard
+  image_type: lavision_set
   use_camera_subfolders: false
   start_index: 1
   frame_stride: 0
   pair_stride: 1
-  pairing_preset: ab_format
-  num_frame_pairs: 4000
+  pairing_preset: pre_paired
+  num_frame_pairs: 10
 batches:
-  size: 20
+  size: 10
 logging:
   file: pypiv.log
   level: INFO
@@ -34,8 +37,8 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 4
-  dask_workers_per_node: 5
+  omp_threads: 2
+  dask_workers_per_node: 4
   dask_memory_limit: 15GB
   always_batch: true
   instantaneous: true
@@ -111,7 +114,7 @@ statistics:
     inst_gamma: false
     mean_stresses: true
     inst_stresses: false
-    mean_peak_height: true
+    mean_peak_height: false
   gamma_radius: 4
   save_figures: true
   type_name: instantaneous
@@ -122,14 +125,11 @@ instantaneous_piv:
     - 64
   - - 16
     - 16
-  - - 16
-    - 16
   overlap:
   - 50
   - 50
-  - 50
   runs:
-  - 3
+  - 2
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
@@ -180,7 +180,7 @@ calibration:
   num_images: 1
   image_type: lavision_im7
   zero_based_indexing: false
-  use_camera_subfolders: false
+  use_camera_subfolders: true
   subfolder: enhanced
   camera_subfolders:
   - camera1
@@ -189,7 +189,7 @@ calibration:
   - camera4
   - camera5
   path_order: camera_first
-  active: scale_factor
+  active: dotboard
   piv_type: instantaneous
   scale_factor:
     dt: 5.6e-05
@@ -199,12 +199,12 @@ calibration:
     camera: 1
     pattern_cols: 30
     pattern_rows: 20
-    dot_spacing_mm: 12.22
+    dot_spacing_mm: 10
     enhance_dots: false
     asymmetric: false
     grid_tolerance: 0.5
     ransac_threshold: 3
-    dt: 5.7553e-05
+    dt: 4.96e-05
     source_path_idx: 0
     image_index: 0
     datum_frame: 1
@@ -269,16 +269,17 @@ calibration:
     min_corners: 6
     dt: 0.0057553
   calibration_sources:
-  - C:\Users\mtt1e23\Downloads\pivtools_test
-filters: []
+  - D:\ALK_PIV_250527_085959\Properties\Calibration
+filters:
+- type: time
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
-  mode: file
+  mode: rectangular
   rectangular:
     top: 0
-    bottom: 0
+    bottom: 250
     left: 0
     right: 0
 merging:
@@ -289,5 +290,6 @@ transforms:
   type_name: instantaneous
   cameras:
     1:
-      operations: []
+      operations:
+      - invert_ux_uy
   source_endpoint: regular

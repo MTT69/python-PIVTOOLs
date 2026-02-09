@@ -1031,7 +1031,7 @@ class StereoReconstructor:
         stereo_params_clean = {k: v for k, v in self.stereo_params.items() if not k.startswith("_")}
         summary_data["stereo_calibration"] = stereo_params_clean
 
-        summary_file = output_dir / "stereo_reconstruction_summary.mat"
+        summary_file = output_dir / "summary.mat"
         savemat(str(summary_file), summary_data)
         logger.info(f"Saved reconstruction summary: {summary_file}")
 
