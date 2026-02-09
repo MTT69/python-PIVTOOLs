@@ -272,6 +272,9 @@ def transform_all_frames():
     else:
         merged = bool(merged_raw)
     type_name = data.get("type_name", config.transforms_type_name)
+    # Optional camera selection (list of camera numbers)
+    cameras_raw = data.get("cameras")
+    selected_cameras = [camera_number(c) for c in cameras_raw] if cameras_raw else None
 
     logger.info(
         f"transform_all_frames: base_path={base_path}, "
@@ -342,6 +345,7 @@ def transform_all_frames():
                 source_frame=source_frame,
                 source_camera=source_camera,
                 progress_callback=progress_callback,
+                cameras=selected_cameras,
             )
 
             if result["success"]:

@@ -1015,19 +1015,43 @@ video:
         default_methods = {
             # Mean/time-averaged statistics
             "mean_velocity": True,
-            "reynolds_stress": True,
-            "normal_stress": True,
+            "mean_stresses": True,
             "mean_tke": True,
             "mean_vorticity": True,
             "mean_divergence": True,
+            "mean_peak_height": False,
             # Instantaneous (per-frame) statistics
             "inst_velocity": True,
-            "inst_fluctuations": True,
+            "inst_stresses": True,
             "inst_vorticity": True,
             "inst_divergence": True,
             "inst_gamma": True,
         }
-        return self.statistics.get("enabled_methods", default_methods)
+        methods = self.statistics.get("enabled_methods", default_methods)
+
+        # Migrate legacy key names to canonical names
+        legacy_map = {
+            "reynolds_stress": "mean_stresses",
+            "normal_stress": "mean_stresses",
+            "inst_fluctuations": "inst_stresses",
+        }
+        migrated = False
+        for old_key, new_key in legacy_map.items():
+            if old_key in methods:
+                # Carry over enabled state (True wins if either legacy key was True)
+                if methods[old_key] and new_key not in methods:
+                    methods[new_key] = True
+                elif methods[old_key] and new_key in methods:
+                    methods[new_key] = methods[new_key] or methods[old_key]
+                del methods[old_key]
+                migrated = True
+
+        # Ensure all canonical keys are present with defaults
+        for key, default_val in default_methods.items():
+            if key not in methods:
+                methods[key] = default_val
+
+        return methods
 
     @property
     def statistics_enabled_list(self) -> list:

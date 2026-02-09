@@ -290,6 +290,8 @@ VALID_TRANSFORMATIONS = [
     "rotate_180",
     "swap_ux_uy",
     "invert_ux_uy",
+    "invert_ux",
+    "invert_uy",
     "scale_velocity",  # Parametric: requires :factor suffix
     "scale_coords",    # Parametric: requires :factor suffix
 ]
@@ -462,6 +464,30 @@ def apply_transformation_to_piv_result(pr: Any, transformation: str) -> None:
             uy = np.asarray(getattr(pr, "uy"))
             setattr(pr, "uy", -uy)
         # Stresses unchanged: variance(-u) = variance(u), and (-u')(-v') = u'v'
+
+    elif base_name == "invert_ux":
+        # Invert (negate) only ux velocity component
+        if hasattr(pr, "ux"):
+            ux = np.asarray(getattr(pr, "ux"))
+            setattr(pr, "ux", -ux)
+        # UV_stress changes sign: (-u')v' = -(u'v')
+        if hasattr(pr, "UV_stress"):
+            uv = np.asarray(getattr(pr, "UV_stress"))
+            if uv.ndim >= 2 and uv.size > 0:
+                setattr(pr, "UV_stress", -uv)
+        # UU_stress, VV_stress unchanged (variance is sign-invariant)
+
+    elif base_name == "invert_uy":
+        # Invert (negate) only uy velocity component
+        if hasattr(pr, "uy"):
+            uy = np.asarray(getattr(pr, "uy"))
+            setattr(pr, "uy", -uy)
+        # UV_stress changes sign: u'(-v') = -(u'v')
+        if hasattr(pr, "UV_stress"):
+            uv = np.asarray(getattr(pr, "UV_stress"))
+            if uv.ndim >= 2 and uv.size > 0:
+                setattr(pr, "UV_stress", -uv)
+        # UU_stress, VV_stress unchanged (variance is sign-invariant)
 
     elif base_name == "flip_lr":
         # Flip left-right
@@ -758,6 +784,8 @@ class TransformCanonicalState:
     flip_lr: bool = False
     swap_ux_uy: bool = False
     invert_ux_uy: bool = False
+    invert_ux: bool = False
+    invert_uy: bool = False
     velocity_scale: float = 1.0
     coord_scale: float = 1.0
 
@@ -779,6 +807,10 @@ class TransformCanonicalState:
             self.swap_ux_uy = not self.swap_ux_uy
         elif base_name == "invert_ux_uy":
             self.invert_ux_uy = not self.invert_ux_uy
+        elif base_name == "invert_ux":
+            self.invert_ux = not self.invert_ux
+        elif base_name == "invert_uy":
+            self.invert_uy = not self.invert_uy
         elif base_name == "scale_velocity" and param is not None:
             self.velocity_scale *= param
         elif base_name == "scale_coords" and param is not None:
@@ -810,8 +842,16 @@ class TransformCanonicalState:
         # Emit velocity operations
         if self.swap_ux_uy:
             result.append("swap_ux_uy")
-        if self.invert_ux_uy:
+
+        # Resolve invert_ux, invert_uy, invert_ux_uy using XOR logic
+        ux_negated = self.invert_ux ^ self.invert_ux_uy
+        uy_negated = self.invert_uy ^ self.invert_ux_uy
+        if ux_negated and uy_negated:
             result.append("invert_ux_uy")
+        elif ux_negated:
+            result.append("invert_ux")
+        elif uy_negated:
+            result.append("invert_uy")
 
         # Emit scale operations (only if not identity)
         if abs(self.velocity_scale - 1.0) > 1e-10:

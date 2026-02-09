@@ -384,6 +384,7 @@ class VectorTransformProcessor:
         source_camera: int,
         progress_callback: Optional[Callable[[Dict], None]] = None,
         max_workers: int = 8,
+        cameras: Optional[List[int]] = None,
     ) -> Dict:
         """
         Apply transformations to all frames across cameras.
@@ -463,7 +464,12 @@ class VectorTransformProcessor:
                     save_mat_from_transform(source_coords_file, coords_mat_to_saveable(coords_mat))
 
             # Get cameras to process
-            all_cameras = self.config.camera_numbers if self.camera is None else [self.camera]
+            if cameras:
+                all_cameras = cameras
+            elif self.camera is not None:
+                all_cameras = [self.camera]
+            else:
+                all_cameras = self.config.camera_numbers
 
             # Calculate total work
             total_frames_to_process = 0
@@ -498,16 +504,30 @@ class VectorTransformProcessor:
                 }
                 total_frames_to_process += len(vector_files)
 
-            if total_frames_to_process == 0:
+            # Include the source frame (already transformed above) in the total
+            total_frames_to_process += 1
+
+            if total_frames_to_process <= 1:
                 return {
                     "success": True,
-                    "total_frames": 0,
+                    "total_frames": 1,
                     "total_cameras": len(all_cameras),
                     "elapsed_time": time.time() - start_time,
                 }
 
-            processed_frames = 0
+            # Start at 1 to account for the already-processed source frame
+            processed_frames = 1
             processed_cameras = 0
+
+            if progress_callback:
+                progress_callback({
+                    "progress": int((processed_frames / total_frames_to_process) * 100),
+                    "processed_frames": processed_frames,
+                    "total_frames": total_frames_to_process,
+                    "processed_cameras": 0,
+                    "total_cameras": len(all_cameras),
+                    "current_camera": all_cameras[0],
+                })
 
             # Process each camera
             for cam in all_cameras:
@@ -549,7 +569,7 @@ class VectorTransformProcessor:
                             process_frame_worker,
                             frame,
                             mat_file,
-                            coords_file if coords_file.exists() else None,
+                            None,  # Coordinates already transformed above; don't pass to workers
                             transformations,
                         )
                         for frame, mat_file in vector_files

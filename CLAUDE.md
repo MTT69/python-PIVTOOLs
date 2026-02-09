@@ -413,13 +413,15 @@ POST /plot/transform_all_frames         {base_path, camera, transformations, mer
 GET  /plot/transform_all_frames/status/<job_id>
 ```
 
-**Valid transformations:** `flip_ud`, `flip_lr`, `rotate_90_cw`, `rotate_90_ccw`, `rotate_180`, `swap_ux_uy`, `invert_ux_uy`, `scale_velocity:<factor>`, `scale_coords:<factor>`
+**Valid transformations:** `flip_ud`, `flip_lr`, `rotate_90_cw`, `rotate_90_ccw`, `rotate_180`, `swap_ux_uy`, `invert_ux_uy`, `invert_ux`, `invert_uy`, `scale_velocity:<factor>`, `scale_coords:<factor>`
 
 **Ensemble-aware:** Transforms correctly handle Reynolds stresses (UU_stress, VV_stress, UV_stress) in calibrated ensemble data:
 - Geometric transforms (flip/rotate): stress fields are spatially transformed alongside velocities
 - `scale_velocity:k`: stresses scaled by k² (velocity² units)
 - `swap_ux_uy`: UU_stress swapped with VV_stress (UV unchanged)
-- `invert_ux_uy`: stresses unchanged (variance is sign-invariant)
+- `invert_ux_uy`: stresses unchanged (both negated: (-u')(-v') = u'v')
+- `invert_ux`: UV_stress negated ((-u')v' = -(u'v')), UU/VV unchanged
+- `invert_uy`: UV_stress negated (u'(-v') = -(u'v')), UU/VV unchanged
 
 **Key files:**
 - `transform_operations.py` - `apply_transformation_to_piv_result()`, `simplify_transformations()` (shared by both paths)
@@ -953,7 +955,7 @@ Triggered on GitHub release or manual dispatch. Builds wheels for {ubuntu, macos
 | `detect-planar` / `detect-charuco` | Detect calibration targets |
 | `detect-stereo-planar` / `detect-stereo-charuco` | Stereo calibration detection |
 | `apply-calibration` / `apply-stereo` | Apply calibration (px → m/s) |
-| `transform` | Geometric transforms (`flip_ud`, `flip_lr`, `rotate_90_cw/ccw`, `rotate_180`, `swap_ux_uy`, `invert_ux_uy`, `scale_velocity:N`, `scale_coords:N`) |
+| `transform` | Geometric transforms (`flip_ud`, `flip_lr`, `rotate_90_cw/ccw`, `rotate_180`, `swap_ux_uy`, `invert_ux_uy`, `invert_ux`, `invert_uy`, `scale_velocity:N`, `scale_coords:N`) |
 | `merge` | Multi-camera Hanning window blending |
 | `statistics` | Mean, TKE, vorticity, divergence, gamma |
 | `video` | Visualization video (instantaneous only) |

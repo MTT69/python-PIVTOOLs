@@ -28,7 +28,7 @@ images:
   pairing_preset: pre_paired
   num_frame_pairs: 10
 batches:
-  size: 10
+  size: 2
 logging:
   file: pypiv.log
   level: INFO
@@ -37,8 +37,8 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 2
-  dask_workers_per_node: 4
+  omp_threads: 4
+  dask_workers_per_node: 5
   dask_memory_limit: 15GB
   always_batch: true
   instantaneous: true
@@ -290,6 +290,5 @@ transforms:
   type_name: instantaneous
   cameras:
     1:
-      operations:
-      - invert_ux_uy
+      operations: []
   source_endpoint: regular
