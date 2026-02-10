@@ -3,6 +3,7 @@ from typing import List, Optional, Tuple
 import logging
 import os
 import shutil
+import time
 
 import yaml
 
@@ -168,10 +169,25 @@ class Config:
         self.save()
 
     def save(self):
-        """Save current config state to YAML file."""
+        """Save current config state to YAML file.
+
+        Uses atomic write (write to temp file, then os.replace) to prevent
+        corruption from interrupted writes or cloud sync (e.g. OneDrive).
+        """
         self._normalize_calibration_block()
-        with open(self._config_path, 'w') as f:
+        tmp_path = str(self._config_path) + ".tmp"
+        with open(tmp_path, 'w') as f:
             yaml.dump(self.data, f, default_flow_style=False, sort_keys=False)
+        # Retry os.replace to handle transient locks from OneDrive/cloud sync
+        for attempt in range(5):
+            try:
+                os.replace(tmp_path, self._config_path)
+                return
+            except PermissionError:
+                if attempt < 4:
+                    time.sleep(0.1 * (attempt + 1))
+                else:
+                    raise
 
     def save_timestamped_copy(self, destination_dir: Path, timestamp: str = None) -> Path:
         """Save a timestamped copy of the config file for traceability.
@@ -1446,7 +1462,7 @@ video:
         """
         calib_block = self.data.get("calibration", {}) or {}
         sources = calib_block.get("calibration_sources", [])
-        return [Path(s) for s in sources] if sources else []
+        return [Path(s) for s in sources if s is not None] if sources else []
 
     def get_calibration_source(self, source_path_idx: int = 0) -> Path:
         """Get calibration source path for the given index.

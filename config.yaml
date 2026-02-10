@@ -1,6 +1,6 @@
 paths:
   base_paths:
-  - C:\Users\mtt1e23\Downloads\SESA6070\SampleImages\processed
+  - C:\Users\mtt1e23\Downloads\SESA6070\results
   source_paths:
   - C:\Users\mtt1e23\Downloads\SESA6070\SampleImages
   active_paths:
@@ -81,7 +81,7 @@ video:
   camera: 1
   data_source: calibrated
   variable: ux
-  run: 4
+  run: 2
   piv_type: instantaneous
   cmap: jet
   lower: ''
@@ -179,18 +179,13 @@ calibration:
   zero_based_indexing: false
   use_camera_subfolders: false
   subfolder: enhanced
-  camera_subfolders:
-  - camera1
-  - camera2
-  - camera3
-  - camera4
-  - camera5
+  camera_subfolders: []
   path_order: camera_first
   active: scale_factor
   piv_type: instantaneous
   scale_factor:
     dt: 0.000116
-    px_per_mm: 21.75
+    px_per_mm: 22.56
     source_path_idx: 0
   dotboard:
     camera: 1
@@ -270,82 +265,14 @@ calibration:
   global_coordinates:
     enabled: true
     datum_camera: 1
-    datum_pixel:
-    - 5145.3946492133455
-    - 3046.343876406718
+    datum_pixel: null
     datum_physical:
     - 0
-    - 10
+    - 0
     datum_frame: 1
-    overlap_points:
-    - target_camera: 2
-      pixel_on_datum_cam:
-      - 124.12766848582066
-      - 3020.3100877833735
-      pixel_on_target:
-      - 5194.208002882116
-      - 3049.598099984636
-      target_frame: 1
-    - target_camera: 3
-      pixel_on_datum_cam:
-      - 124.12766848582066
-      - 3020.3100877833735
-      pixel_on_target: null
-      target_frame: 1
-    - target_camera: 4
-      pixel_on_datum_cam:
-      - 124.12766848582066
-      - 3020.3100877833735
-      pixel_on_target: null
-      target_frame: 1
-    - target_camera: 5
-      pixel_on_datum_cam:
-      - 124.12766848582066
-      - 3020.3100877833735
-      pixel_on_target: null
-      target_frame: 1
-    invert_ux: true
-    overlap_pairs:
-    - camera_a: 1
-      camera_b: 2
-      pixel_on_a:
-      - 124.12766848582066
-      - 3020.3100877833735
-      pixel_on_b:
-      - 5194.208002882116
-      - 3049.598099984636
-      frame_a: 1
-      frame_b: 1
-    - camera_a: 2
-      camera_b: 3
-      pixel_on_a:
-      - 156.85190594448778
-      - 3029.989445920374
-      pixel_on_b:
-      - 5170.530171483093
-      - 2998.3463152122063
-      frame_a: 1
-      frame_b: 1
-    - camera_a: 3
-      camera_b: 4
-      pixel_on_a:
-      - 114.66106500026389
-      - 2994.8304118001874
-      pixel_on_b:
-      - 4249.363477534205
-      - 3026.4735425083554
-      frame_a: 1
-      frame_b: 1
-    - camera_a: 4
-      camera_b: 5
-      pixel_on_a:
-      - 65.43841723200268
-      - 3022.9576390963366
-      pixel_on_b:
-      - 4101.695534229421
-      - 3019.441735684318
-      frame_a: 1
-      frame_b: 1
+    overlap_points: []
+    invert_ux: false
+    overlap_pairs: []
 filters:
 - type: time
 masking:
@@ -361,12 +288,7 @@ masking:
 merging:
   type_name: instantaneous
   base_path_idx: 0
-  cameras:
-  - 1
-  - 2
-  - 3
-  - 4
-  - 5
+  cameras: null
 transforms:
   base_path_idx: 0
   type_name: instantaneous

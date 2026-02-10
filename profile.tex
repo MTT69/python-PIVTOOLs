@@ -1,0 +1,211 @@
+\documentclass[10pt,a4paper,twocolumn]{article}
+
+\usepackage[margin=1.8cm,top=1.6cm,bottom=1.6cm]{geometry}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{pgfplots}
+\usepackage{pgfplotstable}
+\usepackage{tikz}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{titlesec}
+\usepackage[hidelinks]{hyperref}
+\usepackage{caption}
+
+\pgfplotsset{compat=1.18}
+
+% Compact section spacing
+\titlespacing*{\section}{0pt}{6pt}{3pt}
+\titlespacing*{\subsection}{0pt}{4pt}{2pt}
+\titleformat{\section}{\normalsize\bfseries}{\thesection.}{0.4em}{}
+\titleformat{\subsection}{\small\bfseries}{\thesubsection}{0.4em}{}
+
+\setlength{\parskip}{2pt}
+\setlength{\parindent}{0pt}
+\setlist{nosep,leftmargin=1.2em}
+
+\definecolor{warp}{HTML}{E74C3C}
+\definecolor{remap}{HTML}{F1C40F}
+\definecolor{xcorr}{HTML}{3498DB}
+\definecolor{outlier}{HTML}{2ECC71}
+\definecolor{infill}{HTML}{9B59B6}
+\definecolor{pccolor}{HTML}{C0392B}
+\definecolor{lightgray}{HTML}{F5F5F5}
+
+\captionsetup{font=small,labelfont=bf,skip=4pt}
+
+\begin{document}
+
+\begin{center}
+{\Large\bfseries PIV Pipeline Profiling Report}\\[3pt]
+{\small 4-pass multi-grid (128\,$\to$\,64\,$\to$\,32\,$\to$\,16), 50\% overlap, Gaussian window, gauss6 peak finder}\\[2pt]
+{\small\color{gray} 2026-02-10 \quad|\quad 8 image pairs \quad|\quad 4 OMP threads \quad|\quad 3 iterations averaged \quad|\quad Windows}
+\end{center}
+
+\vspace{-2pt}
+\rule{\columnwidth}{0.4pt}
+
+\section{Key Finding}
+
+The PIV pipeline is \textbf{not FFT-bound}---it is \textbf{warp-bound}. The predictor-corrector step dominates passes~2--4, consuming \textbf{55--87\%} of per-pass runtime. The FFT cross-correlation (\texttt{bulkxcorr2d}) accounts for only 5--20\% of later passes. The predictor-corrector uses thread-parallel \texttt{cv2.remap} via a class-level \texttt{ThreadPoolExecutor} sized to \texttt{omp\_threads}, with per-image mesh computation fused into each warp task to avoid large intermediate allocations.
+
+\section{Grand Totals}
+
+\begin{center}
+\small
+\begin{tabular}{@{}lrr@{}}
+\toprule
+\textbf{Dataset} & \textbf{Total} & \textbf{Per pair} \\
+\midrule
+4\,MP (2048$\times$2048), 8 pairs  & 3.29\,s & 0.41\,s \\
+25\,MP (4600$\times$5312), 8 pairs & 14.85\,s & 1.86\,s \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Optimisation Impact (25\,MP, 8 pairs, 1 worker)}
+
+Two optimisations were applied to the predictor-corrector: (1)~thread-parallel \texttt{cv2.remap} loops via a class-level \texttt{ThreadPoolExecutor(omp\_threads)} with \texttt{cv2.setNumThreads(1)}, and (2)~fusing the mesh coordinate computation into each warp thread to eliminate ${\sim}$3\,GB of intermediate allocations per pass.
+
+\begin{center}
+\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+& \textbf{Pred-Corr} & \textbf{Grand} & \textbf{Speedup} \\
+\textbf{Version} & \textbf{(P2--4 avg)} & \textbf{Total} & \\
+\midrule
+Serial (1 thread)             & 9.96\,s & 35.0\,s & 1.00$\times$ \\
++ Thread-parallel remap (4\,t) & 4.73\,s & 19.3\,s & 1.81$\times$ \\
++ Fused mesh+warp (4\,t)       & 3.28\,s & 14.8\,s & \textbf{2.36$\times$} \\
+\bottomrule
+\end{tabular}
+\captionof{table}{Cumulative optimisation impact on 25\,MP $\times$ 8 pairs. Thread-parallel remap gives 3.3$\times$ on the remap sections; fusing mesh into warp eliminates the 1.8\,s/pass \texttt{mesh\_compute} allocation overhead.}
+\end{center}
+
+\section{Cost Scaling: 4\,MP vs 25\,MP}
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[
+    ybar stacked,
+    bar width=14pt,
+    width=\columnwidth,
+    height=4.8cm,
+    ymin=0, ymax=7.5,
+    ylabel={\small Time (s)},
+    ylabel style={at={(axis description cs:0.06,0.5)}},
+    symbolic x coords={P1 4M, P2 4M, P3 4M, P4 4M, P1 25M, P2 25M, P3 25M, P4 25M},
+    xtick=data,
+    x tick label style={font=\tiny, rotate=45, anchor=east},
+    legend style={at={(0.5,1.02)}, anchor=south, legend columns=4, font=\tiny, draw=none},
+    every axis plot/.append style={fill opacity=0.85},
+    enlarge x limits=0.08,
+]
+% pred-corr
+\addplot[fill=pccolor,draw=pccolor!70!black] coordinates {
+    (P1 4M,0.074) (P2 4M,0.802) (P3 4M,0.803) (P4 4M,0.807)
+    (P1 25M,0.417) (P2 25M,3.292) (P3 25M,3.323) (P4 25M,3.235)};
+% xcorr
+\addplot[fill=xcorr,draw=xcorr!70!black] coordinates {
+    (P1 4M,0.082) (P2 4M,0.079) (P3 4M,0.121) (P4 4M,0.260)
+    (P1 25M,0.459) (P2 25M,0.461) (P3 25M,0.670) (P4 25M,1.185)};
+% outlier
+\addplot[fill=outlier,draw=outlier!70!black] coordinates {
+    (P1 4M,0.003) (P2 4M,0.008) (P3 4M,0.029) (P4 4M,0.152)
+    (P1 25M,0.013) (P2 25M,0.051) (P3 25M,0.256) (P4 25M,1.058)};
+% infill
+\addplot[fill=infill,draw=infill!70!black] coordinates {
+    (P1 4M,0.001) (P2 4M,0.001) (P3 4M,0.004) (P4 4M,0.032)
+    (P1 25M,0.002) (P2 25M,0.008) (P3 25M,0.051) (P4 25M,0.252)};
+\legend{Pred-Corr, XCorr, Outlier, Infill}
+\end{axis}
+\end{tikzpicture}
+\captionof{figure}{Per-pass time breakdown (8 pairs, 4 threads). Predictor-corrector (red) is nearly constant across passes 2--4 as it operates at full image resolution $O(\text{pixels})$, not $O(\text{windows})$.}
+\end{center}
+
+\section{Pass~4 Breakdown (Bottleneck Pass)}
+
+\begin{center}
+\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+& \multicolumn{2}{c}{\textbf{4\,MP}} & \multicolumn{2}{c}{\textbf{25\,MP}} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+\textbf{Component} & \textbf{Time} & \textbf{\%} & \textbf{Time} & \textbf{\%} \\
+\midrule
+\texttt{mesh\_and\_warp}    & 0.295 & 23 & 2.132 & 36 \\
+\texttt{dense+pred\_remap}  & 0.171 & 13 & 1.042 & 18 \\
+\rowcolor{lightgray}
+\textit{Pred-Corr total}    & \textit{0.807} & \textit{63} & \textit{3.235} & \textit{55} \\
+\texttt{bulkxcorr2d}        & 0.260 & 20 & 1.185 & 20 \\
+\texttt{outlier\_det}       & 0.152 & 12 & 1.058 & 18 \\
+\texttt{infilling}          & 0.032 &  3 & 0.252 &  4 \\
+\midrule
+\textbf{Pass total}          & \textbf{1.278} & & \textbf{5.880} & \\
+\bottomrule
+\end{tabular}
+\captionof{table}{Pass~4 detailed breakdown (8 pairs, 4 threads). The predictor-corrector sub-components scale linearly with pixel count: $\approx$\,4.6$\times$ from 4\,MP to 25\,MP (6.1$\times$ pixel ratio, sub-linear due to threading).}
+\end{center}
+
+\section{Scaling Behaviour}
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[
+    width=\columnwidth,
+    height=4.2cm,
+    xlabel={\small Image size (MP)},
+    ylabel={\small Time (s)},
+    ylabel style={at={(axis description cs:0.08,0.5)}},
+    xmin=0, xmax=28,
+    ymin=0, ymax=3.5,
+    legend style={at={(0.03,0.97)}, anchor=north west, font=\tiny, draw=none},
+    grid=major,
+    grid style={gray!20},
+    every axis plot/.append style={thick},
+]
+\addplot[color=pccolor, mark=square*, mark size=2] coordinates {(4,0.807) (25,3.235)};
+\addlegendentry{Pred-Corr}
+\addplot[color=xcorr, mark=triangle*, mark size=2] coordinates {(4,0.260) (25,1.185)};
+\addlegendentry{XCorr}
+\addplot[color=outlier, mark=diamond*, mark size=2] coordinates {(4,0.152) (25,1.058)};
+\addlegendentry{Outlier Det}
+\addplot[color=infill, mark=o, mark size=2] coordinates {(4,0.032) (25,0.252)};
+\addlegendentry{Infilling}
+\end{axis}
+\end{tikzpicture}
+\captionof{figure}{Pass~4 component scaling from 4\,MP to 25\,MP (8 pairs, 4 threads). All components scale roughly linearly with pixel count.}
+\end{center}
+
+\section{Predictor-Corrector Internals (25\,MP)}
+
+The two dominant sub-operations are nearly constant across passes~2--4, confirming they are pixel-bound:
+
+\begin{center}
+\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+\textbf{Sub-component} & \textbf{P2} & \textbf{P3} & \textbf{P4} \\
+\midrule
+\texttt{dense+pred\_remap}  & 1.065 & 1.067 & 1.046 \\
+\texttt{mesh\_and\_warp}    & 2.174 & 2.199 & 2.132 \\
+\midrule
+\textbf{Total}              & 3.292 & 3.323 & 3.235 \\
+\bottomrule
+\end{tabular}
+\captionof{table}{Predictor-corrector sub-timings (seconds, 25\,MP, 8 pairs, 4 threads). Variance across passes is $<$\,3\%. Gaussian smoothing ($<$\,5\,ms) omitted.}
+\end{center}
+
+\section{Conclusions}
+
+\begin{enumerate}[leftmargin=1.4em]
+\item The pipeline is \textbf{warp-bound}, not FFT-bound. Predictor-corrector consumes 55--87\% of passes~2--4.
+\item Predictor-corrector cost is \textbf{$O(\text{pixels})$}, nearly constant across passes; per-window costs (xcorr, outlier, infill) scale with window count.
+\item At 25\,MP with 8 pairs, the per-pair processing rate is \textbf{1.86\,s/pair} across all 4 passes (4 threads).
+\item The fused mesh+warp section dominates at 36\% of pass~4 (25\,MP). Further gains would require moving this computation to C/CUDA.
+\item Outlier detection becomes significant at fine grids: 18\% of pass~4 at 25\,MP (574$\times$663 = 380k windows).
+\end{enumerate}
+
+\end{document}

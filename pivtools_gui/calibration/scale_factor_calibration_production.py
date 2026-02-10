@@ -231,22 +231,24 @@ class ScaleFactorCalibrator:
         self, x: np.ndarray, y: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Convert pixel coordinates to mm, zero-based at bottom-left.
+        Convert uncalibrated coordinates to mm.
+
+        Origin at bottom-left of grid, y increasing upward (matching pinhole
+        convention). Uncalibrated y already increases upward (y_uncal = H - y_pixel
+        from save_results.py), so simple subtraction from min(y) suffices.
 
         Args:
-            x: X coordinates in pixels
-            y: Y coordinates in pixels
+            x: X coordinates in uncalibrated units (from coordinates.mat)
+            y: Y coordinates in uncalibrated units (from coordinates.mat)
 
         Returns:
             Tuple of (x_mm, y_mm) calibrated coordinates
         """
-        # Zero-base: subtract first value
         x0 = x.flat[0] if x.size > 0 else 0
-        y0 = y.flat[0] if y.size > 0 else 0
+        y0 = float(np.min(y)) if y.size > 0 else 0
 
         x_calib = (x - x0) / self.px_per_mm
-        # Flip y-axis and negate for bottom-left origin
-        y_calib = -np.flipud((y - y0) / self.px_per_mm)
+        y_calib = (y - y0) / self.px_per_mm
 
         return x_calib, y_calib
 

@@ -239,7 +239,7 @@ class GlobalCoordinateAligner:
 
         # Grid reference points (same as ScaleFactorCalibrator.calibrate_coordinates)
         grid_x0 = x.flat[0] if x.size > 0 else 0
-        grid_y0 = y.flat[0] if y.size > 0 else 0
+        grid_y0 = float(np.min(y)) if y.size > 0 else 0
 
         # Convert raw pixel to uncalibrated coordinates (matching save_results.py)
         # save_results.py: x_grid = x_centers + 1, y_grid = (H-1) - y_centers + 1 = H - y_centers
@@ -249,8 +249,9 @@ class GlobalCoordinateAligner:
         px_y_uncal = H - px_y        # flipped: image-downward → physical-upward, 1-based
 
         # Apply calibration formula (pointwise equivalent of calibrate_coordinates)
+        # y=0 at bottom of grid, y increasing upward (matching pinhole convention)
         x_mm = (px_x_uncal - grid_x0) / px_per_mm
-        y_mm = -(px_y_uncal - grid_y0) / px_per_mm
+        y_mm = (px_y_uncal - grid_y0) / px_per_mm
 
         return (x_mm, y_mm)
 

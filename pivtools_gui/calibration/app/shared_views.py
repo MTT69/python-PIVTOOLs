@@ -435,7 +435,7 @@ def calibration_config():
             cal_block["use_camera_subfolders"] = bool(data["use_camera_subfolders"])
         # calibration_sources - direct paths to calibration images
         if "calibration_sources" in data:
-            cal_block["calibration_sources"] = list(data["calibration_sources"]) if data["calibration_sources"] else []
+            cal_block["calibration_sources"] = [s for s in data["calibration_sources"] if s] if data["calibration_sources"] else []
         # camera_subfolders - independent from PIV camera subfolders
         if "camera_subfolders" in data:
             cal_block["camera_subfolders"] = list(data["camera_subfolders"]) if data["camera_subfolders"] else []

@@ -135,6 +135,22 @@ def scale_factor_calibrate_vectors():
                     "status": status,
                 }
 
+            # Auto-apply global coordinate alignment if enabled
+            if cfg.global_coordinates_enabled:
+                try:
+                    from pivtools_gui.calibration.global_coordinate_alignment import GlobalCoordinateAligner
+                    logger.debug("Applying global coordinate alignment...")
+                    aligner = GlobalCoordinateAligner(base_root, cfg)
+                    alignment_result = aligner.apply_alignment(type_name)
+                    camera_progress["global_alignment"] = alignment_result
+                    logger.debug(f"Global coordinate alignment: {alignment_result.get('status')}")
+                except Exception as align_err:
+                    logger.error(f"Global coordinate alignment failed: {align_err}")
+                    camera_progress["global_alignment"] = {
+                        "status": "failed",
+                        "error": str(align_err),
+                    }
+
             job_manager.complete_job(
                 job_id,
                 camera_progress=camera_progress,
