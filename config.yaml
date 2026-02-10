@@ -2,33 +2,30 @@ paths:
   base_paths:
   - C:\Users\mtt1e23\Downloads\testwithkwong
   source_paths:
-  - D:\ALK_PIV_250527_085959\y235_aoan04_aoafn06\loop=0.set
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images
   active_paths:
   - 0
   camera_numbers:
   - 1
-  - 2
-  - 3
-  - 4
-  - 5
-  camera_count: 5
+  camera_count: 1
   camera_subfolders: []
 images:
-  num_images: 10
+  num_images: 100
   image_format:
-  - data.set
+  - B%05d_A.tif
+  - B%05d_B.tif
   vector_format:
   - '%05d.mat'
   dtype: float32
-  image_type: lavision_set
+  image_type: standard
   use_camera_subfolders: false
   start_index: 1
   frame_stride: 0
   pair_stride: 1
-  pairing_preset: pre_paired
-  num_frame_pairs: 10
+  pairing_preset: ab_format
+  num_frame_pairs: 100
 batches:
-  size: 2
+  size: 10
 logging:
   file: pypiv.log
   level: INFO
@@ -38,8 +35,8 @@ processing:
   debug: false
   auto_compute_params: false
   omp_threads: 4
-  dask_workers_per_node: 5
-  dask_memory_limit: 15GB
+  dask_workers_per_node: 8
+  dask_memory_limit: 8GB
   always_batch: true
   instantaneous: true
   ensemble: false
@@ -349,8 +346,7 @@ calibration:
       - 3019.441735684318
       frame_a: 1
       frame_b: 1
-filters:
-- type: time
+filters: []
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat

@@ -69,7 +69,14 @@ def load_piv_result(mat_path: Path) -> Any:
     """
     if not mat_path.exists():
         raise FileNotFoundError(f"PIV result file not found: {mat_path}")
-    mat = loadmat(str(mat_path), struct_as_record=False, squeeze_me=True)
+    try:
+        mat = loadmat(str(mat_path), struct_as_record=False, squeeze_me=True)
+    except Exception as e:
+        # Truncated/corrupted .mat files (e.g. still being written) raise
+        # various errors from scipy.io.  Surface them as FileNotFoundError
+        # so callers that already handle 404 will skip gracefully.
+        logger.warning(f"Failed to read {mat_path} (possibly truncated): {e}")
+        raise FileNotFoundError(f"PIV result file unreadable: {mat_path}") from e
     if "piv_result" not in mat:
         raise ValueError(f"Variable 'piv_result' not found in mat: {mat_path}")
     return mat["piv_result"]

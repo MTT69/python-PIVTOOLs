@@ -1396,6 +1396,11 @@ def get_ensemble_progress_from_logs(job_id: str, cfg) -> dict:
     }
 
 
+# Time-based cache for get_uncalibrated_count directory scans
+_uncalibrated_count_cache: dict = {}  # key: (basepath_idx, type_name) -> {"time": float, "result": dict}
+_UNCALIBRATED_COUNT_CACHE_TTL = 1.0   # seconds
+
+
 @api_bp.route("/get_uncalibrated_count", methods=["GET"])
 def get_uncalibrated_count():
     cfg = get_config()
@@ -1409,6 +1414,13 @@ def get_uncalibrated_count():
     if is_ensemble and job_id:
         progress_data = get_ensemble_progress_from_logs(job_id, cfg)
         return jsonify(progress_data)
+
+    # Return cached result if fresh enough
+    cache_key = (basepath_idx, type_name)
+    now = time.time()
+    cached = _uncalibrated_count_cache.get(cache_key)
+    if cached and (now - cached["time"]) < _UNCALIBRATED_COUNT_CACHE_TTL:
+        return jsonify(cached["result"])
 
     base_paths = cfg.base_paths
     base = base_paths[basepath_idx]
@@ -1428,6 +1440,7 @@ def get_uncalibrated_count():
 
     # Count files for each camera and collect all available files
     all_files = []
+    min_mtime = now - 5  # Skip files younger than 5 seconds to avoid truncated reads
     for camera_num in camera_numbers:
         paths = get_data_paths(
             base,
@@ -1442,7 +1455,9 @@ def get_uncalibrated_count():
             [
                 p.name
                 for p in sorted(folder_uncal.iterdir())
-                if p.is_file() and p.name in expected_names
+                if p.is_file()
+                and p.name in expected_names
+                and p.stat().st_mtime < min_mtime
             ]
             if folder_uncal.exists() and folder_uncal.is_dir()
             else []
@@ -1461,14 +1476,19 @@ def get_uncalibrated_count():
     # Calculate overall progress across all cameras
     percent = int((total_found_files / total_expected_files) * 100) if total_expected_files else 0
 
-    return jsonify({
+    result = {
         "count": total_found_files,
         "percent": percent,
         "total_expected": total_expected_files,
         "camera_progress": camera_progress,
         "cameras": camera_numbers,
         "files": all_files,
-    })
+    }
+
+    # Cache the result
+    _uncalibrated_count_cache[cache_key] = {"time": now, "result": result}
+
+    return jsonify(result)
 
 
 @api_bp.route("/check_output_exists", methods=["GET"])
