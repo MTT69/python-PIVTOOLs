@@ -50,8 +50,7 @@ IMAGE_PRESETS = {
     "4mp": {
         "path": (
             r"C:\Users\mtt1e23\OneDrive - University of Southampton\Documents"
-            r"\#current_processing\query_JHTDB\download_from_jhtdb"
-            r"\bottom_channel\4000_images_channel\planar_images"
+            r"\#current_processing\4000_images_channel\planar_images"
         ),
         "shape": [2048, 2048],
         "label": "4 MP (2048x2048)",
@@ -157,10 +156,8 @@ def make_config(
 # ---------------------------------------------------------------------------
 PC_SUB_SECTIONS = [
     "pc_gaussian_smooth",
-    "pc_dense_remap",
-    "pc_mesh_compute",
-    "pc_predictor_remap",
-    "pc_image_warp",
+    "pc_dense_and_predictor_remap",
+    "pc_mesh_and_image_warp",
 ]
 
 SECTION_ORDER = [

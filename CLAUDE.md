@@ -989,7 +989,7 @@ Standalone PIV profiling script that bypasses Dask entirely. Loads real images f
 
 **9 timed sections in `correlate_batch`:** `predictor_corrector`, `set_lib_args`, `bulkxcorr2d`, `post_processing`, `outlier_detection`, `secondary_peaks`, `infilling`, `padding_stacking`, `result_construction`
 
-**5 sub-timings in `_predictor_corrector_batch` (pass > 0):** `pc_gaussian_smooth`, `pc_dense_remap`, `pc_mesh_compute`, `pc_predictor_remap`, `pc_image_warp`
+**3 sub-timings in `_predictor_corrector_batch` (pass > 0):** `pc_gaussian_smooth`, `pc_dense_and_predictor_remap`, `pc_mesh_and_image_warp`
 
 **Usage:**
 ```

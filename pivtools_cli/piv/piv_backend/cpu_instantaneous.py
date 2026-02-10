@@ -17,7 +17,7 @@ from scipy.ndimage import gaussian_filter
 from scipy.signal import convolve2d
 
 from contextlib import contextmanager
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from pivtools_core.config import Config
 from pivtools_core.window_utils import compute_window_centers
 from pivtools_cli.piv.piv_backend.base import CrossCorrelator
@@ -118,6 +118,17 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         # Section-level profiling (disabled by default)
         self.profiling_enabled = False
         self.profile_data = {}  # {pass_idx: {section_name: elapsed_seconds}}
+
+        # Disable OpenCV's internal threading — we manage parallelism ourselves
+        # via the thread pool below. Without this, each cv2.remap spawns its own
+        # threads, causing N_pool x N_opencv_threads core contention.
+        cv2.setNumThreads(1)
+
+        # Reusable thread pool for GIL-releasing operations (cv2.remap, scipy
+        # gaussian_filter). Sized to omp_threads — safe because the pool is idle
+        # while bulkxcorr2d runs (it uses OpenMP threads internally) and vice versa.
+        self._n_threads = max(1, int(config.omp_threads))
+        self._pool = ThreadPoolExecutor(max_workers=self._n_threads)
 
     def _register_fftw_cleanup(self) -> None:
         """Register FFTW cleanup to run at interpreter exit.
@@ -668,79 +679,73 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             truncate = (self.ksize_filt[pass_idx][0] - 1) / (2 * sigma)
 
             with self._profile_section(pass_idx, "pc_gaussian_smooth"):
-                with ThreadPoolExecutor(max_workers=int(config.omp_threads)) as ex:
-                    futures = [
-                        ex.submit(self._smooth_one_delta_old, i, sigma, truncate)
-                        for i in range(N)
-                    ]
-                    for f in as_completed(futures):
-                        _ = f.result()
+                futures = [
+                    self._pool.submit(self._smooth_one_delta_old, i, sigma, truncate)
+                    for i in range(N)
+                ]
+                for f in futures:
+                    f.result()
 
-            with self._profile_section(pass_idx, "pc_dense_remap"):
+            with self._profile_section(pass_idx, "pc_dense_and_predictor_remap"):
                 delta_ab_dense = np.zeros((N, H, W, 2), dtype=np.float32)
                 map_x_2d, map_y_2d = self.cached_dense_maps[pass_idx]
                 if map_x_2d is None or map_y_2d is None:
                     raise ValueError(
                         f"Dense interpolation maps missing for pass {pass_idx}"
                     )
-                for i in range(N):
-                    for d in range(2):
-                        delta_ab_dense[i, ..., d] = cv2.remap(
-                            self.delta_ab_old[i, ..., d],
-                            map_x_2d,
-                            map_y_2d,
-                            interp_flag,
-                            borderMode=cv2.BORDER_CONSTANT,
-                            borderValue=0,
-                        ).astype(np.float32)
-
-            with self._profile_section(pass_idx, "pc_mesh_compute"):
-                im_mesh_base = self.im_mesh.astype(np.float32)
-                im_mesh_base_batched = im_mesh_base[None, ...]  # (1,H,W,2)
-                im_mesh_A = im_mesh_base_batched - 0.5 * delta_ab_dense  # (N,H,W,2)
-                im_mesh_B = im_mesh_base_batched + 0.5 * delta_ab_dense  # (N,H,W,2)
-
-            with self._profile_section(pass_idx, "pc_predictor_remap"):
                 map_x, map_y = self.cached_predictor_maps[pass_idx]
                 if map_x is None or map_y is None:
                     raise ValueError(
                         f"Predictor interpolation maps missing for pass {pass_idx}"
                     )
+
+                def _remap_dense(i, d):
+                    delta_ab_dense[i, ..., d] = cv2.remap(
+                        self.delta_ab_old[i, ..., d],
+                        map_x_2d, map_y_2d, interp_flag,
+                        borderMode=cv2.BORDER_CONSTANT, borderValue=0,
+                    ).astype(np.float32)
+
+                def _remap_predictor(i, d):
+                    self.delta_ab_pred[i, ..., d] = cv2.remap(
+                        self.delta_ab_old[i, ..., d],
+                        map_x, map_y, interp_flag,
+                        borderMode=cv2.BORDER_CONSTANT, borderValue=0.0,
+                    ).astype(np.float32)
+
+                futures = []
                 for i in range(N):
                     for d in range(2):
-                        self.delta_ab_pred[i, ..., d] = cv2.remap(
-                            self.delta_ab_old[i, ..., d],
-                            map_x,
-                            map_y,
-                            interp_flag,
-                            borderMode=cv2.BORDER_CONSTANT,
-                            borderValue=0.0,
-                        ).astype(np.float32)
+                        futures.append(self._pool.submit(_remap_dense, i, d))
+                        futures.append(self._pool.submit(_remap_predictor, i, d))
+                for f in futures:
+                    f.result()
 
-            with self._profile_section(pass_idx, "pc_image_warp"):
+            with self._profile_section(pass_idx, "pc_mesh_and_image_warp"):
                 image_a_prime_batch = np.zeros_like(images_a, dtype=np.float32)
                 image_b_prime_batch = np.zeros_like(images_b, dtype=np.float32)
-                for i in range(N):
-                    map_x_A = im_mesh_A[i, ..., 1]
-                    map_y_A = im_mesh_A[i, ..., 0]
-                    map_x_B = im_mesh_B[i, ..., 1]
-                    map_y_B = im_mesh_B[i, ..., 0]
+                im_mesh_f32 = self.im_mesh  # already float32 from correlate_batch
+
+                def _warp_pair(i):
+                    half_delta = 0.5 * delta_ab_dense[i]  # (H, W, 2)
+                    map_A = im_mesh_f32 - half_delta
+                    map_B = im_mesh_f32 + half_delta
                     image_a_prime_batch[i] = cv2.remap(
                         images_a[i].astype(np.float32),
-                        map_x_A.astype(np.float32),
-                        map_y_A.astype(np.float32),
+                        map_A[..., 1], map_A[..., 0],
                         cv2.INTER_CUBIC,
-                        borderMode=cv2.BORDER_CONSTANT,
-                        borderValue=0,
+                        borderMode=cv2.BORDER_CONSTANT, borderValue=0,
                     )
                     image_b_prime_batch[i] = cv2.remap(
                         images_b[i].astype(np.float32),
-                        map_x_B.astype(np.float32),
-                        map_y_B.astype(np.float32),
+                        map_B[..., 1], map_B[..., 0],
                         cv2.INTER_CUBIC,
-                        borderMode=cv2.BORDER_CONSTANT,
-                        borderValue=0,
+                        borderMode=cv2.BORDER_CONSTANT, borderValue=0,
                     )
+
+                futures = [self._pool.submit(_warp_pair, i) for i in range(N)]
+                for f in futures:
+                    f.result()
             return image_a_prime_batch, image_b_prime_batch, self.delta_ab_pred
 
     def _smooth_one_delta_old(self, i, sigma, truncate):

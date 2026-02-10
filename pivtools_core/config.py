@@ -1962,30 +1962,6 @@ video:
         return self.data.get("processing", {}).get("always_batch", True)
 
     @property
-    def auto_batch_size(self):
-        """
-        Auto-determine batch size based on filters.
-
-        Returns optimal batch size:
-        - Temporal filters (POD/time): 30-50 for temporal coherence
-        - Spatial filters only: 10-20 for lower latency
-        - No filters: 5-10 for minimal overhead
-
-        Returns
-        -------
-        int
-            Optimal batch size for current configuration
-        """
-        from pivtools_cli.preprocessing.preprocess import has_batch_filters
-
-        if has_batch_filters(self):
-            # POD/time need larger batches
-            return min(50, self.num_frame_pairs)
-        else:
-            # Spatial or no filters: smaller batches
-            return min(20, self.num_frame_pairs)
-
-    @property
     def peak_finder(self):
         """Return peak finder method (converted to numeric code)."""
         peak_finder = self.data.get("instantaneous_piv", {}).get("peak_finder", "gauss3").lower()
