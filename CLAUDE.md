@@ -1000,6 +1000,13 @@ python scripts/profile_piv.py 4mp --no-outlier       # Disable outlier detection
 python scripts/profile_piv.py 4mp --windows 64,32    # Custom pass sizes
 ```
 
+**Thread parallelism in correlators:**
+
+Both `cpu_instantaneous.py` and `cpu_ensemble.py` use `cv2.setNumThreads(1)` + class-level `ThreadPoolExecutor(omp_threads)` for thread-parallel `cv2.remap` loops. The pool is idle during C library calls (OpenMP) and vice versa — no contention within a worker.
+
+- **Instantaneous:** Gaussian smoothing, fused dense+predictor remap, and fused mesh+warp all use `self._pool`. Per-image mesh computed inside each `_warp_pair` thread (avoids large `(N,H,W,2)` allocations).
+- **Ensemble:** `_get_image_prime_batch()` parallelizes the `for n in range(N)` cv2.remap loop via `self._pool`. Benefits all 3 callers: `correlate_batch_for_accumulation`, `compute_warp_sums_only`, `correlate_mean_subtracted_batch`. Mesh is NOT per-image (single predictor field → single mesh for all images), so no fusing opportunity.
+
 ---
 
 ### Processing Config Keys

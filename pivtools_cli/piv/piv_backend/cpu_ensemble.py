@@ -13,6 +13,7 @@ import ctypes
 import logging
 import os
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional
 import matplotlib.pyplot as plt
 import cv2
@@ -178,6 +179,17 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 f"Pre-allocated correlation buffers for pass {pass_idx}: "
                 f"{plane_size * 4 * 3 / 1024 / 1024:.1f} MB"
             )
+
+        # Disable OpenCV's internal threading — we manage parallelism ourselves
+        # via the thread pool below. Without this, each cv2.remap spawns its own
+        # threads, causing N_pool × N_opencv contention.
+        cv2.setNumThreads(1)
+
+        # Reusable thread pool for GIL-releasing operations (cv2.remap).
+        # Sized to omp_threads — safe because the pool is idle while
+        # bulkxcorr2d_accumulate runs (OpenMP) and vice versa.
+        self._n_threads = max(1, int(config.omp_threads))
+        self._pool = ThreadPoolExecutor(max_workers=self._n_threads)
 
     @classmethod
     def _load_libraries(cls):
@@ -1119,23 +1131,21 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         interp_method = getattr(self.config, 'ensemble_image_warp_interpolation', 'cubic')
         interp_flag = self.INTERP_FLAGS.get(interp_method, cv2.INTER_CUBIC)
 
-        for n in range(N):
+        def _warp_pair(n):
             out_a[n] = cv2.remap(
-                images_a[n],
-                map_A_x,
-                map_A_y,
+                images_a[n], map_A_x, map_A_y,
                 interpolation=interp_flag,
-                borderMode=cv2.BORDER_CONSTANT,
-                borderValue=0,
+                borderMode=cv2.BORDER_CONSTANT, borderValue=0,
             )
             out_b[n] = cv2.remap(
-                images_b[n],
-                map_B_x,
-                map_B_y,
+                images_b[n], map_B_x, map_B_y,
                 interpolation=interp_flag,
-                borderMode=cv2.BORDER_CONSTANT,
-                borderValue=0,
+                borderMode=cv2.BORDER_CONSTANT, borderValue=0,
             )
+
+        futures = [self._pool.submit(_warp_pair, n) for n in range(N)]
+        for f in futures:
+            f.result()
 
         return out_a, out_b
     
