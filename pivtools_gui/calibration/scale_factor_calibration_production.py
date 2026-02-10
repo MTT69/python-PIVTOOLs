@@ -351,7 +351,8 @@ class ScaleFactorCalibrator:
                 if vector_file_uncal.exists():
                     vector_files.append((run, vector_file_uncal, vector_file_cal))
 
-        total_files = (1 if coords_exists else 0) + len(vector_files)
+        # Progress tracks only vector files (not coordinates)
+        total_files = len(vector_files)
 
         result = {
             "camera": camera_num,
@@ -370,30 +371,15 @@ class ScaleFactorCalibrator:
             loguru_logger.warning(result["error"])
             return result
 
-        processed = 0
-
-        # Process coordinates
+        # Process coordinates first (not tracked in progress)
         if coords_exists:
             success = self._process_coordinates(coords_path_uncal, coords_path_cal)
             result["coords_processed"] = success
-            processed += 1
-            if success:
-                result["successful_files"] += 1
-            else:
+            if not success:
                 result["failed_files"] += 1
-            result["processed_files"] = processed
-
-            if progress_callback:
-                progress_callback(
-                    {
-                        "camera": camera_num,
-                        "processed_files": processed,
-                        "total_files": total_files,
-                        "progress": int((processed / total_files) * 100),
-                    }
-                )
 
         # Process vector files in parallel
+        processed = 0
         if vector_files:
             vector_args = [
                 (run, uncal, cal, self.px_per_mm, self.dt)

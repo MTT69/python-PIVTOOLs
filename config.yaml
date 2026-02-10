@@ -1,8 +1,8 @@
 paths:
   base_paths:
-  - C:\Users\mtt1e23\Downloads\testwithkwong
+  - C:\Users\mtt1e23\Downloads\SESA6070\SampleImages\processed
   source_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images
+  - C:\Users\mtt1e23\Downloads\SESA6070\SampleImages
   active_paths:
   - 0
   camera_numbers:
@@ -10,10 +10,10 @@ paths:
   camera_count: 1
   camera_subfolders: []
 images:
-  num_images: 100
+  num_images: 40
   image_format:
-  - B%05d_A.tif
-  - B%05d_B.tif
+  - IMG%05dA.tif
+  - IMG%05dB.tif
   vector_format:
   - '%05d.mat'
   dtype: float32
@@ -23,7 +23,7 @@ images:
   frame_stride: 0
   pair_stride: 1
   pairing_preset: ab_format
-  num_frame_pairs: 100
+  num_frame_pairs: 40
 batches:
   size: 10
 logging:
@@ -34,8 +34,8 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 4
-  dask_workers_per_node: 8
+  omp_threads: 5
+  dask_workers_per_node: 4
   dask_memory_limit: 8GB
   always_batch: true
   instantaneous: true
@@ -173,7 +173,7 @@ ensemble_piv:
   resume_from_pass: 0
   window_type: square
 calibration:
-  image_format: planar_calibration_plate_%02d.tif
+  image_format: IMG%05dA.tif
   num_images: 1
   image_type: standard
   zero_based_indexing: false
@@ -189,7 +189,7 @@ calibration:
   active: scale_factor
   piv_type: instantaneous
   scale_factor:
-    dt: 5.6e-05
+    dt: 0.000116
     px_per_mm: 21.75
     source_path_idx: 0
   dotboard:
@@ -266,8 +266,7 @@ calibration:
     min_corners: 6
     dt: 0.0057553
   calibration_sources:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images\calibration_boards
-    _all
+  - C:\Users\mtt1e23\Downloads\SESA6070\SampleImages
   global_coordinates:
     enabled: true
     datum_camera: 1
@@ -347,12 +346,13 @@ calibration:
       - 3019.441735684318
       frame_a: 1
       frame_b: 1
-filters: []
+filters:
+- type: time
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
-  mode: rectangular
+  mode: file
   rectangular:
     top: 0
     bottom: 250
