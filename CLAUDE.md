@@ -55,7 +55,7 @@ Config is stored as config.yaml (single source of truth), loaded via Config clas
 | Vector viewing | `plotting/app/plotting_views.py` | `useVectorViewer` | `VectorViewer` |
 | Transforms (GUI) | `plotting/app/transform_views.py` | (in `useVectorViewer`) | (in `VectorViewer`) |
 | Transforms (CLI) | `transforms/transform_production.py` | N/A | N/A |
-| Vector merging | `vector_merging/app/views.py` | `useVectorMerging` | (in `VectorViewer`) |
+| Vector merging | `vector_merging/app/views.py` | (inline in `VectorViewer.tsx`) | (in `VectorViewer`) |
 | Statistics | `vector_statistics/app/views.py` | `useStatisticsCalculation` | (in `VectorViewer`) |
 | Video maker | `video_maker/app/views.py` | `useVideoMaker` | `VideoMaker` |
 | Instantaneous PIV config | - | `useInstantaneousPivConfig` | `InstantaneousPIV` |
@@ -466,10 +466,13 @@ GET  /get_uncalibrated_image   ?camera=&frame=&base_path_idx=&type_name=
 **Routes (under `/backend/`):**
 ```
 GET  /merge_vectors/constraints     -> allowed endpoints, stereo_blocked
-POST /merge_vectors/merge_one       {frame_idx}
-POST /merge_vectors/merge_all
+POST /merge_vectors/merge_one       {frame_idx, cameras?, type_name?}
+POST /merge_vectors/merge_all       {base_path_idx?, type_name?, cameras?}
+POST /merge_vectors/validate        {cameras?, type_name?}
 GET  /merge_vectors/status/<job_id>
 ```
+
+All three POST routes accept `cameras` (list of ints) and `type_name` from request body, falling back to config. Cameras must be a continuous/adjacent range (e.g., [1,2,3] not [1,3]). Supports both instantaneous and ensemble type_name.
 
 **`vector_merger.py`:**
 ```python
@@ -619,12 +622,13 @@ useVectorViewer({backendUrl, config}) -> {
 **DataSourceType enum:**
 `"calibrated_instantaneous"` | `"uncalibrated_instantaneous"` | `"calibrated_ensemble"` | `"uncalibrated_ensemble"` | `"merged_instantaneous"` | `"merged_ensemble"` | `"stereo_instantaneous"` | `"stereo_ensemble"` | `"statistics"` | `"merged_statistics"` | `"stereo_statistics"`
 
-#### `useVectorMerging.ts`
+#### Vector Merging (inline in `VectorViewer.tsx`)
 ```typescript
-useVectorMerging(config) -> {
-    mergeOne, mergeAll, jobStatus, constraints,
-}
+// Inline hook: useVectorMerging(backendUrl, basePathIdx, cameraOptions, maxFrameCount, config, dataSource)
+// Derives effectiveTypeName from dataSource (avoids async config race)
+// Sends cameras + type_name in request body to backend
 // Calls: POST /backend/merge_vectors/merge_one, /merge_all, GET /merge_vectors/status/*, /constraints
+// Note: useVectorMerging.ts standalone file has been deleted (was dead code)
 ```
 
 #### `useStatisticsCalculation.tsx`

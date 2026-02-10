@@ -515,11 +515,12 @@ class VectorMerger:
         for cam_idx in camera_data_dict.keys():
             total_weight += camera_weights[cam_idx]
 
-        for cam_idx in camera_data_dict.keys():
-            valid_total = total_weight > 0
-            camera_weights[cam_idx] = np.where(
-                valid_total, camera_weights[cam_idx] / total_weight, 0
-            )
+        with np.errstate(invalid="ignore", divide="ignore"):
+            for cam_idx in camera_data_dict.keys():
+                valid_total = total_weight > 0
+                camera_weights[cam_idx] = np.where(
+                    valid_total, camera_weights[cam_idx] / total_weight, 0
+                )
 
         # Create merged fields by weighted sum
         logger.debug("Blending cameras...")
@@ -1233,7 +1234,7 @@ class VectorMerger:
                 "error": "No valid runs found in vector files",
             }
 
-        logger.info(
+        logger.debug(
             f"Found {len(valid_runs)} valid runs: {valid_runs} (total: {total_runs})"
         )
 
@@ -1252,7 +1253,7 @@ class VectorMerger:
 
         # Create output directory
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Output directory: {self.output_dir}")
+        logger.debug(f"Output directory: {self.output_dir}")
 
         # Limit workers
         max_workers = min(os.cpu_count() or 4, max_workers, 8)
@@ -1260,7 +1261,7 @@ class VectorMerger:
         # Pre-compute camera paths and coordinates ONCE (performance optimization)
         # This avoids calling get_data_paths() and load_coords_from_directory()
         # for every frame in every worker process
-        logger.info("Pre-computing camera paths and loading coordinates...")
+        logger.debug("Pre-computing camera paths and loading coordinates...")
         camera_paths = {}
         for camera in self.cameras:
             paths = get_data_paths(

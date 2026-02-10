@@ -5,7 +5,8 @@ Thin route handlers that delegate to VectorMerger class.
 Provides endpoints for merging vector fields from multiple cameras
 with progress tracking and multiprocessing support.
 
-Simplified: Merging always uses all cameras from config.camera_numbers.
+Accepts cameras and type_name from request body; falls back to config.
+Cameras must be a continuous range (adjacent only) for valid overlap.
 """
 
 import threading
@@ -60,11 +61,11 @@ def merge_one_frame():
 
     Request JSON:
         frame_idx: int - Frame number to merge (default: 1)
+        cameras: list[int] - Cameras to merge (optional, falls back to config)
+        type_name: str - Vector type (optional, falls back to config)
 
-    All other parameters read from config.yaml merging block:
+    Other parameters read from config.yaml merging block:
         - base_path_idx: Which base_path to use
-        - cameras: Camera numbers to merge
-        - type_name: Vector type (instantaneous, ensemble, etc.)
 
     Returns:
         JSON with status, frame, runs_merged, message
@@ -74,9 +75,18 @@ def merge_one_frame():
 
     # All config from config.yaml
     base_path_idx = cfg.merging_base_path_idx
-    # Always use all cameras from config.camera_numbers
-    cameras = [camera_number(c) for c in cfg.camera_numbers]
-    type_name = cfg.merging_type_name
+    type_name = data.get("type_name", cfg.merging_type_name)
+
+    # Read cameras from request body, fall back to config
+    requested_cameras = data.get("cameras")
+    if requested_cameras and len(requested_cameras) >= 2:
+        cameras = sorted([camera_number(c) for c in requested_cameras])
+        # Validate continuous range (adjacent cameras only)
+        for i in range(1, len(cameras)):
+            if cameras[i] != cameras[i - 1] + 1:
+                return jsonify({"error": "Cameras must be a continuous range (e.g., 1,2,3 not 1,3)"}), 400
+    else:
+        cameras = [camera_number(c) for c in cfg.camera_numbers]
 
     # Only frame_idx accepted from request (for single frame testing)
     frame_idx = int(data.get("frame_idx", 1))
@@ -99,7 +109,7 @@ def merge_one_frame():
         if not valid_runs:
             return jsonify({"error": "No valid runs found in vector files"}), 400
 
-        logger.info(
+        logger.debug(
             f"Found {len(valid_runs)} valid runs: {valid_runs} (total: {total_runs})"
         )
 
@@ -134,11 +144,10 @@ def merge_all_frames():
     """
     Start vector merging job for all frames with multiprocessing.
 
-    Simplified API:
+    Request JSON:
         base_path_idx: int - Single path index (default: from config)
         type_name: str - Vector type (default: from config)
-
-    Always merges all cameras from config.camera_numbers.
+        cameras: list[int] - Cameras to merge (optional, falls back to config)
 
     Returns:
         JSON with job_id, status, message
@@ -160,8 +169,16 @@ def merge_all_frames():
     base_path_idx = int(data.get("base_path_idx", cfg.merging_base_path_idx))
     type_name = data.get("type_name", cfg.merging_type_name)
 
-    # Always use all cameras from config.camera_numbers
-    cameras = [camera_number(c) for c in cfg.camera_numbers]
+    # Read cameras from request body, fall back to config
+    requested_cameras = data.get("cameras")
+    if requested_cameras and len(requested_cameras) >= 2:
+        cameras = sorted([camera_number(c) for c in requested_cameras])
+        # Validate continuous range (adjacent cameras only)
+        for i in range(1, len(cameras)):
+            if cameras[i] != cameras[i - 1] + 1:
+                return jsonify({"error": "Cameras must be a continuous range (e.g., 1,2,3 not 1,3)"}), 400
+    else:
+        cameras = [camera_number(c) for c in cfg.camera_numbers]
 
     # Need at least 2 cameras for merging
     if len(cameras) < 2:
@@ -259,14 +276,17 @@ def merge_validate():
     """
     Validate that vector data exists for all cameras before merging.
 
-    All parameters read from config.yaml merging block:
+    Request JSON (optional):
+        cameras: list[int] - Cameras to validate (falls back to config)
+        type_name: str - Vector type (falls back to config)
+
+    Other parameters read from config.yaml merging block:
         - base_path_idx: Which base_path to use
-        - cameras: Camera numbers to check
-        - type_name: Vector type (instantaneous, ensemble, etc.)
 
     Returns:
         JSON with valid, cameras_found, valid_runs, total_runs, num_frame_pairs
     """
+    data = request.get_json() or {}
     cfg = get_config()
 
     # Check stereo constraint first
@@ -282,9 +302,21 @@ def merge_validate():
 
     # All config from config.yaml
     base_path_idx = cfg.merging_base_path_idx
-    # Always use all cameras from config.camera_numbers
-    cameras = [camera_number(c) for c in cfg.camera_numbers]
-    type_name = cfg.merging_type_name
+    type_name = data.get("type_name", cfg.merging_type_name)
+
+    # Read cameras from request body, fall back to config
+    requested_cameras = data.get("cameras")
+    if requested_cameras and len(requested_cameras) >= 2:
+        cameras = sorted([camera_number(c) for c in requested_cameras])
+        # Validate continuous range (adjacent cameras only)
+        for i in range(1, len(cameras)):
+            if cameras[i] != cameras[i - 1] + 1:
+                return jsonify({
+                    "valid": False,
+                    "error": "Cameras must be a continuous range (e.g., 1,2,3 not 1,3)",
+                }), 400
+    else:
+        cameras = [camera_number(c) for c in cfg.camera_numbers]
 
     try:
         base_dir = Path(cfg.base_paths[base_path_idx])
