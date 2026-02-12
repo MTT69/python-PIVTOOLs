@@ -1,8 +1,8 @@
 paths:
   base_paths:
-  - C:\Users\mtt1e23\Downloads\SESA6070\results
+  - C:\Users\mtt1e23\Downloads\conntest
   source_paths:
-  - C:\Users\mtt1e23\Downloads\SESA6070\SampleImages
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images
   active_paths:
   - 0
   camera_numbers:
@@ -10,10 +10,10 @@ paths:
   camera_count: 1
   camera_subfolders: []
 images:
-  num_images: 40
+  num_images: 100
   image_format:
-  - IMG%05dA.tif
-  - IMG%05dB.tif
+  - B%05d_A.tif
+  - B%05d_B.tif
   vector_format:
   - '%05d.mat'
   dtype: float32
@@ -23,7 +23,7 @@ images:
   frame_stride: 0
   pair_stride: 1
   pairing_preset: ab_format
-  num_frame_pairs: 40
+  num_frame_pairs: 100
 batches:
   size: 10
 logging:
@@ -34,8 +34,8 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 5
-  dask_workers_per_node: 4
+  omp_threads: 2
+  dask_workers_per_node: 10
   dask_memory_limit: 8GB
   always_batch: true
   instantaneous: true
