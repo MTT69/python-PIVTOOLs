@@ -271,7 +271,7 @@ class SinglePassAccumulator:
         A_mean_stack = np.ascontiguousarray(A_mean[np.newaxis, :, :].astype(np.float32))
         B_mean_stack = np.ascontiguousarray(B_mean[np.newaxis, :, :].astype(np.float32))
 
-        # Cross-correlation AB background
+        # Cross-correlation AB background (always raw — no per-frame normalization for mean images)
         correlator.lib.bulkxcorr2d_accumulate(
             A_mean_stack,
             B_mean_stack,
@@ -285,6 +285,7 @@ class SinglePassAccumulator:
             correlator.win_weights_B[pass_idx],
             win_size_arr,   # FFT computation size
             fit_size_arr,   # Output size (central extraction)
+            0,              # bNormalize = 0 (raw)
             correl_AB_bg,
         )
 
@@ -303,6 +304,7 @@ class SinglePassAccumulator:
             correlator.win_weights_B[pass_idx],
             win_size_arr,
             fit_size_arr,
+            0,              # bNormalize = 0 (raw)
             correl_AA_bg,
         )
         logging.debug(f"Pass {pass_idx}: AA_bg after bulkxcorr2d_accumulate: [{correl_AA_bg.min():.3e}, {correl_AA_bg.max():.3e}]")
@@ -321,6 +323,7 @@ class SinglePassAccumulator:
             correlator.win_weights_B[pass_idx],
             win_size_arr,
             fit_size_arr,
+            0,              # bNormalize = 0 (raw)
             correl_BB_bg,
         )
         logging.debug(f"Pass {pass_idx}: BB_bg after bulkxcorr2d_accumulate: [{correl_BB_bg.min():.3e}, {correl_BB_bg.max():.3e}]")
@@ -373,9 +376,10 @@ class SinglePassAccumulator:
 
         logging.info(f"Pass {pass_idx + 1}: Applying single-pass optimization")
 
-        # Check background subtraction method
+        # Check background subtraction method and per-frame normalization
         bg_method = getattr(self.config, 'ensemble_background_subtraction_method', 'correlation')
         skip_bg_subtraction = getattr(self.config, 'ensemble_skip_background_subtraction', False)
+        corr_norm = getattr(self.config, 'ensemble_correlation_normalization', 'none')
 
         # Step 1: Compute mean warped images (always needed for diagnostics/metadata)
         A_mean = pass_data["sum_warp_A"] / N
@@ -387,7 +391,17 @@ class SinglePassAccumulator:
         R_AB_raw = pass_data["sum_corr_AB"] / N
 
         # Step 3-4: Background subtraction depends on method
-        if bg_method == 'image':
+        if corr_norm == 'per_frame':
+            # Per-frame normalization: DC already removed per-frame in C code
+            # (mean subtracted and normalized by sqrt(var_A * var_B) before accumulation)
+            logging.info(f"Pass {pass_idx + 1}: Using per-frame correlation normalization (bg already removed)")
+            R_AA_ensemble = R_AA_raw
+            R_BB_ensemble = R_BB_raw
+            R_AB_ensemble = R_AB_raw
+            R_AA_bg = np.zeros_like(R_AA_raw)
+            R_BB_bg = np.zeros_like(R_BB_raw)
+            R_AB_bg = np.zeros_like(R_AB_raw)
+        elif bg_method == 'image':
             # IMAGE method: mean was subtracted BEFORE correlation
             # Correlation planes are already background-subtracted: R = <(A-Ā)⊗(B-B̄)>
             logging.info(f"Pass {pass_idx + 1}: Using 'image' background method (already subtracted)")
@@ -492,8 +506,9 @@ class SinglePassAccumulator:
         # AB uses weight_A (particle window) × weight_B (sum_window), so it scales with
         # particle_window × sum_window. The normalization by sqrt(AA*BB) over-corrects AB.
         # We need to scale AB up by sqrt(sum_window_area / particle_window_area) to compensate.
+        # Skip when per_frame: normalization already absorbed the area asymmetry.
         runtype = self.config.ensemble_type[pass_idx]
-        if runtype == 'single':
+        if runtype == 'single' and corr_norm != 'per_frame':
             sum_window = self.config.ensemble_sum_window
             particle_window = win_size
             sum_area = sum_window[0] * sum_window[1]

@@ -199,6 +199,7 @@ def _load_xcorr_library():
         np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWindowWeightB
         np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nWindowSize
         np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nFitWindowSize
+        ctypes.c_int,                                                      # bNormalize
         np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fCorrelPlane_Sum (output)
     ]
 
@@ -263,6 +264,7 @@ def accumulate_ensemble_correlation(
         weight, weight,
         win_size_arr,
         win_size_arr,  # nFitWindowSize == nWindowSize (no central extraction)
+        0,             # bNormalize = 0 (raw)
         corr_sum,
     )
 

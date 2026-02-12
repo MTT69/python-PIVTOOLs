@@ -207,6 +207,7 @@ unsigned char bulkxcorr2d_accumulate(
     const float *fWindowWeightA, const float *fWindowWeightB,
     const int *nWindowSize,
     const int *nFitWindowSize,  /* NEW: output size, NULL = use full nWindowSize */
+    int bNormalize,             /* 0=raw accumulation, 1=per-frame mean-sub + energy normalize */
     float *fCorrelPlane_Sum)
 {
     int nWindowsTotal = nWindows[0] * nWindows[1];
@@ -241,7 +242,7 @@ unsigned char bulkxcorr2d_accumulate(
         shared(fImageA_stack, fImageB_stack, fMask, nImageSize, N_images, \
                fWinCtrsX, fWinCtrsY, nWindows, fWindowWeightA, fWindowWeightB, \
                nWindowSize, fCorrelPlane_Sum, nPxPerWindow, nWindowsTotal, nImagePixels, \
-               out_h, out_w, nPxPerOutput, start_y, start_x) \
+               out_h, out_w, nPxPerOutput, start_y, start_x, bNormalize) \
         private(i, j, n, iWindowIdx, ii, jj) \
         reduction(|:uError)
     {
@@ -305,23 +306,46 @@ unsigned char bulkxcorr2d_accumulate(
                 fMeanA /= nPxPerWindow;
                 fMeanB /= nPxPerWindow;
 
-                /* For ensemble: compute energy but DON'T subtract mean */
-                /* (mean subtraction happens via background correlation in Python) */
-                float fEnergyA = 0.0f, fEnergyB = 0.0f;
-                for (i = 0; i < nPxPerWindow; ++i) {
-                    fEnergyA += fWindowA[i] * fWindowA[i];
-                    fEnergyB += fWindowB[i] * fWindowB[i];
+                float fVarA = 0.0f, fVarB = 0.0f;
+
+                if (bNormalize) {
+                    /* Per-frame normalization: subtract mean, compute variance */
+                    for (i = 0; i < nPxPerWindow; ++i) {
+                        fWindowA[i] -= fMeanA;
+                        fWindowB[i] -= fMeanB;
+                    }
+                    /* Variance of zero-mean signal = sum of squares */
+                    for (i = 0; i < nPxPerWindow; ++i) {
+                        fVarA += fWindowA[i] * fWindowA[i];
+                        fVarB += fWindowB[i] * fWindowB[i];
+                    }
                 }
 
                 /* Cross-correlation via FFT */
                 xcorr_preplanned(fWindowB, fWindowA, fCorrelPlane, &sCCPlan);
 
-                /* Accumulate only the central region to output */
-                for (i = 0; i < out_h; ++i) {
-                    for (j = 0; j < out_w; ++j) {
-                        int src_idx = (start_y + i) * nWindowSize[1] + (start_x + j);
-                        int dst_idx = i * out_w + j;
-                        out_ptr[dst_idx] += fCorrelPlane[src_idx];
+                if (bNormalize) {
+                    /* Normalize by sqrt(varA * varB) and accumulate */
+                    float fNorm = sqrtf(fVarA * fVarB);
+                    if (fNorm > 1e-12f) {
+                        float fInvNorm = 1.0f / fNorm;
+                        for (i = 0; i < out_h; ++i) {
+                            for (j = 0; j < out_w; ++j) {
+                                int src_idx = (start_y + i) * nWindowSize[1] + (start_x + j);
+                                int dst_idx = i * out_w + j;
+                                out_ptr[dst_idx] += fCorrelPlane[src_idx] * fInvNorm;
+                            }
+                        }
+                    }
+                    /* else: near-zero variance window — skip accumulation */
+                } else {
+                    /* Original raw accumulation (unchanged) */
+                    for (i = 0; i < out_h; ++i) {
+                        for (j = 0; j < out_w; ++j) {
+                            int src_idx = (start_y + i) * nWindowSize[1] + (start_x + j);
+                            int dst_idx = i * out_w + j;
+                            out_ptr[dst_idx] += fCorrelPlane[src_idx];
+                        }
                     }
                 }
             }

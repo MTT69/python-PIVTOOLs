@@ -419,6 +419,7 @@ ensemble_piv:
   - 16
   - 16
   resume_from_pass: 0
+  correlation_normalization: none
 calibration:
   image_format: calib%05d.tif
   num_images: 10
@@ -2439,6 +2440,20 @@ video:
                 f"Invalid ensemble_background_subtraction_method '{method}'. "
                 f"Must be one of {valid_methods}"
             )
+        return method
+
+    @property
+    def ensemble_correlation_normalization(self) -> str:
+        """Per-frame correlation normalization method for ensemble PIV.
+
+        'none': Raw accumulation with background subtraction (default).
+        'per_frame': Subtract per-frame mean and normalize by sqrt(var_A * var_B)
+                     before accumulating. Removes DC pedestal at source and
+                     equalizes frame contributions regardless of intensity.
+        """
+        method = self.data.get('ensemble_piv', {}).get('correlation_normalization', 'none')
+        if method not in ('none', 'per_frame'):
+            return 'none'
         return method
 
     @property

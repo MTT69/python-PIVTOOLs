@@ -1042,6 +1042,7 @@ Both `cpu_instantaneous.py` and `cpu_ensemble.py` use `cv2.setNumThreads(1)` + c
 | `background_subtraction_method` | `ensemble_background_subtraction_method` | `"correlation"` or `"image"` |
 | `gradient_correction` | `ensemble_gradient_correction` | Reynolds stress gradient correction |
 | `resume_from_pass` | `ensemble_resume_from_pass` | 1-based pass to resume (0=fresh start) |
+| `correlation_normalization` | `ensemble_correlation_normalization` | `"none"` (default) or `"per_frame"` — per-frame mean-sub + energy normalization |
 
 **Outlier detection / infilling** (parallel structure for instantaneous and ensemble):
 `outlier_detection.enabled`, `.methods` (list of `{type, threshold, epsilon}`), `infilling.mid_pass`, `.final_pass`

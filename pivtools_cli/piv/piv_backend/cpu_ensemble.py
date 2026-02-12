@@ -104,6 +104,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWindowWeightB
             np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nWindowSize (FFT computation)
             np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nFitWindowSize (output size)
+            ctypes.c_int,                                                      # bNormalize
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fCorrelPlane_Sum (output)
         ]
 
@@ -265,6 +266,8 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWindowWeightA
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWindowWeightB
             np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nWindowSize
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nFitWindowSize (output size)
+            ctypes.c_int,                                                      # bNormalize
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fCorrelPlane_Sum (output)
         ]
 
@@ -328,6 +331,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         mask: np.ndarray,
         pass_idx: int,
         correl_sum: np.ndarray,
+        normalize: bool = False,
     ) -> int:
         """
         Compute cross-correlation with internal accumulation (Option C).
@@ -388,6 +392,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             weight_b,
             win_size_arr,   # FFT computation size
             fit_size_arr,   # Output size (may be smaller for central extraction)
+            int(normalize),  # bNormalize: 0=raw, 1=per-frame mean-sub + energy normalize
             correl_sum,
         )
 
@@ -686,11 +691,14 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             else:
                 b_mask = np.zeros(total_windows, dtype=np.float32)
 
+            # Check if per-frame normalization is enabled
+            normalize = getattr(config, 'ensemble_correlation_normalization', 'none') == 'per_frame'
+
             # Cross-correlation AB (accumulates internally - no reshape/sum needed!)
             error_code_AB = self._run_correlation_accumulate(
                 images_a_prime, images_b_prime,
                 self.win_weights_A[pass_idx], self.win_weights_B[pass_idx],
-                b_mask, pass_idx, correl_AB_sum
+                b_mask, pass_idx, correl_AB_sum, normalize=normalize
             )
 
             # Auto-correlation AA - use full weights (weight_B) on both sides
@@ -700,7 +708,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             error_code_AA = self._run_correlation_accumulate(
                 images_a_prime, images_a_prime,
                 self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
-                b_mask, pass_idx, correl_AA_sum
+                b_mask, pass_idx, correl_AA_sum, normalize=normalize
             )
 
             # Auto-correlation BB
@@ -708,7 +716,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             error_code_BB = self._run_correlation_accumulate(
                 images_b_prime, images_b_prime,
                 self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
-                b_mask, pass_idx, correl_BB_sum
+                b_mask, pass_idx, correl_BB_sum, normalize=normalize
             )
 
             # Reshape to (windows, corr_h, corr_w) for downstream processing
@@ -985,11 +993,14 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         else:
             b_mask = np.zeros(total_windows, dtype=np.float32)
 
+        # Check if per-frame normalization is enabled
+        normalize = getattr(config, 'ensemble_correlation_normalization', 'none') == 'per_frame'
+
         # Cross-correlation AB (mean-subtracted)
         error_code_AB = self._run_correlation_accumulate(
             images_a_centered, images_b_centered,
             self.win_weights_A[pass_idx], self.win_weights_B[pass_idx],
-            b_mask, pass_idx, correl_AB_sum
+            b_mask, pass_idx, correl_AB_sum, normalize=normalize
         )
 
         # Auto-correlation AA (mean-subtracted) - use full weights (weight_B) on both sides
@@ -999,7 +1010,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         error_code_AA = self._run_correlation_accumulate(
             images_a_centered, images_a_centered,
             self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
-            b_mask, pass_idx, correl_AA_sum
+            b_mask, pass_idx, correl_AA_sum, normalize=normalize
         )
 
         # Auto-correlation BB (mean-subtracted)
@@ -1007,7 +1018,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         error_code_BB = self._run_correlation_accumulate(
             images_b_centered, images_b_centered,
             self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
-            b_mask, pass_idx, correl_BB_sum
+            b_mask, pass_idx, correl_BB_sum, normalize=normalize
         )
 
         # Reshape to (windows, corr_h, corr_w)

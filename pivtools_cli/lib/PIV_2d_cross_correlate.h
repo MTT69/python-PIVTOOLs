@@ -42,6 +42,7 @@ EXPORT unsigned char bulkxcorr2d_accumulate(
     const float *fWindowWeightB,     /* Taper weights for image B */
     const int *nWindowSize,          /* [corr_h, corr_w] - FFT computation size */
     const int *nFitWindowSize,       /* [out_h, out_w] - output size, NULL = use nWindowSize */
+    int bNormalize,                  /* 0=raw accumulation, 1=per-frame mean-sub + energy normalize */
     float *fCorrelPlane_Sum          /* Output: accumulated correlation planes */
 );
 
