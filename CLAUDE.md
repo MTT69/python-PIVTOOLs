@@ -716,6 +716,7 @@ Defines available image filter types and their parameter schemas for the UI.
 |------|-------|-----------|
 | Instantaneous | `python -m pivtools_core.instantaneous` → `main()` | CLI or `piv_runner.py` subprocess |
 | Ensemble | `python -m pivtools_core.ensemble` → `main()` | CLI or `piv_runner.py` subprocess |
+| Stereo Ensemble | `python -m pivtools_core.stereo_ensemble` → `main()` | CLI `stereo-ensemble` command |
 
 ### Instantaneous vs Ensemble
 
@@ -780,6 +781,37 @@ Defines available image filter types and their parameter schemas for the UI.
 ```
 
 **`PIVEnsemblePassResult`** (20+ fields): `ux_mat`, `uy_mat`, `UU_stress`, `VV_stress`, `UV_stress`, `peakheight`, `nan_reason`, `sig_AB_x/y/xy`, `sig_A_x/y/xy`, `c_A/B/AB`, `b_mask`, `pred_x/y`, `window_size`, `win_ctrs_x/y`
+
+### `pivtools_core/stereo_ensemble.py` — Stereo Ensemble PIV (CoC)
+
+**Goal:** Dask-distributed stereo ensemble PIV with Correlation-of-Correlations. Dewarps both cameras to common world plane, performs dual-camera ensemble correlation + per-frame CoC cross-correlation, extracts all 6 Reynolds stress components.
+
+| Function | Description |
+|----------|-------------|
+| `main()` | CLI entry. Validates config, starts cluster, iterates paths. |
+| `run_stereo_ensemble_piv` | Full pipeline for one camera pair: load both cameras → scatter → rechunk → filter → multi-pass sliding window → finalize → save. |
+| `process_stereo_pass_sliding_window` | Bounded sliding window with paired camera chunks (2 filter futures per chunk index). |
+| `_load_stereo_cameras` | Loads `stereo_model.mat`, builds `PinholeCamera` instances (cam1=reference R=I, cam2=relative R,t). |
+| `_compute_world_bounds` | Auto-computes (x_min, x_max, y_min, y_max) in mm from camera FOV intersection at Z=0. |
+| `_get_stereo_ensemble_output_path` | Returns `base_path/uncalibrated_piv/{N}/Stereo Cam{A}_Cam{B}/stereo_ensemble/`. |
+
+**Key modules:**
+- `cpu_stereo_ensemble.py` — `StereoEnsembleCorrelatorCPU`: Composition over `EnsembleCorrelatorCPU`. Dewarps images, per-camera C lib correlation, per-frame FFT CoC.
+- `stereo_ensemble_accumulator.py` — `StereoEnsembleAccumulator`: Dual-camera + CoC buffers. `finalize_pass()` → per-camera Gaussian fitting → 3D velocity → 6 stresses → outlier detection → infilling.
+- `stereo_ensemble_result.py` — `PIVStereoEnsemblePassResult`: ux/uy/uz, all 6 stresses (UU-WW, UV, UW, VW), per-camera displacements (d1/d2), CoC diagnostic (Sigma_12_xx).
+- `dask_pipeline.py` — `correlate_stereo_batch_and_accumulate()`, `reduce_stereo_ensemble_results()`: Chained per-worker accumulation with dual-camera + CoC keys.
+
+**Stereo batch result** (flows between workers):
+```python
+{"cam1_corr_AA_sum", "cam1_corr_BB_sum", "cam1_corr_AB_sum",
+ "cam1_warp_A_sum", "cam1_warp_B_sum",
+ "cam2_corr_AA_sum", ..., "cam2_warp_B_sum",
+ "coc_sum",  # (n_windows, coc_h, coc_w)
+ "n_images", "n_win_x", "n_win_y", ...}
+```
+
+**Config section:** `stereo_ensemble_piv` — all keys fall back to `ensemble_piv` if null.
+Key properties: `stereo_ensemble_camera_pair`, `stereo_ensemble_dewarp_output_size`, `stereo_ensemble_world_bounds`, `stereo_ensemble_self_cal_z/tilt_x/tilt_y`, `stereo_ensemble_window_sizes`, `stereo_ensemble_overlaps`, `stereo_ensemble_type`, `stereo_ensemble_num_passes`, `stereo_ensemble_resume_from_pass`, `stereo_ensemble_store_planes`, `stereo_ensemble_save_diagnostics`.
 
 ### K-Space Transfer Function Fitting [BETA]
 
@@ -967,6 +999,7 @@ Triggered on GitHub release or manual dispatch. Builds wheels for {ubuntu, macos
 | `init` | Create default `config.yaml` |
 | `instantaneous` | Run instantaneous PIV |
 | `ensemble` | Run ensemble PIV |
+| `stereo-ensemble` | Run stereo ensemble PIV with Correlation-of-Correlations (all 6 Reynolds stresses) |
 | `detect-planar` / `detect-charuco` | Detect calibration targets |
 | `detect-stereo-planar` / `detect-stereo-charuco` | Stereo calibration detection |
 | `apply-calibration` / `apply-stereo` | Apply calibration (px → m/s). `--align-coordinates` flag auto-applies global alignment. |

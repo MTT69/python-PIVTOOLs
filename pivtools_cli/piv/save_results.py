@@ -15,6 +15,9 @@ from pivtools_cli.piv.piv_result import (
     PIVResult, PIVPassResult,
     PIVEnsembleResult, PIVEnsemblePassResult,
 )
+from pivtools_cli.piv.stereo_ensemble_result import (
+    PIVStereoEnsembleResult, PIVStereoEnsemblePassResult,
+)
 from pivtools_cli.piv.gradient_correction import apply_gradient_correction_to_pass
 
 
@@ -1001,4 +1004,393 @@ def _struct_to_ensemble_pass_result(struct) -> PIVEnsemblePassResult:
         window_size=window_size,
         win_ctrs_x=get_array('win_ctrs_x'),
         win_ctrs_y=get_array('win_ctrs_y'),
+    )
+
+
+# =============================================================================
+# Stereo Ensemble PIV
+# =============================================================================
+
+
+def save_stereo_ensemble_result(
+    stereo_result: PIVStereoEnsembleResult,
+    output_path: Path,
+    runs_to_save: Optional[List[int]] = None,
+    filename: str = "stereo_ensemble_result.mat",
+) -> str:
+    """
+    Save a stereo ensemble PIV result to disk.
+
+    Parameters
+    ----------
+    stereo_result : PIVStereoEnsembleResult
+    output_path : Path
+    runs_to_save : list of int, optional
+        0-based pass indices to save. If None, save all.
+    filename : str
+
+    Returns
+    -------
+    str
+        Path to saved file.
+    """
+    output_path = Path(output_path)
+    output_path.mkdir(parents=True, exist_ok=True)
+    filepath = output_path / filename
+
+    if not stereo_result.passes:
+        logging.warning("PIVStereoEnsembleResult has no passes. Skipping save.")
+        return str(filepath)
+
+    mat_data = _create_stereo_ensemble_struct(stereo_result, runs_to_save)
+    scipy.io.savemat(
+        filepath, {"stereo_ensemble_result": mat_data},
+        oned_as="row", do_compression=True,
+    )
+    logging.info(f"Saved stereo ensemble result to {filepath}")
+    return str(filepath)
+
+
+def save_stereo_ensemble_coordinates(
+    config: Config,
+    output_path: Path,
+    win_ctrs_x_list: list,
+    win_ctrs_y_list: list,
+    mm_per_pixel: float,
+    world_bounds: tuple,
+    runs_to_save: Optional[List[int]] = None,
+) -> str:
+    """
+    Save coordinate grids for stereo ensemble PIV in world coordinates (mm).
+
+    Parameters
+    ----------
+    config : Config
+    output_path : Path
+    win_ctrs_x_list, win_ctrs_y_list : list of ndarray
+        Per-pass window center arrays in dewarped pixel coordinates.
+    mm_per_pixel : float
+    world_bounds : (x_min, x_max, y_min, y_max) in mm
+    runs_to_save : list of int, optional
+
+    Returns
+    -------
+    str
+        Path to saved coordinates file.
+    """
+    x_min, x_max, y_min, y_max = world_bounds
+    num_passes = config.stereo_ensemble_num_passes
+
+    if runs_to_save is None:
+        runs_to_save = list(range(num_passes))
+
+    dtype = [('x', object), ('y', object)]
+    coords_struct = np.empty((num_passes,), dtype=dtype)
+
+    for i in range(num_passes):
+        if i in runs_to_save and i < len(win_ctrs_x_list):
+            # Convert dewarped pixel coords to world coords (mm)
+            # pixel 0 maps to x_min, pixel W-1 maps to x_max
+            x_world = win_ctrs_x_list[i] * mm_per_pixel + x_min
+            y_world = win_ctrs_y_list[i] * mm_per_pixel + y_min
+
+            x_grid, y_grid = np.meshgrid(x_world, y_world, indexing='xy')
+            coords_struct['x'][i] = _convert_to_half_precision(x_grid, 'x')
+            coords_struct['y'][i] = _convert_to_half_precision(y_grid, 'y')
+        else:
+            coords_struct['x'][i] = np.array([], dtype=np.float16)
+            coords_struct['y'][i] = np.array([], dtype=np.float16)
+
+    output_path = Path(output_path)
+    output_path.mkdir(parents=True, exist_ok=True)
+    filepath = output_path / "stereo_coordinates.mat"
+    scipy.io.savemat(
+        filepath, {"coordinates": coords_struct},
+        oned_as="row", do_compression=True,
+    )
+    logging.info(f"Saved stereo ensemble coordinates to {filepath}")
+    return str(filepath)
+
+
+def _create_stereo_ensemble_struct(
+    stereo_result: PIVStereoEnsembleResult,
+    runs_to_save: Optional[List[int]] = None,
+) -> np.ndarray:
+    """
+    Create a MATLAB-compatible struct array for stereo ensemble results.
+
+    Includes 3D velocity (ux, uy, uz), all 6 Reynolds stresses,
+    per-camera dewarped displacements, CoC diagnostic, and geometry metadata.
+    """
+    n_passes = len(stereo_result.passes)
+    if runs_to_save is None:
+        runs_to_save = list(range(n_passes))
+
+    dtype = [
+        ('ux', object), ('uy', object), ('uz', object),
+        ('UU_stress', object), ('VV_stress', object), ('WW_stress', object),
+        ('UV_stress', object), ('UW_stress', object), ('VW_stress', object),
+        ('d1_x', object), ('d1_y', object),
+        ('d2_x', object), ('d2_y', object),
+        ('Sigma_12_xx', object),
+        ('peakheight', object), ('nan_reason', object),
+        ('b_mask', object),
+        ('win_ctrs_x', object), ('win_ctrs_y', object),
+        ('window_size', object),
+        ('pred_x', object), ('pred_y', object),
+        ('stereo_angle', object), ('mm_per_pixel', object),
+    ]
+
+    struct = np.empty((n_passes,), dtype=dtype)
+    empty = np.empty((0, 0), dtype=np.float64)
+
+    # Initialize all fields to empty
+    for i in range(n_passes):
+        for field_name, _ in dtype:
+            struct[field_name][i] = empty
+
+    for idx in range(n_passes):
+        if idx not in runs_to_save:
+            continue
+        pr = stereo_result.passes[idx]
+
+        # 3D velocity — negate uy for physical coords (same convention as standard ensemble)
+        if pr.ux_mat is not None:
+            struct['ux'][idx] = _convert_to_half_precision(pr.ux_mat, 'ux')
+        if pr.uy_mat is not None:
+            struct['uy'][idx] = _convert_to_half_precision(-pr.uy_mat, 'uy')
+        if pr.uz_mat is not None:
+            struct['uz'][idx] = _convert_to_half_precision(pr.uz_mat, 'uz')
+
+        # All 6 Reynolds stresses
+        # UV_stress negated (V negated: u'(-v') = -u'v')
+        for name in ['UU_stress', 'VV_stress', 'WW_stress', 'UW_stress']:
+            val = getattr(pr, name, None)
+            if val is not None:
+                struct[name][idx] = _convert_to_half_precision(val, name)
+        if pr.UV_stress is not None:
+            struct['UV_stress'][idx] = _convert_to_half_precision(
+                -pr.UV_stress, 'UV_stress'
+            )
+        if pr.VW_stress is not None:
+            struct['VW_stress'][idx] = _convert_to_half_precision(
+                -pr.VW_stress, 'VW_stress'
+            )
+
+        # Per-camera displacements
+        for name in ['d1_x', 'd1_y', 'd2_x', 'd2_y']:
+            val = getattr(pr, name, None)
+            if val is not None:
+                struct[name][idx] = _convert_to_half_precision(val, name)
+
+        # CoC diagnostic
+        if pr.Sigma_12_xx is not None:
+            struct['Sigma_12_xx'][idx] = _convert_to_half_precision(
+                pr.Sigma_12_xx, 'Sigma_12_xx'
+            )
+
+        # Peakheight, mask, nan_reason
+        if pr.peakheight is not None:
+            struct['peakheight'][idx] = _convert_to_half_precision(
+                pr.peakheight, 'peakheight'
+            )
+        if pr.nan_reason is not None:
+            struct['nan_reason'][idx] = pr.nan_reason
+        if pr.b_mask is not None:
+            struct['b_mask'][idx] = pr.b_mask.astype(bool)
+
+        # Window info
+        if pr.win_ctrs_x is not None:
+            struct['win_ctrs_x'][idx] = _convert_to_half_precision(
+                pr.win_ctrs_x, 'win_ctrs_x'
+            )
+        if pr.win_ctrs_y is not None:
+            struct['win_ctrs_y'][idx] = _convert_to_half_precision(
+                pr.win_ctrs_y, 'win_ctrs_y'
+            )
+        if pr.window_size is not None:
+            struct['window_size'][idx] = pr.window_size
+
+        # Predictor — negate y component for physical coords
+        if pr.pred_x is not None:
+            struct['pred_x'][idx] = _convert_to_half_precision(
+                pr.pred_x, 'pred_x'
+            )
+        if pr.pred_y is not None:
+            struct['pred_y'][idx] = _convert_to_half_precision(
+                -pr.pred_y, 'pred_y'
+            )
+
+        # Geometry metadata
+        if pr.stereo_angle is not None:
+            struct['stereo_angle'][idx] = np.float64(pr.stereo_angle)
+        if pr.mm_per_pixel is not None:
+            struct['mm_per_pixel'][idx] = np.float64(pr.mm_per_pixel)
+
+    return struct
+
+
+# =============================================================================
+# Load Function for Stereo Ensemble Resume from Pass
+# =============================================================================
+
+
+def load_stereo_ensemble_result(
+    file_path: Path,
+    passes_to_load: Optional[List[int]] = None,
+) -> Tuple[PIVStereoEnsembleResult, int]:
+    """
+    Load stereo ensemble result from .mat file for resume functionality.
+
+    Parameters
+    ----------
+    file_path : Path
+        Path to stereo_ensemble_result.mat file
+    passes_to_load : Optional[List[int]]
+        List of pass indices (0-based) to load. If None, load all passes.
+
+    Returns
+    -------
+    tuple
+        (PIVStereoEnsembleResult, n_passes_loaded)
+
+    Notes
+    -----
+    Sign conventions are reversed during load to match save conventions:
+    - uy was negated on save -> negate back on load
+    - UV_stress was negated on save -> negate back on load
+    - VW_stress was negated on save -> negate back on load
+    - pred_y was negated on save -> negate back on load
+    """
+    mat = scipy.io.loadmat(str(file_path), struct_as_record=False, squeeze_me=True)
+
+    if "stereo_ensemble_result" not in mat:
+        raise KeyError(f"'stereo_ensemble_result' not found in {file_path}")
+
+    data = mat["stereo_ensemble_result"]
+    stereo_result = PIVStereoEnsembleResult()
+
+    # Handle array of structs (multiple passes)
+    if isinstance(data, np.ndarray) and data.dtype == object and data.size > 0:
+        n_passes = data.size
+        if passes_to_load is None:
+            passes_to_load = list(range(n_passes))
+
+        for pass_idx in passes_to_load:
+            if pass_idx >= n_passes:
+                logging.warning(f"Pass {pass_idx} not found in file (has {n_passes} passes)")
+                continue
+            struct = data.flat[pass_idx]
+            pass_result = _struct_to_stereo_ensemble_pass_result(struct)
+            stereo_result.add_pass(pass_result)
+    else:
+        # Single pass case
+        if passes_to_load is None or 0 in passes_to_load:
+            pass_result = _struct_to_stereo_ensemble_pass_result(data)
+            stereo_result.add_pass(pass_result)
+
+    logging.info(f"Loaded {len(stereo_result.passes)} stereo ensemble passes from {file_path}")
+    return stereo_result, len(stereo_result.passes)
+
+
+def _struct_to_stereo_ensemble_pass_result(struct) -> PIVStereoEnsemblePassResult:
+    """
+    Convert MATLAB struct to PIVStereoEnsemblePassResult.
+
+    Reverses sign conventions applied during save.
+    """
+    def get_array(name: str) -> Optional[np.ndarray]:
+        """Safely get attribute and convert to numpy array."""
+        val = getattr(struct, name, None)
+        if val is None:
+            return None
+        arr = np.asarray(val)
+        if arr.size == 0:
+            return None
+        # Convert from float16 back to float32 for computation
+        if arr.dtype == np.float16:
+            arr = arr.astype(np.float32)
+        return arr
+
+    # Core velocity fields - uy was negated on save
+    ux = get_array('ux')
+    uy = get_array('uy')
+    if uy is not None:
+        uy = -uy  # Reverse negation from save
+    uz = get_array('uz')
+
+    # Stress tensors - UV_stress and VW_stress were negated on save
+    UU_stress = get_array('UU_stress')
+    VV_stress = get_array('VV_stress')
+    WW_stress = get_array('WW_stress')
+    UV_stress = get_array('UV_stress')
+    if UV_stress is not None:
+        UV_stress = -UV_stress  # Reverse negation from save
+    UW_stress = get_array('UW_stress')
+    VW_stress = get_array('VW_stress')
+    if VW_stress is not None:
+        VW_stress = -VW_stress  # Reverse negation from save
+
+    # Predictor fields - pred_y was negated on save
+    pred_x = get_array('pred_x')
+    pred_y = get_array('pred_y')
+    if pred_y is not None:
+        pred_y = -pred_y  # Reverse negation from save
+
+    # Window size (tuple)
+    window_size_val = getattr(struct, 'window_size', None)
+    window_size = None
+    if window_size_val is not None:
+        ws = np.asarray(window_size_val).flatten()
+        if ws.size >= 2:
+            window_size = (int(ws[0]), int(ws[1]))
+
+    # Mask
+    b_mask = get_array('b_mask')
+    if b_mask is not None:
+        b_mask = b_mask.astype(bool)
+
+    # Scalars
+    stereo_angle_val = getattr(struct, 'stereo_angle', None)
+    stereo_angle = float(stereo_angle_val) if stereo_angle_val is not None else None
+    mm_per_pixel_val = getattr(struct, 'mm_per_pixel', None)
+    mm_per_pixel = float(mm_per_pixel_val) if mm_per_pixel_val is not None else None
+
+    return PIVStereoEnsemblePassResult(
+        ux_mat=ux,
+        uy_mat=uy,
+        uz_mat=uz,
+        UU_stress=UU_stress,
+        VV_stress=VV_stress,
+        WW_stress=WW_stress,
+        UV_stress=UV_stress,
+        UW_stress=UW_stress,
+        VW_stress=VW_stress,
+        d1_x=get_array('d1_x'),
+        d1_y=get_array('d1_y'),
+        d2_x=get_array('d2_x'),
+        d2_y=get_array('d2_y'),
+        sig_AB_x_cam1=get_array('sig_AB_x_cam1'),
+        sig_AB_y_cam1=get_array('sig_AB_y_cam1'),
+        sig_AB_xy_cam1=get_array('sig_AB_xy_cam1'),
+        sig_A_x_cam1=get_array('sig_A_x_cam1'),
+        sig_A_y_cam1=get_array('sig_A_y_cam1'),
+        sig_A_xy_cam1=get_array('sig_A_xy_cam1'),
+        sig_AB_x_cam2=get_array('sig_AB_x_cam2'),
+        sig_AB_y_cam2=get_array('sig_AB_y_cam2'),
+        sig_AB_xy_cam2=get_array('sig_AB_xy_cam2'),
+        sig_A_x_cam2=get_array('sig_A_x_cam2'),
+        sig_A_y_cam2=get_array('sig_A_y_cam2'),
+        sig_A_xy_cam2=get_array('sig_A_xy_cam2'),
+        Sigma_12_xx=get_array('Sigma_12_xx'),
+        peakheight=get_array('peakheight'),
+        nan_reason=get_array('nan_reason'),
+        b_mask=b_mask,
+        pred_x=pred_x,
+        pred_y=pred_y,
+        window_size=window_size,
+        win_ctrs_x=get_array('win_ctrs_x'),
+        win_ctrs_y=get_array('win_ctrs_y'),
+        stereo_angle=stereo_angle,
+        mm_per_pixel=mm_per_pixel,
     )

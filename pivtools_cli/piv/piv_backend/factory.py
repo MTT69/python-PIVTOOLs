@@ -75,3 +75,44 @@ def make_ensemble_correlator(
         ensemble=True,
         vector_masks=vector_masks,
     )
+
+
+def make_stereo_ensemble_correlator(
+    config: Config,
+    cam1,
+    cam2,
+    output_size,
+    world_bounds,
+    self_cal_z: float = 0.0,
+    self_cal_tilt_x: float = 0.0,
+    self_cal_tilt_y: float = 0.0,
+    precomputed_cache: Optional[dict] = None,
+    vector_masks: Optional[List[np.ndarray]] = None,
+):
+    """Create stereo ensemble correlator with Correlation-of-Correlations.
+
+    :param config: Configuration object
+    :param cam1, cam2: PinholeCamera instances
+    :param output_size: (H, W) of dewarped output
+    :param world_bounds: (x_min, x_max, y_min, y_max) in mm
+    :param self_cal_z/tilt_x/tilt_y: Self-calibration corrections
+    :param precomputed_cache: Optional precomputed cache
+    :param vector_masks: Per-pass vector masks
+    :return: StereoEnsembleCorrelatorCPU instance
+    """
+    from pivtools_cli.piv.piv_backend.cpu_stereo_ensemble import (
+        StereoEnsembleCorrelatorCPU,
+    )
+
+    return StereoEnsembleCorrelatorCPU(
+        config=config,
+        cam1=cam1,
+        cam2=cam2,
+        output_size=output_size,
+        world_bounds=world_bounds,
+        self_cal_z=self_cal_z,
+        self_cal_tilt_x=self_cal_tilt_x,
+        self_cal_tilt_y=self_cal_tilt_y,
+        precomputed_cache=precomputed_cache,
+        vector_masks=vector_masks,
+    )

@@ -1223,3 +1223,148 @@ def correlate_mean_subtracted_single_batch(
             if result.get(key) is not None:
                 new_accumulated[key] = result[key]
         return new_accumulated
+
+
+# =============================================================================
+# STEREO ENSEMBLE — CHAINED ACCUMULATION
+# =============================================================================
+
+def correlate_stereo_batch_and_accumulate(
+    accumulated: Optional[dict],
+    batch_cam1: np.ndarray,
+    batch_cam2: np.ndarray,
+    config: Config,
+    pass_idx: int,
+    predictor_field: Optional[np.ndarray],
+    cache: dict,
+    masks: Optional[List[np.ndarray]],
+    stereo_setup: dict,
+    is_first_batch: bool = False,
+) -> dict:
+    """
+    Correlate ONE stereo batch and accumulate with previous sum.
+
+    Designed for chained submission where each task depends on:
+    - accumulated: Future from previous task (or None for first batch)
+    - batch_cam1/batch_cam2: ONE batch Future per camera (lazily resolved by Dask)
+
+    Creates StereoEnsembleCorrelatorCPU on each call (dewarp maps recomputed
+    ~20ms overhead, negligible vs correlation cost).
+
+    CRITICAL: Uses `+` NOT `+=` to create NEW arrays for Dask retry safety.
+
+    Args:
+        accumulated: Previous accumulated result (None for first batch)
+        batch_cam1: Single image batch for camera 1, shape (N, 2, H, W)
+        batch_cam2: Single image batch for camera 2, shape (N, 2, H, W)
+        config: Configuration object
+        pass_idx: Current pass index
+        predictor_field: Predictor field (or None for pass 0)
+        cache: Ensemble correlator cache (from scatter_immutable_data)
+        masks: Vector masks
+        stereo_setup: Dict with cam1, cam2, output_size, world_bounds,
+                      self_cal_z, self_cal_tilt_x, self_cal_tilt_y
+        is_first_batch: Whether this is the first batch (for diagnostics)
+
+    Returns:
+        Dict with accumulated dual-camera correlation sums + CoC sum
+    """
+    from pivtools_cli.piv.piv_backend.cpu_stereo_ensemble import (
+        StereoEnsembleCorrelatorCPU,
+    )
+
+    # Skip empty batches
+    if batch_cam1 is None or (hasattr(batch_cam1, 'shape') and batch_cam1.shape[0] == 0):
+        return accumulated if accumulated is not None else {}
+
+    correlator = StereoEnsembleCorrelatorCPU(
+        config=config,
+        cam1=stereo_setup['cam1'],
+        cam2=stereo_setup['cam2'],
+        output_size=stereo_setup['output_size'],
+        world_bounds=stereo_setup['world_bounds'],
+        self_cal_z=stereo_setup['self_cal_z'],
+        self_cal_tilt_x=stereo_setup['self_cal_tilt_x'],
+        self_cal_tilt_y=stereo_setup['self_cal_tilt_y'],
+        precomputed_cache=cache,
+        vector_masks=masks,
+    )
+
+    result = correlator.correlate_batch_stereo(
+        batch_cam1, batch_cam2, config, pass_idx,
+        predictor_field=predictor_field,
+        is_first_batch=is_first_batch,
+    )
+
+    if accumulated is None:
+        # First batch — return copies for retry safety
+        out = {}
+        for key, val in result.items():
+            if hasattr(val, 'copy'):
+                out[key] = val.copy()
+            else:
+                out[key] = val
+        return out
+    else:
+        # SAFE: Create NEW arrays using + (not +=) for Dask retry safety
+        new_accumulated = {}
+        sum_keys = [
+            "cam1_corr_AA_sum", "cam1_corr_BB_sum", "cam1_corr_AB_sum",
+            "cam1_warp_A_sum", "cam1_warp_B_sum",
+            "cam2_corr_AA_sum", "cam2_corr_BB_sum", "cam2_corr_AB_sum",
+            "cam2_warp_A_sum", "cam2_warp_B_sum",
+            "coc_sum",
+        ]
+        for key in sum_keys:
+            new_accumulated[key] = accumulated[key] + result[key]
+        new_accumulated["n_images"] = accumulated["n_images"] + result["n_images"]
+        # Metadata updates (overwrite — scalars/small refs)
+        for key in ["n_win_x", "n_win_y", "smoothed_predictor", "vector_mask", "n_pre", "n_post",
+                     "first_pair_cam1_A", "first_pair_cam1_B",
+                     "first_pair_cam2_A", "first_pair_cam2_B"]:
+            new_accumulated[key] = result.get(key) if result.get(key) is not None else accumulated.get(key)
+        return new_accumulated
+
+
+def reduce_stereo_ensemble_results(r1: dict, r2: dict) -> dict:
+    """
+    Combine two stereo ensemble correlation results from different workers.
+
+    Used to reduce per-worker accumulated sums into a single global sum.
+
+    Args:
+        r1, r2: Results from correlate_stereo_batch_and_accumulate containing
+            dual-camera correlation sums and CoC sum.
+
+    Returns:
+        Combined result with summed arrays.
+    """
+    return {
+        # Camera 1
+        "cam1_corr_AA_sum": r1["cam1_corr_AA_sum"] + r2["cam1_corr_AA_sum"],
+        "cam1_corr_BB_sum": r1["cam1_corr_BB_sum"] + r2["cam1_corr_BB_sum"],
+        "cam1_corr_AB_sum": r1["cam1_corr_AB_sum"] + r2["cam1_corr_AB_sum"],
+        "cam1_warp_A_sum": r1["cam1_warp_A_sum"] + r2["cam1_warp_A_sum"],
+        "cam1_warp_B_sum": r1["cam1_warp_B_sum"] + r2["cam1_warp_B_sum"],
+        # Camera 2
+        "cam2_corr_AA_sum": r1["cam2_corr_AA_sum"] + r2["cam2_corr_AA_sum"],
+        "cam2_corr_BB_sum": r1["cam2_corr_BB_sum"] + r2["cam2_corr_BB_sum"],
+        "cam2_corr_AB_sum": r1["cam2_corr_AB_sum"] + r2["cam2_corr_AB_sum"],
+        "cam2_warp_A_sum": r1["cam2_warp_A_sum"] + r2["cam2_warp_A_sum"],
+        "cam2_warp_B_sum": r1["cam2_warp_B_sum"] + r2["cam2_warp_B_sum"],
+        # CoC
+        "coc_sum": r1["coc_sum"] + r2["coc_sum"],
+        # Metadata
+        "n_images": r1["n_images"] + r2["n_images"],
+        "n_win_x": r1["n_win_x"],
+        "n_win_y": r1["n_win_y"],
+        "smoothed_predictor": r1.get("smoothed_predictor"),
+        "vector_mask": r1.get("vector_mask"),
+        "n_pre": r1.get("n_pre"),
+        "n_post": r1.get("n_post"),
+        # First-pair diagnostics (keep from first worker that has them)
+        "first_pair_cam1_A": r1.get("first_pair_cam1_A") or r2.get("first_pair_cam1_A"),
+        "first_pair_cam1_B": r1.get("first_pair_cam1_B") or r2.get("first_pair_cam1_B"),
+        "first_pair_cam2_A": r1.get("first_pair_cam2_A") or r2.get("first_pair_cam2_A"),
+        "first_pair_cam2_B": r1.get("first_pair_cam2_B") or r2.get("first_pair_cam2_B"),
+    }

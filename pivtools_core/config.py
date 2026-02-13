@@ -419,6 +419,23 @@ ensemble_piv:
   - 16
   - 16
   resume_from_pass: 0
+stereo_ensemble_piv:
+  camera_pair:
+  - 1
+  - 2
+  dewarp_output_size: null
+  world_bounds: null
+  self_calibration:
+    z_offset: 0.0
+    tilt_x: 0.0
+    tilt_y: 0.0
+  window_size: null
+  overlap: null
+  type: null
+  sum_window: null
+  peak_finder: null
+  fit_method: null
+  background_subtraction_method: null
 calibration:
   image_format: calib%05d.tif
   num_images: 10
@@ -2515,6 +2532,148 @@ video:
         Default: False
         """
         return self.data.get("ensemble_piv", {}).get("gradient_correction", False)
+
+    # --- Stereo Ensemble PIV properties ---
+    # Each property falls back to the corresponding ensemble_piv value if null/unset.
+
+    @property
+    def stereo_ensemble_camera_pair(self) -> list:
+        """Camera pair for stereo ensemble PIV. Default [1, 2]."""
+        return self.data.get("stereo_ensemble_piv", {}).get("camera_pair", [1, 2])
+
+    @property
+    def stereo_ensemble_dewarp_output_size(self) -> list:
+        """Output size [H, W] for dewarped images. None = auto from image shape."""
+        val = self.data.get("stereo_ensemble_piv", {}).get("dewarp_output_size", None)
+        if val is None:
+            return list(self.image_shape)
+        return val
+
+    @property
+    def stereo_ensemble_world_bounds(self):
+        """World bounds [x_min, x_max, y_min, y_max] in mm. None = auto from camera models."""
+        return self.data.get("stereo_ensemble_piv", {}).get("world_bounds", None)
+
+    @property
+    def stereo_ensemble_self_cal_z(self) -> float:
+        """Self-calibration Z offset in mm."""
+        return self.data.get("stereo_ensemble_piv", {}).get(
+            "self_calibration", {}
+        ).get("z_offset", 0.0)
+
+    @property
+    def stereo_ensemble_self_cal_tilt_x(self) -> float:
+        """Self-calibration tilt around X axis in radians."""
+        return self.data.get("stereo_ensemble_piv", {}).get(
+            "self_calibration", {}
+        ).get("tilt_x", 0.0)
+
+    @property
+    def stereo_ensemble_self_cal_tilt_y(self) -> float:
+        """Self-calibration tilt around Y axis in radians."""
+        return self.data.get("stereo_ensemble_piv", {}).get(
+            "self_calibration", {}
+        ).get("tilt_y", 0.0)
+
+    @property
+    def stereo_ensemble_window_sizes(self) -> list:
+        """Window sizes per pass for stereo ensemble. Falls back to ensemble_window_sizes."""
+        val = self.data.get("stereo_ensemble_piv", {}).get("window_size", None)
+        if val is None:
+            return self.ensemble_window_sizes
+        # Normalize to list of [h, w] pairs
+        if isinstance(val[0], (int, float)):
+            val = [val]
+        return [list(ws) for ws in val]
+
+    @property
+    def stereo_ensemble_overlaps(self) -> list:
+        """Overlap percentages per pass. Falls back to ensemble_overlaps."""
+        val = self.data.get("stereo_ensemble_piv", {}).get("overlap", None)
+        if val is None:
+            return self.ensemble_overlaps
+        if isinstance(val, (int, float)):
+            val = [val]
+        n_passes = len(self.stereo_ensemble_window_sizes)
+        if len(val) == 1 and n_passes > 1:
+            val = val * n_passes
+        return val
+
+    @property
+    def stereo_ensemble_type(self) -> list:
+        """Ensemble type per pass ('std' or 'single'). Falls back to ensemble_type."""
+        val = self.data.get("stereo_ensemble_piv", {}).get("type", None)
+        if val is None:
+            return self.ensemble_type
+        if isinstance(val, str):
+            val = [val]
+        n_passes = len(self.stereo_ensemble_window_sizes)
+        if len(val) == 1 and n_passes > 1:
+            val = val * n_passes
+        return val
+
+    @property
+    def stereo_ensemble_num_passes(self) -> int:
+        """Number of passes for stereo ensemble PIV."""
+        return len(self.stereo_ensemble_window_sizes)
+
+    @property
+    def stereo_ensemble_sum_window(self) -> list:
+        """Sum window size for single mode. Falls back to ensemble_sum_window."""
+        val = self.data.get("stereo_ensemble_piv", {}).get("sum_window", None)
+        if val is None:
+            return self.ensemble_sum_window
+        return val
+
+    @property
+    def stereo_ensemble_peak_finder(self):
+        """Peak finder type. Falls back to ensemble_peak_finder."""
+        val = self.data.get("stereo_ensemble_piv", {}).get("peak_finder", None)
+        if val is None:
+            return self.ensemble_peak_finder
+        return val
+
+    @property
+    def stereo_ensemble_fit_method(self) -> str:
+        """Fitting method ('gaussian' or 'kspace'). Falls back to ensemble_fit_method."""
+        val = self.data.get("stereo_ensemble_piv", {}).get("fit_method", None)
+        if val is None:
+            return self.ensemble_fit_method
+        return val
+
+    @property
+    def stereo_ensemble_background_subtraction_method(self) -> str:
+        """Background subtraction method. Falls back to ensemble_background_subtraction_method."""
+        val = self.data.get("stereo_ensemble_piv", {}).get(
+            "background_subtraction_method", None
+        )
+        if val is None:
+            return self.ensemble_background_subtraction_method
+        return val
+
+    @property
+    def stereo_ensemble_resume_from_pass(self) -> int:
+        """1-based pass to resume from, 0 = fresh start (no fallback to ensemble)."""
+        val = self.data.get("stereo_ensemble_piv", {}).get("resume_from_pass", None)
+        if val is None:
+            return 0
+        return int(val)
+
+    @property
+    def stereo_ensemble_store_planes(self) -> bool:
+        """Whether to save correlation planes. Falls back to ensemble_store_planes."""
+        val = self.data.get("stereo_ensemble_piv", {}).get("store_planes", None)
+        if val is None:
+            return self.ensemble_store_planes
+        return bool(val)
+
+    @property
+    def stereo_ensemble_save_diagnostics(self) -> bool:
+        """Whether to save diagnostic images. Falls back to ensemble_save_diagnostics."""
+        val = self.data.get("stereo_ensemble_piv", {}).get("save_diagnostics", None)
+        if val is None:
+            return self.ensemble_save_diagnostics
+        return bool(val)
 
     @property
     def secondary_peak(self):

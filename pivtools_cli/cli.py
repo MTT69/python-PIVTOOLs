@@ -1490,6 +1490,32 @@ def ensemble_command(args):
         traceback.print_exc()
         sys.exit(1)
 
+
+def stereo_ensemble_command(args):
+    """Run stereo ensemble PIV with Correlation-of-Correlations."""
+    import os
+    from pivtools_core import stereo_ensemble
+
+    if args.active_paths:
+        os.environ['PIV_ACTIVE_PATHS'] = args.active_paths
+
+    print("=" * 60)
+    print("Stereo Ensemble PIV — Correlation-of-Correlations")
+    print("=" * 60)
+    if args.active_paths:
+        print(f"Active paths override: {args.active_paths}")
+
+    try:
+        stereo_ensemble.main()
+    except SystemExit as e:
+        sys.exit(e.code if e.code is not None else 0)
+    except Exception as e:
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="PIVTOOLs - Particle Image Velocimetry Tools",
@@ -1532,6 +1558,17 @@ def main():
         help="Comma-separated path indices to process (e.g., '0,1,2')"
     )
     ensemble_parser.set_defaults(func=ensemble_command)
+
+    # stereo-ensemble command
+    stereo_ensemble_parser = subparsers.add_parser(
+        "stereo-ensemble",
+        help="Run stereo ensemble PIV with Correlation-of-Correlations (all 6 Reynolds stresses)"
+    )
+    stereo_ensemble_parser.add_argument(
+        "--active-paths", "-p", default=None,
+        help="Comma-separated path indices to process (e.g., '0,1,2')"
+    )
+    stereo_ensemble_parser.set_defaults(func=stereo_ensemble_command)
 
     # detect-planar command (single camera)
     detect_planar_parser = subparsers.add_parser(
