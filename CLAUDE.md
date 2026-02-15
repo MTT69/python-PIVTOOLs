@@ -6,6 +6,14 @@
 
 ---
 
+## Rules
+
+- **Always update docs after changes:** After completing any feature/refactor, update this `CLAUDE.md` and `MEMORY.md` before finishing. Don't wait to be asked.
+  - **CLAUDE.md** (this file) is public, checked into git. Put project knowledge here: architecture, conventions, patterns, gotchas, key file locations, build commands, code conventions, collection schemas. Any contributor using Claude Code gets this context automatically.
+  - **MEMORY.md** is private, lives on the local machine (`~/.claude/projects/.../memory/MEMORY.md`), never committed. Put personal workflow preferences, local env quirks, session-to-session learnings specific to how the user works, and things still being validated.
+
+---
+
 ## Architecture Overview
 
 ```
@@ -781,6 +789,32 @@ Defines available image filter types and their parameter schemas for the UI.
 
 **`PIVEnsemblePassResult`** (20+ fields): `ux_mat`, `uy_mat`, `UU_stress`, `VV_stress`, `UV_stress`, `peakheight`, `nan_reason`, `sig_AB_x/y/xy`, `sig_A_x/y/xy`, `c_A/B/AB`, `b_mask`, `pred_x/y`, `window_size`, `win_ctrs_x/y`
 
+### Stereo Ensemble PIV (Correlation-of-Correlations)
+
+Extends ensemble PIV to stereo setups, computing 3D velocity + 6 Reynolds stresses using a cross-camera correlation-of-correlations (CoC) approach.
+
+**Key files:**
+| File | Purpose |
+|------|---------|
+| `pivtools_core/stereo_ensemble.py` | Dask-native orchestration (mirrors `ensemble.py`) |
+| `pivtools_cli/piv/piv_backend/cpu_stereo_ensemble.py` | CPU backend (`StereoEnsembleCorrelatorCPU`, composition over `EnsembleCorrelatorCPU`) |
+| `pivtools_cli/piv/piv_backend/stereo_ensemble_accumulator.py` | Dual-camera + CoC buffers, `finalize_pass()` → 3D velocity + 6 stresses |
+| `pivtools_cli/piv/stereo_ensemble_result.py` | `PIVStereoEnsemblePassResult` dataclass |
+
+**Config:** `stereo_ensemble_piv` section — all keys fall back to `ensemble_piv` if null. `resume_from_pass` (1-based, 0=no resume) does NOT fall back to ensemble.
+
+**CLI:** `stereo-ensemble` command. **Output:** `base_path/uncalibrated_piv/{N}/Stereo Cam{A}_Cam{B}/stereo_ensemble/` → `stereo_ensemble_result.mat`, `stereo_coordinates.mat`
+
+**CoC math:** Per-frame N=1 C lib calls per camera → per-window FFT cross-correlate → accumulate. Gives `Sigma_12_xx = R_xx - sin²θ·R_zz`. Combined with `A = (Sigma_11_xx + Sigma_22_xx)/2 = R_xx + sin²θ·R_zz` → `R_xx = (A+B)/2`, `R_zz = (A-B)/(2sin²θ)`.
+
+**3D velocity:** `ux = (d1_x + d2_x)/2`, `uy = (d1_y + d2_y)/2`, `uz = (d1_x - d2_x)/(2*sin_th)`
+
+**Sign conventions on save:** Same as standard ensemble (uy negated, UV_stress negated, VW_stress negated, pred_y negated). `load_stereo_ensemble_result()` in `save_results.py` reverses these on load.
+
+**Worker pattern:** `correlate_stereo_batch_and_accumulate()` recreates `StereoEnsembleCorrelatorCPU` per batch (dewarp maps ~20ms, negligible vs correlation cost). Uses `+` not `+=` for Dask retry safety. Dual-camera sliding window: each chunk triggers 2 filter futures (cam1 + cam2), `wait([cam1_future, cam2_future])` before submitting correlation.
+
+**Diagnostics:** `stereo_ensemble_store_planes` saves correlation planes per pass. `stereo_ensemble_save_diagnostics` saves dewarped images. Both fall back to ensemble equivalents.
+
 ### K-Space Transfer Function Fitting [BETA]
 
 > **WARNING: K-space fitting is BETA. Experimental — API may change.**
@@ -1042,6 +1076,7 @@ Both `cpu_instantaneous.py` and `cpu_ensemble.py` use `cv2.setNumThreads(1)` + c
 | `background_subtraction_method` | `ensemble_background_subtraction_method` | `"correlation"` or `"image"` |
 | `gradient_correction` | `ensemble_gradient_correction` | Reynolds stress gradient correction |
 | `resume_from_pass` | `ensemble_resume_from_pass` | 1-based pass to resume (0=fresh start) |
+| `correlation_normalization` | `ensemble_correlation_normalization` | `"none"` (default) or `"per_frame"` — per-frame mean-sub + energy normalization |
 
 **Outlier detection / infilling** (parallel structure for instantaneous and ensemble):
 `outlier_detection.enabled`, `.methods` (list of `{type, threshold, epsilon}`), `infilling.mid_pass`, `.final_pass`
@@ -1232,6 +1267,60 @@ base_path/
 
 ---
 
+## Validation & Benchmarking
+
+Benchmark scripts compare PIVTOOLs output against ground truth (DNS data).
+
+**Key files:**
+- `validation/README.md` — **Read this first.** Comprehensive reference for all benchmark scripts, data formats, and recorded results.
+- `validation/benchmark_comparison.py` — Planar benchmark
+- `validation/stereo_benchmark_comparison.py` — Stereo benchmark (hardcoded `data_root` in `main()`)
+
+**Unit conventions:** PIVTOOLs stores velocity in m/s (×1000→mm/s for display), stresses in (m/s)² (×1e6→(mm/s)²).
+
+**Ground truth format:** Auto-detects MATLAB v5 (`profiles.mat`) vs v7.3/HDF5 (`ensemble_statistics_full.mat`). HDF5 `ref_profile` has DNS velocity (2049 pts) but NO stresses; stresses come from `ensemble_stats` (255 pts) — never mix without interpolation.
+
+**Common flags:** `--num-frames`/`-n` controls the subdirectory (e.g., `calibrated_piv/1000/`). y+ offset of `+1.0` works for current channel dataset.
+
+---
+
+## Gotchas & Common Pitfalls
+
+### Config & Data
+- `config.py` is very large (~2600 lines) — read in chunks
+- `image_format` is always a tuple, even for single format
+- `camera_folder()` in utils.py is DEPRECATED — use `config.get_camera_folder()`
+- `zero_based_indexing` exists in TWO places: images (now `start_index`) and calibration (unchanged)
+- `time_resolved` exists in TWO places: images (now stride-based) and `instantaneous_piv` (unchanged)
+- Config sync to backend is async — hooks that read config for type_name/source_endpoint may see stale values; pass directly instead
+- **Mixed dict key types in jsonify:** Flask's `jsonify()` calls `json.dumps(sort_keys=True)` which raises `TypeError` when dict has both int and str keys. Always use `str(camera_num)` as keys.
+- **Statistics config legacy keys:** Backend defaults were `reynolds_stress`/`normal_stress`/`inst_fluctuations` but frontend `ALL_STAT_KEYS` uses `mean_stresses`/`inst_stresses`/`mean_peak_height`. Fixed with migration in `statistics_enabled_methods` property.
+
+### Frontend
+- **Clearable number inputs:** Use `type="text" inputMode="numeric"` with a separate string state. `onChange` sets string, `onBlur` parses+clamps+saves. Never use `Number(e.target.value) || default` on onChange — it prevents clearing.
+- **Prefetch cache key** MUST include all rendering-relevant settings (cmap, lower, upper, offsets, axis limits) — otherwise stale images served. `settingsVersionRef` counter in cache key invalidates on changes.
+- **Transform cache invalidation:** After applying/clearing transforms, must manually increment `settingsVersionRef` and clear prefetch buffer BEFORE calling `handleRender()`.
+- **TypeScript `??` vs `||`:** Cannot mix without parens. Use `?? (parseFloat(x) || 0)` not `?? parseFloat(x) || 0`.
+- **Calibration hook mount race:** `useDotboardCalibration` and `useStereoCalibration` had auto-save effects that fired on mount with empty default state. Fix: `configLoadedRef` guard.
+- **`vmin_pct`/`vmax_pct` convention:** Must be percentages (0-100) of data range, NOT raw pixel values.
+
+### Backend Processing
+- `gc.collect()` on Dask workers causes SIGSEGV (FFTW conflict) — only GC on client
+- `interp2custom.c` uses column-major indexing (unlike all other C code)
+- K-space fitting is BETA — experimental, may change
+- **`coordinates.mat` race condition:** `transform_all_frames()` transforms coordinates once per camera then must pass `None` (not `coords_file`) to parallel workers. Workers re-reading and re-saving causes double-transform and Windows "Access is denied".
+- **`invert_ux`/`invert_uy` UV_stress signs:** When negating only one velocity component, UV_stress must also be negated: `(-u')v' = -(u'v')`. But `invert_ux_uy` leaves UV_stress unchanged. Uses XOR logic.
+- **Batch transform frame count:** Source frame was already processed but excluded from `total_frames_to_process`. Fix: add 1 and start `processed_frames` at 1.
+
+### PIV Polling & Status Image
+- Polling interval: 1000ms. Image refresh interval: 3000ms.
+- Status image picks a random available frame each interval.
+- Off-tab optimization: `PivJobProvider` receives `activeTab` prop; skips heavyweight image fetch when user is NOT on PIV/Ensemble tab.
+- Young file filter: `get_uncalibrated_count()` skips files with `st_mtime < now - 5` seconds (avoids reading partially-written .mat files).
+- Truncated .mat handling: `load_piv_result()` catches all `loadmat()` exceptions and re-raises as `FileNotFoundError`.
+
+---
+
 ## Conclusions & Architectural Notes
 
 1. **Config is king.** Nearly every function reads `get_config()`. Frontend mirrors this: all setup panels → `POST /backend/update_config`. Processing reads config properties that validate and coerce values.
@@ -1248,11 +1337,7 @@ base_path/
 
 7. **Data flows unidirectionally:** config.yaml → Config → Flask/CLI → processing → .mat files → plotting/statistics.
 
-8. **Key gotchas:**
-   - `gc.collect()` on Dask workers causes SIGSEGV (FFTW conflict) — only GC on client
-   - `interp2custom.c` uses column-major indexing (unlike all other C code)
-   - `image_format` is always a tuple, even for single format
-   - K-space fitting is BETA — experimental, may change
+8. **Key gotchas:** See the "Gotchas & Common Pitfalls" section above for a comprehensive list.
 
 9. **This file is the single source of documentation truth.** The `docs/` directory has been removed. All architectural, processing, and API documentation lives here.
 
