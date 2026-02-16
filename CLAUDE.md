@@ -1017,14 +1017,16 @@ Triggered on GitHub release or manual dispatch. Builds wheels for {ubuntu, macos
 
 Common flags: `--active-paths`, `--type-name`, `--source-endpoint` (`regular`/`merged`/`stereo`)
 
-### Profiling (`scripts/profile_piv.py`)
+### Profiling (`profile/profile_piv.py`)
 
 Standalone PIV profiling script that bypasses Dask entirely. Loads real images from disk, creates a minimal Config, and calls `InstantaneousCorrelatorCPU.correlate_batch()` directly with per-section timing instrumentation.
 
 **Instrumentation** (in `cpu_instantaneous.py`):
 - `self.profiling_enabled = False` — disabled by default, zero overhead
+- `self.threading_enabled = True` — set False to bypass thread pool (for A/B comparison)
 - `self._profile_section(pass_idx, section)` — context manager that times named code sections
 - `self.get_profile_summary()` — returns `{pass_idx: {section_name: elapsed_seconds}}`
+- `self._run_parallel(fn, args_list)` — dispatches to pool or direct calls based on `threading_enabled`
 
 **9 timed sections in `correlate_batch`:** `predictor_corrector`, `set_lib_args`, `bulkxcorr2d`, `post_processing`, `outlier_detection`, `secondary_peaks`, `infilling`, `padding_stacking`, `result_construction`
 
@@ -1032,18 +1034,22 @@ Standalone PIV profiling script that bypasses Dask entirely. Loads real images f
 
 **Usage:**
 ```
-python scripts/profile_piv.py 4mp                    # 4MP images, 3 iterations
-python scripts/profile_piv.py 25mp --iterations 5    # 25MP images, 5 iterations
-python scripts/profile_piv.py both --threads 8       # Both presets, 8 OMP threads
-python scripts/profile_piv.py 4mp --no-outlier       # Disable outlier detection
-python scripts/profile_piv.py 4mp --windows 64,32    # Custom pass sizes
+python profile/profile_piv.py 4mp                     # 4MP images, 3 iterations
+python profile/profile_piv.py 25mp --iterations 5     # 25MP images, 5 iterations
+python profile/profile_piv.py both --threads 8        # Both presets, 8 OMP threads
+python profile/profile_piv.py 4mp --no-outlier        # Disable outlier detection
+python profile/profile_piv.py 4mp --windows 64,32     # Custom pass sizes
+python profile/profile_piv.py 4mp --pairs 12          # Production batch size
+python profile/profile_piv.py 4mp --no-threading      # Disable thread pool (baseline)
 ```
 
 **Thread parallelism in correlators:**
 
-Both `cpu_instantaneous.py` and `cpu_ensemble.py` use `cv2.setNumThreads(1)` + class-level `ThreadPoolExecutor(omp_threads)` for thread-parallel `cv2.remap` loops. The pool is idle during C library calls (OpenMP) and vice versa — no contention within a worker.
+Both `cpu_instantaneous.py` and `cpu_ensemble.py` use `cv2.setNumThreads(1)` + class-level `ThreadPoolExecutor(omp_threads)` for thread-parallel GIL-releasing operations. The pool is idle during C library calls (OpenMP) and vice versa — no contention within a worker. Threading gives **2.2x overall speedup** at batch size N=12.
 
-- **Instantaneous:** Gaussian smoothing, fused dense+predictor remap, and fused mesh+warp all use `self._pool`. Per-image mesh computed inside each `_warp_pair` thread (avoids large `(N,H,W,2)` allocations).
+**GIL behaviour matters:** cv2.remap and scipy.ndimage release the GIL (2.7-3.2x speedup with 4 threads). Biharmonic infilling is ~67% GIL-bound (no benefit from threading — 0.95x). Use `local_median` for mid-pass infilling (8.8x faster than biharmonic, threads at 2.1x).
+
+- **Instantaneous:** Gaussian smoothing, fused dense+predictor remap, fused mesh+warp, outlier detection, and infilling all use `self._run_parallel()`. Per-image mesh computed inside each `_warp_pair` thread (avoids large `(N,H,W,2)` allocations).
 - **Ensemble:** `_get_image_prime_batch()` parallelizes the `for n in range(N)` cv2.remap loop via `self._pool`. Benefits all 3 callers: `correlate_batch_for_accumulation`, `compute_warp_sums_only`, `correlate_mean_subtracted_batch`. Mesh is NOT per-image (single predictor field → single mesh for all images), so no fusing opportunity.
 
 ---

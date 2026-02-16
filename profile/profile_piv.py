@@ -314,6 +314,7 @@ def run_profile(
     do_warmup: bool,
     infilling_method: str = "local_median",
     peak_finder: str = "gauss6",
+    threading_enabled: bool = True,
 ):
     preset = IMAGE_PRESETS[preset_name]
     print(f"\nLoading images from: {preset['path']}")
@@ -339,6 +340,7 @@ def run_profile(
     t0 = time.perf_counter()
     correlator = InstantaneousCorrelatorCPU(config)
     correlator.profiling_enabled = True
+    correlator.threading_enabled = threading_enabled
     create_time = time.perf_counter() - t0
     print(f"  Created in {create_time:.2f}s")
 
@@ -349,6 +351,7 @@ def run_profile(
     print(f"  Outlier detection: {'ON' if outlier_enabled else 'OFF'}")
     print(f"  Infilling: {infilling_method}")
     print(f"  Peak finder: {peak_finder}")
+    print(f"  Threading: {'ON' if threading_enabled else 'OFF'}")
 
     if do_warmup:
         print(f"\nWarmup pass (FFTW plan creation)...")
@@ -433,6 +436,11 @@ Examples:
         default="gauss6",
         help="Peak finder: gauss3, gauss4, gauss5, gauss6 (default: gauss6)",
     )
+    parser.add_argument(
+        "--no-threading",
+        action="store_true",
+        help="Disable thread pool (direct sequential calls)",
+    )
 
     args = parser.parse_args()
 
@@ -454,6 +462,7 @@ Examples:
             do_warmup=not args.no_warmup,
             infilling_method=args.infilling,
             peak_finder=args.peak_finder,
+            threading_enabled=not args.no_threading,
         )
 
 

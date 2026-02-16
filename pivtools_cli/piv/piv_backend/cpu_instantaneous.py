@@ -129,6 +129,16 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         # while bulkxcorr2d runs (it uses OpenMP threads internally) and vice versa.
         self._n_threads = max(1, int(config.omp_threads))
         self._pool = ThreadPoolExecutor(max_workers=self._n_threads)
+        self.threading_enabled = True  # Set False to bypass pool (profiling)
+
+    def _run_parallel(self, fn, args_list):
+        """Run fn(args) for each args in args_list. Uses thread pool when
+        threading_enabled=True and len(args_list) > 1, otherwise direct calls."""
+        if self.threading_enabled and len(args_list) > 1:
+            futures = [self._pool.submit(fn, *a) for a in args_list]
+            return [f.result() for f in futures]
+        else:
+            return [fn(*a) for a in args_list]
 
     def _register_fftw_cleanup(self) -> None:
         """Register FFTW cleanup to run at interpreter exit.
@@ -425,14 +435,14 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     if config.outlier_detection_enabled:
                         outlier_methods = config.outlier_detection_methods
                         if outlier_methods:
-                            for im_idx in range(N):
-                                primary_peak_mag_0 = pk_height[im_idx, 0]
-                                outlier_mask = apply_outlier_detection(
-                                    ux_mat[im_idx],
-                                    uy_mat[im_idx],
-                                    outlier_methods,
-                                    peak_mag=primary_peak_mag_0,
+                            def _detect_outliers(im_idx):
+                                return im_idx, apply_outlier_detection(
+                                    ux_mat[im_idx], uy_mat[im_idx],
+                                    outlier_methods, peak_mag=pk_height[im_idx, 0],
                                 )
+
+                            results = self._run_parallel(_detect_outliers, [(i,) for i in range(N)])
+                            for im_idx, outlier_mask in results:
                                 outliers_detected_count += outlier_mask.sum()
                                 nan_mask[im_idx] |= outlier_mask
 
@@ -491,25 +501,26 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
 
                 with self._profile_section(pass_idx, "infilling"):
                     # Apply infilling to outlier/invalid vectors
-                    for im_idx in range(N):
-                        if np.isnan(ux_mat[im_idx]).any() or np.isnan(uy_mat[im_idx]).any():
-                            infill_mask = np.isnan(ux_mat[im_idx]) | np.isnan(uy_mat[im_idx])
-                            cfg = (
-                                config.infilling_final_pass
-                                if is_final_pass
-                                else config.infilling_mid_pass
-                            )
+                    cfg = (
+                        config.infilling_final_pass
+                        if is_final_pass
+                        else config.infilling_mid_pass
+                    )
 
-                            if infill_mask.sum() == infill_mask.size:
-                                logging.error(f"CRITICAL: 100% of data needs infilling for image {im_idx}!")
+                    if cfg.get("enabled", True):
+                        def _infill_one(im_idx):
+                            if np.isnan(ux_mat[im_idx]).any() or np.isnan(uy_mat[im_idx]).any():
+                                infill_mask = np.isnan(ux_mat[im_idx]) | np.isnan(uy_mat[im_idx])
+                                if infill_mask.sum() == infill_mask.size:
+                                    logging.error(f"CRITICAL: 100% of data needs infilling for image {im_idx}!")
+                                return im_idx, apply_infilling(
+                                    ux_mat[im_idx], uy_mat[im_idx], infill_mask, cfg)
+                            return im_idx, None
 
-                            if cfg.get("enabled", True):
-                                ux_mat[im_idx], uy_mat[im_idx] = apply_infilling(
-                                    ux_mat[im_idx],
-                                    uy_mat[im_idx],
-                                    infill_mask,
-                                    cfg,
-                                )
+                        results = self._run_parallel(_infill_one, [(i,) for i in range(N)])
+                        for im_idx, result in results:
+                            if result is not None:
+                                ux_mat[im_idx], uy_mat[im_idx] = result
 
                 # Pass summary - only warn if >20% invalid vectors (excluding masked regions)
                 mask_count = mask_bool_batch.sum()
@@ -679,12 +690,10 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             truncate = (self.ksize_filt[pass_idx][0] - 1) / (2 * sigma)
 
             with self._profile_section(pass_idx, "pc_gaussian_smooth"):
-                futures = [
-                    self._pool.submit(self._smooth_one_delta_old, i, sigma, truncate)
-                    for i in range(N)
-                ]
-                for f in futures:
-                    f.result()
+                self._run_parallel(
+                    self._smooth_one_delta_old,
+                    [(i, sigma, truncate) for i in range(N)],
+                )
 
             with self._profile_section(pass_idx, "pc_dense_and_predictor_remap"):
                 delta_ab_dense = np.zeros((N, H, W, 2), dtype=np.float32)
@@ -713,13 +722,15 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                         borderMode=cv2.BORDER_CONSTANT, borderValue=0.0,
                     ).astype(np.float32)
 
-                futures = []
+                remap_args = []
                 for i in range(N):
                     for d in range(2):
-                        futures.append(self._pool.submit(_remap_dense, i, d))
-                        futures.append(self._pool.submit(_remap_predictor, i, d))
-                for f in futures:
-                    f.result()
+                        remap_args.append((i, d))
+                # Each arg pair feeds both _remap_dense and _remap_predictor
+                def _remap_both(i, d):
+                    _remap_dense(i, d)
+                    _remap_predictor(i, d)
+                self._run_parallel(_remap_both, remap_args)
 
             with self._profile_section(pass_idx, "pc_mesh_and_image_warp"):
                 image_a_prime_batch = np.zeros_like(images_a, dtype=np.float32)
@@ -743,9 +754,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                         borderMode=cv2.BORDER_CONSTANT, borderValue=0,
                     )
 
-                futures = [self._pool.submit(_warp_pair, i) for i in range(N)]
-                for f in futures:
-                    f.result()
+                self._run_parallel(_warp_pair, [(i,) for i in range(N)])
             return image_a_prime_batch, image_b_prime_batch, self.delta_ab_pred
 
     def _smooth_one_delta_old(self, i, sigma, truncate):

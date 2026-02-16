@@ -1,8 +1,8 @@
 paths:
   base_paths:
-  - C:\Users\mtt1e23\Downloads\SESA6070\processed
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_noisy\validation_4000
   source_paths:
-  - C:\Users\mtt1e23\Downloads\SESA6070\SampleImages
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_noisy
   active_paths:
   - 0
   camera_numbers:
@@ -10,10 +10,10 @@ paths:
   camera_count: 1
   camera_subfolders: []
 images:
-  num_images: 40
+  num_images: 4000
   image_format:
-  - IMG%05dA.tif
-  - IMG%05dB.tif
+  - B%05d_A.tif
+  - B%05d_B.tif
   vector_format:
   - '%05d.mat'
   dtype: float32
@@ -23,7 +23,7 @@ images:
   frame_stride: 0
   pair_stride: 1
   pairing_preset: ab_format
-  num_frame_pairs: 40
+  num_frame_pairs: 4000
 batches:
   size: 10
 logging:
@@ -82,7 +82,7 @@ video:
   data_source: calibrated
   variable: ux
   run: 2
-  piv_type: instantaneous
+  piv_type: ensemble
   cmap: jet
   lower: ''
   upper: ''
@@ -114,7 +114,7 @@ statistics:
     mean_peak_height: false
   gamma_radius: 4
   save_figures: true
-  type_name: instantaneous
+  type_name: ensemble
   source_endpoint: regular
 instantaneous_piv:
   window_size:
@@ -193,8 +193,8 @@ calibration:
     enabled: true
     datum_camera: 1
     datum_pixel:
-    - 398.1703340554098
-    - 976.0747919279443
+    - 401.0890434386044
+    - 980.4528560027362
     datum_physical:
     - 10
     - 15
@@ -215,12 +215,12 @@ masking:
     left: 0
     right: 0
 merging:
-  type_name: instantaneous
+  type_name: ensemble
   base_path_idx: 0
   cameras: null
 transforms:
   base_path_idx: 0
-  type_name: instantaneous
+  type_name: ensemble
   cameras:
     1:
       operations: []
