@@ -42,3 +42,6 @@ Thumbs.db
 
 # Large generated ground truth data
 /tests/ground_truth/
+
+# Validation benchmark results
+validation/
