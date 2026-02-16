@@ -151,6 +151,13 @@ def scale_factor_calibrate_vectors():
                         "error": str(align_err),
                     }
 
+            # Save calibration snapshot
+            try:
+                snapshot_path = cfg.save_calibration_snapshot(base_root)
+                camera_progress["calibration_snapshot"] = str(snapshot_path)
+            except Exception as snap_err:
+                logger.warning(f"Failed to save calibration snapshot: {snap_err}")
+
             job_manager.complete_job(
                 job_id,
                 camera_progress=camera_progress,

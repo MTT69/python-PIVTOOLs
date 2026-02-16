@@ -133,7 +133,7 @@ def apply_calibration_command(args):
             try:
                 from pivtools_gui.calibration.global_coordinate_alignment import GlobalCoordinateAligner
                 aligner = GlobalCoordinateAligner(base_dir, config)
-                alignment_result = aligner.apply_alignment(type_name)
+                alignment_result = aligner.apply_alignment(type_name, force=True)
                 if alignment_result.get("status") == "completed":
                     print(f"  Path {path_idx}: Alignment applied successfully")
                     for cam_key, cam_info in alignment_result.get("cameras", {}).items():
@@ -195,7 +195,7 @@ def align_coordinates_command(args):
 
         try:
             aligner = GlobalCoordinateAligner(base_dir, config)
-            result = aligner.apply_alignment(type_name)
+            result = aligner.apply_alignment(type_name, force=getattr(args, 'force', False))
             if result.get("status") == "completed":
                 print("  Alignment applied successfully")
                 for cam_key, cam_info in result.get("cameras", {}).items():
@@ -1823,6 +1823,10 @@ def main():
     align_parser.add_argument(
         "--active-paths", "-p", default=None,
         help="Comma-separated path indices to process (e.g., '0,1,2')"
+    )
+    align_parser.add_argument(
+        "--force", "-f", action="store_true",
+        help="Force alignment even if already applied (WARNING: will double shifts)"
     )
     align_parser.set_defaults(func=align_coordinates_command)
 

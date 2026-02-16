@@ -539,6 +539,13 @@ def stereo_dotboard_reconstruct():
                 progress_cb=progress_callback,
             )
 
+            # Save calibration snapshot
+            try:
+                snapshot_path = cfg.save_calibration_snapshot(base_root)
+                logger.debug(f"Calibration snapshot saved: {snapshot_path}")
+            except Exception as snap_err:
+                logger.warning(f"Failed to save calibration snapshot: {snap_err}")
+
             job_manager.complete_job(
                 job_id,
                 message=f"3D reconstruction completed for cameras {cam1}-{cam2}",

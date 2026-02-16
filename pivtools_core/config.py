@@ -223,6 +223,102 @@ class Config:
 
         return dest_path
 
+    @staticmethod
+    def _paths_to_strings(obj):
+        """Recursively convert Path objects to strings for YAML serialization."""
+        if isinstance(obj, Path):
+            return str(obj)
+        if isinstance(obj, dict):
+            return {k: Config._paths_to_strings(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [Config._paths_to_strings(item) for item in obj]
+        return obj
+
+    # Calibration method keys to filter from snapshots (only active method is saved)
+    _CALIBRATION_METHOD_KEYS = {
+        "scale_factor", "dotboard", "charuco", "polynomial",
+        "stereo_dotboard", "stereo_charuco",
+    }
+
+    def save_calibration_snapshot(self, base_path: Path) -> Path:
+        """Save a calibration snapshot to base_path/calibration/calibration_YYYY-MM-DD.yaml.
+
+        Captures the current calibration block with metadata so it can be
+        restored later if the user changes calibration sources. Only includes
+        the active calibration method's config (not all methods).
+
+        Args:
+            base_path: The output base directory (e.g. cfg.base_paths[0])
+
+        Returns:
+            Path to the saved snapshot file
+        """
+        import copy
+        from datetime import datetime
+
+        snapshot_dir = Path(base_path) / "calibration"
+        snapshot_dir.mkdir(parents=True, exist_ok=True)
+
+        now = datetime.now()
+        date_str = now.strftime("%Y-%m-%d")
+        snapshot_path = snapshot_dir / f"calibration_{date_str}.yaml"
+
+        calibration_data = copy.deepcopy(self.data.get("calibration", {}))
+        active_method = self.active_calibration_method
+
+        # Strip inactive method configs — only keep the active method
+        filtered_cal = {}
+        for key, value in calibration_data.items():
+            if key in self._CALIBRATION_METHOD_KEYS and key != active_method:
+                continue
+            filtered_cal[key] = value
+
+        snapshot = {
+            "date": now.isoformat(),
+            "calibration_method": active_method,
+            "calibration": self._paths_to_strings(filtered_cal),
+        }
+
+        with open(snapshot_path, "w") as f:
+            yaml.dump(snapshot, f, default_flow_style=False, sort_keys=False)
+
+        return snapshot_path
+
+    @staticmethod
+    def load_calibration_snapshot(base_path: Path) -> dict:
+        """Load the most recent calibration snapshot from base_path/calibration/.
+
+        Looks for calibration_YYYY-MM-DD.yaml files (sorted by name, newest first).
+        Falls back to legacy calibration.yaml if no dated files exist.
+
+        Args:
+            base_path: The output base directory
+
+        Returns:
+            Parsed snapshot dict with keys: date, calibration_method, calibration
+
+        Raises:
+            FileNotFoundError: If no snapshot exists
+        """
+        snapshot_dir = Path(base_path) / "calibration"
+
+        # Find dated snapshots (sorted descending = newest first)
+        dated_files = sorted(
+            snapshot_dir.glob("calibration_*.yaml"), reverse=True
+        )
+        if dated_files:
+            snapshot_path = dated_files[0]
+        else:
+            # Fallback to legacy filename
+            snapshot_path = snapshot_dir / "calibration.yaml"
+            if not snapshot_path.exists():
+                raise FileNotFoundError(
+                    f"No calibration snapshot in {snapshot_dir}"
+                )
+
+        with open(snapshot_path, "r") as f:
+            return yaml.safe_load(f)
+
     def _normalize_calibration_block(self):
         """Reorder calibration block keys for consistent organization.
 

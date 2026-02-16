@@ -85,6 +85,8 @@ class Config:
     __init__(path: Optional[str] = None)  # Loads config.yaml
     save()                                 # Write to YAML
     save_timestamped_copy(destination_dir: Path, timestamp: str = None) -> Path
+    save_calibration_snapshot(base_path: Path) -> Path  # Saves calibration block to base_path/calibration/calibration.yaml
+    load_calibration_snapshot(base_path: Path) -> dict   # Static method, loads snapshot. Raises FileNotFoundError if missing
 
     # --- Path properties ---
     config_path: Path
@@ -377,11 +379,13 @@ GET  /calibrate/job/<job_id>           -> job status
 GET  /calibrate/calibration_image      ?camera=&idx=&source_path_idx=
 POST /calibrate/set_datum              {base_path_idx, type_name, camera, datum_x, datum_y}
 POST /calibrate/global_coordinates/pixel_to_physical  {pixel_x, pixel_y, camera, source_path_idx, type_name}
+GET  /calibrate/calibration/snapshot       ?base_path_idx= -> {exists, date?, calibration_method?}
+POST /calibrate/calibration/snapshot/load  {base_path_idx} -> restores saved calibration config
 ```
 
 **Production files** (do the actual calibration work):
 - `scale_factor_calibration_production.py` - Simple px→mm scaling
-- `global_coordinate_alignment.py` - Global coordinate alignment (shifts coordinates.mat after calibration). Uses chain topology (cam N↔cam N+1 pairs) instead of star topology. Supports `invert_ux` to negate ux + UV_stress and reflect x-coordinates around datum_physical_x when x-direction is reversed. Auto-applied when `global_coordinates.enabled` in vectors_calibrate route.
+- `global_coordinate_alignment.py` - Global coordinate alignment (shifts coordinates.mat after calibration). Uses chain topology (cam N↔cam N+1 pairs) instead of star topology. Supports `invert_ux` to negate ux + UV_stress and reflect x-coordinates around datum_physical_x when x-direction is reversed. Auto-applied when `global_coordinates.enabled` in vectors_calibrate route. **Idempotency guard:** writes `alignment_applied.json` sidecar marker after alignment; blocks re-application unless `force=True`. Fresh calibration (vector or scale_factor) clears the marker automatically. Pre-flight validates: datum_pixel set, method not polynomial, overlap_pairs for multi-camera.
 - `calibration_planar/planar_calibration_production.py` - Dotboard detection + model. Optimized: histogram-based single blob detection, cKDTree neighbor finding, reduced RANSAC iterations, vectorized object points, no double image reads for containers
 - `calibration_charuco/charuco_calibration_production.py` - ChArUco detection
 - `calibration_poly/polynomial_calibration_production.py` - DaVis XML polynomial
@@ -667,6 +671,7 @@ useStereoCalibration(config)            // POST /backend/calibrate/stereo_dotboa
 useStereoCharucoCalibration(config)     // POST /backend/calibrate/stereo_charuco/run
 useCalibrationValidation(config)        // Validation state for calibration
 useCalibrationImageViewer(config)       // GET /backend/calibrate/calibration_image
+useCalibrationSnapshot(basePathIdx)     // GET/POST /backend/calibration/snapshot - check/load saved calibration
 ```
 
 #### `filterDefinitions.ts`
@@ -1004,7 +1009,7 @@ Triggered on GitHub release or manual dispatch. Builds wheels for {ubuntu, macos
 | `detect-planar` / `detect-charuco` | Detect calibration targets |
 | `detect-stereo-planar` / `detect-stereo-charuco` | Stereo calibration detection |
 | `apply-calibration` / `apply-stereo` | Apply calibration (px → m/s). `--align-coordinates` flag auto-applies global alignment. |
-| `align-coordinates` | Apply global coordinate alignment to calibrated vectors (reads datum/overlap from config) |
+| `align-coordinates` | Apply global coordinate alignment to calibrated vectors (reads datum/overlap from config). `--force` flag overrides idempotency guard. |
 | `transform` | Geometric transforms (`flip_ud`, `flip_lr`, `rotate_90_cw/ccw`, `rotate_180`, `swap_ux_uy`, `invert_ux_uy`, `invert_ux`, `invert_uy`, `scale_velocity:N`, `scale_coords:N`) |
 | `merge` | Multi-camera Hanning window blending |
 | `statistics` | Mean, TKE, vorticity, divergence, gamma |
@@ -1295,6 +1300,8 @@ Benchmark scripts compare PIVTOOLs output against ground truth (DNS data).
 - Config sync to backend is async — hooks that read config for type_name/source_endpoint may see stale values; pass directly instead
 - **Mixed dict key types in jsonify:** Flask's `jsonify()` calls `json.dumps(sort_keys=True)` which raises `TypeError` when dict has both int and str keys. Always use `str(camera_num)` as keys.
 - **Statistics config legacy keys:** Backend defaults were `reynolds_stress`/`normal_stress`/`inst_fluctuations` but frontend `ALL_STAT_KEYS` uses `mean_stresses`/`inst_stresses`/`mean_peak_height`. Fixed with migration in `statistics_enabled_methods` property.
+- **Calibration source change resets GC fields:** When `calibration_sources` changes in `update_config`, pixel-dependent global coordinate fields (`datum_pixel`, `overlap_points`, `overlap_pairs`, `invert_ux`, `datum_camera`) are auto-reset. User-intent fields (`enabled`, `datum_physical`, `datum_frame`) are preserved. Guard: no reset on first-time setup (empty → populated).
+- **Calibration snapshots:** Auto-saved to `base_path/calibration/calibration.yaml` after every calibration completion (all 5 methods). Snapshot load preserves source-related config keys (`calibration_sources`, `image_format`, etc.).
 
 ### Frontend
 - **Clearable number inputs:** Use `type="text" inputMode="numeric"` with a separate string state. `onChange` sets string, `onBlur` parses+clamps+saves. Never use `Number(e.target.value) || default` on onChange — it prevents clearing.

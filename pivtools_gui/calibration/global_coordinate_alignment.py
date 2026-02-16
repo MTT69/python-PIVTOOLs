@@ -27,9 +27,58 @@ from pivtools_core.vector_loading import load_coords_from_directory
 class GlobalCoordinateAligner:
     """Aligns coordinates across cameras using datum and overlap pairs."""
 
+    ALIGNMENT_MARKER = "alignment_applied.json"
+
     def __init__(self, base_dir, config: Config):
         self.base_dir = Path(base_dir)
         self.config = config
+
+    def _get_marker_path(self, camera_num: int, type_name: str) -> Path:
+        """Path to alignment marker for a camera."""
+        paths = get_data_paths(
+            self.base_dir,
+            num_frame_pairs=self.config.num_frame_pairs,
+            cam=camera_num,
+            type_name=type_name,
+        )
+        return paths["data_dir"] / self.ALIGNMENT_MARKER
+
+    def _check_already_aligned(self, type_name: str) -> list:
+        """Check if any cameras have alignment markers. Returns list of already-aligned cameras."""
+        aligned = []
+        cameras_to_check = set()
+        gc = self.config.global_coordinates_config
+        datum_cam = gc.get("datum_camera", 1)
+        cameras_to_check.add(datum_cam)
+        for pair in self.config.global_coordinates_overlap_pairs:
+            cameras_to_check.add(pair["camera_a"])
+            cameras_to_check.add(pair["camera_b"])
+        for cam in sorted(cameras_to_check):
+            marker = self._get_marker_path(cam, type_name)
+            if marker.exists():
+                aligned.append(cam)
+        return aligned
+
+    def _write_alignment_marker(self, camera_num: int, type_name: str, shift_x: float, shift_y: float):
+        """Write alignment marker after successful shift."""
+        import json
+        from datetime import datetime
+
+        marker_path = self._get_marker_path(camera_num, type_name)
+        marker_data = {
+            "aligned_at": datetime.now().isoformat(),
+            "shift_x": shift_x,
+            "shift_y": shift_y,
+            "method": self.config.active_calibration_method,
+        }
+        marker_path.write_text(json.dumps(marker_data, indent=2))
+
+    @staticmethod
+    def clear_alignment_marker(data_dir: Path):
+        """Remove alignment marker from a data directory (called after fresh calibration)."""
+        marker = data_dir / GlobalCoordinateAligner.ALIGNMENT_MARKER
+        if marker.exists():
+            marker.unlink()
 
     def pixel_to_calibrated_physical(
         self,
@@ -67,7 +116,7 @@ class GlobalCoordinateAligner:
                 f"Supported: scale_factor, dotboard, charuco"
             )
 
-    def apply_alignment(self, type_name: str) -> Dict[str, any]:
+    def apply_alignment(self, type_name: str, force: bool = False) -> Dict[str, any]:
         """Apply global coordinate alignment to all cameras using chain topology.
 
         Steps:
@@ -85,6 +134,8 @@ class GlobalCoordinateAligner:
         ----------
         type_name : str
             'instantaneous' or 'ensemble'
+        force : bool
+            If True, skip idempotency check and apply even if already aligned.
 
         Returns
         -------
@@ -99,7 +150,37 @@ class GlobalCoordinateAligner:
 
         datum_pixel = gc.get("datum_pixel")
         if datum_pixel is None:
-            raise ValueError("datum_pixel not set in global_coordinates config")
+            raise ValueError(
+                "datum_pixel not set in global_coordinates config. "
+                "Click a point on the datum camera image to set the datum pixel."
+            )
+
+        method = self.config.active_calibration_method
+        if method == "polynomial":
+            raise ValueError(
+                "Global coordinate alignment not supported for method 'polynomial'. "
+                "Supported methods: scale_factor, dotboard, charuco. "
+                "Change the active calibration method first."
+            )
+
+        overlap_pairs = self.config.global_coordinates_overlap_pairs
+        num_cameras = self.config.camera_count
+        if num_cameras > 1 and not overlap_pairs:
+            logger.warning(
+                f"Multi-camera setup ({num_cameras} cameras) but no overlap_pairs configured. "
+                f"Only the datum camera will be aligned. Set overlap pairs to chain all cameras."
+            )
+
+        # Idempotency guard: check for already-aligned cameras
+        if not force:
+            already_aligned = self._check_already_aligned(type_name)
+            if already_aligned:
+                msg = (
+                    f"Cameras {already_aligned} already have alignment applied. "
+                    f"Re-running will double the coordinate shifts. "
+                    f"Re-calibrate first to get fresh coordinates, or use force=True to override."
+                )
+                raise ValueError(msg)
 
         datum_physical = gc.get("datum_physical", [0.0, 0.0])
         overlap_pairs = self.config.global_coordinates_overlap_pairs
@@ -401,6 +482,10 @@ class GlobalCoordinateAligner:
                 coords_struct["z"][i] = cz
 
         savemat(str(coords_path), {"coordinates": coords_struct}, do_compression=True)
+
+        # Write alignment marker
+        self._write_alignment_marker(camera_num, type_name, shift_x, shift_y)
+
         logger.info(
             f"Applied shift ({shift_x:.4f}, {shift_y:.4f}) mm to "
             f"Cam{camera_num} {type_name} ({num_runs} runs)"

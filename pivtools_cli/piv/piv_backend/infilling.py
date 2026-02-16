@@ -361,7 +361,7 @@ def infill_knn(
         n_neighbors=n_neighbors,
         weights=weights,
         algorithm=algorithm,
-        n_jobs=-1  # Use all CPU cores
+        n_jobs=1  # Always 1: runs inside Dask daemon workers which can't fork
     )
     
     # Stack u and v as multi-output targets

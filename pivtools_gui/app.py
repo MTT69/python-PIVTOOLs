@@ -1118,6 +1118,25 @@ def update_config():
         data = dict(data)
         data["post_processing"] = current_pp
 
+    # Detect calibration source changes -> reset pixel-dependent GC fields
+    incoming_sources = data.get("calibration", {}).get("calibration_sources")
+    if incoming_sources is not None:
+        old_sources = sorted(str(s) for s in cfg.calibration_sources)
+        new_sources = sorted(str(s).strip() for s in incoming_sources if s)
+        if new_sources != old_sources and old_sources:
+            gc = cfg.global_coordinates_config
+            data.setdefault("calibration", {})["global_coordinates"] = {
+                "enabled": gc.get("enabled", False),
+                "datum_camera": 1,
+                "datum_pixel": None,
+                "datum_physical": gc.get("datum_physical", [0.0, 0.0]),
+                "datum_frame": gc.get("datum_frame", 1),
+                "invert_ux": False,
+                "overlap_points": [],
+                "overlap_pairs": [],
+            }
+            logger.info("Calibration sources changed — reset pixel-dependent global coordinate fields")
+
     # Store old camera_count to detect changes
     old_camera_count = cfg.data["paths"].get("camera_count", 1)
 

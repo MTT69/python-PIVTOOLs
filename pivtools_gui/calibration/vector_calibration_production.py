@@ -852,6 +852,10 @@ class VectorCalibrator:
         savemat(str(coords_path), coords_output)
         logger.info(f"Saved calibrated coordinates: {coords_path}")
 
+        # Clear any alignment marker (coordinates are now fresh/unaligned)
+        from pivtools_gui.calibration.global_coordinate_alignment import GlobalCoordinateAligner
+        GlobalCoordinateAligner.clear_alignment_marker(calib_data_dir)
+
         # Process vector files - build per-run coordinate mapping
         if valid_runs:
             # Build dict mapping run_num (1-based) -> (x_coords, y_coords)

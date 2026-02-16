@@ -16,7 +16,7 @@ import scipy.io
 from flask import Blueprint, jsonify, request
 from loguru import logger
 
-from pivtools_core.config import get_config
+from pivtools_core.config import get_config, reload_config, Config
 from pivtools_core.paths import get_data_paths
 from pivtools_core.image_handling.calibration_loader import (
     read_calibration_image,
@@ -616,6 +616,13 @@ def vectors_calibrate():
                             "error": str(align_err),
                         }
 
+                # Save calibration snapshot
+                try:
+                    snapshot_path = cfg.save_calibration_snapshot(base_root)
+                    camera_results["calibration_snapshot"] = str(snapshot_path)
+                except Exception as snap_err:
+                    logger.warning(f"Failed to save calibration snapshot: {snap_err}")
+
                 # Mark job complete
                 job_manager.complete_job(
                     job_id,
@@ -657,6 +664,89 @@ def vectors_status(job_id):
     if job_data is None:
         return jsonify({"error": "Job not found"}), 404
     return jsonify(job_data)
+
+
+# ============================================================================
+# CALIBRATION SNAPSHOT ROUTES
+# ============================================================================
+
+
+@calibration_shared_bp.route("/calibration/snapshot", methods=["GET"])
+def calibration_snapshot_check():
+    """
+    Check if a calibration snapshot exists for the given base path.
+
+    Query params:
+        base_path_idx: int (default 0)
+
+    Returns:
+        JSON with {exists: bool, date?: str, calibration_method?: str}
+    """
+    try:
+        base_path_idx = int(request.args.get("base_path_idx", 0))
+        cfg = get_config()
+        base_path = Path(cfg.base_paths[base_path_idx])
+
+        snapshot = Config.load_calibration_snapshot(base_path)
+        return jsonify({
+            "exists": True,
+            "date": snapshot.get("date"),
+            "calibration_method": snapshot.get("calibration_method"),
+        })
+    except FileNotFoundError:
+        return jsonify({"exists": False})
+    except (IndexError, ValueError) as e:
+        return jsonify({"exists": False, "error": str(e)})
+    except Exception as e:
+        logger.error(f"Error checking calibration snapshot: {e}")
+        return jsonify({"exists": False, "error": str(e)})
+
+
+@calibration_shared_bp.route("/calibration/snapshot/load", methods=["POST"])
+def calibration_snapshot_load():
+    """
+    Load a calibration snapshot, replacing the current calibration config.
+
+    Preserves source-related fields (calibration_sources, image_format, etc.)
+    so only the calibration results are restored.
+
+    Request JSON:
+        base_path_idx: int (default 0)
+
+    Returns:
+        JSON with {status: "success", date, calibration_method}
+    """
+    try:
+        data = request.get_json() or {}
+        base_path_idx = int(data.get("base_path_idx", 0))
+
+        cfg = get_config()
+        base_path = Path(cfg.base_paths[base_path_idx])
+
+        snapshot = Config.load_calibration_snapshot(base_path)
+        snapshot_cal = snapshot.get("calibration", {})
+
+        if not snapshot_cal:
+            return jsonify({"error": "Snapshot contains no calibration data"}), 400
+
+        # Merge snapshot into current calibration config.
+        # Snapshot may only contain the active method — preserve other methods.
+        current_cal = cfg.data.get("calibration", {})
+        current_cal.update(snapshot_cal)
+        cfg.data["calibration"] = current_cal
+        cfg.save()
+        reload_config()
+
+        return jsonify({
+            "status": "success",
+            "date": snapshot.get("date"),
+            "calibration_method": snapshot.get("calibration_method"),
+        })
+    except FileNotFoundError:
+        return jsonify({"error": "No calibration snapshot found"}), 404
+    except Exception as e:
+        logger.error(f"Error loading calibration snapshot: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 # ============================================================================

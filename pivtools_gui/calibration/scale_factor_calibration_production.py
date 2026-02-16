@@ -459,6 +459,11 @@ class ScaleFactorCalibrator:
                 str(coords_path_cal), {"coordinates": out_coords}, do_compression=True
             )
             loguru_logger.info(f"Updated coordinates for {processed_runs} runs")
+
+            # Clear any alignment marker (coordinates are now fresh/unaligned)
+            from pivtools_gui.calibration.global_coordinate_alignment import GlobalCoordinateAligner
+            GlobalCoordinateAligner.clear_alignment_marker(coords_path_cal.parent)
+
             return True
 
         except FileNotFoundError:
