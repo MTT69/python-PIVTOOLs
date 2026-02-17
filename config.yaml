@@ -147,25 +147,20 @@ ensemble_piv:
     - 96
   - - 16
     - 16
-  - - 16
-    - 16
   - - 8
     - 16
   overlap:
   - 75
   - 50
   - 50
-  - 50
   type:
   - std
-  - single
   - single
   - single
   runs:
   - 1
   - 2
   - 3
-  - 4
   store_planes: true
   save_diagnostics: false
   sum_window:
@@ -175,7 +170,7 @@ ensemble_piv:
   sum_fitting_window:
   - 16
   - 16
-  resume_from_pass: 4
+  resume_from_pass: 0
   window_type: square
 calibration:
   image_format: planar_calibration_plate_%02d.tif

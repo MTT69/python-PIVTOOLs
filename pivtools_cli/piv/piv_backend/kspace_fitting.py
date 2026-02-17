@@ -307,9 +307,10 @@ def _fit_single_window_kspace(
 
     # Step 4: Estimate SNR and compute adaptive k-bounds from F_ref decay
     dc_power = np.abs(F_ref[center_idx_y, center_idx_x]) ** 2
-    # Estimate noise from corners of k-space
-    corner_region = np.abs(F_ref[:3, :3]) ** 2
-    noise_power = np.median(corner_region) + 1e-12
+    # Estimate noise from high-k annular ring (rotationally symmetric)
+    K_R = np.sqrt(K_X**2 + K_Y**2)
+    noise_ring = (K_R > 0.4) & (K_R < 0.5)
+    noise_power = np.median(np.abs(F_ref[noise_ring]) ** 2) + 1e-12
     snr = dc_power / noise_power
 
     # Helper to build diagnostics dict
@@ -343,8 +344,9 @@ def _fit_single_window_kspace(
     F_ref_profile_y = np.abs(F_ref[:, center_idx_x])
     k_max_y = _compute_kmax_from_profile(k_y, F_ref_profile_y, F_ref_dc, threshold_frac)
 
-    # Use more conservative of adaptive and fixed bounds
-    k_max_init = min(k_max_x, k_max_y, 0.25)
+    # Per-axis k_max for initial 1D fits
+    k_max_init_x = min(k_max_x, 0.25)
+    k_max_init_y = min(k_max_y, 0.25)
 
     # Step 5: Extract initial guesses
     #
@@ -362,10 +364,10 @@ def _fit_single_window_kspace(
 
     # Variance from 1D k-space magnitude regression
     _, Sigma_xx_init = _fit_1d_axis(
-        F_AB, F_ref, k_x, center_idx_y, k_max_init, axis='x'
+        F_AB, F_ref, k_x, center_idx_y, k_max_init_x, axis='x'
     )
     _, Sigma_yy_init = _fit_1d_axis(
-        F_AB, F_ref, k_y, center_idx_x, k_max_init, axis='y'
+        F_AB, F_ref, k_y, center_idx_x, k_max_init_y, axis='y'
     )
 
     # Validate initial estimates
@@ -378,7 +380,7 @@ def _fit_single_window_kspace(
     # With soft weighting, we use larger bounds (0.45) since weights handle the decay
     # Without soft weighting, use more conservative bounds (0.25)
     if use_soft_weighting:
-        k_max_limit = 0.45  # Soft weights handle high-k attenuation
+        k_max_limit = 0.35  # Soft weights handle high-k attenuation
     else:
         k_max_limit = 0.25  # Hard cutoff needs conservative bound
 
@@ -400,6 +402,7 @@ def _fit_single_window_kspace(
             noise_floor=noise_power,
             sigma_xx_estimate=Sigma_xx_init,
             sigma_yy_estimate=Sigma_yy_init,
+            epsilon=epsilon,
         )
 
         if result is None:
@@ -547,6 +550,9 @@ def _fit_1d_axis(
     - log|T| = log|F_AB| - log|F_ref| = -2*pi^2 * Sigma * k^2  (parabola)
     - phase(T) = phase(F_AB) - phase(F_ref) = -2*pi * k * mu  (linear)
 
+    Both regressions are forced through the origin because DC normalisation
+    guarantees T(0) = 1, so ln|T(0)| = 0 and phase(T(0)) = 0 exactly.
+
     Parameters
     ----------
     F_AB : np.ndarray
@@ -587,7 +593,9 @@ def _fit_1d_axis(
     phase_profile = np.angle(F_AB_profile)
 
     # For magnitude (variance estimation): use k_max
-    valid_mask_mag = (np.abs(k_axis) > 0.01) & (np.abs(k_axis) < k_max)
+    N = len(k_axis)
+    k_min = 1.5 / N
+    valid_mask_mag = (np.abs(k_axis) > k_min) & (np.abs(k_axis) < k_max)
     k_valid_mag = k_axis[valid_mask_mag]
     log_mag_T_valid = log_mag_T[valid_mask_mag]
     # Weight by |F_AB| (higher signal regions more reliable)
@@ -596,7 +604,7 @@ def _fit_1d_axis(
     # For phase (displacement estimation): use smaller k range to avoid phase wrapping
     # Phase estimation is most reliable at low k where phase is nearly linear
     phase_k_max = min(k_max, 0.25)
-    valid_mask_phase = (np.abs(k_axis) > 0.02) & (np.abs(k_axis) < phase_k_max)
+    valid_mask_phase = (np.abs(k_axis) > k_min) & (np.abs(k_axis) < phase_k_max)
     k_valid_phase = k_axis[valid_mask_phase]
     phase_valid = phase_profile[valid_mask_phase]
     F_AB_valid_phase = F_AB_profile[valid_mask_phase]
@@ -613,8 +621,8 @@ def _fit_1d_axis(
         weights = F_AB_mag_valid / (np.max(F_AB_mag_valid) + 1e-12)
 
         try:
-            # Fit: log_mag_T = slope * k_sq + intercept
-            A = np.vstack([k_sq * weights, weights]).T
+            # Fit: log_mag_T = slope * k_sq (through origin after DC normalisation)
+            A = (k_sq * weights).reshape(-1, 1)
             b = log_mag_T_valid * weights
             coeffs, _, _, _ = np.linalg.lstsq(A, b, rcond=None)
             slope = coeffs[0]
@@ -629,8 +637,8 @@ def _fit_1d_axis(
         weights_phase = weights_phase / (np.max(weights_phase) + 1e-12)
 
         try:
-            # Weighted linear fit: phase = slope * k (no intercept, phase at k=0 should be 0)
-            A = np.vstack([k_valid_phase * weights_phase, weights_phase]).T
+            # Weighted linear fit: phase = slope * k (through origin after DC normalisation)
+            A = (k_valid_phase * weights_phase).reshape(-1, 1)
             b = phase_valid * weights_phase
             coeffs, _, _, _ = np.linalg.lstsq(A, b, rcond=None)
             slope_phase = coeffs[0]
@@ -719,6 +727,7 @@ def _fit_transfer_function_full(
     noise_floor: float = 1e-12,
     sigma_xx_estimate: float = 1.0,
     sigma_yy_estimate: float = 1.0,
+    epsilon: float = 1e-12,
 ) -> Optional[np.ndarray]:
     """
     Full 5-parameter nonlinear fit using normalized transfer function.
@@ -755,6 +764,8 @@ def _fit_transfer_function_full(
         Initial Sigma_xx estimate for anisotropic soft decay (x direction)
     sigma_yy_estimate : float
         Initial Sigma_yy estimate for anisotropic soft decay (y direction)
+    epsilon : float
+        Regularisation constant for F_ref division (computed once in caller)
 
     Returns
     -------
@@ -768,7 +779,6 @@ def _fit_transfer_function_full(
     center_idx_x = corr_w // 2
 
     # Compute transfer function T = F_AB / F_ref
-    epsilon = np.max(np.abs(F_ref)) * 1e-8
     T_measured = F_AB / (F_ref + epsilon)
 
     # Get T(0) for normalization
@@ -792,20 +802,16 @@ def _fit_transfer_function_full(
         return None  # Not enough valid points
 
     if use_soft_weighting:
-        # Combined SNR × isotropic soft decay weighting
-        # Note: Isotropic weighting empirically outperforms anisotropic
-        # because it provides more balanced weight between x and y directions
+        # Combined SNR × anisotropic soft decay weighting
         w_snr = np.abs(F_ref_flat) / (np.sqrt(noise_floor) + 1e-12)
         w_snr = w_snr / (np.max(w_snr) + 1e-12)
 
-        # Isotropic soft decay using average sigma
-        sigma_avg = (sigma_xx_estimate + sigma_yy_estimate) / 2
-        k0_sq = 1.0 / (2 * np.pi ** 2 * max(sigma_avg, 0.01) + 1e-12)
-        K_R_sq = K_X_flat ** 2 + K_Y_flat ** 2
-        w_soft = np.exp(-K_R_sq / k0_sq)
+        # Anisotropic soft decay — each axis decays at its own rate
+        k0_x_sq = 1.0 / (2 * np.pi ** 2 * max(sigma_xx_estimate, 0.01) + 1e-12)
+        k0_y_sq = 1.0 / (2 * np.pi ** 2 * max(sigma_yy_estimate, 0.01) + 1e-12)
+        w_soft = np.exp(-K_X_flat ** 2 / k0_x_sq - K_Y_flat ** 2 / k0_y_sq)
 
         weights = w_snr * w_soft
-        weights = weights / (np.max(weights) + 1e-12)
     else:
         weights = np.ones_like(K_X_flat)
 
@@ -850,12 +856,13 @@ def _fit_transfer_function_full(
             p0,
             bounds=bounds,
             method='trf',
-            max_nfev=200,  # More iterations for better convergence
+            max_nfev=50 * len(p0),  # Scale with parameter count
             ftol=1e-8,
             xtol=1e-8,
         )
 
-        if result.success or result.cost < 1e6:
+        n_points = len(T_norm_flat)
+        if result.success or result.cost / n_points < 1.0:
             # Return 6-element array for interface compatibility (A=1.0)
             return np.array([
                 result.x[0], result.x[1],  # mu_x, mu_y
@@ -1011,8 +1018,9 @@ def plot_kspace_diagnostic(
 
     # Compute SNR and adaptive k-bounds from F_ref decay
     dc_power = np.abs(F_ref[center_idx_y, center_idx_x]) ** 2
-    corner_region = np.abs(F_ref[:3, :3]) ** 2
-    noise_power = np.median(corner_region) + 1e-12
+    K_R = np.sqrt(K_X**2 + K_Y**2)
+    noise_ring = (K_R > 0.4) & (K_R < 0.5)
+    noise_power = np.median(np.abs(F_ref[noise_ring]) ** 2) + 1e-12
     snr = dc_power / noise_power
 
     # Compute k_max from F_ref decay along axes
@@ -1025,12 +1033,13 @@ def plot_kspace_diagnostic(
     F_ref_profile_y = np.abs(F_ref[:, center_idx_x])
     k_max_y = _compute_kmax_from_profile(k_y, F_ref_profile_y, F_ref_dc, threshold_frac)
 
-    # Use more conservative bound for initial fits
-    k_max_init = min(k_max_x, k_max_y, 0.25)
+    # Per-axis k_max for initial fits
+    k_max_init_x = min(k_max_x, 0.25)
+    k_max_init_y = min(k_max_y, 0.25)
 
     # 1D fits for initial estimates
-    mu_x_init, Sigma_xx_init = _fit_1d_axis(T_measured, k_x, center_idx_y, k_max_init, axis='x')
-    mu_y_init, Sigma_yy_init = _fit_1d_axis(T_measured, k_y, center_idx_x, k_max_init, axis='y')
+    mu_x_init, Sigma_xx_init = _fit_1d_axis(F_AB, F_ref, k_x, center_idx_y, k_max_init_x, axis='x')
+    mu_y_init, Sigma_yy_init = _fit_1d_axis(F_AB, F_ref, k_y, center_idx_x, k_max_init_y, axis='y')
 
     # Refine k_max based on Sigma estimates
     k_max_x = min(_compute_kmax(max(Sigma_xx_init, 0.01), snr), k_max_x, 0.25)
@@ -1175,7 +1184,7 @@ def plot_kspace_diagnostic(
     # Row 3: Phase profiles and summary
     ax9 = fig.add_subplot(3, 4, 9)
     phase_k_max = min(k_max_x, 0.25)
-    valid_k_phase = (np.abs(k_x) > 0.02) & (np.abs(k_x) < phase_k_max)
+    valid_k_phase = (np.abs(k_x) > 1.5 / corr_w) & (np.abs(k_x) < phase_k_max)
     k_x_phase = k_x[valid_k_phase]
     phase_x = np.angle(T_profile_x[valid_k_phase])
     ax9.plot(k_x_phase, phase_x, 'b.-', label='phase(T(k_x, 0))', markersize=4)
@@ -1200,7 +1209,7 @@ def plot_kspace_diagnostic(
 
     ax10 = fig.add_subplot(3, 4, 10)
     phase_k_max_y = min(k_max_y, 0.25)
-    valid_k_phase_y = (np.abs(k_y) > 0.02) & (np.abs(k_y) < phase_k_max_y)
+    valid_k_phase_y = (np.abs(k_y) > 1.5 / corr_h) & (np.abs(k_y) < phase_k_max_y)
     k_y_phase = k_y[valid_k_phase_y]
     phase_y = np.angle(T_profile_y[valid_k_phase_y])
     ax10.plot(k_y_phase, phase_y, 'b.-', label='phase(T(0, k_y))', markersize=4)
@@ -1228,7 +1237,7 @@ def plot_kspace_diagnostic(
     summary_text = f"""K-Space Diagnostic Summary
 {'='*35}
 SNR estimate: {snr:.1f}
-Initial k_max: {k_max_init:.3f}
+Initial k_max: ({k_max_init_x:.3f}, {k_max_init_y:.3f})
 
 Adaptive k-bounds:
   k_max_x: {k_max_x:.3f}
@@ -1254,7 +1263,7 @@ Ground Truth:
 
     # log|T| vs k^2 plot (linearized)
     ax12 = fig.add_subplot(3, 4, 12)
-    valid_k_sq = (np.abs(k_x) > 0.01) & (np.abs(k_x) < k_max_x)
+    valid_k_sq = (np.abs(k_x) > 1.5 / corr_w) & (np.abs(k_x) < k_max_x)
     k_x_sq = k_x[valid_k_sq] ** 2
     log_mag_x = np.log(np.maximum(np.abs(T_profile_x[valid_k_sq]), 1e-12))
     ax12.plot(k_x_sq, log_mag_x, 'b.-', label='ln|T| vs k_x^2', markersize=4)

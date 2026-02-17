@@ -829,6 +829,9 @@ Alternative to Levenberg-Marquardt Gaussian fitting. Works in Fourier domain: `T
 - **Config:** `ensemble_piv.fit_method: kspace`, `kspace_snr_threshold: 3.0`
 - **File:** `pivtools_cli/piv/piv_backend/kspace_fitting.py`
 - **Status codes:** 0=success, 1=no converge, 2=low SNR, 3=displacement > 3/4 window, 5=negative variance (consistent with Gaussian codes)
+- **Noise estimation:** High-k annular ring (0.4 < |k| < 0.5) for rotationally symmetric noise floor estimate
+- **Soft weighting:** Anisotropic decay `exp(-k_x²/k0_x² - k_y²/k0_y²)` matching elliptical transfer function shape; k_max cap at 0.35 (soft) or 0.25 (hard)
+- **1D regressions:** Forced through origin (DC-normalised T(0)=1); per-axis k_max bounds; window-size-aware k_min = 1.5/N
 - **Gradient correction:** K-space does not estimate σ_A (particle image variance) — it's algebraically cancelled in Fourier space. When gradient correction is enabled, only the window averaging term (L²/12) is applied; the particle extent term (σ_A) is omitted. This is the dominant correction (~95-97% of total). `sig_A_x/y/xy` fields are saved as zero in the output .mat file.
 
 ### Sum Fitting Window Feature

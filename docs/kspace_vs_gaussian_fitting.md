@@ -168,7 +168,7 @@ Two mechanisms determine which wavenumbers to include:
 
 2. **SNR-based bound:** `k_max = √(ln(SNR) / (2π²σ²))` — the wavenumber where the transfer function magnitude equals the noise floor.
 
-The more conservative (smaller) of these bounds is used, with a hard cap at 0.25 cycles/pixel (half Nyquist) when using hard cutoffs, or 0.45 when using soft weighting (since the weights handle high-k attenuation).
+The more conservative (smaller) of these bounds is used, with a hard cap at 0.25 cycles/pixel (half Nyquist) when using hard cutoffs, or 0.35 when using soft weighting (since the weights handle high-k attenuation).
 
 An **elliptical mask** combines the per-axis bounds:
 ```
@@ -183,7 +183,7 @@ Along each axis independently:
 
 - **Variance** from log-magnitude slope: `log|T| = -2π²Σk²`, so `Σ = -slope/(2π²)` via weighted linear regression of log|T| vs k².
 
-These 1D regressions use **log differences** (`log|F_AB| - log|F_ref|`) rather than explicit division, avoiding noise amplification. They provide fast, robust initial guesses for the nonlinear fit.
+These 1D regressions use **log differences** (`log|F_AB| - log|F_ref|`) rather than explicit division, avoiding noise amplification. Both regressions are forced through the origin because DC normalisation guarantees T(0) = 1, so ln|T(0)| = 0 and phase(T(0)) = 0 exactly. Per-axis k_max bounds are used (not a single isotropic bound), and the minimum wavenumber k_min = 1.5/N adapts to the window size.
 
 Phase estimation uses a more conservative k range than magnitude estimation to avoid phase wrapping at high wavenumbers.
 
@@ -199,7 +199,7 @@ residual = weights · (T_norm - T_model)
 
 **Bounds:** Σ_xx, Σ_yy ≥ 0 (physical constraint); displacements bounded by ±10 pixels.
 
-**Convergence:** ftol=xtol=1e-8, max 200 function evaluations.
+**Convergence:** ftol=xtol=1e-8, max_nfev = 50 × number of parameters (250 for 5-param).
 
 ### Weighting Strategy
 
@@ -209,16 +209,16 @@ The fit uses a product of two weight functions:
 # SNR-based: emphasises high-signal spectral regions
 w_snr = |F_ref| / √noise_floor
 
-# Soft decay: isotropic Gaussian rolloff matching transfer function bandwidth
-σ_avg = (Σ_xx_est + Σ_yy_est) / 2
-k0² = 1 / (2π² · σ_avg)
-w_soft = exp(-K_R² / k0²)
+# Anisotropic soft decay: elliptical rolloff matching transfer function shape
+k0_x² = 1 / (2π² · Σ_xx_est)
+k0_y² = 1 / (2π² · Σ_yy_est)
+w_soft = exp(-k_x² / k0_x² - k_y² / k0_y²)
 
-# Combined (normalised)
+# Combined
 weights = w_snr · w_soft
 ```
 
-Design choice: **isotropic** soft weighting was chosen over anisotropic after empirical testing showed it provides more balanced weight between x and y directions. The anisotropic variant was tried (using separate k0_x, k0_y from Σ_xx, Σ_yy estimates) but abandoned.
+The **anisotropic** soft weighting matches the elliptical decay of the transfer function `|T(k)| = exp(-2π²(Σ_xx k_x² + Σ_yy k_y²))`. For anisotropic flows (e.g. boundary layers where Σ_xx >> Σ_yy), this properly retains high-k data along the slowly-decaying axis while suppressing noise along the fast-decaying axis.
 
 ### Output Format
 
@@ -321,9 +321,9 @@ Mean displacement accuracy is comparable between the two methods for well-resolv
 
 The raw transfer function `T(k) = F_AB / F_ref` has an amplitude ambiguity: if illumination differs between frames A and B, then `F_AA(0) ≠ F_BB(0)`, and the geometric mean `F_ref = √(|F_AA|·|F_BB|)` does not perfectly cancel the particle contribution at DC. Normalising by `T(0)` removes this ambiguity and reduces the problem from 6 to 5 parameters.
 
-### Why Isotropic Soft Weighting?
+### Why Anisotropic Soft Weighting?
 
-The transfer function for anisotropic turbulence (Σ_xx ≠ Σ_yy) decays at different rates in k_x and k_y. Anisotropic soft weighting `exp(-k_x²/k0_x² - k_y²/k0_y²)` was the natural choice to match this, but empirical testing showed it can over-suppress one direction when the initial Σ estimates are inaccurate. Isotropic weighting with `σ_avg = (Σ_xx + Σ_yy)/2` provides more balanced coverage and lets the optimizer find the anisotropy itself.
+The transfer function for anisotropic turbulence (Σ_xx ≠ Σ_yy) decays at different rates in k_x and k_y. The soft weighting envelope `exp(-k_x²/k0_x² - k_y²/k0_y²)` mirrors this elliptical decay, ensuring that each axis is attenuated according to its own signal bandwidth. For boundary layers or channel flows where Σ_xx >> Σ_yy, isotropic weighting would either under-weight good data along k_y (slow decay) or over-weight noise along k_x (fast decay). The per-axis k0 values are derived from the 1D initial Σ estimates.
 
 ### Why Log Differences for Initial Guesses?
 
