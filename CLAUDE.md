@@ -262,6 +262,7 @@ base_path/
 ```
 load_images.py:     read_pair(idx, source_path, camera, cfg) -> np.ndarray
                     read_image(path, **kwargs) -> np.ndarray
+                    load_images(camera, cfg, source, batch_size) -> da.Array  # batch_size=1 default
                     load_mask_for_camera(camera, cfg, source_path_idx) -> Optional[np.ndarray]
 
 path_utils.py:      build_piv_camera_path(cfg, source_path_idx, camera_num) -> Path
@@ -748,12 +749,11 @@ Defines available image filter types and their parameter schemas for the UI.
 1. VALIDATE    validate_config(config)
 2. CLUSTER     start_cluster() → LocalCluster or SLURMCluster
 3. PER (path, camera):
-   a. LOAD      load_images() → da.Array(N, 2, H, W) [lazy, ~N KB]
+   a. LOAD      load_images(batch_size=N) → da.Array(N, 2, H, W) [lazy, batch-sized chunks, no rechunk]
    b. SCATTER   scatter_immutable_data() → broadcast cache + masks to workers
-   c. RECHUNK   rechunk_for_batched_processing(batch_size) → (batch_size, 2, H, W) chunks
-   d. FILTER    create_filter_pipeline() → map_blocks(apply_all_filters_slim) [lazy]
-   e. PROCESS   sliding window: submit filter→correlate tasks, bounded memory
-   f. SAVE      save results + coordinates.mat
+   c. FILTER    create_filter_pipeline() → map_blocks(apply_all_filters_slim) [lazy]
+   d. PROCESS   sliding window: submit filter→correlate tasks, bounded memory
+   e. SAVE      save results + coordinates.mat
 ```
 
 **Instantaneous step (e):** `correlate_and_save_batch()` → multi-pass correlation + peak finding + save per batch. Uses `as_completed()` for any-order processing.
@@ -767,8 +767,8 @@ Defines available image filter types and their parameter schemas for the UI.
 | Function | Params | Returns | Description |
 |----------|--------|---------|-------------|
 | `main()` | — | None | CLI entry. Validates config, starts cluster, iterates paths×cameras, calls `run_instantaneous_piv()`. |
-| `run_instantaneous_piv` | `config, client, camera_num, source_path, output_path, base_path, vector_masks, pixel_mask` | `List[str]` | Full pipeline for one camera: load → scatter → rechunk → filter → sliding window → save coords. |
-| `process_instantaneous_sliding_window` | `client, images, num_chunks, workers, scattered_config, pass_idx, scattered, config, output_path` | `List[str]` | Bounded sliding window: `max_in_flight = min(2*workers, chunks)`. Uses `as_completed()`. |
+| `run_instantaneous_piv` | `config, client, camera_num, source_path, output_path, base_path, vector_masks, pixel_mask` | `List[str]` | Full pipeline for one camera: batch-load → scatter → filter → sliding window → save coords. |
+| `process_instantaneous_sliding_window` | `client, images, num_chunks, scattered_config, scattered, output_path, config` | `List[str]` | Bounded sliding window: `max_in_flight = min(max_in_flight_per_worker*workers, chunks)`. Uses `as_completed()`. |
 | `signal_handler` | `signum, frame` | None | SIGTERM/SIGINT → cancel futures → `os._exit(1)`. |
 
 ### `pivtools_core/ensemble.py`
@@ -889,7 +889,7 @@ Dask-centric utilities shared by both pipelines.
 
 | Function | Description |
 |----------|-------------|
-| `rechunk_for_batched_processing(images, batch_size)` | `(N,2,H,W)` per-pair → `(batch_size,2,H,W)` chunks |
+| ~~`rechunk_for_batched_processing`~~ | Removed — batch loading in `load_images()` eliminates the need for rechunk |
 | `create_filter_pipeline(images, config, pixel_mask, ...)` | `map_blocks(apply_all_filters_slim)` — lazy filtering |
 | `apply_all_filters_slim(block, spatial_specs, temporal_specs, ...)` | Applies pixel mask → spatial → temporal filters |
 | `scatter_immutable_data(client, config, vector_masks, pixel_mask, ...)` | Creates correlator, broadcasts cache + masks |
@@ -903,9 +903,9 @@ Dask-centric utilities shared by both pipelines.
 
 ### Dask Patterns
 
-**Lazy loading:** `dask.delayed` per image pair (~1 KB each), stacked into `da.Array(N, 2, H, W)`. No data loaded until `.compute()`.
+**Batch loading:** `load_images(batch_size=N)` creates one `dask.delayed` per batch (~1 KB each), concatenated into `da.Array(N, 2, H, W)`. Chunks are already `(batch_size, 2, H, W)` — no rechunk step needed. Each batch task is fully independent (no cross-dependencies), enabling even worker distribution from the start.
 
-**Sliding window I/O:** Bounds memory to ~2 batches per worker. `max_in_flight = min(2*num_workers, num_chunks)`. Completed filter futures are replaced, keeping pipeline full.
+**Sliding window I/O:** Bounds memory to ~`max_in_flight_per_worker` batches per worker. `max_in_flight = min(max_in_flight_per_worker * num_workers, num_chunks)` (default 3 per worker). Completed filter futures are replaced, keeping pipeline full.
 
 **Data scattering:** Immutable data (correlator cache, masks, config) broadcast once. Predictor field re-scattered per pass.
 
@@ -1068,6 +1068,7 @@ Both `cpu_instantaneous.py` and `cpu_ensemble.py` use `cv2.setNumThreads(1)` + c
 | `omp_threads` | int | 1 | OpenMP threads for C extensions |
 | `dask_workers_per_node` | int | 1 | Dask worker count |
 | `dask_memory_limit` | str | `"4GB"` | Per-worker memory |
+| `dask_max_in_flight_per_worker` | int | 3 | Max concurrent tasks per worker in sliding window (HPC: 4-6) |
 | `cluster_type` | str | `"local"` | `"local"` or `"slurm"` |
 | `open_dashboard` | bool | `false` | Auto-open Dask dashboard in browser on cluster start |
 
@@ -1093,6 +1094,7 @@ Both `cpu_instantaneous.py` and `cpu_ensemble.py` use `cv2.setNumThreads(1)` + c
 | `gradient_correction` | `ensemble_gradient_correction` | Reynolds stress gradient correction |
 | `resume_from_pass` | `ensemble_resume_from_pass` | 1-based pass to resume (0=fresh start) |
 | `correlation_normalization` | `ensemble_correlation_normalization` | `"none"` (default) or `"per_frame"` — per-frame mean-sub + energy normalization |
+| `persist_images` | `ensemble_persist_images` | `false` (default). When `true`, persist all filtered images in worker RAM (HPC with lots of RAM) |
 
 **Outlier detection / infilling** (parallel structure for instantaneous and ensemble):
 `outlier_detection.enabled`, `.methods` (list of `{type, threshold, epsilon}`), `infilling.mid_pass`, `.final_pass`

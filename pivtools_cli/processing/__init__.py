@@ -3,7 +3,6 @@ Dask-native processing pipeline for PIV.
 """
 
 from .dask_pipeline import (
-    rechunk_for_batched_processing,
     create_filter_pipeline,
     scatter_immutable_data,
     correlate_and_save_batch,
@@ -13,7 +12,6 @@ from .dask_pipeline import (
 )
 
 __all__ = [
-    "rechunk_for_batched_processing",
     "create_filter_pipeline",
     "scatter_immutable_data",
     "correlate_and_save_batch",

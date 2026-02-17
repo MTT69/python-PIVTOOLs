@@ -44,7 +44,6 @@ from pivtools_cli.piv.save_results import (
 )
 from pivtools_cli.piv.piv_backend.factory import make_correlator_backend
 from pivtools_cli.processing.dask_pipeline import (
-    rechunk_for_batched_processing,
     create_filter_pipeline,
     scatter_immutable_data,
     correlate_and_save_batch,
@@ -75,7 +74,8 @@ def process_instantaneous_sliding_window(
     from dask.distributed import as_completed
 
     num_workers = config.dask_workers_per_node
-    max_in_flight = min(num_workers * 2, num_chunks)
+    max_in_flight_per_worker = config.dask_max_in_flight_per_worker
+    max_in_flight = min(num_workers * max_in_flight_per_worker, num_chunks)
 
     pending = {}  # correlation Future -> chunk_idx
     next_to_submit = 0
@@ -83,7 +83,10 @@ def process_instantaneous_sliding_window(
     completed_count = 0
     last_reported_pct = -1  # Track last reported percentage to avoid duplicates
 
-    logger.debug(f"  Sliding window: max_in_flight={max_in_flight}")
+    logger.info(
+        f"  Sliding window: {num_workers} workers x {max_in_flight_per_worker} per worker "
+        f"= {max_in_flight} max_in_flight ({num_chunks} chunks total)"
+    )
 
     # Fill initial window (NO worker pinning → parallel I/O!)
     while next_to_submit < min(max_in_flight, num_chunks):
@@ -108,7 +111,7 @@ def process_instantaneous_sliding_window(
         pending[corr_future] = next_to_submit
         next_to_submit += 1
 
-    logger.debug(f"  Initial window: {len(pending)} tasks in flight")
+    logger.info(f"  Initial window filled: {len(pending)}/{max_in_flight} tasks in flight")
 
     # Process as tasks complete (any order is fine for instantaneous)
     ac = as_completed(list(pending.keys()))
@@ -143,7 +146,7 @@ def process_instantaneous_sliding_window(
         # Progress logging - report each new percentage point
         current_pct = round((completed_count / num_chunks) * 100)
         if current_pct > last_reported_pct:
-            logger.info(f"  Correlation progress: {current_pct}%")
+            logger.info(f"  Correlation progress: {current_pct}% ({len(pending)} in flight)")
             last_reported_pct = current_pct
 
     return all_saved_paths
@@ -221,11 +224,10 @@ def run_instantaneous_piv(
     Run Dask-native instantaneous PIV processing for one camera.
 
     Flow:
-    1. Load images (lazy)
-    2. Rechunk for batched processing
-    3. Apply all filters via map_blocks
-    4. Process using sliding window (parallel I/O with bounded memory)
-    5. Save coordinates
+    1. Load images (lazy, batch-sized chunks — no rechunk needed)
+    2. Apply all filters via map_blocks
+    3. Process using sliding window (parallel I/O with bounded memory)
+    4. Save coordinates
 
     Args:
         config: Configuration object
@@ -240,9 +242,10 @@ def run_instantaneous_piv(
     Returns:
         List of saved file paths
     """
-    # 1. Load images (lazy)
-    logger.info(f"Loading images for camera {camera_num}...")
-    images = load_images(camera_num, config, source=source_path)
+    # 1. Load images (lazy, already batched — no rechunk needed)
+    batch_size = config.batch_size
+    logger.info(f"Loading images for camera {camera_num} (batch_size={batch_size})...")
+    images = load_images(camera_num, config, source=source_path, batch_size=batch_size)
     logger.info(f"  Loaded: shape={images.shape}, {len(images.chunks[0])} chunks of size {images.chunks[0][0]}")
 
     # 2. Scatter immutable data once
@@ -251,19 +254,13 @@ def run_instantaneous_piv(
         client, config, vector_masks, pixel_mask, ensemble=False
     )
 
-    # 3. Rechunk for batched processing
-    batch_size = config.batch_size
-    logger.info(f"Rechunking to batch_size={batch_size}...")
-    images = rechunk_for_batched_processing(images, batch_size)
-    logger.info(f"  Rechunked: {len(images.chunks[0])} chunks of size {images.chunks[0][0]}")
-
-    # 4. Apply all filters via map_blocks
+    # 3. Apply all filters via map_blocks
     logger.info("Creating filter pipeline...")
     # Pass base_path to save intermediate filter outputs when filters are configured
     save_intermediate = base_path if config.filters else None
     images = create_filter_pipeline(images, config, pixel_mask, save_intermediate_base=save_intermediate)
 
-    # 5. Process using sliding window for parallel I/O with bounded memory
+    # 4. Process using sliding window for parallel I/O with bounded memory
     num_chunks = len(images.chunks[0])
     logger.info(f"Processing {num_chunks} chunks using sliding window...")
 

@@ -1,3 +1,4 @@
+import math
 from pathlib import Path
 from typing import Tuple, Optional, List
 import logging
@@ -5,7 +6,6 @@ import logging
 import dask
 import dask.array as da
 import numpy as np
-from dask.delayed import Delayed
 from scipy.ndimage import convolve
 
 from ..config import Config
@@ -231,119 +231,97 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
         return np.stack([frame_a, frame_b], axis=0)
 
 
-def delayed_image_pair(idx: int, camera_path: Path, camera: int, config: Config) -> Delayed:
-    """Create a delayed task to read a pair of images.
+def _read_batch(start_idx: int, count: int, camera_path: Path, camera: int, config: Config) -> np.ndarray:
+    """Read a batch of image pairs from disk.
+
+    Calls read_pair() for each pair in the batch and stacks the results.
 
     Args:
-        idx (int): Index of the image pair to read
-        camera_path (Path): Path to camera directory or set file
-        camera (int): Camera number
-        config (Config): Configuration object
+        start_idx: 1-based index of the first pair in the batch
+        count: Number of pairs to read in this batch
+        camera_path: Path to camera directory or set file
+        camera: Camera number (1-based)
+        config: Configuration object
 
     Returns:
-        Delayed: A delayed task representing the image pair
+        np.ndarray of shape (count, 2, H, W)
     """
+    pairs = [read_pair(start_idx + i, camera_path, camera, config) for i in range(count)]
+    return np.stack(pairs, axis=0)
 
-    return dask.delayed(read_pair)(idx, camera_path, camera, config)
 
+def load_images(camera: int, config: Config, source: Path = None, batch_size: int = 1) -> da.Array:
+    """Load images for a specific camera using lazy batch loading.
 
-def to_dask_array(delayed_pair: Delayed, config: Config) -> da.Array:
-    """
+    Creates one delayed task per batch of image pairs. Each task is
+    completely independent — no cross-dependencies between batches.
+
+    When batch_size=1 (default): one delayed task per pair, backward compatible.
+    When batch_size>1: one delayed task per batch, chunks already sized correctly.
+    This eliminates the need for a separate rechunk step, avoiding the
+    cross-dependency problem that caused Dask worker underutilization.
 
     Args:
-        delayed_pair (dask.delayed): _description_
-        config (Config): _description_
-
-    Returns:
-        dask.array.Array: _description_
-    """
-    arr = dask.array.from_delayed(
-        delayed_pair,
-        shape=(2, *config.image_shape), 
-        dtype=config.image_dtype,
-    )
-    return arr
-
-
-def load_images(camera: int, config: Config, source: Path = None) -> da.Array:
-    """Load images for a specific camera using pure lazy loading.
-    
-    This function creates one delayed task per image pair. Each task is
-    completely independent and only loads when computed on a worker.
-    
-    Memory Efficiency - True Lazy Loading:
-    - Creates N delayed objects (~1 KB each) for N images
-    - Main process memory: ~N KB (minimal, just task graph)
-    - Worker memory: Only 1 image pair at a time (~80 MB)
-    - Each worker: load → process → save → free → next
-    - Peak worker memory: ~280 MB (1 image + PIV overhead)
-    
-    This is the OPTIMAL Dask pattern:
-    - No pre-loading of batches
-    - No memory accumulation
-    - Workers process images one-by-one
-    - Dask scheduler handles distribution naturally
-
-    Args:
-        camera (int): The camera number.
-        config (Config): The configuration object.
-        source (Path, optional): The root directory for camera folders.
+        camera: The camera number.
+        config: The configuration object.
+        source: The root directory for camera folders.
             If None, uses first source_path from config.
+        batch_size: Number of image pairs per batch/chunk.
+            Default 1 for backward compatibility.
 
     Returns:
-        da.Array: A Dask array containing the loaded image pairs.
-            Shape: (num_frame_pairs, 2, H, W)
-            Note: This is a lazy array - no actual image data loaded yet.
-            Each element is an independent delayed task.
+        da.Array: A Dask array of shape (num_frame_pairs, 2, H, W).
+            Chunks: (batch_size, 2, H, W) — already sized for processing.
+            Each chunk is an independent delayed task (no cross-dependencies).
     """
     if source is None:
         source = config.source_paths[0]
 
     # Determine camera_path based on image type
-    # Container formats don't use camera subdirectories:
-    # - .set: all cameras in one file
-    # - .cine: separate files per camera, but in source directory (not subdirs)
-    # - .im7: depends on images_use_camera_subfolders setting
     image_type = config.image_type
 
     if image_type == "lavision_set":
-        # For .set files, source IS the .set file itself (full path)
         camera_path = source
     elif image_type == "lavision_im7":
         if config.images_use_camera_subfolders:
-            # Single-camera IM7 files in camera subdirectories
             folder = config.get_camera_folder(camera)
             camera_path = source / folder if folder else source
         else:
-            # Multi-camera IM7 files in source directory (default)
             camera_path = source
     elif image_type == "cine":
-        camera_path = source  # .cine files in source directory (no subdirs)
+        camera_path = source
     else:
-        # Standard formats use camera subdirectories
         folder = config.get_camera_folder(camera)
         camera_path = source / folder if folder else source
-    
+
     num_pairs = config.num_frame_pairs
+    num_batches = math.ceil(num_pairs / batch_size)
 
-    # Create one delayed task per image pair (pure lazy loading)
-    delayed_image_pairs = [
-        delayed_image_pair(idx, camera_path, camera, config)
-        for idx in range(1, num_pairs + 1)
-    ]
+    # Create one delayed task per batch
+    dask_batches = []
+    for batch_idx in range(num_batches):
+        start_idx = batch_idx * batch_size + 1  # 1-based
+        actual_size = min(batch_size, num_pairs - batch_idx * batch_size)
 
-    # Convert each delayed task to a Dask array
-    dask_pairs = [to_dask_array(pair, config) for pair in delayed_image_pairs]
+        delayed_batch = dask.delayed(_read_batch)(
+            start_idx, actual_size, camera_path, camera, config
+        )
+        dask_batch = da.from_delayed(
+            delayed_batch,
+            shape=(actual_size, 2, *config.image_shape),
+            dtype=config.image_dtype,
+        )
+        dask_batches.append(dask_batch)
 
-    # Stack into single array - still lazy, no computation yet!
-    pairs_stack = da.stack(dask_pairs, axis=0)
+    # Concatenate all batches — still lazy, no computation yet
+    images = da.concatenate(dask_batches, axis=0)
 
     logging.info(
-        f"Lazy loading complete: {num_pairs} independent delayed tasks created "
-        f"(~{num_pairs} KB memory footprint)"
+        f"Batch loading complete: {num_batches} independent delayed tasks "
+        f"(batch_size={batch_size}, {num_pairs} pairs, ~{num_batches} KB footprint)"
     )
-    
-    return pairs_stack
+
+    return images
 
 
 def create_rectangular_mask(config: Config) -> np.ndarray:

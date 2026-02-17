@@ -2,10 +2,9 @@
 Dask-Centric Pipeline Utilities
 
 This module provides utilities for the Dask-native PIV processing pipeline.
-Uses true Dask patterns: rechunk, map_blocks, persist, scatter, submit, gather.
+Uses true Dask patterns: map_blocks, persist, scatter, submit, gather.
 
 Key patterns:
-- rechunk_for_batched_processing: Align chunks with batch_size
 - apply_all_filters: Unified filter function for map_blocks
 - scatter_immutable_data: Broadcast cache/masks once to all workers
 """
@@ -107,24 +106,6 @@ def has_spatial_filters(config: Config) -> bool:
 # =============================================================================
 # DASK PIPELINE FUNCTIONS
 # =============================================================================
-
-def rechunk_for_batched_processing(images: da.Array, batch_size: int) -> da.Array:
-    """
-    Rechunk images for batched processing.
-
-    Groups images into chunks of batch_size along the first dimension.
-    This ensures temporal coherence for filters like POD and enables
-    efficient batched correlation.
-
-    Args:
-        images: Dask array of shape (N, 2, H, W) with chunks (1, 2, H, W)
-        batch_size: Number of image pairs per chunk
-
-    Returns:
-        Dask array of shape (N, 2, H, W) with chunks (batch_size, 2, H, W)
-    """
-    return images.rechunk((batch_size, 2, -1, -1))
-
 
 def apply_all_filters_slim(
     block: np.ndarray,

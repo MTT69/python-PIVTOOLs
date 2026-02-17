@@ -48,7 +48,6 @@ from pivtools_cli.piv.piv_result import PIVEnsembleResult
 from pivtools_cli.piv.piv_backend.factory import make_correlator_backend
 from pivtools_cli.piv.piv_backend.single_pass_accumulator import SinglePassAccumulator
 from pivtools_cli.processing.dask_pipeline import (
-    rechunk_for_batched_processing,
     create_filter_pipeline,
     scatter_immutable_data,
     reduce_ensemble_results,
@@ -84,7 +83,8 @@ def process_pass_sliding_window(
     from dask.distributed import wait
 
     num_workers = len(workers)
-    max_in_flight = min(num_workers * 2, num_chunks)  # Tune based on storage
+    max_in_flight_per_worker = config.dask_max_in_flight_per_worker
+    max_in_flight = min(num_workers * max_in_flight_per_worker, num_chunks)
 
     # State tracking
     pending_filters = {}  # chunk_idx -> Future
@@ -93,7 +93,10 @@ def process_pass_sliding_window(
     next_to_submit = 0
     last_reported_pct = -1  # Track last reported percentage
 
-    logger.debug(f"  Sliding window: max_in_flight={max_in_flight}")
+    logger.info(
+        f"  Sliding window: {num_workers} workers x {max_in_flight_per_worker} per worker "
+        f"= {max_in_flight} max_in_flight ({num_chunks} chunks total)"
+    )
 
     # PHASE 1: Fill initial window (NO worker pinning → parallel I/O!)
     while next_to_submit < min(max_in_flight, num_chunks):
@@ -101,7 +104,7 @@ def process_pass_sliding_window(
         pending_filters[next_to_submit] = future
         next_to_submit += 1
 
-    logger.debug(f"  Initial window: {len(pending_filters)} filters in flight")
+    logger.info(f"  Initial window filled: {len(pending_filters)}/{max_in_flight} filters in flight")
 
     # PHASE 2: Process all chunks
     while next_to_correlate < num_chunks:
@@ -141,7 +144,7 @@ def process_pass_sliding_window(
         # Progress logging - report each new percentage point
         current_pct = round((next_to_correlate / num_chunks) * 100)
         if current_pct > last_reported_pct:
-            logger.info(f"  Correlation progress: {current_pct}%")
+            logger.info(f"  Correlation progress: {current_pct}% ({len(pending_filters)} filters queued)")
             last_reported_pct = current_pct
 
     # PHASE 3: Gather final results
@@ -258,10 +261,11 @@ def run_ensemble_piv(
     Returns:
         Path to saved ensemble result
     """
-    # 1. Load images (lazy)
-    logger.info(f"Loading images for camera {camera_num}...")
-    images = load_images(camera_num, config, source=source_path)
-    logger.info(f"  Loaded: shape={images.shape}, {len(images.chunks[0])} chunks")
+    # 1. Load images (lazy, batch-sized chunks — no rechunk needed)
+    batch_size = config.batch_size
+    logger.info(f"Loading images for camera {camera_num} (batch_size={batch_size})...")
+    images = load_images(camera_num, config, source=source_path, batch_size=batch_size)
+    logger.info(f"  Loaded: shape={images.shape}, {len(images.chunks[0])} chunks of size {images.chunks[0][0]}")
 
     # 2. Scatter immutable data once
     logger.info("Scattering immutable data...")
@@ -269,19 +273,12 @@ def run_ensemble_piv(
         client, config, vector_masks, pixel_mask, ensemble=True
     )
 
-    # 3. Rechunk for batched processing
-    batch_size = config.batch_size
-    logger.info(f"Rechunking to batch_size={batch_size}...")
-    images = rechunk_for_batched_processing(images, batch_size)
-    logger.info(f"  Rechunked: {len(images.chunks[0])} chunks of size {images.chunks[0][0]}")
-
-    # 4. Apply all filters via map_blocks
+    # 3. Apply all filters via map_blocks
     logger.info("Creating filter pipeline...")
-    # Pass base_path to save intermediate filter outputs when filters are configured
     save_intermediate = base_path if config.filters else None
     images = create_filter_pipeline(images, config, pixel_mask, save_intermediate_base=save_intermediate)
 
-    # 5. Decide memory strategy based on dataset size
+    # 4. Decide memory strategy based on dataset size
     num_chunks = len(images.chunks[0])
 
     if num_chunks == 1:
@@ -289,9 +286,18 @@ def run_ensemble_piv(
         from dask.distributed import wait
         logger.info(f"Small dataset ({num_chunks} chunk): persisting to avoid re-load per pass")
         images = images.persist()
-        wait(images)  # Wait since there's only one chunk
+        wait(images)
+    elif config.ensemble_persist_images:
+        # HPC with lots of RAM: persist all filtered images in worker memory
+        # With batch-loading (no rechunk), tasks are fully independent —
+        # workers distribute batch-loads evenly from the start
+        from dask.distributed import wait
+        logger.info(f"Persisting {num_chunks} filtered image chunks to worker RAM (ensemble_persist_images=true)...")
+        images = images.persist()
+        wait(images)
+        logger.info("  All filtered images cached in worker RAM")
     else:
-        # Large dataset: use sliding window for parallel I/O with bounded memory
+        # Desktop / memory-constrained: sliding window re-computes filters per pass
         logger.info(f"Large dataset ({num_chunks} chunks): using sliding window for parallel I/O")
     num_passes = config.ensemble_num_passes
     accumulator = SinglePassAccumulator(config, vector_masks)

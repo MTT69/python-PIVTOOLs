@@ -2059,6 +2059,18 @@ video:
         return self.data.get("processing", {}).get("dask_memory_limit", "4GB")
 
     @property
+    def dask_max_in_flight_per_worker(self):
+        """Max concurrent tasks queued per Dask worker in sliding window.
+
+        Higher values improve pipelining (I/O overlaps with CPU work).
+        Default 3: while one batch correlates (CPU), the next loads (I/O),
+        with slack for uneven completion.
+
+        On HPC with fast storage, users can increase to 4-6.
+        """
+        return self.data.get("processing", {}).get("dask_max_in_flight_per_worker", 3)
+
+    @property
     def open_dashboard(self):
         """Whether to automatically open the Dask dashboard in a browser tab."""
         return self.data.get("processing", {}).get("open_dashboard", False)
@@ -2616,6 +2628,21 @@ video:
         Default: False
         """
         return self.data.get("ensemble_piv", {}).get("gradient_correction", False)
+
+    @property
+    def ensemble_persist_images(self) -> bool:
+        """Persist all filtered images in worker RAM for ensemble multi-pass.
+
+        When True (HPC with lots of RAM):
+        - After filtering, all images are persisted in worker memory
+        - Each pass reads from RAM instead of re-loading from disk
+        - Avoids redundant I/O + filter computation per pass
+
+        When False (default, desktop / memory-constrained):
+        - Sliding window re-computes filters on demand per pass
+        - Memory bounded to max_in_flight batches at a time
+        """
+        return self.data.get("ensemble_piv", {}).get("persist_images", False)
 
     @property
     def secondary_peak(self):
