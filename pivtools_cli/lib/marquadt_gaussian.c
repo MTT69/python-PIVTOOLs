@@ -29,7 +29,9 @@
 #define P_PARAMS 16
 #define EXTRACT_SIZE 32         // Extract 32x32 region around peak (full resolution)
 #define SIGMA_MIN 1e-6          // Minimum variance to prevent singular matrices
-#define FIT_TOL 1e-6            // Convergence tolerance (tightened for high accuracy)
+#define XTOL 1e-4               // Parameter tolerance (relaxed for small delta values)
+#define GTOL 1e-6               // Gradient tolerance (scale-independent)
+#define FTOL 1e-6               // Residual tolerance (scale-independent)
 #define MAX_ITER 50             // Max LM iterations (increased for tighter tolerance)
 
 // Global flag to disable offset (+C) fitting for testing
@@ -110,9 +112,10 @@ static int gauss2d_f(const gsl_vector *x, void *data, gsl_vector *f) {
     double sx_A   = clamp_sigma(gsl_vector_get(x, 6));
     double sy_A   = clamp_sigma(gsl_vector_get(x, 7));
     double sxy_A  = gsl_vector_get(x, 8);
-    double sx_AB  = clamp_sigma(gsl_vector_get(x, 9));
-    double sy_AB  = clamp_sigma(gsl_vector_get(x, 10));
-    double sxy_AB = gsl_vector_get(x, 11);
+    // Delta parameterization: params[9,10,11] = delta = sigma_AB - sigma_A
+    double delta_x  = gsl_vector_get(x, 9);
+    double delta_y  = gsl_vector_get(x, 10);
+    double delta_xy = gsl_vector_get(x, 11);
     double x0_A   = gsl_vector_get(x, 12);
     double y0_A   = gsl_vector_get(x, 13);
     double x0_AB  = gsl_vector_get(x, 14);
@@ -126,16 +129,17 @@ static int gauss2d_f(const gsl_vector *x, void *data, gsl_vector *f) {
     double inv_LA_11 = 1.0 / LA_11;
     double inv_LA_10 = -term_A * inv_LA_00 * inv_LA_11;
 
-    // RUNTIME CONSTRAINT: sigma_AB >= sigma_A (before Cholesky decomposition)
-    // This prevents the optimizer from shrinking sigma_AB below sigma_A
-    double sx_AB_clamped = fmax(sx_AB, sx_A);
-    double sy_AB_clamped = fmax(sy_AB, sy_A);
+    // Reconstruct sigma_AB = sigma_A + max(delta, 0)
+    // Non-negativity constraint on delta_x/y ensures sigma_AB >= sigma_A
+    // Cross-term delta_xy has no non-negativity constraint
+    double sx_AB_r = clamp_sigma(sx_A + fmax(delta_x, 0.0));
+    double sy_AB_r = clamp_sigma(sy_A + fmax(delta_y, 0.0));
+    double sxy_AB_r = sxy_A + delta_xy;
 
-    // Cholesky decomposition for sigma_AB (total cross-correlation width)
-    // Uses sigma_AB DIRECTLY (no longer added to sigma_A)
-    double sqrt_sx_AB = sqrt(sx_AB_clamped);
-    double term_AB = sxy_AB / sqrt_sx_AB;
-    double LAB_11 = safe_sqrt_rad(sy_AB_clamped - term_AB * term_AB);
+    // Cholesky decomposition for sigma_AB (reconstructed from sigma_A + delta)
+    double sqrt_sx_AB = sqrt(sx_AB_r);
+    double term_AB = sxy_AB_r / sqrt_sx_AB;
+    double LAB_11 = safe_sqrt_rad(sy_AB_r - term_AB * term_AB);
     double inv_LAB_00 = 1.0 / sqrt_sx_AB;
     double inv_LAB_11 = 1.0 / LAB_11;
     double inv_LAB_10 = -term_AB * inv_LAB_00 * inv_LAB_11;
@@ -180,13 +184,18 @@ static int gauss2d_df(const gsl_vector *x, void *data, gsl_matrix *J) {
     double sx_A   = clamp_sigma(gsl_vector_get(x, 6));
     double sy_A   = clamp_sigma(gsl_vector_get(x, 7));
     double sxy_A  = gsl_vector_get(x, 8);
-    double sx_AB  = clamp_sigma(gsl_vector_get(x, 9));
-    double sy_AB  = clamp_sigma(gsl_vector_get(x, 10));
-    double sxy_AB = gsl_vector_get(x, 11);
+    // Delta parameterization: params[9,10,11] = delta = sigma_AB - sigma_A
+    double delta_x  = gsl_vector_get(x, 9);
+    double delta_y  = gsl_vector_get(x, 10);
+    double delta_xy = gsl_vector_get(x, 11);
     double x0_A   = gsl_vector_get(x, 12);
     double y0_A   = gsl_vector_get(x, 13);
     double x0_AB  = gsl_vector_get(x, 14);
     double y0_AB  = gsl_vector_get(x, 15);
+
+    // Constraint activity flags for Jacobian (zero gradient when constraint active)
+    int delta_x_active = (delta_x >= 0.0);
+    int delta_y_active = (delta_y >= 0.0);
 
     // Cholesky decomposition for sigma_A (particle size)
     double sqrt_sx_A = sqrt(sx_A);
@@ -199,21 +208,22 @@ static int gauss2d_df(const gsl_vector *x, void *data, gsl_matrix *J) {
     struct cholesky_derivs dA;
     calc_sigma_derivs(sx_A, sy_A, sxy_A, inv_LA_00, inv_LA_10, inv_LA_11, &dA);
 
-    // RUNTIME CONSTRAINT: sigma_AB >= sigma_A (same constraint as in gauss2d_f)
-    double sx_AB_clamped = fmax(sx_AB, sx_A);
-    double sy_AB_clamped = fmax(sy_AB, sy_A);
+    // Reconstruct sigma_AB = sigma_A + max(delta, 0) (same as gauss2d_f)
+    double sx_AB_r = clamp_sigma(sx_A + fmax(delta_x, 0.0));
+    double sy_AB_r = clamp_sigma(sy_A + fmax(delta_y, 0.0));
+    double sxy_AB_r = sxy_A + delta_xy;
 
-    // Cholesky decomposition for sigma_AB (total width, used DIRECTLY)
-    double sqrt_sx_AB = sqrt(sx_AB_clamped);
-    double term_AB = sxy_AB / sqrt_sx_AB;
-    double LAB_11 = safe_sqrt_rad(sy_AB_clamped - term_AB * term_AB);
+    // Cholesky decomposition for sigma_AB (reconstructed from sigma_A + delta)
+    double sqrt_sx_AB = sqrt(sx_AB_r);
+    double term_AB = sxy_AB_r / sqrt_sx_AB;
+    double LAB_11 = safe_sqrt_rad(sy_AB_r - term_AB * term_AB);
     double inv_LAB_00 = 1.0 / sqrt_sx_AB;
     double inv_LAB_11 = 1.0 / LAB_11;
     double inv_LAB_10 = -term_AB * inv_LAB_00 * inv_LAB_11;
 
-    // Compute derivatives for sigma_AB (not sum - decoupled from sigma_A)
+    // Compute derivatives for sigma_AB (w.r.t. reconstructed sigma_AB values)
     struct cholesky_derivs dAB;
-    calc_sigma_derivs(sx_AB_clamped, sy_AB_clamped, sxy_AB, inv_LAB_00, inv_LAB_10, inv_LAB_11, &dAB);
+    calc_sigma_derivs(sx_AB_r, sy_AB_r, sxy_AB_r, inv_LAB_00, inv_LAB_10, inv_LAB_11, &dAB);
 
     gsl_matrix_set_zero(J);
 
@@ -286,15 +296,20 @@ static int gauss2d_df(const gsl_vector *x, void *data, gsl_matrix *J) {
         double val_dsy_ab = t1_ab * (dx_ab * dAB.dL10_dsy + dy_ab * dAB.dL11_dsy);
         double val_dsxy_ab = t1_ab * (dx_ab * dAB.dL10_dsxy + dy_ab * dAB.dL11_dsxy);
 
-        // AB row only affects params [9-11] (sigma_AB) - NO coupling to sigma_A
-        // DECOUPLING: Lines setting J[row_ab, 6/7/8] have been REMOVED
-        // This ensures sigma_A is constrained only by AA/BB, sigma_AB only by AB
-        gsl_matrix_set(J, row_ab, 9, fact_AB * val_dsx_ab);
-        gsl_matrix_set(J, row_ab, 10, fact_AB * val_dsy_ab);
+        // AB row: delta parameterization with constraint-aware Jacobian
+        // Chain rule factor = 1 (d(sigma_AB)/d(delta) = 1 when delta >= 0)
+        // Zero the Jacobian when delta < 0 (constraint active: sigma_AB = sigma_A)
+        // DECOUPLING: No coupling to sigma_A params [6,7,8]
+        if (delta_x_active)
+            gsl_matrix_set(J, row_ab, 9, fact_AB * val_dsx_ab);
+        // else: remains zero from gsl_matrix_set_zero
+
+        if (delta_y_active)
+            gsl_matrix_set(J, row_ab, 10, fact_AB * val_dsy_ab);
+        // else: remains zero from gsl_matrix_set_zero
+
+        // sxy cross-term always active (no non-negativity constraint)
         gsl_matrix_set(J, row_ab, 11, fact_AB * val_dsxy_ab);
-        // REMOVED: gsl_matrix_set(J, row_ab, 6, ...) - no coupling to sigma_A
-        // REMOVED: gsl_matrix_set(J, row_ab, 7, ...) - no coupling to sigma_A
-        // REMOVED: gsl_matrix_set(J, row_ab, 8, ...) - no coupling to sigma_A
     }
     return GSL_SUCCESS;
 }
@@ -331,27 +346,27 @@ static int fit_one_reuse(
     gsl_multifit_nlinear_init(&xv.vector, &fdf, work);
 
     int info;
-    int status = gsl_multifit_nlinear_driver(MAX_ITER, FIT_TOL, FIT_TOL, FIT_TOL, NULL, NULL, &info, work);
+    int status = gsl_multifit_nlinear_driver(MAX_ITER, XTOL, GTOL, FTOL, NULL, NULL, &info, work);
 
     gsl_vector *x_out = gsl_multifit_nlinear_position(work);
     for (size_t i = 0; i < P_PARAMS; i++) {
         result[i] = gsl_vector_get(x_out, i);
     }
 
-    // Clamp sigma values to ensure positive (unconstrained optimizer can go negative)
-    // Indices: 6=sx_A, 7=sy_A, 9=sx_AB, 10=sy_AB
-    result[6] = fmax(result[6], SIGMA_MIN);
-    result[7] = fmax(result[7], SIGMA_MIN);
-    result[9] = fmax(result[9], SIGMA_MIN);
-    result[10] = fmax(result[10], SIGMA_MIN);
+    // Clamp sigma_A values to ensure positive
+    result[6] = fmax(result[6], SIGMA_MIN);  // sig_A_x
+    result[7] = fmax(result[7], SIGMA_MIN);  // sig_A_y
 
-    // FINAL CONSTRAINT: sigma_AB >= sigma_A
-    // The runtime constraint in gauss2d_f/df keeps the optimizer happy,
-    // but the final output must also satisfy this constraint
-    const double EPS = 0.01;  // Small margin to avoid numerical issues
-    if (result[9] < result[6] + EPS) result[9] = result[6] + EPS;   // sx_AB >= sx_A
-    if (result[10] < result[7] + EPS) result[10] = result[7] + EPS; // sy_AB >= sy_A
-    // No constraint on sxy (cross-terms can be negative)
+    // Reconstruct sigma_AB from sigma_A + delta for output
+    // This converts back from delta parameterization so Python receives sigma_AB
+    double sig_A_x_out  = result[6];
+    double sig_A_y_out  = result[7];
+    double delta_x_out  = fmax(result[9], 0.0);   // clamp delta >= 0
+    double delta_y_out  = fmax(result[10], 0.0);
+
+    result[9]  = sig_A_x_out + delta_x_out;   // sig_AB_x = sig_A_x + delta_x
+    result[10] = sig_A_y_out + delta_y_out;   // sig_AB_y = sig_A_y + delta_y
+    result[11] = result[8] + result[11];       // sig_AB_xy = sig_A_xy + delta_xy
 
     return (status == GSL_SUCCESS || status == GSL_EMAXITER);
 }

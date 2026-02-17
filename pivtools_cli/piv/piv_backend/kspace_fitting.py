@@ -168,7 +168,7 @@ def fit_windows_kspace(
     diag_sigma_yy = []
     diag_mu_x = []
     diag_mu_y = []
-    status_counts = {-1: 0, 0: 0, 1: 0, 2: 0, 3: 0, 4: 0}
+    status_counts = {-1: 0, 0: 0, 1: 0, 2: 0, 3: 0, 5: 0}
 
     for idx in valid_indices:
         # Extract window correlation planes
@@ -233,7 +233,7 @@ def fit_windows_kspace(
                 logger.info(f"  mu_x: min={np.nanmin(diag_mu_x):.4f}, median={np.nanmedian(diag_mu_x):.4f}, max={np.nanmax(diag_mu_x):.4f}")
                 logger.info(f"  mu_y: min={np.nanmin(diag_mu_y):.4f}, median={np.nanmedian(diag_mu_y):.4f}, max={np.nanmax(diag_mu_y):.4f}")
             # Status breakdown
-            status_names = {-1: 'masked', 0: 'success', 1: 'no_converge', 2: 'low_snr', 3: 'neg_var', 4: 'big_disp'}
+            status_names = {-1: 'masked', 0: 'success', 1: 'no_converge', 2: 'low_snr', 3: 'big_disp', 5: 'neg_var'}
             status_str = ', '.join([f"{status_names.get(k, f'status_{k}')}={v}" for k, v in sorted(status_counts.items()) if v > 0])
             logger.info(f"  Status breakdown: {status_str}")
 
@@ -346,12 +346,25 @@ def _fit_single_window_kspace(
     # Use more conservative of adaptive and fixed bounds
     k_max_init = min(k_max_x, k_max_y, 0.25)
 
-    # Step 5: Extract initial guesses via 1D linear regression (warm start)
-    # Uses log|F_AB| - log|F_ref| = log|T| to avoid explicit division
-    mu_x_init, Sigma_xx_init = _fit_1d_axis(
+    # Step 5: Extract initial guesses
+    #
+    # For DISPLACEMENT (mu): Use the physical-space cross-correlation peak.
+    # This is immune to phase wrapping and works for arbitrarily large
+    # displacements (up to the 3/4 window rule). The k-space phase slope
+    # method only works for |mu| < 1/(2*k_max) ~ 2 pixels, which is far
+    # too restrictive for the first pass (no image warping).
+    #
+    # For VARIANCE (Sigma): Use 1D log-magnitude regression in k-space.
+    # The magnitude |T(k)| = exp(-2*pi^2 * Sigma * k^2) doesn't wrap.
+    mu_x_init, mu_y_init = _estimate_displacement_from_peak(
+        R_AB_2d, center_idx_x, center_idx_y
+    )
+
+    # Variance from 1D k-space magnitude regression
+    _, Sigma_xx_init = _fit_1d_axis(
         F_AB, F_ref, k_x, center_idx_y, k_max_init, axis='x'
     )
-    mu_y_init, Sigma_yy_init = _fit_1d_axis(
+    _, Sigma_yy_init = _fit_1d_axis(
         F_AB, F_ref, k_y, center_idx_x, k_max_init, axis='y'
     )
 
@@ -405,19 +418,20 @@ def _fit_single_window_kspace(
         if Sigma_xx < 0 or Sigma_yy < 0:
             return {
                 'params': default_params,
-                'status': 3,  # Negative variance
+                'status': 5,  # Negative variance (consistent with Gaussian code 5)
                 'initial_guess': _build_params_from_fit(
                     initial_guess, amp_A, amp_B, amp_AB, center_x, center_y
                 ),
                 **_make_diag(k_max_x, k_max_y),
             }
 
-        # Check displacement bounds (1/2 window rule)
-        max_disp = min(corr_w, corr_h) / 2.0
-        if abs(mu_x) > max_disp or abs(mu_y) > max_disp:
+        # Check displacement bounds (3/4 window rule, consistent with Gaussian fitter)
+        max_disp_x = 0.75 * corr_w
+        max_disp_y = 0.75 * corr_h
+        if abs(mu_x) > max_disp_x or abs(mu_y) > max_disp_y:
             return {
                 'params': default_params,
-                'status': 4,  # Displacement exceeds 1/2 window
+                'status': 3,  # Displacement exceeds 3/4 window
                 'initial_guess': _build_params_from_fit(
                     initial_guess, amp_A, amp_B, amp_AB, center_x, center_y
                 ),
@@ -449,6 +463,73 @@ def _fit_single_window_kspace(
         if return_diagnostics:
             result['diagnostics'] = {'snr': snr if 'snr' in dir() else 0.0, 'k_max_x': 0.0, 'k_max_y': 0.0}
         return result
+
+
+def _estimate_displacement_from_peak(
+    R_AB_2d: np.ndarray,
+    center_idx_x: int,
+    center_idx_y: int,
+) -> tuple[float, float]:
+    """
+    Estimate mean displacement from the cross-correlation peak position.
+
+    Uses 3-point Gaussian sub-pixel refinement on the R_AB plane.
+    This is immune to phase wrapping and works for arbitrarily large
+    displacements (up to the correlation window size).
+
+    Parameters
+    ----------
+    R_AB_2d : np.ndarray
+        Cross-correlation plane, shape (corr_h, corr_w).
+        Peak is near center for small displacements, offset for large ones.
+    center_idx_x, center_idx_y : int
+        Center indices (zero-displacement location)
+
+    Returns
+    -------
+    mu_x, mu_y : float
+        Estimated displacement in pixels (offset from center)
+    """
+    corr_h, corr_w = R_AB_2d.shape
+
+    # Find integer peak location
+    peak_idx = np.argmax(R_AB_2d)
+    peak_y, peak_x = np.unravel_index(peak_idx, R_AB_2d.shape)
+
+    # 3-point Gaussian sub-pixel refinement along each axis
+    # f(x) = a*x^2 + b*x + c, peak at x = -b/(2a)
+    # Using log-Gaussian: ln(f) is parabolic for Gaussian peaks
+
+    sub_x = 0.0
+    if 0 < peak_x < corr_w - 1:
+        left = R_AB_2d[peak_y, peak_x - 1]
+        center = R_AB_2d[peak_y, peak_x]
+        right = R_AB_2d[peak_y, peak_x + 1]
+        if left > 0 and center > 0 and right > 0:
+            ln_l = np.log(left)
+            ln_c = np.log(center)
+            ln_r = np.log(right)
+            denom = 2 * (ln_l - 2 * ln_c + ln_r)
+            if abs(denom) > 1e-12:
+                sub_x = (ln_l - ln_r) / denom
+
+    sub_y = 0.0
+    if 0 < peak_y < corr_h - 1:
+        top = R_AB_2d[peak_y - 1, peak_x]
+        center = R_AB_2d[peak_y, peak_x]
+        bottom = R_AB_2d[peak_y + 1, peak_x]
+        if top > 0 and center > 0 and bottom > 0:
+            ln_t = np.log(top)
+            ln_c = np.log(center)
+            ln_b = np.log(bottom)
+            denom = 2 * (ln_t - 2 * ln_c + ln_b)
+            if abs(denom) > 1e-12:
+                sub_y = (ln_t - ln_b) / denom
+
+    mu_x = (peak_x + sub_x) - center_idx_x
+    mu_y = (peak_y + sub_y) - center_idx_y
+
+    return mu_x, mu_y
 
 
 def _fit_1d_axis(
@@ -755,10 +836,12 @@ def _fit_transfer_function_full(
     # Initial guess (5 parameters - drop amplitude)
     p0 = initial_guess[:5]
 
-    # Bounds: stresses >= 0, displacements bounded
+    # Bounds: stresses >= 0, displacements bounded by 3/4 window
+    max_disp_x = 0.75 * corr_w
+    max_disp_y = 0.75 * corr_h
     bounds = (
-        [-10, -10, 0, 0, -50],  # Lower bounds
-        [10, 10, 100, 100, 50],  # Upper bounds
+        [-max_disp_x, -max_disp_y, 0, 0, -50],
+        [max_disp_x, max_disp_y, 100, 100, 50],
     )
 
     try:

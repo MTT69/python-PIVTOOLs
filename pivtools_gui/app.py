@@ -1516,8 +1516,10 @@ def check_output_exists():
     cfg = get_config()
     active_paths_str = request.args.get("active_paths", "")
     active_paths = [int(p) for p in active_paths_str.split(",") if p.strip()]
+    mode = request.args.get("mode", "")  # "instantaneous" or "ensemble"
+    types_to_check = [mode] if mode in ("instantaneous", "ensemble") else ["instantaneous", "ensemble"]
 
-    logger.info(f"[check_output_exists] Checking paths: {active_paths}")
+    logger.info(f"[check_output_exists] Checking paths: {active_paths}, mode: {mode}, types: {types_to_check}")
 
     if not active_paths:
         logger.info("[check_output_exists] No active paths provided")
@@ -1539,33 +1541,19 @@ def check_output_exists():
             cam_key = f"Cam{cam_num}"
             details[path_key][cam_key] = {"instantaneous": False, "ensemble": False}
 
-            # Check instantaneous output
-            inst_paths = get_data_paths(base, cfg.num_frame_pairs, cam_num, "instantaneous")
-            inst_dir = inst_paths["data_dir"]
-            logger.info(f"[check_output_exists] Instantaneous dir: {inst_dir}, exists: {inst_dir.exists()}")
-            if inst_dir.exists():
-                try:
-                    files = list(inst_dir.iterdir())
-                    logger.info(f"[check_output_exists] Found {len(files)} files in instantaneous dir")
-                    if files:
-                        exists = True
-                        details[path_key][cam_key]["instantaneous"] = True
-                except Exception as e:
-                    logger.error(f"[check_output_exists] Error listing instantaneous dir: {e}")
-
-            # Check ensemble output
-            ens_paths = get_data_paths(base, cfg.num_frame_pairs, cam_num, "ensemble")
-            ens_dir = ens_paths["data_dir"]
-            logger.info(f"[check_output_exists] Ensemble dir: {ens_dir}, exists: {ens_dir.exists()}")
-            if ens_dir.exists():
-                try:
-                    files = list(ens_dir.iterdir())
-                    logger.info(f"[check_output_exists] Found {len(files)} files in ensemble dir")
-                    if files:
-                        exists = True
-                        details[path_key][cam_key]["ensemble"] = True
-                except Exception as e:
-                    logger.error(f"[check_output_exists] Error listing ensemble dir: {e}")
+            for type_name in types_to_check:
+                data_paths = get_data_paths(base, cfg.num_frame_pairs, cam_num, type_name)
+                data_dir = data_paths["data_dir"]
+                logger.info(f"[check_output_exists] {type_name} dir: {data_dir}, exists: {data_dir.exists()}")
+                if data_dir.exists():
+                    try:
+                        files = list(data_dir.iterdir())
+                        logger.info(f"[check_output_exists] Found {len(files)} files in {type_name} dir")
+                        if files:
+                            exists = True
+                            details[path_key][cam_key][type_name] = True
+                    except Exception as e:
+                        logger.error(f"[check_output_exists] Error listing {type_name} dir: {e}")
 
     logger.info(f"[check_output_exists] Final result: exists={exists}")
     return jsonify({"exists": exists, "details": details})
@@ -1579,6 +1567,8 @@ def clear_output():
     data = request.get_json() or {}
     active_paths = data.get("active_paths", [])
     camera_numbers = data.get("camera_numbers", [])
+    mode = data.get("mode", "")
+    types_to_clear = [mode] if mode in ("instantaneous", "ensemble") else ["instantaneous", "ensemble"]
 
     cfg = get_config()
     cleared = []
@@ -1590,7 +1580,7 @@ def clear_output():
         base = cfg.base_paths[path_idx]
 
         for cam_num in camera_numbers:
-            for type_name in ["instantaneous", "ensemble"]:
+            for type_name in types_to_clear:
                 try:
                     paths = get_data_paths(base, cfg.num_frame_pairs, cam_num, type_name)
                     data_dir = paths["data_dir"]

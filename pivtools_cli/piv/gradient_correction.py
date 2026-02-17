@@ -17,6 +17,14 @@ Where:
 - L_x, L_y = particle window dimensions (from config.ensemble_window_sizes)
 - σ_A_x, σ_A_y = particle image VARIANCE from autocorrelation fit (already σ², not σ)
 
+K-space fitting note:
+    K-space fitting does not estimate σ_A (particle image variance) because the
+    particle contribution is algebraically cancelled in Fourier space. When used
+    with k-space fitting, σ_A_x and σ_A_y will be zero, so only the window
+    averaging term (L²/12) is applied. The particle extent term is omitted.
+    This is acceptable because the window term dominates: for a 32×32 window,
+    L²/12 ≈ 85 px² vs typical σ_A ≈ 2-5 px² (particle term is ~3-6% of total).
+
 Sign convention notes:
 - This module operates on data in physical coordinates (as saved to .mat files)
 - Y decreases with row index (image convention), so dy is negative

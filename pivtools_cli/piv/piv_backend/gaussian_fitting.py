@@ -7,27 +7,29 @@ in ensemble PIV processing.
 NaN Reason Codes (nan_reason / status codes)
 ============================================
 These codes indicate why a vector was marked as invalid or failed.
-Stored in PIVPassResult.nan_reason array.
+Stored in PIVPassResult.nan_reason array. Shared by both Gaussian and k-space fitters.
 
-Code  Stage                   Description
-----  -----                   -----------
- -1   Pre-fitting             Masked vector (not correlated, e.g., outside ROI)
-  0   Success                 Fit succeeded and passed all validation
-  1   C solver                Levenberg-Marquardt solver did not converge
-  2   Post-fit validation     AB peak height invalid (normalized height not in [0,1])
-  3   Post-fit validation     Breaks 1/2 displacement rule (peak too far from center)
-  5   Post-fit validation     Negative sigma values (unphysical Gaussian width)
-  6   Displacement check      Displacement exceeds 3/4 window rule (too large)
- 10   Outlier detection       Fit succeeded but vector flagged as outlier by
-                              median-based displacement outlier detection
+Code  Stage                   Gaussian                            K-space
+----  -----                   --------                            -------
+ -1   Pre-fitting             Masked vector (outside ROI)         Same
+  0   Success                 Fit succeeded, all checks passed    Same
+  1   Fitting                 LM solver did not converge          TRF solver did not converge
+  2   Post-fit validation     AB peak height invalid              SNR too low
+  3   Post-fit validation     Displacement > 3/4 window           Displacement > 3/4 window
+  5   Post-fit validation     Negative sigma values               Negative variance
+  6   Displacement check      Displacement > 3/4 window (accum)  Same (shared, in accumulator)
+ 10   Outlier detection       Velocity outlier (median test)      Same
+ 11   Outlier detection       Stress outlier (median test or      Same
+                              realizability violation)
 
 Validation Pipeline
 ===================
-1. C solver attempts Levenberg-Marquardt fit → code 1 if fails
-2. _validate_fitted_params() checks fitted parameters → codes 2, 3, 5
-3. Displacement magnitude check (3/4 rule) → code 6
+1. Fitter attempts fit → code 1 if fails, code 2 if low quality/SNR
+2. Post-fit parameter validation → codes 3, 5
+3. Displacement magnitude check (3/4 rule, in accumulator) → code 6
 4. Median-based outlier detection on displacement field → code 10
-5. Vectors with code 0 after all checks are valid
+5. Stress outlier detection + realizability check (ensemble final pass) → code 11
+6. Vectors with code 0 after all checks are valid
 
 Initial Guess Sources
 =====================
@@ -853,14 +855,18 @@ def _build_initial_guess(
         c_AB_guess = 0.0
 
     # Build 16-parameter initial guess:
-    # [0-2] amplitudes, [3-5] offsets, [6-8] sigma_A, [9-11] sigma_AB, [12-15] positions
+    # [0-2] amplitudes, [3-5] offsets, [6-8] sigma_A, [9-11] delta (sigma_AB - sigma_A), [12-15] positions
+    # Delta parameterization: C fitter expects delta = sigma_AB - sigma_A for params [9-11]
+    delta_x = sigma_AB_x - sigma_A_x
+    delta_y = sigma_AB_y - sigma_A_y
+    delta_xy = sigma_AB_xy - sigma_A_xy
     initial_guess = np.array([
         float(AA_win[central_index]),    # [0] Amp A at center
         float(BB_win[central_index]),    # [1] Amp B at center
         float(AB_win[max_idx]),          # [2] Amp AB at peak (not center!)
         c_A_guess, c_B_guess, c_AB_guess,    # [3-5] Offsets (re-estimated each pass)
         sigma_A_x, sigma_A_y, sigma_A_xy,    # [6-8] Sigma A
-        sigma_AB_x, sigma_AB_y, sigma_AB_xy, # [9-11] Sigma AB
+        delta_x, delta_y, delta_xy,          # [9-11] Delta (sigma_AB - sigma_A)
         x_guess, y_guess,                    # [12-13] Center A (x, y)
         float(guess_x_AB + 1),               # [14] Center AB x (1-based indexing)
         float(guess_y_AB + 1),               # [15] Center AB y (1-based indexing)
@@ -1061,9 +1067,11 @@ def _build_initial_guesses_vectorized(
     initial_guesses[:, 6] = sigma_A_x
     initial_guesses[:, 7] = sigma_A_y
     initial_guesses[:, 8] = sigma_A_xy
-    initial_guesses[:, 9] = sigma_AB_x
-    initial_guesses[:, 10] = sigma_AB_y
-    initial_guesses[:, 11] = sigma_AB_xy
+    # Convert to delta parameterization for C fitter
+    # delta = sigma_AB - sigma_A (the Reynolds stress contribution)
+    initial_guesses[:, 9]  = sigma_AB_x - sigma_A_x     # delta_x
+    initial_guesses[:, 10] = sigma_AB_y - sigma_A_y     # delta_y
+    initial_guesses[:, 11] = sigma_AB_xy - sigma_A_xy   # delta_xy
     initial_guesses[:, 12] = x_guess
     initial_guesses[:, 13] = y_guess
     initial_guesses[:, 14] = (peak_x + 1).astype(np.float64)  # 1-based indexing

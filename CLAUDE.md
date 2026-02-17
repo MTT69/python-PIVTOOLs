@@ -828,7 +828,8 @@ Alternative to Levenberg-Marquardt Gaussian fitting. Works in Fourier domain: `T
 
 - **Config:** `ensemble_piv.fit_method: kspace`, `kspace_snr_threshold: 3.0`
 - **File:** `pivtools_cli/piv/piv_backend/kspace_fitting.py`
-- **Status codes:** 0=success, 1=no converge, 2=low SNR, 3=negative variance, 4=displacement > half window
+- **Status codes:** 0=success, 1=no converge, 2=low SNR, 3=displacement > 3/4 window, 5=negative variance (consistent with Gaussian codes)
+- **Gradient correction:** K-space does not estimate σ_A (particle image variance) — it's algebraically cancelled in Fourier space. When gradient correction is enabled, only the window averaging term (L²/12) is applied; the particle extent term (σ_A) is omitted. This is the dominant correction (~95-97% of total). `sig_A_x/y/xy` fields are saved as zero in the output .mat file.
 
 ### Sum Fitting Window Feature
 
@@ -968,7 +969,7 @@ Self-contained LM Gaussian fitting (no GSL). Fit types: 3=parabolic, 4=circular 
 
 #### `marquadt_gaussian.c` — Ensemble Gaussian Fitting (EXPORTED)
 
-`fit_stacked_gaussian_batch_export(...)`: Fits 16 parameters per window (3 amplitudes, 3 offsets, 3 sigma_A, 3 sigma_AB, 2 center_A, 2 center_AB). Uses GSL `gsl_multifit_nlinear` with Cholesky solver + geodesic acceleration. Runtime constraint: `sigma_AB >= sigma_A`. OpenMP `schedule(dynamic, 16)`.
+`fit_stacked_gaussian_batch_export(...)`: Fits 16 parameters per window (3 amplitudes, 3 offsets, 3 sigma_A, 3 delta, 2 center_A, 2 center_AB). Uses **delta parameterization**: params[9,10,11] internally represent `delta = sigma_AB - sigma_A` (Reynolds stress directly), with `sigma_AB` reconstructed as `sigma_A + max(delta, 0)` during fitting. Output converts back to `sigma_AB` so Python sees total widths. Split convergence tolerances: XTOL=1e-4 (relaxed for small deltas), GTOL=FTOL=1e-6 (scale-independent). Constraint-aware Jacobian: cols [9,10] zeroed when delta < 0. Uses GSL `gsl_multifit_nlinear` with Cholesky solver + geodesic acceleration. OpenMP `schedule(dynamic, 16)`. Python initial guess builders (`_build_initial_guess`, `_build_initial_guesses_vectorized`) convert `sigma_AB → delta` before passing to C.
 
 #### `interp2custom.c` — Image Warping (EXPORTED)
 
@@ -1065,6 +1066,7 @@ Both `cpu_instantaneous.py` and `cpu_ensemble.py` use `cv2.setNumThreads(1)` + c
 | `dask_workers_per_node` | int | 1 | Dask worker count |
 | `dask_memory_limit` | str | `"4GB"` | Per-worker memory |
 | `cluster_type` | str | `"local"` | `"local"` or `"slurm"` |
+| `open_dashboard` | bool | `false` | Auto-open Dask dashboard in browser on cluster start |
 
 **`instantaneous_piv` block:**
 
@@ -1091,6 +1093,13 @@ Both `cpu_instantaneous.py` and `cpu_ensemble.py` use `cv2.setNumThreads(1)` + c
 
 **Outlier detection / infilling** (parallel structure for instantaneous and ensemble):
 `outlier_detection.enabled`, `.methods` (list of `{type, threshold, epsilon}`), `infilling.mid_pass`, `.final_pass`
+
+**Ensemble stress post-processing** (final pass, STEP 7c in `single_pass_accumulator.py`):
+After velocity outlier detection + infilling, runs stress-specific quality checks:
+- **Stress outlier detection:** Reuses config-driven outlier methods (`median_2d`, `sigma`) on `(UU_stress, VV_stress)` — catches windows with plausible velocity but bad stress estimates. Velocity-specific methods (`peak_mag`, `div_vort`) are filtered out automatically.
+- **Realizability constraint:** Cauchy-Schwarz check `UV² ≤ UU·VV` — flags physically impossible stress states.
+- Stress outliers are infilled from neighbors (velocity fields untouched).
+- `nan_reason` codes: 0=success, -1=masked, 10=velocity outlier, **11=stress outlier**.
 
 ---
 

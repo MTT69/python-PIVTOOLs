@@ -499,6 +499,10 @@ def main():
         _cluster = cluster
         _client = client
         logger.info("Dask cluster started successfully")
+        print(f"Dask dashboard available at: {client.dashboard_link}", flush=True)
+        if config.open_dashboard:
+            import webbrowser
+            webbrowser.open(client.dashboard_link)
 
         # Log worker info
         info = client.scheduler_info()

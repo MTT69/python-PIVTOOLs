@@ -971,6 +971,71 @@ class SinglePassAccumulator:
             peakheight_temp = np.zeros_like(peakheight)
             peakheight, _ = apply_infilling(peakheight, peakheight_temp, infill_mask, infill_cfg)
 
+        # =========================================================
+        # STEP 7c: Stress-specific outlier detection (final pass only)
+        # =========================================================
+        # Velocity outlier detection can miss windows with plausible velocity
+        # but bad stress estimates (e.g., fitter converged on peak position
+        # but not on widths). Run median test on stress fields + realizability.
+        if is_final_pass and self.config.ensemble_outlier_detection_enabled:
+            # Filter config methods to those applicable to stress fields
+            # (exclude velocity-specific methods like peak_mag and div_vort)
+            STRESS_APPLICABLE_METHODS = {'median_2d', 'sigma'}
+            outlier_methods = self.config.ensemble_outlier_detection_methods
+            stress_methods = [
+                m for m in outlier_methods
+                if m.get('type', '').lower() in STRESS_APPLICABLE_METHODS
+            ]
+
+            stress_outlier_mask = np.zeros((n_win_y, n_win_x), dtype=bool)
+            if stress_methods:
+                stress_outlier_mask = apply_outlier_detection(
+                    UU_stress, VV_stress,
+                    stress_methods,
+                )
+
+            # Realizability: Cauchy-Schwarz |UV|² ≤ UU·VV
+            with np.errstate(invalid='ignore'):
+                realizability_violation = (
+                    np.isfinite(UV_stress)
+                    & np.isfinite(UU_stress)
+                    & np.isfinite(VV_stress)
+                    & (UV_stress ** 2 > UU_stress * VV_stress)
+                )
+            stress_outlier_mask |= realizability_violation
+
+            # Don't re-flag already-masked regions
+            stress_outlier_mask &= ~vector_mask
+
+            n_stress_outliers = int(stress_outlier_mask.sum())
+            n_realiz = int(realizability_violation.sum())
+            if n_stress_outliers > 0:
+                logging.info(
+                    f"Pass {pass_idx + 1}: Stress outlier detection found "
+                    f"{n_stress_outliers} outliers "
+                    f"({n_realiz} realizability, "
+                    f"{n_stress_outliers - n_realiz} median test)"
+                )
+
+                UU_stress[stress_outlier_mask] = np.nan
+                VV_stress[stress_outlier_mask] = np.nan
+                UV_stress[stress_outlier_mask] = np.nan
+                nan_reason[stress_outlier_mask & (nan_reason == 0)] = 11
+
+                # Infill stress fields only (velocity is already good)
+                if infill_cfg.get('enabled', True):
+                    UU_stress, VV_stress = apply_infilling(
+                        UU_stress, VV_stress, stress_outlier_mask, infill_cfg
+                    )
+                    UV_temp = np.zeros_like(UV_stress)
+                    UV_stress, _ = apply_infilling(
+                        UV_stress, UV_temp, stress_outlier_mask, infill_cfg
+                    )
+            else:
+                logging.info(
+                    f"Pass {pass_idx + 1}: Stress outlier detection found 0 outliers"
+                )
+
         # Store PADDED predictor field to match instantaneous mode format
         # Instantaneous stores: np.pad([uy_mat, ux_mat], n_pre/n_post, mode="edge")
         # We replicate this exactly for parity

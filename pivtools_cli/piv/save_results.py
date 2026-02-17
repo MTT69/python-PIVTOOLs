@@ -481,7 +481,17 @@ def _create_ensemble_struct_all_passes(
             window_size = pass_result.window_size
 
             if window_size is not None:
-                logging.info(f"Applying gradient correction to pass {global_pass_idx + 1} with window_size={window_size}")
+                # K-space fitting sets sig_A to zero (particle contribution cancelled
+                # in Fourier space), so only the window averaging term (L²/12) is
+                # applied. This is the dominant term (~95-97% of total correction).
+                kspace_mode = np.all(pass_result.sig_A_x == 0) and np.all(pass_result.sig_A_y == 0)
+                if kspace_mode:
+                    logging.info(
+                        f"Applying gradient correction to pass {global_pass_idx + 1} "
+                        f"with window_size={window_size} (k-space: window term only, particle term omitted)"
+                    )
+                else:
+                    logging.info(f"Applying gradient correction to pass {global_pass_idx + 1} with window_size={window_size}")
                 (UU_to_save, VV_to_save, UV_to_save,
                  UU_window_corr, VV_window_corr, UV_window_corr,
                  UU_particle_corr, VV_particle_corr, UV_particle_corr) = apply_gradient_correction_to_pass(

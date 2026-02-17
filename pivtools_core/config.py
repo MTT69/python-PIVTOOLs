@@ -2059,6 +2059,11 @@ video:
         return self.data.get("processing", {}).get("dask_memory_limit", "4GB")
 
     @property
+    def open_dashboard(self):
+        """Whether to automatically open the Dask dashboard in a browser tab."""
+        return self.data.get("processing", {}).get("open_dashboard", False)
+
+    @property
     def always_batch(self):
         """
         Force batch mode even for spatial filters (unified pipeline).
