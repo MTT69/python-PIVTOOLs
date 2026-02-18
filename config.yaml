@@ -1,34 +1,31 @@
 paths:
   base_paths:
-  - D:\Case 2 PIV pivtools Processed\3loop_MT
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images\validation_4000_kspace_predictorupdate
   source_paths:
-  - D:\ALK_PIV_250527_085959\y235_aoan04_aoafn06\loop=0.set
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images
   active_paths:
   - 0
   camera_numbers:
   - 1
-  - 2
-  - 3
-  - 4
-  - 5
-  camera_count: 5
+  camera_count: 1
   camera_subfolders: []
 images:
-  num_images: 40
+  num_images: 4000
   image_format:
-  - data.set
+  - B%05d_A.tif
+  - B%05d_B.tif
   vector_format:
   - '%05d.mat'
   dtype: float32
-  image_type: lavision_set
+  image_type: standard
   use_camera_subfolders: false
   start_index: 1
   frame_stride: 0
   pair_stride: 1
-  pairing_preset: pre_paired
-  num_frame_pairs: 120
-  per_loop_frame_pairs: 40
+  pairing_preset: ab_format
+  per_loop_frame_pairs: 4000
   num_loops: 3
+  num_frame_pairs: 4000
 batches:
   size: 10
 logging:
@@ -39,14 +36,14 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 5
-  dask_workers_per_node: 4
-  dask_memory_limit: 25GB
+  omp_threads: 4
+  dask_workers_per_node: 5
+  dask_memory_limit: 9GB
   dask_max_in_flight_per_worker: 3
   open_dashboard: true
   always_batch: true
-  instantaneous: true
-  ensemble: false
+  instantaneous: false
+  ensemble: true
 outlier_detection:
   enabled: true
   methods:
@@ -65,10 +62,7 @@ infilling:
     parameters: {}
 ensemble_outlier_detection:
   enabled: true
-  methods:
-  - epsilon: 0.2
-    threshold: 3
-    type: median_2d
+  methods: []
 ensemble_infilling:
   mid_pass:
     method: local_median
@@ -153,22 +147,12 @@ ensemble_piv:
   window_size:
   - - 96
     - 96
-  - - 16
-    - 16
-  - - 8
-    - 16
   overlap:
   - 75
-  - 50
-  - 50
   type:
   - std
-  - single
-  - single
   runs:
   - 1
-  - 2
-  - 3
   store_planes: true
   save_diagnostics: false
   sum_window:
@@ -258,10 +242,9 @@ calibration:
       - 3019.624855653694
       frame_a: 1
       frame_b: 1
-filters:
-- type: time
+filters: []
 masking:
-  enabled: true
+  enabled: false
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
   mode: rectangular

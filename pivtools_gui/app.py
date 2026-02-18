@@ -1,3 +1,4 @@
+import copy
 import sys
 from pathlib import Path
 
@@ -1032,7 +1033,8 @@ def validate_files():
 def config_endpoint():
     cfg = get_config()
     # Return full nested config as JSON, including computed properties
-    config_data = cfg.data.copy()
+    # Use deep copy to avoid mutating cfg.data (shallow copy shares nested dicts)
+    config_data = copy.deepcopy(cfg.data)
     config_data["images"]["num_frame_pairs"] = cfg.num_frame_pairs
     config_data["images"]["per_loop_frame_pairs"] = cfg.per_loop_frame_pairs
     config_data["images"]["start_index"] = cfg.start_index

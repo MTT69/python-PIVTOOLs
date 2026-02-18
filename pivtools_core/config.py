@@ -872,7 +872,13 @@ video:
 
         When > 1, multiple .set files are combined into one larger dataset.
         E.g., loop=0.set, loop=1.set, ..., loop=N.set
+
+        Only applies to lavision_set image type. For all other image types,
+        returns 1 regardless of what's stored in config (prevents stale
+        num_loops from inflating frame counts after switching image types).
         """
+        if self.image_type != "lavision_set":
+            return 1
         return self.data.get("images", {}).get("num_loops", 1)
 
     @property

@@ -11,10 +11,16 @@ from dask_jobqueue import SLURMCluster
 from pivtools_core.config import Config
 
 
-class _UnresponsiveEventLoopFilter(logging.Filter):
-    """Filter out 'Event loop was unresponsive' messages from Dask workers."""
+class _DaskNoiseFilter(logging.Filter):
+    """Filter out noisy Dask worker messages."""
+    _SUPPRESSED = (
+        "Event loop was unresponsive",
+        "Unmanaged memory use is high",
+    )
+
     def filter(self, record):
-        return "Event loop was unresponsive" not in record.getMessage()
+        msg = record.getMessage()
+        return not any(s in msg for s in self._SUPPRESSED)
 
 
 def _suppress_dask_verbose_logging():
@@ -31,8 +37,8 @@ def _suppress_dask_verbose_logging():
     ]:
         logging.getLogger(logger_name).setLevel(logging.WARNING)
 
-    # Filter out "Event loop was unresponsive" warnings
-    logging.getLogger("distributed").addFilter(_UnresponsiveEventLoopFilter())
+    # Filter out noisy Dask warnings (unresponsive event loop, unmanaged memory)
+    logging.getLogger("distributed").addFilter(_DaskNoiseFilter())
 
     # Suppress "Sending large graph" UserWarning from distributed.client
     warnings.filterwarnings("ignore", message="Sending large graph", category=UserWarning)
