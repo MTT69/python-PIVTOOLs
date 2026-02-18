@@ -261,6 +261,11 @@ def load_images(camera: int, config: Config, source: Path = None, batch_size: in
     This eliminates the need for a separate rechunk step, avoiding the
     cross-dependency problem that caused Dask worker underutilization.
 
+    Multi-loop support: When config.num_loops > 1 and image_type is "lavision_set",
+    creates batches per loop and concatenates them. Each batch reads from a single
+    .set file using LOCAL pair indices. The result is a single dask array spanning
+    all loops (e.g., 5 loops x 40 pairs = 200-pair array).
+
     Args:
         camera: The camera number.
         config: The configuration object.
@@ -279,7 +284,42 @@ def load_images(camera: int, config: Config, source: Path = None, batch_size: in
 
     # Determine camera_path based on image type
     image_type = config.image_type
+    num_loops = config.num_loops
 
+    # Multi-loop: create batches per loop, concatenate
+    if num_loops > 1 and image_type == "lavision_set":
+        per_loop = config.per_loop_frame_pairs
+        dask_batches = []
+
+        for loop_idx in range(num_loops):
+            loop_source = config.get_loop_source_path(source, loop_idx)
+            camera_path = loop_source  # For .set, camera_path IS the file
+
+            num_batches = math.ceil(per_loop / batch_size)
+            for batch_idx in range(num_batches):
+                start_idx = batch_idx * batch_size + 1  # 1-based, LOCAL to this loop
+                actual_size = min(batch_size, per_loop - batch_idx * batch_size)
+
+                delayed_batch = dask.delayed(_read_batch)(
+                    start_idx, actual_size, camera_path, camera, config
+                )
+                dask_batch = da.from_delayed(
+                    delayed_batch,
+                    shape=(actual_size, 2, *config.image_shape),
+                    dtype=config.image_dtype,
+                )
+                dask_batches.append(dask_batch)
+
+        images = da.concatenate(dask_batches, axis=0)
+        total_pairs = config.num_frame_pairs
+        total_batches = len(dask_batches)
+        logging.info(
+            f"Multi-loop loading: {num_loops} loops x {per_loop} pairs = {total_pairs} total, "
+            f"{total_batches} delayed tasks (batch_size={batch_size})"
+        )
+        return images
+
+    # --- Single-loop logic (unchanged) ---
     if image_type == "lavision_set":
         camera_path = source
     elif image_type == "lavision_im7":

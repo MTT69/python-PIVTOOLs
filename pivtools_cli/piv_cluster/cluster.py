@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+import warnings
 from collections import defaultdict
 from pathlib import Path
 from typing import List, Tuple
@@ -32,6 +33,9 @@ def _suppress_dask_verbose_logging():
 
     # Filter out "Event loop was unresponsive" warnings
     logging.getLogger("distributed").addFilter(_UnresponsiveEventLoopFilter())
+
+    # Suppress "Sending large graph" UserWarning from distributed.client
+    warnings.filterwarnings("ignore", message="Sending large graph", category=UserWarning)
 
 
 def make_cluster(
@@ -181,6 +185,9 @@ def setup_worker_logging(log_level=logging.INFO, log_file=None, log_console=True
         console_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
         console_handler.setFormatter(console_formatter)
         logger.addHandler(console_handler)
+
+    # Suppress noisy Dask internal logging inside worker processes too
+    _suppress_dask_verbose_logging()
 
     logger.info("Worker logging configured successfully")
 

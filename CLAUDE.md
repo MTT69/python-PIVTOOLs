@@ -108,7 +108,11 @@ class Config:
     frame_stride: int                # Gap between A and B within a pair (0=pre-paired)
     pair_stride: int                 # Gap between starts of consecutive pairs
     pairing_preset: str              # "ab_format" | "skip_frames" | "time_resolved" | "pre_paired" | "custom"
-    num_frame_pairs: int             # Computed: fs==0 → num_images, else (num_images-1-fs)//ps+1
+    num_loops: int                   # Number of acquisition loops (default 1). Multiple .set files combined into one dataset
+    per_loop_frame_pairs: int        # Frame pairs within a single loop (stride formula)
+    num_frame_pairs: int             # Total across all loops: num_loops * per_loop_frame_pairs
+    get_loop_source_path(source_path, loop_idx) -> Path  # Resolve .set file for a specific loop
+    resolve_loop_for_pair(global_pair_1based) -> (loop_idx, local_pair_1based)  # Map global pair to loop
     time_resolved: bool              # Backward-compat: True when frame_stride > 0
     pairing_mode: str                # Backward-compat: derived from preset
     zero_based_indexing: bool        # Backward-compat: True when start_index == 0
@@ -262,7 +266,7 @@ base_path/
 ```
 load_images.py:     read_pair(idx, source_path, camera, cfg) -> np.ndarray
                     read_image(path, **kwargs) -> np.ndarray
-                    load_images(camera, cfg, source, batch_size) -> da.Array  # batch_size=1 default
+                    load_images(camera, cfg, source, batch_size) -> da.Array  # batch_size=1 default; multi-loop aware for lavision_set
                     load_mask_for_camera(camera, cfg, source_path_idx) -> Optional[np.ndarray]
 
 path_utils.py:      build_piv_camera_path(cfg, source_path_idx, camera_num) -> Path
@@ -904,6 +908,8 @@ Dask-centric utilities shared by both pipelines.
 ### Dask Patterns
 
 **Batch loading:** `load_images(batch_size=N)` creates one `dask.delayed` per batch (~1 KB each), concatenated into `da.Array(N, 2, H, W)`. Chunks are already `(batch_size, 2, H, W)` — no rechunk step needed. Each batch task is fully independent (no cross-dependencies), enabling even worker distribution from the start.
+
+**Multi-loop loading:** When `config.num_loops > 1` and `image_type == "lavision_set"`, `load_images()` creates batches per loop and concatenates them into one array. Each batch reads LOCAL pair indices from a single .set file (e.g., `loop=0.set`, `loop=1.set`). Batch size is capped at `per_loop_frame_pairs` to prevent cross-loop batches. Downstream code sees a single unified array (e.g., 5 loops × 40 pairs = 200-pair dask array). The GUI image viewer resolves global pair numbers to (loop_idx, local_pair) via `config.resolve_loop_for_pair()`.
 
 **Sliding window I/O:** Bounds memory to ~`max_in_flight_per_worker` batches per worker. `max_in_flight = min(max_in_flight_per_worker * num_workers, num_chunks)` (default 3 per worker). Completed filter futures are replaced, keeping pipeline full.
 

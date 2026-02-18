@@ -277,7 +277,13 @@ def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: 
                     continue  # Already cached
 
             try:
-                pair = read_pair(idx, source_path, camera, cfg)
+                # Multi-loop: resolve global pair index to loop-specific source
+                if cfg.num_loops > 1 and image_type == "lavision_set":
+                    loop_idx, local_pair = cfg.resolve_loop_for_pair(idx)
+                    loop_source = cfg.get_loop_source_path(source_path, loop_idx)
+                    pair = read_pair(local_pair, loop_source, camera, cfg)
+                else:
+                    pair = read_pair(idx, source_path, camera, cfg)
                 b64_a = numpy_to_base64(pair[0], format=img_format)
                 b64_b = numpy_to_base64(pair[1], format=img_format)
 
@@ -370,7 +376,13 @@ def get_frame_pair():
             return jsonify(response)
 
     try:
-        pair = read_pair(idx, source_path, camera, cfg)
+        # Multi-loop: resolve global pair index to loop-specific source and local index
+        if cfg.num_loops > 1 and image_type == "lavision_set":
+            loop_idx, local_pair = cfg.resolve_loop_for_pair(idx)
+            loop_source = cfg.get_loop_source_path(source_path, loop_idx)
+            pair = read_pair(local_pair, loop_source, camera, cfg)
+        else:
+            pair = read_pair(idx, source_path, camera, cfg)
     except FileNotFoundError as e:
         # Provide detailed error with search path and patterns
         image_format = cfg.image_format
@@ -515,21 +527,30 @@ def filter_images_endpoint():
         """Load pairs in parallel using ThreadPoolExecutor."""
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        
+        is_multi_loop = cfg.num_loops > 1 and image_type == "lavision_set"
+
+        def _read_one_pair(idx):
+            """Read a single pair, resolving loop if needed."""
+            if is_multi_loop:
+                loop_idx, local_pair = cfg.resolve_loop_for_pair(idx)
+                loop_source = cfg.get_loop_source_path(source_path, loop_idx)
+                return read_pair(local_pair, loop_source, camera, cfg)
+            return read_pair(idx, source_path, camera, cfg)
+
         # Use thread pool for I/O-bound image reading
         max_workers = min(os.cpu_count(), len(indices), 8)
         pairs = [None] * len(indices)
-        
+
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_idx = {
-                executor.submit(read_pair, idx, source_path, camera, cfg): i
+                executor.submit(_read_one_pair, idx): i
                 for i, idx in enumerate(indices)
             }
-            
+
             for future in as_completed(future_to_idx):
                 pos = future_to_idx[future]
                 pairs[pos] = future.result()
-        
+
         arr = np.stack(pairs, axis=0)
         return da.from_array(arr, chunks=(arr.shape[0], 2, *cfg.image_shape))
 
@@ -664,9 +685,14 @@ def filter_single_frame():
         source_path = cfg.source_paths[source_path_idx] / folder if folder else cfg.source_paths[source_path_idx]
     
     try:
-        # Read the single pair
-        pair = read_pair(frame_idx, source_path, camera, cfg)
-        
+        # Multi-loop: resolve global pair index to loop-specific source and local index
+        if cfg.num_loops > 1 and image_type == "lavision_set":
+            loop_idx, local_pair = cfg.resolve_loop_for_pair(frame_idx)
+            loop_source = cfg.get_loop_source_path(source_path, loop_idx)
+            pair = read_pair(local_pair, loop_source, camera, cfg)
+        else:
+            pair = read_pair(frame_idx, source_path, camera, cfg)
+
         # Convert to dask array with single frame
         arr = np.stack([pair], axis=0)  # Shape: (1, 2, H, W)
         images_da = da.from_array(arr, chunks=(1, 2, *cfg.image_shape))
@@ -882,6 +908,17 @@ def validate_files():
                 except Exception as e:
                     logger.debug(f"Indexing check failed: {e}")
 
+            # Multi-loop validation: check all loop .set files exist
+            loop_errors = []
+            if image_type == "lavision_set" and cfg.num_loops > 1:
+                base_source = cfg.source_paths[source_path_idx]
+                for loop_idx in range(cfg.num_loops):
+                    loop_path = cfg.get_loop_source_path(base_source, loop_idx)
+                    if not loop_path.exists():
+                        loop_errors.append(
+                            f"Loop {loop_idx} .set file not found: {loop_path.name}"
+                        )
+
             # Determine status based on both generic validation and pair checks
             actual_count = validation["found_count"]
             if actual_count == "container":
@@ -937,6 +974,12 @@ def validate_files():
                 if pattern_errors and not error_msg:
                     error_msg = "; ".join(pattern_errors)
 
+            # Multi-loop file errors
+            if loop_errors:
+                status = "error"
+                loop_error_msg = "; ".join(loop_errors)
+                error_msg = f"{error_msg}; {loop_error_msg}" if error_msg else loop_error_msg
+
             if status == "error":
                 overall_valid = False
 
@@ -991,6 +1034,7 @@ def config_endpoint():
     # Return full nested config as JSON, including computed properties
     config_data = cfg.data.copy()
     config_data["images"]["num_frame_pairs"] = cfg.num_frame_pairs
+    config_data["images"]["per_loop_frame_pairs"] = cfg.per_loop_frame_pairs
     config_data["images"]["start_index"] = cfg.start_index
     config_data["images"]["frame_stride"] = cfg.frame_stride
     config_data["images"]["pair_stride"] = cfg.pair_stride
@@ -1000,43 +1044,68 @@ def config_endpoint():
 
 @api_bp.route("/preview_frame_pairs", methods=["GET"])
 def preview_frame_pairs():
-    """Return first N frame pairs with resolved filenames for UI preview."""
+    """Return first N frame pairs with resolved filenames for UI preview.
+
+    When num_loops > 1, shows which loop each pair comes from.
+    """
     cfg = get_config()
     count = request.args.get("count", 5, type=int)
     count = min(count, 20)  # Cap at 20
 
     num_pairs = cfg.num_frame_pairs
+    num_loops = cfg.num_loops
+    per_loop = cfg.per_loop_frame_pairs
     format_str = cfg.image_format[0]
     has_ab = len(cfg.image_format) == 2
+    is_multi_loop = num_loops > 1 and cfg.image_type == "lavision_set"
     pairs = []
 
     for p in range(1, min(count + 1, num_pairs + 1)):
-        idx_a, idx_b = cfg.get_frame_pair_indices(p)
-        if has_ab:
+        # For multi-loop, resolve to local pair within the loop
+        if is_multi_loop:
+            loop_idx, local_pair = cfg.resolve_loop_for_pair(p)
+            local_idx_a, local_idx_b = cfg.get_frame_pair_indices(local_pair)
             try:
-                name_a = cfg.image_format[0] % idx_a
-                name_b = cfg.image_format[1] % idx_a
-            except TypeError:
-                name_a = cfg.image_format[0]
-                name_b = cfg.image_format[1]
-        elif cfg.frame_stride == 0:
-            # Pre-paired container: same file, internal A+B
-            try:
-                name_a = format_str % idx_a
-            except TypeError:
-                name_a = format_str
-            name_b = "(internal B)"
+                source_path = cfg.source_paths[0]
+                loop_file = cfg.get_loop_source_path(source_path, loop_idx).name
+            except (IndexError, ValueError):
+                loop_file = f"loop={loop_idx}"
+            pair_entry = {
+                "pair": p,
+                "frame_a": f"{loop_file} frame {local_idx_a}",
+                "frame_b": f"{loop_file} frame {local_idx_b}" if cfg.frame_stride > 0 else "(internal B)",
+                "loop": loop_idx,
+                "local_pair": local_pair,
+            }
         else:
-            try:
-                name_a = format_str % idx_a
-                name_b = format_str % idx_b
-            except TypeError:
-                name_a = format_str
-                name_b = format_str
+            idx_a, idx_b = cfg.get_frame_pair_indices(p)
+            if has_ab:
+                try:
+                    name_a = cfg.image_format[0] % idx_a
+                    name_b = cfg.image_format[1] % idx_a
+                except TypeError:
+                    name_a = cfg.image_format[0]
+                    name_b = cfg.image_format[1]
+            elif cfg.frame_stride == 0:
+                # Pre-paired container: same file, internal A+B
+                try:
+                    name_a = format_str % idx_a
+                except TypeError:
+                    name_a = format_str
+                name_b = "(internal B)"
+            else:
+                try:
+                    name_a = format_str % idx_a
+                    name_b = format_str % idx_b
+                except TypeError:
+                    name_a = format_str
+                    name_b = format_str
 
-        pairs.append({"pair": p, "frame_a": name_a, "frame_b": name_b})
+            pair_entry = {"pair": p, "frame_a": name_a, "frame_b": name_b}
 
-    return jsonify({
+        pairs.append(pair_entry)
+
+    response = {
         "pairs": pairs,
         "total_pairs": num_pairs,
         "num_images": cfg.num_images,
@@ -1044,7 +1113,13 @@ def preview_frame_pairs():
         "frame_stride": cfg.frame_stride,
         "pair_stride": cfg.pair_stride,
         "start_index": cfg.start_index,
-    })
+    }
+
+    if is_multi_loop:
+        response["num_loops"] = num_loops
+        response["per_loop_pairs"] = per_loop
+
+    return jsonify(response)
 
 
 @api_bp.route("/update_config", methods=["POST"])
@@ -1207,6 +1282,13 @@ def update_config():
     with open(cfg.config_path, "w", encoding="utf-8") as f:
         yaml.dump(cfg.data, f, default_flow_style=False, sort_keys=False)
     reload_config()
+
+    # Inject computed image properties into response so frontend stays in sync
+    cfg = get_config()
+    if "images" in data:
+        data["images"]["num_frame_pairs"] = cfg.num_frame_pairs
+        data["images"]["per_loop_frame_pairs"] = cfg.per_loop_frame_pairs
+
     return jsonify({"status": "success", "updated": data})
 
 

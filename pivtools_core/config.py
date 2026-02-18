@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 import logging
 import os
+import re
 import shutil
 import time
 
@@ -866,38 +867,109 @@ video:
         return self.data["images"]["num_images"]
 
     @property
-    def num_frame_pairs(self):
-        """Calculate the number of frame pairs from num_images and stride settings.
+    def num_loops(self) -> int:
+        """Number of acquisition loops (separate .set files in the same folder).
 
-        Uses the unified stride formula:
-        - frame_stride == 0 (pre-paired/A-B): num_images pairs
-        - frame_stride > 0: (num_images - 1 - frame_stride) // pair_stride + 1
+        When > 1, multiple .set files are combined into one larger dataset.
+        E.g., loop=0.set, loop=1.set, ..., loop=N.set
+        """
+        return self.data.get("images", {}).get("num_loops", 1)
 
-        Examples:
-            time_resolved (fs=1, ps=1): 100 images → 99 pairs
-            skip_frames   (fs=1, ps=2): 100 images → 50 pairs
-            ab_format     (fs=0, ps=1): 100 images → 100 pairs
-            pre_paired    (fs=0, ps=1): 100 images → 100 pairs
+    @property
+    def per_loop_frame_pairs(self) -> int:
+        """Frame pairs within a single loop (original stride calculation).
 
-        Returns
-        -------
-        int
-            Number of frame pairs (always >= 0)
+        This is the number of pairs from one .set file before considering
+        multiple loops. The total across all loops is num_frame_pairs.
         """
         num_images = self.num_images
         fs = self.frame_stride
         ps = self.pair_stride
 
         if fs == 0:
-            # Pre-paired or A/B format: one pair per image file/entry
             return num_images
 
         if ps <= 0:
-            ps = 1  # safety guard
+            ps = 1
 
-        # General formula: last valid pair starts at (N-1)*ps,
-        # last frame is at (N-1)*ps + fs, must be < num_images
         return max(0, (num_images - 1 - fs) // ps + 1)
+
+    @property
+    def num_frame_pairs(self):
+        """Total frame pairs across all loops.
+
+        Uses the unified stride formula per loop, multiplied by num_loops:
+        - frame_stride == 0 (pre-paired/A-B): num_images pairs per loop
+        - frame_stride > 0: (num_images - 1 - frame_stride) // pair_stride + 1 per loop
+
+        Examples (single loop):
+            time_resolved (fs=1, ps=1): 100 images → 99 pairs
+            skip_frames   (fs=1, ps=2): 100 images → 50 pairs
+            ab_format     (fs=0, ps=1): 100 images → 100 pairs
+            pre_paired    (fs=0, ps=1): 100 images → 100 pairs
+
+        With num_loops=3 and 40 per-loop pairs: returns 120.
+
+        Returns
+        -------
+        int
+            Number of frame pairs (always >= 0)
+        """
+        return self.num_loops * self.per_loop_frame_pairs
+
+    def get_loop_source_path(self, source_path: Path, loop_idx: int) -> Path:
+        """Get the .set file path for a specific loop index.
+
+        Infers the loop pattern from the source_path filename.
+        E.g., source_path=.../loop=0.set, loop_idx=3 -> .../loop=3.set
+
+        Args:
+            source_path: Path to the base .set file (loop 0)
+            loop_idx: Zero-based loop index
+
+        Returns:
+            Path to the .set file for the given loop
+
+        Raises:
+            ValueError: If no number can be detected in the filename
+        """
+        if self.num_loops <= 1:
+            return source_path
+
+        source_path = Path(source_path)
+        filename = source_path.name  # e.g., "loop=0.set"
+
+        # Find the number in the filename pattern
+        match = re.search(r'(\d+)', filename)
+        if not match:
+            raise ValueError(f"Cannot detect loop number in filename: {filename}")
+
+        base_number = int(match.group(1))
+        new_number = base_number + loop_idx
+        new_filename = (
+            filename[:match.start(1)] + str(new_number) + filename[match.end(1):]
+        )
+        return source_path.parent / new_filename
+
+    def resolve_loop_for_pair(self, global_pair_1based: int) -> tuple:
+        """Resolve a global pair number to (loop_idx, local_pair_1based).
+
+        E.g., with 40 per-loop pairs:
+          pair 1  -> (0, 1)
+          pair 40 -> (0, 40)
+          pair 41 -> (1, 1)
+          pair 80 -> (1, 40)
+
+        Args:
+            global_pair_1based: 1-based global pair number
+
+        Returns:
+            Tuple of (loop_idx, local_pair_1based)
+        """
+        per_loop = self.per_loop_frame_pairs
+        loop_idx = (global_pair_1based - 1) // per_loop
+        local_pair = (global_pair_1based - 1) % per_loop + 1
+        return (loop_idx, local_pair)
 
     @property
     def pairing_mode(self):
@@ -1070,18 +1142,19 @@ video:
         """
         Batch size for image processing.
 
-        Automatically capped at num_frame_pairs to prevent batches larger than available data.
+        Automatically capped at per_loop_frame_pairs to prevent batches from
+        crossing loop boundaries (each batch reads from a single .set file).
         """
         configured_size = self.data.get("batches", {}).get("size", 30)
-        max_size = self.num_frame_pairs
+        max_size = self.per_loop_frame_pairs
 
-        # Cap batch size at number of frame pairs
+        # Cap batch size at per-loop frame pairs (batches must not cross loop boundaries)
         actual_size = min(configured_size, max_size)
 
         if actual_size < configured_size:
             logging.debug(
                 f"Batch size capped at {actual_size} (configured: {configured_size}, "
-                f"max allowed: {max_size} frame pairs)"
+                f"max allowed: {max_size} per-loop frame pairs)"
             )
 
         return actual_size

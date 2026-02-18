@@ -98,6 +98,15 @@ def validate_config(config: Config) -> Tuple[bool, str, List[str]]:
             if not set_file.exists():
                 errors.append(f"Camera {camera_num}: Set file not found: {set_file}")
 
+            # Multi-loop validation: check all loop .set files exist
+            if config.num_loops > 1:
+                for loop_idx in range(config.num_loops):
+                    loop_path = config.get_loop_source_path(source_path, loop_idx)
+                    if not loop_path.exists():
+                        errors.append(
+                            f"Camera {camera_num}: Loop {loop_idx} .set file not found: {loop_path}"
+                        )
+
         elif image_type == "lavision_im7":
             # IM7 files
             pattern = format_str.replace("%05d", "*").replace("%04d", "*").replace("%d", "*")
