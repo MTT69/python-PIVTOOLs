@@ -7,6 +7,8 @@ handling accumulation of correlation planes and single-pass optimization.
 
 import gc
 import logging
+import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
 
@@ -43,6 +45,10 @@ class SinglePassAccumulator:
         self.n_images = 0
         self.passes_data = []
         self.passes_results = []  # Store completed pass results
+
+        # Section-level profiling (disabled by default, zero overhead)
+        self.profiling_enabled = False
+        self.profile_data = {}  # {pass_idx: {section_name: elapsed_seconds}}
 
         H, W = config.image_shape
 
@@ -102,6 +108,25 @@ class SinglePassAccumulator:
                 "first_pair_A": None,
                 "first_pair_B": None,
             })
+
+    @contextmanager
+    def _profile_section(self, pass_idx, section):
+        """Context manager for timing named sections within finalize_pass."""
+        if not self.profiling_enabled:
+            yield
+            return
+        t0 = time.perf_counter()
+        yield
+        elapsed = time.perf_counter() - t0
+        self.profile_data.setdefault(pass_idx, {})[section] = elapsed
+
+    def get_profile_summary(self):
+        """Return a copy of the profile data collected during finalization."""
+        return dict(self.profile_data)
+
+    def reset_profile_data(self):
+        """Clear profile data for a new profiling run."""
+        self.profile_data = {}
 
     def load_previous_passes(
         self, ensemble_result: PIVEnsembleResult, n_images: int
@@ -377,43 +402,45 @@ class SinglePassAccumulator:
         bg_method = getattr(self.config, 'ensemble_background_subtraction_method', 'correlation')
         skip_bg_subtraction = getattr(self.config, 'ensemble_skip_background_subtraction', False)
 
-        # Step 1: Compute mean warped images (always needed for diagnostics/metadata)
-        A_mean = pass_data["sum_warp_A"] / N
-        B_mean = pass_data["sum_warp_B"] / N
+        with self._profile_section(pass_idx, "bg_subtraction"):
+            # Step 1: Compute mean warped images (always needed for diagnostics/metadata)
+            A_mean = pass_data["sum_warp_A"] / N
+            B_mean = pass_data["sum_warp_B"] / N
 
-        # Step 2: Compute average correlation planes
-        R_AA_raw = pass_data["sum_corr_AA"] / N
-        R_BB_raw = pass_data["sum_corr_BB"] / N
-        R_AB_raw = pass_data["sum_corr_AB"] / N
+            # Step 2: Compute average correlation planes
+            R_AA_raw = pass_data["sum_corr_AA"] / N
+            R_BB_raw = pass_data["sum_corr_BB"] / N
+            R_AB_raw = pass_data["sum_corr_AB"] / N
 
         # Step 3-4: Background subtraction depends on method
-        if bg_method == 'image':
-            # IMAGE method: mean was subtracted BEFORE correlation
-            # Correlation planes are already background-subtracted: R = <(A-Ā)⊗(B-B̄)>
-            logging.info(f"Pass {pass_idx + 1}: Using 'image' background method (already subtracted)")
-            R_AA_ensemble = R_AA_raw
-            R_BB_ensemble = R_BB_raw
-            R_AB_ensemble = R_AB_raw
-            # Set background to zero for diagnostic logging
-            R_AA_bg = np.zeros_like(R_AA_raw)
-            R_BB_bg = np.zeros_like(R_BB_raw)
-            R_AB_bg = np.zeros_like(R_AB_raw)
-        elif skip_bg_subtraction:
-            # Skip background subtraction (debug mode)
-            logging.warning(f"Pass {pass_idx + 1}: SKIPPING background subtraction (debug mode)")
-            R_AA_ensemble = R_AA_raw
-            R_BB_ensemble = R_BB_raw
-            R_AB_ensemble = R_AB_raw
-            R_AA_bg = np.zeros_like(R_AA_raw)
-            R_BB_bg = np.zeros_like(R_BB_raw)
-            R_AB_bg = np.zeros_like(R_AB_raw)
-        else:
-            # CORRELATION method: correlate raw images, subtract correlated means
-            # R_ensemble = <A⊗B> - <A>⊗<B>
-            R_AA_bg, R_BB_bg, R_AB_bg = self._correlate_mean_images(A_mean, B_mean, pass_idx)
-            R_AA_ensemble = R_AA_raw - R_AA_bg
-            R_BB_ensemble = R_BB_raw - R_BB_bg
-            R_AB_ensemble = R_AB_raw - R_AB_bg
+        with self._profile_section(pass_idx, "bg_subtraction"):
+            if bg_method == 'image':
+                # IMAGE method: mean was subtracted BEFORE correlation
+                # Correlation planes are already background-subtracted: R = <(A-Ā)⊗(B-B̄)>
+                logging.info(f"Pass {pass_idx + 1}: Using 'image' background method (already subtracted)")
+                R_AA_ensemble = R_AA_raw
+                R_BB_ensemble = R_BB_raw
+                R_AB_ensemble = R_AB_raw
+                # Set background to zero for diagnostic logging
+                R_AA_bg = np.zeros_like(R_AA_raw)
+                R_BB_bg = np.zeros_like(R_BB_raw)
+                R_AB_bg = np.zeros_like(R_AB_raw)
+            elif skip_bg_subtraction:
+                # Skip background subtraction (debug mode)
+                logging.warning(f"Pass {pass_idx + 1}: SKIPPING background subtraction (debug mode)")
+                R_AA_ensemble = R_AA_raw
+                R_BB_ensemble = R_BB_raw
+                R_AB_ensemble = R_AB_raw
+                R_AA_bg = np.zeros_like(R_AA_raw)
+                R_BB_bg = np.zeros_like(R_BB_raw)
+                R_AB_bg = np.zeros_like(R_AB_raw)
+            else:
+                # CORRELATION method: correlate raw images, subtract correlated means
+                # R_ensemble = <A⊗B> - <A>⊗<B>
+                R_AA_bg, R_BB_bg, R_AB_bg = self._correlate_mean_images(A_mean, B_mean, pass_idx)
+                R_AA_ensemble = R_AA_raw - R_AA_bg
+                R_BB_ensemble = R_BB_raw - R_BB_bg
+                R_AB_ensemble = R_AB_raw - R_AB_bg
 
         # Step 4a: Diagnostic logging to understand noise floor source
         logging.debug(f"Pass {pass_idx + 1} BACKGROUND SUBTRACTION DIAGNOSTICS:")
@@ -532,6 +559,7 @@ class SinglePassAccumulator:
         )
 
         # Step 6: Perform distributed Gaussian fitting
+        _fitting_t0 = time.perf_counter() if self.profiling_enabled else 0
 
         # Get sigma values from previous pass (if applicable)
         # For pass 0: All None (sigmas computed from HWHM in _build_initial_guess)
@@ -687,6 +715,9 @@ class SinglePassAccumulator:
             )
         else:
             logging.warning(f"Pass {pass_idx + 1}: All windows masked, no fitting performed")
+
+        if self.profiling_enabled:
+            self.profile_data.setdefault(pass_idx, {})["fitting"] = time.perf_counter() - _fitting_t0
 
         # Step 7: Extract velocities from fitted parametes
 
@@ -878,6 +909,7 @@ class SinglePassAccumulator:
         # =========================================================
         # STEP 7b: Outlier Detection and Infilling
         # =========================================================
+        _outlier_t0 = time.perf_counter() if self.profiling_enabled else 0
 
         # Determine if this is final pass
         is_final_pass = (pass_idx == self.config.ensemble_num_passes - 1)
@@ -1035,6 +1067,9 @@ class SinglePassAccumulator:
                 logging.info(
                     f"Pass {pass_idx + 1}: Stress outlier detection found 0 outliers"
                 )
+
+        if self.profiling_enabled:
+            self.profile_data.setdefault(pass_idx, {})["outlier_infill"] = time.perf_counter() - _outlier_t0
 
         # Store PADDED predictor field to match instantaneous mode format
         # Instantaneous stores: np.pad([uy_mat, ux_mat], n_pre/n_post, mode="edge")

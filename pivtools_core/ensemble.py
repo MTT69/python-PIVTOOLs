@@ -400,12 +400,16 @@ def run_ensemble_piv(
             output_path=output_path,
         )
 
+        corr_elapsed = time.time() - pass_start
+
         # Accumulate and finalize pass
+        finalize_start = time.time()
         accumulator.accumulate_batch(accumulated, pass_idx=pass_idx)
         pass_result = accumulator.finalize_pass(
             client=client, pass_idx=pass_idx, predictor_field=predictor_field, output_path=output_path
         )
         # NOTE: finalize_pass() already appends to passes_results internally
+        finalize_elapsed = time.time() - finalize_start
 
         # Extract predictor for next pass
         if pass_idx < num_passes - 1:
@@ -420,7 +424,10 @@ def run_ensemble_piv(
         # NOTE: gc.collect on workers causes SIGSEGV with FFTW - removed
 
         pass_elapsed = time.time() - pass_start
-        logger.info(f"  Pass {pass_idx + 1} complete in {pass_elapsed:.1f}s")
+        logger.info(
+            f"  Pass {pass_idx + 1} complete in {pass_elapsed:.1f}s "
+            f"(correlation: {corr_elapsed:.1f}s, finalize: {finalize_elapsed:.1f}s)"
+        )
 
     # 7. Build and save ensemble result
     logger.info("")

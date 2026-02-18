@@ -12,7 +12,9 @@ conventions for config, masking, infilling, and save patterns.
 import ctypes
 import logging
 import os
+import time
 import traceback
+from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional
 import matplotlib.pyplot as plt
@@ -190,6 +192,31 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         # bulkxcorr2d_accumulate runs (OpenMP) and vice versa.
         self._n_threads = max(1, int(config.omp_threads))
         self._pool = ThreadPoolExecutor(max_workers=self._n_threads)
+
+        # Section-level profiling (disabled by default, zero overhead)
+        self.profiling_enabled = False
+        self.profile_data = {}  # {pass_idx: {section_name: elapsed_seconds}}
+
+    @contextmanager
+    def _profile_section(self, pass_idx, section):
+        """Context manager for timing named sections within correlate_batch_for_accumulation."""
+        if not self.profiling_enabled:
+            yield
+            return
+        t0 = time.perf_counter()
+        yield
+        elapsed = time.perf_counter() - t0
+        self.profile_data.setdefault(pass_idx, {})[section] = (
+            self.profile_data.get(pass_idx, {}).get(section, 0.0) + elapsed
+        )
+
+    def get_profile_summary(self):
+        """Return a copy of the profile data collected across all batches."""
+        return dict(self.profile_data)
+
+    def reset_profile_data(self):
+        """Clear profile data for a new profiling run."""
+        self.profile_data = {}
 
     @classmethod
     def _load_libraries(cls):
@@ -615,39 +642,36 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             image_a_stack = images[:, 0, :, :].astype(np.float32, copy=False)
             image_b_stack = images[:, 1, :, :].astype(np.float32, copy=False)
 
-                # For single-pass optimization: accumulate RAW warped images
-                # Mean subtraction happens in finalize() via background correlation
-                # Formula: R_ensemble = <A⋆B> - <A>⋆<B>
-
-                # Warp images if predictor field is provided (pass > 0)
-            if pass_idx > 0:
-                if predictor_field is None:
-                    logging.warning(
+            # Warp images if predictor field is provided (pass > 0)
+            with self._profile_section(pass_idx, "warping"):
+                if pass_idx > 0:
+                    if predictor_field is None:
+                        logging.warning(
                             f"Pass {pass_idx + 1}: predictor_field is None! "
                             f"Cannot perform image warping. Correlating unwarped images."
                         )
-                else:
-                    im_mesh_A, im_mesh_B, delta_ab_pred = self._get_im_mesh(
+                    else:
+                        im_mesh_A, im_mesh_B, delta_ab_pred = self._get_im_mesh(
                             pass_idx, predictor_field
                         )
-                    smoothed_predictor = delta_ab_pred
-                    logging.debug(
+                        smoothed_predictor = delta_ab_pred
+                        logging.debug(
                             f"Pass {pass_idx + 1}: Got smoothed predictor field "
                             f"(shape: {delta_ab_pred.shape})"
                         )
 
                         # Apply vector mask to zero out masked vectors
-                    if vector_mask is not None:
+                        if vector_mask is not None:
                             smoothed_predictor[vector_mask] = 0
 
-            if predictor_field is not None and pass_idx > 0:
-                images_a_prime, images_b_prime = self._get_image_prime_batch(
+                if predictor_field is not None and pass_idx > 0:
+                    images_a_prime, images_b_prime = self._get_image_prime_batch(
                         image_a_stack, image_b_stack, im_mesh_A, im_mesh_B
-            )
-            else:
+                    )
+                else:
                     # No warping for pass 0
-                images_a_prime = image_a_stack
-                images_b_prime = image_b_stack
+                    images_a_prime = image_a_stack
+                    images_b_prime = image_b_stack
 
 
             # Compute warp sums BEFORE padding (for accumulation in original image space)
@@ -686,30 +710,29 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             else:
                 b_mask = np.zeros(total_windows, dtype=np.float32)
 
-            # Cross-correlation AB (accumulates internally - no reshape/sum needed!)
-            error_code_AB = self._run_correlation_accumulate(
-                images_a_prime, images_b_prime,
-                self.win_weights_A[pass_idx], self.win_weights_B[pass_idx],
-                b_mask, pass_idx, correl_AB_sum
-            )
+            # Cross-correlation AB, AA, BB (accumulates internally)
+            with self._profile_section(pass_idx, "xcorr"):
+                error_code_AB = self._run_correlation_accumulate(
+                    images_a_prime, images_b_prime,
+                    self.win_weights_A[pass_idx], self.win_weights_B[pass_idx],
+                    b_mask, pass_idx, correl_AB_sum
+                )
 
-            # Auto-correlation AA - use full weights (weight_B) on both sides
-            # to match BB energy and get true particle sigma
-            # DEBUG: Verify weights are uniform
-            logging.debug(f"AA weights: min={self.win_weights_B[pass_idx].min():.4f}, max={self.win_weights_B[pass_idx].max():.4f}, shape={self.win_weights_B[pass_idx].shape}, sum={self.win_weights_B[pass_idx].sum():.1f}")
-            error_code_AA = self._run_correlation_accumulate(
-                images_a_prime, images_a_prime,
-                self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
-                b_mask, pass_idx, correl_AA_sum
-            )
+                # Auto-correlation AA - use full weights (weight_B) on both sides
+                logging.debug(f"AA weights: min={self.win_weights_B[pass_idx].min():.4f}, max={self.win_weights_B[pass_idx].max():.4f}, shape={self.win_weights_B[pass_idx].shape}, sum={self.win_weights_B[pass_idx].sum():.1f}")
+                error_code_AA = self._run_correlation_accumulate(
+                    images_a_prime, images_a_prime,
+                    self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
+                    b_mask, pass_idx, correl_AA_sum
+                )
 
-            # Auto-correlation BB
-            logging.debug(f"BB weights: min={self.win_weights_B[pass_idx].min():.4f}, max={self.win_weights_B[pass_idx].max():.4f}, shape={self.win_weights_B[pass_idx].shape}, sum={self.win_weights_B[pass_idx].sum():.1f}")
-            error_code_BB = self._run_correlation_accumulate(
-                images_b_prime, images_b_prime,
-                self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
-                b_mask, pass_idx, correl_BB_sum
-            )
+                # Auto-correlation BB
+                logging.debug(f"BB weights: min={self.win_weights_B[pass_idx].min():.4f}, max={self.win_weights_B[pass_idx].max():.4f}, shape={self.win_weights_B[pass_idx].shape}, sum={self.win_weights_B[pass_idx].sum():.1f}")
+                error_code_BB = self._run_correlation_accumulate(
+                    images_b_prime, images_b_prime,
+                    self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
+                    b_mask, pass_idx, correl_BB_sum
+                )
 
             # Reshape to (windows, corr_h, corr_w) for downstream processing
             correl_AA_sum = correl_AA_sum.reshape(total_windows, corr_size[0], corr_size[1])
