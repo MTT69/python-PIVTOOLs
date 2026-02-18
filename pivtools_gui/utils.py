@@ -76,9 +76,8 @@ def numpy_to_base64(arr: np.ndarray, format: str = "png", compress_level: int = 
     buf = BytesIO()
 
     if format.lower() == "jpeg":
-        # Convert grayscale to RGB for JPEG (JPEG doesn't support all grayscale modes well)
-        if img.mode == "L":
-            img = img.convert("RGB")
+        # PIL handles 'L' (grayscale) mode JPEG natively — no need to convert to RGB.
+        # Skipping the conversion avoids tripling the data size before compression.
         img.save(buf, format="JPEG", quality=jpeg_quality, optimize=False)
     else:
         # Default to PNG

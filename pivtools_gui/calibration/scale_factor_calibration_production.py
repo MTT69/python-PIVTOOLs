@@ -78,12 +78,13 @@ def _process_vector_file(args: Tuple) -> bool:
     both velocities and stresses.
 
     Args:
-        args: Tuple of (run, vector_file_uncal, vector_file_cal, px_per_mm, dt)
+        args: Tuple of (run, vector_file_uncal, vector_file_cal, px_per_mm, dt, invert_ux)
+              invert_ux: bool - if True, negate ux and UV_stress after calibration.
 
     Returns:
         True if successful, False otherwise
     """
-    run, vector_file_uncal, vector_file_cal, px_per_mm, dt = args
+    run, vector_file_uncal, vector_file_cal, px_per_mm, dt, invert_ux = args
     try:
         mat = scipy.io.loadmat(
             str(vector_file_uncal), struct_as_record=False, squeeze_me=True
@@ -146,6 +147,9 @@ def _process_vector_file(args: Tuple) -> bool:
                 ux_calib = ux / px_per_mm / dt / 1000
                 uy_calib = uy / px_per_mm / dt / 1000
 
+                if invert_ux:
+                    ux_calib = -ux_calib
+
                 if has_stresses:
                     # Get and calibrate stress tensors
                     UU_stress = getattr(cell, "UU_stress", None)
@@ -156,6 +160,9 @@ def _process_vector_file(args: Tuple) -> bool:
                     UU_calib = UU_stress * stress_scale if UU_stress is not None else np.array([])
                     VV_calib = VV_stress * stress_scale if VV_stress is not None else np.array([])
                     UV_calib = UV_stress * stress_scale if UV_stress is not None else np.array([])
+
+                    if invert_ux and UV_calib.size > 0:
+                        UV_calib = -UV_calib
 
                     out_piv[idx] = (ux_calib, uy_calib, b_mask, UU_calib, VV_calib, UV_calib)
                 else:
@@ -202,6 +209,7 @@ class ScaleFactorCalibrator:
         dt: Optional[float] = None,
         px_per_mm: Optional[float] = None,
         config: Optional["PIVConfig"] = None,
+        alignment: Optional[Dict] = None,
     ):
         """
         Initialize scale factor calibrator.
@@ -213,10 +221,15 @@ class ScaleFactorCalibrator:
             dt: Time between frames in seconds (optional, reads from config if not provided)
             px_per_mm: Pixels per millimeter (optional, reads from config if not provided)
             config: Optional config object to read dt/px_per_mm from
+            alignment: Optional dict from GlobalCoordinateAligner.precompute_camera_shifts().
+                If provided, shifts are applied to coordinates and invert_ux is applied
+                to vectors during calibration (fused single-pass).
+                Keys: camera_shifts, invert_ux, datum_physical_x
         """
         self.base_path = Path(base_path)
         self.source_path_idx = source_path_idx
         self.type_name = type_name
+        self.alignment = alignment
 
         # Read dt and px_per_mm from config if not provided directly
         if config is not None:
@@ -375,16 +388,19 @@ class ScaleFactorCalibrator:
 
         # Process coordinates first (not tracked in progress)
         if coords_exists:
-            success = self._process_coordinates(coords_path_uncal, coords_path_cal)
+            success = self._process_coordinates(coords_path_uncal, coords_path_cal, camera_num)
             result["coords_processed"] = success
             if not success:
                 result["failed_files"] += 1
 
         # Process vector files in parallel
         processed = 0
+        invert_ux = False
+        if self.alignment:
+            invert_ux = self.alignment.get("invert_ux", False)
         if vector_files:
             vector_args = [
-                (run, uncal, cal, self.px_per_mm, self.dt)
+                (run, uncal, cal, self.px_per_mm, self.dt, invert_ux)
                 for run, uncal, cal in vector_files
             ]
 
@@ -422,7 +438,7 @@ class ScaleFactorCalibrator:
         return result
 
     def _process_coordinates(
-        self, coords_path_uncal: Path, coords_path_cal: Path
+        self, coords_path_uncal: Path, coords_path_cal: Path, camera_num: int
     ) -> bool:
         """
         Process coordinates file.
@@ -430,6 +446,7 @@ class ScaleFactorCalibrator:
         Args:
             coords_path_uncal: Path to uncalibrated coordinates
             coords_path_cal: Path to save calibrated coordinates
+            camera_num: Camera number (for alignment shift lookup)
 
         Returns:
             True if successful
@@ -442,6 +459,15 @@ class ScaleFactorCalibrator:
                 loguru_logger.warning(f"No coordinates found in {coords_path_uncal.parent}")
                 return False
 
+            # Resolve alignment params for this camera
+            coord_shift = None
+            invert_ux = False
+            datum_physical_x = 0.0
+            if self.alignment:
+                invert_ux = self.alignment.get("invert_ux", False)
+                datum_physical_x = self.alignment.get("datum_physical_x", 0.0)
+                coord_shift = self.alignment.get("camera_shifts", {}).get(camera_num)
+
             # Build output struct array
             coord_dtype = np.dtype([("x", "O"), ("y", "O")])
             out_coords = np.empty(len(x_list), dtype=coord_dtype)
@@ -450,6 +476,16 @@ class ScaleFactorCalibrator:
             for run_idx, (x, y) in enumerate(zip(x_list, y_list)):
                 if x is not None and y is not None and x.size > 0 and y.size > 0:
                     x_calib, y_calib = self.calibrate_coordinates(x, y)
+
+                    # Apply alignment shift if provided
+                    if coord_shift is not None:
+                        x_calib = x_calib + coord_shift[0]
+                        y_calib = y_calib + coord_shift[1]
+
+                    # Apply x-reflection for invert_ux
+                    if invert_ux:
+                        x_calib = 2.0 * datum_physical_x - x_calib
+
                     out_coords[run_idx] = (x_calib, y_calib)
                     processed_runs += 1
                 else:
@@ -460,9 +496,22 @@ class ScaleFactorCalibrator:
             )
             loguru_logger.info(f"Updated coordinates for {processed_runs} runs")
 
-            # Clear any alignment marker (coordinates are now fresh/unaligned)
+            # Write alignment marker if alignment was applied, else clear it
             from pivtools_gui.calibration.global_coordinate_alignment import GlobalCoordinateAligner
-            GlobalCoordinateAligner.clear_alignment_marker(coords_path_cal.parent)
+            if self.alignment and coord_shift is not None:
+                import json
+                from datetime import datetime
+                marker_path = coords_path_cal.parent / GlobalCoordinateAligner.ALIGNMENT_MARKER
+                marker_data = {
+                    "aligned_at": datetime.now().isoformat(),
+                    "shift_x": coord_shift[0],
+                    "shift_y": coord_shift[1],
+                    "method": "scale_factor",
+                    "fused": True,
+                }
+                marker_path.write_text(json.dumps(marker_data, indent=2))
+            else:
+                GlobalCoordinateAligner.clear_alignment_marker(coords_path_cal.parent)
 
             return True
 

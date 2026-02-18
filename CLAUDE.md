@@ -386,7 +386,7 @@ POST /calibrate/calibration/snapshot/load  {base_path_idx} -> restores saved cal
 
 **Production files** (do the actual calibration work):
 - `scale_factor_calibration_production.py` - Simple px→mm scaling
-- `global_coordinate_alignment.py` - Global coordinate alignment (shifts coordinates.mat after calibration). Uses chain topology (cam N↔cam N+1 pairs) instead of star topology. Supports `invert_ux` to negate ux + UV_stress and reflect x-coordinates around datum_physical_x when x-direction is reversed. Auto-applied when `global_coordinates.enabled` in vectors_calibrate route. **Idempotency guard:** writes `alignment_applied.json` sidecar marker after alignment; blocks re-application unless `force=True`. Fresh calibration (vector or scale_factor) clears the marker automatically. Pre-flight validates: datum_pixel set, method not polynomial, overlap_pairs for multi-camera.
+- `global_coordinate_alignment.py` - Global coordinate alignment. Uses chain topology (cam N↔cam N+1 pairs). Supports `invert_ux` to negate ux + UV_stress and reflect x-coordinates around datum_physical_x. **Fused into calibration workers:** `precompute_camera_shifts(type_name)` pre-computes shifts (no data I/O) → shifts/invert_ux applied inside parallel calibration workers (one file open, one save per .mat). `apply_alignment()` still exists for standalone `align-coordinates` CLI command; `_apply_invert_ux_to_camera()` uses `ThreadPoolExecutor(min(os.cpu_count(), len(files), 8))` to process vector .mat files in parallel (loadmat/savemat release GIL). **Idempotency guard:** `alignment_applied.json` sidecar marker; blocks re-application unless `force=True`. Fresh calibration clears the marker. Pre-flight validates: datum_pixel set, method not polynomial, overlap_pairs for multi-camera.
 - `calibration_planar/planar_calibration_production.py` - Dotboard detection + model. Optimized: histogram-based single blob detection, cKDTree neighbor finding, reduced RANSAC iterations, vectorized object points, no double image reads for containers
 - `calibration_charuco/charuco_calibration_production.py` - ChArUco detection
 - `calibration_poly/polynomial_calibration_production.py` - DaVis XML polynomial
@@ -1261,6 +1261,7 @@ base_path/
 - Logging: `loguru.logger` (not stdlib).
 - Camera normalization: `camera_number()` before use. Always 1-based.
 - Long ops: daemon threads + `job_manager` singleton. Return `job_id` immediately.
+- ThreadPool pattern for I/O-bound parallel work: `ThreadPoolExecutor(max_workers=min(os.cpu_count() or 4, len(items), 8))` with `as_completed()`. Used in: `app.py` (image preload), `video_maker.py` (file inspection), `dotboard_views.py` (multi-camera detection), `global_coordinate_alignment.py` (`invert_ux` file processing). Processing correlators use class-level pools sized to `omp_threads` instead.
 - Images to frontend: base64 via `numpy_to_base64()`.
 
 ### Python (Processing)

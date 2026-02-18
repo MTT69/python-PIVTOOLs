@@ -71,12 +71,26 @@ def scale_factor_calibrate_vectors():
         try:
             job_manager.update_job(job_id, status="running")
 
+            # Pre-compute alignment shifts (no data file I/O)
+            alignment = None
+            if cfg.global_coordinates_enabled:
+                try:
+                    from pivtools_gui.calibration.global_coordinate_alignment import GlobalCoordinateAligner
+                    logger.debug("Pre-computing global coordinate alignment shifts...")
+                    aligner = GlobalCoordinateAligner(base_root, cfg)
+                    alignment = aligner.precompute_camera_shifts(type_name)
+                    if alignment:
+                        logger.debug(f"Alignment pre-computed: {len(alignment['camera_shifts'])} cameras, invert_ux={alignment['invert_ux']}")
+                except Exception as align_err:
+                    logger.error(f"Failed to pre-compute alignment: {align_err}")
+
             # Create calibrator instance - reads dt/px_per_mm from config
             calibrator = ScaleFactorCalibrator(
                 base_path=base_root,
                 source_path_idx=source_path_idx,
                 type_name=type_name,
                 config=cfg,
+                alignment=alignment,
             )
 
             def progress_callback(progress_data):
@@ -135,21 +149,16 @@ def scale_factor_calibrate_vectors():
                     "status": status,
                 }
 
-            # Auto-apply global coordinate alignment if enabled
-            if cfg.global_coordinates_enabled:
-                try:
-                    from pivtools_gui.calibration.global_coordinate_alignment import GlobalCoordinateAligner
-                    logger.debug("Applying global coordinate alignment...")
-                    aligner = GlobalCoordinateAligner(base_root, cfg)
-                    alignment_result = aligner.apply_alignment(type_name)
-                    camera_progress["global_alignment"] = alignment_result
-                    logger.debug(f"Global coordinate alignment: {alignment_result.get('status')}")
-                except Exception as align_err:
-                    logger.error(f"Global coordinate alignment failed: {align_err}")
-                    camera_progress["global_alignment"] = {
-                        "status": "failed",
-                        "error": str(align_err),
-                    }
+            # Report alignment result from pre-computed data
+            if alignment:
+                camera_progress["global_alignment"] = {
+                    "status": "completed",
+                    "invert_ux": alignment["invert_ux"],
+                    "cameras": {
+                        str(cam): {"shift_x": sx, "shift_y": sy}
+                        for cam, (sx, sy) in alignment["camera_shifts"].items()
+                    },
+                }
 
             # Save calibration snapshot
             try:
@@ -338,12 +347,23 @@ def _run_scale_factor_job(
 
         job_manager.update_job(job_id, status="running")
 
+        # Pre-compute alignment shifts (no data file I/O)
+        alignment = None
+        if cfg.global_coordinates_enabled:
+            try:
+                from pivtools_gui.calibration.global_coordinate_alignment import GlobalCoordinateAligner
+                aligner = GlobalCoordinateAligner(base_dir, cfg)
+                alignment = aligner.precompute_camera_shifts(type_name)
+            except Exception as align_err:
+                logger.error(f"Failed to pre-compute alignment for path {path_idx}: {align_err}")
+
         # Create calibrator
         calibrator = ScaleFactorCalibrator(
             base_path=base_dir,
             source_path_idx=path_idx,
             type_name=type_name,
             config=cfg,
+            alignment=alignment,
         )
 
         def progress_callback(progress_data):

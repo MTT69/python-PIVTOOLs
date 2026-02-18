@@ -259,8 +259,8 @@ def calibration_get_frame():
         if img is None:
             return jsonify({"error": "Could not read calibration image"}), 500
 
-        # Calculate statistics
-        img_float = img.astype(np.float64)
+        # Calculate statistics (use float32 to halve memory vs float64)
+        img_float = img.astype(np.float32)
         img_min = float(img_float.min())
         img_max = float(img_float.max())
         data_range = img_max - img_min
@@ -274,8 +274,17 @@ def calibration_get_frame():
 
         # Calculate vmin/vmax as percentages (0-100) of the data range
         # This matches the logic in app.py get_percentile_stats()
-        p1 = float(np.percentile(img_float, 1))
-        p99 = float(np.percentile(img_float, 99))
+        # For large images (>4MP), subsample for percentile computation
+        total_pixels = img_float.size
+        if total_pixels > 4_000_000:
+            # Stride-sample: take every Nth pixel for fast percentile
+            stride = max(2, int(np.sqrt(total_pixels / 1_000_000)))
+            img_sampled = img_float[::stride, ::stride].ravel()
+        else:
+            img_sampled = img_float.ravel()
+
+        p1 = float(np.percentile(img_sampled, 1))
+        p99 = float(np.percentile(img_sampled, 99))
 
         if data_range > 0:
             vmin_pct = 100.0 * (p1 - img_min) / data_range
@@ -540,6 +549,24 @@ def vectors_calibrate():
         def run_calibration():
             try:
                 camera_results = {}
+
+                # Pre-compute alignment shifts (no data file I/O)
+                alignment = None
+                if cfg.global_coordinates_enabled:
+                    try:
+                        from pivtools_gui.calibration.global_coordinate_alignment import GlobalCoordinateAligner
+                        logger.debug("Pre-computing global coordinate alignment shifts...")
+                        aligner = GlobalCoordinateAligner(base_root, cfg)
+                        alignment = aligner.precompute_camera_shifts(type_name)
+                        if alignment:
+                            logger.debug(f"Alignment pre-computed: {len(alignment['camera_shifts'])} cameras, invert_ux={alignment['invert_ux']}")
+                    except Exception as align_err:
+                        logger.error(f"Failed to pre-compute alignment: {align_err}")
+                        camera_results["global_alignment"] = {
+                            "status": "failed",
+                            "error": str(align_err),
+                        }
+
                 for idx, camera_num in enumerate(cameras):
                     # Update job with current camera
                     job_manager.update_job(
@@ -596,25 +623,21 @@ def vectors_calibrate():
                     calibrator.process_run(
                         num_frame_pairs,
                         progress_cb=make_progress_cb(camera_num),
+                        alignment=alignment,
                     )
 
                     camera_results[str(camera_num)] = {"status": "completed"}
 
-                # Auto-apply global coordinate alignment if enabled
-                if cfg.global_coordinates_enabled:
-                    try:
-                        from pivtools_gui.calibration.global_coordinate_alignment import GlobalCoordinateAligner
-                        logger.debug("Applying global coordinate alignment...")
-                        aligner = GlobalCoordinateAligner(base_root, cfg)
-                        alignment_result = aligner.apply_alignment(type_name)
-                        camera_results["global_alignment"] = alignment_result
-                        logger.debug(f"Global coordinate alignment: {alignment_result.get('status')}")
-                    except Exception as align_err:
-                        logger.error(f"Global coordinate alignment failed: {align_err}")
-                        camera_results["global_alignment"] = {
-                            "status": "failed",
-                            "error": str(align_err),
-                        }
+                # Report alignment result from pre-computed data
+                if alignment and "global_alignment" not in camera_results:
+                    camera_results["global_alignment"] = {
+                        "status": "completed",
+                        "invert_ux": alignment["invert_ux"],
+                        "cameras": {
+                            str(cam): {"shift_x": sx, "shift_y": sy}
+                            for cam, (sx, sy) in alignment["camera_shifts"].items()
+                        },
+                    }
 
                 # Save calibration snapshot
                 try:

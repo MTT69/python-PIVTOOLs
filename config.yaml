@@ -1,29 +1,32 @@
 paths:
   base_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images\validation_first_kspace_4000
+  - D:\Case 2 PIV pivtools Processed\loop=00_MT
   source_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images
+  - D:\ALK_PIV_250527_085959\y235_aoan04_aoafn06\loop=0.set
   active_paths:
   - 0
   camera_numbers:
   - 1
-  camera_count: 1
+  - 2
+  - 3
+  - 4
+  - 5
+  camera_count: 5
   camera_subfolders: []
 images:
-  num_images: 4000
+  num_images: 40
   image_format:
-  - B%05d_A.tif
-  - B%05d_B.tif
+  - data.set
   vector_format:
   - '%05d.mat'
   dtype: float32
-  image_type: standard
+  image_type: lavision_set
   use_camera_subfolders: false
   start_index: 1
   frame_stride: 0
   pair_stride: 1
-  pairing_preset: ab_format
-  num_frame_pairs: 4000
+  pairing_preset: pre_paired
+  num_frame_pairs: 40
 batches:
   size: 10
 logging:
@@ -34,14 +37,14 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 4
-  dask_workers_per_node: 7
-  dask_memory_limit: 12GB
+  omp_threads: 5
+  dask_workers_per_node: 4
+  dask_memory_limit: 25GB
   dask_max_in_flight_per_worker: 3
   open_dashboard: true
   always_batch: true
-  instantaneous: false
-  ensemble: true
+  instantaneous: true
+  ensemble: false
 outlier_detection:
   enabled: true
   methods:
@@ -84,7 +87,7 @@ video:
   data_source: calibrated
   variable: ux
   run: 2
-  piv_type: ensemble
+  piv_type: instantaneous
   cmap: jet
   lower: ''
   upper: ''
@@ -116,19 +119,22 @@ statistics:
     mean_peak_height: false
   gamma_radius: 4
   save_figures: true
-  type_name: ensemble
+  type_name: instantaneous
   source_endpoint: regular
 instantaneous_piv:
   window_size:
   - - 64
     - 64
-  - - 16
+  - - 32
+    - 32
+  - - 8
     - 16
   overlap:
   - 50
   - 50
+  - 50
   runs:
-  - 2
+  - 3
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
@@ -176,59 +182,104 @@ ensemble_piv:
   resume_from_pass: 0
   window_type: square
 calibration:
-  image_format: planar_calibration_plate_%02d.tif
-  num_images: 20
-  image_type: standard
+  image_format: B%05d.im7
+  num_images: 1
+  image_type: lavision_im7
   zero_based_indexing: false
-  use_camera_subfolders: false
+  use_camera_subfolders: true
   subfolder: enhanced
-  camera_subfolders: []
+  camera_subfolders:
+  - camera1
+  - camera2
+  - camera3
+  - camera4
+  - camera5
   path_order: camera_first
   active: dotboard
-  piv_type: ensemble
+  piv_type: instantaneous
   scale_factor:
     dt: 0.000116
     px_per_mm: 22.56
     source_path_idx: 0
   dotboard:
-    dot_spacing_mm: 12.22
-    dt: 0.0057553
+    dot_spacing_mm: 10
+    dt: 4.96e-05
     datum_frame: 1
   calibration_sources:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images\calibration_boards
-    _all
+  - D:\ALK_PIV_250527_085959\Properties\Calibration
   global_coordinates:
     enabled: true
     datum_camera: 1
     datum_pixel:
-    - 0.8475397323411653
-    - 2047.7651664358864
+    - 5143.025552082823
+    - 3048.8874267599745
     datum_physical:
     - 0
-    - 0
+    - 10
     datum_frame: 1
-    overlap_points: []
-    invert_ux: false
-    overlap_pairs: []
-filters: []
+    invert_ux: true
+    overlap_pairs:
+    - camera_a: 1
+      camera_b: 2
+      pixel_on_a:
+      - 120.41103203866932
+      - 3015.9624562661747
+      pixel_on_b:
+      - 5188.146312537061
+      - 3044.3460515194497
+      frame_a: 1
+      frame_b: 1
+    - camera_a: 2
+      camera_b: 3
+      pixel_on_a:
+      - 155.31369820172958
+      - 3025.5213186676
+      pixel_on_b:
+      - 5164.340716518185
+      - 2999.738026979463
+      frame_a: 1
+      frame_b: 1
+    - camera_a: 3
+      camera_b: 4
+      pixel_on_a:
+      - 118.10784411849893
+      - 2989.436410412176
+      pixel_on_b:
+      - 4248.814117626077
+      - 3026.5467904961056
+      frame_a: 1
+      frame_b: 1
+    - camera_a: 4
+      camera_b: 5
+      pixel_on_a:
+      - 63.16011126186962
+      - 3020.863711171705
+      pixel_on_b:
+      - 4102.830878039553
+      - 3019.624855653694
+      frame_a: 1
+      frame_b: 1
+filters:
+- type: time
 masking:
-  enabled: false
+  enabled: true
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
-  mode: file
+  mode: rectangular
   rectangular:
     top: 0
     bottom: 250
     left: 0
     right: 0
 merging:
-  type_name: ensemble
+  type_name: instantaneous
   base_path_idx: 0
   cameras: null
 transforms:
   base_path_idx: 0
-  type_name: ensemble
+  type_name: instantaneous
   cameras:
     1:
       operations: []
   source_endpoint: regular
+urce_endpoint: regular

@@ -175,9 +175,10 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
     Args:
         args: Tuple of (file_idx, vector_file_path, output_file_path,
                        coords_by_run, camera_matrix, dist_coeffs,
-                       rvec, tvec, dt, max_run, valid_run_nums)
+                       rvec, tvec, dt, max_run, valid_run_nums, invert_ux)
                where coords_by_run is Dict[int, Tuple[ndarray, ndarray]]
                mapping 1-based run numbers to (x_coords, y_coords).
+               invert_ux: bool - if True, negate ux and UV_stress after calibration.
 
     Returns:
         Dict with results or None if failed
@@ -194,6 +195,7 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
         dt,
         max_run,
         valid_run_nums,
+        invert_ux,
     ) = args
 
     try:
@@ -265,6 +267,9 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
             uy_ms = (delta_mm[:, 1] / 1000.0) / dt
             ux_ms = ux_ms.reshape(ux_px.shape)
             uy_ms = uy_ms.reshape(uy_px.shape)
+
+            if invert_ux:
+                ux_ms = -ux_ms
 
             piv_dtype = np.dtype([("ux", "O"), ("uy", "O"), ("b_mask", "O")])
             piv_result = np.empty(max_run, dtype=piv_dtype)
@@ -345,6 +350,9 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
                 ux_ms = ux_ms.reshape(ux_px.shape)
                 uy_ms = uy_ms.reshape(uy_px.shape)
 
+                if invert_ux:
+                    ux_ms = -ux_ms
+
                 if has_stresses:
                     UU_stress = getattr(cell, "UU_stress", None)
                     VV_stress = getattr(cell, "VV_stress", None)
@@ -370,6 +378,9 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
                     UU_calib = UU_stress * stress_scale if UU_stress is not None else np.array([])
                     VV_calib = VV_stress * stress_scale if VV_stress is not None else np.array([])
                     UV_calib = UV_stress * stress_scale if UV_stress is not None else np.array([])
+
+                    if invert_ux and UV_calib.size > 0:
+                        UV_calib = -UV_calib
 
                     piv_result[idx] = (ux_ms, uy_ms, b_mask, UU_calib, VV_calib, UV_calib)
                 else:
@@ -744,6 +755,7 @@ class VectorCalibrator:
         self,
         num_frame_pairs: Optional[int] = None,
         progress_cb: Optional[Callable[[Dict[str, Any]], None]] = None,
+        alignment: Optional[Dict] = None,
     ):
         """
         Process and calibrate vectors for specified runs.
@@ -751,6 +763,10 @@ class VectorCalibrator:
         Args:
             num_frame_pairs: Number of frame pairs. If None, uses self.num_frame_pairs from config.
             progress_cb: Optional callback for progress updates
+            alignment: Optional dict from GlobalCoordinateAligner.precompute_camera_shifts().
+                If provided, shifts are applied to coordinates and invert_ux is applied
+                to vectors during calibration (fused single-pass).
+                Keys: camera_shifts, invert_ux, datum_physical_x
         """
         # Use config value if not explicitly provided
         if num_frame_pairs is None:
@@ -836,6 +852,15 @@ class VectorCalibrator:
         for run_num in range(1, max_run + 1):
             coordinates[run_num - 1] = (np.array([]), np.array([]))
 
+        # Resolve alignment params for this camera
+        invert_ux = False
+        coord_shift = None
+        datum_physical_x = 0.0
+        if alignment:
+            invert_ux = alignment.get("invert_ux", False)
+            datum_physical_x = alignment.get("datum_physical_x", 0.0)
+            coord_shift = alignment.get("camera_shifts", {}).get(self.camera_num)
+
         # Process each valid run's coordinates
         for list_idx, run_num, valid_coord_count, x_coords_px, y_coords_px in valid_runs:
             logger.info(
@@ -844,6 +869,16 @@ class VectorCalibrator:
             x_coords_mm, y_coords_mm = self.calibrate_coordinates(
                 x_coords_px, y_coords_px
             )
+
+            # Apply alignment shift if provided
+            if coord_shift is not None:
+                x_coords_mm = x_coords_mm + coord_shift[0]
+                y_coords_mm = y_coords_mm + coord_shift[1]
+
+            # Apply x-reflection for invert_ux
+            if invert_ux:
+                x_coords_mm = 2.0 * datum_physical_x - x_coords_mm
+
             coordinates[run_num - 1] = (x_coords_mm, y_coords_mm)
 
         # Save calibrated coordinates
@@ -852,9 +887,22 @@ class VectorCalibrator:
         savemat(str(coords_path), coords_output)
         logger.info(f"Saved calibrated coordinates: {coords_path}")
 
-        # Clear any alignment marker (coordinates are now fresh/unaligned)
+        # Write alignment marker if alignment was applied, else clear it
         from pivtools_gui.calibration.global_coordinate_alignment import GlobalCoordinateAligner
-        GlobalCoordinateAligner.clear_alignment_marker(calib_data_dir)
+        if alignment and coord_shift is not None:
+            import json
+            from datetime import datetime
+            marker_path = calib_data_dir / GlobalCoordinateAligner.ALIGNMENT_MARKER
+            marker_data = {
+                "aligned_at": datetime.now().isoformat(),
+                "shift_x": coord_shift[0],
+                "shift_y": coord_shift[1],
+                "method": self.model_type,
+                "fused": True,
+            }
+            marker_path.write_text(json.dumps(marker_data, indent=2))
+        else:
+            GlobalCoordinateAligner.clear_alignment_marker(calib_data_dir)
 
         # Process vector files - build per-run coordinate mapping
         if valid_runs:
@@ -879,6 +927,7 @@ class VectorCalibrator:
                     max_run,
                     valid_run_nums,
                     progress_cb,
+                    invert_ux=invert_ux,
                 )
             else:
                 # Instantaneous data: many files
@@ -890,6 +939,7 @@ class VectorCalibrator:
                     max_run,
                     valid_run_nums,
                     progress_cb,
+                    invert_ux=invert_ux,
                 )
         else:
             logger.error("No valid runs found for vector processing")
@@ -902,6 +952,7 @@ class VectorCalibrator:
         max_run: int,
         valid_run_nums: set,
         progress_cb: Optional[Callable[[Dict[str, Any]], None]],
+        invert_ux: bool = False,
     ):
         """Process single ensemble_result.mat file."""
         logger.info("Processing ensemble result file...")
@@ -926,6 +977,7 @@ class VectorCalibrator:
             self.dt,
             max_run,
             valid_run_nums,
+            invert_ux,
         ))
 
         if result and result.get("success"):
@@ -952,6 +1004,7 @@ class VectorCalibrator:
         max_run: int,
         valid_run_nums: set,
         progress_cb: Optional[Callable[[Dict[str, Any]], None]],
+        invert_ux: bool = False,
     ):
         """Process all vector files using parallel workers."""
         logger.info(f"Processing vector files with {self.num_workers} workers...")
@@ -977,6 +1030,7 @@ class VectorCalibrator:
                     self.dt,
                     max_run,
                     valid_run_nums,
+                    invert_ux,
                 )
             )
 

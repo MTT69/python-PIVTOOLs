@@ -85,6 +85,18 @@ def apply_calibration_command(args):
         print(f"\nPath {path_idx + 1}/{len(active_paths)}: {base_dir}")
         print("-" * 40)
 
+        # Pre-compute alignment shifts for this path (no data file I/O)
+        alignment = None
+        if getattr(args, 'align_coordinates', False) and config.global_coordinates_enabled:
+            try:
+                from pivtools_gui.calibration.global_coordinate_alignment import GlobalCoordinateAligner
+                aligner = GlobalCoordinateAligner(base_dir, config)
+                alignment = aligner.precompute_camera_shifts(type_name)
+                if alignment:
+                    print(f"  Alignment pre-computed: {len(alignment['camera_shifts'])} cameras, invert_ux={alignment['invert_ux']}")
+            except Exception as e:
+                print(f"  WARNING: Failed to pre-compute alignment: {e}")
+
         for camera in cameras:
             try:
                 if method == "scale_factor":
@@ -93,6 +105,7 @@ def apply_calibration_command(args):
                         base_path=base_dir,
                         type_name=type_name,
                         config=config,
+                        alignment=alignment,
                     )
                     result = calibrator.process_camera(
                         camera_num=camera,
@@ -109,7 +122,7 @@ def apply_calibration_command(args):
                         runs=runs_to_process,
                         config=config,
                     )
-                    calibrator.process_run()
+                    calibrator.process_run(alignment=alignment)
                     result = {"success": True, "calibrated_count": "N/A"}
 
                 result["path_idx"] = path_idx
@@ -124,27 +137,15 @@ def apply_calibration_command(args):
                 print(f"  Camera {camera}: FAILED - {e}")
                 results.append({"success": False, "error": str(e), "path_idx": path_idx, "camera": camera})
 
-    # Global coordinate alignment (after all cameras calibrated)
-    if getattr(args, 'align_coordinates', False) and config.global_coordinates_enabled:
-        print("\n" + "-" * 40)
-        print("Applying global coordinate alignment...")
-        for path_idx in active_paths:
-            base_dir = Path(config.base_paths[path_idx])
-            try:
-                from pivtools_gui.calibration.global_coordinate_alignment import GlobalCoordinateAligner
-                aligner = GlobalCoordinateAligner(base_dir, config)
-                alignment_result = aligner.apply_alignment(type_name, force=True)
-                if alignment_result.get("status") == "completed":
-                    print(f"  Path {path_idx}: Alignment applied successfully")
-                    for cam_key, cam_info in alignment_result.get("cameras", {}).items():
-                        print(f"    Cam {cam_key}: dx={cam_info['shift_x']:.4f} mm, dy={cam_info['shift_y']:.4f} mm")
-                    if alignment_result.get("invert_ux"):
-                        print(f"  Path {path_idx}: invert_ux applied")
-                else:
-                    print(f"  Path {path_idx}: Alignment failed - {alignment_result.get('error', 'Unknown')}")
-            except Exception as e:
-                print(f"  Path {path_idx}: Alignment failed - {e}")
-    elif getattr(args, 'align_coordinates', False) and not config.global_coordinates_enabled:
+        # Report alignment result for this path
+        if alignment:
+            print(f"  Alignment applied (fused):")
+            for cam, (sx, sy) in alignment["camera_shifts"].items():
+                print(f"    Cam {cam}: dx={sx:.4f} mm, dy={sy:.4f} mm")
+            if alignment["invert_ux"]:
+                print(f"  invert_ux applied")
+
+    if getattr(args, 'align_coordinates', False) and not config.global_coordinates_enabled:
         print("\nWarning: --align-coordinates specified but global_coordinates.enabled is False in config")
 
     # Summary

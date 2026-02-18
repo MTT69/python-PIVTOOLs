@@ -426,6 +426,13 @@ class VectorMerger:
                 uy_cam = np.flipud(uy_cam)
                 mask_cam = np.flipud(mask_cam)
 
+            # Ensure x_vec is ascending for RegularGridInterpolator
+            if x_vec[1] < x_vec[0]:
+                x_vec = x_vec[::-1]
+                ux_cam = np.fliplr(ux_cam)
+                uy_cam = np.fliplr(uy_cam)
+                mask_cam = np.fliplr(mask_cam)
+
             # Create interpolators (replace NaN with 0 for interpolation)
             valid_ux = np.where(np.isnan(ux_cam), 0, ux_cam)
             valid_uy = np.where(np.isnan(uy_cam), 0, uy_cam)

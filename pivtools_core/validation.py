@@ -72,11 +72,12 @@ def validate_config(config: Config) -> Tuple[bool, str, List[str]]:
     # Check image files for each camera
     camera_numbers = config.camera_numbers
     source_path = config.source_paths[0]
+    image_type = config.image_type  # Already case-normalized via _detect_image_type()
 
     for camera_num in camera_numbers:
         # Determine camera path
         format_str = config.image_format[0]
-        if '.set' in str(format_str) or '.im7' in str(format_str):
+        if image_type in ("lavision_set", "lavision_im7"):
             camera_path = source_path
         else:
             folder = config.get_camera_folder(camera_num)
@@ -87,7 +88,7 @@ def validate_config(config: Config) -> Tuple[bool, str, List[str]]:
             continue
 
         # Count files
-        if '.set' in str(format_str):
+        if image_type == "lavision_set":
             # Set files: single file
             if camera_path.is_file():
                 set_file = camera_path
@@ -97,7 +98,7 @@ def validate_config(config: Config) -> Tuple[bool, str, List[str]]:
             if not set_file.exists():
                 errors.append(f"Camera {camera_num}: Set file not found: {set_file}")
 
-        elif '.im7' in str(format_str):
+        elif image_type == "lavision_im7":
             # IM7 files
             pattern = format_str.replace("%05d", "*").replace("%04d", "*").replace("%d", "*")
             matching_files = list(camera_path.glob(pattern))
@@ -120,7 +121,7 @@ def validate_config(config: Config) -> Tuple[bool, str, List[str]]:
                 matching_files = list(camera_path.glob(pattern))
 
             # Check for indexing mismatch
-            if not ('.set' in str(format_str) or '.im7' in str(format_str)) and matching_files:
+            if image_type == "standard" and matching_files:
                 indices = []
                 for f in matching_files:
                     try:
