@@ -10,9 +10,7 @@ Does NOT modify any pipeline code — purely a diagnostic/comparison script.
 Methods tested:
   A. CURRENT:   edge pad → gaussian smooth → cv2.remap CUBIC, BORDER_CONSTANT=0
   B. REPLICATE: edge pad → gaussian smooth → cv2.remap CUBIC, BORDER_REPLICATE
-  C. LINEAR_EXTRAP: linear extrapolation pad → gaussian smooth → cv2.remap CUBIC, BORDER_REPLICATE
   D. PCHIP:     no pad → scipy PchipInterpolator (separable 2D) → no cv2
-  E. PCHIP_EXTRAP: linear extrap pad → PCHIP interpolation
   F. NO_SMOOTH:  edge pad → NO gaussian smooth → cv2.remap CUBIC, BORDER_REPLICATE
   G. AKIMA:     no pad → scipy Akima1DInterpolator (separable 2D) → smoother than PCHIP
   H. BICUBIC_SPLINE: scipy RectBivariateSpline (true 2D bicubic) → standard in DaVis/PIVlab
@@ -43,10 +41,10 @@ MAT_PATH = Path(
 )
 OUT_DIR = MAT_PATH.parent
 
-# Pass configuration (from config.yaml)
-PASS1_WS = (96, 96)     # window_size (y, x)
+# Pass configuration (from config.yaml) — auto-detected from .mat below
+PASS1_WS = None  # set from data
 PASS1_OVERLAP = 0.75
-PASS2_WS = (16, 16)
+PASS2_WS = None  # set from data
 PASS2_OVERLAP = 0.50
 
 
@@ -118,50 +116,15 @@ def compute_padded_centers(centers, spacing, H):
     return centers_all, n_pre, n_post
 
 
-def compute_smoothing_params(prev_n_windows, prev_spacing):
-    """Compute ksize_filt and sd (replicating base.py:928-946)."""
-    k_filt = np.round(np.array(prev_n_windows) / np.array(prev_spacing)).astype(int) + 1
+def compute_smoothing_params(prev_window_size, prev_spacing):
+    """Compute ksize_filt and sd (replicating MATLAB: ksize_filt = round(wsize_old ./ win_spacing_old) + 1).
+    prev_window_size: previous pass window size in pixels (e.g. (64, 64))
+    prev_spacing: previous pass window spacing in pixels (e.g. (16, 16))
+    """
+    k_filt = np.round(np.array(prev_window_size) / np.array(prev_spacing)).astype(int) + 1
     k_filt = tuple(int(k) + (int(k) % 2 == 0) for k in k_filt)  # ensure odd
     sd = np.sqrt(np.prod(k_filt)) / 3 * 0.65
     return k_filt, sd
-
-
-def linear_extrapolate_pad(field, n_pre_y, n_post_y, n_pre_x, n_post_x):
-    """
-    Pad a 2D field using linear extrapolation from the last 2 points.
-    Much better than mode="edge" for fields with strong boundary gradients.
-    """
-    ny, nx = field.shape
-
-    # Pad Y (top and bottom)
-    result = field.copy()
-
-    # Top: extrapolate using rows 0 and 1
-    if n_pre_y > 0:
-        grad_top = field[0, :] - field[1, :]  # gradient per row step (going upward)
-        top_rows = np.array([field[0, :] + grad_top * (k + 1) for k in range(n_pre_y)])
-        result = np.vstack([top_rows[::-1], result])
-
-    # Bottom: extrapolate using rows -2 and -1
-    if n_post_y > 0:
-        grad_bot = field[-1, :] - field[-2, :]  # gradient per row step (going downward)
-        bot_rows = np.array([field[-1, :] + grad_bot * (k + 1) for k in range(n_post_y)])
-        result = np.vstack([result, bot_rows])
-
-    # Pad X (left and right) on the already y-padded result
-    ny2 = result.shape[0]
-
-    if n_pre_x > 0:
-        grad_left = result[:, 0] - result[:, 1]
-        left_cols = np.array([result[:, 0] + grad_left * (k + 1) for k in range(n_pre_x)]).T
-        result = np.hstack([left_cols[:, ::-1], result])
-
-    if n_post_x > 0:
-        grad_right = result[:, -1] - result[:, -2]
-        right_cols = np.array([result[:, -1] + grad_right * (k + 1) for k in range(n_post_x)]).T
-        result = np.hstack([result, right_cols])
-
-    return result
 
 
 def pchip_interp_2d(src_y, src_x, field_2d, dst_y, dst_x):
@@ -305,49 +268,7 @@ def method_border_replicate(predictor_ux, predictor_uy, src_ctrs_y, src_ctrs_x,
                                         cv2.INTER_CUBIC,
                                         borderMode=cv2.BORDER_REPLICATE)
 
-    return dense, pred_at_win, "B. BORDER_REPLICATE"
-
-
-def method_linear_extrap(predictor_ux, predictor_uy, src_ctrs_y, src_ctrs_x,
-                         src_ctrs_y_all, src_ctrs_x_all, n_pre_y, n_post_y, n_pre_x, n_post_x,
-                         dst_ctrs_y, dst_ctrs_x, H, W, ksize_filt, sd):
-    """C. Linear extrapolation padding → gaussian → cv2.remap CUBIC, BORDER_REPLICATE"""
-    # Pad each component with linear extrapolation
-    uy_padded = linear_extrapolate_pad(predictor_uy, n_pre_y, n_post_y, n_pre_x, n_post_x)
-    ux_padded = linear_extrapolate_pad(predictor_ux, n_pre_y, n_post_y, n_pre_x, n_post_x)
-    pred_padded = np.stack([uy_padded, ux_padded], axis=-1)
-
-    smoothed = np.zeros_like(pred_padded)
-    for d in range(2):
-        smoothed[..., d] = gaussian_filter(pred_padded[..., d], sigma=sd,
-                                           truncate=(ksize_filt[0] - 1) / (2 * sd) if sd > 0 else 0,
-                                           mode="nearest")
-
-    map_x_1d = np.interp(np.arange(W, dtype=np.float32), src_ctrs_x_all, np.arange(len(src_ctrs_x_all)))
-    map_y_1d = np.interp(np.arange(H, dtype=np.float32), src_ctrs_y_all, np.arange(len(src_ctrs_y_all)))
-    map_y_2d, map_x_2d = np.meshgrid(map_y_1d.astype(np.float32), map_x_1d.astype(np.float32), indexing="ij")
-
-    dense = np.zeros((H, W, 2), dtype=np.float32)
-    for d in range(2):
-        dense[..., d] = cv2.remap(smoothed[..., d].astype(np.float32),
-                                  map_x_2d, map_y_2d,
-                                  cv2.INTER_CUBIC,
-                                  borderMode=cv2.BORDER_REPLICATE)
-
-    win_y, win_x = np.meshgrid(dst_ctrs_y, dst_ctrs_x, indexing="ij")
-    ix = np.interp(win_x.ravel(), src_ctrs_x_all, np.arange(len(src_ctrs_x_all)))
-    iy = np.interp(win_y.ravel(), src_ctrs_y_all, np.arange(len(src_ctrs_y_all)))
-    map_x_p = ix.reshape(win_x.shape).astype(np.float32)
-    map_y_p = iy.reshape(win_y.shape).astype(np.float32)
-
-    pred_at_win = np.zeros((len(dst_ctrs_y), len(dst_ctrs_x), 2), dtype=np.float32)
-    for d in range(2):
-        pred_at_win[..., d] = cv2.remap(smoothed[..., d].astype(np.float32),
-                                        map_x_p, map_y_p,
-                                        cv2.INTER_CUBIC,
-                                        borderMode=cv2.BORDER_REPLICATE)
-
-    return dense, pred_at_win, "C. Linear extrap pad + REPLICATE"
+    return dense, pred_at_win, "PRODUCTION: edge+gauss+cubic+REPLICATE"
 
 
 def method_pchip(predictor_ux, predictor_uy, src_ctrs_y, src_ctrs_x,
@@ -369,27 +290,6 @@ def method_pchip(predictor_ux, predictor_uy, src_ctrs_y, src_ctrs_x,
     pred_at_win = np.stack([win_uy, win_ux], axis=-1)
 
     return dense, pred_at_win, "D. PCHIP (no pad, no smooth)"
-
-
-def method_pchip_with_extrap_pad(predictor_ux, predictor_uy, src_ctrs_y, src_ctrs_x,
-                                 src_ctrs_y_all, src_ctrs_x_all, n_pre_y, n_post_y, n_pre_x, n_post_x,
-                                 dst_ctrs_y, dst_ctrs_x, H, W, ksize_filt, sd):
-    """E. Linear extrap pad → PCHIP interpolation (uses padded grid as source)."""
-    uy_padded = linear_extrapolate_pad(predictor_uy, n_pre_y, n_post_y, n_pre_x, n_post_x)
-    ux_padded = linear_extrapolate_pad(predictor_ux, n_pre_y, n_post_y, n_pre_x, n_post_x)
-
-    pixel_y = np.arange(H, dtype=np.float32)
-    pixel_x = np.arange(W, dtype=np.float32)
-
-    dense_uy = pchip_interp_2d(src_ctrs_y_all, src_ctrs_x_all, uy_padded, pixel_y, pixel_x)
-    dense_ux = pchip_interp_2d(src_ctrs_y_all, src_ctrs_x_all, ux_padded, pixel_y, pixel_x)
-    dense = np.stack([dense_uy, dense_ux], axis=-1)
-
-    win_uy = pchip_interp_2d(src_ctrs_y_all, src_ctrs_x_all, uy_padded, dst_ctrs_y, dst_ctrs_x)
-    win_ux = pchip_interp_2d(src_ctrs_y_all, src_ctrs_x_all, ux_padded, dst_ctrs_y, dst_ctrs_x)
-    pred_at_win = np.stack([win_uy, win_ux], axis=-1)
-
-    return dense, pred_at_win, "E. Linear extrap + PCHIP"
 
 
 def method_no_smooth(predictor_ux, predictor_uy, src_ctrs_y, src_ctrs_x,
@@ -427,7 +327,7 @@ def method_no_smooth(predictor_ux, predictor_uy, src_ctrs_y, src_ctrs_x,
                                         cv2.INTER_CUBIC,
                                         borderMode=cv2.BORDER_REPLICATE)
 
-    return dense, pred_at_win, "F. No smooth + REPLICATE"
+    return dense, pred_at_win, "PROPOSED: edge+NO_gauss+cubic+REPLICATE"
 
 
 def method_akima(predictor_ux, predictor_uy, src_ctrs_y, src_ctrs_x,
@@ -527,36 +427,52 @@ def main():
     p1 = passes[0]
     has_p2 = len(passes) > 1
 
-    ux1 = p1["ux"]    # (82, 82) — pass 1 output (saved as physical, uy negated)
-    uy1 = p1["uy"]    # (82, 82) — uy is NEGATED in file (physical convention)
-    ux2 = passes[1]["ux"] if has_p2 else None  # pass 2 ground truth (if available)
+    # Auto-detect window sizes from data
+    global PASS1_WS, PASS2_WS
+    ws1 = p1["window_size"]
+    PASS1_WS = (int(ws1[0]), int(ws1[1])) if ws1.ndim > 0 else (int(ws1), int(ws1))
+    if has_p2:
+        ws2 = passes[1]["window_size"]
+        PASS2_WS = (int(ws2[0]), int(ws2[1])) if ws2.ndim > 0 else (int(ws2), int(ws2))
+    else:
+        PASS2_WS = (16, 16)
+
+    ux1 = p1["ux"]
+    uy1 = p1["uy"]
+    ux2 = passes[1]["ux"] if has_p2 else None
 
     # Un-negate uy to get back to image coords (internal pipeline convention)
-    # In file: uy_saved = -uy_image. So uy_image = -uy_saved
     uy1_img = -uy1
 
-    print(f"Pass 1 ux: shape={ux1.shape}, range=[{ux1.min():.2f}, {ux1.max():.2f}]")
-    print(f"Pass 1 uy: shape={uy1.shape}, range=[{uy1.min():.4f}, {uy1.max():.4f}] (file/physical)")
+    print(f"Pass 1: window={PASS1_WS}, ux shape={ux1.shape}, range=[{ux1.min():.2f}, {ux1.max():.2f}]")
+    print(f"Pass 1 uy: range=[{uy1.min():.4f}, {uy1.max():.4f}] (file/physical)")
     if has_p2:
-        print(f"Pass 2 ux: shape={ux2.shape}, range=[{ux2.min():.2f}, {ux2.max():.2f}] (ground truth)")
+        print(f"Pass 2: window={PASS2_WS}, ux shape={ux2.shape}, range=[{ux2.min():.2f}, {ux2.max():.2f}]")
     else:
-        print("Pass 2: NOT AVAILABLE (single-pass dataset) — will show upscaled fields only")
+        print("Pass 2: NOT AVAILABLE")
 
     # ── Compute grids ──
-    # Determine image size from pass 1 grid
-    p1_spacing_y = int(PASS1_WS[0] * (1 - PASS1_OVERLAP))  # 24
-    p1_spacing_x = int(PASS1_WS[1] * (1 - PASS1_OVERLAP))  # 24
+    p1_spacing_y = int(PASS1_WS[0] * (1 - PASS1_OVERLAP))
+    p1_spacing_x = int(PASS1_WS[1] * (1 - PASS1_OVERLAP))
     ny1, nx1 = ux1.shape
 
-    # Reconstruct window centers for pass 1
-    first_y = PASS1_WS[0] // 2  # 48
-    first_x = PASS1_WS[1] // 2  # 48
-    ctrs_y1 = np.arange(first_y, first_y + ny1 * p1_spacing_y, p1_spacing_y, dtype=np.float32)
-    ctrs_x1 = np.arange(first_x, first_x + nx1 * p1_spacing_x, p1_spacing_x, dtype=np.float32)
+    # Use actual window centers from data if available, otherwise reconstruct
+    if p1.get("win_ctrs_y") is not None:
+        ctrs_y1 = p1["win_ctrs_y"].ravel().astype(np.float32)
+        ctrs_x1 = p1["win_ctrs_x"].ravel().astype(np.float32)
+        p1_spacing_y = ctrs_y1[1] - ctrs_y1[0] if len(ctrs_y1) > 1 else p1_spacing_y
+        p1_spacing_x = ctrs_x1[1] - ctrs_x1[0] if len(ctrs_x1) > 1 else p1_spacing_x
+    else:
+        first_y = PASS1_WS[0] // 2
+        first_x = PASS1_WS[1] // 2
+        ctrs_y1 = np.arange(first_y, first_y + ny1 * p1_spacing_y, p1_spacing_y, dtype=np.float32)
+        ctrs_x1 = np.arange(first_x, first_x + nx1 * p1_spacing_x, p1_spacing_x, dtype=np.float32)
 
     # Image dimensions
-    H = int(ctrs_y1[-1] + first_y)  # last center + half window
-    W = int(ctrs_x1[-1] + first_x)
+    half_win_y = PASS1_WS[0] // 2
+    half_win_x = PASS1_WS[1] // 2
+    H = int(ctrs_y1[-1] + half_win_y)
+    W = int(ctrs_x1[-1] + half_win_x)
 
     print(f"\nImage size: H={H}, W={W}")
     print(f"Pass 1 centers: y=[{ctrs_y1[0]:.0f}..{ctrs_y1[-1]:.0f}] ({ny1}), "
@@ -605,10 +521,12 @@ def main():
           f"x=[{ctrs_x2[0]:.0f}..{ctrs_x2[-1]:.0f}] ({len(ctrs_x2)}), spacing={p2_spacing_y}")
 
     # Smoothing params (from pass 1 → pass 2)
+    # MATLAB: ksize_filt = round(wsize_old ./ win_spacing_old) + 1
+    # wsize_old = previous pass WINDOW SIZE, win_spacing_old = previous pass SPACING
     ksize_filt, sd = compute_smoothing_params(
-        (ny1, nx1), (p1_spacing_y, p1_spacing_x)
+        PASS1_WS, (p1_spacing_y, p1_spacing_x)
     )
-    print(f"Smoothing: ksize={ksize_filt}, sigma={sd:.4f}")
+    print(f"Smoothing: ksize={ksize_filt}, sigma={sd:.4f} (window_size={PASS1_WS}, spacing=({p1_spacing_y}, {p1_spacing_x}))")
 
     # ── Run all methods ──
     common_args = dict(
@@ -622,15 +540,13 @@ def main():
     )
 
     methods = [
-        method_current,
-        method_border_replicate,
-        method_linear_extrap,
-        method_pchip,
-        method_pchip_with_extrap_pad,
-        method_no_smooth,
-        method_akima,
-        method_bicubic_spline,
-        method_bilinear,
+        method_current,                # A. OLD: edge + gauss + CUBIC + BORDER_CONSTANT=0
+        method_border_replicate,       # B. PRODUCTION: edge + gauss + CUBIC + REPLICATE
+        method_pchip,                  # D. PCHIP (no pad, no smooth)
+        method_no_smooth,              # F. edge + NO gauss + CUBIC + REPLICATE
+        method_akima,                  # G. Akima (no pad, no smooth)
+        method_bicubic_spline,         # H. Bicubic spline (RectBivariateSpline)
+        method_bilinear,               # I. Bilinear + REPLICATE (no smooth)
     ]
 
     results = []
@@ -787,7 +703,8 @@ def main():
         plt.colorbar(im, ax=ax, fraction=0.08, pad=0.02)
 
         fig2b.tight_layout()
-        tag = label.split(".")[0].strip()  # "A", "B", etc.
+        import re
+        tag = re.sub(r'[^a-zA-Z0-9_]', '_', label)[:30]  # safe filename tag
         fname = f"test_methods_fig2b_{tag}_dense_2d.png"
         fig2b.savefig(str(OUT_DIR / fname), dpi=150, bbox_inches="tight")
         print(f"  Saved: {OUT_DIR / fname}")
@@ -842,7 +759,8 @@ def main():
         # ── Fig 4: Residual (pass 2 actual - predictor) for each method ──
         print("\nFIGURE 4: Residuals vs actual pass 2 output")
 
-        fig4, axes4 = plt.subplots(2, ncols, figsize=(7 * ncols, 10))
+        nrows4 = (n_methods + ncols - 1) // ncols
+        fig4, axes4 = plt.subplots(nrows4, ncols, figsize=(7 * ncols, 5 * nrows4))
         axes4_flat = axes4.flatten()
 
         for idx, (dense, pred_win, label) in enumerate(results):

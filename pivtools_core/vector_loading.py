@@ -525,7 +525,7 @@ def load_coords_from_directory(
 
 
 # Variables to exclude from plotting (metadata, not 2D plottable)
-EXCLUDED_VARS = {"win_ctrs_x", "win_ctrs_y", "window_size", "n_windows", "predictor_field"}
+EXCLUDED_VARS = {"win_ctrs_x", "win_ctrs_y", "window_size", "n_windows", "predictor_field", "padded_pred_x", "padded_pred_y"}
 
 
 def get_plottable_vars(

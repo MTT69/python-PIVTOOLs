@@ -559,7 +559,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                             nan_mask=np.copy(nan_mask[im_idx]),
                             peak_mag=np.copy(pk_height[im_idx]),
                             peak_choice=np.copy(peak_choice[im_idx]),
-                            predictor_field=np.copy(self.delta_ab_old[im_idx]),
+                            predictor_field=np.copy(self.delta_ab_pred[im_idx]),
                             b_mask=b_mask.reshape((n_win_y, n_win_x)).astype(bool),
                             window_size=win_size,
                             win_ctrs_x=self.win_ctrs_x[pass_idx],
@@ -686,14 +686,15 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                         f"dx range=[{np.nanmin(self.delta_ab_old[...,1]):.4f}, {np.nanmax(self.delta_ab_old[...,1]):.4f}], "
                         f"dy range=[{np.nanmin(self.delta_ab_old[...,0]):.4f}, {np.nanmax(self.delta_ab_old[...,0]):.4f}]")
 
-            sigma = self.sd[pass_idx]
-            truncate = (self.ksize_filt[pass_idx][0] - 1) / (2 * sigma)
+            if self.config.instantaneous_predictor_smoothing:
+                sigma = self.sd[pass_idx]
+                truncate = (self.ksize_filt[pass_idx][0] - 1) / (2 * sigma)
 
-            with self._profile_section(pass_idx, "pc_gaussian_smooth"):
-                self._run_parallel(
-                    self._smooth_one_delta_old,
-                    [(i, sigma, truncate) for i in range(N)],
-                )
+                with self._profile_section(pass_idx, "pc_gaussian_smooth"):
+                    self._run_parallel(
+                        self._smooth_one_delta_old,
+                        [(i, sigma, truncate) for i in range(N)],
+                    )
 
             with self._profile_section(pass_idx, "pc_dense_and_predictor_remap"):
                 delta_ab_dense = np.zeros((N, H, W, 2), dtype=np.float32)
@@ -712,14 +713,14 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     delta_ab_dense[i, ..., d] = cv2.remap(
                         self.delta_ab_old[i, ..., d],
                         map_x_2d, map_y_2d, interp_flag,
-                        borderMode=cv2.BORDER_CONSTANT, borderValue=0,
+                        borderMode=cv2.BORDER_REPLICATE,
                     ).astype(np.float32)
 
                 def _remap_predictor(i, d):
                     self.delta_ab_pred[i, ..., d] = cv2.remap(
                         self.delta_ab_old[i, ..., d],
                         map_x, map_y, interp_flag,
-                        borderMode=cv2.BORDER_CONSTANT, borderValue=0.0,
+                        borderMode=cv2.BORDER_REPLICATE,
                     ).astype(np.float32)
 
                 remap_args = []
@@ -818,18 +819,19 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
 
         interp_flag = cv2.INTER_CUBIC if interpolator == "cubic" else cv2.INTER_LINEAR
 
-        self.delta_ab_old[..., 0] = gaussian_filter(
-            self.delta_ab_old[..., 0],
-            sigma=self.sd[pass_idx],
-            truncate=(self.ksize_filt[pass_idx][0] - 1) / (2 * self.sd[pass_idx]),
-            mode="nearest",
-        )
-        self.delta_ab_old[..., 1] = gaussian_filter(
-            self.delta_ab_old[..., 1],
-            sigma=self.sd[pass_idx],
-            truncate=(self.ksize_filt[pass_idx][0] - 1) / (2 * self.sd[pass_idx]),
-            mode="nearest",
-        )
+        if self.config.instantaneous_predictor_smoothing:
+            self.delta_ab_old[..., 0] = gaussian_filter(
+                self.delta_ab_old[..., 0],
+                sigma=self.sd[pass_idx],
+                truncate=(self.ksize_filt[pass_idx][0] - 1) / (2 * self.sd[pass_idx]),
+                mode="nearest",
+            )
+            self.delta_ab_old[..., 1] = gaussian_filter(
+                self.delta_ab_old[..., 1],
+                sigma=self.sd[pass_idx],
+                truncate=(self.ksize_filt[pass_idx][0] - 1) / (2 * self.sd[pass_idx]),
+                mode="nearest",
+            )
 
         self.delta_ab_dense = np.zeros((self.H, self.W, 2), dtype=np.float32)
         map_x_2d, map_y_2d = self.cached_dense_maps[pass_idx]
@@ -847,8 +849,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 map_x_2d,
                 map_y_2d,
                 interp_flag,
-                borderMode=cv2.BORDER_CONSTANT,
-                borderValue=0,
+                borderMode=cv2.BORDER_REPLICATE,
             )
 
         delta_0b = self.delta_ab_dense / 2
@@ -859,7 +860,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         map_x, map_y = self.cached_predictor_maps[pass_idx]
         if map_x is None or map_y is None:
             raise ValueError(f"Predictor interpolation maps missing for pass {pass_idx}")
-        
+
         # Verify cached predictor maps have correct shape
         expected_pred_shape = (len(self.win_ctrs_y[pass_idx]), len(self.win_ctrs_x[pass_idx]))
         assert map_x.shape == expected_pred_shape, f"Cached predictor map X shape mismatch for pass {pass_idx}: {map_x.shape} vs {expected_pred_shape}"
@@ -872,8 +873,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 map_x,
                 map_y,
                 interp_flag,
-                borderMode=cv2.BORDER_CONSTANT,
-                borderValue=0.0,
+                borderMode=cv2.BORDER_REPLICATE,
             )
             self.delta_ab_pred[..., d] = remapped
 

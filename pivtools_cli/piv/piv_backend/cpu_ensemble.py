@@ -402,14 +402,20 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         win_size_arr = np.array([comp_size[0], comp_size[1]], dtype=np.int32)
         fit_size_arr = np.array([out_size[0], out_size[1]], dtype=np.int32)
 
+        # Add padding offset for single mode passes.
+        # win_ctrs are stored in original image coords; the C library
+        # receives a padded image, so centers must be offset by the padding.
+        # For standard mode passes, padding is (0,0,0,0) so this is a no-op.
+        pad_top, pad_bottom, pad_left, pad_right = self.padding_per_pass[pass_idx]
+
         error_code = self.lib.bulkxcorr2d_accumulate(
             np.ascontiguousarray(images_a, dtype=np.float32),
             np.ascontiguousarray(images_b, dtype=np.float32),
             mask,
             image_size,
             N,
-            self.win_ctrs_x[pass_idx].astype(np.float32),
-            self.win_ctrs_y[pass_idx].astype(np.float32),
+            (self.win_ctrs_x[pass_idx] + pad_left).astype(np.float32),
+            (self.win_ctrs_y[pass_idx] + pad_top).astype(np.float32),
             n_windows,
             weight_a,
             weight_b,
@@ -431,6 +437,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             window_type=config.ensemble_window_type,
             compute_window_fn=self._compute_window_centres_ensemble,
             first_pass_ksize=(1, 1),  # Ensemble uses (1, 1) for first pass
+            predictor_boundary_conditions=config.ensemble_predictor_boundary_conditions,
         )
 
     def _compute_window_centres_ensemble(
@@ -462,6 +469,12 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 validate=True
             )
             padding = result.padding  # (top, bottom, left, right)
+            # Convert from padded coords to original image coords.
+            # Single mode returns centers in padded image space; subtract
+            # padding so all passes use the same coordinate system.
+            # Padding is added back at C library call sites only.
+            win_ctrs_x = np.ascontiguousarray(result.win_ctrs_x - padding[2])  # subtract pad_left
+            win_ctrs_y = np.ascontiguousarray(result.win_ctrs_y - padding[0])  # subtract pad_top
         else:
             # Standard mode
             result = compute_window_centers(
@@ -471,12 +484,14 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 validate=True
             )
             padding = (0, 0, 0, 0)  # No padding for standard mode
+            win_ctrs_x = np.ascontiguousarray(result.win_ctrs_x)
+            win_ctrs_y = np.ascontiguousarray(result.win_ctrs_y)
 
         return (
             result.win_spacing_x,
             result.win_spacing_y,
-            np.ascontiguousarray(result.win_ctrs_x),
-            np.ascontiguousarray(result.win_ctrs_y),
+            win_ctrs_x,
+            win_ctrs_y,
             padding,
         )
 
@@ -513,6 +528,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         self.win_weights_B = cache.get('win_weights_B', [])
         self.window_sizes_for_corr = cache.get('window_sizes_for_corr', [])
         self.padding_per_pass = cache.get('padding_per_pass', [])
+        self.predictor_bcs = cache.get('predictor_bcs', [])
 
     def get_cache_data(self) -> dict:
         """Extract cache data for sharing across workers."""
@@ -537,6 +553,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             'win_weights_B': self.win_weights_B,
             'window_sizes_for_corr': self.window_sizes_for_corr,
             'padding_per_pass': self.padding_per_pass,
+            'predictor_bcs': getattr(self, 'predictor_bcs', []),
         }
 
     def correlate_batch(self, images: np.ndarray, config: Config, vector_masks: List[np.ndarray] = None):
@@ -760,6 +777,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             "n_win_x": n_win_x,
             "n_win_y": n_win_y,
             "smoothed_predictor": smoothed_predictor,  # For pass > 0
+            "padded_predictor": self.delta_ab_old.copy() if pass_idx > 0 else None,
             "vector_mask": vector_mask,
             # Padding values for predictor field - used in finalize_pass to store
             # PADDED predictor matching instantaneous mode format
@@ -856,6 +874,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             "warp_B_sum": warp_B_sum.copy(),
             "n_images": N,
             "smoothed_predictor": smoothed_predictor,
+            "padded_predictor": self.delta_ab_old.copy() if pass_idx > 0 else None,
         }
 
     def correlate_mean_subtracted_batch(
@@ -1052,6 +1071,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             "n_win_x": n_win_x,
             "n_win_y": n_win_y,
             "smoothed_predictor": smoothed_predictor,
+            "padded_predictor": self.delta_ab_old.copy() if pass_idx > 0 else None,
             "vector_mask": vector_mask,
             "n_pre": self.n_pre_all[pass_idx],
             "n_post": self.n_post_all[pass_idx],
@@ -1241,22 +1261,50 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 f"{predictor_field[predictor_field.shape[0]//2, predictor_field.shape[1]//2, 1]:.4f})"
             )
 
+            # --- Apply predictor boundary conditions ---
+            if self.predictor_bcs:
+                padded_ctrs_y = self.win_ctrs_y_all[prev_pass]
+                for bc in self.predictor_bcs:
+                    bc_y_img = float(self.H - 1 - bc["y_position"]) if bc["edge"] == "bottom" \
+                               else float(bc["y_position"])
+                    bc_uy = bc["uy"]
+                    bc_ux = bc["ux"]
+
+                    if bc["edge"] == "bottom":
+                        mask = padded_ctrs_y >= bc_y_img
+                    else:  # "top"
+                        mask = padded_ctrs_y <= bc_y_img
+
+                    if mask.any():
+                        # predictor_field[..., 0] = uy, [.._, 1] = ux
+                        predictor_field[mask, :, 0] = bc_uy
+                        predictor_field[mask, :, 1] = bc_ux
+                        logging.debug(
+                            f"Pass {pass_idx}: Applied {bc['edge']} BC at "
+                            f"y_img={bc_y_img:.1f}: {mask.sum()} rows set to "
+                            f"ux={bc_ux}, uy={bc_uy}"
+                        )
+
         self.delta_ab_old = np.zeros_like(predictor_field).astype(np.float32)
         delta_ab_pred = np.zeros((n_win_y, n_win_x, 2), dtype=np.float32)
 
-        # Smooth predictor field
-        self.delta_ab_old[..., 0] = gaussian_filter(
-            predictor_field[..., 0],
-            sigma=self.sd[pass_idx],
-            truncate=(self.ksize_filt[pass_idx][0] - 1) / (2 * self.sd[pass_idx]),
-            mode="nearest",
-        )
-        self.delta_ab_old[..., 1] = gaussian_filter(
-            predictor_field[..., 1],
-            sigma=self.sd[pass_idx],
-            truncate=(self.ksize_filt[pass_idx][0] - 1) / (2 * self.sd[pass_idx]),
-            mode="nearest",
-        )
+        # Smooth predictor field (configurable — disable for ensemble to preserve wall gradients)
+        if self.config.ensemble_predictor_smoothing:
+            self.delta_ab_old[..., 0] = gaussian_filter(
+                predictor_field[..., 0],
+                sigma=self.sd[pass_idx],
+                truncate=(self.ksize_filt[pass_idx][0] - 1) / (2 * self.sd[pass_idx]),
+                mode="nearest",
+            )
+            self.delta_ab_old[..., 1] = gaussian_filter(
+                predictor_field[..., 1],
+                sigma=self.sd[pass_idx],
+                truncate=(self.ksize_filt[pass_idx][0] - 1) / (2 * self.sd[pass_idx]),
+                mode="nearest",
+            )
+        else:
+            self.delta_ab_old[..., 0] = predictor_field[..., 0]
+            self.delta_ab_old[..., 1] = predictor_field[..., 1]
 
         # DEBUG: Log smoothed predictor edge values
         if pass_idx > 0:
@@ -1288,8 +1336,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 map_x_2d,
                 map_y_2d,
                 interp_flag,
-                borderMode=cv2.BORDER_CONSTANT,
-                borderValue=0,
+                borderMode=cv2.BORDER_REPLICATE,
             )
 
         # DEBUG: Log dense remap edge values and check for zeros at edges
@@ -1322,8 +1369,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 map_x,
                 map_y,
                 interp_flag,
-                borderMode=cv2.BORDER_CONSTANT,
-                borderValue=0.0,
+                borderMode=cv2.BORDER_REPLICATE,
             )
 
         # DEBUG: Log predictor remap edge values

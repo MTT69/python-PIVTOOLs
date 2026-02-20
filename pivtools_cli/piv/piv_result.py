@@ -114,6 +114,10 @@ class PIVEnsemblePassResult:
     pred_x: Optional[np.ndarray] = None
     pred_y: Optional[np.ndarray] = None
 
+    # Padded predictor field (on previous pass grid + boundary padding, before remap)
+    padded_pred_x: Optional[np.ndarray] = None
+    padded_pred_y: Optional[np.ndarray] = None
+
     # Window info
     window_size: Optional[tuple[int, int]] = None
     win_ctrs_x: Optional[np.ndarray] = None

@@ -1,6 +1,6 @@
 paths:
   base_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images\validation_4000_kspace_predictorupdate
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images\validation_4000
   source_paths:
   - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images
   active_paths:
@@ -27,7 +27,7 @@ images:
   num_loops: 3
   num_frame_pairs: 4000
 batches:
-  size: 10
+  size: 20
 logging:
   file: pypiv.log
   level: INFO
@@ -36,9 +36,9 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 4
-  dask_workers_per_node: 5
-  dask_memory_limit: 9GB
+  omp_threads: 7
+  dask_workers_per_node: 3
+  dask_memory_limit: 14GB
   dask_max_in_flight_per_worker: 3
   open_dashboard: true
   always_batch: true
@@ -83,7 +83,7 @@ video:
   data_source: calibrated
   variable: ux
   run: 2
-  piv_type: instantaneous
+  piv_type: ensemble
   cmap: jet
   lower: ''
   upper: ''
@@ -115,7 +115,7 @@ statistics:
     mean_peak_height: false
   gamma_radius: 4
   save_figures: true
-  type_name: instantaneous
+  type_name: ensemble
   source_endpoint: regular
 instantaneous_piv:
   window_size:
@@ -133,11 +133,13 @@ instantaneous_piv:
   num_peaks: 1
   peak_finder: gauss6
   secondary_peak: false
+  predictor_smoothing: false
 ensemble_piv:
   fit_method: kspace
   skip_background_subtraction: false
   gradient_correction: true
   persist_images: false
+  predictor_smoothing: false
   image_warp_interpolation: cubic
   predictor_interpolation: cubic
   kspace_snr_threshold: 3.0
@@ -145,14 +147,29 @@ ensemble_piv:
   mask_center_pixel: true
   background_subtraction_method: correlation
   window_size:
-  - - 96
-    - 96
+  - - 64
+    - 64
+  - - 32
+    - 32
+  - - 16
+    - 16
+  - - 8
+    - 16
   overlap:
   - 75
+  - 50
+  - 50
+  - 50
   type:
   - std
+  - std
+  - single
+  - single
   runs:
   - 1
+  - 2
+  - 3
+  - 4
   store_planes: true
   save_diagnostics: false
   sum_window:
@@ -164,84 +181,46 @@ ensemble_piv:
   - 16
   resume_from_pass: 0
   window_type: square
+  predictor_boundary_conditions:
+  - y_position: 0
+    ux: 0
+    uy: 0
+    edge: bottom
 calibration:
-  image_format: B%05d.im7
-  num_images: 1
-  image_type: lavision_im7
+  image_format: planar_calibration_plate_%02d.tif
+  num_images: 20
+  image_type: standard
   zero_based_indexing: false
-  use_camera_subfolders: true
+  use_camera_subfolders: false
   subfolder: enhanced
-  camera_subfolders:
-  - camera1
-  - camera2
-  - camera3
-  - camera4
-  - camera5
+  camera_subfolders: []
   path_order: camera_first
-  active: dotboard
-  piv_type: instantaneous
+  active: scale_factor
+  piv_type: ensemble
   scale_factor:
-    dt: 0.000116
-    px_per_mm: 22.56
+    dt: 0.0057553
+    px_per_mm: 13.653
     source_path_idx: 0
   dotboard:
-    dot_spacing_mm: 10
-    dt: 4.96e-05
+    dot_spacing_mm: 12.22
+    dt: 0.0057553
     datum_frame: 1
   calibration_sources:
-  - D:\ALK_PIV_250527_085959\Properties\Calibration
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images\calibration_boards
+    _all
   global_coordinates:
     enabled: true
     datum_camera: 1
     datum_pixel:
-    - 5143.025552082823
-    - 3048.8874267599745
+    - 0.8475397323411653
+    - 2047.7651664358864
     datum_physical:
     - 0
-    - 10
+    - 0
     datum_frame: 1
-    invert_ux: true
-    overlap_pairs:
-    - camera_a: 1
-      camera_b: 2
-      pixel_on_a:
-      - 120.41103203866932
-      - 3015.9624562661747
-      pixel_on_b:
-      - 5188.146312537061
-      - 3044.3460515194497
-      frame_a: 1
-      frame_b: 1
-    - camera_a: 2
-      camera_b: 3
-      pixel_on_a:
-      - 155.31369820172958
-      - 3025.5213186676
-      pixel_on_b:
-      - 5164.340716518185
-      - 2999.738026979463
-      frame_a: 1
-      frame_b: 1
-    - camera_a: 3
-      camera_b: 4
-      pixel_on_a:
-      - 118.10784411849893
-      - 2989.436410412176
-      pixel_on_b:
-      - 4248.814117626077
-      - 3026.5467904961056
-      frame_a: 1
-      frame_b: 1
-    - camera_a: 4
-      camera_b: 5
-      pixel_on_a:
-      - 63.16011126186962
-      - 3020.863711171705
-      pixel_on_b:
-      - 4102.830878039553
-      - 3019.624855653694
-      frame_a: 1
-      frame_b: 1
+    overlap_points: []
+    invert_ux: false
+    overlap_pairs: []
 filters: []
 masking:
   enabled: false
@@ -254,14 +233,13 @@ masking:
     left: 0
     right: 0
 merging:
-  type_name: instantaneous
+  type_name: ensemble
   base_path_idx: 0
   cameras: null
 transforms:
   base_path_idx: 0
-  type_name: instantaneous
+  type_name: ensemble
   cameras:
     1:
       operations: []
   source_endpoint: regular
-urce_endpoint: regular

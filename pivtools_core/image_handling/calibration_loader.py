@@ -18,7 +18,7 @@ import numpy as np
 
 from ..config import Config
 from .load_images import read_single_frame
-from .path_utils import build_calibration_camera_path, resolve_file_path, validate_images_generic
+from .path_utils import build_calibration_camera_path, format_to_glob, resolve_file_path, validate_images_generic
 
 
 def _normalize_to_uint8(img: np.ndarray) -> np.ndarray:
@@ -255,12 +255,12 @@ def get_calibration_frame_count(
         return config.calibration_image_count
 
     elif image_type == "lavision_im7":
-        pattern = fmt.replace("%05d", "*").replace("%04d", "*").replace("%d", "*")
+        pattern = format_to_glob(fmt)
         return len(list(camera_path.glob(pattern)))
 
     else:
         # Standard formats
-        pattern = fmt.replace("%05d", "*").replace("%04d", "*").replace("%03d", "*").replace("%d", "*")
+        pattern = format_to_glob(fmt)
         return len(list(camera_path.glob(pattern)))
 
 

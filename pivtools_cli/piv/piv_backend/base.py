@@ -818,6 +818,7 @@ class CrossCorrelator(ABC):
         window_type: str,
         compute_window_fn: Callable[[int, Config], tuple],
         first_pass_ksize: tuple = (1, 1),
+        predictor_boundary_conditions: list = None,
     ) -> None:
         """
         Unified window padding cache for both instantaneous and ensemble modes.
@@ -836,6 +837,9 @@ class CrossCorrelator(ABC):
             where padding is (top, bottom, left, right) tuple
         first_pass_ksize : tuple
             Kernel size for first pass smoothing. (1,1) for ensemble, (0,0) for instantaneous.
+        predictor_boundary_conditions : list, optional
+            List of boundary condition dicts for predictor field. Each dict has
+            y_position, ux, uy, edge. Inserts BC positions into padded grid.
         """
         self.win_ctrs_x: list[np.ndarray] = []
         self.win_ctrs_y: list[np.ndarray] = []
@@ -908,6 +912,54 @@ class CrossCorrelator(ABC):
             n_pre = (len(win_ctrs_y_pre), len(win_ctrs_x_pre))
             n_post = (len(win_ctrs_y_post), len(win_ctrs_x_post))
 
+            # --- Insert boundary condition positions into padded grid ---
+            if predictor_boundary_conditions:
+                for bc in predictor_boundary_conditions:
+                    bc_y_img = float(H - 1 - bc["y_position"]) if bc["edge"] == "bottom" \
+                               else float(bc["y_position"])
+
+                    # Only add to padding zone (outside measured grid)
+                    if bc["edge"] == "bottom" and bc_y_img > win_ctrs_y[-1]:
+                        if not np.any(np.abs(win_ctrs_y_all - bc_y_img) < 0.5):
+                            idx = np.searchsorted(win_ctrs_y_all, bc_y_img)
+                            win_ctrs_y_all = np.insert(
+                                win_ctrs_y_all, idx, np.float32(bc_y_img)
+                            )
+                            n_post = (n_post[0] + 1, n_post[1])
+                            logging.debug(
+                                f"Pass {pass_idx}: Added bottom BC grid point at "
+                                f"y_img={bc_y_img:.1f} (y_from_bottom={bc['y_position']})"
+                            )
+                    elif bc["edge"] == "top" and bc_y_img < win_ctrs_y[0]:
+                        if not np.any(np.abs(win_ctrs_y_all - bc_y_img) < 0.5):
+                            idx = np.searchsorted(win_ctrs_y_all, bc_y_img)
+                            win_ctrs_y_all = np.insert(
+                                win_ctrs_y_all, idx, np.float32(bc_y_img)
+                            )
+                            n_pre = (n_pre[0] + 1, n_pre[1])
+                            logging.debug(
+                                f"Pass {pass_idx}: Added top BC grid point at "
+                                f"y_img={bc_y_img:.1f} (y_from_top={bc['y_position']})"
+                            )
+                    elif bc_y_img >= win_ctrs_y[0] and bc_y_img <= win_ctrs_y[-1]:
+                        logging.warning(
+                            f"Pass {pass_idx}: BC y_position={bc['y_position']} "
+                            f"(y_img={bc_y_img:.1f}) is within the measured grid "
+                            f"[{win_ctrs_y[0]:.1f}, {win_ctrs_y[-1]:.1f}] — "
+                            f"will override measured values in predictor"
+                        )
+                        # Still insert if user really wants it
+                        if not np.any(np.abs(win_ctrs_y_all - bc_y_img) < 0.5):
+                            idx = np.searchsorted(win_ctrs_y_all, bc_y_img)
+                            win_ctrs_y_all = np.insert(
+                                win_ctrs_y_all, idx, np.float32(bc_y_img)
+                            )
+                            # Determine which side it's closer to for padding count
+                            if bc_y_img > (win_ctrs_y[0] + win_ctrs_y[-1]) / 2:
+                                n_post = (n_post[0] + 1, n_post[1])
+                            else:
+                                n_pre = (n_pre[0] + 1, n_pre[1])
+
             self.win_ctrs_x.append(win_ctrs_x.astype(np.float32))
             self.win_ctrs_y.append(win_ctrs_y.astype(np.float32))
             self.win_spacing_x.append(spacing_x)
@@ -925,16 +977,18 @@ class CrossCorrelator(ABC):
                     self.sd.append(np.sqrt(np.prod(first_pass_ksize)) / 3 * 0.65)
                 self.G_smooth_predictor.append(np.ones((1, 1), dtype=np.float32))
             else:
-                prev_counts = (
-                    len(self.win_ctrs_y[pass_idx - 1]),
-                    len(self.win_ctrs_x[pass_idx - 1]),
+                # MATLAB: ksize_filt = round(wsize_old ./ win_spacing_old) + 1
+                # wsize_old = previous pass WINDOW SIZE, win_spacing_old = previous pass SPACING
+                prev_win_size = (
+                    window_sizes[pass_idx - 1][0],
+                    window_sizes[pass_idx - 1][1],
                 )
                 prev_spacing = (
                     self.win_spacing_y[pass_idx - 1],
                     self.win_spacing_x[pass_idx - 1],
                 )
                 k_filt = (
-                    np.round(np.array(prev_counts) / np.array(prev_spacing)).astype(int)
+                    np.round(np.array(prev_win_size) / np.array(prev_spacing)).astype(int)
                     + 1
                 )
                 k_filt_list = [int(k) for k in k_filt.tolist()]
@@ -948,6 +1002,9 @@ class CrossCorrelator(ABC):
                 g_kernel = g_kernel.astype(np.float32)
                 g_kernel /= max(np.sum(g_kernel), 1e-12)
                 self.G_smooth_predictor.append(g_kernel)
+
+        # Store predictor BCs for runtime use in _get_im_mesh
+        self.predictor_bcs = predictor_boundary_conditions if predictor_boundary_conditions else []
 
         logging.debug(f"Cached window padding for {len(window_sizes)} passes")
 

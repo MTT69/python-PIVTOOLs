@@ -18,6 +18,14 @@ if TYPE_CHECKING:
     from ..config import Config
 
 
+def format_to_glob(fmt: str) -> str:
+    """Convert printf-style format string to glob pattern.
+
+    Replaces any %Nd format specifier (%d, %02d, %03d, %05d, etc.) with *.
+    """
+    return re.sub(r'%\d*d', '*', fmt)
+
+
 def build_calibration_camera_path(
     config: "Config",
     source_path_idx: int = 0,
@@ -504,8 +512,7 @@ def validate_images_generic(
 
     elif image_type == "lavision_im7":
         # Count .im7 files in directory
-        # Replace any printf-style integer format (%d, %02d, %5d, %05d, etc.) with *
-        pattern = re.sub(r'%\d*d', '*', image_format)
+        pattern = format_to_glob(image_format)
         matching_files = sorted(camera_path.glob(pattern))
 
         if not matching_files:
@@ -549,8 +556,7 @@ def validate_images_generic(
 
     else:
         # Standard formats
-        # Replace any printf-style integer format (%d, %02d, %5d, %05d, etc.) with *
-        pattern = re.sub(r'%\d*d', '*', image_format)
+        pattern = format_to_glob(image_format)
         matching_files = sorted(camera_path.glob(pattern))
 
         if not matching_files:
@@ -770,7 +776,7 @@ def validate_single_pattern(
         return result
 
     # Convert pattern to glob pattern
-    glob_pattern = re.sub(r'%\d*d', '*', pattern)
+    glob_pattern = format_to_glob(pattern)
     matching_files = sorted(camera_path.glob(glob_pattern))
 
     # Calculate the first expected filename

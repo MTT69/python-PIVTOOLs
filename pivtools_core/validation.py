@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import List, Tuple
 
 from pivtools_core.config import Config
+from pivtools_core.image_handling.path_utils import format_to_glob
 
 
 logger = logging.getLogger(__name__)
@@ -109,7 +110,7 @@ def validate_config(config: Config) -> Tuple[bool, str, List[str]]:
 
         elif image_type == "lavision_im7":
             # IM7 files
-            pattern = format_str.replace("%05d", "*").replace("%04d", "*").replace("%d", "*")
+            pattern = format_to_glob(format_str)
             matching_files = list(camera_path.glob(pattern))
             expected = config.num_images
             if len(matching_files) != expected:
@@ -122,11 +123,11 @@ def validate_config(config: Config) -> Tuple[bool, str, List[str]]:
             expected = config.num_images
             if len(config.image_format) == 2:
                 # A/B format: count A files
-                pattern_a = config.image_format[0].replace("%05d", "*").replace("%04d", "*").replace("%d", "*")
+                pattern_a = format_to_glob(config.image_format[0])
                 matching_files = list(camera_path.glob(pattern_a))
             else:
                 # Time-resolved: count all files
-                pattern = format_str.replace("%05d", "*").replace("%04d", "*").replace("%d", "*")
+                pattern = format_to_glob(format_str)
                 matching_files = list(camera_path.glob(pattern))
 
             # Check for indexing mismatch

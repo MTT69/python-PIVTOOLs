@@ -247,13 +247,11 @@ def save_ensemble_coordinates_from_config_distributed(
     # This handles both standard and single mode correctly
     correlator = EnsembleCorrelatorCPU(config, precomputed_cache=correlator_cache)
 
-    # Extract the cached window centers (computed in _compute_window_centres_ensemble)
-    # These are CORRECT for both standard and single mode
+    # Extract the cached window centers (computed in _compute_window_centres_ensemble).
+    # These are already in original image coords for both standard and single mode
+    # (padding subtracted at source in _compute_window_centres_ensemble).
     win_ctrs_x_list = correlator.win_ctrs_x
     win_ctrs_y_list = correlator.win_ctrs_y
-
-    # Get padding info per pass (for single mode coordinate conversion)
-    padding_per_pass = getattr(correlator, 'padding_per_pass', [])
 
     num_passes = config.ensemble_num_passes
 
@@ -269,29 +267,20 @@ def save_ensemble_coordinates_from_config_distributed(
 
     for i in range(num_passes):
         if i in runs_to_save:
-            # Use cached window centers from correlator (handles single mode)
+            # Use cached window centers from correlator (handles single mode).
+            # These are already in original image coords (padding subtracted
+            # in _compute_window_centres_ensemble).
             x_centers = win_ctrs_x_list[i]
             y_centers = win_ctrs_y_list[i]
-
-            # Get padding for this pass (for single mode, coords are in padded space)
-            if padding_per_pass and i < len(padding_per_pass):
-                pad_top, pad_bottom, pad_left, pad_right = padding_per_pass[i]
-            else:
-                pad_top, pad_bottom, pad_left, pad_right = 0, 0, 0, 0
-
-            # For single mode: convert from padded coords to original image coords
-            # by subtracting the top/left padding offsets
-            y_centers_original = y_centers - pad_top
-            x_centers_original = x_centers - pad_left
 
             # Convert pixel coords to physical coords (y=0 at bottom, increasing upward)
             # win_ctrs_y is in ascending pixel order [low_pixel_y, ..., high_pixel_y]
             # physical_y = (H-1) - pixel_y converts to descending physical [high_phys, ..., low_phys]
             # This already matches MATLAB convention: row 1 = highest y, row end = lowest y
-            y_physical = (H - 1) - y_centers_original
+            y_physical = (H - 1) - y_centers
 
             # Create meshgrid (MATLAB-style 1-based coords)
-            x_grid, y_grid = np.meshgrid(x_centers_original + 1, y_physical + 1, indexing='xy')
+            x_grid, y_grid = np.meshgrid(x_centers + 1, y_physical + 1, indexing='xy')
 
             # Convert to half precision for space saving
             x_grid = _convert_to_half_precision(x_grid, 'x_grid')
@@ -396,6 +385,8 @@ def _create_ensemble_struct_all_passes(
         ('b_mask', object),
         ('pred_x', object),
         ('pred_y', object),
+        ('padded_pred_x', object),
+        ('padded_pred_y', object),
     ]
 
     # Create struct ARRAY with one element per pass (like instantaneous)
@@ -438,6 +429,8 @@ def _create_ensemble_struct_all_passes(
         ensemble_struct['b_mask'][i] = empty
         ensemble_struct['pred_x'][i] = empty
         ensemble_struct['pred_y'][i] = empty
+        ensemble_struct['padded_pred_x'][i] = empty
+        ensemble_struct['padded_pred_y'][i] = empty
 
     # Fill with actual data for selected passes
     for local_idx, global_pass_idx in enumerate(passes_to_save):
@@ -603,6 +596,12 @@ def _create_ensemble_struct_all_passes(
         if pass_result.pred_y is not None:
             ensemble_struct['pred_y'][local_idx] = _convert_to_half_precision(-pass_result.pred_y, 'pred_y')
 
+        # Padded predictor fields (on previous pass grid + boundary padding)
+        if pass_result.padded_pred_x is not None:
+            ensemble_struct['padded_pred_x'][local_idx] = _convert_to_half_precision(pass_result.padded_pred_x, 'padded_pred_x')
+        if pass_result.padded_pred_y is not None:
+            ensemble_struct['padded_pred_y'][local_idx] = _convert_to_half_precision(-pass_result.padded_pred_y, 'padded_pred_y')
+
     return ensemble_struct
 
 
@@ -720,8 +719,9 @@ def _create_piv_struct_all_passes(
             piv_struct['peak_choice'][local_idx] = pass_result.peak_choice if pass_result.peak_choice.ndim == 2 else pass_result.peak_choice
         if pass_result.n_windows is not None:
             piv_struct['n_windows'][local_idx] = pass_result.n_windows
-        # predictor_field shape is (n_win_y+pad, n_win_x+pad, 2) where dim 2 is [uy, ux]
-        # No row reversal needed, negate uy component (index 0) for physical coords
+        # predictor_field shape is (n_win_y, n_win_x, 2) where dim 2 is [uy, ux]
+        # Same grid as ux/uy — the actual predictor correction added to correlation displacement
+        # Negate uy component (index 0) for physical coords
         if pass_result.predictor_field is not None:
             pred = pass_result.predictor_field.copy()
             pred[..., 0] = -pred[..., 0]  # Negate uy component
@@ -905,6 +905,7 @@ def load_ensemble_result(
     - uy was negated on save -> negate back on load
     - UV_stress was negated on save -> negate back on load
     - pred_y was negated on save -> negate back on load
+    - padded_pred_y was negated on save -> negate back on load
     """
     mat = scipy.io.loadmat(str(file_path), struct_as_record=False, squeeze_me=True)
 
@@ -975,6 +976,12 @@ def _struct_to_ensemble_pass_result(struct) -> PIVEnsemblePassResult:
     if pred_y is not None:
         pred_y = -pred_y  # Reverse negation from save
 
+    # Padded predictor fields - padded_pred_y was negated on save
+    padded_pred_x = get_array('padded_pred_x')
+    padded_pred_y = get_array('padded_pred_y')
+    if padded_pred_y is not None:
+        padded_pred_y = -padded_pred_y  # Reverse negation from save
+
     # Window size (tuple)
     window_size_val = getattr(struct, 'window_size', None)
     window_size = None
@@ -1008,6 +1015,8 @@ def _struct_to_ensemble_pass_result(struct) -> PIVEnsemblePassResult:
         b_mask=b_mask,
         pred_x=pred_x,
         pred_y=pred_y,
+        padded_pred_x=padded_pred_x,
+        padded_pred_y=padded_pred_y,
         window_size=window_size,
         win_ctrs_x=get_array('win_ctrs_x'),
         win_ctrs_y=get_array('win_ctrs_y'),

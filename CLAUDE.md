@@ -220,7 +220,7 @@ load_coords_from_directory(data_dir: Path, runs=None) -> Tuple[List[ndarray], Li
 # --- Variable inspection ---
 get_plottable_vars(file_path, var_name="piv_result", ...) -> List[str]
 get_plottable_vars_from_struct(struct) -> List[str]
-EXCLUDED_VARS = {"win_ctrs_x", "win_ctrs_y", "window_size", "n_windows", "predictor_field"}
+EXCLUDED_VARS = {"win_ctrs_x", "win_ctrs_y", "window_size", "n_windows", "predictor_field", "padded_pred_x", "padded_pred_y"}
 
 # --- Mask I/O ---
 save_mask_to_mat(file_path: str, mask: np.ndarray, polygons)
@@ -764,6 +764,22 @@ Defines available image filter types and their parameter schemas for the UI.
 
 **Ensemble step (e):** `process_pass_sliding_window()` → accumulate correlation sums per worker, reduce, then `accumulator.finalize_pass()` → distributed Gaussian (or k-space) fitting → extract velocities + stresses.
 
+### Predictor Interpolation Border Mode
+
+Multi-pass PIV upscales the velocity field from the previous pass to warp images for the next pass. The predictor-corrector scheme uses **`cv2.BORDER_REPLICATE`** for `cv2.remap()` of the velocity predictor field (both dense and window-center interpolation). This uses the nearest valid interpolated value instead of zero (`BORDER_CONSTANT`), eliminating artificial inflections near image edges.
+
+**Padding** uses `np.pad(..., mode="edge")` — flat edge replication. Linear extrapolation padding was tested but rejected: steep near-wall gradients extrapolate past zero → negative predictor → worse result → amplified error each pass. Edge replication is conservative but safe.
+
+**Boundary conditions** (`predictor_boundary_conditions` in `ensemble_piv` config): For wall-bounded flows, edge-replication extends the last measured velocity flat into the near-wall region, under-estimating boundary layer gradients. Configurable BCs override padding rows at/beyond the specified y-position with prescribed values (e.g., no-slip U=0 at the wall). Two-phase implementation: (A) grid augmentation at init inserts exact BC y-positions into the padded grid (`base.py`), (B) runtime overwrite sets BC values after `np.pad` but before smoothing (`cpu_ensemble.py`). Only active for ensemble PIV passes > 0.
+
+**Gaussian smoothing** of the predictor field is configurable via `predictor_smoothing` (default `true`). When enabled, the predictor is Gaussian-smoothed before upscaling to the next pass grid. For ensemble PIV (converged over many pairs), noise is not a concern and smoothing only destroys real velocity gradients — set `predictor_smoothing: false` in the `ensemble_piv` config section. For instantaneous PIV, smoothing is recommended (default on). Config properties: `config.ensemble_predictor_smoothing`, `config.instantaneous_predictor_smoothing`.
+
+**Gaussian kernel size** uses `window_size / spacing` (matching MATLAB) — not `n_windows / spacing` which gave kernels ~2x too large. Fixed in `base.py:990-1003`.
+
+**NOT changed:** Image warping remap calls (e.g., `cv2.remap(image_a, ...)`) still use `BORDER_CONSTANT=0` — zero-padding is correct for image intensities outside the field of view.
+
+**Single-mode coordinate convention:** Single-mode window centers (`win_ctrs_x/y`) are stored in **original image coordinates** everywhere (padding offset subtracted in `_compute_window_centres_ensemble`). This ensures all passes (std and single) share the same coordinate system for predictor interpolation, grid padding, and saved results. Padding is added back only at C library call sites (`_run_correlation_accumulate` and `_correlate_mean_images`) where the padded image is passed. For standard mode passes, `padding_per_pass` is `(0,0,0,0)` so the offset is a no-op.
+
 ### `pivtools_core/instantaneous.py`
 
 **Goal:** Dask-native instantaneous PIV pipeline: images → per-pair multi-pass correlation → save .mat files.
@@ -796,7 +812,7 @@ Defines available image filter types and their parameter schemas for the UI.
  "smoothed_predictor": Optional[ndarray], "vector_mask": Optional[ndarray]}
 ```
 
-**`PIVEnsemblePassResult`** (20+ fields): `ux_mat`, `uy_mat`, `UU_stress`, `VV_stress`, `UV_stress`, `peakheight`, `nan_reason`, `sig_AB_x/y/xy`, `sig_A_x/y/xy`, `c_A/B/AB`, `b_mask`, `pred_x/y`, `window_size`, `win_ctrs_x/y`
+**`PIVEnsemblePassResult`** (20+ fields): `ux_mat`, `uy_mat`, `UU_stress`, `VV_stress`, `UV_stress`, `peakheight`, `nan_reason`, `sig_AB_x/y/xy`, `sig_A_x/y/xy`, `c_A/B/AB`, `b_mask`, `pred_x/y`, `padded_pred_x/y`, `window_size`, `win_ctrs_x/y`
 
 ### Stereo Ensemble PIV (Correlation-of-Correlations)
 
@@ -1086,6 +1102,7 @@ Both `cpu_instantaneous.py` and `cpu_ensemble.py` use `cv2.setNumThreads(1)` + c
 | `overlap` | `instantaneous_overlaps` | List of `%` per pass (broadcasts single to all) |
 | `runs` | `instantaneous_runs_0based` | Which passes to save (0-based) |
 | `peak_finder` | `peak_finder` | `"gauss3"`→3, `"gauss4"`→4, `"gauss5"`→5, `"gauss6"`→6 DOF |
+| `predictor_smoothing` | `instantaneous_predictor_smoothing` | Gaussian smooth predictor between passes (default `true`) |
 
 **`ensemble_piv` block:**
 
@@ -1101,6 +1118,8 @@ Both `cpu_instantaneous.py` and `cpu_ensemble.py` use `cv2.setNumThreads(1)` + c
 | `resume_from_pass` | `ensemble_resume_from_pass` | 1-based pass to resume (0=fresh start) |
 | `correlation_normalization` | `ensemble_correlation_normalization` | `"none"` (default) or `"per_frame"` — per-frame mean-sub + energy normalization |
 | `persist_images` | `ensemble_persist_images` | `false` (default). When `true`, persist all filtered images in worker RAM (HPC with lots of RAM) |
+| `predictor_smoothing` | `ensemble_predictor_smoothing` | Gaussian smooth predictor between passes (default `true`). Set `false` for ensemble to preserve wall gradients |
+| `predictor_boundary_conditions` | `ensemble_predictor_boundary_conditions` | List of BC dicts `[{y_position, ux, uy, edge}]`. Overwrites predictor padding rows at/beyond the BC position with specified values. Default `[]` (no BCs). `edge`: `"bottom"` (default) or `"top"`. Phase A inserts BC y-position into padded grid at init; Phase B overwrites rows after `np.pad(mode="edge")` at runtime. |
 
 **Outlier detection / infilling** (parallel structure for instantaneous and ensemble):
 `outlier_detection.enabled`, `.methods` (list of `{type, threshold, epsilon}`), `infilling.mid_pass`, `.final_pass`
@@ -1230,7 +1249,8 @@ ensemble_result (same struct convention, plus):
   .c_A/B/AB             Gaussian offsets
   .peakheight            normalized peak height
   .nan_reason            failure reason per window
-  .pred_x/y              predictor displacement
+  .pred_x/y              predictor displacement (at current pass window centers)
+  .padded_pred_x/y       padded predictor (on previous pass grid + boundary padding, before remap)
 ```
 
 **Coordinates** (`coordinates.mat`, var: `coordinates`):
@@ -1307,6 +1327,7 @@ Benchmark scripts compare PIVTOOLs output against ground truth (DNS data).
 - `validation/README.md` — **Read this first.** Comprehensive reference for all benchmark scripts, data formats, and recorded results.
 - `validation/benchmark_comparison.py` — Planar benchmark
 - `validation/stereo_benchmark_comparison.py` — Stereo benchmark (hardcoded `data_root` in `main()`)
+- `validation/test_predictor_upscaling.py` — Predictor field construction diagnostic. Compares 6 methods for constructing the predictor from coarse→fine grid (pad+cubic, no-pad cubic/linear, PCHIP, cubic spline+wall BC, linear extrap). Usage: `python validation/test_predictor_upscaling.py -e <ensemble_result.mat> -g <gt_dir>`
 
 **Unit conventions:** PIVTOOLs stores velocity in m/s (×1000→mm/s for display), stresses in (m/s)² (×1e6→(mm/s)²).
 

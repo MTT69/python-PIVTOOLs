@@ -492,6 +492,7 @@ instantaneous_piv:
   num_peaks: 1
   peak_finder: gauss3
   secondary_peak: false
+  predictor_smoothing: false
 ensemble_piv:
   window_size:
   - - 128
@@ -516,6 +517,7 @@ ensemble_piv:
   - 16
   - 16
   resume_from_pass: 0
+  predictor_smoothing: false
 calibration:
   image_format: calib%05d.tif
   num_images: 10
@@ -2260,15 +2262,6 @@ video:
             )
 
     @property
-    def ensemble_noisy(self):
-        """
-        Return True if Gaussian weighting should be applied for noisy ensemble data.
-
-        When enabled, applies Gaussian windowing to help with noisy images.
-        """
-        return self.data.get("ensemble_piv", {}).get("noisy", False)
-
-    @property
     def ensemble_sum_window(self):
         """
         Return sum window size for 'single' ensemble mode.
@@ -2722,6 +2715,75 @@ video:
         - Memory bounded to max_in_flight batches at a time
         """
         return self.data.get("ensemble_piv", {}).get("persist_images", False)
+
+    @property
+    def ensemble_predictor_smoothing(self) -> bool:
+        """Enable Gaussian smoothing of the predictor field between passes.
+
+        When True (default), the predictor field is Gaussian-smoothed before
+        upscaling to the next pass grid. This reduces noise in instantaneous
+        pair processing but destroys real velocity gradients near walls.
+
+        For ensemble PIV (converged over many pairs), noise is not a concern
+        and smoothing only destroys signal. Set to False for ensemble.
+
+        Default: True (backward compatible)
+        """
+        return self.data.get("ensemble_piv", {}).get("predictor_smoothing", False)
+
+    @property
+    def ensemble_predictor_boundary_conditions(self) -> list:
+        """Predictor boundary conditions for ensemble PIV.
+
+        Each BC is a dict:
+          - y_position: int, pixels from bottom (or top) of image
+          - ux: float, x-displacement (pixels/frame), default 0.0
+          - uy: float, y-displacement (pixels/frame), default 0.0
+          - edge: str, "bottom" (default) or "top"
+
+        For all predictor grid points between the image edge and
+        y_position, the predictor interpolation uses (ux, uy)
+        instead of edge-replicated padding.
+
+        Default: [] (no BCs, backward-compatible)
+        """
+        raw = self.data.get("ensemble_piv", {}).get(
+            "predictor_boundary_conditions", []
+        )
+        if not raw:
+            return []
+        validated = []
+        for i, bc in enumerate(raw):
+            if not isinstance(bc, dict):
+                continue
+            y_pos = bc.get("y_position")
+            if y_pos is None:
+                continue
+            edge = bc.get("edge", "bottom")
+            if edge not in ("bottom", "top"):
+                raise ValueError(
+                    f"predictor_boundary_conditions[{i}].edge must be "
+                    f"'bottom' or 'top', got {edge!r}"
+                )
+            validated.append({
+                "y_position": int(y_pos),
+                "ux": float(bc.get("ux", 0.0)),
+                "uy": float(bc.get("uy", 0.0)),
+                "edge": edge,
+            })
+        return validated
+
+    @property
+    def instantaneous_predictor_smoothing(self) -> bool:
+        """Enable Gaussian smoothing of the predictor field between passes.
+
+        When True (default), the predictor field is Gaussian-smoothed before
+        upscaling to the next pass grid. Recommended for instantaneous PIV
+        where per-pair noise is significant.
+
+        Default: True (backward compatible)
+        """
+        return self.data.get("instantaneous_piv", {}).get("predictor_smoothing", False)
 
     @property
     def secondary_peak(self):

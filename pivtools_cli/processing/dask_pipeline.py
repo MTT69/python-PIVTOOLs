@@ -590,6 +590,7 @@ def reduce_ensemble_results(r1: dict, r2: dict) -> dict:
         "n_win_x": r1["n_win_x"],
         "n_win_y": r1["n_win_y"],
         "smoothed_predictor": r1.get("smoothed_predictor"),
+        "padded_predictor": r1.get("padded_predictor"),
         "vector_mask": r1.get("vector_mask"),
         # Padding values for predictor field storage
         "n_pre": r1.get("n_pre"),
@@ -722,6 +723,7 @@ def correlate_and_reduce_on_worker(
                 "n_win_x": result["n_win_x"],
                 "n_win_y": result["n_win_y"],
                 "smoothed_predictor": result.get("smoothed_predictor"),
+                "padded_predictor": result.get("padded_predictor"),
                 "vector_mask": result.get("vector_mask"),
                 # Padding values for PADDED predictor storage (matching instantaneous)
                 "n_pre": result.get("n_pre"),
@@ -741,6 +743,8 @@ def correlate_and_reduce_on_worker(
             # Keep metadata from latest result
             if result.get("smoothed_predictor") is not None:
                 accumulated["smoothed_predictor"] = result["smoothed_predictor"]
+            if result.get("padded_predictor") is not None:
+                accumulated["padded_predictor"] = result["padded_predictor"]
             if result.get("vector_mask") is not None:
                 accumulated["vector_mask"] = result["vector_mask"]
 
@@ -814,6 +818,7 @@ def compute_warp_sums_on_worker(
                 "warp_B_sum": result["warp_B_sum"].copy(),
                 "n_images": result["n_images"],
                 "smoothed_predictor": result.get("smoothed_predictor"),
+                "padded_predictor": result.get("padded_predictor"),
             }
         else:
             accumulated["warp_A_sum"] += result["warp_A_sum"]
@@ -821,6 +826,8 @@ def compute_warp_sums_on_worker(
             accumulated["n_images"] += result["n_images"]
             if result.get("smoothed_predictor") is not None:
                 accumulated["smoothed_predictor"] = result["smoothed_predictor"]
+            if result.get("padded_predictor") is not None:
+                accumulated["padded_predictor"] = result["padded_predictor"]
 
     if accumulated is None:
         raise ValueError("No valid batches to process on this worker")
@@ -910,6 +917,7 @@ def correlate_mean_subtracted_on_worker(
                 "n_win_x": result["n_win_x"],
                 "n_win_y": result["n_win_y"],
                 "smoothed_predictor": result.get("smoothed_predictor"),
+                "padded_predictor": result.get("padded_predictor"),
                 "vector_mask": result.get("vector_mask"),
                 "n_pre": result.get("n_pre"),
                 "n_post": result.get("n_post"),
@@ -924,6 +932,8 @@ def correlate_mean_subtracted_on_worker(
             # warp sums stay at zero for 'image' method
             if result.get("smoothed_predictor") is not None:
                 accumulated["smoothed_predictor"] = result["smoothed_predictor"]
+            if result.get("padded_predictor") is not None:
+                accumulated["padded_predictor"] = result["padded_predictor"]
             if result.get("vector_mask") is not None:
                 accumulated["vector_mask"] = result["vector_mask"]
 
@@ -1037,6 +1047,7 @@ def correlate_single_batch_and_accumulate(
             "n_win_x": result["n_win_x"],
             "n_win_y": result["n_win_y"],
             "smoothed_predictor": result.get("smoothed_predictor"),
+            "padded_predictor": result.get("padded_predictor"),
             "vector_mask": result.get("vector_mask"),
             "n_pre": result.get("n_pre"),
             "n_post": result.get("n_post"),
@@ -1055,7 +1066,7 @@ def correlate_single_batch_and_accumulate(
         new_accumulated["warp_B_sum"] = accumulated["warp_B_sum"] + result["warp_B_sum"]
         new_accumulated["n_images"] = accumulated["n_images"] + result["n_images"]
         # Metadata updates (overwrite is fine - scalars/small refs)
-        for key in ["smoothed_predictor", "vector_mask", "n_pre", "n_post", "_worker_addr"]:
+        for key in ["smoothed_predictor", "padded_predictor", "vector_mask", "n_pre", "n_post", "_worker_addr"]:
             if result.get(key) is not None:
                 new_accumulated[key] = result[key]
         return new_accumulated
@@ -1108,6 +1119,7 @@ def warp_single_batch_and_accumulate(
             "warp_B_sum": result["warp_B_sum"].copy(),
             "n_images": result["n_images"],
             "smoothed_predictor": result.get("smoothed_predictor"),
+            "padded_predictor": result.get("padded_predictor"),
         }
     else:
         # SAFE: Create NEW arrays using + (not +=) for retry safety
@@ -1117,6 +1129,8 @@ def warp_single_batch_and_accumulate(
         new_accumulated["n_images"] = accumulated["n_images"] + result["n_images"]
         if result.get("smoothed_predictor") is not None:
             new_accumulated["smoothed_predictor"] = result["smoothed_predictor"]
+        if result.get("padded_predictor") is not None:
+            new_accumulated["padded_predictor"] = result["padded_predictor"]
         return new_accumulated
 
 
@@ -1186,6 +1200,7 @@ def correlate_mean_subtracted_single_batch(
             "n_win_x": result["n_win_x"],
             "n_win_y": result["n_win_y"],
             "smoothed_predictor": result.get("smoothed_predictor"),
+            "padded_predictor": result.get("padded_predictor"),
             "vector_mask": result.get("vector_mask"),
             "n_pre": result.get("n_pre"),
             "n_post": result.get("n_post"),
@@ -1200,7 +1215,7 @@ def correlate_mean_subtracted_single_batch(
         new_accumulated["corr_AB_sum"] = accumulated["corr_AB_sum"] + result["corr_AB_sum"]
         new_accumulated["n_images"] = accumulated["n_images"] + result["n_images"]
         # warp sums stay at zero for 'image' method
-        for key in ["smoothed_predictor", "vector_mask", "n_pre", "n_post"]:
+        for key in ["smoothed_predictor", "padded_predictor", "vector_mask", "n_pre", "n_post"]:
             if result.get(key) is not None:
                 new_accumulated[key] = result[key]
         return new_accumulated

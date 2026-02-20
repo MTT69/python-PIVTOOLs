@@ -188,6 +188,10 @@ class SinglePassAccumulator:
                 f"(shape: {batch_result['smoothed_predictor'].shape})"
             )
 
+        # Store padded predictor (on previous pass grid + boundary padding)
+        if batch_result.get("padded_predictor") is not None:
+            pass_data["padded_predictor"] = batch_result["padded_predictor"]
+
         # Store padding values for predictor storage in finalize_pass
         # These are needed to pad the final velocities like instantaneous does
         if batch_result.get("n_pre") is not None:
@@ -296,6 +300,12 @@ class SinglePassAccumulator:
         A_mean_stack = np.ascontiguousarray(A_mean[np.newaxis, :, :].astype(np.float32))
         B_mean_stack = np.ascontiguousarray(B_mean[np.newaxis, :, :].astype(np.float32))
 
+        # Add padding offset for single mode passes.
+        # win_ctrs are in original image coords; the C library receives a
+        # padded image, so centers must be offset by the padding.
+        # For standard mode passes, padding is (0,0,0,0) so this is a no-op.
+        pad_top, pad_bottom, pad_left, pad_right = correlator.padding_per_pass[pass_idx]
+
         # Cross-correlation AB background
         correlator.lib.bulkxcorr2d_accumulate(
             A_mean_stack,
@@ -303,8 +313,8 @@ class SinglePassAccumulator:
             b_mask,
             image_size,
             1,  # N_images = 1
-            correlator.win_ctrs_x[pass_idx].astype(np.float32),
-            correlator.win_ctrs_y[pass_idx].astype(np.float32),
+            (correlator.win_ctrs_x[pass_idx] + pad_left).astype(np.float32),
+            (correlator.win_ctrs_y[pass_idx] + pad_top).astype(np.float32),
             n_windows,
             correlator.win_weights_A[pass_idx],
             correlator.win_weights_B[pass_idx],
@@ -321,8 +331,8 @@ class SinglePassAccumulator:
             b_mask,
             image_size,
             1,
-            correlator.win_ctrs_x[pass_idx].astype(np.float32),
-            correlator.win_ctrs_y[pass_idx].astype(np.float32),
+            (correlator.win_ctrs_x[pass_idx] + pad_left).astype(np.float32),
+            (correlator.win_ctrs_y[pass_idx] + pad_top).astype(np.float32),
             n_windows,
             correlator.win_weights_B[pass_idx],
             correlator.win_weights_B[pass_idx],
@@ -339,8 +349,8 @@ class SinglePassAccumulator:
             b_mask,
             image_size,
             1,
-            correlator.win_ctrs_x[pass_idx].astype(np.float32),
-            correlator.win_ctrs_y[pass_idx].astype(np.float32),
+            (correlator.win_ctrs_x[pass_idx] + pad_left).astype(np.float32),
+            (correlator.win_ctrs_y[pass_idx] + pad_top).astype(np.float32),
             n_windows,
             correlator.win_weights_B[pass_idx],
             correlator.win_weights_B[pass_idx],
@@ -731,6 +741,9 @@ class SinglePassAccumulator:
                 overlap=self.config.ensemble_overlaps[pass_idx],
                 validate=True,
             )
+            # Convert to original image coords (subtract padding offset)
+            grid_result_ctrs_x = grid_result.win_ctrs_x - grid_result.padding[2]
+            grid_result_ctrs_y = grid_result.win_ctrs_y - grid_result.padding[0]
         else:
             grid_result = compute_window_centers(
                 image_shape=self.config.image_shape,
@@ -738,6 +751,8 @@ class SinglePassAccumulator:
                 overlap=self.config.ensemble_overlaps[pass_idx],
                 validate=True,
             )
+            grid_result_ctrs_x = grid_result.win_ctrs_x
+            grid_result_ctrs_y = grid_result.win_ctrs_y
 
         # Extract velocity components and stresses from Gaussian parameters
         # gauss_results has shape (n_win_y, n_win_x, 13)
@@ -1071,47 +1086,46 @@ class SinglePassAccumulator:
         if self.profiling_enabled:
             self.profile_data.setdefault(pass_idx, {})["outlier_infill"] = time.perf_counter() - _outlier_t0
 
-        # Store PADDED predictor field to match instantaneous mode format
-        # Instantaneous stores: np.pad([uy_mat, ux_mat], n_pre/n_post, mode="edge")
-        # We replicate this exactly for parity
+        # Store the predictor that was actually used for this pass (delta_ab_pred).
+        # This is at the current pass's window centers — same grid as ux/uy —
+        # so it can be directly compared to the output for diagnostics.
+        # For pass 0, predictor is zero (no previous pass).
         pred_x = None
         pred_y = None
+        padded_pred_x = None
+        padded_pred_y = None
+        if pass_idx > 0 and "smoothed_predictor" in pass_data and pass_data["smoothed_predictor"] is not None:
+            smoothed_pred = pass_data["smoothed_predictor"]
+            pred_y = smoothed_pred[:, :, 0].copy()  # Y component
+            pred_x = smoothed_pred[:, :, 1].copy()  # X component
+            logging.debug(
+                f"Pass {pass_idx + 1}: Storing actual predictor field used for this pass "
+                f"(shape: {pred_x.shape})"
+            )
+        # Compute padded predictor from THIS pass's velocity field.
+        # This represents what will be fed to the next pass as the predictor
+        # (after edge-padding with n_pre/n_post boundary nodes).
+        # Previously this stored self.delta_ab_old from the correlator, which was
+        # the padded predictor from the PREVIOUS pass — off by one.
         n_pre = pass_data.get("n_pre")
         n_post = pass_data.get("n_post")
         if n_pre is not None and n_post is not None:
             pre_y, pre_x = n_pre
             post_y, post_x = n_post
-            # Stack and pad like instantaneous does (cpu_instantaneous.py lines 480-489)
-            stacked = np.stack([uy_mat, ux_mat], axis=-1)  # (ny, nx, 2)
+            # Stack uy (dim 0) and ux (dim 1) into (n_win_y, n_win_x, 2)
+            velocity_field = np.stack([uy_mat, ux_mat], axis=-1)
             padded = np.pad(
-                stacked,
+                velocity_field,
                 ((pre_y, post_y), (pre_x, post_x), (0, 0)),
                 mode="edge",
             )
-            pred_y = padded[:, :, 0].copy()  # Y component (PADDED)
-            pred_x = padded[:, :, 1].copy()  # X component (PADDED)
+            padded_pred_y = padded[:, :, 0].copy()
+            padded_pred_x = padded[:, :, 1].copy()
             logging.debug(
-                f"Pass {pass_idx + 1}: Storing PADDED predictor field in pass result "
-                f"(original: {ux_mat.shape}, padded: {pred_x.shape}, "
-                f"n_pre={n_pre}, n_post={n_post})"
+                f"Pass {pass_idx + 1}: Storing padded predictor from current pass "
+                f"(velocity {ux_mat.shape} -> padded {padded_pred_x.shape}, "
+                f"pre=({pre_y},{pre_x}), post=({post_y},{post_x}))"
             )
-        elif pass_idx > 0 and "smoothed_predictor" in pass_data and pass_data["smoothed_predictor"] is not None:
-            # Fallback to smoothed predictor if padding values not available
-            smoothed_pred = pass_data["smoothed_predictor"]
-            logging.warning(
-                f"Pass {pass_idx + 1}: n_pre/n_post not available, "
-                f"storing UNPADDED smoothed predictor (shape: {smoothed_pred.shape})"
-            )
-            pred_y = smoothed_pred[:, :, 0].copy()  # Y component
-            pred_x = smoothed_pred[:, :, 1].copy()  # X component
-        elif predictor_field is not None:
-            # Fallback to raw predictor if smoothed not available (shouldn't happen)
-            logging.warning(
-                f"Pass {pass_idx + 1}: Smoothed predictor not available, "
-                f"falling back to raw predictor field"
-            )
-            pred_y = predictor_field[:, :, 0].copy()  # Y component
-            pred_x = predictor_field[:, :, 1].copy()  # X component
 
         # DEBUG: Log edge values in final pass result to trace edge artifact source
         logging.debug(
@@ -1149,9 +1163,11 @@ class SinglePassAccumulator:
             b_mask=vector_mask,
             pred_x=pred_x,
             pred_y=pred_y,
+            padded_pred_x=padded_pred_x,
+            padded_pred_y=padded_pred_y,
             window_size=tuple(win_size),
-            win_ctrs_x=grid_result.win_ctrs_x,
-            win_ctrs_y=grid_result.win_ctrs_y,
+            win_ctrs_x=grid_result_ctrs_x,
+            win_ctrs_y=grid_result_ctrs_y,
         )
 
         # Store result in accumulator
