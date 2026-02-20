@@ -519,31 +519,26 @@ ensemble_piv:
   resume_from_pass: 0
   predictor_smoothing: false
 calibration:
-  image_format: calib%05d.tif
-  num_images: 10
+  image_format: calib_%02d.tif
+  num_images: 1
   image_type: standard
   zero_based_indexing: false
   use_camera_subfolders: false
   subfolder: ''
   camera_subfolders: []
   path_order: camera_first
-  active: polynomial
+  active: scale_factor
   piv_type: instantaneous
   active_paths: []
   cameras: []
   scale_factor:
-    dt: 0.56
-    px_per_mm: 3.41
+    dt: 1
+    px_per_mm: 1
     source_path_idx: 0
   dotboard:
     camera: 1
-    pattern_cols: 10
-    pattern_rows: 10
-    dot_spacing_mm: 28.89
-    asymmetric: false
-    grid_tolerance: 0.5
-    ransac_threshold: 3
-    dt: 0.0275
+    dot_spacing_mm: 1
+    dt: 1
     source_path_idx: 0
   charuco:
     camera: 1
@@ -559,15 +554,14 @@ calibration:
     camera_pair:
     - 1
     - 2
-    stereo_model_type: charuco
+    stereo_model_type: dotboard
     pattern_cols: 10
     pattern_rows: 10
-    dot_spacing_mm: 28.89
-    asymmetric: false
-    dt: 2
+    dot_spacing_mm: 1
+    dt: 1
 filters: []
 masking:
-  enabled: true
+  enabled: false
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
   mode: rectangular
@@ -813,7 +807,7 @@ video:
     @property
     def camera_count(self):
         """Return the total number of cameras."""
-        return self.data["paths"].get("camera_count", 1)
+        return self.data.get("paths", {}).get("camera_count", 1)
 
     @property
     def camera_numbers(self):
@@ -866,7 +860,7 @@ video:
     @property
     def num_images(self):
         """Return the number of image files (not pairs)."""
-        return self.data["images"]["num_images"]
+        return self.data.get("images", {}).get("num_images", 100)
 
     @property
     def num_loops(self) -> int:
@@ -1143,7 +1137,7 @@ video:
     @property
     def piv_chunk_size(self):
         # Updated to use batches.size from config.yaml
-        return self.data["batches"]["size"]
+        return self.data.get("batches", {}).get("size", 25)
 
     @property
     def batch_size(self):
@@ -2123,21 +2117,21 @@ video:
         """Return number of OMP threads as string."""
         if self.auto_compute_params:
             return str(self._get_auto_compute_params()["omp_threads"])
-        return str(self.data.get("processing", {}).get("omp_threads", 1))
+        return str(self.data.get("processing", {}).get("omp_threads", 4))
 
     @property
     def dask_workers_per_node(self):
         """Return number of Dask workers per node."""
         if self.auto_compute_params:
             return self._get_auto_compute_params()["dask_workers_per_node"]
-        return self.data.get("processing", {}).get("dask_workers_per_node", 1)
+        return self.data.get("processing", {}).get("dask_workers_per_node", 2)
 
     @property
     def dask_memory_limit(self):
         """Return memory limit per Dask worker."""
         if self.auto_compute_params:
             return self._get_auto_compute_params()["dask_memory_limit"]
-        return self.data.get("processing", {}).get("dask_memory_limit", "4GB")
+        return self.data.get("processing", {}).get("dask_memory_limit", "8GB")
 
     @property
     def dask_max_in_flight_per_worker(self):
@@ -2783,7 +2777,7 @@ video:
 
         Default: True (backward compatible)
         """
-        return self.data.get("instantaneous_piv", {}).get("predictor_smoothing", False)
+        return self.data.get("instantaneous_piv", {}).get("predictor_smoothing", True)
 
     @property
     def secondary_peak(self):

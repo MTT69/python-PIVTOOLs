@@ -42,8 +42,8 @@ processing:
   dask_max_in_flight_per_worker: 3
   open_dashboard: true
   always_batch: true
-  instantaneous: false
-  ensemble: true
+  instantaneous: true
+  ensemble: false
 outlier_detection:
   enabled: true
   methods:
@@ -83,7 +83,7 @@ video:
   data_source: calibrated
   variable: ux
   run: 2
-  piv_type: ensemble
+  piv_type: instantaneous
   cmap: jet
   lower: ''
   upper: ''
@@ -115,7 +115,7 @@ statistics:
     mean_peak_height: false
   gamma_radius: 4
   save_figures: true
-  type_name: ensemble
+  type_name: instantaneous
   source_endpoint: regular
 instantaneous_piv:
   window_size:
@@ -170,7 +170,7 @@ ensemble_piv:
   - 2
   - 3
   - 4
-  store_planes: true
+  store_planes: false
   save_diagnostics: false
   sum_window:
   - 48
@@ -226,19 +226,19 @@ masking:
   enabled: false
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
-  mode: rectangular
+  mode: file
   rectangular:
     top: 0
-    bottom: 250
+    bottom: 0
     left: 0
     right: 0
 merging:
-  type_name: ensemble
+  type_name: instantaneous
   base_path_idx: 0
   cameras: null
 transforms:
   base_path_idx: 0
-  type_name: ensemble
+  type_name: instantaneous
   cameras:
     1:
       operations: []

@@ -1182,8 +1182,10 @@ processing:
   debug: false
   auto_compute_params: false
   omp_threads: 4
-  dask_workers_per_node: 1
+  dask_workers_per_node: 2
   dask_memory_limit: 8GB
+  dask_max_in_flight_per_worker: 3
+  open_dashboard: false
   always_batch: true
   instantaneous: true
   ensemble: false
@@ -1230,8 +1232,8 @@ video:
   base_path_idx: 0
   camera: 1
   data_source: calibrated
-  variable: uu_inst
-  run: 4
+  variable: ux
+  run: 1
   piv_type: instantaneous
   cmap: viridis
   lower: ''
@@ -1243,27 +1245,19 @@ video:
 statistics:
   enabled_methods:
     mean_velocity: true
-    fluctuating_velocity: true
-    reynolds_stress: true
-    normal_stress: true
-    tke: true
-    vorticity: true
-    divergence: true
-    gamma1: true
-    gamma2: true
+    mean_stresses: true
     mean_tke: true
     mean_vorticity: true
     mean_divergence: true
+    mean_peak_height: false
     inst_velocity: true
-    inst_fluctuations: true
+    inst_stresses: true
     inst_vorticity: true
     inst_divergence: true
     inst_gamma: true
-    mean_stresses: true
-    inst_stresses: true
-  gamma_radius: 4
+  gamma_radius: 5
   save_figures: true
-  type_name: ensemble
+  type_name: instantaneous
   source_endpoint: regular
 instantaneous_piv:
   window_size:
@@ -1286,17 +1280,18 @@ instantaneous_piv:
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
-  peak_finder: gauss6
+  peak_finder: gauss3
   secondary_peak: false
+  predictor_smoothing: true
 ensemble_piv:
   fit_method: gaussian
   skip_background_subtraction: false
   image_warp_interpolation: cubic
   predictor_interpolation: cubic
   kspace_snr_threshold: 3.0
-  fit_offset: false
+  fit_offset: true
   background_subtraction_method: correlation
-  gradient_correction: true
+  gradient_correction: false
   mask_center_pixel: true
   window_size:
   - - 128
@@ -1317,44 +1312,47 @@ ensemble_piv:
   - 1
   - 2
   - 3
-  store_planes: true
-  save_diagnostics: true
+  store_planes: false
+  save_diagnostics: false
   sum_window:
   - 16
   - 16
   sum_fitting_window_enabled: true
   sum_fitting_window:
-  - 32
-  - 32
+  - 16
+  - 16
   resume_from_pass: 0
+  predictor_smoothing: false
+  predictor_boundary_conditions: []
+  persist_images: false
   window_type: square
 calibration:
-  image_format: planar_calibration_plate_%02d.tif
-  num_images: 19
+  image_format: calib_%02d.tif
+  num_images: 1
   image_type: standard
   zero_based_indexing: false
   use_camera_subfolders: false
   calibration_sources: []
-  camera_subfolders:
-  - Cam1
-  - Cam2
-  active: dotboard
+  camera_subfolders: []
+  global_coordinates:
+    enabled: false
+    datum_camera: 1
+    datum_pixel: null
+    datum_physical: [0.0, 0.0]
+    datum_frame: 1
+    overlap_pairs: []
+    invert_ux: false
+  active: scale_factor
   piv_type: instantaneous
   scale_factor:
-    dt: 0.56
-    px_per_mm: 3.41
+    dt: 1
+    px_per_mm: 1
     source_path_idx: 0
   dotboard:
     camera: 1
-    pattern_cols: 10
-    pattern_rows: 10
-    dot_spacing_mm: 12.22
-    asymmetric: false
-    grid_tolerance: 0.5
-    ransac_threshold: 3
-    dt: 0.0057553
+    dot_spacing_mm: 1
+    dt: 1
     source_path_idx: 0
-    image_index: 0
   charuco:
     camera: 1
     squares_h: 10
@@ -1363,45 +1361,22 @@ calibration:
     marker_ratio: 0.5
     aruco_dict: DICT_4X4_1000
     min_corners: 6
-    dt: 0.0057553
+    dt: 1
     source_path_idx: 0
-    file_pattern: '*.tif'
   stereo_dotboard:
     camera_pair:
     - 1
     - 2
     pattern_cols: 10
     pattern_rows: 10
-    dot_spacing_mm: 12.2222
-    asymmetric: false
-    dt: 0.0057553
+    dot_spacing_mm: 1
+    dt: 1
     stereo_model_type: dotboard
   polynomial:
     xml_path: ''
     use_xml: true
-    dt: 0.0057553
+    dt: 1
     source_path_idx: 0
-    cameras:
-      1:
-        origin:
-          x: 0.0
-          y: 0.0
-        normalisation:
-          nx: 512.0
-          ny: 384.0
-        mm_per_pixel: 0.0
-        coefficients_x: []
-        coefficients_y: []
-      2:
-        origin:
-          x: 0.0
-          y: 0.0
-        normalisation:
-          nx: 512.0
-          ny: 384.0
-        mm_per_pixel: 0.0
-        coefficients_x: []
-        coefficients_y: []
   stereo_charuco:
     camera_pair:
     - 1
@@ -1412,7 +1387,7 @@ calibration:
     marker_ratio: 0.5
     aruco_dict: DICT_4X4_1000
     min_corners: 6
-    dt: 0.0057553
+    dt: 1
 filters: []
 masking:
   enabled: false
@@ -1425,15 +1400,12 @@ masking:
     left: 0
     right: 0
 merging:
-  type_name: ensemble
+  type_name: instantaneous
   base_path_idx: 0
 transforms:
   base_path_idx: 0
-  type_name: ensemble
-  cameras:
-    1:
-      operations:
-      - rotate_90_cw
+  type_name: instantaneous
+  cameras: {}
   source_endpoint: regular
 
 """

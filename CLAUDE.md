@@ -698,7 +698,8 @@ Defines available image filter types and their parameter schemas for the UI.
 - **`Calibration.tsx`** - Calibration method selector (tabs for each method).
 - **`ScaleFactorCalibration.tsx`** / `DotboardCalibration.tsx` / `ChArUcoCalibration.tsx` / `PolynomialCalibration.tsx` / `StereoCalibration.tsx` / `StereoCharucoCalibration.tsx` - Method-specific calibration UIs.
 - **`Masking.tsx`** - Mask configuration + polygon editor.
-- **`InstantaneousPIV.tsx`** / `EnsemblePIV.tsx` - PIV processing parameter panels (window sizes, passes, overlap).
+- **`InstantaneousPIV.tsx`** - Instantaneous PIV settings: multi-pass table, peak finder, predictor & peak settings (predictor_smoothing, secondary_peak, num_peaks), outlier detection, infilling, performance.
+- **`EnsemblePIV.tsx`** - Ensemble PIV settings: multi-pass table, ensemble options (fit_method, background_subtraction, gradient_correction, kspace_snr_threshold), predictor & boundary settings (predictor_smoothing, interpolation, image_warp_interpolation, boundary conditions), correlation & fitting (fit_offset, mask_center_pixel, persist_images, sum_fitting_window), peak finder, outlier detection, infilling, performance.
 - **`RunPIV.tsx`** - PIV execution controls with progress monitoring.
 - **`POD.tsx`** - Proper Orthogonal Decomposition settings.
 - **`ValidationAlert.tsx`** - Shows file validation results.
@@ -709,7 +710,8 @@ Defines available image filter types and their parameter schemas for the UI.
 - **`DataSourceToggle.tsx`** - Calibrated/uncalibrated/merged/stereo data source selector.
 - **`OutlierDetectionSettings.tsx`** - Outlier detection parameter UI.
 - **`InfillingSettings.tsx`** - Vector infilling parameter UI.
-- **`PerformanceSettings.tsx`** - Dask/threading performance settings.
+- **`PerformanceSettings.tsx`** - Dask/threading performance settings (threads, workers, memory, max in-flight tasks, dashboard toggle).
+- **`BoundaryConditionEditor.tsx`** - Array editor for ensemble predictor wall boundary conditions.
 - **`FilterComponents.tsx`** - Dynamic filter chain UI (uses filterDefinitions).
 - **`PolygonMaskEditor.tsx`** - Interactive polygon drawing on image canvas.
 
@@ -840,9 +842,7 @@ Extends ensemble PIV to stereo setups, computing 3D velocity + 6 Reynolds stress
 
 **Diagnostics:** `stereo_ensemble_store_planes` saves correlation planes per pass. `stereo_ensemble_save_diagnostics` saves dewarped images. Both fall back to ensemble equivalents.
 
-### K-Space Transfer Function Fitting [BETA]
-
-> **WARNING: K-space fitting is BETA. Experimental — API may change.**
+### K-Space Transfer Function Fitting
 
 Alternative to Levenberg-Marquardt Gaussian fitting. Works in Fourier domain: `T(k) = F(R_AB) / sqrt(F(R_AA) * F(R_BB))` — particle shape cancels, reducing 16 → 6 parameters. Pure Python/NumPy/SciPy (~50-100x slower per window than C Gaussian, but only ~25% total runtime impact). Improves Reynolds stress accuracy by 40-90%.
 
@@ -1112,7 +1112,7 @@ Both `cpu_instantaneous.py` and `cpu_ensemble.py` use `cv2.setNumThreads(1)` + c
 | `overlap` | `ensemble_overlaps` | With validation and broadcast |
 | `type` | `ensemble_type` | List of `"std"` or `"single"` per pass |
 | `sum_window` | `ensemble_sum_window` | `[h,w]` for single mode |
-| `fit_method` | `ensemble_fit_method` | `"gaussian"` or `"kspace"` [BETA] |
+| `fit_method` | `ensemble_fit_method` | `"gaussian"` or `"kspace"` |
 | `background_subtraction_method` | `ensemble_background_subtraction_method` | `"correlation"` or `"image"` |
 | `gradient_correction` | `ensemble_gradient_correction` | Reynolds stress gradient correction |
 | `resume_from_pass` | `ensemble_resume_from_pass` | 1-based pass to resume (0=fresh start) |
@@ -1190,7 +1190,7 @@ After velocity outlier detection + infilling, runs stress-specific quality check
   │  page.tsx ──┬─► PathsConfig ──► useConfigUpdate     │    │   (FFTW wisdom)      │
   │             ├─► ImageConfig                         │    └──────────────────────┘
   │             ├─► Calibration ──► use*Calibration      │
-  │             ├─► Masking ─────► useMaskingConfig      │   [B] = BETA feature
+  │             ├─► Masking ─────► useMaskingConfig      │
   │             ├─► InstPIV ─────► useInstPivConfig      │
   │             ├─► EnsemblePIV ─► useEnsemblePivConfig  │
   │             ├─► RunPIV ──────► usePivRunner           │
@@ -1340,12 +1340,17 @@ Benchmark scripts compare PIVTOOLs output against ground truth (DNS data).
 ## Gotchas & Common Pitfalls
 
 ### Config & Data
+- **Three-layer default alignment:** Every config field has a default in three places: (1) CLI template `create_default_config()` in `cli.py`, (2) `config.py` `.get()` fallbacks in property methods, (3) frontend `??`/`||` fallbacks in components. All three MUST agree. When adding a new setting, update all three layers.
+- **CLI template is minimal:** `create_default_config()` produces a neutral config with no experiment-specific presets (dt=1, scale=1, simplest calibration method `scale_factor`). All calibration consumers use `.get()` with defaults, so optional fields (e.g. `asymmetric`, `grid_tolerance`, `ransac_threshold`) need not appear in the template.
+- **Statistics canonical names only:** The CLI template and frontend use only canonical method names (`mean_velocity`, `mean_stresses`, `inst_stresses`, etc.). Legacy names (`reynolds_stress`, `normal_stress`, `inst_fluctuations`) are auto-migrated by `statistics_enabled_methods` property in config.py — never add legacy names to new code.
 - `config.py` is very large (~2600 lines) — read in chunks
+- **Config properties must be crash-safe:** Always use `self.data.get("section", {}).get("key", default)` — never `self.data["section"]["key"]`. Minimal configs may be missing entire sections.
 - `image_format` is always a tuple, even for single format
 - `camera_folder()` in utils.py is DEPRECATED — use `config.get_camera_folder()`
 - `zero_based_indexing` exists in TWO places: images (now `start_index`) and calibration (unchanged)
 - `time_resolved` exists in TWO places: images (now stride-based) and `instantaneous_piv` (unchanged)
 - Config sync to backend is async — hooks that read config for type_name/source_endpoint may see stale values; pass directly instead
+- **`updateConfig` shallow merge:** `page.tsx`'s `updateConfig(path, value)` does a shallow merge when both old and new values at the target path are plain objects. This matches the backend's `recursive_update()` behavior. Without this, hooks like `useEnsemblePivConfig` that call `updateConfig(['ensemble_piv'], partialPayload)` would replace the entire section, wiping keys they don't manage (e.g., `fit_method`, `gradient_correction`). New settings added directly to components (not through hooks) are safe because they use leaf-level paths like `['ensemble_piv', 'fit_method']`.
 - **Mixed dict key types in jsonify:** Flask's `jsonify()` calls `json.dumps(sort_keys=True)` which raises `TypeError` when dict has both int and str keys. Always use `str(camera_num)` as keys.
 - **Statistics config legacy keys:** Backend defaults were `reynolds_stress`/`normal_stress`/`inst_fluctuations` but frontend `ALL_STAT_KEYS` uses `mean_stresses`/`inst_stresses`/`mean_peak_height`. Fixed with migration in `statistics_enabled_methods` property.
 - **Calibration source change resets GC fields:** When `calibration_sources` changes in `update_config`, pixel-dependent global coordinate fields (`datum_pixel`, `overlap_points`, `overlap_pairs`, `invert_ux`, `datum_camera`) are auto-reset. User-intent fields (`enabled`, `datum_physical`, `datum_frame`) are preserved. Guard: no reset on first-time setup (empty → populated).
@@ -1362,7 +1367,7 @@ Benchmark scripts compare PIVTOOLs output against ground truth (DNS data).
 ### Backend Processing
 - `gc.collect()` on Dask workers causes SIGSEGV (FFTW conflict) — only GC on client
 - `interp2custom.c` uses column-major indexing (unlike all other C code)
-- K-space fitting is BETA — experimental, may change
+- K-space fitting is pure Python (~50-100x slower per window than C Gaussian, ~25% total runtime impact)
 - **`coordinates.mat` race condition:** `transform_all_frames()` transforms coordinates once per camera then must pass `None` (not `coords_file`) to parallel workers. Workers re-reading and re-saving causes double-transform and Windows "Access is denied".
 - **`invert_ux`/`invert_uy` UV_stress signs:** When negating only one velocity component, UV_stress must also be negated: `(-u')v' = -(u'v')`. But `invert_ux_uy` leaves UV_stress unchanged. Uses XOR logic.
 - **Batch transform frame count:** Source frame was already processed but excluded from `total_frames_to_process`. Fix: add 1 and start `processed_frames` at 1.
