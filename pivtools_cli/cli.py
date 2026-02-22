@@ -979,7 +979,7 @@ def statistics_command(args):
                         gamma_radius=gamma_radius,
                         config=config,
                     )
-                result = processor.process()
+                result = processor.process(requested_statistics=config.statistics_enabled_list)
                 result["path_idx"] = path_idx
                 result["target"] = label
                 results.append(result)
