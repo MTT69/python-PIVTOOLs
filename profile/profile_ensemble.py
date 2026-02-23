@@ -233,12 +233,13 @@ def print_results(pass_timings: list, config: Config, label: str, n_pairs: int, 
 
         sections = [
             ("correlation", pt["correlation"]),
-            ("  warping", pt.get("warping", 0)),
+            ("  predictor_corrector", pt.get("predictor_corrector", 0)),
             ("  xcorr (3x C lib)", pt.get("xcorr", 0)),
             ("finalize", pt["finalize"]),
             ("  bg_subtraction", pt.get("bg_subtraction", 0)),
             ("  fitting", pt.get("fitting", 0)),
-            ("  outlier+infill", pt.get("outlier_infill", 0)),
+            ("  outlier_detection", pt.get("outlier_detection", 0)),
+            ("  infilling", pt.get("infilling", 0)),
         ]
 
         for name, elapsed in sections:
@@ -357,9 +358,9 @@ def run_profile(
     try:
         for pass_idx in range(len(window_sizes)):
             timing = {
-                "correlation": 0, "warping": 0, "xcorr": 0,
+                "correlation": 0, "predictor_corrector": 0, "xcorr": 0,
                 "finalize": 0, "bg_subtraction": 0, "fitting": 0,
-                "outlier_infill": 0, "total": 0,
+                "outlier_detection": 0, "infilling": 0, "total": 0,
             }
 
             # Reset profiling data for this pass
@@ -391,7 +392,7 @@ def run_profile(
             # Collect sub-section timings from correlator (accumulated across batches)
             corr_profile = correlator.get_profile_summary()
             if pass_idx in corr_profile:
-                timing["warping"] = corr_profile[pass_idx].get("warping", 0)
+                timing["predictor_corrector"] = corr_profile[pass_idx].get("predictor_corrector", 0)
                 timing["xcorr"] = corr_profile[pass_idx].get("xcorr", 0)
 
             # Phase 2: Finalization (fitting + outlier + infill)
@@ -408,7 +409,8 @@ def run_profile(
             if pass_idx in accum_profile:
                 timing["bg_subtraction"] = accum_profile[pass_idx].get("bg_subtraction", 0)
                 timing["fitting"] = accum_profile[pass_idx].get("fitting", 0)
-                timing["outlier_infill"] = accum_profile[pass_idx].get("outlier_infill", 0)
+                timing["outlier_detection"] = accum_profile[pass_idx].get("outlier_detection", 0)
+                timing["infilling"] = accum_profile[pass_idx].get("infilling", 0)
 
             # Extract predictor for next pass
             if pass_idx < len(window_sizes) - 1:
@@ -418,10 +420,10 @@ def run_profile(
             pass_timings.append(timing)
 
             print(f"    correlation: {timing['correlation']:.2f}s "
-                  f"(warp={timing['warping']:.2f}s, xcorr={timing['xcorr']:.2f}s)")
+                  f"(pc={timing['predictor_corrector']:.2f}s, xcorr={timing['xcorr']:.2f}s)")
             print(f"    finalize:    {timing['finalize']:.2f}s "
                   f"(bg={timing['bg_subtraction']:.2f}s, fit={timing['fitting']:.2f}s, "
-                  f"outlier={timing['outlier_infill']:.2f}s)")
+                  f"outlier={timing['outlier_detection']:.2f}s, infill={timing['infilling']:.2f}s)")
 
             # Cleanup between passes
             accumulator.clear_pass_data(pass_idx)

@@ -1,8 +1,8 @@
 paths:
   base_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images\validation_4000
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images\validation_4000_noisy
   source_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images_reduced_22k\noisy
   active_paths:
   - 0
   camera_numbers:
@@ -38,20 +38,17 @@ processing:
   auto_compute_params: false
   omp_threads: 7
   dask_workers_per_node: 3
-  dask_memory_limit: 14GB
-  dask_max_in_flight_per_worker: 3
+  dask_memory_limit: 15GB
+  dask_max_in_flight_per_worker: 2
   open_dashboard: true
   always_batch: true
-  instantaneous: true
-  ensemble: false
+  instantaneous: false
+  ensemble: true
 outlier_detection:
   enabled: true
   methods:
-  - threshold: 0.2
+  - threshold: 0.25
     type: peak_mag
-  - epsilon: 0.2
-    threshold: 2
-    type: median_2d
 infilling:
   mid_pass:
     method: biharmonic
@@ -65,9 +62,8 @@ ensemble_outlier_detection:
   methods: []
 ensemble_infilling:
   mid_pass:
-    method: local_median
-    parameters:
-      ksize: 7
+    method: biharmnonic
+    parameters: {}
   final_pass:
     enabled: true
     method: biharmonic
@@ -83,7 +79,7 @@ video:
   data_source: calibrated
   variable: ux
   run: 2
-  piv_type: instantaneous
+  piv_type: ensemble
   cmap: jet
   lower: ''
   upper: ''
@@ -112,10 +108,10 @@ statistics:
     inst_gamma: false
     mean_stresses: true
     inst_stresses: false
-    mean_peak_height: false
+    mean_peak_height: true
   gamma_radius: 4
   save_figures: true
-  type_name: instantaneous
+  type_name: ensemble
   source_endpoint: regular
 instantaneous_piv:
   window_size:
@@ -123,11 +119,15 @@ instantaneous_piv:
     - 64
   - - 32
     - 32
+  - - 16
+    - 16
   overlap:
+  - 50
   - 50
   - 50
   runs:
   - 2
+  - 3
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
@@ -143,7 +143,7 @@ ensemble_piv:
   image_warp_interpolation: cubic
   predictor_interpolation: cubic
   kspace_snr_threshold: 3.0
-  fit_offset: falses
+  fit_offset: false
   mask_center_pixel: true
   background_subtraction_method: correlation
   window_size:
@@ -152,9 +152,9 @@ ensemble_piv:
   - - 32
     - 32
   - - 16
-    - 16
+    - 24
   - - 8
-    - 16
+    - 24
   overlap:
   - 75
   - 50
@@ -162,7 +162,7 @@ ensemble_piv:
   - 50
   type:
   - std
-  - std
+  - single
   - single
   - single
   runs:
@@ -221,7 +221,8 @@ calibration:
     overlap_points: []
     invert_ux: false
     overlap_pairs: []
-filters: []
+filters:
+- type: time
 masking:
   enabled: false
   mask_file_pattern: mask_Cam%d.mat
@@ -233,12 +234,12 @@ masking:
     left: 0
     right: 0
 merging:
-  type_name: instantaneous
+  type_name: ensemble
   base_path_idx: 0
   cameras: null
 transforms:
   base_path_idx: 0
-  type_name: instantaneous
+  type_name: ensemble
   cameras:
     1:
       operations: []

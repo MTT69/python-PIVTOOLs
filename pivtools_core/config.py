@@ -2817,7 +2817,16 @@ video:
         
         # Clear any existing handlers to avoid duplicates
         root_logger.handlers.clear()
-        
+
+        # Suppress harmless CancelledError noise from Bokeh/Tornado WebSocket cleanup.
+        # These fire when a browser tab closes while Bokeh is mid-write.
+        class _CancelledErrorFilter(logging.Filter):
+            def filter(self, record):
+                msg = record.getMessage()
+                return "CancelledError" not in msg or "Exception in callback" not in msg
+
+        root_logger.addFilter(_CancelledErrorFilter())
+
         # Add file handler
         file_handler = logging.FileHandler(self.log_file)
         file_handler.setLevel(log_level)

@@ -660,7 +660,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             image_b_stack = images[:, 1, :, :].astype(np.float32, copy=False)
 
             # Warp images if predictor field is provided (pass > 0)
-            with self._profile_section(pass_idx, "warping"):
+            with self._profile_section(pass_idx, "predictor_corrector"):
                 if pass_idx > 0:
                     if predictor_field is None:
                         logging.warning(
@@ -681,35 +681,37 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                         if vector_mask is not None:
                             smoothed_predictor[vector_mask] = 0
 
-                if predictor_field is not None and pass_idx > 0:
-                    images_a_prime, images_b_prime = self._get_image_prime_batch(
-                        image_a_stack, image_b_stack, im_mesh_A, im_mesh_B
-                    )
-                else:
-                    # No warping for pass 0
-                    images_a_prime = image_a_stack
-                    images_b_prime = image_b_stack
-
+                with self._profile_section(pass_idx, "pc_image_warp"):
+                    if predictor_field is not None and pass_idx > 0:
+                        images_a_prime, images_b_prime = self._get_image_prime_batch(
+                            image_a_stack, image_b_stack, im_mesh_A, im_mesh_B
+                        )
+                    else:
+                        # No warping for pass 0
+                        images_a_prime = image_a_stack
+                        images_b_prime = image_b_stack
 
             # Compute warp sums BEFORE padding (for accumulation in original image space)
             # This ensures warp sums have shape (H, W) not (H_padded, W_padded)
-            warp_A_sum = images_a_prime.sum(axis=0)
-            warp_B_sum = images_b_prime.sum(axis=0)
+            with self._profile_section(pass_idx, "warp_sum"):
+                warp_A_sum = images_a_prime.sum(axis=0)
+                warp_B_sum = images_b_prime.sum(axis=0)
             logging.debug(f"Pass {pass_idx}: warp_A_sum shape {warp_A_sum.shape} (expected {H}x{W})")
 
-                # Apply padding for single mode (for correlation only)
-            if is_single_mode:
-                sum_window = tuple(config.ensemble_sum_window)
-                images_a_prime, _ = apply_single_mode_padding(
-                        images_a_prime, win_size, sum_window, pad_value=0.0
-                    )
-                images_b_prime, _ = apply_single_mode_padding(
-                        images_b_prime, win_size, sum_window, pad_value=0.0
-                    )
-                H_padded, W_padded = images_a_prime.shape[-2:]
-                image_size = np.ascontiguousarray(np.array([H_padded, W_padded], dtype=np.int32))
-            else:
-                image_size = np.ascontiguousarray(np.array([H, W], dtype=np.int32))
+            # Apply padding for single mode (for correlation only)
+            with self._profile_section(pass_idx, "single_mode_padding"):
+                if is_single_mode:
+                    sum_window = tuple(config.ensemble_sum_window)
+                    images_a_prime, _ = apply_single_mode_padding(
+                            images_a_prime, win_size, sum_window, pad_value=0.0
+                        )
+                    images_b_prime, _ = apply_single_mode_padding(
+                            images_b_prime, win_size, sum_window, pad_value=0.0
+                        )
+                    H_padded, W_padded = images_a_prime.shape[-2:]
+                    image_size = np.ascontiguousarray(np.array([H_padded, W_padded], dtype=np.int32))
+                else:
+                    image_size = np.ascontiguousarray(np.array([H, W], dtype=np.int32))
 
         except Exception as e:
             logging.error("Error preprocessing image: %s", e)
@@ -729,27 +731,30 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
 
             # Cross-correlation AB, AA, BB (accumulates internally)
             with self._profile_section(pass_idx, "xcorr"):
-                error_code_AB = self._run_correlation_accumulate(
-                    images_a_prime, images_b_prime,
-                    self.win_weights_A[pass_idx], self.win_weights_B[pass_idx],
-                    b_mask, pass_idx, correl_AB_sum
-                )
+                with self._profile_section(pass_idx, "xcorr_AB"):
+                    error_code_AB = self._run_correlation_accumulate(
+                        images_a_prime, images_b_prime,
+                        self.win_weights_A[pass_idx], self.win_weights_B[pass_idx],
+                        b_mask, pass_idx, correl_AB_sum
+                    )
 
                 # Auto-correlation AA - use full weights (weight_B) on both sides
                 logging.debug(f"AA weights: min={self.win_weights_B[pass_idx].min():.4f}, max={self.win_weights_B[pass_idx].max():.4f}, shape={self.win_weights_B[pass_idx].shape}, sum={self.win_weights_B[pass_idx].sum():.1f}")
-                error_code_AA = self._run_correlation_accumulate(
-                    images_a_prime, images_a_prime,
-                    self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
-                    b_mask, pass_idx, correl_AA_sum
-                )
+                with self._profile_section(pass_idx, "xcorr_AA"):
+                    error_code_AA = self._run_correlation_accumulate(
+                        images_a_prime, images_a_prime,
+                        self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
+                        b_mask, pass_idx, correl_AA_sum
+                    )
 
                 # Auto-correlation BB
                 logging.debug(f"BB weights: min={self.win_weights_B[pass_idx].min():.4f}, max={self.win_weights_B[pass_idx].max():.4f}, shape={self.win_weights_B[pass_idx].shape}, sum={self.win_weights_B[pass_idx].sum():.1f}")
-                error_code_BB = self._run_correlation_accumulate(
-                    images_b_prime, images_b_prime,
-                    self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
-                    b_mask, pass_idx, correl_BB_sum
-                )
+                with self._profile_section(pass_idx, "xcorr_BB"):
+                    error_code_BB = self._run_correlation_accumulate(
+                        images_b_prime, images_b_prime,
+                        self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
+                        b_mask, pass_idx, correl_BB_sum
+                    )
 
             # Reshape to (windows, corr_h, corr_w) for downstream processing
             correl_AA_sum = correl_AA_sum.reshape(total_windows, corr_size[0], corr_size[1])
@@ -767,26 +772,28 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         # Copy buffers before returning - required because pre-allocated buffers
         # may be reused by subsequent correlation tasks before Dask finishes
         # serializing this result for network transfer
-        return {
-            "corr_AA_sum": correl_AA_sum.copy(),
-            "corr_BB_sum": correl_BB_sum.copy(),
-            "corr_AB_sum": correl_AB_sum.copy(),
-            "warp_A_sum": warp_A_sum.copy(),
-            "warp_B_sum": warp_B_sum.copy(),
-            "n_images": N,
-            "n_win_x": n_win_x,
-            "n_win_y": n_win_y,
-            "smoothed_predictor": smoothed_predictor,  # For pass > 0
-            "padded_predictor": self.delta_ab_old.copy() if pass_idx > 0 else None,
-            "vector_mask": vector_mask,
-            # Padding values for predictor field - used in finalize_pass to store
-            # PADDED predictor matching instantaneous mode format
-            "n_pre": self.n_pre_all[pass_idx],
-            "n_post": self.n_post_all[pass_idx],
-            # First-pair warped images for diagnostic comparison (only from first batch)
-            "first_pair_A": images_a_prime[0].copy() if is_first_batch else None,
-            "first_pair_B": images_b_prime[0].copy() if is_first_batch else None,
-        }
+        with self._profile_section(pass_idx, "result_copy"):
+            result = {
+                "corr_AA_sum": correl_AA_sum.copy(),
+                "corr_BB_sum": correl_BB_sum.copy(),
+                "corr_AB_sum": correl_AB_sum.copy(),
+                "warp_A_sum": warp_A_sum.copy(),
+                "warp_B_sum": warp_B_sum.copy(),
+                "n_images": N,
+                "n_win_x": n_win_x,
+                "n_win_y": n_win_y,
+                "smoothed_predictor": smoothed_predictor,  # For pass > 0
+                "padded_predictor": self.delta_ab_old.copy() if pass_idx > 0 else None,
+                "vector_mask": vector_mask,
+                # Padding values for predictor field - used in finalize_pass to store
+                # PADDED predictor matching instantaneous mode format
+                "n_pre": self.n_pre_all[pass_idx],
+                "n_post": self.n_post_all[pass_idx],
+                # First-pair warped images for diagnostic comparison (only from first batch)
+                "first_pair_A": images_a_prime[0].copy() if is_first_batch else None,
+                "first_pair_B": images_b_prime[0].copy() if is_first_batch else None,
+            }
+        return result
 
     def compute_warp_sums_only(
         self,
@@ -1289,22 +1296,23 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         delta_ab_pred = np.zeros((n_win_y, n_win_x, 2), dtype=np.float32)
 
         # Smooth predictor field (configurable — disable for ensemble to preserve wall gradients)
-        if self.config.ensemble_predictor_smoothing:
-            self.delta_ab_old[..., 0] = gaussian_filter(
-                predictor_field[..., 0],
-                sigma=self.sd[pass_idx],
-                truncate=(self.ksize_filt[pass_idx][0] - 1) / (2 * self.sd[pass_idx]),
-                mode="nearest",
-            )
-            self.delta_ab_old[..., 1] = gaussian_filter(
-                predictor_field[..., 1],
-                sigma=self.sd[pass_idx],
-                truncate=(self.ksize_filt[pass_idx][0] - 1) / (2 * self.sd[pass_idx]),
-                mode="nearest",
-            )
-        else:
-            self.delta_ab_old[..., 0] = predictor_field[..., 0]
-            self.delta_ab_old[..., 1] = predictor_field[..., 1]
+        with self._profile_section(pass_idx, "pc_gaussian_smooth"):
+            if self.config.ensemble_predictor_smoothing:
+                self.delta_ab_old[..., 0] = gaussian_filter(
+                    predictor_field[..., 0],
+                    sigma=self.sd[pass_idx],
+                    truncate=(self.ksize_filt[pass_idx][0] - 1) / (2 * self.sd[pass_idx]),
+                    mode="nearest",
+                )
+                self.delta_ab_old[..., 1] = gaussian_filter(
+                    predictor_field[..., 1],
+                    sigma=self.sd[pass_idx],
+                    truncate=(self.ksize_filt[pass_idx][0] - 1) / (2 * self.sd[pass_idx]),
+                    mode="nearest",
+                )
+            else:
+                self.delta_ab_old[..., 0] = predictor_field[..., 0]
+                self.delta_ab_old[..., 1] = predictor_field[..., 1]
 
         # DEBUG: Log smoothed predictor edge values
         if pass_idx > 0:
@@ -1324,20 +1332,21 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         interp_method = getattr(self.config, 'ensemble_predictor_interpolation', 'cubic')
         interp_flag = self.INTERP_FLAGS.get(interp_method, cv2.INTER_CUBIC)
 
-        self.delta_ab_dense = np.zeros((self.H, self.W, 2), dtype=np.float32)
-        map_x_2d, map_y_2d = self.cached_dense_maps[pass_idx]
+        with self._profile_section(pass_idx, "pc_dense_remap"):
+            self.delta_ab_dense = np.zeros((self.H, self.W, 2), dtype=np.float32)
+            map_x_2d, map_y_2d = self.cached_dense_maps[pass_idx]
 
-        if map_x_2d is None or map_y_2d is None:
-            raise ValueError(f"Dense interpolation maps missing for pass {pass_idx}")
+            if map_x_2d is None or map_y_2d is None:
+                raise ValueError(f"Dense interpolation maps missing for pass {pass_idx}")
 
-        for d in range(2):
-            self.delta_ab_dense[..., d] = cv2.remap(
-                self.delta_ab_old[..., d].astype(np.float32),
-                map_x_2d,
-                map_y_2d,
-                interp_flag,
-                borderMode=cv2.BORDER_REPLICATE,
-            )
+            for d in range(2):
+                self.delta_ab_dense[..., d] = cv2.remap(
+                    self.delta_ab_old[..., d].astype(np.float32),
+                    map_x_2d,
+                    map_y_2d,
+                    interp_flag,
+                    borderMode=cv2.BORDER_REPLICATE,
+                )
 
         # DEBUG: Log dense remap edge values and check for zeros at edges
         if pass_idx > 0:
@@ -1359,18 +1368,19 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 f"BR=({self.delta_ab_dense[-1,-1,0]:.4f},{self.delta_ab_dense[-1,-1,1]:.4f})"
             )
 
-        map_x, map_y = self.cached_predictor_maps[pass_idx]
-        if map_x is None or map_y is None:
-            raise ValueError(f"Predictor interpolation maps missing for pass {pass_idx}")
+        with self._profile_section(pass_idx, "pc_predictor_remap"):
+            map_x, map_y = self.cached_predictor_maps[pass_idx]
+            if map_x is None or map_y is None:
+                raise ValueError(f"Predictor interpolation maps missing for pass {pass_idx}")
 
-        for d in range(2):
-            delta_ab_pred[..., d] = cv2.remap(
-                self.delta_ab_old[..., d],
-                map_x,
-                map_y,
-                interp_flag,
-                borderMode=cv2.BORDER_REPLICATE,
-            )
+            for d in range(2):
+                delta_ab_pred[..., d] = cv2.remap(
+                    self.delta_ab_old[..., d],
+                    map_x,
+                    map_y,
+                    interp_flag,
+                    borderMode=cv2.BORDER_REPLICATE,
+                )
 
         # DEBUG: Log predictor remap edge values
         if pass_idx > 0:
@@ -1385,10 +1395,11 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 f"{delta_ab_pred[delta_ab_pred.shape[0]//2, delta_ab_pred.shape[1]//2, 1]:.4f})"
             )
 
-        delta_0b = self.delta_ab_dense / 2
-        delta_0a = -self.delta_ab_dense / 2
-        im_mesh_A = self.im_mesh + delta_0a
-        im_mesh_B = self.im_mesh + delta_0b
+        with self._profile_section(pass_idx, "pc_mesh_construction"):
+            delta_0b = self.delta_ab_dense / 2
+            delta_0a = -self.delta_ab_dense / 2
+            im_mesh_A = self.im_mesh + delta_0a
+            im_mesh_B = self.im_mesh + delta_0b
 
         return im_mesh_A, im_mesh_B, delta_ab_pred
 def plot_corr_planes(corr_avg_flat, n_win_y, n_win_x, win_h, win_w, pass_idx):

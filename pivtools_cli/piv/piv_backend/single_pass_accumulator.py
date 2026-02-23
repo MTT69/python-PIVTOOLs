@@ -412,7 +412,7 @@ class SinglePassAccumulator:
         bg_method = getattr(self.config, 'ensemble_background_subtraction_method', 'correlation')
         skip_bg_subtraction = getattr(self.config, 'ensemble_skip_background_subtraction', False)
 
-        with self._profile_section(pass_idx, "bg_subtraction"):
+        with self._profile_section(pass_idx, "mean_computation"):
             # Step 1: Compute mean warped images (always needed for diagnostics/metadata)
             A_mean = pass_data["sum_warp_A"] / N
             B_mean = pass_data["sum_warp_B"] / N
@@ -507,52 +507,53 @@ class SinglePassAccumulator:
         # Step 5b: Normalize correlation planes by geometric mean of autocorrelation peaks
         # This improves the condition number of the stacked Gaussian solver
         # by ensuring all three planes have similar scale (~1.0 at peaks)
-        AA_3d = R_AA_ensemble.reshape(total_windows, corr_size[0], corr_size[1])
-        BB_3d = R_BB_ensemble.reshape(total_windows, corr_size[0], corr_size[1])
-        AB_3d = R_AB_ensemble.reshape(total_windows, corr_size[0], corr_size[1])
+        with self._profile_section(pass_idx, "normalization"):
+            AA_3d = R_AA_ensemble.reshape(total_windows, corr_size[0], corr_size[1])
+            BB_3d = R_BB_ensemble.reshape(total_windows, corr_size[0], corr_size[1])
+            AB_3d = R_AB_ensemble.reshape(total_windows, corr_size[0], corr_size[1])
 
-        # Central index (autocorrelation peak is at center)
-        center_y, center_x = corr_size[0] // 2, corr_size[1] // 2
+            # Central index (autocorrelation peak is at center)
+            center_y, center_x = corr_size[0] // 2, corr_size[1] // 2
 
-        # Extract central peak values for each window
-        AA_peaks = AA_3d[:, center_y, center_x]
-        BB_peaks = BB_3d[:, center_y, center_x]
+            # Extract central peak values for each window
+            AA_peaks = AA_3d[:, center_y, center_x]
+            BB_peaks = BB_3d[:, center_y, center_x]
 
-        # Geometric mean with safety floor to avoid division by zero
-        norm_factors = np.sqrt(np.maximum(AA_peaks * BB_peaks, 1e-12))
+            # Geometric mean with safety floor to avoid division by zero
+            norm_factors = np.sqrt(np.maximum(AA_peaks * BB_peaks, 1e-12))
 
-        # Reshape for broadcasting: (n_windows, 1, 1)
-        norm_factors_3d = norm_factors[:, np.newaxis, np.newaxis]
+            # Reshape for broadcasting: (n_windows, 1, 1)
+            norm_factors_3d = norm_factors[:, np.newaxis, np.newaxis]
 
-        # For single mode, apply asymmetric window correction to AB
-        # AA/BB use weight_B (full sum_window) on both sides, so they scale with sum_window^2
-        # AB uses weight_A (particle window) × weight_B (sum_window), so it scales with
-        # particle_window × sum_window. The normalization by sqrt(AA*BB) over-corrects AB.
-        # We need to scale AB up by sqrt(sum_window_area / particle_window_area) to compensate.
-        runtype = self.config.ensemble_type[pass_idx]
-        if runtype == 'single':
-            sum_window = self.config.ensemble_sum_window
-            particle_window = win_size
-            sum_area = sum_window[0] * sum_window[1]
-            particle_area = particle_window[0] * particle_window[1]
-            # AB scales as sqrt(particle × sum), but norm_factors assumes sqrt(sum × sum)
-            # Correction factor: sqrt(sum_area / particle_area)
-            ab_scale_correction = np.sqrt(sum_area / particle_area)
-            logging.debug(
-                f"Pass {pass_idx + 1}: Single mode AB scale correction = {ab_scale_correction:.3f} "
-                f"(sum_window={sum_window}, particle_window={particle_window})"
-            )
-            AB_3d = AB_3d * ab_scale_correction
+            # For single mode, apply asymmetric window correction to AB
+            # AA/BB use weight_B (full sum_window) on both sides, so they scale with sum_window^2
+            # AB uses weight_A (particle window) × weight_B (sum_window), so it scales with
+            # particle_window × sum_window. The normalization by sqrt(AA*BB) over-corrects AB.
+            # We need to scale AB up by sqrt(sum_window_area / particle_window_area) to compensate.
+            runtype = self.config.ensemble_type[pass_idx]
+            if runtype == 'single':
+                sum_window = self.config.ensemble_sum_window
+                particle_window = win_size
+                sum_area = sum_window[0] * sum_window[1]
+                particle_area = particle_window[0] * particle_window[1]
+                # AB scales as sqrt(particle × sum), but norm_factors assumes sqrt(sum × sum)
+                # Correction factor: sqrt(sum_area / particle_area)
+                ab_scale_correction = np.sqrt(sum_area / particle_area)
+                logging.debug(
+                    f"Pass {pass_idx + 1}: Single mode AB scale correction = {ab_scale_correction:.3f} "
+                    f"(sum_window={sum_window}, particle_window={particle_window})"
+                )
+                AB_3d = AB_3d * ab_scale_correction
 
-        # Normalize all three planes
-        AA_3d_norm = AA_3d / norm_factors_3d
-        BB_3d_norm = BB_3d / norm_factors_3d
-        AB_3d_norm = AB_3d / norm_factors_3d
+            # Normalize all three planes
+            AA_3d_norm = AA_3d / norm_factors_3d
+            BB_3d_norm = BB_3d / norm_factors_3d
+            AB_3d_norm = AB_3d / norm_factors_3d
 
-        # Flatten back to original format
-        R_AA_ensemble = AA_3d_norm.reshape(-1).astype(np.float32)
-        R_BB_ensemble = BB_3d_norm.reshape(-1).astype(np.float32)
-        R_AB_ensemble = AB_3d_norm.reshape(-1).astype(np.float32)
+            # Flatten back to original format
+            R_AA_ensemble = AA_3d_norm.reshape(-1).astype(np.float32)
+            R_BB_ensemble = BB_3d_norm.reshape(-1).astype(np.float32)
+            R_AB_ensemble = AB_3d_norm.reshape(-1).astype(np.float32)
 
         logging.debug(
             f"Pass {pass_idx + 1}: Normalized planes by geometric mean "
@@ -569,16 +570,16 @@ class SinglePassAccumulator:
         )
 
         # Step 6: Perform distributed Gaussian fitting
-        _fitting_t0 = time.perf_counter() if self.profiling_enabled else 0
 
         # Get sigma values from previous pass (if applicable)
         # For pass 0: All None (sigmas computed from HWHM in _build_initial_guess)
         # For pass > 0: Interpolated from previous pass after outlier detection & infilling
         # Returns dict with keys: sig_AB_x, sig_AB_y, sig_AB_xy, sig_A_x, sig_A_y, sig_A_xy
-        sigma_dict = _get_sigma_from_previous_pass(
-            pass_idx, total_windows, self.config, temp_piv_results,
-            n_win_x, n_win_y
-        )
+        with self._profile_section(pass_idx, "sigma_propagation"):
+            sigma_dict = _get_sigma_from_previous_pass(
+                pass_idx, total_windows, self.config, temp_piv_results,
+                n_win_x, n_win_y
+            )
         logging.debug(f"Sigma dict: {sigma_dict}")
 
         # Flatten mask for fitting
@@ -607,98 +608,98 @@ class SinglePassAccumulator:
             logging.info(f"Pass {pass_idx + 1}: Starting K-space transfer function fitting...")
         else:
             logging.info(f"Pass {pass_idx + 1}: Starting OpenMP Gaussian fitting...")
-        n_workers = len(client.scheduler_info()['workers'])
-        workers = list(client.scheduler_info()["workers"].keys())
-        windows_per_worker = (total_windows + n_workers - 1) // n_workers
-        R_AA_futures = []
-        R_BB_futures = []
-        R_AB_futures = []
-        mask_flat_futures = []
-        sigma_dict_futures = [{} for _ in range(n_workers)]
-        for worker_idx in range(n_workers):
-            # Use corr_size (not win_size) for slicing - correlation planes are sized at SumWindow
-            start_idx = worker_idx * windows_per_worker * corr_size[0] * corr_size[1]
-            end_idx = min(
-                (worker_idx + 1) * windows_per_worker * corr_size[0] * corr_size[1],
-                R_AA_ensemble.size,
-            )
-            start_idx_win = worker_idx * windows_per_worker
-            end_idx_win = min(
-                (worker_idx + 1) * windows_per_worker,
-                total_windows,
-            )
 
-            R_AA_futures.append(client.scatter(
-                R_AA_ensemble[start_idx:end_idx],
-                broadcast=False,
-            ))
-            R_BB_futures.append(client.scatter(
-                R_BB_ensemble[start_idx:end_idx],
-                broadcast=False,
-            ))
-            R_AB_futures.append(client.scatter(
-                R_AB_ensemble[start_idx:end_idx],
-                broadcast=False,
-            ))
-            mask_flat_futures.append(client.scatter(
-                mask_flat[start_idx_win:end_idx_win],
-                broadcast=False,
-            ))
+        with self._profile_section(pass_idx, "scatter"):
+            n_workers = len(client.scheduler_info()['workers'])
+            workers = list(client.scheduler_info()["workers"].keys())
+            windows_per_worker = (total_windows + n_workers - 1) // n_workers
+            R_AA_futures = []
+            R_BB_futures = []
+            R_AB_futures = []
+            mask_flat_futures = []
+            sigma_dict_futures = [{} for _ in range(n_workers)]
+            for worker_idx in range(n_workers):
+                # Use corr_size (not win_size) for slicing - correlation planes are sized at SumWindow
+                start_idx = worker_idx * windows_per_worker * corr_size[0] * corr_size[1]
+                end_idx = min(
+                    (worker_idx + 1) * windows_per_worker * corr_size[0] * corr_size[1],
+                    R_AA_ensemble.size,
+                )
+                start_idx_win = worker_idx * windows_per_worker
+                end_idx_win = min(
+                    (worker_idx + 1) * windows_per_worker,
+                    total_windows,
+                )
 
-                    
-                
-            for k, v in sigma_dict.items():
-                if v is not None:
-                    sigma_dict_futures[worker_idx][k]=client.scatter(
-                        v[start_idx_win:end_idx_win],
-                        broadcast=False,
-                    )
-                    logging.debug(f"Worker {worker_idx}: sigma_dict[{k}] shape: {v.shape}")
-                else:
-                    sigma_dict_futures[worker_idx][k]=None
+                R_AA_futures.append(client.scatter(
+                    R_AA_ensemble[start_idx:end_idx],
+                    broadcast=False,
+                ))
+                R_BB_futures.append(client.scatter(
+                    R_BB_ensemble[start_idx:end_idx],
+                    broadcast=False,
+                ))
+                R_AB_futures.append(client.scatter(
+                    R_AB_ensemble[start_idx:end_idx],
+                    broadcast=False,
+                ))
+                mask_flat_futures.append(client.scatter(
+                    mask_flat[start_idx_win:end_idx_win],
+                    broadcast=False,
+                ))
 
+                for k, v in sigma_dict.items():
+                    if v is not None:
+                        sigma_dict_futures[worker_idx][k]=client.scatter(
+                            v[start_idx_win:end_idx_win],
+                            broadcast=False,
+                        )
+                        logging.debug(f"Worker {worker_idx}: sigma_dict[{k}] shape: {v.shape}")
+                    else:
+                        sigma_dict_futures[worker_idx][k]=None
 
         # Choose fitting method based on config
-        fit_method = self.config.ensemble_fit_method
+        with self._profile_section(pass_idx, "fitting"):
+            fit_method = self.config.ensemble_fit_method
 
-        if fit_method == "kspace":
-            # K-space transfer function fitting
-            from pivtools_cli.piv.piv_backend.kspace_fitting import fit_windows_kspace
-            futures = [
-                client.submit(
-                    fit_windows_kspace,
-                    R_AA_futures[i],
-                    R_BB_futures[i],
-                    R_AB_futures[i],
-                    mask_flat_futures[i],
-                    corr_size,
-                    self.config,
-                    pass_idx,
-                    self.config.ensemble_kspace_snr_threshold,
-                    self.config.ensemble_kspace_soft_weighting,  # True for anisotropic soft decay
-                    self.config.debug,  # Enable k-space diagnostics when debug=True
-                ) for i in range(len(R_AA_futures))
-            ]
-        else:
-            # Default: Gaussian fitting (Levenberg-Marquardt)
-            from pivtools_cli.piv.piv_backend.gaussian_fitting import fit_windows_openmp
-            futures = [
-                client.submit(
-                    fit_windows_openmp,
-                    R_AA_futures[i],
-                    R_BB_futures[i],
-                    R_AB_futures[i],
-                    mask_flat_futures[i],
-                    sigma_dict_futures[i],
-                    corr_size,
-                    self.config,
-                    pass_idx,
-                    None,  # num_threads (use default)
-                    self.config.ensemble_fit_offset,  # Pass fit_offset to worker
-                ) for i in range(len(R_AA_futures))
-            ]
+            if fit_method == "kspace":
+                # K-space transfer function fitting
+                from pivtools_cli.piv.piv_backend.kspace_fitting import fit_windows_kspace
+                futures = [
+                    client.submit(
+                        fit_windows_kspace,
+                        R_AA_futures[i],
+                        R_BB_futures[i],
+                        R_AB_futures[i],
+                        mask_flat_futures[i],
+                        corr_size,
+                        self.config,
+                        pass_idx,
+                        self.config.ensemble_kspace_snr_threshold,
+                        self.config.ensemble_kspace_soft_weighting,  # True for anisotropic soft decay
+                        self.config.debug,  # Enable k-space diagnostics when debug=True
+                    ) for i in range(len(R_AA_futures))
+                ]
+            else:
+                # Default: Gaussian fitting (Levenberg-Marquardt)
+                from pivtools_cli.piv.piv_backend.gaussian_fitting import fit_windows_openmp
+                futures = [
+                    client.submit(
+                        fit_windows_openmp,
+                        R_AA_futures[i],
+                        R_BB_futures[i],
+                        R_AB_futures[i],
+                        mask_flat_futures[i],
+                        sigma_dict_futures[i],
+                        corr_size,
+                        self.config,
+                        pass_idx,
+                        None,  # num_threads (use default)
+                        self.config.ensemble_fit_offset,  # Pass fit_offset to worker
+                    ) for i in range(len(R_AA_futures))
+                ]
 
-        results = client.gather(futures) 
+            results = client.gather(futures)
         gauss_flat = np.concatenate([r[0] for r in results])
         status_flat = np.concatenate([r[1] for r in results])
         initial_guess_flat = np.concatenate([r[2] for r in results])
@@ -726,449 +727,446 @@ class SinglePassAccumulator:
         else:
             logging.warning(f"Pass {pass_idx + 1}: All windows masked, no fitting performed")
 
-        if self.profiling_enabled:
-            self.profile_data.setdefault(pass_idx, {})["fitting"] = time.perf_counter() - _fitting_t0
-
-        # Step 7: Extract velocities from fitted parametes
-
-        # Determine correlation size for grid
-        runtype = self.config.ensemble_type[pass_idx]
-        if runtype == 'single':
-            grid_result = compute_window_centers_single_mode(
-                image_shape=self.config.image_shape,
-                window_size=tuple(win_size),
-                sum_window=tuple(self.config.ensemble_sum_window),
-                overlap=self.config.ensemble_overlaps[pass_idx],
-                validate=True,
-            )
-            # Convert to original image coords (subtract padding offset)
-            grid_result_ctrs_x = grid_result.win_ctrs_x - grid_result.padding[2]
-            grid_result_ctrs_y = grid_result.win_ctrs_y - grid_result.padding[0]
-        else:
-            grid_result = compute_window_centers(
-                image_shape=self.config.image_shape,
-                window_size=tuple(win_size),
-                overlap=self.config.ensemble_overlaps[pass_idx],
-                validate=True,
-            )
-            grid_result_ctrs_x = grid_result.win_ctrs_x
-            grid_result_ctrs_y = grid_result.win_ctrs_y
-
-        # Extract velocity components and stresses from Gaussian parameters
-        # gauss_results has shape (n_win_y, n_win_x, 13)
-        #
-        # CORRECT Parameter ordering from marquadt_gaussian.c:
-        # [0] amp_A, [1] amp_B, [2] amp_AB,
-        # [3] sx_A, [4] sy_A, [5] sxy_A,
-        # [6] sx_AB, [7] sy_AB, [8] sxy_AB,
-        # [9] x0_A, [10] y0_A,
-        # [11] x0_AB, [12] y0_AB
-        #
-        # Displacement is computed from peak positions (x0_AB, y0_AB) relative to window center
-
-        # Get window center (zero displacement location)
-        win_center_x = corr_size[1] / 2.0 + 1
-        win_center_y = corr_size[0] / 2.0 + 1
-
-        # Extract peak positions from fitted Gaussian centers (16-param layout)
-        x0_AB = gauss_results[:, :, 14].astype(np.float32)  # X position of AB peak
-        y0_AB = gauss_results[:, :, 15].astype(np.float32)  # Y position of AB peak
-        # Compute displacements as offset from window center
-        ux_mat = x0_AB - win_center_x  # X displacement in pixels
-        uy_mat = y0_AB - win_center_y  # Y displacement in pixels
-
-        # =========================================================
-        # DISPLACEMENT VALIDATION: 3/4 Window Rule
-        # =========================================================
-        # Displacements larger than 3/4 of the window size are physically
-        # implausible and indicate fitting failures. Set to NaN.
-        max_disp_x = 0.75 * corr_size[1]
-        max_disp_y = 0.75 * corr_size[0]
-
-        # Check for invalid displacements (inf, nan, or > 3/4 window)
-        invalid_disp = (
-            ~np.isfinite(ux_mat) | ~np.isfinite(uy_mat) |
-            (np.abs(ux_mat) > max_disp_x) | (np.abs(uy_mat) > max_disp_y)
-        )
-        n_invalid = invalid_disp.sum()
-        if n_invalid > 0:
-            logging.warning(
-                f"Pass {pass_idx + 1}: {n_invalid} vectors exceed 3/4 window rule "
-                f"or have inf/nan - setting to NaN"
-            )
-            ux_mat[invalid_disp] = np.nan
-            uy_mat[invalid_disp] = np.nan
-            # Mark as failed in statuses
-            statuses[invalid_disp] = 6  # 6 = displacement rule violation
-
-        if pass_idx > 0:
-            # Use the SMOOTHED predictor that was actually used for image warping
-            # This is stored in passes_data[pass_idx] during accumulate_batch
-            pass_data = self.passes_data[pass_idx]
-            if "smoothed_predictor" in pass_data and pass_data["smoothed_predictor"] is not None:
-                smoothed_pred = pass_data["smoothed_predictor"]
-                logging.info(
-                    f"Pass {pass_idx + 1}: Using smoothed predictor field from image warping"
+        # Step 7: Extract velocities from fitted parameters
+        with self._profile_section(pass_idx, "velocity_extraction"):
+            # Determine correlation size for grid
+            runtype = self.config.ensemble_type[pass_idx]
+            if runtype == 'single':
+                grid_result = compute_window_centers_single_mode(
+                    image_shape=self.config.image_shape,
+                    window_size=tuple(win_size),
+                    sum_window=tuple(self.config.ensemble_sum_window),
+                    overlap=self.config.ensemble_overlaps[pass_idx],
+                    validate=True,
                 )
-
-                # smoothed_pred is already on the window grid from _get_im_mesh
-                # Shape: (n_win_y, n_win_x, 2) where [:,:,0]=Y, [:,:,1]=X
-                ux_mat += smoothed_pred[:, :, 1]  # Add X-displacement
-                uy_mat += smoothed_pred[:, :, 0]  # Add Y-displacement
-                # Note: Final displacement range is logged after outlier detection/infilling
+                # Convert to original image coords (subtract padding offset)
+                grid_result_ctrs_x = grid_result.win_ctrs_x - grid_result.padding[2]
+                grid_result_ctrs_y = grid_result.win_ctrs_y - grid_result.padding[0]
             else:
-                logging.warning(
-                    f"Pass {pass_idx + 1}: No smoothed predictor found! "
-                    f"This will result in incorrect absolute displacements. "
-                    f"Residual displacements will be returned without predictor correction."
+                grid_result = compute_window_centers(
+                    image_shape=self.config.image_shape,
+                    window_size=tuple(win_size),
+                    overlap=self.config.ensemble_overlaps[pass_idx],
+                    validate=True,
                 )
+                grid_result_ctrs_x = grid_result.win_ctrs_x
+                grid_result_ctrs_y = grid_result.win_ctrs_y
+
+            # Extract velocity components and stresses from Gaussian parameters
+            # gauss_results has shape (n_win_y, n_win_x, 13)
+            #
+            # CORRECT Parameter ordering from marquadt_gaussian.c:
+            # [0] amp_A, [1] amp_B, [2] amp_AB,
+            # [3] sx_A, [4] sy_A, [5] sxy_A,
+            # [6] sx_AB, [7] sy_AB, [8] sxy_AB,
+            # [9] x0_A, [10] y0_A,
+            # [11] x0_AB, [12] y0_AB
+            #
+            # Displacement is computed from peak positions (x0_AB, y0_AB) relative to window center
+
+            # Get window center (zero displacement location)
+            win_center_x = corr_size[1] / 2.0 + 1
+            win_center_y = corr_size[0] / 2.0 + 1
+
+            # Extract peak positions from fitted Gaussian centers (16-param layout)
+            x0_AB = gauss_results[:, :, 14].astype(np.float32)  # X position of AB peak
+            y0_AB = gauss_results[:, :, 15].astype(np.float32)  # Y position of AB peak
+            # Compute displacements as offset from window center
+            ux_mat = x0_AB - win_center_x  # X displacement in pixels
+            uy_mat = y0_AB - win_center_y  # Y displacement in pixels
+
+            # =========================================================
+            # DISPLACEMENT VALIDATION: 3/4 Window Rule
+            # =========================================================
+            # Displacements larger than 3/4 of the window size are physically
+            # implausible and indicate fitting failures. Set to NaN.
+            max_disp_x = 0.75 * corr_size[1]
+            max_disp_y = 0.75 * corr_size[0]
+
+            # Check for invalid displacements (inf, nan, or > 3/4 window)
+            invalid_disp = (
+                ~np.isfinite(ux_mat) | ~np.isfinite(uy_mat) |
+                (np.abs(ux_mat) > max_disp_x) | (np.abs(uy_mat) > max_disp_y)
+            )
+            n_invalid = invalid_disp.sum()
+            if n_invalid > 0:
+                logging.warning(
+                    f"Pass {pass_idx + 1}: {n_invalid} vectors exceed 3/4 window rule "
+                    f"or have inf/nan - setting to NaN"
+                )
+                ux_mat[invalid_disp] = np.nan
+                uy_mat[invalid_disp] = np.nan
+                # Mark as failed in statuses
+                statuses[invalid_disp] = 6  # 6 = displacement rule violation
+
+            if pass_idx > 0:
+                # Use the SMOOTHED predictor that was actually used for image warping
+                # This is stored in passes_data[pass_idx] during accumulate_batch
+                pass_data = self.passes_data[pass_idx]
+                if "smoothed_predictor" in pass_data and pass_data["smoothed_predictor"] is not None:
+                    smoothed_pred = pass_data["smoothed_predictor"]
+                    logging.info(
+                        f"Pass {pass_idx + 1}: Using smoothed predictor field from image warping"
+                    )
+
+                    # smoothed_pred is already on the window grid from _get_im_mesh
+                    # Shape: (n_win_y, n_win_x, 2) where [:,:,0]=Y, [:,:,1]=X
+                    ux_mat += smoothed_pred[:, :, 1]  # Add X-displacement
+                    uy_mat += smoothed_pred[:, :, 0]  # Add Y-displacement
+                    # Note: Final displacement range is logged after outlier detection/infilling
+                else:
+                    logging.warning(
+                        f"Pass {pass_idx + 1}: No smoothed predictor found! "
+                        f"This will result in incorrect absolute displacements. "
+                        f"Residual displacements will be returned without predictor correction."
+                    )
 
         # =========================================================
         # Extract Gaussian parameters with overflow protection
         # =========================================================
-        # Clamp to reasonable ranges before float32 cast to prevent overflow
-        MAX_AMP = 1e10   # Max reasonable amplitude
-        MAX_SIGMA = 1e6  # Max reasonable variance
+        with self._profile_section(pass_idx, "parameter_extraction"):
+            # Clamp to reasonable ranges before float32 cast to prevent overflow
+            MAX_AMP = 1e10   # Max reasonable amplitude
+            MAX_SIGMA = 1e6  # Max reasonable variance
 
-        def safe_extract(arr, max_val, fill_invalid=0.0):
-            """Extract and clamp array, replacing non-finite with fill value."""
-            result = np.clip(arr, -max_val, max_val)
-            result = np.where(np.isfinite(result), result, fill_invalid)
-            return result.astype(np.float32)
+            def safe_extract(arr, max_val, fill_invalid=0.0):
+                """Extract and clamp array, replacing non-finite with fill value."""
+                result = np.clip(arr, -max_val, max_val)
+                result = np.where(np.isfinite(result), result, fill_invalid)
+                return result.astype(np.float32)
 
-        # Amplitudes (positive values expected)
-        amp_A = safe_extract(gauss_results[:, :, 0], MAX_AMP, 0.0)
-        amp_B = safe_extract(gauss_results[:, :, 1], MAX_AMP, 0.0)
-        amp_AB = safe_extract(gauss_results[:, :, 2], MAX_AMP, 0.0)
+            # Amplitudes (positive values expected)
+            amp_A = safe_extract(gauss_results[:, :, 0], MAX_AMP, 0.0)
+            amp_B = safe_extract(gauss_results[:, :, 1], MAX_AMP, 0.0)
+            amp_AB = safe_extract(gauss_results[:, :, 2], MAX_AMP, 0.0)
 
-        # Normalized peak height: AB / sqrt(A * B), clamped to [0, 1]
-        # In single mode, apply amplitude correction for asymmetric weighting:
-        # AB uses (particle_window × sum_window) while AA/BB use (sum_window × sum_window)
-        # This reduces AB amplitude by sqrt(particle_area / sum_area)
-        # Correction factor: sqrt(sum_area / particle_area)
-        geom_mean = np.sqrt(np.maximum(amp_A * amp_B, 1e-12))
-        peakheight_raw = amp_AB / geom_mean
+            # Normalized peak height: AB / sqrt(A * B), clamped to [0, 1]
+            # In single mode, apply amplitude correction for asymmetric weighting:
+            # AB uses (particle_window × sum_window) while AA/BB use (sum_window × sum_window)
+            # This reduces AB amplitude by sqrt(particle_area / sum_area)
+            # Correction factor: sqrt(sum_area / particle_area)
+            geom_mean = np.sqrt(np.maximum(amp_A * amp_B, 1e-12))
+            peakheight_raw = amp_AB / geom_mean
 
-        runtype = self.config.ensemble_type[pass_idx]
-        if runtype == 'single':
-            particle_window = self.config.ensemble_window_sizes[pass_idx]
-            sum_window = self.config.ensemble_sum_window
-            particle_area = particle_window[0] * particle_window[1]
-            sum_area = sum_window[0] * sum_window[1]
-            amplitude_correction = np.sqrt(sum_area / particle_area)
-            peakheight_raw *= amplitude_correction
-            logging.debug(
-                f"Pass {pass_idx + 1}: Applied single mode amplitude correction "
-                f"sqrt({sum_area}/{particle_area}) = {amplitude_correction:.3f}"
-            )
+            runtype = self.config.ensemble_type[pass_idx]
+            if runtype == 'single':
+                particle_window = self.config.ensemble_window_sizes[pass_idx]
+                sum_window = self.config.ensemble_sum_window
+                particle_area = particle_window[0] * particle_window[1]
+                sum_area = sum_window[0] * sum_window[1]
+                amplitude_correction = np.sqrt(sum_area / particle_area)
+                peakheight_raw *= amplitude_correction
+                logging.debug(
+                    f"Pass {pass_idx + 1}: Applied single mode amplitude correction "
+                    f"sqrt({sum_area}/{particle_area}) = {amplitude_correction:.3f}"
+                )
 
-        peakheight = np.clip(peakheight_raw, 0.0, 1.0).astype(np.float32)
+            peakheight = np.clip(peakheight_raw, 0.0, 1.0).astype(np.float32)
 
-        # Gaussian offset terms (can be negative after background subtraction)
-        c_A = safe_extract(gauss_results[:, :, 3], MAX_AMP, 0.0)
-        c_B = safe_extract(gauss_results[:, :, 4], MAX_AMP, 0.0)
-        c_AB = safe_extract(gauss_results[:, :, 5], MAX_AMP, 0.0)
+            # Gaussian offset terms (can be negative after background subtraction)
+            c_A = safe_extract(gauss_results[:, :, 3], MAX_AMP, 0.0)
+            c_B = safe_extract(gauss_results[:, :, 4], MAX_AMP, 0.0)
+            c_AB = safe_extract(gauss_results[:, :, 5], MAX_AMP, 0.0)
 
-        # Gaussian widths for A autocorrelation (particle size, from AA/BB peaks)
-        sig_A_x = safe_extract(gauss_results[:, :, 6], MAX_SIGMA, 0.0)
-        sig_A_y = safe_extract(gauss_results[:, :, 7], MAX_SIGMA, 0.0)
-        sig_A_xy = safe_extract(gauss_results[:, :, 8], MAX_SIGMA, 0.0)
+            # Gaussian widths for A autocorrelation (particle size, from AA/BB peaks)
+            sig_A_x = safe_extract(gauss_results[:, :, 6], MAX_SIGMA, 0.0)
+            sig_A_y = safe_extract(gauss_results[:, :, 7], MAX_SIGMA, 0.0)
+            sig_A_xy = safe_extract(gauss_results[:, :, 8], MAX_SIGMA, 0.0)
 
-        # Gaussian widths for AB cross-correlation (TOTAL width, used directly by C fitter)
-        # With decoupled parameterization, sig_AB is the raw fitted total width,
-        # NOT an additive term on top of sig_A.
-        sig_AB_x = safe_extract(gauss_results[:, :, 9], MAX_SIGMA, 0.0)
-        sig_AB_y = safe_extract(gauss_results[:, :, 10], MAX_SIGMA, 0.0)
-        sig_AB_xy = safe_extract(gauss_results[:, :, 11], MAX_SIGMA, 0.0)
+            # Gaussian widths for AB cross-correlation (TOTAL width, used directly by C fitter)
+            # With decoupled parameterization, sig_AB is the raw fitted total width,
+            # NOT an additive term on top of sig_A.
+            sig_AB_x = safe_extract(gauss_results[:, :, 9], MAX_SIGMA, 0.0)
+            sig_AB_y = safe_extract(gauss_results[:, :, 10], MAX_SIGMA, 0.0)
+            sig_AB_xy = safe_extract(gauss_results[:, :, 11], MAX_SIGMA, 0.0)
 
-        # Compute displacement uncertainty = sig_AB - sig_A
-        # This represents the additional width from displacement variance
-        # (what was previously stored directly in sig_AB fields)
-        # Constraint: displacement uncertainty >= 0
-        UU_stress = np.maximum(sig_AB_x - sig_A_x, 0.0)
-        VV_stress = np.maximum(sig_AB_y - sig_A_y, 0.0)
-        UV_stress = sig_AB_xy - sig_A_xy  # Cross-term can be negative
+            # Compute displacement uncertainty = sig_AB - sig_A
+            # This represents the additional width from displacement variance
+            # (what was previously stored directly in sig_AB fields)
+            # Constraint: displacement uncertainty >= 0
+            UU_stress = np.maximum(sig_AB_x - sig_A_x, 0.0)
+            VV_stress = np.maximum(sig_AB_y - sig_A_y, 0.0)
+            UV_stress = sig_AB_xy - sig_A_xy  # Cross-term can be negative
 
-        # =========================================================
-        # STEP 7a: Apply Vector Mask FIRST (before outlier detection)
-        # =========================================================
-        # This matches instantaneous behavior: masked regions are set to zero
-        # and excluded from outlier detection
-        nan_reason = statuses.astype(np.int32)
-        vector_mask = None
-        if self.vector_masks and pass_idx < len(self.vector_masks):
-            vector_mask = self.vector_masks[pass_idx]
+            # =========================================================
+            # STEP 7a: Apply Vector Mask FIRST (before outlier detection)
+            # =========================================================
+            # This matches instantaneous behavior: masked regions are set to zero
+            # and excluded from outlier detection
+            nan_reason = statuses.astype(np.int32)
+            vector_mask = None
+            if self.vector_masks and pass_idx < len(self.vector_masks):
+                vector_mask = self.vector_masks[pass_idx]
 
-        # Ensure vector_mask is always an array (even if no masking enabled)
-        if vector_mask is None:
-            vector_mask = np.zeros((n_win_y, n_win_x), dtype=bool)
+            # Ensure vector_mask is always an array (even if no masking enabled)
+            if vector_mask is None:
+                vector_mask = np.zeros((n_win_y, n_win_x), dtype=bool)
 
-        if vector_mask is not None:
-            ux_mat[vector_mask] = 0.0
-            uy_mat[vector_mask] = 0.0
-            UU_stress[vector_mask] = 0.0
-            VV_stress[vector_mask] = 0.0
-            UV_stress[vector_mask] = 0.0
-            peakheight[vector_mask] = 0.0
-            sig_A_x[vector_mask] = 0.0
-            sig_A_y[vector_mask] = 0.0
-            sig_A_xy[vector_mask] = 0.0
-            sig_AB_x[vector_mask] = 0.0
-            sig_AB_y[vector_mask] = 0.0
-            sig_AB_xy[vector_mask] = 0.0
+            if vector_mask is not None:
+                ux_mat[vector_mask] = 0.0
+                uy_mat[vector_mask] = 0.0
+                UU_stress[vector_mask] = 0.0
+                VV_stress[vector_mask] = 0.0
+                UV_stress[vector_mask] = 0.0
+                peakheight[vector_mask] = 0.0
+                sig_A_x[vector_mask] = 0.0
+                sig_A_y[vector_mask] = 0.0
+                sig_A_xy[vector_mask] = 0.0
+                sig_AB_x[vector_mask] = 0.0
+                sig_AB_y[vector_mask] = 0.0
+                sig_AB_xy[vector_mask] = 0.0
 
-            # Set nan_reason to indicate masked vectors
-            nan_reason[vector_mask] = -1  # -1 = masked vector (not correlated)
-            logging.info(f"Pass {pass_idx + 1}: {vector_mask.sum()} vectors masked (set to zero)")
+                # Set nan_reason to indicate masked vectors
+                nan_reason[vector_mask] = -1  # -1 = masked vector (not correlated)
+                logging.info(f"Pass {pass_idx + 1}: {vector_mask.sum()} vectors masked (set to zero)")
 
         # =========================================================
         # STEP 7b: Outlier Detection and Infilling
         # =========================================================
-        _outlier_t0 = time.perf_counter() if self.profiling_enabled else 0
-
         # Determine if this is final pass
         is_final_pass = (pass_idx == self.config.ensemble_num_passes - 1)
 
-        # --- Combined Outlier Detection ---
-        # Start with fitting failures (statuses != 0 indicates failed fit)
-        # Exclude already-masked vectors from outlier detection
-        outlier_mask = (statuses != 0)
-        if vector_mask is not None:
-            outlier_mask = outlier_mask & ~vector_mask  # Don't double-count masked regions
+        with self._profile_section(pass_idx, "outlier_detection"):
+            # --- Combined Outlier Detection ---
+            # Start with fitting failures (statuses != 0 indicates failed fit)
+            # Exclude already-masked vectors from outlier detection
+            outlier_mask = (statuses != 0)
+            if vector_mask is not None:
+                outlier_mask = outlier_mask & ~vector_mask  # Don't double-count masked regions
 
-        # Apply additional outlier detection on valid fits if enabled
-        if self.config.ensemble_outlier_detection_enabled:
-            outlier_methods = self.config.ensemble_outlier_detection_methods
-            if outlier_methods:
-                # Only apply detection to non-failed, non-masked fits
-                valid_for_detection = ~outlier_mask
-                if vector_mask is not None:
-                    valid_for_detection = valid_for_detection & ~vector_mask
-                if valid_for_detection.any():
-                    detected_outliers = apply_outlier_detection(
-                        ux_mat, uy_mat,
-                        outlier_methods,
-                        peak_mag=peakheight
-                    )
-                    # Only mark as outliers within valid detection region
-                    outlier_mask |= (detected_outliers & valid_for_detection)
+            # Apply additional outlier detection on valid fits if enabled
+            if self.config.ensemble_outlier_detection_enabled:
+                outlier_methods = self.config.ensemble_outlier_detection_methods
+                if outlier_methods:
+                    # Only apply detection to non-failed, non-masked fits
+                    valid_for_detection = ~outlier_mask
+                    if vector_mask is not None:
+                        valid_for_detection = valid_for_detection & ~vector_mask
+                    if valid_for_detection.any():
+                        detected_outliers = apply_outlier_detection(
+                            ux_mat, uy_mat,
+                            outlier_methods,
+                            peak_mag=peakheight
+                        )
+                        # Only mark as outliers within valid detection region
+                        outlier_mask |= (detected_outliers & valid_for_detection)
 
-        logging.info(
-            f"Pass {pass_idx + 1}: Outlier detection found {outlier_mask.sum()} outliers "
-            f"({outlier_mask.sum() / outlier_mask.size * 100:.1f}%)"
-        )
-
-        # --- Propagate outlier mask to ALL fields ---
-        # Set outlier locations to NaN for all fields
-        ux_mat[outlier_mask] = np.nan
-        uy_mat[outlier_mask] = np.nan
-        UU_stress[outlier_mask] = np.nan
-        VV_stress[outlier_mask] = np.nan
-        UV_stress[outlier_mask] = np.nan
-        sig_A_x[outlier_mask] = np.nan
-        sig_A_y[outlier_mask] = np.nan
-        sig_A_xy[outlier_mask] = np.nan
-        sig_AB_x[outlier_mask] = np.nan
-        sig_AB_y[outlier_mask] = np.nan
-        sig_AB_xy[outlier_mask] = np.nan
-        peakheight[outlier_mask] = np.nan
-
-        # Update nan_reason for detected outliers (code 10 = outlier on valid fit)
-        nan_reason[outlier_mask & (statuses == 0)] = 10
-
-        # --- Infilling ---
-        infill_mask = outlier_mask.copy()
-
-        if is_final_pass:
-            # Final pass: use final_pass config (may be disabled)
-            infill_cfg = self.config.ensemble_infilling_final_pass
-            if not infill_cfg.get('enabled', True):
-                logging.info(f"Pass {pass_idx + 1}: Final pass infilling disabled")
-                infill_mask = np.zeros_like(outlier_mask, dtype=bool)  # Skip infilling
-        else:
-            # Mid-pass: always infill (required for predictor)
-            infill_cfg = self.config.ensemble_infilling_mid_pass
-
-        if infill_mask.any():
             logging.info(
-                f"Pass {pass_idx + 1}: Infilling {infill_mask.sum()} vectors using "
-                f"'{infill_cfg.get('method', 'biharmonic')}'"
+                f"Pass {pass_idx + 1}: Outlier detection found {outlier_mask.sum()} outliers "
+                f"({outlier_mask.sum() / outlier_mask.size * 100:.1f}%)"
             )
 
-            # Infill displacement fields
-            ux_mat, uy_mat = apply_infilling(ux_mat, uy_mat, infill_mask, infill_cfg)
+            # --- Propagate outlier mask to ALL fields ---
+            # Set outlier locations to NaN for all fields
+            ux_mat[outlier_mask] = np.nan
+            uy_mat[outlier_mask] = np.nan
+            UU_stress[outlier_mask] = np.nan
+            VV_stress[outlier_mask] = np.nan
+            UV_stress[outlier_mask] = np.nan
+            sig_A_x[outlier_mask] = np.nan
+            sig_A_y[outlier_mask] = np.nan
+            sig_A_xy[outlier_mask] = np.nan
+            sig_AB_x[outlier_mask] = np.nan
+            sig_AB_y[outlier_mask] = np.nan
+            sig_AB_xy[outlier_mask] = np.nan
+            peakheight[outlier_mask] = np.nan
 
-            # Infill stress fields
-            UU_stress, VV_stress = apply_infilling(UU_stress, VV_stress, infill_mask, infill_cfg)
-            # UV_stress needs special handling (paired with zero array)
-            UV_temp = np.zeros_like(UV_stress)
-            UV_stress, _ = apply_infilling(UV_stress, UV_temp, infill_mask, infill_cfg)
+            # Update nan_reason for detected outliers (code 10 = outlier on valid fit)
+            nan_reason[outlier_mask & (statuses == 0)] = 10
 
-            # Infill sigma fields (A autocorrelation)
-            sig_A_x, sig_A_y = apply_infilling(sig_A_x, sig_A_y, infill_mask, infill_cfg)
-            sig_A_xy_temp = np.zeros_like(sig_A_xy)
-            sig_A_xy, _ = apply_infilling(sig_A_xy, sig_A_xy_temp, infill_mask, infill_cfg)
+        with self._profile_section(pass_idx, "infilling"):
+            # --- Infilling ---
+            infill_mask = outlier_mask.copy()
 
-            # Infill sigma fields (AB cross-correlation)
-            sig_AB_x, sig_AB_y = apply_infilling(sig_AB_x, sig_AB_y, infill_mask, infill_cfg)
-            sig_AB_xy_temp = np.zeros_like(sig_AB_xy)
-            sig_AB_xy, _ = apply_infilling(sig_AB_xy, sig_AB_xy_temp, infill_mask, infill_cfg)
+            if is_final_pass:
+                # Final pass: use final_pass config (may be disabled)
+                infill_cfg = self.config.ensemble_infilling_final_pass
+                if not infill_cfg.get('enabled', True):
+                    logging.info(f"Pass {pass_idx + 1}: Final pass infilling disabled")
+                    infill_mask = np.zeros_like(outlier_mask, dtype=bool)  # Skip infilling
+            else:
+                # Mid-pass: always infill (required for predictor)
+                infill_cfg = self.config.ensemble_infilling_mid_pass
 
-            # Infill peakheight (paired with zero array)
-            peakheight_temp = np.zeros_like(peakheight)
-            peakheight, _ = apply_infilling(peakheight, peakheight_temp, infill_mask, infill_cfg)
+            if infill_mask.any():
+                logging.info(
+                    f"Pass {pass_idx + 1}: Infilling {infill_mask.sum()} vectors using "
+                    f"'{infill_cfg.get('method', 'biharmonic')}'"
+                )
+
+                # Infill displacement fields
+                ux_mat, uy_mat = apply_infilling(ux_mat, uy_mat, infill_mask, infill_cfg)
+
+                # Infill stress fields
+                UU_stress, VV_stress = apply_infilling(UU_stress, VV_stress, infill_mask, infill_cfg)
+                # UV_stress needs special handling (paired with zero array)
+                UV_temp = np.zeros_like(UV_stress)
+                UV_stress, _ = apply_infilling(UV_stress, UV_temp, infill_mask, infill_cfg)
+
+                # Infill sigma fields (A autocorrelation)
+                sig_A_x, sig_A_y = apply_infilling(sig_A_x, sig_A_y, infill_mask, infill_cfg)
+                sig_A_xy_temp = np.zeros_like(sig_A_xy)
+                sig_A_xy, _ = apply_infilling(sig_A_xy, sig_A_xy_temp, infill_mask, infill_cfg)
+
+                # Infill sigma fields (AB cross-correlation)
+                sig_AB_x, sig_AB_y = apply_infilling(sig_AB_x, sig_AB_y, infill_mask, infill_cfg)
+                sig_AB_xy_temp = np.zeros_like(sig_AB_xy)
+                sig_AB_xy, _ = apply_infilling(sig_AB_xy, sig_AB_xy_temp, infill_mask, infill_cfg)
+
+                # Infill peakheight (paired with zero array)
+                peakheight_temp = np.zeros_like(peakheight)
+                peakheight, _ = apply_infilling(peakheight, peakheight_temp, infill_mask, infill_cfg)
 
         # =========================================================
         # STEP 7c: Stress-specific outlier detection (final pass only)
         # =========================================================
-        # Velocity outlier detection can miss windows with plausible velocity
-        # but bad stress estimates (e.g., fitter converged on peak position
-        # but not on widths). Run median test on stress fields + realizability.
-        if is_final_pass and self.config.ensemble_outlier_detection_enabled:
-            # Filter config methods to those applicable to stress fields
-            # (exclude velocity-specific methods like peak_mag and div_vort)
-            STRESS_APPLICABLE_METHODS = {'median_2d', 'sigma'}
-            outlier_methods = self.config.ensemble_outlier_detection_methods
-            stress_methods = [
-                m for m in outlier_methods
-                if m.get('type', '').lower() in STRESS_APPLICABLE_METHODS
-            ]
+        with self._profile_section(pass_idx, "stress_outlier_detection"):
+            # Velocity outlier detection can miss windows with plausible velocity
+            # but bad stress estimates (e.g., fitter converged on peak position
+            # but not on widths). Run median test on stress fields + realizability.
+            if is_final_pass and self.config.ensemble_outlier_detection_enabled:
+                # Filter config methods to those applicable to stress fields
+                # (exclude velocity-specific methods like peak_mag and div_vort)
+                STRESS_APPLICABLE_METHODS = {'median_2d', 'sigma'}
+                outlier_methods = self.config.ensemble_outlier_detection_methods
+                stress_methods = [
+                    m for m in outlier_methods
+                    if m.get('type', '').lower() in STRESS_APPLICABLE_METHODS
+                ]
 
-            stress_outlier_mask = np.zeros((n_win_y, n_win_x), dtype=bool)
-            if stress_methods:
-                stress_outlier_mask = apply_outlier_detection(
-                    UU_stress, VV_stress,
-                    stress_methods,
-                )
-
-            # Realizability: Cauchy-Schwarz |UV|² ≤ UU·VV
-            with np.errstate(invalid='ignore'):
-                realizability_violation = (
-                    np.isfinite(UV_stress)
-                    & np.isfinite(UU_stress)
-                    & np.isfinite(VV_stress)
-                    & (UV_stress ** 2 > UU_stress * VV_stress)
-                )
-            stress_outlier_mask |= realizability_violation
-
-            # Don't re-flag already-masked regions
-            stress_outlier_mask &= ~vector_mask
-
-            n_stress_outliers = int(stress_outlier_mask.sum())
-            n_realiz = int(realizability_violation.sum())
-            if n_stress_outliers > 0:
-                logging.info(
-                    f"Pass {pass_idx + 1}: Stress outlier detection found "
-                    f"{n_stress_outliers} outliers "
-                    f"({n_realiz} realizability, "
-                    f"{n_stress_outliers - n_realiz} median test)"
-                )
-
-                UU_stress[stress_outlier_mask] = np.nan
-                VV_stress[stress_outlier_mask] = np.nan
-                UV_stress[stress_outlier_mask] = np.nan
-                nan_reason[stress_outlier_mask & (nan_reason == 0)] = 11
-
-                # Infill stress fields only (velocity is already good)
-                if infill_cfg.get('enabled', True):
-                    UU_stress, VV_stress = apply_infilling(
-                        UU_stress, VV_stress, stress_outlier_mask, infill_cfg
+                stress_outlier_mask = np.zeros((n_win_y, n_win_x), dtype=bool)
+                if stress_methods:
+                    stress_outlier_mask = apply_outlier_detection(
+                        UU_stress, VV_stress,
+                        stress_methods,
                     )
-                    UV_temp = np.zeros_like(UV_stress)
-                    UV_stress, _ = apply_infilling(
-                        UV_stress, UV_temp, stress_outlier_mask, infill_cfg
+
+                # Realizability: Cauchy-Schwarz |UV|² ≤ UU·VV
+                with np.errstate(invalid='ignore'):
+                    realizability_violation = (
+                        np.isfinite(UV_stress)
+                        & np.isfinite(UU_stress)
+                        & np.isfinite(VV_stress)
+                        & (UV_stress ** 2 > UU_stress * VV_stress)
                     )
-            else:
-                logging.info(
-                    f"Pass {pass_idx + 1}: Stress outlier detection found 0 outliers"
+                stress_outlier_mask |= realizability_violation
+
+                # Don't re-flag already-masked regions
+                stress_outlier_mask &= ~vector_mask
+
+                n_stress_outliers = int(stress_outlier_mask.sum())
+                n_realiz = int(realizability_violation.sum())
+                if n_stress_outliers > 0:
+                    logging.info(
+                        f"Pass {pass_idx + 1}: Stress outlier detection found "
+                        f"{n_stress_outliers} outliers "
+                        f"({n_realiz} realizability, "
+                        f"{n_stress_outliers - n_realiz} median test)"
+                    )
+
+                    UU_stress[stress_outlier_mask] = np.nan
+                    VV_stress[stress_outlier_mask] = np.nan
+                    UV_stress[stress_outlier_mask] = np.nan
+                    nan_reason[stress_outlier_mask & (nan_reason == 0)] = 11
+
+                    # Infill stress fields only (velocity is already good)
+                    if infill_cfg.get('enabled', True):
+                        UU_stress, VV_stress = apply_infilling(
+                            UU_stress, VV_stress, stress_outlier_mask, infill_cfg
+                        )
+                        UV_temp = np.zeros_like(UV_stress)
+                        UV_stress, _ = apply_infilling(
+                            UV_stress, UV_temp, stress_outlier_mask, infill_cfg
+                        )
+                else:
+                    logging.info(
+                        f"Pass {pass_idx + 1}: Stress outlier detection found 0 outliers"
+                    )
+
+        with self._profile_section(pass_idx, "result_construction"):
+            # Store the predictor that was actually used for this pass (delta_ab_pred).
+            # This is at the current pass's window centers — same grid as ux/uy —
+            # so it can be directly compared to the output for diagnostics.
+            # For pass 0, predictor is zero (no previous pass).
+            pred_x = None
+            pred_y = None
+            padded_pred_x = None
+            padded_pred_y = None
+            if pass_idx > 0 and "smoothed_predictor" in pass_data and pass_data["smoothed_predictor"] is not None:
+                smoothed_pred = pass_data["smoothed_predictor"]
+                pred_y = smoothed_pred[:, :, 0].copy()  # Y component
+                pred_x = smoothed_pred[:, :, 1].copy()  # X component
+                logging.debug(
+                    f"Pass {pass_idx + 1}: Storing actual predictor field used for this pass "
+                    f"(shape: {pred_x.shape})"
+                )
+            # Compute padded predictor from THIS pass's velocity field.
+            # This represents what will be fed to the next pass as the predictor
+            # (after edge-padding with n_pre/n_post boundary nodes).
+            # Previously this stored self.delta_ab_old from the correlator, which was
+            # the padded predictor from the PREVIOUS pass — off by one.
+            n_pre = pass_data.get("n_pre")
+            n_post = pass_data.get("n_post")
+            if n_pre is not None and n_post is not None:
+                pre_y, pre_x = n_pre
+                post_y, post_x = n_post
+                # Stack uy (dim 0) and ux (dim 1) into (n_win_y, n_win_x, 2)
+                velocity_field = np.stack([uy_mat, ux_mat], axis=-1)
+                padded = np.pad(
+                    velocity_field,
+                    ((pre_y, post_y), (pre_x, post_x), (0, 0)),
+                    mode="edge",
+                )
+                padded_pred_y = padded[:, :, 0].copy()
+                padded_pred_x = padded[:, :, 1].copy()
+                logging.debug(
+                    f"Pass {pass_idx + 1}: Storing padded predictor from current pass "
+                    f"(velocity {ux_mat.shape} -> padded {padded_pred_x.shape}, "
+                    f"pre=({pre_y},{pre_x}), post=({post_y},{post_x}))"
                 )
 
-        if self.profiling_enabled:
-            self.profile_data.setdefault(pass_idx, {})["outlier_infill"] = time.perf_counter() - _outlier_t0
-
-        # Store the predictor that was actually used for this pass (delta_ab_pred).
-        # This is at the current pass's window centers — same grid as ux/uy —
-        # so it can be directly compared to the output for diagnostics.
-        # For pass 0, predictor is zero (no previous pass).
-        pred_x = None
-        pred_y = None
-        padded_pred_x = None
-        padded_pred_y = None
-        if pass_idx > 0 and "smoothed_predictor" in pass_data and pass_data["smoothed_predictor"] is not None:
-            smoothed_pred = pass_data["smoothed_predictor"]
-            pred_y = smoothed_pred[:, :, 0].copy()  # Y component
-            pred_x = smoothed_pred[:, :, 1].copy()  # X component
+            # DEBUG: Log edge values in final pass result to trace edge artifact source
             logging.debug(
-                f"Pass {pass_idx + 1}: Storing actual predictor field used for this pass "
-                f"(shape: {pred_x.shape})"
-            )
-        # Compute padded predictor from THIS pass's velocity field.
-        # This represents what will be fed to the next pass as the predictor
-        # (after edge-padding with n_pre/n_post boundary nodes).
-        # Previously this stored self.delta_ab_old from the correlator, which was
-        # the padded predictor from the PREVIOUS pass — off by one.
-        n_pre = pass_data.get("n_pre")
-        n_post = pass_data.get("n_post")
-        if n_pre is not None and n_post is not None:
-            pre_y, pre_x = n_pre
-            post_y, post_x = n_post
-            # Stack uy (dim 0) and ux (dim 1) into (n_win_y, n_win_x, 2)
-            velocity_field = np.stack([uy_mat, ux_mat], axis=-1)
-            padded = np.pad(
-                velocity_field,
-                ((pre_y, post_y), (pre_x, post_x), (0, 0)),
-                mode="edge",
-            )
-            padded_pred_y = padded[:, :, 0].copy()
-            padded_pred_x = padded[:, :, 1].copy()
-            logging.debug(
-                f"Pass {pass_idx + 1}: Storing padded predictor from current pass "
-                f"(velocity {ux_mat.shape} -> padded {padded_pred_x.shape}, "
-                f"pre=({pre_y},{pre_x}), post=({post_y},{post_x}))"
+                f"Pass {pass_idx + 1}: FINAL RESULT edge values - "
+                f"ux_mat: TL={ux_mat[0,0]:.4f}, TR={ux_mat[0,-1]:.4f}, "
+                f"BL={ux_mat[-1,0]:.4f}, BR={ux_mat[-1,-1]:.4f}, "
+                f"center={ux_mat[ux_mat.shape[0]//2, ux_mat.shape[1]//2]:.4f}, "
+                f"uy_mat: TL={uy_mat[0,0]:.4f}, TR={uy_mat[0,-1]:.4f}, "
+                f"BL={uy_mat[-1,0]:.4f}, BR={uy_mat[-1,-1]:.4f}, "
+                f"center={uy_mat[uy_mat.shape[0]//2, uy_mat.shape[1]//2]:.4f}, "
+                f"NaN at edges: top_row={np.isnan(ux_mat[0,:]).sum()}, "
+                f"bot_row={np.isnan(ux_mat[-1,:]).sum()}, "
+                f"left_col={np.isnan(ux_mat[:,0]).sum()}, "
+                f"right_col={np.isnan(ux_mat[:,-1]).sum()}"
             )
 
-        # DEBUG: Log edge values in final pass result to trace edge artifact source
-        logging.debug(
-            f"Pass {pass_idx + 1}: FINAL RESULT edge values - "
-            f"ux_mat: TL={ux_mat[0,0]:.4f}, TR={ux_mat[0,-1]:.4f}, "
-            f"BL={ux_mat[-1,0]:.4f}, BR={ux_mat[-1,-1]:.4f}, "
-            f"center={ux_mat[ux_mat.shape[0]//2, ux_mat.shape[1]//2]:.4f}, "
-            f"uy_mat: TL={uy_mat[0,0]:.4f}, TR={uy_mat[0,-1]:.4f}, "
-            f"BL={uy_mat[-1,0]:.4f}, BR={uy_mat[-1,-1]:.4f}, "
-            f"center={uy_mat[uy_mat.shape[0]//2, uy_mat.shape[1]//2]:.4f}, "
-            f"NaN at edges: top_row={np.isnan(ux_mat[0,:]).sum()}, "
-            f"bot_row={np.isnan(ux_mat[-1,:]).sum()}, "
-            f"left_col={np.isnan(ux_mat[:,0]).sum()}, "
-            f"right_col={np.isnan(ux_mat[:,-1]).sum()}"
-        )
-
-        # Create pass result
-        pass_result = PIVEnsemblePassResult(
-            ux_mat=ux_mat,
-            uy_mat=uy_mat,
-            UU_stress=UU_stress,
-            VV_stress=VV_stress,
-            UV_stress=UV_stress,
-            peakheight=peakheight,
-            nan_reason=nan_reason,
-            sig_AB_x=sig_AB_x,
-            sig_AB_y=sig_AB_y,
-            sig_AB_xy=sig_AB_xy,
-            sig_A_x=sig_A_x,
-            sig_A_y=sig_A_y,
-            sig_A_xy=sig_A_xy,
-            c_A=c_A,
-            c_B=c_B,
-            c_AB=c_AB,
-            b_mask=vector_mask,
-            pred_x=pred_x,
-            pred_y=pred_y,
-            padded_pred_x=padded_pred_x,
-            padded_pred_y=padded_pred_y,
-            window_size=tuple(win_size),
-            win_ctrs_x=grid_result_ctrs_x,
-            win_ctrs_y=grid_result_ctrs_y,
-        )
+            # Create pass result
+            pass_result = PIVEnsemblePassResult(
+                ux_mat=ux_mat,
+                uy_mat=uy_mat,
+                UU_stress=UU_stress,
+                VV_stress=VV_stress,
+                UV_stress=UV_stress,
+                peakheight=peakheight,
+                nan_reason=nan_reason,
+                sig_AB_x=sig_AB_x,
+                sig_AB_y=sig_AB_y,
+                sig_AB_xy=sig_AB_xy,
+                sig_A_x=sig_A_x,
+                sig_A_y=sig_A_y,
+                sig_A_xy=sig_A_xy,
+                c_A=c_A,
+                c_B=c_B,
+                c_AB=c_AB,
+                b_mask=vector_mask,
+                pred_x=pred_x,
+                pred_y=pred_y,
+                padded_pred_x=padded_pred_x,
+                padded_pred_y=padded_pred_y,
+                window_size=tuple(win_size),
+                win_ctrs_x=grid_result_ctrs_x,
+                win_ctrs_y=grid_result_ctrs_y,
+            )
 
         # Store result in accumulator
         self.passes_results.append(pass_result)

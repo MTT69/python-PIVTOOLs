@@ -1200,13 +1200,11 @@ outlier_detection:
 infilling:
   mid_pass:
     method: biharmonic
-    parameters:
-      ksize: 3
+    parameters: {}
   final_pass:
     enabled: true
     method: biharmonic
-    parameters:
-      ksize: 3
+    parameters: {}
 ensemble_outlier_detection:
   enabled: true
   methods:
@@ -1216,13 +1214,11 @@ ensemble_outlier_detection:
 ensemble_infilling:
   mid_pass:
     method: biharmonic
-    parameters:
-      ksize: 3
+    parameters: {}
   final_pass:
     enabled: true
     method: biharmonic
-    parameters:
-      ksize: 3
+    parameters: {}
 plots:
   save_extension: .png
   save_pickle: true

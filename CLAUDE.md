@@ -1043,22 +1043,20 @@ Triggered on GitHub release or manual dispatch. Builds wheels for {ubuntu, macos
 
 Common flags: `--active-paths`, `--type-name`, `--source-endpoint` (`regular`/`merged`/`stereo`)
 
-### Profiling (`profile/profile_piv.py`)
+### Profiling
 
-Standalone PIV profiling script that bypasses Dask entirely. Loads real images from disk, creates a minimal Config, and calls `InstantaneousCorrelatorCPU.correlate_batch()` directly with per-section timing instrumentation.
-
-**Instrumentation** (in `cpu_instantaneous.py`):
+**Instrumentation pattern** (shared by all profilers):
 - `self.profiling_enabled = False` — disabled by default, zero overhead
-- `self.threading_enabled = True` — set False to bypass thread pool (for A/B comparison)
 - `self._profile_section(pass_idx, section)` — context manager that times named code sections
 - `self.get_profile_summary()` — returns `{pass_idx: {section_name: elapsed_seconds}}`
-- `self._run_parallel(fn, args_list)` — dispatches to pool or direct calls based on `threading_enabled`
+- Sub-sections are included in parent timing; display code excludes them from totals to avoid double-counting
+
+#### Instantaneous: `profile/profile_piv.py`
 
 **9 timed sections in `correlate_batch`:** `predictor_corrector`, `set_lib_args`, `bulkxcorr2d`, `post_processing`, `outlier_detection`, `secondary_peaks`, `infilling`, `padding_stacking`, `result_construction`
 
 **3 sub-timings in `_predictor_corrector_batch` (pass > 0):** `pc_gaussian_smooth`, `pc_dense_and_predictor_remap`, `pc_mesh_and_image_warp`
 
-**Usage:**
 ```
 python profile/profile_piv.py 4mp                     # 4MP images, 3 iterations
 python profile/profile_piv.py 25mp --iterations 5     # 25MP images, 5 iterations
@@ -1067,6 +1065,67 @@ python profile/profile_piv.py 4mp --no-outlier        # Disable outlier detectio
 python profile/profile_piv.py 4mp --windows 64,32     # Custom pass sizes
 python profile/profile_piv.py 4mp --pairs 12          # Production batch size
 python profile/profile_piv.py 4mp --no-threading      # Disable thread pool (baseline)
+```
+
+#### Ensemble overview: `profile/profile_ensemble.py`
+
+Quick overview profiler showing correlation vs finalization split per pass.
+
+```
+python profile/profile_ensemble.py 4mp --pairs 20 --batch-size 10
+python profile/profile_ensemble.py 4mp --fit-method kspace
+```
+
+#### Ensemble correlation: `profile/profile_ensemble_correlation.py`
+
+Benchmarks cross-correlation phase in isolation with sub-section breakdown. Finalization runs (needed for predictor) but is not reported. Multiple iterations with mean ± std.
+
+**Correlator section hierarchy (in `cpu_ensemble.py`):**
+```
+predictor_corrector        (top-level, includes _get_im_mesh + image warp)
+  pc_gaussian_smooth       (gaussian_filter on predictor field)
+  pc_dense_remap           (cv2.remap: grid → (H,W) image space)
+  pc_predictor_remap       (cv2.remap: grid → current pass window grid)
+  pc_mesh_construction     (delta/im_mesh arithmetic)
+  pc_image_warp            (_get_image_prime_batch: cv2.remap per image)
+warp_sum                   (images_a_prime.sum(axis=0))
+single_mode_padding        (apply_single_mode_padding calls)
+xcorr                      (top-level: 3x C library calls)
+  xcorr_AB                 (cross-correlation A⊗B)
+  xcorr_AA                 (auto-correlation A⊗A)
+  xcorr_BB                 (auto-correlation B⊗B)
+result_copy                (.copy() + return dict construction)
+```
+
+```
+python profile/profile_ensemble_correlation.py 4mp --pairs 10 --iterations 3
+python profile/profile_ensemble_correlation.py 4mp --windows 96,32,16
+```
+
+#### Ensemble fitting: `profile/profile_ensemble_fitting.py`
+
+Benchmarks finalization phase (fitting + outlier + infill) in isolation. Runs correlation once to cache data, then re-runs finalization for each iteration. Uses `Client(processes=False)` to avoid serialization overhead.
+
+**Accumulator section hierarchy (in `single_pass_accumulator.py`):**
+```
+mean_computation           (divide sums by N)
+bg_subtraction             (_correlate_mean_images + subtraction)
+normalization              (geometric mean normalization + single-mode correction)
+sigma_propagation          (_get_sigma_from_previous_pass)
+scatter                    (client.scatter partitioning data to workers)
+fitting                    (client.submit + client.gather)
+velocity_extraction        (peak positions → displacements + 3/4 rule + predictor add-back)
+parameter_extraction       (amplitudes, sigmas, stresses, peakheight + vector masking)
+outlier_detection          (median test on velocities)
+infilling                  (biharmonic/local_median on all fields)
+stress_outlier_detection   (stress outliers + realizability, final pass only)
+result_construction        (PIVEnsemblePassResult + predictor storage)
+```
+
+```
+python profile/profile_ensemble_fitting.py 4mp --pairs 10 --iterations 3
+python profile/profile_ensemble_fitting.py 4mp --fit-method kspace
+python profile/profile_ensemble_fitting.py 4mp --workers 4
 ```
 
 **Thread parallelism in correlators:**

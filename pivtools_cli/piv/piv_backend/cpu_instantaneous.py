@@ -35,6 +35,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
 
     def __init__(self, config: Config, precomputed_cache: Optional[dict] = None) -> None:
         super().__init__()
+        self.config = config
         # Use platform-appropriate library extension
         lib_extension = ".dll" if os.name == "nt" else ".so"
         lib_path = os.path.join(
@@ -686,7 +687,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                         f"dx range=[{np.nanmin(self.delta_ab_old[...,1]):.4f}, {np.nanmax(self.delta_ab_old[...,1]):.4f}], "
                         f"dy range=[{np.nanmin(self.delta_ab_old[...,0]):.4f}, {np.nanmax(self.delta_ab_old[...,0]):.4f}]")
 
-            if self.config.instantaneous_predictor_smoothing:
+            if config.instantaneous_predictor_smoothing:
                 sigma = self.sd[pass_idx]
                 truncate = (self.ksize_filt[pass_idx][0] - 1) / (2 * sigma)
 
