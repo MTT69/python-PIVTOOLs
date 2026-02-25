@@ -2820,10 +2820,15 @@ video:
 
         # Suppress harmless CancelledError noise from Bokeh/Tornado WebSocket cleanup.
         # These fire when a browser tab closes while Bokeh is mid-write.
+        # asyncio passes the traceback via exc_info=, not in the message string,
+        # so we must check record.exc_info for the exception type.
         class _CancelledErrorFilter(logging.Filter):
             def filter(self, record):
-                msg = record.getMessage()
-                return "CancelledError" not in msg or "Exception in callback" not in msg
+                if record.exc_info and record.exc_info[0] is not None:
+                    import asyncio
+                    if issubclass(record.exc_info[0], asyncio.CancelledError):
+                        return False
+                return True
 
         root_logger.addFilter(_CancelledErrorFilter())
 

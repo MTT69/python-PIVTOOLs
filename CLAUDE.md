@@ -58,6 +58,7 @@ Config is stored as config.yaml (single source of truth), loaded via Config clas
 | Calibration (polynomial) | `calibration/app/polynomial_views.py` | `useCalibration` | `PolynomialCalibration` |
 | Calibration (stereo) | `calibration/app/stereo_*_views.py` | `useStereoCalibration` | `StereoCalibration` |
 | Self-calibration | `stereo_reconstruction/self_calibration.py` | N/A (script) | N/A |
+| Image dewarp overlay | `calibration/image_dewarp_overlay.py` | N/A (script) | N/A |
 | Calibration images | `calibration/app/shared_views.py` | `useCalibrationImageViewer` | `CalibrationImageViewer` |
 | Global coordinates | `calibration/global_coordinate_alignment.py` | `useGlobalCoordinates` | `GCInlineControls` (inline in CalibrationImageViewer settings bar) |
 | Vector viewing | `plotting/app/plotting_views.py` | `useVectorViewer` | `VectorViewer` |
@@ -395,6 +396,7 @@ POST /calibrate/calibration/snapshot/load  {base_path_idx} -> restores saved cal
 - `calibration_charuco/charuco_calibration_production.py` - ChArUco detection
 - `calibration_poly/polynomial_calibration_production.py` - DaVis XML polynomial
 - `vector_calibration_production.py` - Applies calibration to vectors
+- `image_dewarp_overlay.py` - Standalone script: dewarps raw images from multiple cameras into physical coords, overlays them with interactive coordinate readout and measurement tools. Config-at-top pattern with config.yaml fallback. Imports `PinholeCamera`/`compute_dewarp_maps`/`dewarp_image` from `self_calibration.py` and `_pixels_to_world_mm` from `global_coordinate_alignment.py`. Uses raw pixel coords (not uncalibrated convention) throughout for consistency with dewarp maps.
 - `stereo_reconstruction/stereo_dotboard_calibration_production.py` - Stereo dotboard. Same optimizations as planar: histogram blob detection, cKDTree, reduced RANSAC, vectorized object points
 - `stereo_reconstruction/stereo_calibration_base.py` - Stereo base class. Parallel camera image reads via ThreadPoolExecutor
 - `stereo_reconstruction/stereo_charuco_calibration_production.py` - Stereo ChArUco detection
@@ -849,7 +851,8 @@ Alternative to Levenberg-Marquardt Gaussian fitting. Works in Fourier domain: `T
 - **Config:** `ensemble_piv.fit_method: kspace`, `kspace_snr_threshold: 3.0`
 - **File:** `pivtools_cli/piv/piv_backend/kspace_fitting.py`
 - **Status codes:** 0=success, 1=no converge, 2=low SNR, 3=displacement > 3/4 window, 5=negative variance (consistent with Gaussian codes)
-- **Noise estimation:** High-k annular ring (0.4 < |k| < 0.5) for rotationally symmetric noise floor estimate
+- **Noise floor subtraction (pass 0 only):** Camera noise inflates F_ref (auto-correlations) but not F_AB (cross-correlation). Noise floor N is estimated from corners of k-space (|k_x|>0.35 AND |k_y|>0.35) where the particle Gaussian has decayed in both directions, then subtracted: `F_ref_clean = max(F_ref - N, epsilon)`. **Only active on pass 0** (unwarped images) — on subsequent passes, bicubic image warping colors the noise spectrum (low-pass filter), making corner-based estimation systematically biased. The bias depends on the fractional pixel displacement, creating wavy stress artifacts tied to integer pixel crossings of the predictor. Pass 0 correction cascades through the predictor to improve all subsequent passes indirectly. Neutral on clean data (N ≈ 0.006). Design document: `docs/noise_aware_kspace_fitting_plan.md`.
+- **SNR estimation:** High-k annular ring (0.4 < |k| < 0.5) on the noise-corrected F_ref
 - **Soft weighting:** Anisotropic decay `exp(-k_x²/k0_x² - k_y²/k0_y²)` matching elliptical transfer function shape; k_max cap at 0.35 (soft) or 0.25 (hard)
 - **1D regressions:** Forced through origin (DC-normalised T(0)=1); per-axis k_max bounds; window-size-aware k_min = 1.5/N
 - **Gradient correction:** K-space does not estimate σ_A (particle image variance) — it's algebraically cancelled in Fourier space. When gradient correction is enabled, only the window averaging term (L²/12) is applied; the particle extent term (σ_A) is omitted. This is the dominant correction (~95-97% of total). `sig_A_x/y/xy` fields are saved as zero in the output .mat file.

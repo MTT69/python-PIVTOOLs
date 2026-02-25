@@ -300,6 +300,15 @@ def _fit_single_window_kspace(
     # This gives a real positive reference for normalization
     F_ref = np.sqrt(np.abs(F_AA) * np.abs(F_BB))
 
+    # Step 2b: Noise floor subtraction
+    # Camera noise adds a flat floor to auto-correlations (not cross-correlations),
+    # inflating F_ref. Estimate N from corners of k-space where the particle
+    # Gaussian has decayed in BOTH directions, then subtract.
+    noise_corners = (np.abs(K_X) > 0.35) & (np.abs(K_Y) > 0.35)
+    N_floor = max(float(np.median(F_ref[noise_corners])), 0.0)
+    epsilon_floor = F_ref[center_idx_y, center_idx_x] * 1e-8
+    F_ref = np.maximum(F_ref - N_floor, epsilon_floor)
+
     # Step 3: We avoid explicit division T = F_AB / F_ref to prevent noise amplification
     # Instead, we will fit: F_AB = F_ref * T_model directly
     # For initial guesses, we use log differences: log|T| = log|F_AB| - log|F_ref|
@@ -321,6 +330,7 @@ def _fit_single_window_kspace(
             'snr': snr,
             'k_max_x': k_max_x_val if k_max_x_val is not None else 0.0,
             'k_max_y': k_max_y_val if k_max_y_val is not None else 0.0,
+            'N_floor': N_floor,
         }}
 
     if snr < snr_threshold:
