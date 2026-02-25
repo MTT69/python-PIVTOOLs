@@ -175,10 +175,12 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
     Args:
         args: Tuple of (file_idx, vector_file_path, output_file_path,
                        coords_by_run, camera_matrix, dist_coeffs,
-                       rvec, tvec, dt, max_run, valid_run_nums, invert_ux)
+                       rvec, tvec, dt, max_run, valid_run_nums, invert_ux,
+                       image_height)
                where coords_by_run is Dict[int, Tuple[ndarray, ndarray]]
                mapping 1-based run numbers to (x_coords, y_coords).
                invert_ux: bool - if True, negate ux and UV_stress after calibration.
+               image_height: int - image height in pixels for uncal→raw conversion.
 
     Returns:
         Dict with results or None if failed
@@ -196,7 +198,12 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
         max_run,
         valid_run_nums,
         invert_ux,
+        image_height,
     ) = args
+
+    def _uncal_to_raw_local(x_uncal, y_uncal):
+        """Convert uncalibrated coords (1-based, y-up) to raw pixels (0-based, y-down)."""
+        return x_uncal - 1, image_height - y_uncal
 
     try:
         # Try loading as structured .mat file first (for ensemble data)
@@ -246,8 +253,10 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
             if coords_x_px is None:
                 return {"frame": file_idx, "success": False, "error": "No coordinates available"}
 
+            # Convert uncalibrated coords to raw pixels for the pinhole model
+            raw_x, raw_y = _uncal_to_raw_local(coords_x_px, coords_y_px)
             coords_flat = np.stack(
-                [coords_x_px.flatten(), coords_y_px.flatten()], axis=-1
+                [raw_x.flatten(), raw_y.flatten()], axis=-1
             ).astype(np.float32)
 
             if coords_flat.size == 0 or ux_px.size == 0:
@@ -256,11 +265,15 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
             coords_world = _pixels_to_world_mm(
                 coords_flat, camera_matrix, dist_coeffs, rvec, tvec
             )
-            disp_px = coords_flat + np.stack(
-                [ux_px.flatten(), uy_px.flatten()], axis=-1
+            # Displaced positions: compute in uncal space, then convert to raw
+            disp_x_uncal = coords_x_px + ux_px
+            disp_y_uncal = coords_y_px + uy_px
+            disp_raw_x, disp_raw_y = _uncal_to_raw_local(disp_x_uncal, disp_y_uncal)
+            disp_flat = np.stack(
+                [disp_raw_x.flatten(), disp_raw_y.flatten()], axis=-1
             ).astype(np.float32)
             disp_world = _pixels_to_world_mm(
-                disp_px, camera_matrix, dist_coeffs, rvec, tvec
+                disp_flat, camera_matrix, dist_coeffs, rvec, tvec
             )
             delta_mm = disp_world - coords_world
             ux_ms = (delta_mm[:, 0] / 1000.0) / dt
@@ -331,18 +344,24 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
                     continue
 
                 # Calibrate velocities using pinhole model
+                # Convert uncalibrated coords to raw pixels for the pinhole model
+                raw_x, raw_y = _uncal_to_raw_local(coords_x_px, coords_y_px)
                 coords_flat = np.stack(
-                    [coords_x_px.flatten(), coords_y_px.flatten()], axis=-1
+                    [raw_x.flatten(), raw_y.flatten()], axis=-1
                 ).astype(np.float32)
 
                 coords_world = _pixels_to_world_mm(
                     coords_flat, camera_matrix, dist_coeffs, rvec, tvec
                 )
-                disp_px = coords_flat + np.stack(
-                    [ux_px.flatten(), uy_px.flatten()], axis=-1
+                # Displaced positions: compute in uncal space, then convert to raw
+                disp_x_uncal = coords_x_px + ux_px
+                disp_y_uncal = coords_y_px + uy_px
+                disp_raw_x, disp_raw_y = _uncal_to_raw_local(disp_x_uncal, disp_y_uncal)
+                disp_flat = np.stack(
+                    [disp_raw_x.flatten(), disp_raw_y.flatten()], axis=-1
                 ).astype(np.float32)
                 disp_world = _pixels_to_world_mm(
-                    disp_px, camera_matrix, dist_coeffs, rvec, tvec
+                    disp_flat, camera_matrix, dist_coeffs, rvec, tvec
                 )
                 delta_mm = disp_world - coords_world
                 ux_ms = (delta_mm[:, 0] / 1000.0) / dt
@@ -492,6 +511,7 @@ class VectorCalibrator:
         self.rvec = self.calibration_model["rvec"]  # First view
         self.tvec = self.calibration_model["tvec"]  # First view
         self.dot_spacing_mm = self.calibration_model["dot_spacing_mm"]
+        self.image_height = self.calibration_model["image_height"]
 
         logger.info(f"Initialized calibrator for Camera {camera_num}")
         logger.info(f"Model type: {self.model_type}")
@@ -556,6 +576,19 @@ class VectorCalibrator:
         # Get dot spacing in mm (both model types now store dot_spacing_mm)
         dot_spacing_mm = float(model_data.get("dot_spacing_mm", 28.89))
 
+        # Get image height — required for uncalibrated→raw coordinate conversion.
+        # Dotboard saves "image_height" directly; charuco saves "image_size": [W, H].
+        image_height = int(model_data.get("image_height", 0))
+        if image_height == 0 and "image_size" in model_data:
+            img_size = np.asarray(model_data["image_size"]).flatten()
+            if img_size.size >= 2:
+                image_height = int(img_size[1])  # [W, H] → H
+        if image_height == 0:
+            raise ValueError(
+                f"Calibration model {model_path} does not contain 'image_height' or "
+                f"'image_size'. Re-generate the model with the latest calibration code."
+            )
+
         # Use dt from model if available
         if "dt" in model_data:
             logger.info(f"Using dt from calibration model: {model_data['dt']} seconds")
@@ -567,7 +600,20 @@ class VectorCalibrator:
             "rvec": rvec,
             "tvec": tvec,
             "dot_spacing_mm": dot_spacing_mm,
+            "image_height": image_height,
         }
+
+    def _uncal_to_raw(self, x_uncal, y_uncal):
+        """Convert uncalibrated coords (1-based, y-up) to raw pixels (0-based, y-down).
+
+        Reverses the convention applied in save_results.py:
+            x_uncal = x_raw + 1
+            y_uncal = H - y_raw
+        So the inverse is:
+            x_raw = x_uncal - 1
+            y_raw = H - y_uncal
+        """
+        return x_uncal - 1, self.image_height - y_uncal
 
     def calibrate_coordinates(
         self, coords_x: np.ndarray, coords_y: np.ndarray
@@ -579,12 +625,15 @@ class VectorCalibrator:
         pixel coordinates to the Z=0 calibration plane.
 
         Args:
-            coords_x, coords_y: Coordinate arrays in pixels
+            coords_x, coords_y: Coordinate arrays in uncalibrated pixels (1-based, y-up)
 
         Returns:
             (x_mm, y_mm): Coordinate arrays in mm
         """
-        pts = np.stack([coords_x.flatten(), coords_y.flatten()], axis=-1).astype(
+        # Convert uncalibrated coords (1-based, y-up) to raw pixels (0-based, y-down)
+        # because the pinhole model was fitted using raw pixel coordinates.
+        raw_x, raw_y = self._uncal_to_raw(coords_x, coords_y)
+        pts = np.stack([raw_x.flatten(), raw_y.flatten()], axis=-1).astype(
             np.float32
         )
 
@@ -597,7 +646,9 @@ class VectorCalibrator:
         )
 
         x_mm = world_pts[:, 0].reshape(coords_x.shape)
-        y_mm = world_pts[:, 1].reshape(coords_y.shape)
+        # Negate y: the pinhole model's world y-axis points opposite to the
+        # physical y-up convention because we feed raw pixels (y-down).
+        y_mm = -world_pts[:, 1].reshape(coords_y.shape)
 
         logger.info("Converted coordinates from pixels to mm (pinhole model)")
 
@@ -614,17 +665,13 @@ class VectorCalibrator:
         Convert pixel-based velocity vectors to m/s using pinhole camera model.
 
         Args:
-            ux_px, uy_px: Velocity components in pixels/frame
-            coords_x_px, coords_y_px: Grid coordinates in pixels
+            ux_px, uy_px: Velocity components in uncalibrated pixels/frame
+            coords_x_px, coords_y_px: Grid coordinates in uncalibrated pixels (1-based, y-up)
 
         Returns:
             (ux_ms, uy_ms): Velocity components in m/s
         """
-        coords_flat = np.stack(
-            [coords_x_px.flatten(), coords_y_px.flatten()], axis=-1
-        ).astype(np.float32)
-
-        if coords_flat.size == 0 or ux_px.size == 0 or uy_px.size == 0:
+        if coords_x_px.size == 0 or ux_px.size == 0 or uy_px.size == 0:
             logger.warning("Empty coordinate or vector data, returning zeros")
             return np.zeros_like(ux_px), np.zeros_like(uy_px)
 
@@ -635,19 +682,30 @@ class VectorCalibrator:
             )
             return np.zeros_like(ux_px), np.zeros_like(uy_px)
 
+        # Convert base positions: uncalibrated (1-based, y-up) → raw pixels (0-based, y-down)
+        raw_x, raw_y = self._uncal_to_raw(coords_x_px, coords_y_px)
+        coords_flat = np.stack(
+            [raw_x.flatten(), raw_y.flatten()], axis=-1
+        ).astype(np.float32)
+
         # Project original positions to world (mm)
         coords_world = _pixels_to_world_mm(
             coords_flat, self.camera_matrix, self.dist_coeffs, self.rvec, self.tvec
         )
 
-        # Displaced positions in pixels
-        disp_px = coords_flat + np.stack(
-            [ux_px.flatten(), uy_px.flatten()], axis=-1
+        # Displaced positions: compute in uncalibrated space, then convert to raw.
+        # ux/uy from .mat are in uncalibrated convention (uy positive = upward).
+        # Adding them to uncal coords gives displaced position in uncal space.
+        disp_x_uncal = coords_x_px + ux_px
+        disp_y_uncal = coords_y_px + uy_px
+        disp_raw_x, disp_raw_y = self._uncal_to_raw(disp_x_uncal, disp_y_uncal)
+        disp_flat = np.stack(
+            [disp_raw_x.flatten(), disp_raw_y.flatten()], axis=-1
         ).astype(np.float32)
 
         # Project displaced positions to world (mm)
         disp_world = _pixels_to_world_mm(
-            disp_px, self.camera_matrix, self.dist_coeffs, self.rvec, self.tvec
+            disp_flat, self.camera_matrix, self.dist_coeffs, self.rvec, self.tvec
         )
 
         # Compute displacement in mm, convert to m/s
@@ -676,16 +734,18 @@ class VectorCalibrator:
         world coordinates and measuring the resulting world displacement.
 
         Args:
-            coords_x_px, coords_y_px: Grid coordinates in pixels
+            coords_x_px, coords_y_px: Grid coordinates in uncalibrated pixels (1-based, y-up)
 
         Returns:
             scale_factor: 2D array of local scaling factors (m/s per pixel/frame)
         """
         delta_px = 1.0  # Small pixel displacement for computing local scale
 
-        # Stack coordinates
+        # Convert to raw pixels first, then perturb in raw pixel space
+        # (the scale factor should reflect mm-per-raw-pixel)
+        raw_x, raw_y = self._uncal_to_raw(coords_x_px, coords_y_px)
         coords_flat = np.stack(
-            [coords_x_px.flatten(), coords_y_px.flatten()], axis=-1
+            [raw_x.flatten(), raw_y.flatten()], axis=-1
         ).astype(np.float32)
 
         if coords_flat.size == 0:
@@ -978,6 +1038,7 @@ class VectorCalibrator:
             max_run,
             valid_run_nums,
             invert_ux,
+            self.image_height,
         ))
 
         if result and result.get("success"):
@@ -1031,6 +1092,7 @@ class VectorCalibrator:
                     max_run,
                     valid_run_nums,
                     invert_ux,
+                    self.image_height,
                 )
             )
 

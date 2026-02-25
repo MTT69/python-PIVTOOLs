@@ -94,7 +94,7 @@ video:
   fps: 30
   crf: 15
   resolution: 1080p
-  source_endpoint: regular
+  source_endpoint: merged
 statistics:
   enabled_methods:
     mean_velocity: true
@@ -120,7 +120,7 @@ statistics:
   gamma_radius: 4
   save_figures: true
   type_name: instantaneous
-  source_endpoint: regular
+  source_endpoint: merged
 instantaneous_piv:
   window_size:
   - - 64
@@ -295,4 +295,4 @@ transforms:
   cameras:
     1:
       operations: []
-  source_endpoint: regular
+  source_endpoint: merged

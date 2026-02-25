@@ -238,6 +238,7 @@ def _reconstruct_3d_velocities(
     stereo_params: Dict[str, np.ndarray],
     min_angle: float,
     combined_input_mask: Optional[np.ndarray] = None,
+    image_height: int = 0,
 ) -> Dict[str, Any]:
     """
     Reconstruct 3D velocities from stereo 2D velocity fields.
@@ -250,6 +251,7 @@ def _reconstruct_3d_velocities(
         stereo_params: Stereo calibration parameters
         min_angle: Minimum triangulation angle in degrees
         combined_input_mask: Combined boolean mask from cam1 and cam2 (True = invalid)
+        image_height: Image height in pixels (for uncalibrated→raw coordinate conversion)
 
     Returns:
         Dict with velocities_3d, positions_3d, indices1, num_valid, num_total
@@ -270,9 +272,16 @@ def _reconstruct_3d_velocities(
     row1, col1 = np.unravel_index(indices1, shape1)
     row2, col2 = np.unravel_index(indices2, shape2)
 
-    # Get pixel coordinates and velocities at corresponding points
-    pts1_px = np.column_stack([coords1_px[0][row1, col1], coords1_px[1][row1, col1]])
-    pts2_px = np.column_stack([coords2_px[0][row2, col2], coords2_px[1][row2, col2]])
+    # Get pixel coordinates at corresponding points (still in uncalibrated convention)
+    pts1_uncal = np.column_stack([coords1_px[0][row1, col1], coords1_px[1][row1, col1]])
+    pts2_uncal = np.column_stack([coords2_px[0][row2, col2], coords2_px[1][row2, col2]])
+
+    # Convert uncalibrated (1-based, y-up) → raw pixels (0-based, y-down) for OpenCV
+    pts1_px = pts1_uncal.copy()
+    pts1_px[:, 0] -= 1;  pts1_px[:, 1] = image_height - pts1_px[:, 1]
+    pts2_px = pts2_uncal.copy()
+    pts2_px[:, 0] -= 1;  pts2_px[:, 1] = image_height - pts2_px[:, 1]
+
     vel1 = np.column_stack([ux1[row1, col1], uy1[row1, col1]])
     vel2 = np.column_stack([ux2[row2, col2], uy2[row2, col2]])
 
@@ -290,9 +299,13 @@ def _reconstruct_3d_velocities(
     else:
         valid_mask = angle_mask
 
-    # Triangulate displaced positions
-    pts1_displaced = pts1_px + vel1
-    pts2_displaced = pts2_px + vel2
+    # Displaced positions: add velocity in uncal space, then convert to raw
+    pts1_disp_uncal = pts1_uncal + vel1
+    pts2_disp_uncal = pts2_uncal + vel2
+    pts1_displaced = pts1_disp_uncal.copy()
+    pts1_displaced[:, 0] -= 1;  pts1_displaced[:, 1] = image_height - pts1_displaced[:, 1]
+    pts2_displaced = pts2_disp_uncal.copy()
+    pts2_displaced[:, 0] -= 1;  pts2_displaced[:, 1] = image_height - pts2_displaced[:, 1]
     pts_3d_displaced, _, _ = _triangulate_3d_points(
         pts1_displaced, pts2_displaced, stereo_params
     )
@@ -328,6 +341,7 @@ def _process_stereo_frame(args: Tuple) -> Optional[Dict[str, Any]]:
               - min_angle: Minimum triangulation angle
               - max_run: Maximum run number
               - valid_run_nums: Set of valid run numbers
+              - image_height: Image height in pixels for coordinate convention
 
     Returns:
         Dict with results including per-run num_valid counts, or None if failed
@@ -343,6 +357,7 @@ def _process_stereo_frame(args: Tuple) -> Optional[Dict[str, Any]]:
         min_angle,
         max_run,
         valid_run_nums,
+        image_height,
     ) = args
 
     try:
@@ -463,6 +478,7 @@ def _process_stereo_frame(args: Tuple) -> Optional[Dict[str, Any]]:
                     stereo_params,
                     min_angle,
                     combined_input_mask,
+                    image_height=image_height,
                 )
 
                 # Create output grid matching camera 1 coordinates
@@ -479,9 +495,9 @@ def _process_stereo_frame(args: Tuple) -> Optional[Dict[str, Any]]:
                     valid_indices = result_3d["indices1"]
                     row_indices, col_indices = np.unravel_index(valid_indices, ref_shape)
                     ux_grid[row_indices, col_indices] = velocities_mps[:, 0]
-                    uy_grid[row_indices, col_indices] = velocities_mps[:, 1]
+                    # Negate uy: OpenCV y-down → physical y-up convention
+                    uy_grid[row_indices, col_indices] = -velocities_mps[:, 1]
                     # Negate uz because OpenCV stereo Z-axis convention differs from physical coords
-                    # This matches the uy negation done in save_results.py for planar PIV
                     uz_grid[row_indices, col_indices] = -velocities_mps[:, 2]
                     output_mask[row_indices, col_indices] = False  # Valid points: not masked
 
@@ -568,6 +584,15 @@ def _load_stereo_model(
                     f"model has '{detected_type}'"
                 )
 
+    # Extract image_height from image_size [W, H] (needed for coordinate convention)
+    img_size = np.asarray(stereo_data.get("image_size", [0, 0])).flatten()
+    image_height = int(img_size[1]) if img_size.size >= 2 else 0
+    if image_height == 0:
+        raise ValueError(
+            f"Stereo model {stereo_file} does not contain 'image_size'. "
+            f"Re-generate the stereo model."
+        )
+
     # Return as serializable dict for worker processes
     return {
         "camera_matrix_1": np.array(stereo_data["camera_matrix_1"]).astype(np.float64),
@@ -586,6 +611,7 @@ def _load_stereo_model(
         "tvecs_1": np.array(
             stereo_data.get("tvecs_1", [[0, 0, 0]])
         ).astype(np.float64),
+        "image_height": image_height,
     }
 
 
@@ -662,6 +688,7 @@ class StereoReconstructor:
         self.stereo_params = _load_stereo_model(
             self.base_dir, self.camera_pair[0], self.camera_pair[1], self.model_type
         )
+        self.image_height = self.stereo_params["image_height"]
 
         logger.info("Initialized StereoReconstructor")
         logger.info(f"  Base directory: {self.base_dir}")
@@ -777,7 +804,8 @@ class StereoReconstructor:
             mean_xy = np.mean(positions_3d[:, :2], axis=0)
 
             x_grid[row_indices, col_indices] = positions_3d[:, 0] - mean_xy[0]
-            y_grid[row_indices, col_indices] = positions_3d[:, 1] - mean_xy[1]
+            # Negate y: OpenCV y-down → physical y-up convention
+            y_grid[row_indices, col_indices] = -(positions_3d[:, 1] - mean_xy[1])
             z_grid[row_indices, col_indices] = positions_3d[:, 2] - z_offset
 
             coordinates[run_num - 1] = (x_grid, y_grid, z_grid)
@@ -838,6 +866,7 @@ class StereoReconstructor:
                 self.min_angle,
                 max_run,
                 valid_run_nums,
+                self.image_height,
             ))
 
         if not tasks:

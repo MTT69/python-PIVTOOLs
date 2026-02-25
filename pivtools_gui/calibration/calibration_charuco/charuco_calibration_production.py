@@ -623,6 +623,7 @@ class ChArUcoCalibrator:
             "reprojection_errors_y": np.array(all_errors_y),
             "num_images": stats["valid"],
             "image_size": list(img_size),
+            "image_height": img_size[1],
             "timestamp": datetime.now().isoformat(),
             "dt": self.dt,
             "dot_spacing_mm": self.square_size * 1000.0,

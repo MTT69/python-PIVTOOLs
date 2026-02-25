@@ -400,6 +400,7 @@ POST /calibrate/calibration/snapshot/load  {base_path_idx} -> restores saved cal
 - `stereo_reconstruction/stereo_dotboard_calibration_production.py` - Stereo dotboard. Same optimizations as planar: histogram blob detection, cKDTree, reduced RANSAC, vectorized object points
 - `stereo_reconstruction/stereo_calibration_base.py` - Stereo base class. Parallel camera image reads via ThreadPoolExecutor
 - `stereo_reconstruction/stereo_charuco_calibration_production.py` - Stereo ChArUco detection
+- `stereo_reconstruction/stereo_reconstruction_production.py` - 3D velocity reconstruction from stereo pairs. Converts uncalibrated coords → raw pixels before OpenCV triangulation. Negates y/uy on output (OpenCV y-down → physical y-up). Uses ProcessPoolExecutor for parallel frame processing.
 - `stereo_reconstruction/self_calibration.py` - Stereo self-calibration (Wieneke 2005). Detects and corrects laser-sheet Z-offset and tilts via iterative disparity minimization. Key exports: `PinholeCamera`, `SelfCalibrationResult`, `run_self_calibration()`, `compute_dewarp_maps()`. Reuses `bulkxcorr2d_accumulate` C library for ensemble cross-camera correlation, `median_outlier_detection` + `infill_local_median` for disparity cleaning. Includes pure-Python FFT fallback when C library unavailable. Test script: `scripts/test_self_calibration.py` (synthetic data + 5 diagnostic figures).
 
 **Dotboard calibration performance optimizations** (shared by planar + stereo):
@@ -1290,8 +1291,8 @@ Container formats: `.set` and `.cine` (single file, multiple frames). `.im7` wit
 **Instantaneous** (`B00001.mat` ... `B0NNNN.mat`, var: `piv_result`):
 ```
 piv_result (multi-run object array or single struct):
-  .ux        (H, W) float    x-velocity (negated for physical coords on save)
-  .uy        (H, W) float    y-velocity
+  .ux        (H, W) float    x-velocity
+  .uy        (H, W) float    y-velocity (negated for physical coords on save)
   .uz        (H, W) float    z-velocity (stereo only)
   .b_mask    (H, W) float    binary mask (1=valid)
   .win_ctrs_x/y               window centers
@@ -1433,6 +1434,7 @@ Benchmark scripts compare PIVTOOLs output against ground truth (DNS data).
 - **`coordinates.mat` race condition:** `transform_all_frames()` transforms coordinates once per camera then must pass `None` (not `coords_file`) to parallel workers. Workers re-reading and re-saving causes double-transform and Windows "Access is denied".
 - **`invert_ux`/`invert_uy` UV_stress signs:** When negating only one velocity component, UV_stress must also be negated: `(-u')v' = -(u'v')`. But `invert_ux_uy` leaves UV_stress unchanged. Uses XOR logic.
 - **Batch transform frame count:** Source frame was already processed but excluded from `total_frames_to_process`. Fix: add 1 and start `processed_frames` at 1.
+- **Coordinate convention invariant (planar + stereo):** OpenCV calibration models (pinhole and stereo) are fitted with raw pixel coordinates (0-based, y-down). All OpenCV functions (`_pixels_to_world_mm`, `cv2.undistortPoints`, `cv2.triangulatePoints`) **must** receive raw pixels. PIVTOOLs stores uncalibrated coords (1-based, y-up). Conversion: `x_raw = x_uncal - 1`, `y_raw = image_height - y_uncal`. The `image_height` is loaded from the model .mat file's `image_size` field. Planar fix in `vector_calibration_production.py` (`_uncal_to_raw()`), stereo fix in `stereo_reconstruction_production.py` (`_reconstruct_3d_velocities()`). Stereo also negates `y_grid` and `uy` on output (OpenCV y-down → physical y-up).
 
 ### PIV Polling & Status Image
 - Polling interval: 1000ms. Image refresh interval: 3000ms.

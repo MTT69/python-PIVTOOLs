@@ -371,13 +371,11 @@ class GlobalCoordinateAligner:
     ) -> Tuple[float, float]:
         """Convert pixel to physical using dotboard or charuco pinhole model.
 
-        Uses _pixels_to_world_mm from vector_calibration_production.py logic
-        with the saved camera model.
+        Uses _pixels_to_world_mm with the saved camera model.
 
-        The production calibration (vector_calibration_production.py) passes
-        *uncalibrated* coordinates to the pinhole model, not raw pixels.
-        Uncalibrated coords use: x = px_x + 1, y = H - px_y (from save_results.py).
-        We must do the same conversion here for consistency.
+        pixel_xy is already in raw pixel coordinates (0-based, y-down) — it comes
+        from GUI clicks on raw images. The pinhole model (K, dist, rvec, tvec)
+        was fitted using raw pixels, so we pass them directly.
         """
         model = self._load_pinhole_model(camera_num, method)
         camera_matrix = model["camera_matrix"]
@@ -385,16 +383,14 @@ class GlobalCoordinateAligner:
         rvec = model["rvec"]
         tvec = model["tvec"]
 
-        # Convert raw pixel to uncalibrated coordinates (matching save_results.py)
-        # This is what the production calibration passes to _pixels_to_world_mm
-        H = self.config.image_shape[0]
-        px_x_uncal = pixel_xy[0] + 1    # 1-based
-        px_y_uncal = H - pixel_xy[1]     # flipped: image-downward → physical-upward
+        pts_raw = np.array([[pixel_xy[0], pixel_xy[1]]], dtype=np.float32)
+        world_pts = _pixels_to_world_mm(pts_raw, camera_matrix, dist_coeffs, rvec, tvec)
 
-        pts_uncal = np.array([[px_x_uncal, px_y_uncal]], dtype=np.float32)
-        world_pts = _pixels_to_world_mm(pts_uncal, camera_matrix, dist_coeffs, rvec, tvec)
-
-        return (float(world_pts[0, 0]), float(world_pts[0, 1]))
+        # Negate y: the pinhole model's world y-axis points opposite to the
+        # physical y-up convention because raw pixels are y-down.
+        # Must match calibrate_coordinates() in vector_calibration_production.py
+        # so alignment shifts are computed and applied in the same convention.
+        return (float(world_pts[0, 0]), -float(world_pts[0, 1]))
 
     def _load_pinhole_model(self, camera_num: int, method: str) -> dict:
         """Load calibration model for dotboard or charuco."""
