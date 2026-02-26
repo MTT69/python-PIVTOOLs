@@ -512,11 +512,14 @@ class VectorStatisticsProcessor:
             # Determine which statistics to compute
             # Keep original requested names for logging, but also track normalized names
             if requested_statistics is None or len(requested_statistics) == 0:
-                # Default: compute common mean statistics only
-                requested_statistics = [
-                    "mean_velocity", "mean_vorticity", "mean_divergence",
-                    "reynolds_stress", "normal_stress", "mean_tke"
-                ]
+                if self._config is not None:
+                    requested_statistics = self._config.statistics_enabled_list
+                else:
+                    # Default: compute common mean statistics only
+                    requested_statistics = [
+                        "mean_velocity", "mean_vorticity", "mean_divergence",
+                        "reynolds_stress", "normal_stress", "mean_tke"
+                    ]
 
             # Keep original names for reference
             original_stats = set(requested_statistics)
@@ -1391,7 +1394,6 @@ if __name__ == "__main__":
                 )
 
                 result = processor.process(
-                    requested_statistics=enabled_stats,
                     save_figures=save_figures,
                 )
 
@@ -1439,7 +1441,6 @@ if __name__ == "__main__":
             )
 
             result = processor.process(
-                requested_statistics=enabled_stats,
                 save_figures=save_figures,
             )
 
