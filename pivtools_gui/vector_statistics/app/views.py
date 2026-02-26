@@ -4,9 +4,11 @@ Vector Statistics API views
 Provides endpoints for computing instantaneous statistics (mean and Reynolds stresses)
 with progress tracking.
 
-Simplified API: single base_path_idx + process_merged boolean.
-- process_merged=False: Processes all cameras from config.camera_numbers
-- process_merged=True: Processes merged data only
+API: base_path_idx (int) + workflow (str).
+- workflow="per_camera":  Processes all cameras from config.camera_numbers
+- workflow="after_merge": Processes merged data only
+- workflow="both":        Processes all cameras then merged data
+- workflow="stereo":      Processes stereo combined result
 """
 
 import threading
@@ -86,10 +88,10 @@ def calculate_statistics():
     API:
         base_path_idx: int - Single path index (default: 0)
         workflow: str - Workflow mode (default: from config)
-            - "per_camera": Process all cameras from config.camera_numbers
+            - "per_camera":  Process all cameras from config.camera_numbers
             - "after_merge": Process merged data only
-            - "both": Process all cameras then merged data
-        process_merged: bool - DEPRECATED, use workflow instead
+            - "both":        Process all cameras then merged data
+            - "stereo":      Process stereo combined result
         type_name: str (default: "instantaneous")
         requested_statistics: list of statistic names (optional)
 
@@ -133,22 +135,15 @@ def calculate_statistics():
 
         base_dir = base_paths[base_path_idx]
 
-        # Get workflow - support both new workflow param and deprecated process_merged
-        # Priority: process_merged overrides workflow (for backward compat)
+        # Get workflow from request, fall back to config default
         workflow = data.get("workflow")
         source_endpoint = data.get("source_endpoint", "regular")
-        
-        # Check deprecated process_merged first - it should override workflow if present
-        if "process_merged" in data:
-            process_merged = bool(data.get("process_merged", False))
-            workflow = "after_merge" if process_merged else "per_camera"
-            logger.info(f"Using deprecated process_merged={process_merged} (overrides workflow) → workflow={workflow}")
-        elif workflow is None:
-            # No process_merged and no workflow - use config default
+
+        if workflow is None:
             workflow = cfg.statistics_workflow
             logger.info(f"No workflow specified, using config default: {workflow}")
         else:
-            logger.info(f"Using explicit workflow from request: {workflow}")
+            logger.info(f"Using workflow from request: {workflow}")
 
         # Check if stereo setup (config-based)
         is_stereo_config = cfg.is_stereo_setup
@@ -364,6 +359,7 @@ def _run_statistics_job(
             use_stereo=use_stereo,
             stereo_camera_pair=stereo_camera_pair,
             config=get_config(),
+            use_threading=True,  # GUI: use threading to avoid Windows spawn overhead
         )
 
         result = processor.process(
