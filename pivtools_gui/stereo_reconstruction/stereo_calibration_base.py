@@ -50,7 +50,7 @@ class BaseStereoCalibrator(ABC):
         file_pattern: Optional[str] = None,
         camera_subfolders: Optional[List[str]] = None,
         source_path_idx: int = 0,
-        dt: float = 1.0,
+        dt: Optional[float] = None,
     ):
         """Initialize stereo calibrator.
 
@@ -112,7 +112,7 @@ class BaseStereoCalibrator(ABC):
         self.camera_subfolders = camera_subfolders
 
         # Time step - use explicit dt, or fall back to unified config.dt
-        if dt != 1.0:  # Explicit dt was passed (not default)
+        if dt is not None:
             self.dt = dt
         elif self._config is not None:
             self.dt = self._config.dt
@@ -371,7 +371,7 @@ class BaseStereoCalibrator(ABC):
         # Stereo rectification
         R1, R2, P1, P2, Q, roi1, roi2 = cv2.stereoRectify(
             mtx1, dist1, mtx2, dist2, image_size, R, T,
-            flags=cv2.CALIB_USE_INTRINSIC_GUESS, alpha=-1
+            flags=cv2.CALIB_ZERO_DISPARITY, alpha=-1
         )
 
         # Calculate relative angle between cameras

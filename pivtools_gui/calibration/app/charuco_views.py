@@ -105,6 +105,7 @@ def charuco_calibrate():
     data = request.get_json() or {}
     source_path_idx = int(data.get("source_path_idx", 0))
     camera = camera_number(data.get("camera", 1))
+    model_type = data.get("model_type", "pinhole")
 
     cfg = get_config()
     charuco_cfg = cfg.charuco_calibration
@@ -154,6 +155,7 @@ def charuco_calibrate():
                 dt=dt,
                 calibration_input_path=cam_input_path,
                 config=cfg,
+                model_type=model_type,
             )
 
             def progress_callback(progress_data):
@@ -223,6 +225,7 @@ def charuco_calibrate_all():
     """
     data = request.get_json() or {}
     source_path_idx = int(data.get("source_path_idx", 0))
+    model_type = data.get("model_type", "pinhole")
 
     cfg = get_config()
     charuco_cfg = cfg.charuco_calibration
@@ -259,12 +262,9 @@ def charuco_calibrate_all():
         try:
             job_manager.update_job(job_id, status="running")
 
-            # Get calibration input path using config settings (calibration_sources)
-            # When camera_subfolders is empty, path is same for all cameras
-            first_camera = camera_numbers[0] if camera_numbers else 1
-            cam_input_path = build_calibration_camera_path(cfg, source_path_idx, first_camera)
-
-            # Use config-based paths with explicit input path override
+            # Let the calibrator resolve per-camera paths via _get_camera_input_dir()
+            # (passing calibration_input_path=None avoids the bug where camera 1's
+            # path was reused for all cameras)
             calibrator = ChArUcoCalibrator(
                 source_dir=source_root,
                 base_dir=base_root,
@@ -277,8 +277,10 @@ def charuco_calibrate_all():
                 aruco_dict=aruco_dict,
                 min_corners=min_corners,
                 dt=dt,
-                calibration_input_path=cam_input_path,
+                calibration_input_path=None,
                 config=cfg,
+                model_type=model_type,
+                source_path_idx=source_path_idx,
             )
 
             def progress_callback(progress_data):
@@ -583,6 +585,7 @@ def charuco_calibrate_batch():
         min_corners = int(charuco_cfg.get("min_corners", 6))
         dt = float(charuco_cfg.get("dt", 1.0))
         file_pattern = cfg.calibration_image_format
+        model_type = data.get("model_type", charuco_cfg.get("model_type", "pinhole"))
 
         # Launch a job for each target
         for target in targets:
@@ -625,6 +628,7 @@ def charuco_calibrate_batch():
                     min_corners,
                     dt,
                     file_pattern,
+                    model_type,
                 ),
             )
             thread.daemon = True
@@ -663,6 +667,7 @@ def _run_charuco_calibration_job(
     min_corners: int,
     dt: float,
     file_pattern: str,
+    model_type: str = "pinhole",
 ):
     """Run ChArUco calibration job in a background thread."""
     try:
@@ -688,6 +693,7 @@ def _run_charuco_calibration_job(
             dt=dt,
             calibration_input_path=cam_input_path,
             config=cfg,
+            model_type=model_type,
         )
 
         def progress_callback(progress_data):

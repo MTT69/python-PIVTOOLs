@@ -8,9 +8,13 @@
 
 ## Rules
 
-- **Always update docs after changes:** After completing any feature/refactor, update this `CLAUDE.md` and `MEMORY.md` before finishing. Don't wait to be asked.
+- **Self-Maintenance:** Always update docs after changes: After completing any feature/refactor, update the relevant sections of this CLAUDE.md (architecture, collections, routes, patterns, key files) and MEMORY.md (key learnings, gotchas, conventions) before finishing. Don't wait to be asked. Keep both files current as the codebase evolves.
   - **CLAUDE.md** (this file) is public, checked into git. Put project knowledge here: architecture, conventions, patterns, gotchas, key file locations, build commands, code conventions, collection schemas. Any contributor using Claude Code gets this context automatically.
   - **MEMORY.md** is private, lives on the local machine (`~/.claude/projects/.../memory/MEMORY.md`), never committed. Put personal workflow preferences, local env quirks, session-to-session learnings specific to how the user works, and things still being validated.
+
+- **Code Review:** After completing meaningful edits (multi-file changes, new features, refactors, or anything touching backend + frontend), run the `superpowers:code-reviewer` agent to review the work against the plan and coding standards before considering the task done.
+
+- **Skills & Plugins Check:** Before starting any task, check available skills and plugins that might be beneficial. If there is even a 1% chance a skill applies, invoke it. This includes brainstorming skills before creative/feature work, debugging skills before bug fixes, and any domain-specific skills that match the task. Also check for relevant MCP server tools (e.g., Context7 for library docs) that could inform the implementation.
 
 ---
 
@@ -235,7 +239,7 @@ piv_result (or ensemble_result):
   .ux    -> (H, W) float64   # x-velocity
   .uy    -> (H, W) float64   # y-velocity
   .uz    -> (H, W) float64   # z-velocity (stereo only)
-  .b_mask -> (H, W) float64  # binary mask (1=valid, 0=invalid)
+  .b_mask -> (H, W) float64  # binary mask (0=valid, non-zero=invalid/excluded)
   Optional: .UU_stress, .VV_stress, .UV_stress (ensemble)
 
 coordinates:
@@ -392,9 +396,9 @@ POST /calibrate/calibration/snapshot/load  {base_path_idx} -> restores saved cal
 **Production files** (do the actual calibration work):
 - `scale_factor_calibration_production.py` - Simple px→mm scaling
 - `global_coordinate_alignment.py` - Global coordinate alignment. Uses chain topology (cam N↔cam N+1 pairs). Supports `invert_ux` to negate ux + UV_stress and reflect x-coordinates around datum_physical_x. **Fused into calibration workers:** `precompute_camera_shifts(type_name)` pre-computes shifts (no data I/O) → shifts/invert_ux applied inside parallel calibration workers (one file open, one save per .mat). `apply_alignment()` still exists for standalone `align-coordinates` CLI command; `_apply_invert_ux_to_camera()` uses `ThreadPoolExecutor(min(os.cpu_count(), len(files), 8))` to process vector .mat files in parallel (loadmat/savemat release GIL). **Idempotency guard:** `alignment_applied.json` sidecar marker; blocks re-application unless `force=True`. Fresh calibration clears the marker. Pre-flight validates: datum_pixel set, method not polynomial, overlap_pairs for multi-camera.
-- `calibration_planar/planar_calibration_production.py` - Dotboard detection + model. Optimized: histogram-based single blob detection, cKDTree neighbor finding, reduced RANSAC iterations, vectorized object points, no double image reads for containers
-- `calibration_charuco/charuco_calibration_production.py` - ChArUco detection
-- `calibration_poly/polynomial_calibration_production.py` - DaVis XML polynomial
+- `calibration_planar/planar_calibration_production.py` - Dotboard detection + model. Optimized: histogram-based single blob detection, cKDTree neighbor finding, reduced RANSAC iterations, vectorized object points, no double image reads for containers. Supports `model_type="pinhole"` (OpenCV) or `"polynomial"` (DaVis-compatible) via `MultiViewCalibrator(model_type=...)`.
+- `calibration_charuco/charuco_calibration_production.py` - ChArUco detection. Supports `model_type="pinhole"` or `"polynomial"` via `ChArUcoCalibrator(model_type=...)`. ChArUco world points are in meters (multiplied by 1000 for polynomial mm input).
+- `calibration_poly/polynomial_calibration_production.py` - DaVis XML polynomial calibration consumer (`PolynomialVectorCalibrator`) + polynomial model fitting from detected points (`fit_polynomial_from_points()`, `save_polynomial_to_config()`). Fitting uses 3rd-order polynomial with 10 terms [1, s, s², s³, t, t², t³, s*t, s²*t, s*t²] solved via `np.linalg.lstsq`. mm_per_pixel estimated via median nearest-neighbor ratios (cKDTree). **Coordinate convention:** `PolynomialVectorCalibrator` converts uncalibrated coords (1-based, y-up) → raw pixels (0-based, y-down) via `_uncal_to_raw()` before polynomial evaluation, matching the space the polynomial was fitted in. `image_height` stored from config for the conversion.
 - `vector_calibration_production.py` - Applies calibration to vectors
 - `image_dewarp_overlay.py` - Standalone script: dewarps raw images from multiple cameras into physical coords, overlays them with interactive coordinate readout and measurement tools. Config-at-top pattern with config.yaml fallback. Imports `PinholeCamera`/`compute_dewarp_maps`/`dewarp_image` from `self_calibration.py` and `_pixels_to_world_mm` from `global_coordinate_alignment.py`. Uses raw pixel coords (not uncalibrated convention) throughout for consistency with dewarp maps.
 - `stereo_reconstruction/stereo_dotboard_calibration_production.py` - Stereo dotboard. Same optimizations as planar: histogram blob detection, cKDTree, reduced RANSAC, vectorized object points
@@ -1036,9 +1040,9 @@ Triggered on GitHub release or manual dispatch. Builds wheels for {ubuntu, macos
 | `init` | Create default `config.yaml` |
 | `instantaneous` | Run instantaneous PIV |
 | `ensemble` | Run ensemble PIV |
-| `detect-planar` / `detect-charuco` | Detect calibration targets |
+| `detect-planar` / `detect-charuco` | Detect calibration targets. `--model-type pinhole\|polynomial` selects model type. |
 | `detect-stereo-planar` / `detect-stereo-charuco` | Stereo calibration detection |
-| `apply-calibration` / `apply-stereo` | Apply calibration (px → m/s). `--align-coordinates` flag auto-applies global alignment. |
+| `apply-calibration` / `apply-stereo` | Apply calibration (px → m/s). `--method` accepts `dotboard`, `charuco`, `scale_factor`, `polynomial`. `--align-coordinates` flag auto-applies global alignment. |
 | `align-coordinates` | Apply global coordinate alignment to calibrated vectors (reads datum/overlap from config). `--force` flag overrides idempotency guard. |
 | `transform` | Geometric transforms (`flip_ud`, `flip_lr`, `rotate_90_cw/ccw`, `rotate_180`, `swap_ux_uy`, `invert_ux_uy`, `invert_ux`, `invert_uy`, `scale_velocity:N`, `scale_coords:N`) |
 | `merge` | Multi-camera Hanning window blending |
@@ -1294,7 +1298,7 @@ piv_result (multi-run object array or single struct):
   .ux        (H, W) float    x-velocity
   .uy        (H, W) float    y-velocity (negated for physical coords on save)
   .uz        (H, W) float    z-velocity (stereo only)
-  .b_mask    (H, W) float    binary mask (1=valid)
+  .b_mask    (H, W) float    binary mask (0=valid, non-zero=excluded)
   .win_ctrs_x/y               window centers
   .peak_mag  (H, W) float    peak height
   .predictor_field             predictor displacement
@@ -1434,7 +1438,7 @@ Benchmark scripts compare PIVTOOLs output against ground truth (DNS data).
 - **`coordinates.mat` race condition:** `transform_all_frames()` transforms coordinates once per camera then must pass `None` (not `coords_file`) to parallel workers. Workers re-reading and re-saving causes double-transform and Windows "Access is denied".
 - **`invert_ux`/`invert_uy` UV_stress signs:** When negating only one velocity component, UV_stress must also be negated: `(-u')v' = -(u'v')`. But `invert_ux_uy` leaves UV_stress unchanged. Uses XOR logic.
 - **Batch transform frame count:** Source frame was already processed but excluded from `total_frames_to_process`. Fix: add 1 and start `processed_frames` at 1.
-- **Coordinate convention invariant (planar + stereo):** OpenCV calibration models (pinhole and stereo) are fitted with raw pixel coordinates (0-based, y-down). All OpenCV functions (`_pixels_to_world_mm`, `cv2.undistortPoints`, `cv2.triangulatePoints`) **must** receive raw pixels. PIVTOOLs stores uncalibrated coords (1-based, y-up). Conversion: `x_raw = x_uncal - 1`, `y_raw = image_height - y_uncal`. The `image_height` is loaded from the model .mat file's `image_size` field. Planar fix in `vector_calibration_production.py` (`_uncal_to_raw()`), stereo fix in `stereo_reconstruction_production.py` (`_reconstruct_3d_velocities()`). Stereo also negates `y_grid` and `uy` on output (OpenCV y-down → physical y-up).
+- **Coordinate convention invariant (planar + stereo + polynomial):** OpenCV calibration models (pinhole and stereo) are fitted with raw pixel coordinates (0-based, y-down). All OpenCV functions (`_pixels_to_world_mm`, `cv2.undistortPoints`, `cv2.triangulatePoints`) **must** receive raw pixels. PIVTOOLs stores uncalibrated coords (1-based, y-up). Conversion: `x_raw = x_uncal - 1`, `y_raw = image_height - y_uncal`. The `image_height` is loaded from the model .mat file's `image_size` field. **Y-axis negation rule:** All calibration paths negate world y to convert from model y-down to physical y-up: pinhole `calibrate_coordinates` (`y_mm = -world[:,1]`) and `calibrate_vectors` (`uy_ms = -delta[:,1]`); polynomial `calibrate_coordinates` (`y_mm = -y_world_px * mm_per_pixel`) and `calibrate_vectors` (`v_ms = -v_world_mm`); stereo negates `y_grid`, `uy`, `z_grid`, and `uz` on output.
 
 ### PIV Polling & Status Image
 - Polling interval: 1000ms. Image refresh interval: 3000ms.

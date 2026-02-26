@@ -178,6 +178,7 @@ def planar_generate_model():
     data = request.get_json() or {}
     source_path_idx = int(data.get("source_path_idx", 0))
     camera = camera_number(data.get("camera", 1))
+    model_type = data.get("model_type", "pinhole")
 
     # Create job
     job_id = job_manager.create_job(
@@ -222,7 +223,7 @@ def planar_generate_model():
                 pattern_rows=dotboard_cfg.get("pattern_rows", 10),
                 dot_spacing_mm=dotboard_cfg.get("dot_spacing_mm", 28.89),
                 asymmetric=dotboard_cfg.get("asymmetric", False),
-
+                model_type=model_type,
                 config=cfg,
             )
 
@@ -412,6 +413,7 @@ def planar_generate_model_all():
     """
     data = request.get_json() or {}
     source_path_idx = int(data.get("source_path_idx", 0))
+    model_type = data.get("model_type", "pinhole")
 
     try:
         cfg = get_config()
@@ -450,7 +452,7 @@ def planar_generate_model_all():
                 pattern_rows=dotboard_cfg.get("pattern_rows", 10),
                 dot_spacing_mm=dotboard_cfg.get("dot_spacing_mm", 28.89),
                 asymmetric=dotboard_cfg.get("asymmetric", False),
-
+                model_type=model_type,
                 config=cfg,
             )
 

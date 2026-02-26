@@ -256,6 +256,7 @@ def polynomial_load_xml_to_config():
                 "mm_per_pixel": mm_per_pixel,
                 "coefficients_x": coefficients_x,
                 "coefficients_y": coefficients_y,
+                "image_height": normalisation.get("ny", 0.0),
             }
             cameras_updated.append(cam_num)
 

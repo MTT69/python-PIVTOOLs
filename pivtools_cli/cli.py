@@ -111,8 +111,17 @@ def apply_calibration_command(args):
                         camera_num=camera,
                         image_count=config.num_frame_pairs,
                     )
+                elif method == "polynomial":
+                    from pivtools_gui.calibration.calibration_poly.polynomial_calibration_production import PolynomialVectorCalibrator
+                    calibrator = PolynomialVectorCalibrator(
+                        base_dir=base_dir,
+                        camera_num=camera,
+                        type_name=type_name,
+                        config=config,
+                    )
+                    result = calibrator.process_vectors()
                 else:
-                    # dotboard or charuco
+                    # dotboard or charuco -> pinhole VectorCalibrator
                     from pivtools_gui.calibration.vector_calibration_production import VectorCalibrator
                     calibrator = VectorCalibrator(
                         base_dir=base_dir,
@@ -326,7 +335,8 @@ def detect_planar_command(args):
     calib_cfg = config.data.get("calibration", {})
     file_pattern = calib_cfg.get("image_format", "calib%05d.tif")
 
-    print(f"Grid: {pattern_cols}x{pattern_rows}, spacing: {dot_spacing_mm}mm")
+    model_type = getattr(args, "model_type", "pinhole") or "pinhole"
+    print(f"Grid: {pattern_cols}x{pattern_rows}, spacing: {dot_spacing_mm}mm, model: {model_type}")
 
     results = []
     for path_idx in active_paths:
@@ -347,7 +357,7 @@ def detect_planar_command(args):
                 pattern_rows=pattern_rows,
                 dot_spacing_mm=dot_spacing_mm,
                 asymmetric=asymmetric,
-
+                model_type=model_type,
                 config=config,
             )
 
@@ -425,7 +435,8 @@ def detect_charuco_command(args):
     calib_cfg = config.data.get("calibration", {})
     file_pattern = calib_cfg.get("image_format", "calib%05d.tif")
 
-    print(f"Board: {squares_h}x{squares_v} squares, size: {square_size}m")
+    model_type = getattr(args, "model_type", "pinhole") or "pinhole"
+    print(f"Board: {squares_h}x{squares_v} squares, size: {square_size}m, model: {model_type}")
 
     results = []
     for path_idx in active_paths:
@@ -450,6 +461,7 @@ def detect_charuco_command(args):
                 min_corners=min_corners,
                 dt=dt,
                 config=config,
+                model_type=model_type,
             )
 
             for camera in cameras:
@@ -1348,6 +1360,7 @@ calibration:
     camera: 1
     dot_spacing_mm: 1
     dt: 1
+    model_type: pinhole
     source_path_idx: 0
   charuco:
     camera: 1
@@ -1358,6 +1371,7 @@ calibration:
     aruco_dict: DICT_4X4_1000
     min_corners: 6
     dt: 1
+    model_type: pinhole
     source_path_idx: 0
   stereo_dotboard:
     camera_pair:
@@ -1519,6 +1533,11 @@ def main():
         "--calibration-source", "-cs", default=None,
         help="Direct path to calibration images (overrides config.calibration_sources)"
     )
+    detect_planar_parser.add_argument(
+        "--model-type", default="pinhole",
+        choices=["pinhole", "polynomial"],
+        help="Calibration model type: pinhole (OpenCV) or polynomial (DaVis-compatible)"
+    )
     detect_planar_parser.set_defaults(func=detect_planar_command)
 
     # detect-charuco command (single camera)
@@ -1537,6 +1556,11 @@ def main():
     detect_charuco_parser.add_argument(
         "--calibration-source", "-cs", default=None,
         help="Direct path to calibration images (overrides config.calibration_sources)"
+    )
+    detect_charuco_parser.add_argument(
+        "--model-type", default="pinhole",
+        choices=["pinhole", "polynomial"],
+        help="Calibration model type: pinhole (OpenCV) or polynomial (DaVis-compatible)"
     )
     detect_charuco_parser.set_defaults(func=detect_charuco_command)
 
@@ -1594,7 +1618,7 @@ def main():
     )
     apply_calibration_parser.add_argument(
         "--method", "-m", default=None,
-        choices=["dotboard", "charuco", "scale_factor"],
+        choices=["dotboard", "charuco", "scale_factor", "polynomial"],
         help="Calibration method (default: from config.yaml calibration.active)"
     )
     apply_calibration_parser.add_argument(

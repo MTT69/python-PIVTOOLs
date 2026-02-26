@@ -21,6 +21,8 @@ from loguru import logger
 import numpy as np
 from scipy.io import savemat
 
+from scipy.spatial import cKDTree
+
 from pivtools_core.config import get_config, reload_config
 from pivtools_core.paths import get_data_paths
 from pivtools_core.vector_loading import read_mat_contents, load_coords_from_directory
@@ -280,6 +282,182 @@ def convert_davis_coeffs_to_array(coeff_dict: Dict[str, float]) -> np.ndarray:
 
 
 # ============================================================================
+# POLYNOMIAL FITTING (from detected calibration points)
+# ============================================================================
+
+
+def _build_design_matrix(s: np.ndarray, t: np.ndarray) -> np.ndarray:
+    """Build the (N, 10) design matrix matching evaluate_polynomial_terms() order.
+
+    Term order: [1, s, s^2, s^3, t, t^2, t^3, s*t, s^2*t, s*t^2]
+    """
+    s2 = s * s
+    return np.column_stack([
+        np.ones_like(s),
+        s,
+        s2,
+        s * s2,        # s^3
+        t,
+        t * t,          # t^2
+        t * t * t,      # t^3
+        s * t,
+        s2 * t,         # s^2 * t
+        s * t * t,      # s * t^2
+    ])
+
+
+def fit_polynomial_from_points(
+    image_points: np.ndarray,
+    world_points: np.ndarray,
+    image_shape: tuple,
+) -> dict:
+    """Fit a DaVis-compatible 3rd-order polynomial model from calibration points.
+
+    Parameters
+    ----------
+    image_points : ndarray, shape (N, 2)
+        Detected pixel coordinates (x_px, y_px).
+    world_points : ndarray, shape (N, 2)
+        Corresponding world coordinates in mm (x_mm, y_mm).
+    image_shape : tuple
+        Image dimensions as (width, height).
+
+    Returns
+    -------
+    dict
+        Fitted polynomial model with keys:
+        - mm_per_pixel: float
+        - origin: {"x": float, "y": float}
+        - normalisation: {"nx": float, "ny": float}
+        - coefficients_x: list of 10 floats
+        - coefficients_y: list of 10 floats
+        - rms_fit_error_px: float
+    """
+    image_points = np.asarray(image_points, dtype=np.float64).reshape(-1, 2)
+    world_points = np.asarray(world_points, dtype=np.float64).reshape(-1, 2)
+
+    if len(image_points) < 10:
+        raise ValueError(
+            f"Need at least 10 point correspondences for 10-term polynomial, got {len(image_points)}"
+        )
+
+    width, height = image_shape
+
+    # --- mm_per_pixel via median nearest-neighbor ratio ---
+    img_tree = cKDTree(image_points)
+    world_tree = cKDTree(world_points)
+
+    # Nearest-neighbor distances (k=2: self + closest neighbor)
+    img_nn_dists, _ = img_tree.query(image_points, k=2)
+    world_nn_dists, _ = world_tree.query(world_points, k=2)
+
+    img_nn = img_nn_dists[:, 1]   # skip self (distance = 0)
+    world_nn = world_nn_dists[:, 1]
+
+    # Filter out zero/tiny distances in BOTH spaces to avoid division issues
+    # (world_nn can be near-zero when duplicate detections from multiple images
+    # produce coincident world points after np.vstack)
+    valid = (img_nn > 1e-6) & (world_nn > 1e-6)
+    if valid.sum() < 5:
+        raise ValueError("Too few valid nearest-neighbor pairs for scale estimation")
+
+    mm_per_pixel = float(np.median(world_nn[valid] / img_nn[valid]))
+
+    # --- Normalisation parameters ---
+    x_origin = width / 2.0
+    y_origin = height / 2.0
+    nx = float(width)
+    ny = float(height)
+
+    # --- Normalised pixel coordinates ---
+    s = 2.0 * (image_points[:, 0] - x_origin) / nx
+    t = 2.0 * (image_points[:, 1] - y_origin) / ny
+
+    # --- Distortion targets ---
+    # dx = x_px - (x_world_mm / mm_per_pixel)
+    dx = image_points[:, 0] - (world_points[:, 0] / mm_per_pixel)
+    dy = image_points[:, 1] - (world_points[:, 1] / mm_per_pixel)
+
+    # --- Solve linear system ---
+    A = _build_design_matrix(s, t)
+
+    coeffs_x, res_x, _, _ = np.linalg.lstsq(A, dx, rcond=None)
+    coeffs_y, res_y, _, _ = np.linalg.lstsq(A, dy, rcond=None)
+
+    # --- RMS fit error ---
+    dx_fit = A @ coeffs_x
+    dy_fit = A @ coeffs_y
+    residuals = np.sqrt((dx - dx_fit) ** 2 + (dy - dy_fit) ** 2)
+    rms_error = float(np.sqrt(np.mean(residuals ** 2)))
+
+    logger.info(f"Polynomial fit: mm_per_pixel={mm_per_pixel:.6f}, RMS error={rms_error:.4f} px")
+    logger.info(f"  {len(image_points)} point correspondences, image {width}x{height}")
+
+    return {
+        "mm_per_pixel": mm_per_pixel,
+        "origin": {"x": x_origin, "y": y_origin},
+        "normalisation": {"nx": nx, "ny": ny},
+        "coefficients_x": coeffs_x.tolist(),
+        "coefficients_y": coeffs_y.tolist(),
+        "rms_fit_error_px": rms_error,
+    }
+
+
+def save_polynomial_to_config(
+    camera_num: int,
+    fit_result: dict,
+    dt: float,
+    config: Optional["PIVConfig"] = None,
+):
+    """Write fitted polynomial parameters to config.yaml.
+
+    Writes to ``config.calibration.polynomial.cameras[N]`` and sets the
+    active calibration method to ``"polynomial"``.
+
+    Parameters
+    ----------
+    camera_num : int
+        Camera number (1-based).
+    fit_result : dict
+        Output from :func:`fit_polynomial_from_points`.
+    dt : float
+        Time between laser pulses in seconds.
+    config : PIVConfig, optional
+        Config instance.  Uses ``get_config()`` when *None*.
+    """
+    cfg = config if config is not None else get_config()
+
+    # Ensure nested structure exists
+    cal = cfg.data.setdefault("calibration", {})
+    poly = cal.setdefault("polynomial", {})
+    cameras = poly.setdefault("cameras", {})
+
+    # Write camera-specific parameters
+    cam_key = str(camera_num)
+    cameras[cam_key] = {
+        "origin": fit_result["origin"],
+        "normalisation": fit_result["normalisation"],
+        "mm_per_pixel": fit_result["mm_per_pixel"],
+        "coefficients_x": fit_result["coefficients_x"],
+        "coefficients_y": fit_result["coefficients_y"],
+        "image_height": fit_result["normalisation"]["ny"],
+    }
+
+    # Write dt
+    poly["dt"] = dt
+
+    # Set active calibration method
+    cal["active"] = "polynomial"
+
+    cfg.save()
+    reload_config()
+    logger.info(
+        f"Saved polynomial calibration for camera {camera_num} to config "
+        f"(mm_per_pixel={fit_result['mm_per_pixel']:.6f}, dt={dt})"
+    )
+
+
+# ============================================================================
 # POLYNOMIAL EVALUATION
 # ============================================================================
 
@@ -448,9 +626,53 @@ class PolynomialVectorCalibrator:
             self.nx = nx if nx is not None else 1.0
             self.ny = ny if ny is not None else 1.0
 
+        # Image height for uncalibrated→raw coordinate conversion.
+        # Polynomial is fitted on raw pixels (0-based, y-down), but process_vectors()
+        # receives uncalibrated coords (1-based, y-up) from coordinates.mat.
+        # Conversion: x_raw = x_uncal - 1, y_raw = image_height - y_uncal
+        if cam_params and cam_params.get("image_height"):
+            self.image_height = float(cam_params["image_height"])
+        elif self.ny > 1.0:
+            # For fitted polynomials, ny == image_height (set by fit_polynomial_from_points)
+            self.image_height = self.ny
+        else:
+            # Last resort: read from config image_shape (H, W)
+            try:
+                self.image_height = float(cfg.image_shape[0])
+            except Exception:
+                self.image_height = None
+                logger.warning(
+                    "Could not determine image_height for coordinate conversion. "
+                    "Polynomial calibration may produce incorrect results."
+                )
+
         logger.info(f"Initialized PolynomialCalibrator for Camera {camera_num}")
         logger.info(f"Time step: {self.dt} seconds")
         logger.info(f"MM per pixel: {self.mm_per_pixel}")
+        if self.image_height:
+            logger.info(f"Image height: {self.image_height} (for uncal->raw conversion)")
+
+    def _uncal_to_raw(self, x_uncal: np.ndarray, y_uncal: np.ndarray) -> tuple:
+        """Convert uncalibrated convention (1-based, y-up) to raw pixels (0-based, y-down).
+
+        The polynomial model is fitted on raw OpenCV pixel coordinates from
+        dot/ChArUco detection.  PIVTOOLs stores coordinates in uncalibrated
+        convention (1-based, y-up).  This conversion is required before
+        evaluating the polynomial.
+
+        Parameters
+        ----------
+        x_uncal, y_uncal : ndarray
+            Coordinates in uncalibrated convention.
+
+        Returns
+        -------
+        x_raw, y_raw : ndarray
+            Coordinates in raw pixel convention.
+        """
+        x_raw = x_uncal - 1.0
+        y_raw = self.image_height - y_uncal
+        return x_raw, y_raw
 
     def calibrate_coordinates(self, x_px: np.ndarray, y_px: np.ndarray) -> tuple:
         """
@@ -459,9 +681,9 @@ class PolynomialVectorCalibrator:
         Parameters
         ----------
         x_px : ndarray
-            X coordinates in pixels
+            X coordinates in pixels (uncalibrated convention: 1-based, y-up)
         y_px : ndarray
-            Y coordinates in pixels
+            Y coordinates in pixels (uncalibrated convention: 1-based, y-up)
 
         Returns
         -------
@@ -475,9 +697,17 @@ class PolynomialVectorCalibrator:
         if self.nx <= 1.0 or self.ny <= 1.0:
             logger.warning(f"Normalization factors nx={self.nx}, ny={self.ny} are suspiciously small (<=1). Coordinates might explode.")
 
-        # normalized DAVIS coords
-        s = 2 * (x_px - self.x_origin) / self.nx
-        t = 2 * (y_px - self.y_origin) / self.ny
+        # Convert uncalibrated (1-based, y-up) → raw pixels (0-based, y-down)
+        # The polynomial was fitted on raw pixel coordinates from detection
+        if self.image_height is not None:
+            x_raw, y_raw = self._uncal_to_raw(x_px, y_px)
+        else:
+            logger.warning("No image_height — skipping uncal→raw conversion. Results may be incorrect.")
+            x_raw, y_raw = x_px, y_px
+
+        # normalized DAVIS coords (in raw pixel space)
+        s = 2 * (x_raw - self.x_origin) / self.nx
+        t = 2 * (y_raw - self.y_origin) / self.ny
 
         # Debug ranges to catch explosion early
         logger.debug(f"Normalized coords range - s: [{s.min():.2f}, {s.max():.2f}], t: [{t.min():.2f}, {t.max():.2f}]")
@@ -486,13 +716,16 @@ class PolynomialVectorCalibrator:
         dx = evaluate_polynomial_terms(s, t, self.dx_coeff)
         dy = evaluate_polynomial_terms(s, t, self.dy_coeff)
 
-        # back-mapped world coordinates (in pixels)
-        x_world_px = x_px - dx
-        y_world_px = y_px - dy
+        # back-mapped world coordinates (in raw pixel space)
+        x_world_px = x_raw - dx
+        y_world_px = y_raw - dy
 
         # convert px -> mm
         x_mm = x_world_px * self.mm_per_pixel
-        y_mm = y_world_px * self.mm_per_pixel
+        # Negate y: polynomial operates in raw pixel space (y-down), but
+        # physical/PIV convention is y-up.  Matches pinhole path which also
+        # negates: y_mm = -world_pts[:,1].
+        y_mm = -y_world_px * self.mm_per_pixel
 
         return x_mm, y_mm
 
@@ -537,18 +770,26 @@ class PolynomialVectorCalibrator:
             else:
                 raise ValueError(f"Shape mismatch: ux {ux_px.shape} vs coords {coords_x_px.shape}")
 
-        x0_pix = coords_x_px
-        y0_pix = coords_y_px
+        # Compute displaced positions in uncalibrated space (1-based, y-up)
+        x1_uncal = coords_x_px + ux_px
+        y1_uncal = coords_y_px + uy_px
 
-        x1_pix = x0_pix + ux_px
-        y1_pix = y0_pix + uy_px
+        # Convert both start and displaced positions to raw pixels (0-based, y-down)
+        # The polynomial was fitted on raw pixel coordinates from detection
+        if self.image_height is not None:
+            x0_raw, y0_raw = self._uncal_to_raw(coords_x_px, coords_y_px)
+            x1_raw, y1_raw = self._uncal_to_raw(x1_uncal, y1_uncal)
+        else:
+            logger.warning("No image_height — skipping uncal→raw conversion. Results may be incorrect.")
+            x0_raw, y0_raw = coords_x_px, coords_y_px
+            x1_raw, y1_raw = x1_uncal, y1_uncal
 
-        # normalized DAVIS coords
-        s0 = 2 * (x0_pix - self.x_origin) / self.nx
-        t0 = 2 * (y0_pix - self.y_origin) / self.ny
+        # normalized DAVIS coords (in raw pixel space)
+        s0 = 2 * (x0_raw - self.x_origin) / self.nx
+        t0 = 2 * (y0_raw - self.y_origin) / self.ny
 
-        s1 = 2 * (x1_pix - self.x_origin) / self.nx
-        t1 = 2 * (y1_pix - self.y_origin) / self.ny
+        s1 = 2 * (x1_raw - self.x_origin) / self.nx
+        t1 = 2 * (y1_raw - self.y_origin) / self.ny
 
         # evaluate dx, dy at center and displaced points
         dx0 = evaluate_polynomial_terms(s0, t0, self.dx_coeff)
@@ -557,12 +798,12 @@ class PolynomialVectorCalibrator:
         dx1 = evaluate_polynomial_terms(s1, t1, self.dx_coeff)
         dy1 = evaluate_polynomial_terms(s1, t1, self.dy_coeff)
 
-        # back-mapped world coordinates (in pixels)
-        x0_world_px = x0_pix - dx0
-        y0_world_px = y0_pix - dy0
+        # back-mapped world coordinates (in raw pixel space)
+        x0_world_px = x0_raw - dx0
+        y0_world_px = y0_raw - dy0
 
-        x1_world_px = x1_pix - dx1
-        y1_world_px = y1_pix - dy1
+        x1_world_px = x1_raw - dx1
+        y1_world_px = y1_raw - dy1
 
         # world displacement (px)
         u_world_px = x1_world_px - x0_world_px
@@ -573,8 +814,11 @@ class PolynomialVectorCalibrator:
         v_world_mm = v_world_px * self.mm_per_pixel
 
         # convert mm -> m/s
+        # Negate v: polynomial world y is y-down (raw pixel space), but
+        # physical/PIV convention is y-up.  Matches calibrate_coordinates()
+        # which also negates y.
         u_ms = (u_world_mm * 1e-3) / self.dt
-        v_ms = (v_world_mm * 1e-3) / self.dt
+        v_ms = -(v_world_mm * 1e-3) / self.dt
 
         return u_ms, v_ms
 

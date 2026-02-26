@@ -783,6 +783,10 @@ class StereoReconstructor:
                 logger.info(f"Z reference (first calibration image): {z_offset:.2f} mm")
 
         # Step 2: Fill in each run using its OWN result (like dotboard lines 840-847)
+        # Compute XY centering from first valid run and reuse for all runs
+        # (ensures cross-run coordinate consistency for statistics/merging)
+        reference_mean_xy = None
+
         for _, run_num, x1, _, _, _ in valid_runs:
             if run_num not in run_results:
                 continue
@@ -800,13 +804,18 @@ class StereoReconstructor:
             row_indices, col_indices = np.unravel_index(valid_indices, ref_shape)
             positions_3d = result_3d["positions_3d"]
 
-            # Center X,Y only; reference Z to calibration plate plane
-            mean_xy = np.mean(positions_3d[:, :2], axis=0)
+            # Use first valid run's centroid as fixed reference for all runs
+            if reference_mean_xy is None:
+                reference_mean_xy = np.mean(positions_3d[:, :2], axis=0)
+                logger.info(f"XY reference centroid (from run {run_num}): "
+                            f"x={reference_mean_xy[0]:.2f}, y={reference_mean_xy[1]:.2f}")
 
-            x_grid[row_indices, col_indices] = positions_3d[:, 0] - mean_xy[0]
+            x_grid[row_indices, col_indices] = positions_3d[:, 0] - reference_mean_xy[0]
             # Negate y: OpenCV y-down → physical y-up convention
-            y_grid[row_indices, col_indices] = -(positions_3d[:, 1] - mean_xy[1])
-            z_grid[row_indices, col_indices] = positions_3d[:, 2] - z_offset
+            y_grid[row_indices, col_indices] = -(positions_3d[:, 1] - reference_mean_xy[1])
+            # Negate z: consistent with uz negation (line ~501) — OpenCV Z
+            # points away from camera, physical convention is opposite
+            z_grid[row_indices, col_indices] = -(positions_3d[:, 2] - z_offset)
 
             coordinates[run_num - 1] = (x_grid, y_grid, z_grid)
             logger.info(f"Run {run_num}: saved {result_3d['num_valid']} 3D positions")

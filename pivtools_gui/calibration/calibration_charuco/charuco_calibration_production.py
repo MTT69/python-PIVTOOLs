@@ -148,6 +148,8 @@ class ChArUcoCalibrator:
         dt=1.0,
         calibration_input_path=None,
         config=None,
+        model_type="pinhole",
+        source_path_idx: int = 0,
     ):
         self.source_dir = Path(source_dir)
         self.base_dir = Path(base_dir)
@@ -162,6 +164,8 @@ class ChArUcoCalibrator:
         self.dt = dt
         self.calibration_input_path = Path(calibration_input_path) if calibration_input_path else None
         self._config = config
+        self.model_type = model_type
+        self.source_path_idx = source_path_idx
 
         # Create board and detector
         self.board, self.detector = self._create_detector()
@@ -210,7 +214,7 @@ class ChArUcoCalibrator:
 
         if self._config is not None:
             from pivtools_core.image_handling.path_utils import build_calibration_camera_path
-            return build_calibration_camera_path(self._config, source_path_idx=0, camera=cam_num)
+            return build_calibration_camera_path(self._config, source_path_idx=self.source_path_idx, camera=cam_num)
 
         # Fallback: use source_dir directly
         return self.source_dir
@@ -265,7 +269,7 @@ class ChArUcoCalibrator:
                     idx=img_index,
                     camera=camera,
                     config=self._config,
-                    source_path_idx=0,
+                    source_path_idx=self.source_path_idx,
                     normalize_uint8=True,
                 )
                 if img is not None and img.ndim == 3:
@@ -563,9 +567,94 @@ class ChArUcoCalibrator:
             logger.error(error_msg)
             return {"success": False, "error": error_msg}
 
-        # Run calibration
-        logger.info(f"Calibrating with {len(all_obj_points)} images...")
+        # Save per-frame indices (shared by both model types)
+        logger.info(f"Saving per-frame detection indices for {len(valid_indices_map)} frames...")
+        for frame_idx, detection_data in valid_indices_map.items():
+            indices_data = {
+                "corners": detection_data["corners"],
+                "corner_ids": detection_data["ids"],
+                "corner_count": len(detection_data["corners"]),
+                "original_filename": detection_data.get("original_filename", ""),
+                "frame_index": frame_idx,
+                "board_params": {
+                    "squares_h": self.squares_h,
+                    "squares_v": self.squares_v,
+                    "square_size": self.square_size,
+                    "square_size_mm": self.square_size * 1000.0,
+                    "marker_ratio": self.marker_ratio,
+                    "aruco_dict": self.aruco_dict_name,
+                },
+            }
+            indices_file = indices_dir / f"indexing_{frame_idx}.mat"
+            savemat(str(indices_file), indices_data)
 
+        # Run calibration
+        logger.info(f"Calibrating with {len(all_obj_points)} images (model_type={self.model_type})...")
+
+        if self.model_type == "polynomial":
+            # --- POLYNOMIAL MODEL FITTING ---
+            from pivtools_gui.calibration.calibration_poly.polynomial_calibration_production import (
+                fit_polynomial_from_points, save_polynomial_to_config
+            )
+
+            # Stack all detected points into flat arrays
+            all_img_flat = np.vstack([pts.reshape(-1, 2) for pts in all_img_points])
+            all_obj_flat = np.vstack([pts.reshape(-1, 3)[:, :2] for pts in all_obj_points])
+            all_obj_flat *= 1000.0  # meters -> mm
+
+            try:
+                fit_result = fit_polynomial_from_points(all_img_flat, all_obj_flat, img_size)
+            except Exception as e:
+                return {"success": False, "error": f"Polynomial fitting failed: {e}"}
+
+            logger.info(f"Polynomial fit complete. RMS error: {fit_result['rms_fit_error_px']:.4f} px")
+
+            # Save polynomial coefficients to config
+            if self._config:
+                save_polynomial_to_config(cam_num, fit_result, self.dt, config=self._config)
+
+            # Save polynomial model .mat
+            poly_model_data = {
+                "model_type": "polynomial",
+                "mm_per_pixel": fit_result["mm_per_pixel"],
+                "origin_x": fit_result["origin"]["x"],
+                "origin_y": fit_result["origin"]["y"],
+                "normalisation_nx": fit_result["normalisation"]["nx"],
+                "normalisation_ny": fit_result["normalisation"]["ny"],
+                "coefficients_x": np.array(fit_result["coefficients_x"]),
+                "coefficients_y": np.array(fit_result["coefficients_y"]),
+                "rms_fit_error_px": fit_result["rms_fit_error_px"],
+                "num_images": stats["valid"],
+                "image_size": np.array([img_size[0], img_size[1]]),
+                "image_width": img_size[0],
+                "image_height": img_size[1],
+                "timestamp": datetime.now().isoformat(),
+                "dt": self.dt,
+                "dot_spacing_mm": self.square_size * 1000.0,
+                "board_params": {
+                    "squares_h": self.squares_h,
+                    "squares_v": self.squares_v,
+                    "square_size": self.square_size,
+                    "square_size_mm": self.square_size * 1000.0,
+                    "marker_ratio": self.marker_ratio,
+                    "aruco_dict": self.aruco_dict_name,
+                },
+            }
+
+            model_path = cam_output_base / "model" / "polynomial_model.mat"
+            savemat(str(model_path), poly_model_data)
+            logger.info(f"Saved polynomial model: {model_path}")
+
+            return {
+                "success": True,
+                "model_type": "polynomial",
+                "rms_error": float(fit_result["rms_fit_error_px"]),
+                "mm_per_pixel": float(fit_result["mm_per_pixel"]),
+                "num_images_used": stats["valid"],
+                "model_path": str(model_path),
+            }
+
+        # --- PINHOLE MODEL FITTING (default) ---
         rms, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(
             all_obj_points, all_img_points, img_size, None, None
         )
@@ -587,27 +676,6 @@ class ChArUcoCalibrator:
             all_errors.extend(np.linalg.norm(err_vec, axis=1).tolist())
             all_errors_x.extend(err_vec[:, 0].tolist())
             all_errors_y.extend(err_vec[:, 1].tolist())
-
-        # Save per-frame indices
-        logger.info(f"Saving per-frame detection indices for {len(valid_indices_map)} frames...")
-        for frame_idx, detection_data in valid_indices_map.items():
-            indices_data = {
-                "corners": detection_data["corners"],
-                "corner_ids": detection_data["ids"],
-                "corner_count": len(detection_data["corners"]),
-                "original_filename": detection_data.get("original_filename", ""),
-                "frame_index": frame_idx,
-                "board_params": {
-                    "squares_h": self.squares_h,
-                    "squares_v": self.squares_v,
-                    "square_size": self.square_size,
-                    "square_size_mm": self.square_size * 1000.0,
-                    "marker_ratio": self.marker_ratio,
-                    "aruco_dict": self.aruco_dict_name,
-                },
-            }
-            indices_file = indices_dir / f"indexing_{frame_idx}.mat"
-            savemat(str(indices_file), indices_data)
 
         # Save model
         model_data = {

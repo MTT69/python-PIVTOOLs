@@ -277,7 +277,7 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
             )
             delta_mm = disp_world - coords_world
             ux_ms = (delta_mm[:, 0] / 1000.0) / dt
-            uy_ms = (delta_mm[:, 1] / 1000.0) / dt
+            uy_ms = -(delta_mm[:, 1] / 1000.0) / dt
             ux_ms = ux_ms.reshape(ux_px.shape)
             uy_ms = uy_ms.reshape(uy_px.shape)
 
@@ -365,7 +365,7 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
                 )
                 delta_mm = disp_world - coords_world
                 ux_ms = (delta_mm[:, 0] / 1000.0) / dt
-                uy_ms = (delta_mm[:, 1] / 1000.0) / dt
+                uy_ms = -(delta_mm[:, 1] / 1000.0) / dt
                 ux_ms = ux_ms.reshape(ux_px.shape)
                 uy_ms = uy_ms.reshape(uy_px.shape)
 
@@ -709,9 +709,12 @@ class VectorCalibrator:
         )
 
         # Compute displacement in mm, convert to m/s
+        # Negate uy: pinhole world y-axis points downward (raw pixel convention),
+        # but physical convention is y-up.  Must match calibrate_coordinates()
+        # which also negates y: y_mm = -world_pts[:, 1].
         delta_mm = disp_world - coords_world
         ux_ms = (delta_mm[:, 0] / 1000.0) / self.dt
-        uy_ms = (delta_mm[:, 1] / 1000.0) / self.dt
+        uy_ms = -(delta_mm[:, 1] / 1000.0) / self.dt
 
         ux_ms = ux_ms.reshape(ux_px.shape)
         uy_ms = uy_ms.reshape(uy_px.shape)

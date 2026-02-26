@@ -541,6 +541,7 @@ class MultiViewCalibrator:
         dot_spacing_mm=28.89,
         config=None,
         datum_frame=1,
+        model_type="pinhole",
         # Legacy params (ignored but kept for backward compatibility)
         pattern_cols=None,
         pattern_rows=None,
@@ -565,6 +566,8 @@ class MultiViewCalibrator:
             Configuration object
         datum_frame : int
             Which calibration image defines the world coordinate origin (1-based, default: 1)
+        model_type : str
+            Calibration model type: "pinhole" (OpenCV) or "polynomial" (DaVis-compatible)
         pattern_cols, pattern_rows : int, optional
             DEPRECATED: Grid dimensions are now automatically detected
         asymmetric : bool
@@ -577,6 +580,7 @@ class MultiViewCalibrator:
         self.dot_spacing_mm = dot_spacing_mm
         self._config = config
         self.datum_frame = datum_frame
+        self.model_type = model_type
 
         # These will be populated during detection
         self._detected_cols: Optional[int] = None
@@ -1198,9 +1202,98 @@ class MultiViewCalibrator:
         if valid_count < 1:
             return {"success": False, "error": f"Only {valid_count} valid detections, need at least 1"}
 
-        # --- CALIBRATION ---
-        logger.info(f"Calibrating with {valid_count} valid views...")
+        # --- SAVE PER-IMAGE DETECTION FILES (shared by both model types) ---
+        for img_idx, data in valid_indices_map.items():
+            grid_indices = data['grid_indices']
+            indices_data = {
+                "grid_points": data['centers'],
+                "centers_px": data['centers'],
+                "grid_indices": grid_indices,
+                "grid_row": grid_indices[:, 1],
+                "grid_col": grid_indices[:, 0],
+                "pattern_cols": data['n_cols'],
+                "pattern_rows": data['n_rows'],
+                "detected_cols": data['n_cols'],
+                "detected_rows": data['n_rows'],
+                "dot_spacing_mm": self.dot_spacing_mm,
+                "frame_index": img_idx,
+            }
+            indices_file = cam_output_base / "indices" / f"indexing_{img_idx}.mat"
+            savemat(str(indices_file), indices_data)
 
+        logger.info(f"Saved {len(valid_indices_map)} detection files to indices directory")
+
+        # --- CALIBRATION ---
+        logger.info(f"Calibrating with {valid_count} valid views (model_type={self.model_type})...")
+
+        if self.model_type == "polynomial":
+            # --- POLYNOMIAL MODEL FITTING ---
+            from pivtools_gui.calibration.calibration_poly.polynomial_calibration_production import (
+                fit_polynomial_from_points, save_polynomial_to_config
+            )
+
+            # Stack all detected points into flat arrays
+            all_img_flat = np.vstack([pts.reshape(-1, 2) for pts in all_imgpoints])
+            all_obj_flat = np.vstack([pts.reshape(-1, 3)[:, :2] for pts in all_objpoints])
+            # Object points are already in mm (from dot_spacing_mm)
+
+            try:
+                fit_result = fit_polynomial_from_points(all_img_flat, all_obj_flat, img_shape)
+            except Exception as e:
+                return {"success": False, "error": f"Polynomial fitting failed: {e}"}
+
+            logger.info(f"Polynomial fit complete. RMS error: {fit_result['rms_fit_error_px']:.4f} px")
+
+            # Save polynomial coefficients to config
+            dt = self._config.data.get("calibration", {}).get("dotboard", {}).get("dt", 1.0) if self._config else 1.0
+            if self._config:
+                save_polynomial_to_config(cam_num, fit_result, dt, config=self._config)
+
+            # Save polynomial model .mat
+            poly_model_data = {
+                "model_type": "polynomial",
+                "mm_per_pixel": fit_result["mm_per_pixel"],
+                "origin_x": fit_result["origin"]["x"],
+                "origin_y": fit_result["origin"]["y"],
+                "normalisation_nx": fit_result["normalisation"]["nx"],
+                "normalisation_ny": fit_result["normalisation"]["ny"],
+                "coefficients_x": np.array(fit_result["coefficients_x"]),
+                "coefficients_y": np.array(fit_result["coefficients_y"]),
+                "rms_fit_error_px": fit_result["rms_fit_error_px"],
+                "num_images_used": valid_count,
+                "image_width": img_shape[0],
+                "image_height": img_shape[1],
+                "image_size": np.array([img_shape[0], img_shape[1]]),
+                "dot_spacing_mm": self.dot_spacing_mm,
+                "datum_frame": self.datum_frame,
+                "timestamp": datetime.now().isoformat(),
+            }
+
+            out_file = cam_output_base / "model" / "polynomial_model.mat"
+            savemat(str(out_file), poly_model_data)
+            logger.info(f"Saved polynomial model to: {out_file}")
+
+            # Final progress
+            if progress_callback:
+                progress_callback({
+                    "progress": 100,
+                    "processed_images": processed_count,
+                    "valid_images": valid_count,
+                    "total_images": processed_count,
+                })
+
+            return {
+                "success": True,
+                "model_type": "polynomial",
+                "rms_error": float(fit_result["rms_fit_error_px"]),
+                "mm_per_pixel": float(fit_result["mm_per_pixel"]),
+                "num_images_used": valid_count,
+                "detected_cols": detected_cols,
+                "detected_rows": detected_rows,
+                "model_path": str(out_file),
+            }
+
+        # --- PINHOLE MODEL FITTING (default) ---
         try:
             ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(
                 all_objpoints, all_imgpoints, img_shape, None, None
@@ -1239,27 +1332,6 @@ class MultiViewCalibrator:
         out_file = cam_output_base / "model" / "dotboard_model.mat"
         savemat(str(out_file), model_data)
         logger.info(f"Saved model to: {out_file}")
-
-        # Save per-image detection files
-        for img_idx, data in valid_indices_map.items():
-            grid_indices = data['grid_indices']
-            indices_data = {
-                "grid_points": data['centers'],
-                "centers_px": data['centers'],
-                "grid_indices": grid_indices,
-                "grid_row": grid_indices[:, 1],
-                "grid_col": grid_indices[:, 0],
-                "pattern_cols": data['n_cols'],
-                "pattern_rows": data['n_rows'],
-                "detected_cols": data['n_cols'],
-                "detected_rows": data['n_rows'],
-                "dot_spacing_mm": self.dot_spacing_mm,
-                "frame_index": img_idx,
-            }
-            indices_file = cam_output_base / "indices" / f"indexing_{img_idx}.mat"
-            savemat(str(indices_file), indices_data)
-
-        logger.info(f"Saved {len(valid_indices_map)} detection files to indices directory")
 
         # Final progress
         if progress_callback:
