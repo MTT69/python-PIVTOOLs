@@ -4,9 +4,11 @@ Vector Statistics API views
 Provides endpoints for computing instantaneous statistics (mean and Reynolds stresses)
 with progress tracking.
 
-Simplified API: single base_path_idx + process_merged boolean.
-- process_merged=False: Processes all cameras from config.camera_numbers
-- process_merged=True: Processes merged data only
+API: base_path_idx (int) + workflow (str).
+- workflow="per_camera":  Processes all cameras from config.camera_numbers
+- workflow="after_merge": Processes merged data only
+- workflow="both":        Processes all cameras then merged data
+- workflow="stereo":      Processes stereo combined result
 """
 
 import threading
@@ -15,7 +17,7 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request
 from loguru import logger
 
-from pivtools_core.config import get_config
+from pivtools_core.config import get_config, reload_config
 from pivtools_core.paths import get_data_paths
 from ...calibration.services.job_manager import job_manager
 from ..instantaneous_statistics import VectorStatisticsProcessor
@@ -86,10 +88,10 @@ def calculate_statistics():
     API:
         base_path_idx: int - Single path index (default: 0)
         workflow: str - Workflow mode (default: from config)
-            - "per_camera": Process all cameras from config.camera_numbers
+            - "per_camera":  Process all cameras from config.camera_numbers
             - "after_merge": Process merged data only
-            - "both": Process all cameras then merged data
-        process_merged: bool - DEPRECATED, use workflow instead
+            - "both":        Process all cameras then merged data
+            - "stereo":      Process stereo combined result
         type_name: str (default: "instantaneous")
         requested_statistics: list of statistic names (optional)
 
@@ -105,6 +107,26 @@ def calculate_statistics():
 
     try:
         cfg = get_config()
+        
+        # If frontend sends requested_statistics, update config
+        if requested_statistics is not None:
+            if "statistics" not in cfg.data:
+                cfg.data["statistics"] = {}
+            
+            # Get all known statistics from processor
+            all_known_stats = set(VectorStatisticsProcessor.VALID_STATISTICS.keys())
+            
+            # Initialize all statistics to False, then set requested ones to True
+            enabled_methods = {stat: False for stat in all_known_stats}
+            for stat in requested_statistics:
+                if stat in all_known_stats:
+                    enabled_methods[stat] = True
+            
+            cfg.data["statistics"]["enabled_methods"] = enabled_methods
+            cfg.save()
+            reload_config()  # Invalidate cache so worker threads get fresh config
+            logger.info(f"Updated config with requested statistics: {requested_statistics}")
+        
         base_paths = cfg.base_paths
 
         # Validate path index first (needed for stereo detection)
@@ -113,16 +135,15 @@ def calculate_statistics():
 
         base_dir = base_paths[base_path_idx]
 
-        # Get workflow - support both new workflow param and deprecated process_merged
+        # Get workflow from request, fall back to config default
         workflow = data.get("workflow")
         source_endpoint = data.get("source_endpoint", "regular")
+
         if workflow is None:
-            # Check deprecated process_merged for backward compat
-            if "process_merged" in data:
-                process_merged = bool(data.get("process_merged", False))
-                workflow = "after_merge" if process_merged else "per_camera"
-            else:
-                workflow = cfg.statistics_workflow
+            workflow = cfg.statistics_workflow
+            logger.info(f"No workflow specified, using config default: {workflow}")
+        else:
+            logger.info(f"Using workflow from request: {workflow}")
 
         # Check if stereo setup (config-based)
         is_stereo_config = cfg.is_stereo_setup
@@ -212,6 +233,8 @@ def calculate_statistics():
         if not targets:
             return jsonify({"error": "No targets to process"}), 400
 
+        logger.info(f"Created {len(targets)} targets for workflow '{workflow}': {[t['label'] for t in targets]}")
+
         # Create parent job to track all sub-jobs
         parent_job_id = job_manager.create_job(
             "statistics_parent",
@@ -269,7 +292,6 @@ def calculate_statistics():
                     type_name,
                     use_merged,
                     cam_num,
-                    requested_statistics,
                     use_stereo,
                     stereo_camera_pair,
                 ),
@@ -303,7 +325,6 @@ def _run_statistics_job(
     type_name: str,
     use_merged: bool,
     camera: int,
-    requested_statistics: list,
     use_stereo: bool = False,
     stereo_camera_pair: tuple = None,
 ):
@@ -337,10 +358,11 @@ def _run_statistics_job(
             camera=camera,
             use_stereo=use_stereo,
             stereo_camera_pair=stereo_camera_pair,
+            config=get_config(),
+            use_threading=True,  # GUI: use threading to avoid Windows spawn overhead
         )
 
         result = processor.process(
-            requested_statistics=requested_statistics,
             save_figures=True,
             progress_callback=progress_callback,
         )

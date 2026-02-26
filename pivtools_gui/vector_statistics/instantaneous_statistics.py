@@ -5,7 +5,7 @@ instantaneous_statistics.py
 Production module for computing instantaneous PIV statistics.
 - Computes mean velocity fields, Reynolds stresses, TKE, vorticity, divergence
 - Computes per-frame instantaneous statistics (fluctuations, gamma functions)
-- Uses ProcessPoolExecutor for frame-level parallelism
+- Uses ThreadPoolExecutor (GUI) or ProcessPoolExecutor (HPC) for frame-level parallelism
 - Can be run from command line or called from GUI
 
 Pattern matches: planar_calibration_production.py
@@ -314,7 +314,7 @@ class VectorStatisticsProcessor:
     Designed for:
     - GUI integration with progress callbacks
     - Command-line execution via __main__
-    - Frame-level parallelism using ProcessPoolExecutor
+    - Frame-level parallelism using ThreadPoolExecutor (GUI) or ProcessPoolExecutor (HPC)
     """
 
     # Valid statistics that can be requested (maps to output fields)
@@ -406,6 +406,7 @@ class VectorStatisticsProcessor:
         config=None,
         use_stereo: bool = False,
         stereo_camera_pair: Optional[Tuple[int, int]] = None,
+        use_threading: bool = False,
     ):
         """
         Initialize the statistics processor.
@@ -434,6 +435,8 @@ class VectorStatisticsProcessor:
             Whether processing stereo (3D) data
         stereo_camera_pair : tuple, optional
             Camera pair for stereo data (e.g., (1, 2))
+        use_threading : bool
+            If True, use ThreadPoolExecutor (GUI/Windows). If False, use ProcessPoolExecutor (HPC/Linux). Default False.
         """
         self.data_dir = Path(data_dir)
         self.base_dir = Path(base_dir)
@@ -446,6 +449,7 @@ class VectorStatisticsProcessor:
         self._config = config
         self.use_stereo = use_stereo
         self.stereo_camera_pair = stereo_camera_pair
+        self.use_threading = use_threading
 
         # Determine camera folder name
         if use_stereo and stereo_camera_pair:
@@ -487,7 +491,7 @@ class VectorStatisticsProcessor:
         """
         Process statistics for a single camera/merged data.
 
-        Uses ProcessPoolExecutor for frame-level parallelism.
+        Uses ThreadPoolExecutor (if use_threading=True) or ProcessPoolExecutor (default) for frame-level parallelism.
 
         Parameters
         ----------
@@ -512,11 +516,14 @@ class VectorStatisticsProcessor:
             # Determine which statistics to compute
             # Keep original requested names for logging, but also track normalized names
             if requested_statistics is None or len(requested_statistics) == 0:
-                # Default: compute common mean statistics only
-                requested_statistics = [
-                    "mean_velocity", "mean_vorticity", "mean_divergence",
-                    "reynolds_stress", "normal_stress", "mean_tke"
-                ]
+                if self._config is not None:
+                    requested_statistics = self._config.statistics_enabled_list
+                else:
+                    # Default: compute common mean statistics only
+                    requested_statistics = [
+                        "mean_velocity", "mean_vorticity", "mean_divergence",
+                        "reynolds_stress", "normal_stress", "mean_tke"
+                    ]
 
             # Keep original names for reference
             original_stats = set(requested_statistics)
@@ -933,8 +940,19 @@ class VectorStatisticsProcessor:
         n_frames = len(frame_files)
         logger.info(f"[Statistics] Processing {n_frames} frames with parallelism...")
 
-        # Process frames in parallel
-        with concurrent.futures.ProcessPoolExecutor() as executor:
+        # Choose executor based on use_threading flag
+        # Threading: Good for GUI/Windows (avoids spawn overhead, shares memory)
+        # Process: Good for HPC/Linux (true parallelism, fork is cheap)
+        if self.use_threading:
+            max_workers = min(8, n_frames)  # Cap at 8 to avoid memory issues
+            executor_class = concurrent.futures.ThreadPoolExecutor
+            logger.info(f"[Statistics] Using ThreadPoolExecutor with {max_workers} workers")
+        else:
+            max_workers = None  # Use default (cpu_count)
+            executor_class = concurrent.futures.ProcessPoolExecutor
+            logger.info(f"[Statistics] Using ProcessPoolExecutor with default workers")
+
+        with executor_class(max_workers=max_workers) as executor:
             futures = {}
             for i, file_path in enumerate(frame_files):
                 out_name = f"{i + 1:05d}.mat"
@@ -1168,7 +1186,7 @@ def _process_frame_parallel(
 ):
     """
     Process a single frame for instantaneous statistics.
-    Designed to run in a separate process.
+    Designed to run in a separate thread or process.
 
     Args:
         coords_dict: Dict mapping run_num -> (cx, cy) coordinates for each run.
@@ -1391,7 +1409,6 @@ if __name__ == "__main__":
                 )
 
                 result = processor.process(
-                    requested_statistics=enabled_stats,
                     save_figures=save_figures,
                 )
 
@@ -1439,7 +1456,6 @@ if __name__ == "__main__":
             )
 
             result = processor.process(
-                requested_statistics=enabled_stats,
                 save_figures=save_figures,
             )
 
