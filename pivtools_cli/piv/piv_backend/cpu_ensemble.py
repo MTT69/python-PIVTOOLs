@@ -46,6 +46,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
     # Class-level cache for libraries to avoid DLL thrashing
     _lib_corr = None
     _lib_marq = None
+    _lib_fw = None
 
     def __init__(
         self,
@@ -66,6 +67,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         # Use the cached class attributes
         self.lib = EnsembleCorrelatorCPU._lib_corr
         self.marquadt_lib = EnsembleCorrelatorCPU._lib_marq
+        self._fw_lib = EnsembleCorrelatorCPU._lib_fw
         self.lib.bulkxcorr2d.restype = ctypes.c_ubyte
         self.lib.bulkxcorr2d.argtypes = [
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),
@@ -254,6 +256,32 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             )
 
         cls._lib_corr = ctypes.CDLL(lib_path)
+
+        # Load fused warp library (required)
+        fw_path = os.path.join(
+            os.path.dirname(__file__), "..", "..", "lib", f"libfusedwarp{lib_extension}"
+        )
+        fw_path = os.path.abspath(fw_path)
+        if not os.path.isfile(fw_path):
+            raise FileNotFoundError(f"Required library file not found: {fw_path}")
+        cls._lib_fw = ctypes.CDLL(fw_path)
+        cls._lib_fw.fused_symmetric_warp_batch.restype = ctypes.c_int
+        cls._lib_fw.fused_symmetric_warp_batch.argtypes = [
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # imgs_a (N,H,W)
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # imgs_b (N,H,W)
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # outs_a (N,H,W)
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # outs_b (N,H,W)
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # pred_dy
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # pred_dx
+            ctypes.c_int,                # N
+            ctypes.c_int, ctypes.c_int,  # H, W
+            ctypes.c_int, ctypes.c_int,  # nPY, nPX
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # ctrs_y
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # ctrs_x
+            ctypes.c_int,                # interp_mode
+            ctypes.c_int,                # shared_predictor
+        ]
+
         cls._lib_corr.bulkxcorr2d.restype = ctypes.c_ubyte
         cls._lib_corr.bulkxcorr2d.argtypes = [
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),
@@ -668,7 +696,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                             f"Cannot perform image warping. Correlating unwarped images."
                         )
                     else:
-                        im_mesh_A, im_mesh_B, delta_ab_pred = self._get_im_mesh(
+                        delta_ab_pred = self._get_im_mesh(
                             pass_idx, predictor_field
                         )
                         smoothed_predictor = delta_ab_pred
@@ -681,10 +709,10 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                         if vector_mask is not None:
                             smoothed_predictor[vector_mask] = 0
 
-                with self._profile_section(pass_idx, "pc_image_warp"):
+                with self._profile_section(pass_idx, "pc_fused_warp"):
                     if predictor_field is not None and pass_idx > 0:
-                        images_a_prime, images_b_prime = self._get_image_prime_batch(
-                            image_a_stack, image_b_stack, im_mesh_A, im_mesh_B
+                        images_a_prime, images_b_prime = self._fused_warp_batch(
+                            image_a_stack, image_b_stack
                         )
                     else:
                         # No warping for pass 0
@@ -845,7 +873,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
 
         # Warp images if predictor field is provided (pass > 0)
         if pass_idx > 0 and predictor_field is not None:
-            im_mesh_A, im_mesh_B, delta_ab_pred = self._get_im_mesh(
+            delta_ab_pred = self._get_im_mesh(
                 pass_idx, predictor_field
             )
             smoothed_predictor = delta_ab_pred
@@ -858,9 +886,9 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             if vector_mask is not None:
                 smoothed_predictor[vector_mask] = 0
 
-            # Warp images
-            images_a_prime, images_b_prime = self._get_image_prime_batch(
-                image_a_stack, image_b_stack, im_mesh_A, im_mesh_B
+            # Warp images using fused C kernel
+            images_a_prime, images_b_prime = self._fused_warp_batch(
+                image_a_stack, image_b_stack
             )
         else:
             # No warping for pass 0
@@ -965,7 +993,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
 
         # Warp images if predictor field is provided (pass > 0)
         if pass_idx > 0 and predictor_field is not None:
-            im_mesh_A, im_mesh_B, delta_ab_pred = self._get_im_mesh(
+            delta_ab_pred = self._get_im_mesh(
                 pass_idx, predictor_field
             )
             smoothed_predictor = delta_ab_pred
@@ -973,8 +1001,8 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             if vector_mask is not None:
                 smoothed_predictor[vector_mask] = 0
 
-            images_a_prime, images_b_prime = self._get_image_prime_batch(
-                image_a_stack, image_b_stack, im_mesh_A, im_mesh_B
+            images_a_prime, images_b_prime = self._fused_warp_batch(
+                image_a_stack, image_b_stack
             )
         else:
             images_a_prime = image_a_stack
@@ -1147,55 +1175,42 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             point_spread_b,
         )
 
-    # Interpolation method mapping for cv2.remap
+    # Interpolation method mapping for cv2.remap (used only for predictor remap now)
     INTERP_FLAGS = {
         'nearest': cv2.INTER_NEAREST,
         'linear': cv2.INTER_LINEAR,
         'cubic': cv2.INTER_CUBIC,
     }
 
-    def _get_image_prime_batch(
-        self,
-        images_a: np.ndarray,
-        images_b: np.ndarray,
-        im_mesh_A: np.ndarray,
-        im_mesh_B: np.ndarray,
-    ):
-        """Warp images using predictor field meshes.
+    def _fused_warp_batch(self, images_a, images_b):
+        """Warp N image pairs using fused C kernel with self.delta_ab_old (shared predictor).
 
-        Uses interpolation method from config.ensemble_image_warp_interpolation.
+        Replaces the old _get_image_prime_batch which used cv2.remap per-image.
+        The fused kernel does predictor upsampling + symmetric coordinate maps +
+        image interpolation in a single OpenMP-parallel pass.
         """
-        images_a = images_a.astype(np.float32, copy=False)
-        images_b = images_b.astype(np.float32, copy=False)
-        map_A_x = im_mesh_A[..., 1].astype(np.float32, copy=False)
-        map_A_y = im_mesh_A[..., 0].astype(np.float32, copy=False)
-        map_B_x = im_mesh_B[..., 1].astype(np.float32, copy=False)
-        map_B_y = im_mesh_B[..., 0].astype(np.float32, copy=False)
+        images_a = np.ascontiguousarray(images_a, dtype=np.float32)
+        images_b = np.ascontiguousarray(images_b, dtype=np.float32)
+        N, H, W = images_a.shape
+        nPY, nPX = self.delta_ab_old.shape[0], self.delta_ab_old.shape[1]
 
-        N = images_a.shape[0]
+        out_a = np.zeros((N, H, W), dtype=np.float32)
+        out_b = np.zeros((N, H, W), dtype=np.float32)
 
-        out_a = np.empty_like(images_a, dtype=np.float32)
-        out_b = np.empty_like(images_b, dtype=np.float32)
+        pred_dy = np.ascontiguousarray(self.delta_ab_old[..., 0], dtype=np.float32)
+        pred_dx = np.ascontiguousarray(self.delta_ab_old[..., 1], dtype=np.float32)
 
-        # Get interpolation method from config (default to cubic for backwards compatibility)
-        interp_method = getattr(self.config, 'ensemble_image_warp_interpolation', 'cubic')
-        interp_flag = self.INTERP_FLAGS.get(interp_method, cv2.INTER_CUBIC)
-
-        def _warp_pair(n):
-            out_a[n] = cv2.remap(
-                images_a[n], map_A_x, map_A_y,
-                interpolation=interp_flag,
-                borderMode=cv2.BORDER_CONSTANT, borderValue=0,
-            )
-            out_b[n] = cv2.remap(
-                images_b[n], map_B_x, map_B_y,
-                interpolation=interp_flag,
-                borderMode=cv2.BORDER_CONSTANT, borderValue=0,
-            )
-
-        futures = [self._pool.submit(_warp_pair, n) for n in range(N)]
-        for f in futures:
-            f.result()
+        ret = self._fw_lib.fused_symmetric_warp_batch(
+            images_a, images_b,
+            out_a, out_b,
+            pred_dy, pred_dx,
+            N, H, W, nPY, nPX,
+            self._fused_ctrs_y, self._fused_ctrs_x,
+            self._fused_interp_mode,
+            1,  # shared_predictor=1 → ensemble mode
+        )
+        if ret != 0:
+            raise RuntimeError(f"fused_symmetric_warp_batch failed (ret={ret})")
 
         return out_a, out_b
     
@@ -1332,42 +1347,6 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         interp_method = getattr(self.config, 'ensemble_predictor_interpolation', 'cubic')
         interp_flag = self.INTERP_FLAGS.get(interp_method, cv2.INTER_CUBIC)
 
-        with self._profile_section(pass_idx, "pc_dense_remap"):
-            self.delta_ab_dense = np.zeros((self.H, self.W, 2), dtype=np.float32)
-            map_x_2d, map_y_2d = self.cached_dense_maps[pass_idx]
-
-            if map_x_2d is None or map_y_2d is None:
-                raise ValueError(f"Dense interpolation maps missing for pass {pass_idx}")
-
-            for d in range(2):
-                self.delta_ab_dense[..., d] = cv2.remap(
-                    self.delta_ab_old[..., d].astype(np.float32),
-                    map_x_2d,
-                    map_y_2d,
-                    interp_flag,
-                    borderMode=cv2.BORDER_REPLICATE,
-                )
-
-        # DEBUG: Log dense remap edge values and check for zeros at edges
-        if pass_idx > 0:
-            edge_margin = 10  # pixels from edge
-            edge_zeros = (
-                (self.delta_ab_dense[:edge_margin, :, :] == 0).sum() +
-                (self.delta_ab_dense[-edge_margin:, :, :] == 0).sum() +
-                (self.delta_ab_dense[:, :edge_margin, :] == 0).sum() +
-                (self.delta_ab_dense[:, -edge_margin:, :] == 0).sum()
-            )
-            center_zeros = (self.delta_ab_dense[edge_margin:-edge_margin, edge_margin:-edge_margin, :] == 0).sum()
-            logging.debug(
-                f"Pass {pass_idx}: POST-REMAP delta_ab_dense - "
-                f"shape={self.delta_ab_dense.shape}, "
-                f"edge_zeros(margin={edge_margin})={edge_zeros}, center_zeros={center_zeros}, "
-                f"corners: TL=({self.delta_ab_dense[0,0,0]:.4f},{self.delta_ab_dense[0,0,1]:.4f}), "
-                f"TR=({self.delta_ab_dense[0,-1,0]:.4f},{self.delta_ab_dense[0,-1,1]:.4f}), "
-                f"BL=({self.delta_ab_dense[-1,0,0]:.4f},{self.delta_ab_dense[-1,0,1]:.4f}), "
-                f"BR=({self.delta_ab_dense[-1,-1,0]:.4f},{self.delta_ab_dense[-1,-1,1]:.4f})"
-            )
-
         with self._profile_section(pass_idx, "pc_predictor_remap"):
             map_x, map_y = self.cached_predictor_maps[pass_idx]
             if map_x is None or map_y is None:
@@ -1395,13 +1374,23 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 f"{delta_ab_pred[delta_ab_pred.shape[0]//2, delta_ab_pred.shape[1]//2, 1]:.4f})"
             )
 
-        with self._profile_section(pass_idx, "pc_mesh_construction"):
-            delta_0b = self.delta_ab_dense / 2
-            delta_0a = -self.delta_ab_dense / 2
-            im_mesh_A = self.im_mesh + delta_0a
-            im_mesh_B = self.im_mesh + delta_0b
+        # Store window centres and interp mode for _fused_warp_batch
+        if pass_idx > 0:
+            prev_pass = pass_idx - 1
+            self._fused_ctrs_y = np.ascontiguousarray(
+                self.win_ctrs_y_all[prev_pass], dtype=np.float32)
+            self._fused_ctrs_x = np.ascontiguousarray(
+                self.win_ctrs_x_all[prev_pass], dtype=np.float32)
+        else:
+            self._fused_ctrs_y = np.ascontiguousarray(
+                self.win_ctrs_y_all[0], dtype=np.float32)
+            self._fused_ctrs_x = np.ascontiguousarray(
+                self.win_ctrs_x_all[0], dtype=np.float32)
 
-        return im_mesh_A, im_mesh_B, delta_ab_pred
+        image_interp = getattr(self.config, 'ensemble_image_warp_interpolation', 'cubic')
+        self._fused_interp_mode = 0 if image_interp == 'cubic' else 1
+
+        return delta_ab_pred
 def plot_corr_planes(corr_avg_flat, n_win_y, n_win_x, win_h, win_w, pass_idx):
     """
     Visualize ensemble-averaged correlation planes for PIV in a grid

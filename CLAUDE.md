@@ -970,14 +970,13 @@ Dask-centric utilities shared by both pipelines.
 | Library | Sources | External Deps | Purpose |
 |---------|---------|---------------|---------|
 | `libbulkxcorr2d` | `peak_locate_lm.c`, `PIV_2d_cross_correlate.c`, `xcorr.c`, `xcorr_cache.c` | FFTW3f, OpenMP | Cross-correlation engine (instantaneous + ensemble accumulation) |
-| `libinterp2custom` | `interp2custom.c` | OpenMP | LUT-based 2D image warping interpolation |
+| `libfusedwarp` | `fused_warp.c` | OpenMP | Fused predictor-upsample + symmetric warp + bicubic/Lanczos-3 image interpolation (replaces cv2.remap pipeline) |
 | `libmarquadt` | `marquadt_gaussian.c` | GSL, OpenMP | Ensemble 16-parameter stacked Gaussian fitting |
 
 **Python-C interface:** All via `ctypes.CDLL` at runtime. No Cython/cffi.
 
 **Array conventions:**
-- `libbulkxcorr2d` / `libmarquadt`: C-contiguous (row-major)
-- `libinterp2custom`: Fortran-contiguous (column-major) — note different `SUB2IND_2D` macro
+- All C libraries use C-contiguous (row-major) arrays
 
 ### C Extension Functions
 
@@ -1004,9 +1003,16 @@ Self-contained LM Gaussian fitting (no GSL). Fit types: 3=parabolic, 4=circular 
 
 `fit_stacked_gaussian_batch_export(...)`: Fits 16 parameters per window (3 amplitudes, 3 offsets, 3 sigma_A, 3 delta, 2 center_A, 2 center_AB). Uses **delta parameterization**: params[9,10,11] internally represent `delta = sigma_AB - sigma_A` (Reynolds stress directly), with `sigma_AB` reconstructed as `sigma_A + max(delta, 0)` during fitting. Output converts back to `sigma_AB` so Python sees total widths. Split convergence tolerances: XTOL=1e-4 (relaxed for small deltas), GTOL=FTOL=1e-6 (scale-independent). Constraint-aware Jacobian: cols [9,10] zeroed when delta < 0. Uses GSL `gsl_multifit_nlinear` with Cholesky solver + geodesic acceleration. OpenMP `schedule(dynamic, 16)`. Python initial guess builders (`_build_initial_guess`, `_build_initial_guesses_vectorized`) convert `sigma_AB → delta` before passing to C.
 
-#### `interp2custom.c` — Image Warping (EXPORTED)
+#### `fused_warp.c` — Fused Symmetric Image Warping (EXPORTED)
 
-`interp2custom(y, N, f_i, f_j, yi, n_interp)`: LUT-based 2D interpolation (32768-entry table). Kernel types: Lanczos (windowed sinc) or Gaussian. OpenMP-parallel.
+| Function | Description |
+|----------|-------------|
+| `fused_symmetric_warp(img_a, img_b, out_a, out_b, pred_dy, pred_dx, H, W, nPY, nPX, ctrs_y, ctrs_x, interp_mode)` | Single image pair: bicubic predictor upsample → symmetric warp coordinates → bicubic or Lanczos-3 image sample. |
+| `fused_symmetric_warp_batch(imgs_a, imgs_b, outs_a, outs_b, pred_dy, pred_dx, N, H, W, nPY, nPX, ctrs_y, ctrs_x, interp_mode, shared_predictor)` | **Batch:** N image pairs in one call. `collapse(2)` OpenMP over (image, row). `shared_predictor=1` for ensemble (single predictor for all N images), `=0` for instantaneous (per-image predictors). |
+
+**Interpolation modes:** `interp_mode=0` → bicubic (Keys a=-0.75, 4×4 stencil). `interp_mode=1` → Lanczos-3 (6×6 stencil, 4096-entry LUT, ~96KB). Predictor upsampling always uses bicubic regardless of image mode.
+
+**Config:** `ensemble_piv.image_warp_interpolation` and `instantaneous_piv.image_warp_interpolation` — values `"cubic"` (default) or `"lanczos"`.
 
 #### `xcorr_cache.c` — FFTW Wisdom Persistence
 
@@ -1063,7 +1069,7 @@ Common flags: `--active-paths`, `--type-name`, `--source-endpoint` (`regular`/`m
 
 **9 timed sections in `correlate_batch`:** `predictor_corrector`, `set_lib_args`, `bulkxcorr2d`, `post_processing`, `outlier_detection`, `secondary_peaks`, `infilling`, `padding_stacking`, `result_construction`
 
-**3 sub-timings in `_predictor_corrector_batch` (pass > 0):** `pc_gaussian_smooth`, `pc_dense_and_predictor_remap`, `pc_mesh_and_image_warp`
+**3 sub-timings in `_predictor_corrector_batch` (pass > 0):** `pc_gaussian_smooth`, `pc_predictor_remap`, `pc_fused_warp`
 
 ```
 python profile/profile_piv.py 4mp                     # 4MP images, 3 iterations
@@ -1090,12 +1096,10 @@ Benchmarks cross-correlation phase in isolation with sub-section breakdown. Fina
 
 **Correlator section hierarchy (in `cpu_ensemble.py`):**
 ```
-predictor_corrector        (top-level, includes _get_im_mesh + image warp)
+predictor_corrector        (top-level, includes _get_im_mesh + fused warp)
   pc_gaussian_smooth       (gaussian_filter on predictor field)
-  pc_dense_remap           (cv2.remap: grid → (H,W) image space)
   pc_predictor_remap       (cv2.remap: grid → current pass window grid)
-  pc_mesh_construction     (delta/im_mesh arithmetic)
-  pc_image_warp            (_get_image_prime_batch: cv2.remap per image)
+  pc_fused_warp            (_fused_warp_batch: libfusedwarp C kernel for N images)
 warp_sum                   (images_a_prime.sum(axis=0))
 single_mode_padding        (apply_single_mode_padding calls)
 xcorr                      (top-level: 3x C library calls)
@@ -1142,8 +1146,8 @@ Both `cpu_instantaneous.py` and `cpu_ensemble.py` use `cv2.setNumThreads(1)` + c
 
 **GIL behaviour matters:** cv2.remap and scipy.ndimage release the GIL (2.7-3.2x speedup with 4 threads). Biharmonic infilling is ~67% GIL-bound (no benefit from threading — 0.95x). Use `local_median` for mid-pass infilling (8.8x faster than biharmonic, threads at 2.1x).
 
-- **Instantaneous:** Gaussian smoothing, fused dense+predictor remap, fused mesh+warp, outlier detection, and infilling all use `self._run_parallel()`. Per-image mesh computed inside each `_warp_pair` thread (avoids large `(N,H,W,2)` allocations).
-- **Ensemble:** `_get_image_prime_batch()` parallelizes the `for n in range(N)` cv2.remap loop via `self._pool`. Benefits all 3 callers: `correlate_batch_for_accumulation`, `compute_warp_sums_only`, `correlate_mean_subtracted_batch`. Mesh is NOT per-image (single predictor field → single mesh for all images), so no fusing opportunity.
+- **Instantaneous:** Gaussian smoothing, predictor remap, outlier detection, and infilling use `self._run_parallel()`. Image warping uses `libfusedwarp` C kernel (`fused_symmetric_warp_batch` with `shared_predictor=0`) — fuses predictor upsampling + symmetric coordinate maps + bicubic/Lanczos-3 interpolation in a single OpenMP pass, eliminating intermediate `(N,H,W,2)` mesh allocations.
+- **Ensemble:** `_fused_warp_batch()` calls `libfusedwarp` with `shared_predictor=1` (single predictor for all N images). Benefits all 3 callers: `correlate_batch_for_accumulation`, `compute_warp_sums_only`, `correlate_mean_subtracted_batch`. Measured 3-6.7x speedup over the previous cv2.remap pipeline.
 
 ---
 
@@ -1238,7 +1242,7 @@ After velocity outlier detection + infilling, runs stress-specific quality check
   │ piv_runner.py ──────┼──►                           │─┼──►│   └─dask_pipeline.py    │
   │  (spawns subprocess)│  │  main() → Dask cluster    │ │   │  lib/ (C extensions)    │
   └──┬──┬──┬──┬──┬──┬──┘  │  → sliding window I/O     │ │   │   ├─libbulkxcorr2d      │
-     │  │  │  │  │  │     │  → correlate → save        │ │   │   ├─libinterp2custom    │
+     │  │  │  │  │  │     │  → correlate → save        │ │   │   ├─libfusedwarp        │
      ▼  ▼  ▼  ▼  ▼  ▼     └───────────────────────────┘ │   │   └─libmarquadt         │
   calibration/  transforms/                              │   └─────────────────────────┘
   plotting/     merging/                                 │              │
@@ -1252,7 +1256,7 @@ After velocity outlier detection + infilling, runs stress-specific quality check
      └───────────────────────────────────────────────────┘   │  peak_locate_lm.c   │
                                                              │  marquadt_gaussian.c │
   ┌─────────────────────────────────────────────────────┐    │   (GSL + OpenMP)     │
-  │             PIVTOOLs-GUI/src/ (React)               │    │  interp2custom.c     │
+  │             PIVTOOLs-GUI/src/ (React)               │    │  fused_warp.c        │
   │                                                     │    │  xcorr_cache.c       │
   │  page.tsx ──┬─► PathsConfig ──► useConfigUpdate     │    │   (FFTW wisdom)      │
   │             ├─► ImageConfig                         │    └──────────────────────┘
@@ -1366,7 +1370,7 @@ base_path/
 - Config properties return validated/coerced values (e.g., `omp_threads` → str, `image_format` → tuple).
 
 ### C Extensions
-- Row-major indexing everywhere EXCEPT `interp2custom.c` (column-major, Fortran-contiguous).
+- Row-major (C-contiguous) indexing everywhere.
 - OpenMP for parallelism. FFTW plan creation in OMP critical sections.
 - Error codes via `common.h`: 0=none, 1=nomem, 2=no_fwd_plan, 4=no_bwd_plan, 9=out_of_bounds.
 - No dynamic allocation in hot loops. Pre-allocated buffers.
@@ -1433,7 +1437,6 @@ Benchmark scripts compare PIVTOOLs output against ground truth (DNS data).
 
 ### Backend Processing
 - `gc.collect()` on Dask workers causes SIGSEGV (FFTW conflict) — only GC on client
-- `interp2custom.c` uses column-major indexing (unlike all other C code)
 - K-space fitting is pure Python (~50-100x slower per window than C Gaussian, ~25% total runtime impact)
 - **`coordinates.mat` race condition:** `transform_all_frames()` transforms coordinates once per camera then must pass `None` (not `coords_file`) to parallel workers. Workers re-reading and re-saving causes double-transform and Windows "Access is denied".
 - **`invert_ux`/`invert_uy` UV_stress signs:** When negating only one velocity component, UV_stress must also be negated: `(-u')v' = -(u'v')`. But `invert_ux_uy` leaves UV_stress unchanged. Uses XOR logic.
@@ -1457,7 +1460,7 @@ Benchmark scripts compare PIVTOOLs output against ground truth (DNS data).
 
 3. **Dask as the computation layer.** Both instantaneous and ensemble use sliding window I/O with bounded memory. Lazy loading (~1 KB per pair), broadcast scattering for immutable data, worker pinning for locality.
 
-4. **C extensions for performance.** Three shared libraries (cross-correlation, interpolation, Gaussian fitting) loaded via ctypes. FFTW for FFT, GSL for nonlinear least-squares, OpenMP for parallelism. Static-linked to bundled FFTW/GSL.
+4. **C extensions for performance.** Three shared libraries (cross-correlation, fused image warping, Gaussian fitting) loaded via ctypes. FFTW for FFT, GSL for nonlinear least-squares, OpenMP for parallelism. Static-linked to bundled FFTW/GSL.
 
 5. **Blueprint-per-feature** (GUI) is consistent. Each feature: `module/app/views.py` (routes) + business logic. Predictable for new features.
 

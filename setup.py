@@ -210,27 +210,28 @@ class BuildCLibraries(build):
 
         self._cleanup_intermediates(build_dir)
 
-        # --- Build libinterp2custom ---
+        # --- Build libfusedwarp (no FFTW/GSL deps — only OpenMP + math) ---
         if use_msvc:
-            output_file = build_dir / f"libinterp2custom{lib_ext}"
-            cmd2 = [
+            output_file = build_dir / f"libfusedwarp{lib_ext}"
+            cmd_fw = [
                 compiler, *self.extra_compile, shared_flag,
                 f"/Fo{build_dir}/",
-                str(src_dir / "interp2custom.c"),
+                str(src_dir / "fused_warp.c"),
                 f"/I{src_dir}",
                 f"/Fe{output_file}"
             ]
         else:
-            cmd2 = [
+            cmd_fw = [
                 compiler, *self.extra_compile, shared_flag,
-                str(src_dir / "interp2custom.c"),
+                str(src_dir / "fused_warp.c"),
                 f"-I{src_dir}",
-                "-o", str(build_dir / f"libinterp2custom{lib_ext}")
+                "-o", str(build_dir / f"libfusedwarp{lib_ext}"),
+                "-lm", "-fopenmp"
             ]
-
-        self._run(cmd2)
-        if not (build_dir / f"libinterp2custom{lib_ext}").exists():
-            raise RuntimeError(f"Build failed: {build_dir / f'libinterp2custom{lib_ext}'} not created")
+        self._run(cmd_fw)
+        if not (build_dir / f"libfusedwarp{lib_ext}").exists():
+            raise RuntimeError(f"Build failed: libfusedwarp{lib_ext} not created")
+        print(f"Successfully built libfusedwarp{lib_ext}")
 
         self._cleanup_intermediates(build_dir)
 

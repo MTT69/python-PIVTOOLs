@@ -8,11 +8,12 @@
  *   cl /O2 /std:c11 /openmp:experimental /MT /LD fused_warp.c /Fe:libfusedwarp.dll
  */
 
+#define _USE_MATH_DEFINES   /* M_PI on MSVC — must precede any <math.h> include */
+
 #include "fused_warp.h"
 #include "common.h"
 
 #include <stdlib.h>
-#define _USE_MATH_DEFINES   /* M_PI on MSVC */
 #include <math.h>
 #include <omp.h>
 
@@ -387,6 +388,158 @@ EXPORT int fused_symmetric_warp(
                 idx = i * W + j;
                 out_a[idx] = lanczos3_sample(img_a, src_a_y, src_a_x, H, W, lanc_lut);
                 out_b[idx] = lanczos3_sample(img_b, src_b_y, src_b_x, H, W, lanc_lut);
+            }
+        }
+
+        free(lanc_lut);
+    }
+
+    free(pred_idx_y);
+    free(pred_idx_x);
+    return ERROR_NONE;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/* Batch version: warp N image pairs in a single OpenMP-parallel pass         */
+/*                                                                             */
+/* Same Phase A/B/C logic as single-pair, but loops over (image, row) with    */
+/* collapse(2) for fine-grained work distribution.  1D LUTs built once,       */
+/* shared across all images.  Predictor can be shared (ensemble) or per-image */
+/* (instantaneous) via shared_predictor flag.                                  */
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+EXPORT int fused_symmetric_warp_batch(
+    const float *imgs_a, const float *imgs_b,
+    float *outs_a, float *outs_b,
+    const float *pred_dy, const float *pred_dx,
+    int N, int H, int W,
+    int nPY, int nPX,
+    const float *ctrs_y, const float *ctrs_x,
+    int interp_mode, int shared_predictor
+) {
+    float *pred_idx_y, *pred_idx_x;
+
+    /* Input validation */
+    if (N <= 0 || H <= 0 || W <= 0 || nPY <= 0 || nPX <= 0) return ERROR_NOMEM;
+    if (!imgs_a || !imgs_b || !outs_a || !outs_b)             return ERROR_NOMEM;
+    if (!pred_dy || !pred_dx || !ctrs_y || !ctrs_x)           return ERROR_NOMEM;
+
+    /* Build shared 1D LUTs once (same ctrs for all images) */
+    pred_idx_y = (float *)malloc((size_t)H * sizeof(float));
+    pred_idx_x = (float *)malloc((size_t)W * sizeof(float));
+    if (!pred_idx_y || !pred_idx_x) {
+        free(pred_idx_y);
+        free(pred_idx_x);
+        return ERROR_NOMEM;
+    }
+    build_pred_index_lut(pred_idx_y, H, ctrs_y, nPY);
+    build_pred_index_lut(pred_idx_x, W, ctrs_x, nPX);
+
+    /* Predictor stride: 0 if shared (ensemble), nPY*nPX if per-image (instantaneous) */
+    int pred_stride = shared_predictor ? 0 : nPY * nPX;
+
+    /* Manual loop flattening: collapse(2) crashes on MSVC /openmp:experimental
+     * with large iteration counts. Flatten (ni, i) → single index `ti`. */
+    int total_rows = N * H;
+
+    if (interp_mode == 0) {
+        /* ── Bicubic image warp ───────────────────────────────────────────── */
+        int ti;
+        #pragma omp parallel for schedule(static)
+        for (ti = 0; ti < total_rows; ti++) {
+            int ni = ti / H;
+            int i  = ti % H;
+
+            const float *cur_pred_dy = pred_dy + ni * pred_stride;
+            const float *cur_pred_dx = pred_dx + ni * pred_stride;
+            const float *cur_img_a = imgs_a + (size_t)ni * H * W;
+            const float *cur_img_b = imgs_b + (size_t)ni * H * W;
+            float *cur_out_a = outs_a + (size_t)ni * H * W;
+            float *cur_out_b = outs_b + (size_t)ni * H * W;
+
+            int j;
+            float fiy, fiy_floor, pred_frac_dy;
+            int pred_iy_base;
+            float pred_wy[4];
+
+            /* Predictor y-weights: constant for this entire row */
+            fiy = pred_idx_y[i];
+            fiy_floor = floorf(fiy);
+            pred_iy_base = (int)fiy_floor - 1;
+            pred_frac_dy = fiy - fiy_floor;
+            keys_weights_4(pred_frac_dy, pred_wy);
+
+            for (j = 0; j < W; j++) {
+                float fix = pred_idx_x[j];
+                int idx = i * W + j;
+
+                /* Phase A: interpolate predictor */
+                float dense_dy = bicubic_pred_wy(cur_pred_dy, pred_wy, pred_iy_base, fix, nPY, nPX);
+                float dense_dx = bicubic_pred_wy(cur_pred_dx, pred_wy, pred_iy_base, fix, nPY, nPX);
+
+                /* Phase B: symmetric warp coordinates */
+                float half_dy = 0.5f * dense_dy;
+                float half_dx = 0.5f * dense_dx;
+
+                /* Phase C: bicubic image sample */
+                cur_out_a[idx] = bicubic_sample(cur_img_a,
+                    (float)i - half_dy, (float)j - half_dx, H, W);
+                cur_out_b[idx] = bicubic_sample(cur_img_b,
+                    (float)i + half_dy, (float)j + half_dx, H, W);
+            }
+        }
+    } else {
+        /* ── Lanczos-3 image warp (LUT-accelerated) ──────────────────────── */
+        float (*lanc_lut)[6] = (float (*)[6])malloc(
+            (size_t)(LANCZOS3_LUT_SIZE + 1) * 6 * sizeof(float));
+        if (!lanc_lut) {
+            free(pred_idx_y); free(pred_idx_x);
+            return ERROR_NOMEM;
+        }
+        build_lanczos3_lut(lanc_lut, LANCZOS3_LUT_SIZE);
+
+        int ti;
+        #pragma omp parallel for schedule(static)
+        for (ti = 0; ti < total_rows; ti++) {
+            int ni = ti / H;
+            int i  = ti % H;
+
+            const float *cur_pred_dy = pred_dy + ni * pred_stride;
+            const float *cur_pred_dx = pred_dx + ni * pred_stride;
+            const float *cur_img_a = imgs_a + (size_t)ni * H * W;
+            const float *cur_img_b = imgs_b + (size_t)ni * H * W;
+            float *cur_out_a = outs_a + (size_t)ni * H * W;
+            float *cur_out_b = outs_b + (size_t)ni * H * W;
+
+            int j;
+            float fiy, fiy_floor, pred_frac_dy;
+            int pred_iy_base;
+            float pred_wy[4];
+
+            /* Predictor y-weights: still bicubic (smooth field) */
+            fiy = pred_idx_y[i];
+            fiy_floor = floorf(fiy);
+            pred_iy_base = (int)fiy_floor - 1;
+            pred_frac_dy = fiy - fiy_floor;
+            keys_weights_4(pred_frac_dy, pred_wy);
+
+            for (j = 0; j < W; j++) {
+                float fix = pred_idx_x[j];
+                int idx = i * W + j;
+
+                /* Phase A: bicubic predictor interpolation */
+                float dense_dy = bicubic_pred_wy(cur_pred_dy, pred_wy, pred_iy_base, fix, nPY, nPX);
+                float dense_dx = bicubic_pred_wy(cur_pred_dx, pred_wy, pred_iy_base, fix, nPY, nPX);
+
+                /* Phase B: symmetric warp coordinates */
+                float half_dy = 0.5f * dense_dy;
+                float half_dx = 0.5f * dense_dx;
+
+                /* Phase C: Lanczos-3 image sample (LUT weights) */
+                cur_out_a[idx] = lanczos3_sample(cur_img_a,
+                    (float)i - half_dy, (float)j - half_dx, H, W, lanc_lut);
+                cur_out_b[idx] = lanczos3_sample(cur_img_b,
+                    (float)i + half_dy, (float)j + half_dx, H, W, lanc_lut);
             }
         }
 

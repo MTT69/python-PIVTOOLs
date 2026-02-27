@@ -30,6 +30,7 @@
 \definecolor{outlier}{HTML}{2ECC71}
 \definecolor{infill}{HTML}{9B59B6}
 \definecolor{pccolor}{HTML}{C0392B}
+\definecolor{oldpc}{HTML}{E6B0AA}
 \definecolor{lightgray}{HTML}{F5F5F5}
 
 \captionsetup{font=small,labelfont=bf,skip=4pt}
@@ -39,7 +40,7 @@
 \begin{center}
 {\Large\bfseries PIV Pipeline Profiling Report}\\[3pt]
 {\small 4-pass multi-grid (128\,$\to$\,64\,$\to$\,32\,$\to$\,16), 50\% overlap, Gaussian window, gauss6 peak finder}\\[2pt]
-{\small\color{gray} 2026-02-16 \quad|\quad 4 threads \quad|\quad 12 pairs per batch \quad|\quad 3 iterations averaged \quad|\quad Windows}
+{\small\color{gray} 2026-02-26 \quad|\quad 4 threads \quad|\quad 12 pairs per batch \quad|\quad 3 iterations averaged \quad|\quad Windows}
 \end{center}
 
 \vspace{-2pt}
@@ -47,178 +48,199 @@
 
 \section{Key Finding}
 
-The pipeline processes 4\,MP images at \textbf{0.31\,s/pair} and 25\,MP images at \textbf{1.76\,s/pair} across all 4 passes with 4 threads. It is \textbf{warp-bound}, not FFT-bound: the predictor-corrector step (\texttt{cv2.remap} image warping) dominates passes~2--4 at \textbf{54--87\%} of per-pass runtime, while the FFT cross-correlation (\texttt{bulkxcorr2d}) accounts for only 12--26\%.
+The pipeline processes 4\,MP images at \textbf{0.17\,s/pair} across all 4 passes with 4 threads---a \textbf{1.8$\times$ overall speedup} over the previous \texttt{cv2.remap}-based pipeline (0.31\,s/pair). The fused C kernel (\texttt{libfusedwarp}) replaced Python mesh construction + \texttt{cv2.remap} image warping with a single OpenMP pass that upsamples the predictor and warps both images using bicubic interpolation (Keys $a$\,=\,$-$0.75).
 
-\section{Per-Pair Totals}
+The pipeline is now \textbf{xcorr-bound} at 4\,MP: \texttt{bulkxcorr2d} accounts for \textbf{43\%} of pass~4 runtime, while the predictor-corrector (fused warp) accounts for only 28\%. Previously, it was warp-bound at 54\%.
 
-All timings are \textbf{per image pair}. Both datasets use the same 4-pass window sequence (128$\to$64$\to$32$\to$16) at 50\% overlap with 4 threads:
+\section{Before vs After: Fused Warp C Kernel}
 
 \begin{center}
 \small
-\begin{tabular}{@{}lrr@{}}
+\begin{tabular}{@{}lrrr@{}}
 \toprule
-\textbf{Dataset} & \textbf{Per pair} & \textbf{Pass~4 grid} \\
+\textbf{Metric (4\,MP)} & \textbf{Before} & \textbf{After} & \textbf{Speedup} \\
 \midrule
-4\,MP (2048$\times$2048)   & \textbf{0.31\,s} & 255$\times$255 \\
-25\,MP (4600$\times$5312)  & \textbf{1.76\,s} & 574$\times$663 \\
+Grand total (s/pair) & 0.31 & 0.17 & 1.8$\times$ \\
+Pass~4 total (s/pair) & 0.120 & 0.075 & 1.6$\times$ \\
+\rowcolor{lightgray}
+Pass~4 pred-corr (s/pair) & 0.065 & 0.021 & 3.1$\times$ \\
+\quad mesh + cv2.remap warp & 0.043 & --- & \\
+\quad dense pred remap & 0.021 & --- & \\
+\quad fused\_warp (C kernel) & --- & 0.020 & \\
+Pass~4 xcorr (s/pair) & 0.031 & 0.032 & --- \\
+\midrule
+Pass~4 pred-corr share & 54\% & 28\% & \\
+Pass~4 xcorr share & 26\% & 43\% & \\
 \bottomrule
 \end{tabular}
-\captionof{table}{Per-pair processing time across all 4 passes. Pass~4 grid shows the finest-grid window count at 16$\times$16 windows.}
+\captionof{table}{Before/after comparison (4\,MP, biharmonic infilling, 4 threads). The fused C kernel eliminated the Python mesh construction and cv2.remap image warp, consolidating predictor upsampling + symmetric warp + bicubic interpolation into a single OpenMP loop.}
 \end{center}
 
-\section{Cost Breakdown: 4\,MP vs 25\,MP}
+\section{Cost Breakdown: Before vs After}
 
 \begin{center}
 \begin{tikzpicture}
 \begin{axis}[
     ybar stacked,
-    bar width=14pt,
+    bar width=11pt,
     width=\columnwidth,
-    height=5.0cm,
-    ymin=0, ymax=0.75,
+    height=5.2cm,
+    ymin=0, ymax=0.14,
     ylabel={\small Time per pair (s)},
     ylabel style={at={(axis description cs:0.06,0.5)}},
-    symbolic x coords={P1 4M, P2 4M, P3 4M, P4 4M, P1 25M, P2 25M, P3 25M, P4 25M},
+    symbolic x coords={P1\textsuperscript{old}, P2\textsuperscript{old}, P3\textsuperscript{old}, P4\textsuperscript{old}, P1\textsuperscript{new}, P2\textsuperscript{new}, P3\textsuperscript{new}, P4\textsuperscript{new}},
     xtick=data,
     x tick label style={font=\tiny, rotate=45, anchor=east},
     legend style={at={(0.5,1.02)}, anchor=south, legend columns=4, font=\tiny, draw=none},
     every axis plot/.append style={fill opacity=0.85},
     enlarge x limits=0.08,
+    extra x ticks={},
+    xticklabel style={
+        /pgf/number format/.cd,
+    },
 ]
 % pred-corr
 \addplot[fill=pccolor,draw=pccolor!70!black] coordinates {
-    (P1 4M,0.002) (P2 4M,0.065) (P3 4M,0.065) (P4 4M,0.065)
-    (P1 25M,0.053) (P2 25M,0.393) (P3 25M,0.393) (P4 25M,0.398)};
+    (P1\textsuperscript{old},0.002) (P2\textsuperscript{old},0.065) (P3\textsuperscript{old},0.065) (P4\textsuperscript{old},0.065)
+    (P1\textsuperscript{new},0.009) (P2\textsuperscript{new},0.021) (P3\textsuperscript{new},0.021) (P4\textsuperscript{new},0.021)};
 % xcorr
 \addplot[fill=xcorr,draw=xcorr!70!black] coordinates {
-    (P1 4M,0.016) (P2 4M,0.012) (P3 4M,0.011) (P4 4M,0.031)
-    (P1 25M,0.057) (P2 25M,0.053) (P3 25M,0.083) (P4 25M,0.161)};
+    (P1\textsuperscript{old},0.016) (P2\textsuperscript{old},0.012) (P3\textsuperscript{old},0.011) (P4\textsuperscript{old},0.031)
+    (P1\textsuperscript{new},0.012) (P2\textsuperscript{new},0.009) (P3\textsuperscript{new},0.012) (P4\textsuperscript{new},0.032)};
 % outlier
 \addplot[fill=outlier,draw=outlier!70!black] coordinates {
-    (P1 4M,0.000) (P2 4M,0.001) (P3 4M,0.003) (P4 4M,0.007)
-    (P1 25M,0.001) (P2 25M,0.003) (P3 25M,0.011) (P4 25M,0.045)};
+    (P1\textsuperscript{old},0.000) (P2\textsuperscript{old},0.001) (P3\textsuperscript{old},0.003) (P4\textsuperscript{old},0.007)
+    (P1\textsuperscript{new},0.000) (P2\textsuperscript{new},0.001) (P3\textsuperscript{new},0.002) (P4\textsuperscript{new},0.007)};
 % infill
 \addplot[fill=infill,draw=infill!70!black] coordinates {
-    (P1 4M,0.002) (P2 4M,0.005) (P3 4M,0.005) (P4 4M,0.014)
-    (P1 25M,0.004) (P2 25M,0.007) (P3 25M,0.017) (P4 25M,0.050)};
+    (P1\textsuperscript{old},0.002) (P2\textsuperscript{old},0.005) (P3\textsuperscript{old},0.005) (P4\textsuperscript{old},0.014)
+    (P1\textsuperscript{new},0.002) (P2\textsuperscript{new},0.003) (P3\textsuperscript{new},0.005) (P4\textsuperscript{new},0.013)};
 \legend{Pred-Corr, XCorr, Outlier, Infill}
 \end{axis}
 \end{tikzpicture}
-\captionof{figure}{Per-pair time by pass and dataset (4 threads). Predictor-corrector (red) is nearly constant across passes~2--4 within each dataset---it scales with $O(\text{pixels})$, not $O(\text{windows})$.}
+\captionof{figure}{Per-pair time by pass, before (left group) and after (right group) the fused warp C kernel. The predictor-corrector (red) dropped from 0.065\,s to 0.021\,s per pair on passes~2--4---a 3.1$\times$ reduction. XCorr and outlier/infill costs are unchanged.}
 \end{center}
 
 \section{Pass~4 Breakdown (Bottleneck Pass)}
 
 \begin{center}
 \small
-\begin{tabular}{@{}lrrrr@{}}
+\begin{tabular}{@{}lrr@{}}
 \toprule
-& \multicolumn{2}{c}{\textbf{4\,MP}} & \multicolumn{2}{c}{\textbf{25\,MP}} \\
-\cmidrule(lr){2-3}\cmidrule(lr){4-5}
-\textbf{Component} & \textbf{s/pair} & \textbf{\%} & \textbf{s/pair} & \textbf{\%} \\
+\textbf{Component} & \textbf{s/pair} & \textbf{\%} \\
 \midrule
-\texttt{mesh\_and\_warp}    & 0.043 & 36 & 0.263 & 39 \\
-\texttt{dense+pred\_remap}  & 0.021 & 17 & 0.127 & 19 \\
+\texttt{fused\_warp} (C kernel) & 0.020 & 27 \\
+\texttt{predictor\_remap}       & $<$0.001 & $<$1 \\
 \rowcolor{lightgray}
-\textit{Pred-Corr total}    & \textit{0.065} & \textit{54} & \textit{0.398} & \textit{59} \\
-\texttt{bulkxcorr2d}        & 0.031 & 26 & 0.161 & 24 \\
-\texttt{outlier\_det}       & 0.007 & 6  & 0.045 & 7 \\
-\texttt{infilling}          & 0.014 & 12 & 0.050 & 7 \\
+\textit{Pred-Corr total}        & \textit{0.021} & \textit{28} \\
+\texttt{bulkxcorr2d}            & 0.032 & 43 \\
+\texttt{outlier\_det}           & 0.007 & 9 \\
+\texttt{infilling}              & 0.013 & 17 \\
 \midrule
-\textbf{Pass total}          & \textbf{0.120} & & \textbf{0.677} & \\
+\textbf{Pass total}              & \textbf{0.075} & \\
 \bottomrule
 \end{tabular}
-\captionof{table}{Pass~4 per-pair breakdown (16$\times$16 windows, biharmonic infilling). The predictor-corrector sub-components scale with pixel count: $\approx$\,6$\times$ from 4\,MP to 25\,MP (6.1$\times$ pixel ratio).}
+\captionof{table}{Pass~4 per-pair breakdown (16$\times$16 windows, biharmonic infilling, 4\,MP). The fused C kernel replaced both \texttt{mesh\_and\_warp} (0.043\,s) and \texttt{dense\_pred\_remap} (0.021\,s) from the old pipeline with a single 0.020\,s call.}
 \end{center}
 
-\section{Predictor-Corrector Internals (25\,MP)}
+\section{Predictor-Corrector: Fused Warp Internals}
 
-The two dominant sub-operations are nearly constant across passes~2--4, confirming they are pixel-bound:
+The fused warp C kernel performs three operations in a single OpenMP-parallel loop over $(N \times H)$ rows:
+
+\begin{enumerate}[leftmargin=1.4em]
+\item \textbf{Predictor upsample:} Bicubic interpolation from the coarse window-center predictor grid to full pixel resolution.
+\item \textbf{Symmetric coordinate maps:} $\mathbf{x}_A = \mathbf{x} - \tfrac{1}{2}\mathbf{d}$, $\mathbf{x}_B = \mathbf{x} + \tfrac{1}{2}\mathbf{d}$ for each pixel.
+\item \textbf{Image interpolation:} Bicubic (Keys $a=-0.75$, 4$\times$4 stencil) or Lanczos-3 (6$\times$6 stencil, LUT-accelerated) sampling of both images.
+\end{enumerate}
 
 \begin{center}
 \small
-\begin{tabular}{@{}lrrr@{}}
+\begin{tabular}{@{}lrrrr@{}}
 \toprule
-\textbf{Sub-component} & \textbf{P2} & \textbf{P3} & \textbf{P4} \\
+\textbf{Sub-component} & \textbf{P1} & \textbf{P2} & \textbf{P3} & \textbf{P4} \\
 \midrule
-dense\_pred\_remap      & 0.128 & 0.127 & 0.127 \\
-mesh\_image\_warp       & 0.259 & 0.260 & 0.263 \\
+fused\_warp (C kernel)   & (skip) & 0.021 & 0.021 & 0.020 \\
+gaussian\_smooth          & --- & $<$0.001 & $<$0.001 & $<$0.001 \\
+predictor\_remap          & --- & $<$0.001 & $<$0.001 & $<$0.001 \\
 \midrule
-\textbf{Total}           & 0.393 & 0.393 & 0.398 \\
+\textbf{Total}            & 0.009 & 0.021 & 0.021 & 0.021 \\
 \bottomrule
 \end{tabular}
-\captionof{table}{Predictor-corrector per-pair sub-timings (seconds, 25\,MP). Variance $<$\,2\% across passes. Gaussian smoothing ($<$\,1\,ms) omitted.}
+\captionof{table}{Predictor-corrector per-pair sub-timings (seconds, 4\,MP). The fused warp is $O(\text{pixels})$---constant across passes~2--4 regardless of window count. Gaussian smoothing and predictor remap (window-center grid) are negligible.}
 \end{center}
 
-\texttt{mesh\_and\_image\_warp} (39\% of pass~4) computes per-image mesh coordinates and applies \texttt{cv2.remap} with \texttt{INTER\_CUBIC}. \texttt{dense\_pred\_remap} (19\%) interpolates the coarse predictor field to full image resolution via \texttt{cv2.remap}. Both are $O(\text{pixels})$ operations.
+\noindent Eliminating intermediate allocations was key: the old pipeline allocated a $(N, H, W, 2)$ float32 coordinate mesh per image pair before calling \texttt{cv2.remap}. The fused kernel computes coordinates on-the-fly, never materialising the mesh.
 
-\section{Scaling Behaviour}
+\section{Scaling Behaviour: Per-Pass Cost}
 
 \begin{center}
 \begin{tikzpicture}
 \begin{axis}[
     width=\columnwidth,
     height=4.2cm,
-    xlabel={\small Image size (MP)},
+    xlabel={\small Pass number},
     ylabel={\small Per-pair time (s)},
     ylabel style={at={(axis description cs:0.08,0.5)}},
-    xmin=0, xmax=28,
-    ymin=0, ymax=0.45,
+    xmin=0.5, xmax=4.5,
+    ymin=0, ymax=0.04,
+    xtick={1,2,3,4},
     legend style={at={(0.03,0.97)}, anchor=north west, font=\tiny, draw=none},
     grid=major,
     grid style={gray!20},
     every axis plot/.append style={thick},
 ]
-\addplot[color=pccolor, mark=square*, mark size=2] coordinates {(4,0.065) (25,0.398)};
-\addlegendentry{Pred-Corr}
-\addplot[color=xcorr, mark=triangle*, mark size=2] coordinates {(4,0.031) (25,0.161)};
+\addplot[color=pccolor, mark=square*, mark size=2] coordinates {(1,0.009) (2,0.021) (3,0.021) (4,0.021)};
+\addlegendentry{Pred-Corr (fused warp)}
+\addplot[color=xcorr, mark=triangle*, mark size=2] coordinates {(1,0.012) (2,0.009) (3,0.012) (4,0.032)};
 \addlegendentry{XCorr}
-\addplot[color=outlier, mark=diamond*, mark size=2] coordinates {(4,0.007) (25,0.045)};
+\addplot[color=outlier, mark=diamond*, mark size=2] coordinates {(1,0.000) (2,0.001) (3,0.002) (4,0.007)};
 \addlegendentry{Outlier Det}
-\addplot[color=infill, mark=o, mark size=2] coordinates {(4,0.014) (25,0.050)};
+\addplot[color=infill, mark=o, mark size=2] coordinates {(1,0.002) (2,0.003) (3,0.005) (4,0.013)};
 \addlegendentry{Infilling}
 \end{axis}
 \end{tikzpicture}
-\captionof{figure}{Pass~4 per-pair component scaling from 4\,MP to 25\,MP. All components scale roughly linearly with pixel count.}
+\captionof{figure}{Per-pair component cost by pass (4\,MP, 4 threads). The fused warp (red) is constant at ${\sim}$0.021\,s for passes~2--4---it scales with pixels, not windows. XCorr and infilling grow with window count, dominating pass~4.}
 \end{center}
 
-\section{Why It's This Fast: Threading}
+\section{Why It's This Fast: C + OpenMP}
 
-Without threading, the same pipeline takes \textbf{0.68\,s/pair} at 4\,MP---a 2.2$\times$ slowdown. A class-level \texttt{ThreadPoolExecutor(4)} parallelises GIL-releasing operations across the image pairs in a batch. \texttt{cv2.setNumThreads(1)} prevents OpenCV internal threading. The pool and OpenMP (used by \texttt{bulkxcorr2d}) never run concurrently---no contention by design.
+The fused warp kernel uses OpenMP \texttt{schedule(static)} parallelism over $(N \times H)$ rows. Unlike the previous \texttt{ThreadPoolExecutor}-based parallelism (which relied on \texttt{cv2.remap} releasing the GIL), the C kernel runs entirely outside Python with no GIL contention.
 
-\subsection{Pass~4: Threading ON vs OFF (4\,MP)}
+\subsection{Batch Scaling (4\,MP, Pass~4)}
+
+The C kernel's batch interface (\texttt{fused\_symmetric\_warp\_batch}) processes all $N$ images in a single call, amortising OpenMP thread-pool overhead:
 
 \begin{center}
 \small
-\begin{tabular}{@{}lrrr@{}}
+\begin{tabular}{@{}lrr@{}}
 \toprule
-\textbf{Section} & \textbf{ON} & \textbf{OFF} & \textbf{Spdup} \\
+\textbf{Batch size} & \textbf{fused\_warp (ms/pair)} & \textbf{Overhead} \\
 \midrule
-predictor\_corr  & 0.065 & 0.184 & 2.83$\times$ \\
-bulkxcorr2d      & 0.031 & 0.035 & 1.13$\times$ \\
-outlier\_det     & 0.007 & 0.018 & 2.75$\times$ \\
-infilling        & 0.014 & 0.013 & 0.95$\times$ \\
-\midrule
-\textbf{Pass total} & \textbf{0.120} & \textbf{0.254} & \textbf{2.12$\times$} \\
+$N=1$  & 24 & baseline \\
+$N=2$  & 15 & 0.63$\times$ \\
+$N=5$  & 12 & 0.50$\times$ \\
+$N=10$ & 11.3 & 0.47$\times$ \\
+$N=12$ & 20 & 0.83$\times$ \\
 \bottomrule
 \end{tabular}
-\captionof{table}{Pass~4 per-pair threading comparison (4\,MP). The predictor-corrector benefits most because \texttt{cv2.remap} fully releases the GIL. Biharmonic infilling is the only section that doesn't benefit (see~\S\ref{sec:infilling}).}
+\captionof{table}{Fused warp per-pair cost by batch size (4\,MP, 4 threads). Per-pair cost drops with batch size as OpenMP startup is amortised. $N$\,=\,12 shows slight regression from cache pressure at $12 \times 2048 \times 2048 \times \text{float32} \approx 192$\,MB.}
 \end{center}
 
-\subsection{GIL Behaviour}
+\subsection{Threading Still Matters Elsewhere}
 
-Threading effectiveness depends on whether each library releases the Python GIL:
+The class-level \texttt{ThreadPoolExecutor(4)} still parallelises GIL-releasing operations in outlier detection (\texttt{scipy.ndimage}) and infilling (\texttt{bn.nanmedian}). \texttt{cv2.setNumThreads(1)} prevents OpenCV internal threading. The pool and OpenMP (used by C libraries) never run concurrently---no contention by design.
 
 \begin{center}
 \small
 \begin{tabular}{@{}lcc@{}}
 \toprule
-\textbf{Operation} & \textbf{GIL} & \textbf{Spdup} \\
+\textbf{Operation} & \textbf{GIL} & \textbf{Threading} \\
 \midrule
-cv2.remap           & Released & 2.7--3.2$\times$ \\
-scipy.ndimage        & Released & 2.8$\times$ \\
-bn.nanmedian         & Released & 2.1$\times$ \\
-skimage biharmonic   & ${\sim}$33\% & 0.95$\times$ \\
+fused\_warp (C)      & N/A (C code) & OpenMP internal \\
+bulkxcorr2d (C)      & N/A (C code) & OpenMP internal \\
+scipy.ndimage        & Released & ThreadPool \\
+bn.nanmedian         & Released & ThreadPool \\
+skimage biharmonic   & ${\sim}$33\% & No benefit \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -233,23 +255,39 @@ skimage biharmonic   & ${\sim}$33\% & 0.95$\times$ \\
 \textbf{Method} & \textbf{Per pair} & \textbf{Thrd} & \textbf{Notes} \\
 \midrule
 local\_median & 0.002\,s & 2.1$\times$ & Fast, sufficient mid-pass \\
-biharmonic    & 0.014\,s & 0.95$\times$ & Smooth, GIL-bound \\
+biharmonic    & 0.013\,s & 0.95$\times$ & Smooth, GIL-bound \\
 \bottomrule
 \end{tabular}
-\captionof{table}{Per-pair infilling cost at pass~4 (4\,MP). local\_median is ${\sim}$8$\times$ faster and benefits from threading.}
+\captionof{table}{Per-pair infilling cost at pass~4 (4\,MP). local\_median is ${\sim}$7$\times$ faster and benefits from threading.}
 \end{center}
 
 \texttt{inpaint\_biharmonic} is ${\sim}$67\% GIL-bound (sparse matrix construction + \texttt{spsolve}). \textbf{Recommendation:} use \texttt{local\_median} for mid-pass infilling; reserve biharmonic for the final pass only if interpolation quality matters.
 
+\section{Per-Pass Totals (4\,MP)}
+
+\begin{center}
+\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+& \textbf{Pass~1} & \textbf{Pass~2} & \textbf{Pass~3} & \textbf{Pass~4} \\
+\midrule
+Per pair (s) & 0.024 & 0.034 & 0.041 & 0.075 \\
+\midrule
+\multicolumn{4}{@{}l}{\textbf{Grand total per pair:}} & \textbf{0.174\,s} \\
+\bottomrule
+\end{tabular}
+\captionof{table}{Per-pair processing time by pass (4\,MP, biharmonic infilling, 4 threads). The 128$\to$64$\to$32$\to$16 window sequence gives 255$\times$255 windows at pass~4.}
+\end{center}
+
 \section{Conclusions}
 
 \begin{enumerate}[leftmargin=1.4em]
-\item Per-pair throughput: \textbf{0.31\,s} at 4\,MP, \textbf{1.76\,s} at 25\,MP (4 threads, all 4 passes).
-\item The pipeline is \textbf{warp-bound}, not FFT-bound. Predictor-corrector (\texttt{cv2.remap}) consumes 54--87\% of passes~2--4. FFT cross-correlation is only 12--26\%.
-\item Predictor-corrector cost is $O(\text{pixels})$, nearly constant across passes~2--4. Per-window costs (xcorr, outlier, infill) scale with window count.
-\item Threading delivers \textbf{2.2$\times$ speedup} because \texttt{cv2.remap} and \texttt{scipy.ndimage} fully release the GIL. Without it, throughput drops to 0.68\,s/pair at 4\,MP.
-\item Use \texttt{local\_median} for mid-pass infilling (${\sim}$8$\times$ faster than biharmonic, threads at 2.1$\times$). Reserve biharmonic for final pass only.
-\item The fused mesh+warp dominates at 36--39\% of pass~4. Further gains require moving this to C/CUDA.
+\item Per-pair throughput: \textbf{0.17\,s} at 4\,MP (4 threads, all 4 passes)---\textbf{1.8$\times$ faster} than the previous cv2.remap pipeline (0.31\,s/pair).
+\item The fused C kernel (\texttt{libfusedwarp}) delivers a \textbf{3.1$\times$ speedup} on the predictor-corrector step (0.065\,s\,$\to$\,0.021\,s per pair) by eliminating Python mesh construction, intermediate allocations, and GIL overhead.
+\item The pipeline bottleneck has shifted from \textbf{warp-bound} to \textbf{xcorr-bound}: \texttt{bulkxcorr2d} is now the dominant cost at 43\% of pass~4, up from 26\%. Further gains require optimising the FFT cross-correlation.
+\item The fused warp cost is $O(\text{pixels})$, constant across passes~2--4 at ${\sim}$0.021\,s/pair regardless of window count. Per-window costs (xcorr, outlier, infill) scale with window count and dominate at the finest grid.
+\item Batch processing amortises OpenMP overhead: 24\,ms/pair at $N$\,=\,1 drops to 11.3\,ms/pair at $N$\,=\,10 (2.1$\times$). Optimal batch size is 5--10 for 4\,MP images before cache pressure increases.
+\item Use \texttt{local\_median} for mid-pass infilling (${\sim}$7$\times$ faster than biharmonic, threads at 2.1$\times$). Reserve biharmonic for final pass only.
 \end{enumerate}
 
 \end{document}

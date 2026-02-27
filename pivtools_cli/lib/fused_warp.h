@@ -52,6 +52,32 @@ EXPORT int fused_symmetric_warp(
     int interp_mode
 );
 
+/*
+ * Batch version: warp N image pairs.
+ *
+ * Images are stacked as (N, H, W) in row-major order.
+ * Predictor can be shared (ensemble) or per-image (instantaneous):
+ *   shared_predictor=1: pred_dy/dx are (nPY, nPX) — same for all images
+ *   shared_predictor=0: pred_dy/dx are (N, nPY, nPX) — separate per image
+ *
+ * OpenMP parallelizes over (image, row) with collapse(2).
+ */
+EXPORT int fused_symmetric_warp_batch(
+    const float *imgs_a,       /* (N, H, W) stacked */
+    const float *imgs_b,       /* (N, H, W) stacked */
+    float       *outs_a,       /* (N, H, W) stacked */
+    float       *outs_b,       /* (N, H, W) stacked */
+    const float *pred_dy,      /* (nPY, nPX) if shared, (N, nPY, nPX) if per-image */
+    const float *pred_dx,      /* same */
+    int N,
+    int H, int W,
+    int nPY, int nPX,
+    const float *ctrs_y,
+    const float *ctrs_x,
+    int interp_mode,
+    int shared_predictor       /* 1=shared (ensemble), 0=per-image (instantaneous) */
+);
+
 #ifdef __cplusplus
 }
 #endif

@@ -46,6 +46,31 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             raise FileNotFoundError(f"Required library file not found: {lib_path}")
         self.lib = ctypes.CDLL(lib_path)
 
+        # Load fused warp library (required)
+        fw_path = os.path.join(
+            os.path.dirname(__file__), "../..", "lib", f"libfusedwarp{lib_extension}"
+        )
+        fw_path = os.path.abspath(fw_path)
+        if not os.path.isfile(fw_path):
+            raise FileNotFoundError(f"Required library file not found: {fw_path}")
+        self._fw_lib = ctypes.CDLL(fw_path)
+        self._fw_lib.fused_symmetric_warp_batch.restype = ctypes.c_int
+        self._fw_lib.fused_symmetric_warp_batch.argtypes = [
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # imgs_a (N,H,W)
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # imgs_b (N,H,W)
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # outs_a (N,H,W)
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # outs_b (N,H,W)
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # pred_dy
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # pred_dx
+            ctypes.c_int,                # N
+            ctypes.c_int, ctypes.c_int,  # H, W
+            ctypes.c_int, ctypes.c_int,  # nPY, nPX
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # ctrs_y
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # ctrs_x
+            ctypes.c_int,                # interp_mode
+            ctypes.c_int,                # shared_predictor
+        ]
+
         # Register FFTW cleanup to run at interpreter exit (once per process)
         if not InstantaneousCorrelatorCPU._cleanup_registered:
             self._register_fftw_cleanup()
@@ -697,25 +722,14 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                         [(i, sigma, truncate) for i in range(N)],
                     )
 
-            with self._profile_section(pass_idx, "pc_dense_and_predictor_remap"):
-                delta_ab_dense = np.zeros((N, H, W, 2), dtype=np.float32)
-                map_x_2d, map_y_2d = self.cached_dense_maps[pass_idx]
-                if map_x_2d is None or map_y_2d is None:
-                    raise ValueError(
-                        f"Dense interpolation maps missing for pass {pass_idx}"
-                    )
+            with self._profile_section(pass_idx, "pc_predictor_remap"):
+                # Predictor-to-window remap stays in Python (small grid, needed for output)
+                interp_flag = cv2.INTER_CUBIC
                 map_x, map_y = self.cached_predictor_maps[pass_idx]
                 if map_x is None or map_y is None:
                     raise ValueError(
                         f"Predictor interpolation maps missing for pass {pass_idx}"
                     )
-
-                def _remap_dense(i, d):
-                    delta_ab_dense[i, ..., d] = cv2.remap(
-                        self.delta_ab_old[i, ..., d],
-                        map_x_2d, map_y_2d, interp_flag,
-                        borderMode=cv2.BORDER_REPLICATE,
-                    ).astype(np.float32)
 
                 def _remap_predictor(i, d):
                     self.delta_ab_pred[i, ..., d] = cv2.remap(
@@ -724,39 +738,42 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                         borderMode=cv2.BORDER_REPLICATE,
                     ).astype(np.float32)
 
-                remap_args = []
-                for i in range(N):
-                    for d in range(2):
-                        remap_args.append((i, d))
-                # Each arg pair feeds both _remap_dense and _remap_predictor
-                def _remap_both(i, d):
-                    _remap_dense(i, d)
-                    _remap_predictor(i, d)
-                self._run_parallel(_remap_both, remap_args)
+                self._run_parallel(
+                    _remap_predictor,
+                    [(i, d) for i in range(N) for d in range(2)],
+                )
 
-            with self._profile_section(pass_idx, "pc_mesh_and_image_warp"):
-                image_a_prime_batch = np.zeros_like(images_a, dtype=np.float32)
-                image_b_prime_batch = np.zeros_like(images_b, dtype=np.float32)
-                im_mesh_f32 = self.im_mesh  # already float32 from correlate_batch
+            with self._profile_section(pass_idx, "pc_fused_warp"):
+                ctrs_y = np.ascontiguousarray(
+                    self.win_ctrs_y_all[pass_idx - 1], dtype=np.float32
+                )
+                ctrs_x = np.ascontiguousarray(
+                    self.win_ctrs_x_all[pass_idx - 1], dtype=np.float32
+                )
+                interp_mode = 0 if config.instantaneous_image_warp_interpolation == "cubic" else 1
+                nPY = self.delta_ab_old.shape[1]
+                nPX = self.delta_ab_old.shape[2]
 
-                def _warp_pair(i):
-                    half_delta = 0.5 * delta_ab_dense[i]  # (H, W, 2)
-                    map_A = im_mesh_f32 - half_delta
-                    map_B = im_mesh_f32 + half_delta
-                    image_a_prime_batch[i] = cv2.remap(
-                        images_a[i].astype(np.float32),
-                        map_A[..., 1], map_A[..., 0],
-                        cv2.INTER_CUBIC,
-                        borderMode=cv2.BORDER_CONSTANT, borderValue=0,
-                    )
-                    image_b_prime_batch[i] = cv2.remap(
-                        images_b[i].astype(np.float32),
-                        map_B[..., 1], map_B[..., 0],
-                        cv2.INTER_CUBIC,
-                        borderMode=cv2.BORDER_CONSTANT, borderValue=0,
-                    )
+                # Predictor arrays: (N, nPY, nPX, 2) → extract dy and dx as contiguous (N, nPY, nPX)
+                pred_dy = np.ascontiguousarray(self.delta_ab_old[..., 0], dtype=np.float32)
+                pred_dx = np.ascontiguousarray(self.delta_ab_old[..., 1], dtype=np.float32)
 
-                self._run_parallel(_warp_pair, [(i,) for i in range(N)])
+                image_a_prime_batch = np.zeros((N, H, W), dtype=np.float32)
+                image_b_prime_batch = np.zeros((N, H, W), dtype=np.float32)
+
+                ret = self._fw_lib.fused_symmetric_warp_batch(
+                    np.ascontiguousarray(images_a, dtype=np.float32),
+                    np.ascontiguousarray(images_b, dtype=np.float32),
+                    image_a_prime_batch, image_b_prime_batch,
+                    pred_dy, pred_dx,
+                    N, H, W, nPY, nPX,
+                    ctrs_y, ctrs_x,
+                    interp_mode,
+                    0,  # shared_predictor=0 → per-image predictors
+                )
+                if ret != 0:
+                    raise RuntimeError(f"fused_symmetric_warp_batch failed (ret={ret})")
+
             return image_a_prime_batch, image_b_prime_batch, self.delta_ab_pred
 
     def _smooth_one_delta_old(self, i, sigma, truncate):
@@ -818,8 +835,6 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         if self.delta_ab_old is None:
             raise RuntimeError("delta_ab_old is uninitialised before predictor step")
 
-        interp_flag = cv2.INTER_CUBIC if interpolator == "cubic" else cv2.INTER_LINEAR
-
         if self.config.instantaneous_predictor_smoothing:
             self.delta_ab_old[..., 0] = gaussian_filter(
                 self.delta_ab_old[..., 0],
@@ -834,68 +849,51 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 mode="nearest",
             )
 
-        self.delta_ab_dense = np.zeros((self.H, self.W, 2), dtype=np.float32)
-        map_x_2d, map_y_2d = self.cached_dense_maps[pass_idx]
-        if map_x_2d is None or map_y_2d is None:
-            raise ValueError(f"Dense interpolation maps missing for pass {pass_idx}")
-        
-        # Verify cached dense maps have correct shape
-        assert map_x_2d.shape == (self.H, self.W), f"Cached dense map X shape mismatch for pass {pass_idx}: {map_x_2d.shape} vs {(self.H, self.W)}"
-        assert map_y_2d.shape == (self.H, self.W), f"Cached dense map Y shape mismatch for pass {pass_idx}: {map_y_2d.shape} vs {(self.H, self.W)}"
-        logging.debug(f"Using cached dense interpolation maps for pass {pass_idx}")
-
-        for d in range(2):
-            self.delta_ab_dense[..., d] = cv2.remap(
-                self.delta_ab_old[..., d].astype(np.float32),
-                map_x_2d,
-                map_y_2d,
-                interp_flag,
-                borderMode=cv2.BORDER_REPLICATE,
-            )
-
-        delta_0b = self.delta_ab_dense / 2
-        delta_0a = -delta_0b
-        im_mesh_A = self.im_mesh + delta_0a
-        im_mesh_B = self.im_mesh + delta_0b
-
+        # Predictor-to-window remap stays in Python (small grid, needed for output)
+        interp_flag = cv2.INTER_CUBIC
         map_x, map_y = self.cached_predictor_maps[pass_idx]
         if map_x is None or map_y is None:
             raise ValueError(f"Predictor interpolation maps missing for pass {pass_idx}")
 
-        # Verify cached predictor maps have correct shape
-        expected_pred_shape = (len(self.win_ctrs_y[pass_idx]), len(self.win_ctrs_x[pass_idx]))
-        assert map_x.shape == expected_pred_shape, f"Cached predictor map X shape mismatch for pass {pass_idx}: {map_x.shape} vs {expected_pred_shape}"
-        assert map_y.shape == expected_pred_shape, f"Cached predictor map Y shape mismatch for pass {pass_idx}: {map_y.shape} vs {expected_pred_shape}"
-        logging.debug(f"Using cached predictor interpolation maps for pass {pass_idx}")
-
         for d in range(2):
-            remapped = cv2.remap(
+            self.delta_ab_pred[..., d] = cv2.remap(
                 self.delta_ab_old[..., d].astype(np.float32),
-                map_x,
-                map_y,
-                interp_flag,
+                map_x, map_y, interp_flag,
                 borderMode=cv2.BORDER_REPLICATE,
             )
-            self.delta_ab_pred[..., d] = remapped
 
-        image_a_prime = cv2.remap(
-            image_a.astype(np.float32),
-            im_mesh_A[..., 1].astype(np.float32),
-            im_mesh_A[..., 0].astype(np.float32),
-            cv2.INTER_CUBIC,
-            borderMode=cv2.BORDER_CONSTANT,
-            borderValue=0,
+        # Fused warp: predictor upsample + symmetric coordinates + image warp in one C call
+        H, W = self.H, self.W
+        ctrs_y = np.ascontiguousarray(
+            self.win_ctrs_y_all[pass_idx - 1], dtype=np.float32
         )
-        image_b_prime = cv2.remap(
-            image_b.astype(np.float32),
-            im_mesh_B[..., 1].astype(np.float32),
-            im_mesh_B[..., 0].astype(np.float32),
-            cv2.INTER_CUBIC,
-            borderMode=cv2.BORDER_CONSTANT,
-            borderValue=0,
+        ctrs_x = np.ascontiguousarray(
+            self.win_ctrs_x_all[pass_idx - 1], dtype=np.float32
         )
+        interp_mode = 0 if self.config.instantaneous_image_warp_interpolation == "cubic" else 1
+        nPY, nPX = self.delta_ab_old.shape[0], self.delta_ab_old.shape[1]
 
-        return image_a_prime, image_b_prime, self.delta_ab_pred
+        pred_dy = np.ascontiguousarray(self.delta_ab_old[..., 0], dtype=np.float32)
+        pred_dx = np.ascontiguousarray(self.delta_ab_old[..., 1], dtype=np.float32)
+
+        # Use batch function with N=1
+        img_a = np.ascontiguousarray(image_a.astype(np.float32)[np.newaxis])
+        img_b = np.ascontiguousarray(image_b.astype(np.float32)[np.newaxis])
+        out_a = np.zeros((1, H, W), dtype=np.float32)
+        out_b = np.zeros((1, H, W), dtype=np.float32)
+
+        ret = self._fw_lib.fused_symmetric_warp_batch(
+            img_a, img_b, out_a, out_b,
+            pred_dy, pred_dx,
+            1, H, W, nPY, nPX,
+            ctrs_y, ctrs_x,
+            interp_mode,
+            0,  # shared_predictor=0 (single image, per-image predictor)
+        )
+        if ret != 0:
+            raise RuntimeError(f"fused_symmetric_warp_batch failed (ret={ret})")
+
+        return out_a[0], out_b[0], self.delta_ab_pred
     
     def _set_lib_arguments(
         self,

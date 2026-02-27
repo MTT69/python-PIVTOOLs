@@ -38,10 +38,8 @@ from profile_ensemble import (
 # ---------------------------------------------------------------------------
 CORR_SUB_SECTIONS = [
     "pc_gaussian_smooth",
-    "pc_dense_remap",
     "pc_predictor_remap",
-    "pc_mesh_construction",
-    "pc_image_warp",
+    "pc_fused_warp",
     "xcorr_AB",
     "xcorr_AA",
     "xcorr_BB",
@@ -50,10 +48,8 @@ CORR_SUB_SECTIONS = [
 SECTION_ORDER = [
     "predictor_corrector",
     "pc_gaussian_smooth",
-    "pc_dense_remap",
     "pc_predictor_remap",
-    "pc_mesh_construction",
-    "pc_image_warp",
+    "pc_fused_warp",
     "warp_sum",
     "single_mode_padding",
     "xcorr",
@@ -66,10 +62,8 @@ SECTION_ORDER = [
 DISPLAY_NAMES = {
     "predictor_corrector": "predictor_corrector",
     "pc_gaussian_smooth": "  gaussian_smooth",
-    "pc_dense_remap": "  dense_remap",
     "pc_predictor_remap": "  predictor_remap",
-    "pc_mesh_construction": "  mesh_construction",
-    "pc_image_warp": "  image_warp",
+    "pc_fused_warp": "  fused_warp (C kernel)",
     "warp_sum": "warp_sum",
     "single_mode_padding": "single_mode_padding",
     "xcorr": "xcorr (3x C lib)",

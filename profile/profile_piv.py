@@ -156,8 +156,8 @@ def make_config(
 # ---------------------------------------------------------------------------
 PC_SUB_SECTIONS = [
     "pc_gaussian_smooth",
-    "pc_dense_and_predictor_remap",
-    "pc_mesh_and_image_warp",
+    "pc_predictor_remap",
+    "pc_fused_warp",
 ]
 
 SECTION_ORDER = [

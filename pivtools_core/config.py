@@ -2521,24 +2521,24 @@ video:
     def ensemble_image_warp_interpolation(self) -> str:
         """Return interpolation method for image warping in ensemble PIV.
 
-        This controls the cv2.remap interpolation when warping images based on
-        the predictor field from the previous pass. The choice of interpolation
-        may affect:
+        This controls the fused warp kernel interpolation when warping images
+        based on the predictor field from the previous pass. The choice of
+        interpolation may affect:
         - Particle image sharpness (PSF)
         - Measured Reynolds stress (peak width)
         - Processing speed
 
         Options:
-        - 'nearest': cv2.INTER_NEAREST (fastest, no smoothing, may cause aliasing)
-        - 'linear': cv2.INTER_LINEAR (bilinear, moderate smoothing)
-        - 'cubic': cv2.INTER_CUBIC (bicubic, smoothest, default)
+        - 'cubic': Bicubic (Keys a=-0.75, 4x4 stencil, matches cv2.INTER_CUBIC). Default.
+        - 'lanczos': Lanczos-3 (windowed sinc, 6x6 stencil). Sharper frequency
+          preservation for particle images, ~1.5x slower than cubic.
 
         Default: 'cubic'
         """
         method = self.data.get("ensemble_piv", {}).get(
             "image_warp_interpolation", "cubic"
         )
-        valid_methods = {'nearest', 'linear', 'cubic'}
+        valid_methods = {'cubic', 'lanczos'}
         if method not in valid_methods:
             raise ValueError(
                 f"Invalid ensemble_image_warp_interpolation '{method}'. "
@@ -2778,6 +2778,31 @@ video:
         Default: True (backward compatible)
         """
         return self.data.get("instantaneous_piv", {}).get("predictor_smoothing", True)
+
+    @property
+    def instantaneous_image_warp_interpolation(self) -> str:
+        """Return interpolation method for image warping in instantaneous PIV.
+
+        This controls the fused warp kernel interpolation when warping images
+        based on the predictor field from the previous pass.
+
+        Options:
+        - 'cubic': Bicubic (Keys a=-0.75, 4x4 stencil). Default.
+        - 'lanczos': Lanczos-3 (windowed sinc, 6x6 stencil). Sharper frequency
+          preservation, ~1.5x slower than cubic.
+
+        Default: 'cubic'
+        """
+        method = self.data.get("instantaneous_piv", {}).get(
+            "image_warp_interpolation", "cubic"
+        )
+        valid_methods = {'cubic', 'lanczos'}
+        if method not in valid_methods:
+            raise ValueError(
+                f"Invalid instantaneous_image_warp_interpolation '{method}'. "
+                f"Must be one of {valid_methods}"
+            )
+        return method
 
     @property
     def secondary_peak(self):

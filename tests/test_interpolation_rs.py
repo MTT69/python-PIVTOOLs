@@ -11,8 +11,8 @@ Interpolation methods tested:
 - cv2.INTER_CUBIC (bicubic, current default, most smoothing)
 
 Two interpolation locations are tested:
-1. Image warping: cv2.remap in _get_image_prime_batch()
-2. Predictor field: cv2.remap in _get_im_mesh()
+1. Image warping: fused_symmetric_warp_batch (libfusedwarp C kernel, bicubic/Lanczos-3)
+2. Predictor field: cv2.remap in _get_im_mesh() (predictor → current pass grid)
 
 Usage:
     python test_interpolation_rs.py [quick|full|matrix]

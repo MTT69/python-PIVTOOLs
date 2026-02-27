@@ -75,8 +75,6 @@ exclude = ["tests*", "manual_tools*", "logs*", "env*"]
 
 [tool.setuptools.package-data]
 "pivtools_cli" = [
-    "lib/interp2custom.c",
-    "lib/interp2custom.h",
     "lib/peak_locate_lm.c",
     "lib/peak_locate_lm.h",
     "lib/PIV_2d_cross_correlate.c",
@@ -88,9 +86,11 @@ exclude = ["tests*", "manual_tools*", "logs*", "env*"]
     "lib/common.h",
     "lib/marquadt_gaussian.c",
     "lib/marquadt_gaussian.h",
+    "lib/fused_warp.c",
+    "lib/fused_warp.h",
     "lib/libbulkxcorr2d.*",
-    "lib/libinterp2custom.*",
-    "lib/libmarquadt.*"
+    "lib/libmarquadt.*",
+    "lib/libfusedwarp.*"
 ]
 pivtools_core = ["config.yaml"]
 pivtools_gui = ["static/**/*", "templates/**/*"]
