@@ -2518,6 +2518,31 @@ video:
         return self.data.get("ensemble_piv", {}).get("kspace_soft_weighting", True)
 
     @property
+    def ensemble_kspace_k_max_cap(self) -> float:
+        """Return the hard k_max cap for k-space transfer function fitting.
+
+        This is the maximum wavenumber (in cycles/pixel) used in the Stage 2
+        transfer function fit. The adaptive k_max from SNR is always clipped
+        to this value.
+
+        Increase for small particles (sigma < 1 px) or high-SNR data where
+        signal extends to higher wavenumbers. Decrease for noisy data.
+
+        When soft weighting is enabled, the cap can be more generous because
+        the weights naturally attenuate unreliable high-k points.
+
+        Default: 0.35 (with soft weighting), 0.25 (without).
+        Range: 0.1 to 0.5 cycles/pixel.
+        """
+        val = self.data.get("ensemble_piv", {}).get("kspace_k_max_cap", None)
+        if val is not None:
+            return max(0.1, min(float(val), 0.5))
+        # Default depends on soft weighting
+        if self.ensemble_kspace_soft_weighting:
+            return 0.35
+        return 0.25
+
+    @property
     def ensemble_image_warp_interpolation(self) -> str:
         """Return interpolation method for image warping in ensemble PIV.
 

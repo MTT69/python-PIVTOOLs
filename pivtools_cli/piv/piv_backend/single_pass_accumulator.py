@@ -609,6 +609,17 @@ class SinglePassAccumulator:
         else:
             logging.info(f"Pass {pass_idx + 1}: Starting OpenMP Gaussian fitting...")
 
+        # Build per-window predictor displacements for noise PSD (k-space only)
+        predictor_displacements = None
+        if fit_method == "kspace" and pass_idx > 0:
+            smoothed_pred = pass_data.get("smoothed_predictor")
+            if smoothed_pred is not None:
+                # smoothed_pred shape: (n_win_y, n_win_x, 2) where [:,:,0]=Y, [:,:,1]=X
+                predictor_displacements = smoothed_pred.reshape(-1, 2)
+
+        # Determine kernel type from config (k-space only)
+        interp_kernel = 'lanczos3' if self.config.ensemble_image_warp_interpolation == 'lanczos' else 'bicubic'
+
         with self._profile_section(pass_idx, "scatter"):
             n_workers = len(client.scheduler_info()['workers'])
             workers = list(client.scheduler_info()["workers"].keys())
@@ -617,6 +628,7 @@ class SinglePassAccumulator:
             R_BB_futures = []
             R_AB_futures = []
             mask_flat_futures = []
+            pred_disp_futures = []
             sigma_dict_futures = [{} for _ in range(n_workers)]
             for worker_idx in range(n_workers):
                 # Use corr_size (not win_size) for slicing - correlation planes are sized at SumWindow
@@ -648,6 +660,14 @@ class SinglePassAccumulator:
                     broadcast=False,
                 ))
 
+                if predictor_displacements is not None:
+                    pred_disp_futures.append(client.scatter(
+                        predictor_displacements[start_idx_win:end_idx_win],
+                        broadcast=False,
+                    ))
+                else:
+                    pred_disp_futures.append(None)
+
                 for k, v in sigma_dict.items():
                     if v is not None:
                         sigma_dict_futures[worker_idx][k]=client.scatter(
@@ -665,6 +685,7 @@ class SinglePassAccumulator:
             if fit_method == "kspace":
                 # K-space transfer function fitting
                 from pivtools_cli.piv.piv_backend.kspace_fitting import fit_windows_kspace
+                k_max_cap = self.config.ensemble_kspace_k_max_cap
                 futures = [
                     client.submit(
                         fit_windows_kspace,
@@ -678,6 +699,9 @@ class SinglePassAccumulator:
                         self.config.ensemble_kspace_snr_threshold,
                         self.config.ensemble_kspace_soft_weighting,  # True for anisotropic soft decay
                         self.config.debug,  # Enable k-space diagnostics when debug=True
+                        pred_disp_futures[i],  # Per-window predictor displacements
+                        interp_kernel,  # 'bicubic' or 'lanczos3'
+                        k_max_cap,  # Hard k_max cap from config (None = use defaults)
                     ) for i in range(len(R_AA_futures))
                 ]
             else:

@@ -45,6 +45,10 @@ import numpy as np
 from numpy.fft import fft2, fftshift, ifftshift, fftfreq
 from scipy.optimize import least_squares
 
+from pivtools_cli.piv.piv_backend.interpolation_noise_psd import (
+    compute_noise_psd_2d, frac_distance
+)
+
 # Optional imports for plotting
 try:
     import matplotlib.pyplot as plt
@@ -67,6 +71,9 @@ def fit_windows_kspace(
     snr_threshold: float = 3.0,
     use_soft_weighting: bool = True,
     debug: bool = False,
+    predictor_displacements: Optional[np.ndarray] = None,
+    interp_kernel: str = 'bicubic',
+    k_max_cap: Optional[float] = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Fit k-space transfer function to correlation planes.
@@ -95,6 +102,14 @@ def fit_windows_kspace(
     use_soft_weighting : bool
         If True (default), use combined SNR × anisotropic soft decay weighting.
         If False, use uniform weighting within k_max bounds.
+    predictor_displacements : np.ndarray, optional
+        Per-window predictor displacement in pixels, shape (n_windows, 2)
+        where [:, 0] = dy, [:, 1] = dx. None on pass 0 (no warping).
+    interp_kernel : str
+        Interpolation kernel used for warping: 'bicubic' or 'lanczos3'.
+    k_max_cap : float, optional
+        Hard cap on k_max in cycles/pixel (0.1 to 0.5). If None, uses 0.35
+        (soft weighting) or 0.25 (hard weighting). Increase for small particles.
 
     Returns
     -------
@@ -179,6 +194,13 @@ def fit_windows_kspace(
         R_BB_2d = R_BB[start:end].reshape(corr_h, corr_w)
         R_AB_2d = R_AB[start:end].reshape(corr_h, corr_w)
 
+        # Extract per-window predictor displacement
+        if predictor_displacements is not None:
+            pred_dy = predictor_displacements[idx, 0]
+            pred_dx = predictor_displacements[idx, 1]
+        else:
+            pred_dy, pred_dx = 0.0, 0.0
+
         # Fit this window
         result = _fit_single_window_kspace(
             R_AA_2d, R_BB_2d, R_AB_2d,
@@ -187,6 +209,10 @@ def fit_windows_kspace(
             center_x, center_y,
             use_soft_weighting=use_soft_weighting,
             return_diagnostics=debug,
+            pred_dy=pred_dy,
+            pred_dx=pred_dx,
+            interp_kernel=interp_kernel,
+            k_max_cap=k_max_cap,
         )
 
         if result['status'] == 0:
@@ -240,6 +266,92 @@ def fit_windows_kspace(
     return gauss_flat, status_flat, initial_guess_flat
 
 
+def _fit_fref_joint(F_ref, K_X, K_Y, P_noise):
+    """Fit joint signal + colored noise model to F_ref.
+
+    Model: F_ref(k) = (A * exp(-2*pi^2*(kx^2*sx^2 + ky^2*sy^2)) + N0) * P_noise(k)
+
+    Parameters
+    ----------
+    F_ref : ndarray
+        Measured reference spectrum sqrt(|F_AA| * |F_BB|).
+    K_X, K_Y : ndarray
+        Wavenumber grids (cycles/pixel).
+    P_noise : ndarray
+        Analytical noise PSD from interpolation kernel DTFT.
+
+    Returns
+    -------
+    dict with keys: success, F_ref_clean, N0, A, sigma_x, sigma_y
+    """
+    center_y, center_x = F_ref.shape[0] // 2, F_ref.shape[1] // 2
+    F_dc = F_ref[center_y, center_x]
+
+    if F_dc < 1e-10:
+        return {'success': False}
+
+    # Normalise for numerical stability
+    F_ref_norm = F_ref / F_dc
+
+    # Flatten
+    K_X_flat = K_X.ravel()
+    K_Y_flat = K_Y.ravel()
+    F_ref_flat = F_ref_norm.ravel()
+    P_noise_flat = P_noise.ravel()
+
+    # Initial guess: [A, sigma_x, sigma_y, N0]
+    p0 = np.array([1.0, 2.0, 2.0, 0.01])
+
+    # Bounds
+    bounds_lo = [0.01, 0.1, 0.1, 0.0]
+    bounds_hi = [10.0, 20.0, 20.0, 1.0]
+
+    # Gaussian taper weighting — emphasise low-to-mid k
+    K_R = np.sqrt(K_X_flat ** 2 + K_Y_flat ** 2)
+    weights = np.exp(-K_R ** 2 / (0.15 ** 2))
+    weights = weights / (np.max(weights) + 1e-12)
+    weights = np.maximum(weights, 0.1)
+
+    def residual(params):
+        A, sx, sy, N0 = params
+        gaussian = A * np.exp(-2 * np.pi ** 2 * (K_X_flat ** 2 * sx ** 2
+                                                   + K_Y_flat ** 2 * sy ** 2))
+        model = (gaussian + N0) * P_noise_flat
+        return weights * (F_ref_flat - model)
+
+    try:
+        result = least_squares(
+            residual, p0,
+            bounds=(bounds_lo, bounds_hi),
+            method='trf',
+            max_nfev=200,
+            ftol=1e-10,
+            xtol=1e-10,
+        )
+
+        A, sigma_x, sigma_y, N0 = result.x
+
+        # Denormalise
+        N0_abs = N0 * F_dc
+
+        # Subtract colored noise floor
+        noise_floor_2d = N0_abs * P_noise
+        epsilon = F_dc * 1e-8
+        F_ref_clean = np.maximum(F_ref - noise_floor_2d, epsilon)
+
+        return {
+            'success': True,
+            'F_ref_clean': F_ref_clean,
+            'N0': N0_abs,
+            'A': A * F_dc,
+            'sigma_x': sigma_x,
+            'sigma_y': sigma_y,
+        }
+
+    except Exception:
+        return {'success': False}
+
+
 def _fit_single_window_kspace(
     R_AA_2d: np.ndarray,
     R_BB_2d: np.ndarray,
@@ -254,6 +366,10 @@ def _fit_single_window_kspace(
     center_y: float,
     use_soft_weighting: bool = True,
     return_diagnostics: bool = False,
+    pred_dy: float = 0.0,
+    pred_dx: float = 0.0,
+    interp_kernel: str = 'bicubic',
+    k_max_cap: Optional[float] = None,
 ) -> dict:
     """
     Fit k-space transfer function to a single window.
@@ -262,6 +378,14 @@ def _fit_single_window_kspace(
     ----------
     use_soft_weighting : bool
         If True, use SNR × anisotropic soft decay weighting
+    pred_dy, pred_dx : float
+        Predictor displacement for this window in pixels (Y, X).
+        Used to compute the interpolation kernel's noise PSD.
+    interp_kernel : str
+        'bicubic' or 'lanczos3' — which kernel was used for warping.
+    k_max_cap : float, optional
+        Hard cap on k_max in cycles/pixel. If None, uses 0.35 (soft weighting)
+        or 0.25 (hard weighting).
 
     Returns dict with 'params' (16-element), 'status' (int), 'initial_guess' (16-element).
     If return_diagnostics=True, also includes 'diagnostics' dict with SNR, k_max values, etc.
@@ -300,14 +424,28 @@ def _fit_single_window_kspace(
     # This gives a real positive reference for normalization
     F_ref = np.sqrt(np.abs(F_AA) * np.abs(F_BB))
 
-    # Step 2b: Noise floor subtraction
+    # Step 2b: Predictor-aware noise subtraction
     # Camera noise adds a flat floor to auto-correlations (not cross-correlations),
-    # inflating F_ref. Estimate N from corners of k-space where the particle
-    # Gaussian has decayed in BOTH directions, then subtract.
-    noise_corners = (np.abs(K_X) > 0.35) & (np.abs(K_Y) > 0.35)
-    N_floor = max(float(np.median(F_ref[noise_corners])), 0.0)
-    epsilon_floor = F_ref[center_idx_y, center_idx_x] * 1e-8
-    F_ref = np.maximum(F_ref - N_floor, epsilon_floor)
+    # inflating F_ref. On warped passes, the interpolation kernel colors the noise
+    # spectrum — the noise PSD shape is computed analytically from the kernel DTFT.
+    # Joint fit: F_ref = (A*Gaussian + N0)*P_noise solves for noise on ALL passes.
+    # Note: symmetric warp splits the displacement: image A at pos-disp/2, B at pos+disp/2.
+    # The fractional shift seen by the kernel is from disp/2, not disp.
+    f_x = frac_distance(pred_dx / 2.0)
+    f_y = frac_distance(pred_dy / 2.0)
+    P_noise = compute_noise_psd_2d(K_X, K_Y, f_x, f_y, kernel=interp_kernel)
+
+    joint_result = _fit_fref_joint(F_ref, K_X, K_Y, P_noise)
+
+    if not joint_result['success']:
+        return {
+            'params': default_params,
+            'status': 1,  # No convergence
+            'initial_guess': default_params.copy(),
+        }
+
+    F_ref = joint_result['F_ref_clean']
+    N_floor = joint_result['N0']
 
     # Step 3: We avoid explicit division T = F_AB / F_ref to prevent noise amplification
     # Instead, we will fit: F_AB = F_ref * T_model directly
@@ -331,6 +469,9 @@ def _fit_single_window_kspace(
             'k_max_x': k_max_x_val if k_max_x_val is not None else 0.0,
             'k_max_y': k_max_y_val if k_max_y_val is not None else 0.0,
             'N_floor': N_floor,
+            'interp_kernel': interp_kernel,
+            'f_x': f_x,
+            'f_y': f_y,
         }}
 
     if snr < snr_threshold:
@@ -387,15 +528,17 @@ def _fit_single_window_kspace(
         Sigma_yy_init = max(Sigma_yy_init, 0.1)
 
     # Compute k_max bounds based on F_ref decay
-    # With soft weighting, we use larger bounds (0.45) since weights handle the decay
-    # Without soft weighting, use more conservative bounds (0.25)
-    if use_soft_weighting:
-        k_max_limit = 0.35  # Soft weights handle high-k attenuation
+    # With soft weighting, we use larger bounds since weights handle the decay
+    # Without soft weighting, use more conservative bounds
+    if k_max_cap is not None:
+        k_max_limit = k_max_cap
+    elif use_soft_weighting:
+        k_max_limit = 0.35
     else:
-        k_max_limit = 0.25  # Hard cutoff needs conservative bound
+        k_max_limit = 0.25
 
-    k_max_x = min(_compute_kmax(Sigma_xx_init, snr), k_max_x, k_max_limit)
-    k_max_y = min(_compute_kmax(Sigma_yy_init, snr), k_max_y, k_max_limit)
+    k_max_x = min(_compute_kmax(Sigma_xx_init, snr, max_k=k_max_limit), k_max_x, k_max_limit)
+    k_max_y = min(_compute_kmax(Sigma_yy_init, snr, max_k=k_max_limit), k_max_y, k_max_limit)
 
     # Step 6: Full 6-parameter fit
     initial_guess = np.array([
@@ -637,7 +780,7 @@ def _fit_1d_axis(
             coeffs, _, _, _ = np.linalg.lstsq(A, b, rcond=None)
             slope = coeffs[0]
             Sigma = max(-slope / (2 * np.pi ** 2), 0.01)
-        except:
+        except Exception:
             pass
 
     # Fit phase: phase(F_AB) = -2*pi * k * mu
@@ -653,7 +796,7 @@ def _fit_1d_axis(
             coeffs, _, _, _ = np.linalg.lstsq(A, b, rcond=None)
             slope_phase = coeffs[0]
             mu = -slope_phase / (2 * np.pi)
-        except:
+        except Exception:
             pass
 
     return mu, Sigma

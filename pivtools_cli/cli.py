@@ -1297,6 +1297,7 @@ ensemble_piv:
   image_warp_interpolation: cubic
   predictor_interpolation: cubic
   kspace_snr_threshold: 3.0
+  kspace_k_max_cap: null
   fit_offset: true
   background_subtraction_method: correlation
   gradient_correction: false

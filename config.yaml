@@ -1,41 +1,33 @@
 paths:
   base_paths:
-  - C:\Users\mtt1e23\Downloads\cropped_calibrationimgs\cropped_calibrationimgs\calibrationwarping
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images\validation_4000_instantaneous
   source_paths:
-  - D:\ALK_PIV_250527_085959\y235_aoan04_aoafn06\loop=0.set
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images
   active_paths:
   - 0
   camera_numbers:
   - 1
-  - 2
-  - 3
-  - 4
-  - 5
-  camera_count: 5
-  camera_subfolders:
-  - camera1
-  - camera2
-  - camera3
-  - camera4
-  - camera5
+  camera_count: 1
+  camera_subfolders: []
 images:
-  num_images: 5
+  num_images: 4000
   image_format:
-  - data.set
+  - B%05d_A.tif
+  - B%05d_B.tif
   vector_format:
   - '%05d.mat'
   dtype: float32
-  image_type: lavision_set
+  image_type: standard
   use_camera_subfolders: false
   start_index: 1
   frame_stride: 0
   pair_stride: 1
-  pairing_preset: pre_paired
+  pairing_preset: ab_format
   per_loop_frame_pairs: 4000
   num_loops: 1
   num_frame_pairs: 4000
 batches:
-  size: 5
+  size: 10
 logging:
   file: pypiv.log
   level: INFO
@@ -44,9 +36,9 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 10
-  dask_workers_per_node: 1
-  dask_memory_limit: 15GB
+  omp_threads: 3
+  dask_workers_per_node: 7
+  dask_memory_limit: 7GB
   dask_max_in_flight_per_worker: 2
   open_dashboard: true
   always_batch: true
@@ -59,7 +51,7 @@ outlier_detection:
     type: peak_mag
 infilling:
   mid_pass:
-    method: biharmonic
+    method: local_median
     parameters: {}
   final_pass:
     enabled: true
@@ -94,7 +86,7 @@ video:
   fps: 30
   crf: 15
   resolution: 1080p
-  source_endpoint: merged
+  source_endpoint: regular
 statistics:
   enabled_methods:
     mean_velocity: true
@@ -120,7 +112,7 @@ statistics:
   gamma_radius: 4
   save_figures: true
   type_name: instantaneous
-  source_endpoint: merged
+  source_endpoint: regular
 instantaneous_piv:
   window_size:
   - - 64
@@ -149,6 +141,7 @@ ensemble_piv:
   persist_images: false
   predictor_smoothing: false
   image_warp_interpolation: cubic
+  kspace_k_max_cap: 0.4
   predictor_interpolation: cubic
   kspace_snr_threshold: 3.0
   fit_offset: false
@@ -160,7 +153,7 @@ ensemble_piv:
   - - 32
     - 32
   - - 16
-    - 24
+    - 16
   - - 8
     - 24
   overlap:
@@ -208,8 +201,8 @@ calibration:
   - camera4
   - camera5
   path_order: camera_first
-  active: dotboard
-  piv_type: instantaneous
+  active: scale_factor
+  piv_type: ensemble
   scale_factor:
     dt: 0.0057553
     px_per_mm: 13.653
@@ -273,10 +266,9 @@ calibration:
       - 3018.2581625950966
       frame_a: 1
       frame_b: 1
-filters:
-- type: time
+filters: []
 masking:
-  enabled: true
+  enabled: false
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
   mode: file
@@ -295,4 +287,4 @@ transforms:
   cameras:
     1:
       operations: []
-  source_endpoint: merged
+  source_endpoint: regular
