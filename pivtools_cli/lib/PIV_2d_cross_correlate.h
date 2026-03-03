@@ -45,6 +45,39 @@ EXPORT unsigned char bulkxcorr2d_accumulate(
     float *fCorrelPlane_Sum          /* Output: accumulated correlation planes */
 );
 
+/**
+ * Fused triple cross-correlation with internal accumulation.
+ *
+ * Computes AB (cross), AA and BB (auto) correlations in one pass per
+ * window per image.  FFT(A) and FFT(B) are computed once and reused
+ * for all three products — 3 forward FFTs instead of 6.
+ *
+ * AB uses asymmetric weights (fWindowWeightA_AB, fWindowWeightB_AB).
+ * AA/BB use symmetric weights (fAutoWeightA, fAutoWeightB) so that
+ * the particle image sigma is correctly estimated.
+ *
+ * Three separate output buffers: fCorrAB_Sum, fCorrAA_Sum, fCorrBB_Sum.
+ */
+EXPORT unsigned char bulkxcorr2d_accumulate_triple(
+    const float *fImageA_stack,
+    const float *fImageB_stack,
+    const float *fMask,
+    const int   *nImageSize,
+    int          N_images,
+    const float *fWinCtrsX,
+    const float *fWinCtrsY,
+    const int   *nWindows,
+    const float *fWindowWeightA_AB,
+    const float *fWindowWeightB_AB,
+    const float *fAutoWeightA,
+    const float *fAutoWeightB,
+    const int   *nWindowSize,
+    const int   *nFitWindowSize,
+    float       *fCorrAB_Sum,
+    float       *fCorrAA_Sum,
+    float       *fCorrBB_Sum
+);
+
 EXPORT float fminvec(const float *fVec, int n);
 EXPORT float fmaxvec(const float *fVec, int n);
 

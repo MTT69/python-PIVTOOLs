@@ -294,8 +294,9 @@ class SinglePassAccumulator:
         else:
             b_mask = np.ascontiguousarray(np.zeros((n_win_y, n_win_x), dtype=np.float32))
 
-        # Use bulkxcorr2d_accumulate with N=1 for background correlations
-        # This ensures the same FFT computation size and central extraction as raw correlations
+        # Use bulkxcorr2d_accumulate_triple for all three background correlations
+        # in one fused call.  This computes AB, AA, BB with shared window
+        # extraction (same A_mean, B_mean images) — 3 forward FFTs instead of 6.
         # Stack mean image as (1, H, W) for the N_images=1 interface
         A_mean_stack = np.ascontiguousarray(A_mean[np.newaxis, :, :].astype(np.float32))
         B_mean_stack = np.ascontiguousarray(B_mean[np.newaxis, :, :].astype(np.float32))
@@ -306,59 +307,30 @@ class SinglePassAccumulator:
         # For standard mode passes, padding is (0,0,0,0) so this is a no-op.
         pad_top, pad_bottom, pad_left, pad_right = correlator.padding_per_pass[pass_idx]
 
-        # Cross-correlation AB background
-        correlator.lib.bulkxcorr2d_accumulate(
+        win_ctrs_x_padded = (correlator.win_ctrs_x[pass_idx] + pad_left).astype(np.float32)
+        win_ctrs_y_padded = (correlator.win_ctrs_y[pass_idx] + pad_top).astype(np.float32)
+
+        correlator.lib.bulkxcorr2d_accumulate_triple(
             A_mean_stack,
             B_mean_stack,
             b_mask,
             image_size,
             1,  # N_images = 1
-            (correlator.win_ctrs_x[pass_idx] + pad_left).astype(np.float32),
-            (correlator.win_ctrs_y[pass_idx] + pad_top).astype(np.float32),
+            win_ctrs_x_padded,
+            win_ctrs_y_padded,
             n_windows,
-            correlator.win_weights_A[pass_idx],
-            correlator.win_weights_B[pass_idx],
+            correlator.win_weights_A[pass_idx],   # AB weight A
+            correlator.win_weights_B[pass_idx],   # AB weight B
+            correlator.win_weights_B[pass_idx],   # auto weight A (symmetric)
+            correlator.win_weights_B[pass_idx],   # auto weight B (symmetric)
             win_size_arr,   # FFT computation size
             fit_size_arr,   # Output size (central extraction)
             correl_AB_bg,
-        )
-
-        # Auto-correlation AA background - use weight_B on both sides
-        # to match the raw AA correlation
-        correlator.lib.bulkxcorr2d_accumulate(
-            A_mean_stack,
-            A_mean_stack,
-            b_mask,
-            image_size,
-            1,
-            (correlator.win_ctrs_x[pass_idx] + pad_left).astype(np.float32),
-            (correlator.win_ctrs_y[pass_idx] + pad_top).astype(np.float32),
-            n_windows,
-            correlator.win_weights_B[pass_idx],
-            correlator.win_weights_B[pass_idx],
-            win_size_arr,
-            fit_size_arr,
             correl_AA_bg,
-        )
-        logging.debug(f"Pass {pass_idx}: AA_bg after bulkxcorr2d_accumulate: [{correl_AA_bg.min():.3e}, {correl_AA_bg.max():.3e}]")
-
-        # Auto-correlation BB background
-        correlator.lib.bulkxcorr2d_accumulate(
-            B_mean_stack,
-            B_mean_stack,
-            b_mask,
-            image_size,
-            1,
-            (correlator.win_ctrs_x[pass_idx] + pad_left).astype(np.float32),
-            (correlator.win_ctrs_y[pass_idx] + pad_top).astype(np.float32),
-            n_windows,
-            correlator.win_weights_B[pass_idx],
-            correlator.win_weights_B[pass_idx],
-            win_size_arr,
-            fit_size_arr,
             correl_BB_bg,
         )
-        logging.debug(f"Pass {pass_idx}: BB_bg after bulkxcorr2d_accumulate: [{correl_BB_bg.min():.3e}, {correl_BB_bg.max():.3e}]")
+        logging.debug(f"Pass {pass_idx}: AA_bg after bulkxcorr2d_accumulate_triple: [{correl_AA_bg.min():.3e}, {correl_AA_bg.max():.3e}]")
+        logging.debug(f"Pass {pass_idx}: BB_bg after bulkxcorr2d_accumulate_triple: [{correl_BB_bg.min():.3e}, {correl_BB_bg.max():.3e}]")
 
         logging.debug(f"Pass {pass_idx}: Computed background correlations from mean images")
 

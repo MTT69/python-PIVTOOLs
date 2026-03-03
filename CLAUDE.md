@@ -16,6 +16,8 @@
 
 - **Skills & Plugins Check:** Before starting any task, check available skills and plugins that might be beneficial. If there is even a 1% chance a skill applies, invoke it. This includes brainstorming skills before creative/feature work, debugging skills before bug fixes, and any domain-specific skills that match the task. Also check for relevant MCP server tools (e.g., Context7 for library docs) that could inform the implementation.
 
+- **No Dead Code:** All changes must be forward-facing. When replacing or refactoring code, delete the old implementation entirely — do not leave deprecated wrappers, legacy fallback functions, backward-compatibility shims, or commented-out code paths. If a function is superseded, remove it and update all references (imports, `__init__.py` exports, docstrings, CLAUDE.md). Dead code accumulates silently and misleads future contributors.
+
 ---
 
 ## Architecture Overview
@@ -808,7 +810,7 @@ Multi-pass PIV upscales the velocity field from the previous pass to warp images
 |----------|--------|---------|-------------|
 | `main()` | — | None | CLI entry. Sets `MALLOC_TRIM_THRESHOLD_=0`, starts cluster, iterates paths×cameras. |
 | `run_ensemble_piv` | `config, client, camera_num, source_path, output_path, base_path, vector_masks, pixel_mask` | `str` | Full pipeline. Multi-pass: scatter predictor → sliding window → finalize pass → extract predictor → next pass. |
-| `process_pass_sliding_window` | `client, images, num_chunks, workers, scattered_config, pass_idx, scattered_predictor, scattered, config, output_path` | `dict` | Bounded memory accumulation. Round-robin worker pinning. Chained per-worker submission. |
+| `process_pass_sliding_window` | `client, images, num_chunks, workers, scattered_config, pass_idx, scattered_predictor, scattered, config, output_path` | `dict` | Dynamic worker-affinity sliding window: `as_completed()` loop discovers where each batch landed via `client.who_has()`, pins reduction there (zero cross-worker transfer). Tree reduction merges K per-worker accumulators in O(log₂ K) rounds. |
 | `signal_handler` | `signum, frame` | None | Same as instantaneous. |
 
 ### Ensemble Key Data Structures
@@ -917,13 +919,13 @@ Dask-centric utilities shared by both pipelines.
 
 | Function | Description |
 |----------|-------------|
-| ~~`rechunk_for_batched_processing`~~ | Removed — batch loading in `load_images()` eliminates the need for rechunk |
 | `create_filter_pipeline(images, config, pixel_mask, ...)` | `map_blocks(apply_all_filters_slim)` — lazy filtering |
 | `apply_all_filters_slim(block, spatial_specs, temporal_specs, ...)` | Applies pixel mask → spatial → temporal filters |
 | `scatter_immutable_data(client, config, vector_masks, pixel_mask, ...)` | Creates correlator, broadcasts cache + masks |
 | `correlate_and_save_batch(batch, start_img_idx, config, ...)` | [Instantaneous] Correlate + save per batch |
-| `correlate_single_batch_and_accumulate(batch, accumulated, ...)` | [Ensemble] Accumulate correlation sums |
-| `reduce_ensemble_results(results)` | Merges per-worker accumulated dicts |
+| `correlate_batch_ensemble(batch, config, pass_idx, ...)` | [Ensemble] Stateless per-batch correlation — creates correlator, correlates, returns result dict. Dask can retry safely. |
+| `reduce_ensemble_results(r1, r2)` | Merges two accumulated dicts via `+` (Dask retry safe — used in tree reduction) |
+| `reduce_ensemble_results_inplace(accumulated, new_result)` | In-place `+=` reduction for progressive per-worker accumulation (lower peak memory) |
 | `extract_predictor_field(pass_result)` | `np.stack([uy, ux], axis=-1)` for next pass |
 
 **Spatial filters:** gaussian (sigma), median (size), norm, maxnorm, lmax (all via `scipy.ndimage`)
@@ -939,7 +941,7 @@ Dask-centric utilities shared by both pipelines.
 
 **Data scattering:** Immutable data (correlator cache, masks, config) broadcast once. Predictor field re-scattered per pass.
 
-**Worker pinning (ensemble):** Round-robin `workers[chunk_idx % num_workers]`. Per-worker accumulation via chained futures (uses `+` not `+=` for Dask retry safety).
+**Worker accumulation (ensemble):** Dynamic worker-affinity sliding window using `as_completed()`. Each batch is submitted as a stateless `correlate_batch_ensemble` task with NO worker pinning — Dask's scheduler decides placement (optimal load balancing and locality). When each task completes, `client.who_has()` discovers which worker holds the result. Reduction is pinned there via `workers=[worker]` using in-place `reduce_ensemble_results_inplace` (`+=`), achieving zero cross-worker transfer during accumulation. After all batches, K per-worker accumulators are merged via distributed tree reduction (`O(log₂ K)` rounds of pair-wise `reduce_ensemble_results` with safe `+` operator).
 
 **Memory management:**
 - `gc.collect()` on client between cameras — **NOT on workers** (FFTW causes SIGSEGV)
@@ -985,7 +987,8 @@ Dask-centric utilities shared by both pipelines.
 | Function | Description |
 |----------|-------------|
 | `bulkxcorr2d(fImageA_stack, fImageB_stack, fMask, nImageSize[2], N_images, fWinCtrsX/Y, nWindows[2], fWindowWeightA/B, bEnsemble, nWindowSize[2], nPeaks, iPeakFinder, → fPkLocX/Y, fPkHeight, fSx/y/xy, fCorrelPlane_Out)` | **Instantaneous:** Parallel over (image × window). Extract sub-images → apply taper → subtract mean → xcorr → LM peak fit. |
-| `bulkxcorr2d_accumulate(... nFitWindowSize[2] ...)` | **Ensemble:** Accumulates correlation planes per window. Parallel over windows, sequential over images. Supports central region extraction. |
+| `bulkxcorr2d_accumulate(... nFitWindowSize[2] ...)` | **Ensemble:** Accumulates ONE correlation type (AB, AA, or BB) per window. Parallel over windows, sequential over images. Supports central region extraction. |
+| `bulkxcorr2d_accumulate_triple(... fWindowWeightA_AB, fWindowWeightB_AB, fAutoWeightA, fAutoWeightB, nFitWindowSize[2], fCorrAB_Sum, fCorrAA_Sum, fCorrBB_Sum)` | **Ensemble (fused):** Computes all three correlations (AB, AA, BB) in one pass per window per image. Extracts raw pixels ONCE, applies weights → FFT → derive AB/AA/BB → 3 IFFTs → accumulate. 3 forward FFTs instead of 6 (AB uses asymmetric weights, AA/BB use symmetric). ~50% reduction in forward FFT compute. |
 
 #### `xcorr.c` — FFT Cross-Correlation
 

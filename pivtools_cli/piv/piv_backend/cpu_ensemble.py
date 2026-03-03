@@ -53,6 +53,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         config: Config,
         precomputed_cache: Optional[dict] = None,
         vector_masks: Optional[List[np.ndarray]] = None,
+        active_pass_idx: Optional[int] = None,
     ) -> None:
         super().__init__()
 
@@ -111,6 +112,28 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fCorrelPlane_Sum (output)
         ]
 
+        # Fused triple correlation function (AB + AA + BB in one C call)
+        self.lib.bulkxcorr2d_accumulate_triple.restype = ctypes.c_ubyte
+        self.lib.bulkxcorr2d_accumulate_triple.argtypes = [
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fImageA_stack
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fImageB_stack
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fMask
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nImageSize
+            ctypes.c_int,                                                      # N_images
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWinCtrsX
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWinCtrsY
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nWindows
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWindowWeightA_AB
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWindowWeightB_AB
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fAutoWeightA
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fAutoWeightB
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nWindowSize (FFT)
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nFitWindowSize (output)
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fCorrAB_Sum (output)
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fCorrAA_Sum (output)
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fCorrBB_Sum (output)
+        ]
+
         # Initialize window weights for each pass
         # For single mode, Frame A and Frame B use different weights
         self.win_weights_A = []
@@ -163,9 +186,15 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         # Initialize vector masks
         self.vector_masks = vector_masks if vector_masks is not None else []
 
-        # Pre-allocate correlation plane buffers (reused across batches)
+        # Pre-allocate correlation plane buffers (reused across batches).
+        # When active_pass_idx is set, only allocate for that single pass —
+        # saves ~491 MB per worker for a 4-pass config at 2048x2048.
+        passes_to_allocate = (
+            [active_pass_idx] if active_pass_idx is not None
+            else range(config.ensemble_num_passes)
+        )
         self._corr_buffers = {}
-        for pass_idx in range(config.ensemble_num_passes):
+        for pass_idx in passes_to_allocate:
             corr_size = self.window_sizes_for_corr[pass_idx]
             n_win_y = len(self.win_ctrs_y[pass_idx])
             n_win_x = len(self.win_ctrs_x[pass_idx])
@@ -450,6 +479,84 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             win_size_arr,   # FFT computation size
             fit_size_arr,   # Output size (may be smaller for central extraction)
             correl_sum,
+        )
+
+        return error_code
+
+    def _run_correlation_accumulate_triple(
+        self,
+        images_a: np.ndarray,
+        images_b: np.ndarray,
+        weight_a_ab: np.ndarray,
+        weight_b_ab: np.ndarray,
+        auto_weight_a: np.ndarray,
+        auto_weight_b: np.ndarray,
+        mask: np.ndarray,
+        pass_idx: int,
+        correl_AB_sum: np.ndarray,
+        correl_AA_sum: np.ndarray,
+        correl_BB_sum: np.ndarray,
+    ) -> int:
+        """
+        Compute AB, AA, BB cross-correlations in a single fused C call.
+
+        Reuses FFT(A) and FFT(B) across all three products, eliminating
+        redundant forward FFTs. ~50% fewer forward FFTs than 3× separate calls.
+
+        Parameters
+        ----------
+        images_a, images_b : np.ndarray
+            Image stacks, shape (N, H, W)
+        weight_a_ab, weight_b_ab : np.ndarray
+            Taper weights for AB cross-correlation (may be asymmetric)
+        auto_weight_a, auto_weight_b : np.ndarray
+            Taper weights for AA/BB auto-correlations (symmetric)
+        mask : np.ndarray
+            Window mask (1=skip, 0=process)
+        pass_idx : int
+            Current pass index
+        correl_AB_sum, correl_AA_sum, correl_BB_sum : np.ndarray
+            Pre-allocated output buffers
+
+        Returns
+        -------
+        int
+            Error code (0 = success)
+        """
+        N = images_a.shape[0]
+        H, W = images_a.shape[1], images_a.shape[2]
+
+        image_size = np.array([H, W], dtype=np.int32)
+        n_win_y = len(self.win_ctrs_y[pass_idx])
+        n_win_x = len(self.win_ctrs_x[pass_idx])
+        n_windows = np.array([n_win_y, n_win_x], dtype=np.int32)
+
+        comp_size = self.window_sizes_for_computation[pass_idx]
+        out_size = self.window_sizes_for_corr[pass_idx]
+
+        win_size_arr = np.array([comp_size[0], comp_size[1]], dtype=np.int32)
+        fit_size_arr = np.array([out_size[0], out_size[1]], dtype=np.int32)
+
+        pad_top, pad_bottom, pad_left, pad_right = self.padding_per_pass[pass_idx]
+
+        error_code = self.lib.bulkxcorr2d_accumulate_triple(
+            np.ascontiguousarray(images_a, dtype=np.float32),
+            np.ascontiguousarray(images_b, dtype=np.float32),
+            mask,
+            image_size,
+            N,
+            (self.win_ctrs_x[pass_idx] + pad_left).astype(np.float32),
+            (self.win_ctrs_y[pass_idx] + pad_top).astype(np.float32),
+            n_windows,
+            weight_a_ab,
+            weight_b_ab,
+            auto_weight_a,
+            auto_weight_b,
+            win_size_arr,
+            fit_size_arr,
+            correl_AB_sum,
+            correl_AA_sum,
+            correl_BB_sum,
         )
 
         return error_code
@@ -757,41 +864,25 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             else:
                 b_mask = np.zeros(total_windows, dtype=np.float32)
 
-            # Cross-correlation AB, AA, BB (accumulates internally)
+            # Fused triple cross-correlation: AB + AA + BB in one C call
+            # Reuses FFT(A) and FFT(B) across all three products,
+            # halving the number of forward FFTs vs 3× separate calls.
             with self._profile_section(pass_idx, "xcorr"):
-                with self._profile_section(pass_idx, "xcorr_AB"):
-                    error_code_AB = self._run_correlation_accumulate(
-                        images_a_prime, images_b_prime,
-                        self.win_weights_A[pass_idx], self.win_weights_B[pass_idx],
-                        b_mask, pass_idx, correl_AB_sum
-                    )
-
-                # Auto-correlation AA - use full weights (weight_B) on both sides
-                logging.debug(f"AA weights: min={self.win_weights_B[pass_idx].min():.4f}, max={self.win_weights_B[pass_idx].max():.4f}, shape={self.win_weights_B[pass_idx].shape}, sum={self.win_weights_B[pass_idx].sum():.1f}")
-                with self._profile_section(pass_idx, "xcorr_AA"):
-                    error_code_AA = self._run_correlation_accumulate(
-                        images_a_prime, images_a_prime,
-                        self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
-                        b_mask, pass_idx, correl_AA_sum
-                    )
-
-                # Auto-correlation BB
-                logging.debug(f"BB weights: min={self.win_weights_B[pass_idx].min():.4f}, max={self.win_weights_B[pass_idx].max():.4f}, shape={self.win_weights_B[pass_idx].shape}, sum={self.win_weights_B[pass_idx].sum():.1f}")
-                with self._profile_section(pass_idx, "xcorr_BB"):
-                    error_code_BB = self._run_correlation_accumulate(
-                        images_b_prime, images_b_prime,
-                        self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
-                        b_mask, pass_idx, correl_BB_sum
-                    )
+                error_code = self._run_correlation_accumulate_triple(
+                    images_a_prime, images_b_prime,
+                    self.win_weights_A[pass_idx], self.win_weights_B[pass_idx],  # AB weights
+                    self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],  # AA/BB auto weights
+                    b_mask, pass_idx,
+                    correl_AB_sum, correl_AA_sum, correl_BB_sum,
+                )
 
             # Reshape to (windows, corr_h, corr_w) for downstream processing
             correl_AA_sum = correl_AA_sum.reshape(total_windows, corr_size[0], corr_size[1])
             correl_AB_sum = correl_AB_sum.reshape(total_windows, corr_size[0], corr_size[1])
             correl_BB_sum = correl_BB_sum.reshape(total_windows, corr_size[0], corr_size[1])
 
-            if error_code_AB != 0 or error_code_AA != 0 or error_code_BB != 0:
-                logging.error("Correlation error codes: AB={}, AA={}, BB={}".format(
-                    error_code_AB, error_code_AA, error_code_BB))
+            if error_code != 0:
+                logging.error(f"Fused triple correlation error code: {error_code}")
 
         except Exception as e:
             logging.error("Error in correlation: %s", e)
@@ -1062,29 +1153,13 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         else:
             b_mask = np.zeros(total_windows, dtype=np.float32)
 
-        # Cross-correlation AB (mean-subtracted)
-        error_code_AB = self._run_correlation_accumulate(
+        # Fused triple cross-correlation: AB + AA + BB in one C call
+        error_code = self._run_correlation_accumulate_triple(
             images_a_centered, images_b_centered,
-            self.win_weights_A[pass_idx], self.win_weights_B[pass_idx],
-            b_mask, pass_idx, correl_AB_sum
-        )
-
-        # Auto-correlation AA (mean-subtracted) - use full weights (weight_B) on both sides
-        # to match BB energy and get true particle sigma
-        # DEBUG: Verify weights are uniform
-        logging.info(f"DEBUG AA (mean-sub) weights: min={self.win_weights_B[pass_idx].min():.4f}, max={self.win_weights_B[pass_idx].max():.4f}, shape={self.win_weights_B[pass_idx].shape}, sum={self.win_weights_B[pass_idx].sum():.1f}")
-        error_code_AA = self._run_correlation_accumulate(
-            images_a_centered, images_a_centered,
-            self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
-            b_mask, pass_idx, correl_AA_sum
-        )
-
-        # Auto-correlation BB (mean-subtracted)
-        logging.info(f"DEBUG BB (mean-sub) weights: min={self.win_weights_B[pass_idx].min():.4f}, max={self.win_weights_B[pass_idx].max():.4f}, shape={self.win_weights_B[pass_idx].shape}, sum={self.win_weights_B[pass_idx].sum():.1f}")
-        error_code_BB = self._run_correlation_accumulate(
-            images_b_centered, images_b_centered,
-            self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],
-            b_mask, pass_idx, correl_BB_sum
+            self.win_weights_A[pass_idx], self.win_weights_B[pass_idx],  # AB weights
+            self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],  # AA/BB auto weights
+            b_mask, pass_idx,
+            correl_AB_sum, correl_AA_sum, correl_BB_sum,
         )
 
         # Reshape to (windows, corr_h, corr_w)
@@ -1092,10 +1167,8 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         correl_AB_sum = correl_AB_sum.reshape(total_windows, corr_size[0], corr_size[1])
         correl_BB_sum = correl_BB_sum.reshape(total_windows, corr_size[0], corr_size[1])
 
-        if error_code_AB != 0 or error_code_AA != 0 or error_code_BB != 0:
-            logging.error(
-                f"Correlation error codes: AB={error_code_AB}, AA={error_code_AA}, BB={error_code_BB}"
-            )
+        if error_code != 0:
+            logging.error(f"Fused triple correlation error code: {error_code}")
 
         # Return correlation sums only (no warp sums needed - mean already subtracted)
         return {

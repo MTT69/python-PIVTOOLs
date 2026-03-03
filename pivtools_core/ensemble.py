@@ -51,8 +51,9 @@ from pivtools_cli.processing.dask_pipeline import (
     create_filter_pipeline,
     scatter_immutable_data,
     reduce_ensemble_results,
+    reduce_ensemble_results_inplace,
     extract_predictor_field,
-    correlate_single_batch_and_accumulate,
+    correlate_batch_ensemble,
 )
 
 
@@ -72,95 +73,131 @@ def process_pass_sliding_window(
     output_path,
 ):
     """
-    Process one pass using sliding window for parallel I/O.
+    Process one pass using sliding window with dynamic worker-affinity reduction.
 
-    Maintains max_in_flight filter tasks at all times.
-    As each filter completes, its correlation starts and a new filter is submitted.
+    Architecture (mirrors instantaneous pipeline's as_completed pattern):
+      - Phase 1: Fill initial window — submit filter→correlation tasks with NO
+        worker pinning. Dask's scheduler decides placement (optimal load balancing
+        and data locality).
+      - Phase 2: as_completed loop — when each correlation completes,
+        client.who_has() discovers which worker holds the result. Reduction is
+        pinned there via workers=[worker], achieving zero cross-worker transfer
+        during accumulation. A replacement task is submitted to keep the window full.
+      - Phase 3: Tree reduction — merges K per-worker accumulators in O(log₂ K)
+        rounds using safe + operator (Dask retry compatible).
 
-    Memory: ~2 batches per worker (bounded)
+    Memory per worker: max_in_flight_per_worker batches + 1 accumulator
     I/O: Parallel (max_in_flight concurrent disk reads)
+    Network: Zero cross-worker transfer during Phase 2; only K results merge in Phase 3
     """
-    from dask.distributed import wait
+    from dask.distributed import as_completed
+
+    if num_chunks == 0:
+        raise ValueError("No chunks to process")
 
     num_workers = len(workers)
     max_in_flight_per_worker = config.dask_max_in_flight_per_worker
     max_in_flight = min(num_workers * max_in_flight_per_worker, num_chunks)
 
-    # State tracking
-    pending_filters = {}  # chunk_idx -> Future
-    accumulated_futures = {w: None for w in workers}
-    next_to_correlate = 0
+    diag_path = str(output_path) if config.ensemble_save_diagnostics else None
+
+    # Per-worker accumulated futures (dynamically populated via who_has)
+    accumulated = {}   # worker_address → accumulated_future
+
+    pending = {}       # corr_future → chunk_idx
     next_to_submit = 0
-    last_reported_pct = -1  # Track last reported percentage
+    completed_count = 0
+    last_reported_pct = -1
 
     logger.info(
         f"  Sliding window: {num_workers} workers x {max_in_flight_per_worker} per worker "
         f"= {max_in_flight} max_in_flight ({num_chunks} chunks total)"
     )
 
-    # PHASE 1: Fill initial window (NO worker pinning → parallel I/O!)
+    # --- PHASE 1: Fill initial window (NO pinning — Dask decides placement) ---
     while next_to_submit < min(max_in_flight, num_chunks):
-        future = client.compute(images.blocks[next_to_submit])  # No workers=!
-        pending_filters[next_to_submit] = future
-        next_to_submit += 1
-
-    logger.info(f"  Initial window filled: {len(pending_filters)}/{max_in_flight} filters in flight")
-
-    # PHASE 2: Process all chunks
-    while next_to_correlate < num_chunks:
-        # Wait for the specific filter we need next
-        filter_future = pending_filters[next_to_correlate]
-        wait([filter_future])
-
-        # Submit correlation (WITH worker pinning for accumulation chain)
-        worker = workers[next_to_correlate % num_workers]
-        is_first = (next_to_correlate % num_workers == 0) and (next_to_correlate < num_workers)
-
-        accumulated_futures[worker] = client.submit(
-            correlate_single_batch_and_accumulate,
-            accumulated_futures[worker],
+        filter_future = client.compute(images.blocks[next_to_submit])
+        corr_future = client.submit(
+            correlate_batch_ensemble,
             filter_future,
-            scattered_config,
-            pass_idx,
-            scattered_predictor,
-            scattered['cache'],
-            scattered['masks'],
-            is_first,
-            str(output_path) if config.ensemble_save_diagnostics and is_first else None,
-            workers=[worker],
+            scattered_config, pass_idx, scattered_predictor,
+            scattered['cache'], scattered['masks'],
+            batch_idx=next_to_submit,
+            output_path=diag_path if next_to_submit == 0 else None,
             pure=False,
         )
+        pending[corr_future] = next_to_submit
+        next_to_submit += 1
 
-        # Release filter reference → memory freed
-        del pending_filters[next_to_correlate]
-        next_to_correlate += 1
+    logger.info(f"  Initial window filled: {len(pending)}/{max_in_flight} tasks in flight")
 
-        # Submit replacement filter to keep window full
+    # --- PHASE 2: as_completed + dynamic worker-affinity reduction ---
+    ac = as_completed(list(pending.keys()))
+    for completed in ac:
+        pending.pop(completed)
+        completed_count += 1
+
+        # Discover which worker holds the completed result
+        who = client.who_has(completed)
+        worker = list(who[completed.key])[0]
+
+        # Reduce into that worker's accumulator (pinned — zero transfer)
+        if worker not in accumulated:
+            accumulated[worker] = completed
+        else:
+            accumulated[worker] = client.submit(
+                reduce_ensemble_results_inplace, accumulated[worker], completed,
+                workers=[worker],
+                pure=False,
+            )
+
+        # Submit replacement to keep window full
         if next_to_submit < num_chunks:
-            future = client.compute(images.blocks[next_to_submit])
-            pending_filters[next_to_submit] = future
+            filter_future = client.compute(images.blocks[next_to_submit])
+            corr_future = client.submit(
+                correlate_batch_ensemble,
+                filter_future,
+                scattered_config, pass_idx, scattered_predictor,
+                scattered['cache'], scattered['masks'],
+                batch_idx=next_to_submit,
+                output_path=None,
+                pure=False,
+            )
+            pending[corr_future] = next_to_submit
+            ac.add(corr_future)
             next_to_submit += 1
 
-        # Progress logging - report each new percentage point
-        current_pct = round((next_to_correlate / num_chunks) * 100)
+        # Progress logging
+        current_pct = round((completed_count / num_chunks) * 100)
         if current_pct > last_reported_pct:
-            logger.info(f"  Correlation progress: {current_pct}% ({len(pending_filters)} filters queued)")
+            logger.info(
+                f"  Correlation progress: {current_pct}% ({len(pending)} in flight)"
+            )
             last_reported_pct = current_pct
 
-    # PHASE 3: Gather final results
-    worker_results = []
-    for worker in workers:
-        if accumulated_futures[worker] is not None:
-            result = accumulated_futures[worker].result()
-            worker_results.append(result)
-            logger.debug(f"  Worker complete: {result['n_images']} images")
+    # --- PHASE 3: Tree reduction of per-worker accumulators ---
+    futures = list(accumulated.values())
+    logger.info(f"  Tree reduction: {len(futures)} worker results")
 
-    # Reduce across workers
-    accumulated = worker_results[0]
-    for r in worker_results[1:]:
-        accumulated = reduce_ensemble_results(accumulated, r)
+    round_idx = 0
+    while len(futures) > 1:
+        new_futures = []
+        for i in range(0, len(futures), 2):
+            if i + 1 < len(futures):
+                merged = client.submit(
+                    reduce_ensemble_results, futures[i], futures[i + 1],
+                    pure=False,
+                )
+                new_futures.append(merged)
+            else:
+                new_futures.append(futures[i])
+        round_idx += 1
+        logger.debug(f"  Tree round {round_idx}: {len(futures)} → {len(new_futures)}")
+        futures = new_futures
 
-    return accumulated
+    final = futures[0].result()
+    logger.info(f"  Accumulated: {final['n_images']} images")
+    return final
 
 
 # Global references for clean shutdown
@@ -302,9 +339,6 @@ def run_ensemble_piv(
     num_passes = config.ensemble_num_passes
     accumulator = SinglePassAccumulator(config, vector_masks)
     predictor_field = None
-
-    # Import for predictor extraction (used both for resume and after each pass)
-    from pivtools_cli.processing.dask_pipeline import extract_predictor_field
 
     # Check for resume from previous pass
     resume_from_pass = config.ensemble_resume_from_pass  # 1-based, 0 = no resume

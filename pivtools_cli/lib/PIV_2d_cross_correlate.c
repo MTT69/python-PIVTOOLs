@@ -339,6 +339,317 @@ unsigned char bulkxcorr2d_accumulate(
     return uError;
 }
 
+/**
+ * Fused triple cross-correlation with internal accumulation.
+ *
+ * Computes AB (cross-correlation), AA and BB (auto-correlations) in a
+ * single pass per window per image.  FFT(A) and FFT(B) are computed
+ * ONCE and reused for all three products, eliminating 4 of the 6
+ * forward FFTs that the 3× bulkxcorr2d_accumulate path requires.
+ *
+ * For AB:   IFFT( FFT(weightA·A) · conj(FFT(weightB·B)) )
+ * For AA:   IFFT( |FFT(autoW·A)|² )
+ * For BB:   IFFT( |FFT(autoW·B)|² )
+ *
+ * The auto-correlation uses autoWeightA/autoWeightB (typically the
+ * same full Hanning window for both) so the particle sigma matches.
+ *
+ * Output layout per plane: nWindowsTotal × nPxPerOutput  (row-major).
+ * Three separate output buffers: fCorrAB_Sum, fCorrAA_Sum, fCorrBB_Sum.
+ */
+unsigned char bulkxcorr2d_accumulate_triple(
+    const float *fImageA_stack,
+    const float *fImageB_stack,
+    const float *fMask,
+    const int   *nImageSize,
+    int          N_images,
+    const float *fWinCtrsX,
+    const float *fWinCtrsY,
+    const int   *nWindows,
+    /* AB weights (may be asymmetric for single mode) */
+    const float *fWindowWeightA_AB,
+    const float *fWindowWeightB_AB,
+    /* AA/BB weights (always full/symmetric) */
+    const float *fAutoWeightA,
+    const float *fAutoWeightB,
+    const int   *nWindowSize,
+    const int   *nFitWindowSize,
+    float       *fCorrAB_Sum,
+    float       *fCorrAA_Sum,
+    float       *fCorrBB_Sum)
+{
+    int nWindowsTotal = nWindows[0] * nWindows[1];
+    int nPxPerWindow  = nWindowSize[0] * nWindowSize[1];
+    int nImagePixels  = nImageSize[0] * nImageSize[1];
+    unsigned uError   = ERROR_NONE;
+    int i, j, n, iWindowIdx, ii, jj;
+
+    /* Output dimensions (central extraction if nFitWindowSize != NULL) */
+    int out_h = nFitWindowSize ? nFitWindowSize[0] : nWindowSize[0];
+    int out_w = nFitWindowSize ? nFitWindowSize[1] : nWindowSize[1];
+    int nPxPerOutput = out_h * out_w;
+    int start_y = (nWindowSize[0] - out_h) / 2;
+    int start_x = (nWindowSize[1] - out_w) / 2;
+
+    /* Frequency-domain size for r2c transform */
+    int numel     = nWindowSize[0] * nWindowSize[1];
+    int numel_fft = nWindowSize[0] * (nWindowSize[1] / 2 + 1);
+
+    fftw_library_init();
+
+    char wisdom_path[512];
+    xcorr_cache_get_default_wisdom_path(wisdom_path, sizeof(wisdom_path));
+    xcorr_cache_init(wisdom_path);
+
+    /* Zero all three output buffers */
+    memset(fCorrAB_Sum, 0, (size_t)nWindowsTotal * nPxPerOutput * sizeof(float));
+    memset(fCorrAA_Sum, 0, (size_t)nWindowsTotal * nPxPerOutput * sizeof(float));
+    memset(fCorrBB_Sum, 0, (size_t)nWindowsTotal * nPxPerOutput * sizeof(float));
+
+    #pragma omp parallel \
+        default(none) \
+        shared(fImageA_stack, fImageB_stack, fMask, nImageSize, N_images, \
+               fWinCtrsX, fWinCtrsY, nWindows, \
+               fWindowWeightA_AB, fWindowWeightB_AB, fAutoWeightA, fAutoWeightB, \
+               nWindowSize, fCorrAB_Sum, fCorrAA_Sum, fCorrBB_Sum, \
+               nPxPerWindow, nWindowsTotal, nImagePixels, numel, numel_fft, \
+               out_h, out_w, nPxPerOutput, start_y, start_x) \
+        private(i, j, n, iWindowIdx, ii, jj) \
+        reduction(|:uError)
+    {
+        /* ---- thread-local workspace ------------------------------------ */
+        /* Raw pixel windows (before weighting) */
+        float *fRawA = (float*)fftwf_malloc(nPxPerWindow * sizeof(float));
+        float *fRawB = (float*)fftwf_malloc(nPxPerWindow * sizeof(float));
+
+        /* Cross-correlation plan (xcorr_preplanned pattern):
+         * ab_copy holds [A|B] interleaved for batched r2c,
+         * AB_copy holds [FFT(A)|FFT(B)], C is scratch for IFFT. */
+        sPlan sCCPlan;
+
+        /* Extra IFFT scratch: we need two more IFFTs (AA, BB)
+         * but sCCPlan only has one c_copy/C pair.  Allocate extras. */
+        fftwf_complex *C_extra1  = NULL;
+        fftwf_complex *C_extra2  = NULL;
+        float         *c_extra1  = NULL;
+        float         *c_extra2  = NULL;
+        float         *fCorrelAB = NULL;
+        float         *fCorrelAA = NULL;
+        float         *fCorrelBB = NULL;
+
+        if (!fRawA || !fRawB) { uError = ERROR_NOMEM; goto triple_cleanup; }
+
+        memset(&sCCPlan, 0, sizeof(sCCPlan));
+        #pragma omp critical
+        uError = xcorr_create_plan(nWindowSize, &sCCPlan);
+        if (uError) goto triple_cleanup;
+
+        /* Allocate extra IFFT workspace (same size as plan's C / c_copy) */
+        C_extra1  = (fftwf_complex*)fftwf_alloc_complex(numel_fft);
+        C_extra2  = (fftwf_complex*)fftwf_alloc_complex(numel_fft);
+        c_extra1  = (float*)fftwf_alloc_real(numel);
+        c_extra2  = (float*)fftwf_alloc_real(numel);
+        fCorrelAB = (float*)fftwf_malloc(nPxPerWindow * sizeof(float));
+        fCorrelAA = (float*)fftwf_malloc(nPxPerWindow * sizeof(float));
+        fCorrelBB = (float*)fftwf_malloc(nPxPerWindow * sizeof(float));
+
+        if (!C_extra1 || !C_extra2 || !c_extra1 || !c_extra2 ||
+            !fCorrelAB || !fCorrelAA || !fCorrelBB) {
+            uError = ERROR_NOMEM; goto triple_cleanup;
+        }
+
+        /* ---- parallel over windows ------------------------------------ */
+        #pragma omp for schedule(static)
+        for (iWindowIdx = 0; iWindowIdx < nWindowsTotal; ++iWindowIdx)
+        {
+            ii = iWindowIdx % nWindows[1];
+            jj = iWindowIdx / nWindows[1];
+            if (fMask[iWindowIdx] == 1) continue;
+
+            int row_min = (int)floor(fWinCtrsY[jj] - ((float)nWindowSize[0]-1.0f)/2.0f + 0.5f);
+            int col_min = (int)floor(fWinCtrsX[ii] - ((float)nWindowSize[1]-1.0f)/2.0f + 0.5f);
+            if (row_min < 0 || col_min < 0 ||
+                row_min + nWindowSize[0] > nImageSize[0] ||
+                col_min + nWindowSize[1] > nImageSize[1]) continue;
+
+            float *outAB = &fCorrAB_Sum[iWindowIdx * nPxPerOutput];
+            float *outAA = &fCorrAA_Sum[iWindowIdx * nPxPerOutput];
+            float *outBB = &fCorrBB_Sum[iWindowIdx * nPxPerOutput];
+
+            /* ---- sequential over images ------------------------------- */
+            for (n = 0; n < N_images; ++n)
+            {
+                const float *fImageA = &fImageA_stack[n * nImagePixels];
+                const float *fImageB = &fImageB_stack[n * nImagePixels];
+
+                /* 1. Extract raw pixels ONCE (no weighting yet) */
+                for (i = 0; i < nWindowSize[0]; ++i) {
+                    for (j = 0; j < nWindowSize[1]; ++j) {
+                        int img_idx = (row_min + i) * nImageSize[1] + (col_min + j);
+                        int win_idx = i * nWindowSize[1] + j;
+                        fRawA[win_idx] = fImageA[img_idx];
+                        fRawB[win_idx] = fImageB[img_idx];
+                    }
+                }
+
+                /* ============================================================
+                 * 2. CROSS-CORRELATION AB  (using AB weights)
+                 *    Apply AB weights → FFT both → conjugate multiply → IFFT
+                 *    This reuses the plan's batched r2c + IFFT path.
+                 * ============================================================ */
+                {
+                    /* Apply AB weights into plan's ab_copy buffer */
+                    float *ab = sCCPlan.ab_copy;
+                    for (i = 0; i < numel; ++i) {
+                        ab[i]         = fRawB[i] * fWindowWeightB_AB[i]; /* slot 0 = B_AB */
+                        ab[numel + i] = fRawA[i] * fWindowWeightA_AB[i]; /* slot 1 = A_AB */
+                    }
+
+                    /* Batched forward FFT: FFT(B_AB) and FFT(A_AB) */
+                    fftwf_execute(sCCPlan.plan_AB_fft);
+
+                    /* C_AB = FFT(B_AB) .* conj(FFT(A_AB)) */
+                    multiply_conjugate(
+                        (const fftwf_complex*)&sCCPlan.AB_copy[0],
+                        (const fftwf_complex*)&sCCPlan.AB_copy[numel_fft],
+                        sCCPlan.C,
+                        numel_fft);
+
+                    /* Inverse FFT → fftshift → fCorrelAB */
+                    fftwf_execute(sCCPlan.plan_C_ifft);
+                    {
+                        float mul = 1.0f / (float)numel;
+                        float *cc = sCCPlan.c_copy;
+                        for (i = 0; i < numel; ++i) cc[i] *= mul;
+                        for (int row = 0; row < nWindowSize[0]; ++row) {
+                            int row_swap = (row + nWindowSize[0]/2) % nWindowSize[0];
+                            memcpy(&fCorrelAB[row * nWindowSize[1] + nWindowSize[1]/2],
+                                   &cc[row_swap * nWindowSize[1]],
+                                   (nWindowSize[1]/2) * sizeof(float));
+                            memcpy(&fCorrelAB[row * nWindowSize[1]],
+                                   &cc[row_swap * nWindowSize[1] + nWindowSize[1]/2],
+                                   (nWindowSize[1]/2) * sizeof(float));
+                        }
+                    }
+                }
+
+                /* ============================================================
+                 * 3. AUTO-CORRELATION AA  (using auto weights)
+                 *    Apply autoWeightA → FFT → |FFT|² → IFFT
+                 * ============================================================ */
+                {
+                    float *ab = sCCPlan.ab_copy;
+                    /* We only need one transform for AA, but plan_AB_fft is
+                     * batched (howmany=2). Put A in BOTH slots to keep it valid.
+                     * Alternatively: put A in slot 0, slot 1 is ignored for the
+                     * autocorrelation since we use |FFT(A)|².
+                     * Using both slots: FFT(A_auto) ends up in AB_copy[0..numel_fft-1]. */
+                    for (i = 0; i < numel; ++i) {
+                        float wa = fRawA[i] * fAutoWeightA[i];
+                        ab[i]         = wa;  /* slot 0 */
+                        ab[numel + i] = wa;  /* slot 1 (same data, auto-corr) */
+                    }
+                    fftwf_execute(sCCPlan.plan_AB_fft);
+
+                    /* |FFT(A)|²: C_AA[k] = re² + im² (purely real spectrum) */
+                    const fftwf_complex *FA = (const fftwf_complex*)&sCCPlan.AB_copy[0];
+                    for (i = 0; i < numel_fft; ++i) {
+                        C_extra1[i][0] = FA[i][0]*FA[i][0] + FA[i][1]*FA[i][1];
+                        C_extra1[i][1] = 0.0f;
+                    }
+
+                    /* IFFT(|FFT(A)|²) using plan's IFFT (c2r).
+                     * We can't use sCCPlan.plan_C_ifft directly with C_extra1 because
+                     * FFTW c2r plans are tied to their (C, c_copy) buffers.
+                     * Instead: copy into plan's C buffer, execute, read from c_copy. */
+                    memcpy(sCCPlan.C, C_extra1, numel_fft * sizeof(fftwf_complex));
+                    fftwf_execute(sCCPlan.plan_C_ifft);
+                    {
+                        float mul = 1.0f / (float)numel;
+                        float *cc = sCCPlan.c_copy;
+                        for (i = 0; i < numel; ++i) cc[i] *= mul;
+                        for (int row = 0; row < nWindowSize[0]; ++row) {
+                            int row_swap = (row + nWindowSize[0]/2) % nWindowSize[0];
+                            memcpy(&fCorrelAA[row * nWindowSize[1] + nWindowSize[1]/2],
+                                   &cc[row_swap * nWindowSize[1]],
+                                   (nWindowSize[1]/2) * sizeof(float));
+                            memcpy(&fCorrelAA[row * nWindowSize[1]],
+                                   &cc[row_swap * nWindowSize[1] + nWindowSize[1]/2],
+                                   (nWindowSize[1]/2) * sizeof(float));
+                        }
+                    }
+                }
+
+                /* ============================================================
+                 * 4. AUTO-CORRELATION BB  (using auto weights)
+                 * ============================================================ */
+                {
+                    float *ab = sCCPlan.ab_copy;
+                    for (i = 0; i < numel; ++i) {
+                        float wb = fRawB[i] * fAutoWeightB[i];
+                        ab[i]         = wb;
+                        ab[numel + i] = wb;
+                    }
+                    fftwf_execute(sCCPlan.plan_AB_fft);
+
+                    const fftwf_complex *FB = (const fftwf_complex*)&sCCPlan.AB_copy[0];
+                    for (i = 0; i < numel_fft; ++i) {
+                        C_extra2[i][0] = FB[i][0]*FB[i][0] + FB[i][1]*FB[i][1];
+                        C_extra2[i][1] = 0.0f;
+                    }
+
+                    memcpy(sCCPlan.C, C_extra2, numel_fft * sizeof(fftwf_complex));
+                    fftwf_execute(sCCPlan.plan_C_ifft);
+                    {
+                        float mul = 1.0f / (float)numel;
+                        float *cc = sCCPlan.c_copy;
+                        for (i = 0; i < numel; ++i) cc[i] *= mul;
+                        for (int row = 0; row < nWindowSize[0]; ++row) {
+                            int row_swap = (row + nWindowSize[0]/2) % nWindowSize[0];
+                            memcpy(&fCorrelBB[row * nWindowSize[1] + nWindowSize[1]/2],
+                                   &cc[row_swap * nWindowSize[1]],
+                                   (nWindowSize[1]/2) * sizeof(float));
+                            memcpy(&fCorrelBB[row * nWindowSize[1]],
+                                   &cc[row_swap * nWindowSize[1] + nWindowSize[1]/2],
+                                   (nWindowSize[1]/2) * sizeof(float));
+                        }
+                    }
+                }
+
+                /* ============================================================
+                 * 5. Accumulate all three to output (central extraction)
+                 * ============================================================ */
+                for (i = 0; i < out_h; ++i) {
+                    for (j = 0; j < out_w; ++j) {
+                        int src_idx = (start_y + i) * nWindowSize[1] + (start_x + j);
+                        int dst_idx = i * out_w + j;
+                        outAB[dst_idx] += fCorrelAB[src_idx];
+                        outAA[dst_idx] += fCorrelAA[src_idx];
+                        outBB[dst_idx] += fCorrelBB[src_idx];
+                    }
+                }
+            } /* end image loop */
+        } /* end window loop */
+
+    triple_cleanup:
+        if (fRawA)     fftwf_free(fRawA);
+        if (fRawB)     fftwf_free(fRawB);
+        if (fCorrelAB) fftwf_free(fCorrelAB);
+        if (fCorrelAA) fftwf_free(fCorrelAA);
+        if (fCorrelBB) fftwf_free(fCorrelBB);
+        if (C_extra1)  fftwf_free(C_extra1);
+        if (C_extra2)  fftwf_free(C_extra2);
+        if (c_extra1)  fftwf_free(c_extra1);
+        if (c_extra2)  fftwf_free(c_extra2);
+        #pragma omp critical
+        xcorr_destroy_plan(&sCCPlan);
+    } /* end omp parallel */
+
+    xcorr_cache_save_wisdom(wisdom_path);
+    return uError;
+}
+
+
 /* fminvec, find minimum element in vector */
 float fminvec(const float *fVec, int n)
 {

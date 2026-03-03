@@ -1,6 +1,6 @@
 paths:
   base_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images\validation_4000_instantaneous
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images\validation_4000_ensemble
   source_paths:
   - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images
   active_paths:
@@ -79,7 +79,7 @@ video:
   data_source: calibrated
   variable: ux
   run: 2
-  piv_type: instantaneous
+  piv_type: ensemble
   cmap: jet
   lower: ''
   upper: ''
@@ -111,7 +111,7 @@ statistics:
     mean_peak_height: true
   gamma_radius: 4
   save_figures: true
-  type_name: instantaneous
+  type_name: ensemble
   source_endpoint: regular
 instantaneous_piv:
   window_size:
@@ -157,7 +157,7 @@ ensemble_piv:
   - - 8
     - 24
   overlap:
-  - 75
+  - 50
   - 50
   - 50
   - 50
@@ -171,7 +171,7 @@ ensemble_piv:
   - 2
   - 3
   - 4
-  store_planes: true
+  store_planes: false
   save_diagnostics: true
   sum_window:
   - 48
@@ -278,12 +278,12 @@ masking:
     left: 0
     right: 0
 merging:
-  type_name: instantaneous
+  type_name: ensemble
   base_path_idx: 0
   cameras: null
 transforms:
   base_path_idx: 0
-  type_name: instantaneous
+  type_name: ensemble
   cameras:
     1:
       operations: []
