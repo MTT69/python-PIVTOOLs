@@ -2,9 +2,9 @@
 
 Particle Image Velocimetry Tools - A comprehensive toolkit for PIV analysis with both command-line and GUI interfaces.
 
-We present **PIVTOOLS**, an open-source Python framework built for community expansion with a React-based GUI, which integrates planar, stereoscopic, and ensemble PIV pipelines into a single end-to-end environment. Computationally intensive routines are implemented in optimised C and parallelised with Dask, enabling datasets of terabyte scale to be processed efficiently on both workstations and distributed HPC clusters.
+We present **PIVTOOLS**, an open-source Python framework built for community expansion with a React-based GUI, which integrates planar, stereoscopic, and ensemble PIV pipelines into a single end-to-end environment. Computationally intensive routines are implemented in optimised C and parallelised with Dask, enabling datasets of large scale datasets to be processed efficiently on both workstations and distributed HPC clusters.
 
-The framework provides a complete pipeline from raw image import to image preprocessing, parallel vector computation, calibration, and interactive visualisation. Ensemble extensions allow direct estimation of Reynolds stresses from correlation maps, offering statistical fidelity beyond what is achievable with instantaneous methods. Validation against synthetic channel flow demonstrates mean velocity profiles accurate to within 1% of DNS reference down to \( y^+ \approx 40-50 \) with instantaneous PIV, and to \( y^+ \approx 15 \) with ensemble methods. Instantaneous Reynolds stresses agree with windowed DNS data, while ensemble processing recovers a higher fraction of turbulent energy due to reduced windowing effects.
+The framework provides a complete pipeline from raw image import to image preprocessing, parallel vector computation, calibration, and interactive visualisation. Ensemble extensions allow direct estimation of Reynolds stresses from correlation maps, offering statistical fidelity beyond what is achievable with instantaneous methods. Validation against synthetic channel flow demonstrates mean velocity profiles accurate to within 1% of DNS reference down to \( y^+ \approx 40-50 \) with instantaneous PIV, and to \( y^+ \approx 5 \) with ensemble methods.
 
 ## Features
 

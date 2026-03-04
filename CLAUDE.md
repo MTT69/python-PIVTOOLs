@@ -128,8 +128,7 @@ class Config:
     get_frame_pair_indices(pair_number: int) -> Tuple[int, int]  # Stride formula
 
     # --- Processing properties ---
-    batch_size: int                  # Capped at num_frame_pairs
-    piv_chunk_size: int
+    batch_size: int                  # Capped at per_loop_frame_pairs
     vector_format: str               # e.g. "B%05d.mat"
     filters: List[dict]
 
@@ -327,19 +326,29 @@ GET  /get_uncalibrated_count ?basepath_idx=&camera=&type=&job_id=
 GET  /check_output_exists   ?active_paths=
 POST /clear_output          {active_paths, camera_numbers}
 GET  /system_info            -> {version, python_version, platform, dask, c_libraries, fftw_wisdom}
+POST /clear_raw_cache        {exclude_camera?} -> clears raw image cache (+ processed_store), keeps specified camera
 ```
+
+**Performance middleware:** `flask-compress` provides transparent gzip on all responses > 500 bytes.
 
 **Key internal functions:**
 ```python
 manage_cache_size()           # LRU eviction with frame-1 pinning
 make_raw_cache_key(source_path_idx, camera, idx, img_format, cfg) -> tuple
 get_percentile_stats(img_array) -> {"vmin_pct": float, "vmax_pct": float}
+    # Subsamples images > 4MP (stride-based) for fast percentile computation
 get_cached_pair(frame, typ, camera, source_path_idx, cfg, auto_limits) -> (b64_a, b64_b, stats)
+    # Returns stored base64 directly from processed_store (no re-encoding)
 compute_batch_window(target_idx, batch_size, total) -> (start, end)
 recursive_update(d, u)        # Deep-merge dict u into d
 get_active_calibration_params(cfg) -> (method_name, params_dict)
 _preload_surrounding_frames(source_path_idx, camera, current_idx, cfg, window, img_format, auto_limits)
 ```
+
+**Caching architecture:**
+- **Raw image cache:** `raw_image_cache` stores 4-tuples `(b64_A, b64_B, stats, timestamp)` — no numpy arrays stored (saves ~640MB). Stats always computed on insertion. `jsonify()` runs outside `cache_lock` to avoid serialization contention.
+- **Processed image cache:** `processed_store` stores `(b64_A, b64_B)` — base64 computed once on processing, returned directly (no re-encoding per request).
+- **Cache clearing:** `clear_raw_cache` endpoint clears both `raw_image_cache` and `processed_store`. Frontend hooks call this on camera switch to free stale data.
 
 ### `utils.py` - Shared Utilities
 
@@ -393,11 +402,14 @@ POST /calibrate/set_datum              {base_path_idx, type_name, camera, datum_
 POST /calibrate/global_coordinates/pixel_to_physical  {pixel_x, pixel_y, camera, source_path_idx, type_name}
 GET  /calibrate/calibration/snapshot       ?base_path_idx= -> {exists, date?, calibration_method?}
 POST /calibrate/calibration/snapshot/load  {base_path_idx} -> restores saved calibration config
+POST /calibrate/calibration/clear_image_cache  -> clears server-side calibration frame cache
 ```
+
+**Calibration image caching:** `shared_views.py` maintains a thread-safe LRU cache (`_cal_image_cache`, max 10 entries) keyed by `(source_path_idx, camera, idx, output_format)`. Eliminates disk I/O and percentile re-computation on frame revisits. Frontend clears on camera switch via `useCalibrationImageViewer`.
 
 **Production files** (do the actual calibration work):
 - `scale_factor_calibration_production.py` - Simple px→mm scaling
-- `global_coordinate_alignment.py` - Global coordinate alignment. Uses chain topology (cam N↔cam N+1 pairs). Supports `invert_ux` to negate ux + UV_stress and reflect x-coordinates around datum_physical_x. **Fused into calibration workers:** `precompute_camera_shifts(type_name)` pre-computes shifts (no data I/O) → shifts/invert_ux applied inside parallel calibration workers (one file open, one save per .mat). `apply_alignment()` still exists for standalone `align-coordinates` CLI command; `_apply_invert_ux_to_camera()` uses `ThreadPoolExecutor(min(os.cpu_count(), len(files), 8))` to process vector .mat files in parallel (loadmat/savemat release GIL). **Idempotency guard:** `alignment_applied.json` sidecar marker; blocks re-application unless `force=True`. Fresh calibration clears the marker. Pre-flight validates: datum_pixel set, method not polynomial, overlap_pairs for multi-camera.
+- `global_coordinate_alignment.py` - Global coordinate alignment. Uses chain topology (cam N↔cam N+1 pairs). Supports `invert_ux` to negate ux + UV_stress and reflect x-coordinates around datum_physical_x. **Fused into calibration workers:** `precompute_camera_shifts(type_name)` pre-computes shifts (no data I/O) → shifts/invert_ux applied inside parallel calibration workers (one file open, one save per .mat). `apply_alignment()` still exists for standalone `align-coordinates` CLI command; `_apply_invert_ux_to_camera()` uses `ProcessPoolExecutor` with `worker_initializer` (from `worker_pool.py`) to process vector .mat files in parallel. **Idempotency guard:** `alignment_applied.json` sidecar marker; blocks re-application unless `force=True`. Fresh calibration clears the marker. Pre-flight validates: datum_pixel set, method not polynomial, overlap_pairs for multi-camera.
 - `calibration_planar/planar_calibration_production.py` - Dotboard detection + model. Optimized: histogram-based single blob detection, cKDTree neighbor finding, reduced RANSAC iterations, vectorized object points, no double image reads for containers. Supports `model_type="pinhole"` (OpenCV) or `"polynomial"` (DaVis-compatible) via `MultiViewCalibrator(model_type=...)`.
 - `calibration_charuco/charuco_calibration_production.py` - ChArUco detection. Supports `model_type="pinhole"` or `"polynomial"` via `ChArUcoCalibrator(model_type=...)`. ChArUco world points are in meters (multiplied by 1000 for polynomial mm input).
 - `calibration_poly/polynomial_calibration_production.py` - DaVis XML polynomial calibration consumer (`PolynomialVectorCalibrator`) + polynomial model fitting from detected points (`fit_polynomial_from_points()`, `save_polynomial_to_config()`). Fitting uses 3rd-order polynomial with 10 terms [1, s, s², s³, t, t², t³, s*t, s²*t, s*t²] solved via `np.linalg.lstsq`. mm_per_pixel estimated via median nearest-neighbor ratios (cKDTree). **Coordinate convention:** `PolynomialVectorCalibrator` converts uncalibrated coords (1-based, y-up) → raw pixels (0-based, y-down) via `_uncal_to_raw()` before polynomial evaluation, matching the space the polynomial was fitted in. `image_height` stored from config for the conversion.
@@ -555,7 +567,13 @@ GET  /masking/config             -> masking config section
 POST /masking/config             {enabled, mode, rectangular, mask_file_pattern, ...}
 POST /masking/save_polygon_mask  {camera, source_path_idx, polygons}
 GET  /masking/load_polygon_mask  ?camera=&source_path_idx=
+POST /save_mask_array            {width, height, polygons, meta} -> server-side rasterization via cv2.fillPoly
+GET  /load_mask                  ?path=&basepath_idx=&camera=&polygons_only= -> returns mask_image (base64 PNG) + polygons
 ```
+
+**Mask save/load optimization:**
+- **Save:** Frontend sends only polygon vertex data (~1-2KB). Server rasterizes via `cv2.fillPoly()`. Legacy `data` field (flat mask array) accepted as fallback.
+- **Load:** Mask returned as base64-encoded PNG (`mask_image` field, ~5-20KB) instead of JSON integer array (~8MB for 4MP). `polygons_only=true` skips mask encoding entirely.
 
 ---
 
@@ -1167,6 +1185,7 @@ Both `cpu_instantaneous.py` and `cpu_ensemble.py` use `cv2.setNumThreads(1)` + c
 | `dask_max_in_flight_per_worker` | int | 3 | Max concurrent tasks per worker in sliding window (HPC: 4-6) |
 | `cluster_type` | str | `"local"` | `"local"` or `"slurm"` |
 | `open_dashboard` | bool | `false` | Auto-open Dask dashboard in browser on cluster start |
+| `post_processing_workers` | int/null | `null` | Max parallel workers for post-processing (calibrate, statistics, transforms, merge). null = auto = min(cpu_count, 16) |
 
 **`instantaneous_piv` block:**
 
@@ -1190,9 +1209,8 @@ Both `cpu_instantaneous.py` and `cpu_ensemble.py` use `cv2.setNumThreads(1)` + c
 | `background_subtraction_method` | `ensemble_background_subtraction_method` | `"correlation"` or `"image"` |
 | `gradient_correction` | `ensemble_gradient_correction` | Reynolds stress gradient correction |
 | `resume_from_pass` | `ensemble_resume_from_pass` | 1-based pass to resume (0=fresh start) |
-| `correlation_normalization` | `ensemble_correlation_normalization` | `"none"` (default) or `"per_frame"` — per-frame mean-sub + energy normalization |
 | `persist_images` | `ensemble_persist_images` | `false` (default). When `true`, persist all filtered images in worker RAM (HPC with lots of RAM) |
-| `predictor_smoothing` | `ensemble_predictor_smoothing` | Gaussian smooth predictor between passes (default `true`). Set `false` for ensemble to preserve wall gradients |
+| `predictor_smoothing` | `ensemble_predictor_smoothing` | Gaussian smooth predictor between passes (default `false`). Set `true` for instantaneous to reduce noise |
 | `predictor_boundary_conditions` | `ensemble_predictor_boundary_conditions` | List of BC dicts `[{y_position, ux, uy, edge}]`. Overwrites predictor padding rows at/beyond the BC position with specified values. Default `[]` (no BCs). `edge`: `"bottom"` (default) or `"top"`. Phase A inserts BC y-position into padded grid at init; Phase B overwrites rows after `np.pad(mode="edge")` at runtime. |
 
 **Outlier detection / infilling** (parallel structure for instantaneous and ensemble):
@@ -1361,7 +1379,8 @@ base_path/
 - Logging: `loguru.logger` (not stdlib).
 - Camera normalization: `camera_number()` before use. Always 1-based.
 - Long ops: daemon threads + `job_manager` singleton. Return `job_id` immediately.
-- ThreadPool pattern for I/O-bound parallel work: `ThreadPoolExecutor(max_workers=min(os.cpu_count() or 4, len(items), 8))` with `as_completed()`. Used in: `app.py` (image preload), `video_maker.py` (file inspection), `dotboard_views.py` (multi-camera detection), `global_coordinate_alignment.py` (`invert_ux` file processing). Processing correlators use class-level pools sized to `omp_threads` instead.
+- ThreadPool pattern for I/O-bound parallel work: `ThreadPoolExecutor(max_workers=min(os.cpu_count() or 4, len(items), 8))` with `as_completed()`. Used in: `app.py` (image preload), `video_maker.py` (file inspection), `dotboard_views.py` (multi-camera detection). Processing correlators use class-level pools sized to `omp_threads` instead.
+- ProcessPool pattern for CPU-bound parallel work: `ProcessPoolExecutor(max_workers=get_max_workers(n), initializer=worker_initializer)` with `as_completed()`. Worker functions must be module-level (pickle-compatible). Used in: `global_coordinate_alignment.py` (`invert_ux` file processing), `stereo_reconstruction_production.py` (frame processing). `worker_initializer` pins internal thread pools (OpenBLAS/MKL/OpenMP/cv2) to 1 thread per worker.
 - Images to frontend: base64 via `numpy_to_base64()`.
 
 ### Python (Processing)

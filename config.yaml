@@ -1,8 +1,8 @@
 paths:
   base_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images\validation_4000_ensemble
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\download_from_jhtdb\efe_images\test
   source_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\download_from_jhtdb\efe_images
   active_paths:
   - 0
   camera_numbers:
@@ -10,7 +10,7 @@ paths:
   camera_count: 1
   camera_subfolders: []
 images:
-  num_images: 4000
+  num_images: 50
   image_format:
   - B%05d_A.tif
   - B%05d_B.tif
@@ -27,7 +27,7 @@ images:
   num_loops: 1
   num_frame_pairs: 4000
 batches:
-  size: 10
+  size: 15
 logging:
   file: pypiv.log
   level: INFO
@@ -41,6 +41,7 @@ processing:
   dask_memory_limit: 7GB
   dask_max_in_flight_per_worker: 2
   open_dashboard: true
+  post_processing_workers: 16
   always_batch: true
   instantaneous: true
   ensemble: false
@@ -62,7 +63,7 @@ ensemble_outlier_detection:
   methods: []
 ensemble_infilling:
   mid_pass:
-    method: biharmnonic
+    method: biharmonic
     parameters: {}
   final_pass:
     enabled: true
@@ -79,7 +80,7 @@ video:
   data_source: calibrated
   variable: ux
   run: 2
-  piv_type: ensemble
+  piv_type: instantaneous
   cmap: jet
   lower: ''
   upper: ''
@@ -111,7 +112,7 @@ statistics:
     mean_peak_height: true
   gamma_radius: 4
   save_figures: true
-  type_name: ensemble
+  type_name: instantaneous
   source_endpoint: regular
 instantaneous_piv:
   window_size:
@@ -266,9 +267,10 @@ calibration:
       - 3018.2581625950966
       frame_a: 1
       frame_b: 1
-filters: []
+filters:
+- type: time
 masking:
-  enabled: false
+  enabled: true
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
   mode: file
@@ -278,12 +280,12 @@ masking:
     left: 0
     right: 0
 merging:
-  type_name: ensemble
+  type_name: instantaneous
   base_path_idx: 0
   cameras: null
 transforms:
   base_path_idx: 0
-  type_name: ensemble
+  type_name: instantaneous
   cameras:
     1:
       operations: []

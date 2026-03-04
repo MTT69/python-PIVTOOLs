@@ -23,6 +23,8 @@ import numpy as np
 
 from pivtools_core.config import Config, get_config, reload_config
 
+from pivtools_gui.utils.worker_pool import worker_initializer, get_max_workers
+
 from .transform_operations import (
     VALID_TRANSFORMATIONS,
     apply_transformation_to_piv_result,
@@ -230,9 +232,9 @@ class TransformProcessor:
                     logger.info("Coordinates transformed.")
 
             # Transform vector files in parallel
-            num_workers = min(os.cpu_count() or 1, len(vector_files), max_workers)
+            num_workers = get_max_workers(len(vector_files))
 
-            with ProcessPoolExecutor(max_workers=num_workers) as executor:
+            with ProcessPoolExecutor(max_workers=num_workers, initializer=worker_initializer) as executor:
                 futures = {}
                 for mat_file in vector_files:
                     future = executor.submit(

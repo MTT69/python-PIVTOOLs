@@ -85,30 +85,29 @@ def perform_piv_and_save(
     start_frame: int = 1,
     runs_to_save: Optional[List[int]] = None,
     vector_masks: Optional[List[np.ndarray]] = None,
-    batch_size: int = None,  # Deprecated, kept for compatibility
     scattered_cache=None,  # Pre-scattered correlator cache (optional)
     scattered_masks=None,  # Pre-scattered vector masks (optional)
 ) -> List:
     """
     Perform PIV and save results in parallel using TRUE lazy loading.
-    
+
     This is the OPTIMAL Dask pattern:
     1. Images are already delayed tasks (from load_images)
     2. We convert to delayed format and submit to workers
     3. Each worker receives ONE delayed task at a time
     4. Worker: load → process → save → free → next
     5. No memory accumulation, no manual batching
-    
+
     Memory footprint per worker:
     - 1 image pair: ~80 MB
     - PIV processing: ~200 MB peak
     - Total: ~280 MB (constant, regardless of total images!)
-    
+
     Scaling:
     - 4 workers × 280 MB = ~1.1 GB total
     - Can process 10,000 images with same memory!
     - Main process: ~10 MB (just task graph)
-    
+
     Parameters
     ----------
     images : da.Array
@@ -126,10 +125,7 @@ def perform_piv_and_save(
         List of pass indices (0-based) to save. If None, save all passes.
     vector_masks : Optional[List[np.ndarray]]
         Pre-computed vector masks for each PIV pass.
-    batch_size : int
-        DEPRECATED. Kept for compatibility but ignored.
-        Dask scheduler handles distribution automatically.
-        
+
     Returns
     -------
     tuple

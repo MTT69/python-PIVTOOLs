@@ -658,7 +658,7 @@ video:
         1 = consecutive frames (1+2, or 3+4, etc.)
         N = custom gap (frame 1 paired with frame 1+N)
         """
-        return self.data.get("images", {}).get("frame_stride", 1)
+        return self.data.get("images", {}).get("frame_stride", 0)
 
     @property
     def pair_stride(self):
@@ -676,7 +676,7 @@ video:
 
         Values: 'time_resolved', 'skip_frames', 'ab_format', 'pre_paired', 'custom'
         """
-        return self.data.get("images", {}).get("pairing_preset", "time_resolved")
+        return self.data.get("images", {}).get("pairing_preset", "ab_format")
 
     @property
     def image_format(self):
@@ -1135,11 +1135,6 @@ video:
             )
 
     @property
-    def piv_chunk_size(self):
-        # Updated to use batches.size from config.yaml
-        return self.data.get("batches", {}).get("size", 25)
-
-    @property
     def batch_size(self):
         """
         Batch size for image processing.
@@ -1147,7 +1142,7 @@ video:
         Automatically capped at per_loop_frame_pairs to prevent batches from
         crossing loop boundaries (each batch reads from a single .set file).
         """
-        configured_size = self.data.get("batches", {}).get("size", 30)
+        configured_size = self.data.get("batches", {}).get("size", 25)
         max_size = self.per_loop_frame_pairs
 
         # Cap batch size at per-loop frame pairs (batches must not cross loop boundaries)
@@ -1427,7 +1422,7 @@ video:
     @property
     def video_cmap(self) -> str:
         """Return colormap name. 'default' means auto-select."""
-        return self.video.get("cmap", "default")
+        return self.video.get("cmap", "viridis")
 
     @property
     def video_lower_limit(self) -> Optional[float]:
@@ -1551,7 +1546,7 @@ video:
     def calibration_image_count(self) -> int:
         """Return number of calibration images expected."""
         calib_block = self.data.get("calibration", {}) or {}
-        return calib_block.get("num_images", 10)
+        return calib_block.get("num_images", 1)
 
     @property
     def calibration_image_type(self) -> str:
@@ -1784,13 +1779,13 @@ video:
     def active_calibration_method(self):
         """Return the active calibration method name (e.g., 'dotboard', 'scale_factor')."""
         cal = self.calibration
-        return cal.get("active", "dotboard")
+        return cal.get("active", "scale_factor")
 
     @property
     def active_calibration_params(self):
         """Return the parameters dict for the active calibration method."""
         cal = self.calibration
-        active = cal.get("active", "dotboard")
+        active = cal.get("active", "scale_factor")
         return cal.get(active, {})
 
     @property
@@ -2038,7 +2033,7 @@ video:
     @property
     def window_type(self):
         """Return PIV window type (e.g., 'gaussian', 'A')."""
-        return self.data.get("instantaneous_piv", {}).get("window_type", "A")
+        return self.data.get("instantaneous_piv", {}).get("window_type", "gaussian")
 
     @property
     def backend(self):
@@ -2146,6 +2141,18 @@ video:
         return self.data.get("processing", {}).get("dask_max_in_flight_per_worker", 3)
 
     @property
+    def post_processing_workers(self):
+        """Max parallel workers for post-processing (merge, calibrate, statistics, transforms).
+
+        Default: min(cpu_count, 16). Set lower on shared HPC filesystems where
+        disk bandwidth saturates before all cores are busy with I/O.
+        """
+        val = self.data.get("processing", {}).get("post_processing_workers")
+        if val is not None:
+            return int(val)
+        return min(os.cpu_count() or 4, 16)
+
+    @property
     def open_dashboard(self):
         """Whether to automatically open the Dask dashboard in a browser tab."""
         return self.data.get("processing", {}).get("open_dashboard", False)
@@ -2168,7 +2175,7 @@ video:
     @property
     def peak_finder(self):
         """Return peak finder method (converted to numeric code)."""
-        peak_finder = self.data.get("instantaneous_piv", {}).get("peak_finder", "gauss3").lower()
+        peak_finder = self.data.get("instantaneous_piv", {}).get("peak_finder", "gauss6").lower()
         if peak_finder == "gauss3":
             return 3
         elif peak_finder == "gauss4":
@@ -2230,8 +2237,8 @@ video:
 
     @property
     def ensemble_window_type(self):
-        """Return ensemble PIV window type (e.g., 'gaussian')."""
-        return self.data.get("ensemble_piv", {}).get("window_type", self.window_type)
+        """Return ensemble PIV window type (e.g., 'square', 'gaussian')."""
+        return self.data.get("ensemble_piv", {}).get("window_type", "square")
 
     @property
     def ensemble_num_peaks(self):
@@ -2303,7 +2310,7 @@ video:
         bool
             True if extraction is enabled, False otherwise (default)
         """
-        return self.data.get("ensemble_piv", {}).get("sum_fitting_window_enabled", False)
+        return self.data.get("ensemble_piv", {}).get("sum_fitting_window_enabled", True)
 
     @property
     def ensemble_sum_fitting_window(self):
@@ -2464,15 +2471,15 @@ video:
         """Return fitting method for ensemble PIV.
 
         Options:
-        - 'gaussian': Levenberg-Marquardt 16-parameter stacked Gaussian (default)
-        - 'kspace': K-space transfer function with 6 parameters
+        - 'gaussian': Levenberg-Marquardt 16-parameter stacked Gaussian (in development)
+        - 'kspace': K-space transfer function with 6 parameters (default)
 
         The k-space method offers better noise robustness by:
         - Algebraic cancellation of particle shape (6 params vs 16)
         - Adaptive SNR-based wavenumber bounds
         - Forward-model fitting that emphasizes high-SNR components
         """
-        method = self.data.get("ensemble_piv", {}).get("fit_method", "gaussian")
+        method = self.data.get("ensemble_piv", {}).get("fit_method", "kspace")
         valid_methods = {'gaussian', 'kspace'}
         if method not in valid_methods:
             raise ValueError(
@@ -2534,13 +2541,10 @@ video:
         Default: 0.35 (with soft weighting), 0.25 (without).
         Range: 0.1 to 0.5 cycles/pixel.
         """
-        val = self.data.get("ensemble_piv", {}).get("kspace_k_max_cap", None)
+        val = self.data.get("ensemble_piv", {}).get("kspace_k_max_cap", 0.35)
         if val is not None:
             return max(0.1, min(float(val), 0.5))
-        # Default depends on soft weighting
-        if self.ensemble_kspace_soft_weighting:
-            return 0.35
-        return 0.25
+        return 0.35
 
     @property
     def ensemble_image_warp_interpolation(self) -> str:
@@ -2687,7 +2691,7 @@ video:
     def ensemble_infilling_mid_pass(self) -> dict:
         """Return ensemble mid-pass infilling configuration."""
         return self.data.get("ensemble_infilling", {}).get("mid_pass", {
-            "method": "biharmonic",
+            "method": "local_median",
             "parameters": {"ksize": 3}
         })
 
@@ -2696,7 +2700,7 @@ video:
         """Return ensemble final-pass infilling configuration."""
         return self.data.get("ensemble_infilling", {}).get("final_pass", {
             "enabled": True,
-            "method": "biharmonic",
+            "method": "local_median",
             "parameters": {"ksize": 3}
         })
 
@@ -2746,7 +2750,7 @@ video:
         For ensemble PIV (converged over many pairs), noise is not a concern
         and smoothing only destroys signal. Set to False for ensemble.
 
-        Default: True (backward compatible)
+        Default: False
         """
         return self.data.get("ensemble_piv", {}).get("predictor_smoothing", False)
 
@@ -2907,7 +2911,7 @@ video:
     def image_dtype(self):
         """Return image data type as numpy dtype."""
         import numpy as np
-        dtype_str = self.data.get("images", {}).get("dtype", "uint16")
+        dtype_str = self.data.get("images", {}).get("dtype", "float32")
         return np.dtype(dtype_str)
 
     # --- Masking properties ---
@@ -2954,7 +2958,7 @@ video:
         This threshold determines when a vector is masked based on the fraction
         of masked pixels within its interrogation window:
         - 0.0: mask vector if any pixel in window is masked
-        - 0.5: mask vector if >50% of pixels in window are masked (default)
+        - 0.01: mask vector if >1% of pixels in window are masked (default)
         - 1.0: only mask vector if all pixels in window are masked
         
         Returns
@@ -2962,7 +2966,7 @@ video:
         float
             Threshold value between 0.0 and 1.0
         """
-        return self.data.get("masking", {}).get("mask_threshold", 0.5)
+        return self.data.get("masking", {}).get("mask_threshold", 0.01)
 
     def get_mask_path(self, camera_num: int, source_path_idx: int = 0):
         """

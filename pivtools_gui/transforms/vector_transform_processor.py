@@ -25,6 +25,8 @@ from loguru import logger
 
 from pivtools_core.config import Config, get_config
 from pivtools_core.coordinate_utils import extract_coordinates
+
+from pivtools_gui.utils.worker_pool import worker_initializer, get_max_workers
 from pivtools_core.paths import get_data_paths
 from pivtools_core.vector_loading import is_run_valid
 
@@ -561,9 +563,9 @@ class VectorTransformProcessor:
                     save_mat_from_transform(coords_file, {"coordinates": coords_struct})
 
                 # Process frames in parallel
-                num_workers = min(os.cpu_count() or 1, len(vector_files), max_workers)
+                num_workers = get_max_workers(len(vector_files))
 
-                with ProcessPoolExecutor(max_workers=num_workers) as executor:
+                with ProcessPoolExecutor(max_workers=num_workers, initializer=worker_initializer) as executor:
                     futures = [
                         executor.submit(
                             process_frame_worker,

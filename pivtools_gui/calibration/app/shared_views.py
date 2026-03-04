@@ -31,6 +31,11 @@ from pivtools_gui.utils import camera_number, numpy_to_png_base64, numpy_to_base
 
 calibration_shared_bp = Blueprint("calibration_shared", __name__)
 
+# Calibration image cache: {(source_path_idx, camera, idx, output_format): response_dict}
+_cal_image_cache = {}
+_cal_cache_lock = threading.Lock()
+_CAL_CACHE_MAX = 10
+
 
 @calibration_shared_bp.route("/calibration/set_datum", methods=["POST"])
 def calibration_set_datum():
@@ -241,6 +246,12 @@ def calibration_get_frame():
     output_format = request.args.get("format", default="jpeg", type=str).lower()
     quality = request.args.get("quality", default=85, type=int)
 
+    # Check calibration image cache
+    cal_cache_key = (source_path_idx, camera, idx, output_format)
+    with _cal_cache_lock:
+        if cal_cache_key in _cal_image_cache:
+            return jsonify(_cal_image_cache[cal_cache_key])
+
     try:
         cfg = get_config()
 
@@ -302,10 +313,7 @@ def calibration_get_frame():
         b64_image = numpy_to_base64(img, format=output_format, jpeg_quality=quality)
         mime_type = f"image/{output_format}"
 
-        # Get total frame count
-        frame_count = get_calibration_frame_count(camera, cfg, source_path_idx)
-
-        return jsonify({
+        result = {
             "image": b64_image,
             "mime_type": mime_type,
             "width": int(img.shape[1]),
@@ -313,7 +321,17 @@ def calibration_get_frame():
             "stats": stats,
             "frame_count": frame_count,
             "current_idx": idx,
-        })
+        }
+
+        # Cache the result
+        with _cal_cache_lock:
+            _cal_image_cache[cal_cache_key] = result
+            # Evict oldest entries if cache is full
+            if len(_cal_image_cache) > _CAL_CACHE_MAX:
+                oldest_key = next(iter(_cal_image_cache))
+                del _cal_image_cache[oldest_key]
+
+        return jsonify(result)
 
     except FileNotFoundError as e:
         logger.warning(f"Calibration image not found: {e}")
@@ -770,6 +788,14 @@ def calibration_snapshot_load():
     except Exception as e:
         logger.error(f"Error loading calibration snapshot: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+@calibration_shared_bp.route("/calibration/clear_image_cache", methods=["POST"])
+def calibration_clear_image_cache():
+    """Clear the calibration image cache."""
+    with _cal_cache_lock:
+        _cal_image_cache.clear()
+    return jsonify({"status": "ok"})
 
 
 # ============================================================================

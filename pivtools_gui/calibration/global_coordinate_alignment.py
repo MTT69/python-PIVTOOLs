@@ -10,8 +10,7 @@ Provides coordinate alignment across multiple cameras by:
 Supports scale_factor, dotboard, and charuco calibration methods.
 """
 
-import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -24,6 +23,7 @@ from pivtools_core.config import Config
 from pivtools_core.coordinate_utils import extract_coordinates
 from pivtools_core.paths import get_data_paths
 from pivtools_core.vector_loading import load_coords_from_directory
+from pivtools_gui.utils.worker_pool import get_max_workers, worker_initializer
 
 
 class GlobalCoordinateAligner:
@@ -524,7 +524,7 @@ class GlobalCoordinateAligner:
         opposite to the image-space x-direction. Also reflects x-coordinates
         around datum_physical_x so the axis direction matches.
 
-        Vector files are processed in parallel via ThreadPoolExecutor.
+        Vector files are processed in parallel via ProcessPoolExecutor.
         """
         paths = get_data_paths(
             self.base_dir,
@@ -551,33 +551,11 @@ class GlobalCoordinateAligner:
             f"{len(mat_files)} files, datum_physical_x={datum_physical_x}"
         )
 
-        def _invert_single_file(mat_file: Path) -> bool:
-            """Load a single .mat, negate ux/UV_stress, save. Returns True on success."""
-            mat = loadmat(str(mat_file), struct_as_record=False, squeeze_me=True)
-            if var_name not in mat:
-                logger.warning(f"invert_ux: {mat_file.name} has no '{var_name}' key")
-                return False
-
-            result = mat[var_name]
-            if hasattr(result, "__len__") and not isinstance(result, np.void):
-                items = result
-            else:
-                items = [result]
-
-            for item in items:
-                if hasattr(item, "ux"):
-                    item.ux = -np.asarray(item.ux)
-                if hasattr(item, "UV_stress"):
-                    item.UV_stress = -np.asarray(item.UV_stress)
-
-            savemat(str(mat_file), mat, do_compression=True)
-            return True
-
         # Process vector files in parallel
         files_processed = 0
-        max_workers = min(os.cpu_count() or 4, len(mat_files), 8)
-        with ThreadPoolExecutor(max_workers=max_workers) as pool:
-            futures = {pool.submit(_invert_single_file, f): f for f in mat_files}
+        max_workers = get_max_workers(len(mat_files))
+        with ProcessPoolExecutor(max_workers=max_workers, initializer=worker_initializer) as pool:
+            futures = {pool.submit(_invert_single_file, f, var_name): f for f in mat_files}
             for future in as_completed(futures):
                 if future.result():
                     files_processed += 1
@@ -601,6 +579,29 @@ class GlobalCoordinateAligner:
             f"Applied invert_ux to Cam{camera_num} {type_name} "
             f"({files_processed} files + coordinates)"
         )
+
+
+def _invert_single_file(mat_file: Path, var_name: str) -> bool:
+    """Load a single .mat, negate ux/UV_stress, save. Returns True on success."""
+    mat = loadmat(str(mat_file), struct_as_record=False, squeeze_me=True)
+    if var_name not in mat:
+        logger.warning(f"invert_ux: {mat_file.name} has no '{var_name}' key")
+        return False
+
+    result = mat[var_name]
+    if hasattr(result, "__len__") and not isinstance(result, np.void):
+        items = result
+    else:
+        items = [result]
+
+    for item in items:
+        if hasattr(item, "ux"):
+            item.ux = -np.asarray(item.ux)
+        if hasattr(item, "UV_stress"):
+            item.UV_stress = -np.asarray(item.UV_stress)
+
+    savemat(str(mat_file), mat, do_compression=True)
+    return True
 
 
 def _pixels_to_world_mm(

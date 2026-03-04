@@ -23,6 +23,7 @@ from scipy.interpolate import RegularGridInterpolator
 from scipy.ndimage import distance_transform_edt
 
 from pivtools_core.config import get_config, reload_config
+from pivtools_gui.utils.worker_pool import worker_initializer, get_max_workers
 from pivtools_core.paths import get_data_paths
 from pivtools_core.vector_loading import (
     find_valid_piv_runs,
@@ -1263,7 +1264,7 @@ class VectorMerger:
         logger.debug(f"Output directory: {self.output_dir}")
 
         # Limit workers
-        max_workers = min(os.cpu_count() or 4, max_workers, 8)
+        max_workers = get_max_workers(num_files_to_process)
 
         # Pre-compute camera paths and coordinates ONCE (performance optimization)
         # This avoids calling get_data_paths() and load_coords_from_directory()
@@ -1331,7 +1332,7 @@ class VectorMerger:
             })
 
         try:
-            with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            with ProcessPoolExecutor(max_workers=max_workers, initializer=worker_initializer) as executor:
                 futures = [
                     executor.submit(_process_frame_worker, args)
                     for args in frame_args

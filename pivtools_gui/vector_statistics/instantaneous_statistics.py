@@ -20,6 +20,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional, Tuple
 
+from pivtools_gui.utils.worker_pool import worker_initializer, get_max_workers
+
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -720,10 +722,10 @@ class VectorStatisticsProcessor:
 
         # Create minimal config for vector loading
         class MinimalConfig:
-            def __init__(self, num_frame_pairs, vector_format, piv_chunk_size=100):
+            def __init__(self, num_frame_pairs, vector_format, batch_size=100):
                 self.num_frame_pairs = num_frame_pairs
                 self.vector_format = vector_format
-                self.piv_chunk_size = piv_chunk_size
+                self.batch_size = batch_size
 
         config = MinimalConfig(self.num_frame_pairs, self.vector_format)
 
@@ -934,7 +936,7 @@ class VectorStatisticsProcessor:
         logger.info(f"[Statistics] Processing {n_frames} frames with parallelism...")
 
         # Process frames in parallel
-        with concurrent.futures.ProcessPoolExecutor() as executor:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=get_max_workers(len(frame_files)), initializer=worker_initializer) as executor:
             futures = {}
             for i, file_path in enumerate(frame_files):
                 out_name = f"{i + 1:05d}.mat"

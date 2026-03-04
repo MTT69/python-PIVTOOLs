@@ -4,7 +4,7 @@ import numpy as np
 from flask import Blueprint, jsonify, request
 
 from pivtools_core.config import get_config
-from ...utils import camera_number
+from ...utils import camera_number, numpy_to_png_base64
 from pivtools_core.vector_loading import read_mask_from_mat, save_mask_to_mat
 
 masking_bp = Blueprint("masking", __name__)
@@ -17,30 +17,45 @@ def _cfg():
 @masking_bp.route("/save_mask_array", methods=["POST"])
 def upload_mask():
     """
-    Expects JSON with: meta (basePathIdx, camera, index, frame), width, height, data (flat mask), polygons (optional).
+    Expects JSON with: meta (basePathIdx, camera, index, frame), width, height, polygons.
+    Optionally accepts 'data' (flat mask array) for backward compatibility.
     Saves mask as .mat file.
     """
-    payload = request.get_json(silent=True) or {}
-    width, height, flat = (
-        payload.get("width"),
-        payload.get("height"),
-        payload.get("data"),
-    )
-    meta = payload.get("meta", {})
-    polygons = payload.get("polygons", None)
+    import cv2
 
-    # Validate input
+    payload = request.get_json(silent=True) or {}
+    width = payload.get("width")
+    height = payload.get("height")
+    flat = payload.get("data")
+    meta = payload.get("meta", {})
+    polygons = payload.get("polygons") or []
+
+    # Validate dimensions
     if not (
         isinstance(width, int) and isinstance(height, int) and width > 0 and height > 0
     ):
         return jsonify({"error": "width and height must be positive integers"}), 400
-    if not (isinstance(flat, list) and len(flat) == width * height):
-        return jsonify({"error": "data must be a list of length width*height"}), 400
 
-    try:
-        mask = np.asarray(flat, dtype=bool).reshape((height, width))
-    except Exception as e:
-        return jsonify({"error": f"invalid mask data: {e}"}), 400
+    if flat is not None:
+        # Legacy path: rasterize from flat array
+        if not (isinstance(flat, list) and len(flat) == width * height):
+            return jsonify({"error": "data must be a list of length width*height"}), 400
+        try:
+            mask = np.asarray(flat, dtype=bool).reshape((height, width))
+        except Exception as e:
+            return jsonify({"error": f"invalid mask data: {e}"}), 400
+    elif len(polygons) > 0:
+        # Server-side rasterization from polygon data
+        mask = np.zeros((height, width), dtype=np.uint8)
+        for poly in polygons:
+            pts = poly.get("points", [])
+            if len(pts) >= 3:
+                pts_arr = np.array(pts, dtype=np.int32)
+                cv2.fillPoly(mask, [pts_arr], color=1)
+        mask = mask.astype(bool)
+    else:
+        # Empty mask (e.g., after clear all)
+        mask = np.zeros((height, width), dtype=bool)
 
     try:
         basePathIdx = meta["basePathIdx"]
@@ -123,10 +138,11 @@ def load_mask():
                 }
             )
 
-        mask_flat = mask_arr.astype(np.uint8).flatten().tolist()
+        # Encode mask as base64 PNG (0/255 for proper PNG format) — ~5-20KB vs ~8MB JSON array
+        mask_b64 = numpy_to_png_base64(mask_arr.astype(np.uint8) * 255)
         return jsonify(
             {
-                "mask": mask_flat,
+                "mask_image": mask_b64,
                 "width": width,
                 "height": height,
                 "polygons": polygons_serializable,

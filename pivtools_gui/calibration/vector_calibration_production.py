@@ -23,6 +23,7 @@ from pivtools_core.config import get_config, reload_config
 from pivtools_core.coordinate_utils import extract_coordinates, get_num_coordinate_runs
 from pivtools_core.paths import get_data_paths
 from pivtools_core.vector_loading import load_coords_from_directory, read_mat_contents
+from pivtools_gui.utils.worker_pool import worker_initializer, get_max_workers
 
 # ===================== CONFIGURATION VARIABLES =====================
 # Set these variables for your calibration setup.
@@ -35,7 +36,6 @@ MODEL_TYPE = "charuco"  # "charuco" or "dotboard" - sets calibration.active
 VECTOR_PATTERN = "%05d.mat"  # Pattern for vector files (e.g. "B%05d.mat", "%05d.mat")
 TYPE_NAME = "instantaneous"  # Type name for data directory (e.g. "instantaneous", "ensemble")
 RUNS_TO_PROCESS = None  # List of 1-indexed runs to process, or None for all (e.g. [1, 2, 3])
-NUM_WORKERS = None  # Number of parallel workers, None = os.cpu_count()
 
 # USE_CONFIG_DIRECTLY: If True, skip updating config.yaml with above parameters
 # and load calibration settings directly from the existing config.yaml
@@ -496,7 +496,7 @@ class VectorCalibrator:
 
         self.type_name = type_name
         self.runs = runs  # 1-indexed
-        self.num_workers = num_workers if num_workers else os.cpu_count()
+        self.num_workers = num_workers if num_workers else get_max_workers(999999)
 
         # Validate model type
         if self.model_type not in ("charuco", "dotboard"):
@@ -1109,7 +1109,7 @@ class VectorCalibrator:
         successful = 0
         failed = 0
 
-        with ProcessPoolExecutor(max_workers=self.num_workers) as executor:
+        with ProcessPoolExecutor(max_workers=self.num_workers, initializer=worker_initializer) as executor:
             futures = {
                 executor.submit(_process_single_vector_file, task): task[0]
                 for task in tasks
@@ -1166,7 +1166,7 @@ def main():
         logger.info(f"Vector pattern: {config.vector_format}")
         logger.info(f"Type name: {TYPE_NAME}")
         logger.info(f"Runs to process: {RUNS_TO_PROCESS if RUNS_TO_PROCESS else 'all'}")
-        logger.info(f"Worker count: {NUM_WORKERS if NUM_WORKERS else 'auto'}")
+        logger.info(f"Worker count: {get_max_workers(999999)}")
 
         camera_nums = config.camera_numbers
     else:
@@ -1179,7 +1179,7 @@ def main():
         logger.info(f"Vector pattern: {VECTOR_PATTERN}")
         logger.info(f"Type name: {TYPE_NAME}")
         logger.info(f"Runs to process: {RUNS_TO_PROCESS if RUNS_TO_PROCESS else 'all'}")
-        logger.info(f"Worker count: {NUM_WORKERS if NUM_WORKERS else 'auto'}")
+        logger.info(f"Worker count: {get_max_workers(999999)}")
 
         # Apply CLI settings to config.yaml so centralized systems work correctly
         config = apply_cli_settings_to_config()
@@ -1195,7 +1195,6 @@ def main():
                 camera_num=camera_num,
                 type_name=TYPE_NAME,
                 runs=RUNS_TO_PROCESS,
-                num_workers=NUM_WORKERS,
                 config=config,
             )
 

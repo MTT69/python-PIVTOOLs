@@ -217,8 +217,7 @@ def _apply_spatial_filters_numpy(
     """
     Apply spatial filters to a numpy block.
 
-    Uses scipy.ndimage for numpy-based filtering (more efficient than
-    dask_image when we already have the block computed).
+    Uses scipy.ndimage for direct numpy-based filtering on computed arrays.
 
     Args:
         block: Image batch of shape (N, 2, H, W)
@@ -285,28 +284,6 @@ def _apply_spatial_filters_numpy(
                 size = tuple(size)
             size = tuple(s + (s + 1) % 2 for s in size)
             block = scipy_maximum(block, size=(1, 1) + size)
-
-        # COMMENTED OUT: Unused filters (clip, invert, sbg)
-        # elif filter_type == 'clip':
-        #     threshold = spec.get('threshold')
-        #     n = spec.get('n', 2.0)
-        #     if threshold is not None:
-        #         lower, upper = threshold
-        #         block = np.clip(block, lower, upper)
-        #     else:
-        #         # Median-based threshold
-        #         med = np.median(block, axis=(2, 3), keepdims=True)
-        #         std = np.std(block, axis=(2, 3), keepdims=True)
-        #         upper = med + n * std
-        #         block = np.clip(block, 0, upper)
-
-        # elif filter_type == 'invert':
-        #     offset = spec.get('offset', 0)
-        #     block = offset - block
-
-        # elif filter_type == 'sbg':
-        #     bg = spec.get('bg', 0)
-        #     block = np.maximum(0, block - bg)
 
         else:
             logger.warning(f"Unknown spatial filter type: {filter_type}")

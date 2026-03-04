@@ -26,6 +26,7 @@ from loguru import logger as loguru_logger
 from pivtools_core.config import get_config, reload_config
 from pivtools_core.paths import get_data_paths
 from pivtools_core.vector_loading import load_coords_from_directory
+from pivtools_gui.utils.worker_pool import worker_initializer, get_max_workers
 
 if TYPE_CHECKING:
     from pivtools_core.config import PIVConfig
@@ -404,8 +405,8 @@ class ScaleFactorCalibrator:
                 for run, uncal, cal in vector_files
             ]
 
-            max_workers = min(os.cpu_count() or 1, len(vector_files))
-            with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            max_workers = get_max_workers(len(vector_files))
+            with ProcessPoolExecutor(max_workers=max_workers, initializer=worker_initializer) as executor:
                 futures = [
                     executor.submit(_process_vector_file, args)
                     for args in vector_args

@@ -463,7 +463,7 @@ def load_vectors_from_directory(
     ]
     arrays = [da.from_delayed(di, shape=shape, dtype=dtype) for di in delayed_items]
     stacked = da.stack(arrays, axis=0)  # (N, R, 3, H, W)
-    return stacked.rechunk({0: config.piv_chunk_size})
+    return stacked.rechunk({0: config.batch_size})
 
 
 def load_coords_from_directory(

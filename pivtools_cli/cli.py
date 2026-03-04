@@ -1197,7 +1197,9 @@ processing:
   dask_workers_per_node: 2
   dask_memory_limit: 8GB
   dask_max_in_flight_per_worker: 3
+  cluster_type: local
   open_dashboard: false
+  post_processing_workers: null
   always_batch: true
   instantaneous: true
   ensemble: false
@@ -1211,11 +1213,11 @@ outlier_detection:
     type: median_2d
 infilling:
   mid_pass:
-    method: biharmonic
+    method: local_median
     parameters: {}
   final_pass:
     enabled: true
-    method: biharmonic
+    method: local_median
     parameters: {}
 ensemble_outlier_detection:
   enabled: true
@@ -1225,11 +1227,11 @@ ensemble_outlier_detection:
     type: median_2d
 ensemble_infilling:
   mid_pass:
-    method: biharmonic
+    method: local_median
     parameters: {}
   final_pass:
     enabled: true
-    method: biharmonic
+    method: local_median
     parameters: {}
 plots:
   save_extension: .png
@@ -1244,12 +1246,12 @@ video:
   run: 1
   piv_type: instantaneous
   cmap: viridis
+  source_endpoint: regular
   lower: ''
   upper: ''
   fps: 30
   crf: 15
   resolution: 1080p
-  source_endpoint: regular
 statistics:
   enabled_methods:
     mean_velocity: true
@@ -1288,16 +1290,18 @@ instantaneous_piv:
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
-  peak_finder: gauss3
+  peak_finder: gauss6
   secondary_peak: false
   predictor_smoothing: true
+  image_warp_interpolation: cubic
 ensemble_piv:
-  fit_method: gaussian
+  fit_method: kspace
   skip_background_subtraction: false
   image_warp_interpolation: cubic
   predictor_interpolation: cubic
   kspace_snr_threshold: 3.0
-  kspace_k_max_cap: null
+  kspace_k_max_cap: 0.35
+  kspace_soft_weighting: true
   fit_offset: true
   background_subtraction_method: correlation
   gradient_correction: false
@@ -1404,7 +1408,7 @@ masking:
   enabled: false
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
-  mode: rectangular
+  mode: file
   rectangular:
     top: 0
     bottom: 0

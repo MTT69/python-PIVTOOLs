@@ -16,6 +16,7 @@ import yaml
 from dask import config as dask_config
 from flask import Blueprint, Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
+from flask_compress import Compress
 from loguru import logger
 import os
 from pivtools_gui.calibration.app.views import calibration_bp
@@ -30,7 +31,7 @@ from pivtools_gui.plotting.app.plotting_views import vector_plot_bp
 from pivtools_gui.plotting.app.transform_views import transform_bp
 # Note: transforms/app/transform_views.py exists for CLI batch usage via TransformProcessor
 # but is NOT registered as a Flask blueprint - the frontend uses the plotting transform API
-from pivtools_cli.preprocessing.preprocess import preprocess_images, apply_filters_to_batch
+from pivtools_cli.preprocessing.preprocess import apply_filters_to_batch
 # from pivtools_gui.stereo_reconstruction.app.views import stereo_bp
 from pivtools_gui.utils import camera_number, numpy_to_png_base64, numpy_to_base64
 from pivtools_gui.vector_statistics.app.views import statistics_bp
@@ -39,6 +40,8 @@ from pivtools_gui.video_maker.app.views import video_maker_bp
 
 app = Flask(__name__, static_folder='static', static_url_path='')
 CORS(app)
+Compress(app)
+app.config['COMPRESS_MIN_SIZE'] = 500
 dask_config.set(scheduler="threads")
 
 # Configure loguru logging level from config
@@ -78,7 +81,7 @@ app.register_blueprint(merging_bp, url_prefix='/backend')
 processed_store = {"processed": {}}
 processing = False
 
-# Raw image cache: {cache_key: (pair_array, base64_A, base64_B, stats, last_access_time)}
+# Raw image cache: {cache_key: (base64_A, base64_B, stats, last_access_time)}
 # Cache key includes format, so jpeg and png entries are separate
 raw_image_cache = {}
 RAW_CACHE_MAX_SIZE = 20  # Maximum number of frame pairs to cache
@@ -97,13 +100,13 @@ def manage_cache_size():
         if len(raw_image_cache) <= RAW_CACHE_MAX_SIZE:
             return
 
-        # Sort by access time (5th element), excluding pinned frame 1 entries
+        # Sort by access time (4th element), excluding pinned frame 1 entries
         evictable = []
         for k, v in raw_image_cache.items():
             if k in FRAME_1_KEYS:
                 continue  # Never evict frame 1
-            # v = (pair, b64_a, b64_b, stats, last_access_time)
-            access_time = v[4] if len(v) > 4 else 0
+            # v = (b64_a, b64_b, stats, last_access_time)
+            access_time = v[3] if len(v) > 3 else 0
             evictable.append((k, access_time))
 
         evictable.sort(key=lambda x: x[1])  # Sort by access time (oldest first)
@@ -171,9 +174,16 @@ def get_percentile_stats(img_array):
     is normalized to 8-bit before sending, and contrast is expressed as
     percentages of the display range.
     """
-    p1 = float(np.percentile(img_array, 1))
-    p99 = float(np.percentile(img_array, 99))
-    img_min = float(img_array.min())
+    total_pixels = img_array.size
+    if total_pixels > 4_000_000:
+        stride = max(2, int(np.sqrt(total_pixels / 1_000_000)))
+        sampled = img_array[::stride, ::stride].ravel()
+    else:
+        sampled = img_array.ravel()
+
+    p1 = float(np.percentile(sampled, 1))
+    p99 = float(np.percentile(sampled, 99))
+    img_min = float(img_array.min())  # min/max on full array (fast single pass)
     img_max = float(img_array.max())
     data_range = img_max - img_min
     if data_range > 0:
@@ -189,19 +199,17 @@ def get_cached_pair(frame, typ, camera, source_path_idx, cfg, auto_limits=False)
     """Fetch a cached pair (A, B) for given frame/type/camera/source_path_idx."""
     k = cache_key(source_path_idx, camera, cfg)
     bucket = processed_store.get(typ, {}).get(k, {})
-    pair = bucket.get(frame)
-    if pair is None:
+    entry = bucket.get(frame)
+    if entry is None:
         return None, None, None
 
-    b64_a = numpy_to_png_base64(pair[0])
-    b64_b = numpy_to_png_base64(pair[1])
-
-    stats = None
-    if auto_limits:
-        stats = {
-            "A": get_percentile_stats(pair[0]),
-            "B": get_percentile_stats(pair[1])
-        }
+    # entry is (b64_a, b64_b, stats) — encoded + stats computed at storage time
+    if len(entry) == 3:
+        b64_a, b64_b, stats = entry
+    else:
+        # Legacy 2-tuple fallback
+        b64_a, b64_b = entry
+        stats = None
 
     return b64_a, b64_b, stats
 
@@ -288,17 +296,15 @@ def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: 
                 b64_a = numpy_to_base64(pair[0], format=img_format)
                 b64_b = numpy_to_base64(pair[1], format=img_format)
 
-                stats = None
-                if auto_limits:
-                    stats = {
-                        "A": get_percentile_stats(pair[0]),
-                        "B": get_percentile_stats(pair[1])
-                    }
+                stats = {
+                    "A": get_percentile_stats(pair[0]),
+                    "B": get_percentile_stats(pair[1])
+                }
 
                 # Thread-safe cache write with timestamp
                 access_time = time_module.time()
                 with cache_lock:
-                    raw_image_cache[cache_key_tuple] = (pair, b64_a, b64_b, stats, access_time)
+                    raw_image_cache[cache_key_tuple] = (b64_a, b64_b, stats, access_time)
                     # Pin frame 1 entries
                     if idx == 1:
                         FRAME_1_KEYS.add(cache_key_tuple)
@@ -345,36 +351,22 @@ def get_frame_pair():
         source_path = cfg.source_paths[source_path_idx] / folder if folder else cfg.source_paths[source_path_idx]
 
     # Thread-safe cache check
+    hit_response = None
     with cache_lock:
         if cache_key_tuple in raw_image_cache:
             cached_data = raw_image_cache[cache_key_tuple]
-
-            # Handle variable cache structure (5 elements = has timestamp)
-            if len(cached_data) == 5:
-                pair, b64_a, b64_b, stats, _ = cached_data
-            elif len(cached_data) == 4:
-                pair, b64_a, b64_b, stats = cached_data
-            else:
-                pair, b64_a, b64_b = cached_data
-                stats = None
-
-            # Calculate stats if requested but missing
-            if auto_limits and stats is None:
-                stats = {
-                    "A": get_percentile_stats(pair[0]),
-                    "B": get_percentile_stats(pair[1])
-                }
+            b64_a, b64_b, stats, _ = cached_data
 
             # Update cache with new access time
             access_time = time_module.time()
-            raw_image_cache[cache_key_tuple] = (pair, b64_a, b64_b, stats, access_time)
+            raw_image_cache[cache_key_tuple] = (b64_a, b64_b, stats, access_time)
 
-            # NOTE: No preload on cache hit - frontend handles prefetching
-
-            response = {"A": b64_a, "B": b64_b}
+            hit_response = {"A": b64_a, "B": b64_b}
             if stats:
-                response["stats"] = stats
-            return jsonify(response)
+                hit_response["stats"] = stats
+
+    if hit_response is not None:
+        return jsonify(hit_response)
 
     try:
         # Multi-loop: resolve global pair index to loop-specific source and local index
@@ -404,17 +396,15 @@ def get_frame_pair():
     b64_a = numpy_to_base64(pair[0], format=img_format)
     b64_b = numpy_to_base64(pair[1], format=img_format)
 
-    stats = None
-    if auto_limits:
-        stats = {
-            "A": get_percentile_stats(pair[0]),
-            "B": get_percentile_stats(pair[1])
-        }
+    stats = {
+        "A": get_percentile_stats(pair[0]),
+        "B": get_percentile_stats(pair[1])
+    }
 
     # Thread-safe cache write with timestamp
     access_time = time_module.time()
     with cache_lock:
-        raw_image_cache[cache_key_tuple] = (pair, b64_a, b64_b, stats, access_time)
+        raw_image_cache[cache_key_tuple] = (b64_a, b64_b, stats, access_time)
         # Pin frame 1 entries
         if idx == 1:
             FRAME_1_KEYS.add(cache_key_tuple)
@@ -425,6 +415,42 @@ def get_frame_pair():
     if stats:
         response["stats"] = stats
     return jsonify(response)
+
+
+@api_bp.route("/clear_raw_cache", methods=["POST"])
+def clear_raw_cache():
+    """Clear the raw image cache, optionally keeping entries for a specific camera.
+
+    Request JSON (optional):
+        exclude_camera: int - Camera number to keep (clear everything else)
+
+    Also clears processed_store entries for evicted cameras.
+    """
+    data = request.get_json(silent=True) or {}
+    exclude_camera = data.get("exclude_camera")
+
+    with cache_lock:
+        if exclude_camera is not None:
+            cam = camera_number(exclude_camera)
+            # Cache key is (source_path, camera, idx, img_format) — camera is index 1
+            keys_to_remove = [k for k in raw_image_cache if k[1] != cam]
+        else:
+            keys_to_remove = list(raw_image_cache.keys())
+
+        for k in keys_to_remove:
+            raw_image_cache.pop(k, None)
+            FRAME_1_KEYS.discard(k)
+
+    # Also clear processed_store entries for evicted cameras (Step 10)
+    if exclude_camera is not None:
+        cam_str = str(camera_number(exclude_camera))
+        proc = processed_store.get("processed", {})
+        # Processed cache key is (source_path, camera_str) — camera is index 1
+        keys_to_remove_proc = [k for k in proc if k[1] != cam_str]
+        for k in keys_to_remove_proc:
+            proc.pop(k, None)
+
+    return jsonify({"status": "ok"})
 
 
 @api_bp.route("/preload_images", methods=["POST"])
@@ -592,9 +618,16 @@ def filter_images_endpoint():
             k = cache_key(source_path_idx, camera, cfg)
             processed_store["processed"].setdefault(k, {})
 
-            # Batch update dictionary (faster than individual updates)
+            # Batch update dictionary — store as (b64_A, b64_B, stats) at insertion time
             processed_store["processed"][k].update({
-                abs_idx: processed_all[rel]
+                abs_idx: (
+                    numpy_to_png_base64(processed_all[rel][0]),
+                    numpy_to_png_base64(processed_all[rel][1]),
+                    {
+                        "A": get_percentile_stats(processed_all[rel][0]),
+                        "B": get_percentile_stats(processed_all[rel][1]),
+                    },
+                )
                 for rel, abs_idx in enumerate(indices)
             })
             _log_cache_contents()
@@ -661,13 +694,16 @@ def filter_single_frame():
     Returns processed images immediately without caching.
     """
     data = request.get_json() or {}
-    cfg = get_config()
+    # Fresh Config instance (not get_config() singleton) for thread safety:
+    # the /filter route's daemon thread mutates cfg.data, so concurrent
+    # requests to this endpoint must not share state.
+    cfg = Config()
     camera = camera_number(data.get("camera"))
     frame_idx = int(data.get("frame_idx", 1))
     filters = data.get("filters", [])
     source_path_idx = data.get("source_path_idx", 0)
     auto_limits = data.get("auto_limits", False)
-    
+
     # Check if any batch filters are present (should use /filter endpoint instead)
     batch_filters = [f for f in filters if f.get("type") in ("time", "pod")]
     if batch_filters:
@@ -694,24 +730,15 @@ def filter_single_frame():
         else:
             pair = read_pair(frame_idx, source_path, camera, cfg)
 
-        # Convert to dask array with single frame
         arr = np.stack([pair], axis=0)  # Shape: (1, 2, H, W)
-        images_da = da.from_array(arr, chunks=(1, 2, *cfg.image_shape))
-        
-        # Apply spatial filters
+
         if filters:
-            # Temporarily set filters in config
-            old_filters = cfg.data.get("filters", [])
-            cfg.data["filters"] = filters
-            
-            try:
-                filtered = preprocess_images(images_da, cfg)
-                result = filtered.compute()
-            finally:
-                # Restore original filters
-                cfg.data["filters"] = old_filters
-        else:
-            result = arr
+            spatial_specs = [f for f in filters if f.get("type") not in ("time", "pod")]
+            if spatial_specs:
+                from pivtools_cli.processing.dask_pipeline import _apply_spatial_filters_numpy
+                arr = _apply_spatial_filters_numpy(arr, spatial_specs)
+
+        result = arr
         
         # Extract the single processed pair
         processed_pair = result[0]  # Shape: (2, H, W)

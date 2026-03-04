@@ -24,6 +24,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from pivtools_core.config import get_config, reload_config
 from pivtools_core.paths import get_data_paths
 from pivtools_core.vector_loading import load_coords_from_directory, read_mat_contents
+from pivtools_gui.utils.worker_pool import worker_initializer, get_max_workers
 
 # ===================== CONFIGURATION VARIABLES =====================
 # Set these variables for your stereo reconstruction setup.
@@ -37,7 +38,6 @@ VECTOR_PATTERN = "%05d.mat"  # Pattern for vector files
 TYPE_NAME = "instantaneous"  # Type name for data directory
 MIN_TRIANGULATION_ANGLE = 5.0  # Minimum angle in degrees for triangulation quality
 RUNS_TO_PROCESS = None  # List of 1-indexed runs to process, or None for all
-NUM_WORKERS = None  # Number of parallel workers, None = os.cpu_count()
 
 # USE_CONFIG_DIRECTLY: If True, skip updating config.yaml with above parameters
 # and load reconstruction settings directly from the existing config.yaml
@@ -677,7 +677,7 @@ class StereoReconstructor:
 
         self.type_name = type_name
         self.runs = runs  # 1-indexed
-        self.num_workers = num_workers or os.cpu_count()
+        self.num_workers = num_workers or get_max_workers(999999)
         self.min_angle = min_angle
 
         # Validate model type
@@ -889,7 +889,7 @@ class StereoReconstructor:
         # Accumulate per-run results across all frames
         all_run_results: Dict[int, Dict[str, Any]] = {}
 
-        with ProcessPoolExecutor(max_workers=self.num_workers) as executor:
+        with ProcessPoolExecutor(max_workers=self.num_workers, initializer=worker_initializer) as executor:
             futures = {
                 executor.submit(_process_stereo_frame, task): task[0]
                 for task in tasks
@@ -1100,7 +1100,7 @@ def main():
         logger.info(f"Type name: {TYPE_NAME}")
         logger.info(f"Min triangulation angle: {MIN_TRIANGULATION_ANGLE} degrees")
         logger.info(f"Runs to process: {RUNS_TO_PROCESS if RUNS_TO_PROCESS else 'all'}")
-        logger.info(f"Worker count: {NUM_WORKERS if NUM_WORKERS else 'auto'}")
+        logger.info(f"Worker count: {get_max_workers(999999)}")
     else:
         # Log hardcoded settings and apply to config
         logger.info(f"Base directory: {BASE_DIR}")
@@ -1112,7 +1112,7 @@ def main():
         logger.info(f"Type name: {TYPE_NAME}")
         logger.info(f"Min triangulation angle: {MIN_TRIANGULATION_ANGLE} degrees")
         logger.info(f"Runs to process: {RUNS_TO_PROCESS if RUNS_TO_PROCESS else 'all'}")
-        logger.info(f"Worker count: {NUM_WORKERS if NUM_WORKERS else 'auto'}")
+        logger.info(f"Worker count: {get_max_workers(999999)}")
 
         # Apply CLI settings to config.yaml so centralized systems work correctly
         config = apply_cli_settings_to_config()
@@ -1121,7 +1121,7 @@ def main():
         reconstructor = StereoReconstructor(
             type_name=TYPE_NAME,
             runs=RUNS_TO_PROCESS,
-            num_workers=NUM_WORKERS,
+            num_workers=get_max_workers(999999),
             min_angle=MIN_TRIANGULATION_ANGLE,
             config=config,
         )
