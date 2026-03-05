@@ -49,10 +49,12 @@ def find_auto_mode(
     Returns
     -------
     int
-        Number of signal modes to remove (modes before noise floor)
+        Number of modes to remove (matches MATLAB N_auto convention)
     """
     # Protect against division by zero
-    mid_idx = n_images // 2
+    # round() matches MATLAB round(N/2): for even N both give N/2,
+    # for odd N, Python // gives floor while MATLAB round gives ceil.
+    mid_idx = round(n_images / 2) - 1  # -1 for 0-based indexing
     norm_factor = eigvals[mid_idx] if eigvals[mid_idx] > 1e-10 else 1.0
 
     # Handle edge case of very small first eigenvalue
@@ -64,7 +66,10 @@ def find_auto_mode(
         sig_diff = np.abs(eigvals[i] - eigvals[i + 1]) / norm_factor
 
         if mean_psi < eps_auto_psi and sig_diff < eps_auto_sigma * eigvals[0]:
-            return i
+            # MATLAB sets N_auto = i (1-based) at first noise-like mode,
+            # then removes modes 1:N_auto. Python i is 0-based, so the
+            # equivalent count is i + 1.
+            return i + 1
 
     return 0
 

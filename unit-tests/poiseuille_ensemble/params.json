@@ -1,0 +1,12 @@
+{
+  "image_shape": [
+    500,
+    500
+  ],
+  "num_particles": 30000,
+  "particle_diameter": 3.0,
+  "sigma": 1.2738853503184713,
+  "u_max": 5.0,
+  "num_pairs": 20,
+  "base_seed": 100
+}

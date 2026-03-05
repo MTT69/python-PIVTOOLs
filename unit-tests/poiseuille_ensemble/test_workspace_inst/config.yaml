@@ -1,0 +1,61 @@
+batches:
+  batch_size: 1
+filters: []
+images:
+  frame_stride: 0
+  image_format:
+  - B%05d_A.tif
+  - B%05d_B.tif
+  image_type: standard
+  num_images: 1
+  pair_stride: 1
+  pairing_preset: ab_format
+  start_index: 1
+  vector_format:
+  - B%05d.mat
+infilling:
+  final_pass:
+    method: local_median
+    parameters:
+      ksize: 3
+  mid_pass:
+    method: local_median
+    parameters:
+      ksize: 3
+instantaneous_piv:
+  overlap:
+  - 50
+  peak_finder: gauss6
+  runs:
+  - 1
+  - 2
+  - 3
+  window_size:
+  - - 64
+    - 64
+  - - 32
+    - 32
+  - - 16
+    - 16
+masking:
+  enabled: false
+outlier_detection:
+  enabled: true
+  methods:
+  - epsilon: 0.1
+    threshold: 3.0
+    type: median_2d
+paths:
+  base_paths:
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\python-PIVTOOLs\unit-tests\poiseuille_ensemble\test_workspace_inst\output
+  camera_count: 1
+  camera_numbers:
+  - 1
+  source_paths:
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\python-PIVTOOLs\unit-tests\poiseuille_ensemble\test_workspace_inst\source
+processing:
+  backend: cpu
+  dask_max_in_flight_per_worker: 3
+  dask_memory_limit: 2GB
+  dask_workers_per_node: 1
+  omp_threads: 4

@@ -268,7 +268,7 @@ calibration:
       frame_a: 1
       frame_b: 1
 filters:
-- type: time
+- type: pod
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat

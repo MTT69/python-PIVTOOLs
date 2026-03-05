@@ -1,0 +1,227 @@
+paths:
+  base_paths:
+  - /set_me
+  source_paths:
+  - /set_me
+  camera_numbers:
+  - 1
+  camera_count: 1
+  camera_subfolders: []
+images:
+  num_images: 1000
+  image_format:
+  - B%05d_A.tif
+  - B%05d_B.tif
+  vector_format:
+  - '%05d.mat'
+  dtype: float32
+  start_index: 1
+  frame_stride: 0
+  pair_stride: 1
+  pairing_preset: ab_format
+batches:
+  size: 25
+logging:
+  file: pypiv.log
+  level: INFO
+  console: true
+processing:
+  instantaneous: true
+  ensemble: false
+  backend: cpu
+  debug: false
+  auto_compute_params: false
+  omp_threads: 2
+  dask_workers_per_node: 4
+  dask_memory_limit: 3GB
+  always_batch: true
+outlier_detection:
+  enabled: true
+  methods:
+  - threshold: 0.3
+    type: peak_mag
+  - epsilon: 0.2
+    threshold: 2
+    type: median_2d
+infilling:
+  mid_pass:
+    method: biharmonic
+    parameters:
+      ksize: 3
+  final_pass:
+    enabled: true
+    method: biharmonic
+    parameters:
+      ksize: 3
+ensemble_outlier_detection:
+  enabled: true
+  methods:
+  - epsilon: 0.2
+    threshold: 2
+    type: median_2d
+ensemble_infilling:
+  mid_pass:
+    method: biharmonic
+    parameters:
+      ksize: 3
+  final_pass:
+    enabled: true
+    method: biharmonic
+    parameters:
+      ksize: 3
+plots:
+  save_extension: .png
+  save_pickle: true
+  fontsize: 14
+  title_fontsize: 16
+videos:
+- endpoint: ''
+  type: instantaneous
+  use_merged: false
+  variable: ux
+  video_length: 100
+statistics_extraction: null
+instantaneous_piv:
+  window_size:
+  - - 128
+    - 128
+  - - 64
+    - 64
+  - - 32
+    - 32
+  overlap:
+  - 50
+  - 50
+  - 50
+  runs:
+  - 3
+  time_resolved: false
+  window_type: gaussian
+  num_peaks: 1
+  peak_finder: gauss3
+  secondary_peak: false
+  predictor_smoothing: false
+ensemble_piv:
+  window_size:
+  - - 128
+    - 128
+  - - 64
+    - 64
+  - - 16
+    - 16
+  overlap:
+  - 50
+  - 50
+  - 50
+  type:
+  - std
+  - std
+  - std
+  runs:
+  - 3
+  store_planes: false
+  save_diagnostics: false
+  sum_window:
+  - 16
+  - 16
+  resume_from_pass: 0
+  predictor_smoothing: false
+calibration:
+  image_format: calib_%02d.tif
+  num_images: 1
+  image_type: standard
+  zero_based_indexing: false
+  use_camera_subfolders: false
+  subfolder: ''
+  camera_subfolders: []
+  path_order: camera_first
+  active: scale_factor
+  piv_type: instantaneous
+  active_paths: []
+  cameras: []
+  scale_factor:
+    dt: 1
+    px_per_mm: 1
+    source_path_idx: 0
+  dotboard:
+    camera: 1
+    dot_spacing_mm: 1
+    dt: 1
+    source_path_idx: 0
+  charuco:
+    camera: 1
+    squares_h: 10
+    squares_v: 9
+    square_size: 0.03
+    marker_ratio: 0.5
+    aruco_dict: DICT_4X4_1000
+    min_corners: 6
+    dt: 1
+    source_path_idx: 0
+  stereo_dotboard:
+    camera_pair:
+    - 1
+    - 2
+    stereo_model_type: dotboard
+    pattern_cols: 10
+    pattern_rows: 10
+    dot_spacing_mm: 1
+    dt: 1
+filters: []
+masking:
+  enabled: false
+  mask_file_pattern: mask_Cam%d.mat
+  mask_threshold: 0.01
+  mode: rectangular
+  rectangular:
+    top: 0
+    bottom: 0
+    left: 0
+    right: 0
+merging:
+  type_name: instantaneous
+  endpoint: ''
+  max_workers: 8
+  cameras: []
+  active_paths: []
+statistics:
+  active_paths: []
+  cameras: []
+  include_merged: false
+  gamma_radius: 5
+  save_figures: true
+  type_name: instantaneous
+  enabled_methods:
+    mean_velocity: true
+    reynolds_stress: true
+    normal_stress: true
+    mean_tke: true
+    mean_vorticity: true
+    mean_divergence: true
+    inst_velocity: true
+    inst_fluctuations: true
+    inst_vorticity: true
+    inst_divergence: true
+    inst_gamma: true
+transforms:
+  base_path_idx: 0
+  type_name: instantaneous
+  active_paths: []
+  include_merged: false
+  cameras: {}
+video:
+  base_path_idx: 0
+  camera: 1
+  data_source: calibrated
+  variable: ux
+  run: 1
+  piv_type: instantaneous
+  cmap: default
+  lower: ''
+  upper: ''
+  fps: 30
+  crf: 15
+  resolution: 1080p
+  active_paths: []
+  cameras: []
+  include_merged: false

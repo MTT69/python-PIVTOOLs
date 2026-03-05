@@ -29,10 +29,10 @@
 #define P_PARAMS 16
 #define EXTRACT_SIZE 32         // Extract 32x32 region around peak (full resolution)
 #define SIGMA_MIN 1e-6          // Minimum variance to prevent singular matrices
-#define XTOL 1e-4               // Parameter tolerance (relaxed for small delta values)
+#define XTOL 1e-6               // Parameter tolerance (tight — ensures delta convergence)
 #define GTOL 1e-6               // Gradient tolerance (scale-independent)
 #define FTOL 1e-6               // Residual tolerance (scale-independent)
-#define MAX_ITER 50             // Max LM iterations (increased for tighter tolerance)
+#define MAX_ITER 500            // Max LM iterations (headroom for perturbed initial guesses)
 
 // Global flag to disable offset (+C) fitting for testing
 // 0 = fit offsets normally, 1 = fix offsets to zero

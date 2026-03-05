@@ -548,7 +548,7 @@ static void lm_gauss6_fit(const float *xcorr, const int *N, float *peak_loc, flo
 /******************************************************************************
  * Main peak localization function
  *****************************************************************************/
-void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPeaks, int iFitType, float *std_dev)
+PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPeaks, int iFitType, float *std_dev)
 {
 	int i, j, iPeak, idx;
 	int i0, j0;

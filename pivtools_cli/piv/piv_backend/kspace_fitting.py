@@ -108,8 +108,8 @@ def fit_windows_kspace(
     interp_kernel : str
         Interpolation kernel used for warping: 'bicubic' or 'lanczos3'.
     k_max_cap : float, optional
-        Hard cap on k_max in cycles/pixel (0.1 to 0.5). If None, uses 0.35
-        (soft weighting) or 0.25 (hard weighting). Increase for small particles.
+        Hard cap on k_max in cycles/pixel (0.1 to 0.5). If None, uses 0.45
+        (soft weighting) or 0.30 (hard weighting). Increase for small particles.
 
     Returns
     -------
@@ -384,8 +384,8 @@ def _fit_single_window_kspace(
     interp_kernel : str
         'bicubic' or 'lanczos3' — which kernel was used for warping.
     k_max_cap : float, optional
-        Hard cap on k_max in cycles/pixel. If None, uses 0.35 (soft weighting)
-        or 0.25 (hard weighting).
+        Hard cap on k_max in cycles/pixel. If None, uses 0.45 (soft weighting)
+        or 0.30 (hard weighting).
 
     Returns dict with 'params' (16-element), 'status' (int), 'initial_guess' (16-element).
     If return_diagnostics=True, also includes 'diagnostics' dict with SNR, k_max values, etc.
@@ -452,12 +452,9 @@ def _fit_single_window_kspace(
     # For initial guesses, we use log differences: log|T| = log|F_AB| - log|F_ref|
     epsilon = np.max(np.abs(F_ref)) * 1e-8
 
-    # Step 4: Estimate SNR and compute adaptive k-bounds from F_ref decay
+    # Step 4: Estimate SNR from joint-fit N0 (data-driven, particle-size independent)
     dc_power = np.abs(F_ref[center_idx_y, center_idx_x]) ** 2
-    # Estimate noise from high-k annular ring (rotationally symmetric)
-    K_R = np.sqrt(K_X**2 + K_Y**2)
-    noise_ring = (K_R > 0.4) & (K_R < 0.5)
-    noise_power = np.median(np.abs(F_ref[noise_ring]) ** 2) + 1e-12
+    noise_power = N_floor ** 2 + 1e-12
     snr = dc_power / noise_power
 
     # Helper to build diagnostics dict
@@ -495,9 +492,9 @@ def _fit_single_window_kspace(
     F_ref_profile_y = np.abs(F_ref[:, center_idx_x])
     k_max_y = _compute_kmax_from_profile(k_y, F_ref_profile_y, F_ref_dc, threshold_frac)
 
-    # Per-axis k_max for initial 1D fits
-    k_max_init_x = min(k_max_x, 0.25)
-    k_max_init_y = min(k_max_y, 0.25)
+    # Per-axis k_max for initial 1D fits (data-driven, capped at near-Nyquist)
+    k_max_init_x = min(k_max_x, 0.45)
+    k_max_init_y = min(k_max_y, 0.45)
 
     # Step 5: Extract initial guesses
     #
@@ -528,14 +525,15 @@ def _fit_single_window_kspace(
         Sigma_yy_init = max(Sigma_yy_init, 0.1)
 
     # Compute k_max bounds based on F_ref decay
-    # With soft weighting, we use larger bounds since weights handle the decay
-    # Without soft weighting, use more conservative bounds
+    # The profile-based k_max is data-driven (1% of DC threshold). The cap here
+    # is a safety limit — soft weighting tolerates higher k because the anisotropic
+    # decay weights naturally down-weight noisy high-k regions.
     if k_max_cap is not None:
         k_max_limit = k_max_cap
     elif use_soft_weighting:
-        k_max_limit = 0.35
+        k_max_limit = 0.45
     else:
-        k_max_limit = 0.25
+        k_max_limit = 0.30
 
     k_max_x = min(_compute_kmax(Sigma_xx_init, snr, max_k=k_max_limit), k_max_x, k_max_limit)
     k_max_y = min(_compute_kmax(Sigma_yy_init, snr, max_k=k_max_limit), k_max_y, k_max_limit)
@@ -808,7 +806,7 @@ def _compute_kmax_from_profile(
     F_dc: float,
     threshold_frac: float = 0.01,
     min_k: float = 0.05,
-    max_k: float = 0.25,
+    max_k: float = 0.45,
 ) -> float:
     """
     Compute k_max from where F_ref profile drops below threshold.
@@ -824,7 +822,7 @@ def _compute_kmax_from_profile(
     threshold_frac : float
         Fraction of DC below which to cut off (default 0.01 = 1%)
     min_k, max_k : float
-        Bounds on k_max
+        Bounds on k_max (max_k=0.45 allows near-Nyquist when signal supports it)
 
     Returns
     -------
@@ -849,15 +847,14 @@ def _compute_kmax_from_profile(
     return np.clip(k_max, min_k, max_k)
 
 
-def _compute_kmax(sigma_sq: float, snr: float, min_k: float = 0.05, max_k: float = 0.25) -> float:
+def _compute_kmax(sigma_sq: float, snr: float, min_k: float = 0.05, max_k: float = 0.45) -> float:
     """
     Compute adaptive k-max based on variance and SNR.
 
     Uses conservative bounds: k_max = sqrt(ln(SNR) / (2*pi^2 * sigma^2))
-    but clamped to avoid regions where F_ref becomes unreliable.
-
-    For typical PIV correlation planes, k_max should stay below ~0.25
-    to avoid numerical issues from division by small F_ref values.
+    clamped to [min_k, max_k]. The default max_k=0.45 allows near-Nyquist
+    when the data supports it — the caller's profile-based k_max and soft
+    weighting provide additional protection against noise.
 
     Clamped to [min_k, max_k] for stability.
     """
@@ -1161,7 +1158,17 @@ def plot_kspace_diagnostic(
     F_AB = fftshift(fft2(ifftshift(R_AB_2d)))
 
     # Particle shape reference (use magnitudes for real positive reference)
-    F_ref = np.sqrt(np.abs(F_AA) * np.abs(F_BB))
+    F_ref_raw = np.sqrt(np.abs(F_AA) * np.abs(F_BB))
+
+    # Noise subtraction via joint fit (pass 0 assumed — P_noise=1)
+    P_noise = np.ones_like(F_ref_raw)
+    joint_result = _fit_fref_joint(F_ref_raw, K_X, K_Y, P_noise)
+    if joint_result['success']:
+        F_ref = joint_result['F_ref_clean']
+        N_floor = joint_result['N0']
+    else:
+        F_ref = F_ref_raw
+        N_floor = 0.0
 
     # Transfer function
     epsilon = np.max(np.abs(F_ref)) * 1e-8
@@ -1169,11 +1176,9 @@ def plot_kspace_diagnostic(
     T_mag = np.abs(T_measured)
     T_phase = np.angle(T_measured)
 
-    # Compute SNR and adaptive k-bounds from F_ref decay
+    # Compute SNR from joint-fit N0 (data-driven, particle-size independent)
     dc_power = np.abs(F_ref[center_idx_y, center_idx_x]) ** 2
-    K_R = np.sqrt(K_X**2 + K_Y**2)
-    noise_ring = (K_R > 0.4) & (K_R < 0.5)
-    noise_power = np.median(np.abs(F_ref[noise_ring]) ** 2) + 1e-12
+    noise_power = N_floor ** 2 + 1e-12
     snr = dc_power / noise_power
 
     # Compute k_max from F_ref decay along axes
@@ -1186,17 +1191,17 @@ def plot_kspace_diagnostic(
     F_ref_profile_y = np.abs(F_ref[:, center_idx_x])
     k_max_y = _compute_kmax_from_profile(k_y, F_ref_profile_y, F_ref_dc, threshold_frac)
 
-    # Per-axis k_max for initial fits
-    k_max_init_x = min(k_max_x, 0.25)
-    k_max_init_y = min(k_max_y, 0.25)
+    # Per-axis k_max for initial fits (data-driven, capped at near-Nyquist)
+    k_max_init_x = min(k_max_x, 0.45)
+    k_max_init_y = min(k_max_y, 0.45)
 
     # 1D fits for initial estimates
     mu_x_init, Sigma_xx_init = _fit_1d_axis(F_AB, F_ref, k_x, center_idx_y, k_max_init_x, axis='x')
     mu_y_init, Sigma_yy_init = _fit_1d_axis(F_AB, F_ref, k_y, center_idx_x, k_max_init_y, axis='y')
 
     # Refine k_max based on Sigma estimates
-    k_max_x = min(_compute_kmax(max(Sigma_xx_init, 0.01), snr), k_max_x, 0.25)
-    k_max_y = min(_compute_kmax(max(Sigma_yy_init, 0.01), snr), k_max_y, 0.25)
+    k_max_x = min(_compute_kmax(max(Sigma_xx_init, 0.01), snr), k_max_x, 0.45)
+    k_max_y = min(_compute_kmax(max(Sigma_yy_init, 0.01), snr), k_max_y, 0.45)
 
     # Extract 1D profiles
     T_profile_x = T_measured[center_idx_y, :]

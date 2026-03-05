@@ -1,6 +1,12 @@
 #ifndef PEAK_LOCATE_LM_H
 #define PEAK_LOCATE_LM_H
 
+#ifdef _WIN32
+#define PEAK_EXPORT __declspec(dllexport)
+#else
+#define PEAK_EXPORT
+#endif
+
 /**** defines ****/
 /* Peak localization window size (odd numbers only: 3, 5, 7, 9, ...)
  * 5×5 is optimal for most PIV applications
@@ -12,7 +18,7 @@
 
 /******************************************************************************
  * Fast Levenberg-Marquardt peak localization
- * 
+ *
  * Drop-in replacement for GSL-based lsqpeaklocate
  * Optimized for PIV correlation peak fitting with:
  * - No external dependencies (GSL-free)
@@ -22,6 +28,6 @@
  *****************************************************************************/
 
 /* Main peak localization function - compatible with existing interface */
-void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPeaks, int iFitType, float *std_dev);
+PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPeaks, int iFitType, float *std_dev);
 
 #endif
