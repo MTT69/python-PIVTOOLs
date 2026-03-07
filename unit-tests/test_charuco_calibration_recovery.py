@@ -11,6 +11,10 @@ Tolerances:
   - dist_coeffs all < 0.01 (synthetic images have zero distortion)
   - RMS reprojection error < 0.5 px
   - Camera matrix structure: skew=0, [2,2]=1
+
+Usage:
+    pytest unit-tests/test_charuco_calibration_recovery.py -v
+    pytest unit-tests/test_charuco_calibration_recovery.py -v --make-figures
 """
 
 import shutil
@@ -54,35 +58,42 @@ def ground_truth():
 
 @pytest.fixture(scope="module")
 def calibration_result(ground_truth):
-    """Run ChArUco calibration once, share result across all tests."""
+    """Run ChArUco calibration once, share result across all tests.
+
+    Uses a persistent output dir so detection overlay PNGs survive
+    for --make-figures inspection.
+    """
     if not CHARUCO_DIR.exists():
         pytest.fail("Charuco images not found. Run: python pivtools_cli/generate_synthetic_charuco.py")
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmpdir = Path(tmpdir)
-        img_dir = tmpdir / "images"
-        img_dir.mkdir()
+    # Persistent dir for figures
+    persist_dir = Path(__file__).resolve().parent / "test_output" / "charuco_calibration"
+    persist_dir.mkdir(parents=True, exist_ok=True)
+    img_dir = persist_dir / "images"
+    img_dir.mkdir(exist_ok=True)
 
-        # Copy synthetic images into temp dir
-        for src in sorted(CHARUCO_DIR.glob("calib*.png")):
-            shutil.copy2(src, img_dir / src.name)
+    # Copy synthetic images into persistent dir
+    for src in sorted(CHARUCO_DIR.glob("calib*.png")):
+        shutil.copy2(src, img_dir / src.name)
 
-        calibrator = ChArUcoCalibrator(
-            source_dir=str(img_dir),
-            base_dir=str(tmpdir),
-            camera_count=1,
-            file_pattern="calib%05d.png",
-            squares_h=SQUARES_H,
-            squares_v=SQUARES_V,
-            square_size=SQUARE_SIZE,
-            marker_ratio=MARKER_RATIO,
-            aruco_dict=ARUCO_DICT,
-            min_corners=6,
-        )
+    calibrator = ChArUcoCalibrator(
+        source_dir=str(img_dir),
+        base_dir=str(persist_dir),
+        camera_count=1,
+        file_pattern="calib%05d.png",
+        squares_h=SQUARES_H,
+        squares_v=SQUARES_V,
+        square_size=SQUARE_SIZE,
+        marker_ratio=MARKER_RATIO,
+        aruco_dict=ARUCO_DICT,
+        min_corners=6,
+    )
 
-        result = calibrator.process_camera(1, save_visualizations=False)
+    # Always save visualizations so figures are available if requested
+    result = calibrator.process_camera(1, save_visualizations=True)
 
     assert result["success"], f"Calibration failed: {result.get('error')}"
+    result["_output_dir"] = persist_dir
     return result
 
 
@@ -128,12 +139,12 @@ def test_distortion_near_zero(calibration_result):
     """
     dist = np.array(calibration_result["dist_coeffs"])
     # k1, k2 (radial)
-    assert abs(dist[0]) < 0.05, f"dist_coeffs[0] (k1) = {dist[0]:.6f}"
-    assert abs(dist[1]) < 0.05, f"dist_coeffs[1] (k2) = {dist[1]:.6f}"
+    assert abs(dist[0]) < 0.02, f"dist_coeffs[0] (k1) = {dist[0]:.6f}"
+    assert abs(dist[1]) < 0.04, f"dist_coeffs[1] (k2) = {dist[1]:.6f}"
     # p1, p2 (tangential)
     assert abs(dist[2]) < 0.02, f"dist_coeffs[2] (p1) = {dist[2]:.6f}"
     assert abs(dist[3]) < 0.02, f"dist_coeffs[3] (p2) = {dist[3]:.6f}"
-    # k3 (higher-order radial)
+    # k3 (higher-order radial — larger due to coupling with k1/k2)
     assert abs(dist[4]) < 0.10, f"dist_coeffs[4] (k3) = {dist[4]:.6f}"
 
 
@@ -157,3 +168,99 @@ def test_camera_matrix_structure(calibration_result):
 def test_num_images_used(calibration_result):
     """At least 3 images used (OpenCV minimum)."""
     assert calibration_result["num_images_used"] >= 3
+
+
+# ------------------------------------------------------------------
+# Diagnostic figures (gated by --make-figures)
+# ------------------------------------------------------------------
+
+class TestDiagnosticFigures:
+    """Generate diagnostic plots when --make-figures is passed."""
+
+    def test_make_figures(self, calibration_result, ground_truth, make_figures):
+        if not make_figures:
+            pytest.skip("Pass --make-figures to generate diagnostic plots")
+
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        out_dir = Path(__file__).resolve().parent / "test_output"
+        out_dir.mkdir(exist_ok=True)
+
+        cam = np.array(calibration_result["camera_matrix"])
+        gt_cam = ground_truth["camera_matrix"]
+        dist = np.array(calibration_result["dist_coeffs"])
+        rms = calibration_result["rms_error"]
+
+        fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+
+        # Panel 1: Camera matrix recovery (bar chart)
+        ax = axes[0]
+        params = ["fx", "fy", "cx", "cy"]
+        gt_vals = [gt_cam[0, 0], gt_cam[1, 1], gt_cam[0, 2], gt_cam[1, 2]]
+        rec_vals = [cam[0, 0], cam[1, 1], cam[0, 2], cam[1, 2]]
+        x = np.arange(len(params))
+        w = 0.35
+        bars1 = ax.bar(x - w / 2, gt_vals, w, label="Ground truth", color="steelblue")
+        bars2 = ax.bar(x + w / 2, rec_vals, w, label="Recovered", color="coral")
+        ax.set_xticks(x)
+        ax.set_xticklabels(params)
+        ax.set_ylabel("Value (px)")
+        ax.set_title("Camera Intrinsics Recovery")
+        ax.legend()
+        # Annotate errors
+        for i, (g, r) in enumerate(zip(gt_vals, rec_vals)):
+            err = abs(r - g)
+            pct = err / g * 100 if g != 0 else 0
+            ax.text(i, max(g, r) * 1.01, f"{pct:.2f}%", ha="center", fontsize=9)
+
+        # Panel 2: Distortion coefficients
+        ax = axes[1]
+        labels = ["k1", "k2", "p1", "p2", "k3"]
+        vals = [dist[i] if i < len(dist) else 0 for i in range(5)]
+        colors = ["green" if abs(v) < 0.05 else "orange" if abs(v) < 0.15 else "red"
+                  for v in vals]
+        ax.bar(labels, vals, color=colors)
+        ax.axhline(0, color="black", linewidth=0.5)
+        ax.set_ylabel("Coefficient value")
+        ax.set_title(f"Distortion Coefficients (GT = all zeros)")
+        ax.set_ylim(-0.25, 0.25)
+
+        # Panel 3: Summary text
+        ax = axes[2]
+        ax.axis("off")
+        summary_lines = [
+            f"RMS reprojection error: {rms:.4f} px",
+            f"Images used: {calibration_result['num_images_used']}",
+            "",
+            f"fx error: {abs(cam[0,0]-gt_cam[0,0])/gt_cam[0,0]*100:.3f}%",
+            f"fy error: {abs(cam[1,1]-gt_cam[1,1])/gt_cam[1,1]*100:.3f}%",
+            f"cx error: {abs(cam[0,2]-gt_cam[0,2]):.2f} px",
+            f"cy error: {abs(cam[1,2]-gt_cam[1,2]):.2f} px",
+            "",
+            "Detection overlays saved to:",
+            "  test_output/charuco_calibration/",
+            "  calibration/Cam1/charuco_planar/detections/",
+        ]
+        ax.text(0.1, 0.9, "\n".join(summary_lines), transform=ax.transAxes,
+                fontsize=11, verticalalignment="top", fontfamily="monospace")
+        ax.set_title("Parameter Recovery Summary")
+
+        plt.suptitle("ChArUco Calibration Recovery — Diagnostic", fontsize=14, fontweight="bold")
+        plt.tight_layout()
+
+        out_path = out_dir / "charuco_calibration_recovery.png"
+        plt.savefig(out_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        print(f"\n  Summary figure saved: {out_path}")
+
+        # List detection overlay figures
+        det_dir = calibration_result["_output_dir"] / "calibration" / "Cam1" / "charuco_planar" / "detections"
+        if det_dir.exists():
+            figs = sorted(det_dir.glob("*.png"))
+            print(f"  Detection overlays ({len(figs)} images):")
+            for f in figs:
+                print(f"    {f}")
+        else:
+            print(f"  Warning: No detection overlays found at {det_dir}")

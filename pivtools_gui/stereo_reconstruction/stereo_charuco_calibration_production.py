@@ -18,6 +18,10 @@ from loguru import logger
 from pivtools_core.config import Config, get_config, reload_config
 from pivtools_core.image_handling.calibration_loader import get_calibration_frame_count
 
+from pivtools_gui.calibration.calibration_io import (
+    ARUCO_DICT_MAP,
+    create_charuco_detector,
+)
 from pivtools_gui.stereo_reconstruction.stereo_calibration_base import BaseStereoCalibrator
 
 
@@ -54,27 +58,6 @@ NUM_CALIBRATION_IMAGES = None
 USE_CONFIG_DIRECTLY = True
 
 # ===================================================================
-
-
-# Standard ArUco dictionaries mapping
-ARUCO_DICT_MAP = {
-    "DICT_4X4_50": cv2.aruco.DICT_4X4_50,
-    "DICT_4X4_100": cv2.aruco.DICT_4X4_100,
-    "DICT_4X4_250": cv2.aruco.DICT_4X4_250,
-    "DICT_4X4_1000": cv2.aruco.DICT_4X4_1000,
-    "DICT_5X5_50": cv2.aruco.DICT_5X5_50,
-    "DICT_5X5_100": cv2.aruco.DICT_5X5_100,
-    "DICT_5X5_250": cv2.aruco.DICT_5X5_250,
-    "DICT_5X5_1000": cv2.aruco.DICT_5X5_1000,
-    "DICT_6X6_50": cv2.aruco.DICT_6X6_50,
-    "DICT_6X6_100": cv2.aruco.DICT_6X6_100,
-    "DICT_6X6_250": cv2.aruco.DICT_6X6_250,
-    "DICT_6X6_1000": cv2.aruco.DICT_6X6_1000,
-    "DICT_7X7_50": cv2.aruco.DICT_7X7_50,
-    "DICT_7X7_100": cv2.aruco.DICT_7X7_100,
-    "DICT_7X7_250": cv2.aruco.DICT_7X7_250,
-    "DICT_7X7_1000": cv2.aruco.DICT_7X7_1000,
-}
 
 
 def apply_cli_settings_to_config() -> Config:
@@ -243,24 +226,10 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
         tuple
             (CharucoBoard, CharucoDetector)
         """
-        marker_size = self.square_size * self.marker_ratio
-        dict_id = ARUCO_DICT_MAP.get(self.aruco_dict_name, cv2.aruco.DICT_4X4_1000)
-        dictionary = cv2.aruco.getPredefinedDictionary(dict_id)
-
-        board = cv2.aruco.CharucoBoard(
-            (self.squares_h, self.squares_v),
-            self.square_size,
-            marker_size,
-            dictionary,
+        return create_charuco_detector(
+            self.squares_h, self.squares_v, self.square_size,
+            self.marker_ratio, self.aruco_dict_name,
         )
-
-        detector = cv2.aruco.CharucoDetector(
-            board,
-            cv2.aruco.CharucoParameters(),
-            cv2.aruco.DetectorParameters(),
-        )
-
-        return board, detector
 
     def detect_pattern(self, image: np.ndarray) -> Tuple[bool, Optional[np.ndarray], Optional[np.ndarray]]:
         """Detect ChArUco corners in image.

@@ -66,14 +66,15 @@ def generate_dotboard_images(
 
         tree = cKDTree(centres_px)
         dists, _ = tree.query(centres_px, k=2)
-        spacing_px = np.median(dists[:, 1])
-        radius_px = max(int(round(radius_ratio * spacing_px)), 2)
+        # Per-dot adaptive radius: use each dot's local nearest-neighbor
+        # distance so dots on foreshortened edges don't merge together.
+        local_radii = np.maximum(np.round(radius_ratio * dists[:, 1]).astype(int), 2)
 
         img = np.zeros((target_h, target_w), dtype=np.uint8)
-        for cx, cy in centres_px:
+        for idx_dot, (cx, cy) in enumerate(centres_px):
             ix, iy = int(round(cx)), int(round(cy))
             if 0 <= ix < target_w and 0 <= iy < target_h:
-                cv2.circle(img, (ix, iy), radius_px, 255, -1)
+                cv2.circle(img, (ix, iy), int(local_radii[idx_dot]), 255, -1)
 
         fname = out_dir / f"calib{i + 1:05d}.png"
         cv2.imwrite(str(fname), img)

@@ -12,6 +12,8 @@ Tests are organised bottom-up through the pipeline:
   4h. Edge cases
 """
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 from numpy.fft import fft2, fftshift, ifftshift, fftfreq
@@ -676,3 +678,129 @@ class TestEdgeCases:
             R_AA_f, R_BB_f, R_AB_f, mask, cs, config, pass_idx=0,
         )
         assert status[0] != 0  # Should indicate failure
+
+
+class TestDiagnosticFigures:
+    """Generate diagnostic plots when --make-figures is passed."""
+
+    def test_make_figures(self, make_figures):
+        if not make_figures:
+            pytest.skip("Pass --make-figures to generate diagnostic plots")
+
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        out_dir = Path(__file__).resolve().parent / "test_output"
+        out_dir.mkdir(exist_ok=True)
+
+        window = 64
+        shape = (window, window)
+
+        # Generate test cases with varying stress
+        test_cases = [
+            ("zero", 0.0, 0.0, 0.0, 1.0, 0.5),
+            ("iso_0.5", 0.5, 0.5, 0.0, 1.0, 0.5),
+            ("iso_1.0", 1.0, 1.0, 0.0, 1.0, 0.5),
+            ("aniso", 1.5, 0.5, 0.0, 1.0, 0.5),
+            ("shear", 0.5, 0.5, 0.3, 1.0, 0.5),
+        ]
+
+        fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+
+        # Collect results for summary
+        labels = []
+        true_Sxx, true_Syy = [], []
+        rec_Sxx, rec_Syy = [], []
+
+        center_idx = window // 2
+        K_X, K_Y, k_x = _make_grids(window)
+        k_y = fftshift(fftfreq(window))
+
+        # Use the first non-zero case for panels 1 & 2
+        demo_case = test_cases[1]  # iso_0.5
+
+        R_AA, R_BB, R_AB = generate_correlation_triplet(
+            shape,
+            sigma_particle_x=2.5, sigma_particle_y=2.5,
+            sigma_stress_xx=demo_case[1], sigma_stress_yy=demo_case[2],
+            sigma_stress_xy=demo_case[3],
+            mu_x=demo_case[4], mu_y=demo_case[5],
+        )
+        F_AA, F_BB, F_AB = _fft_correlations(R_AA, R_BB, R_AB)
+        F_ref = np.sqrt(np.abs(F_AA) * np.abs(F_BB))
+
+        # Panel 1: T(kx) slice through centre
+        ax = axes[0]
+        T_AB = F_AB / np.where(F_ref > 1e-10, F_ref, 1e-10)
+        T_kx = np.abs(T_AB[center_idx, :])
+        ax.plot(k_x, T_kx, 'b-', linewidth=1.5, label="|T(kx, 0)|")
+        # Overlay expected Gaussian: exp(-2*pi^2*sigma^2*k^2)
+        sigma_stress = demo_case[1]
+        expected_T = np.exp(-2 * np.pi ** 2 * sigma_stress * k_x ** 2)
+        ax.plot(k_x, expected_T, 'r--', linewidth=1, label=f"exp(-2pi^2*{sigma_stress}*k^2)")
+        ax.set_xlabel("kx (cycles/pixel)")
+        ax.set_ylabel("|T|")
+        ax.set_title(f"T(kx) — {demo_case[0]}")
+        ax.legend(fontsize=8)
+        ax.set_xlim(-0.5, 0.5)
+
+        # Panel 2: T(ky) slice
+        ax = axes[1]
+        T_ky = np.abs(T_AB[:, center_idx])
+        ax.plot(k_y, T_ky, 'b-', linewidth=1.5, label="|T(0, ky)|")
+        expected_Ty = np.exp(-2 * np.pi ** 2 * demo_case[2] * k_y ** 2)
+        ax.plot(k_y, expected_Ty, 'r--', linewidth=1, label=f"exp(-2pi^2*{demo_case[2]}*k^2)")
+        ax.set_xlabel("ky (cycles/pixel)")
+        ax.set_ylabel("|T|")
+        ax.set_title(f"T(ky) — {demo_case[0]}")
+        ax.legend(fontsize=8)
+        ax.set_xlim(-0.5, 0.5)
+
+        # Run all cases through the fitter for panel 3
+        for name, Sxx, Syy, Sxy, mu_x, mu_y in test_cases:
+            R_AA_i, R_BB_i, R_AB_i = generate_correlation_triplet(
+                shape,
+                sigma_particle_x=2.5, sigma_particle_y=2.5,
+                sigma_stress_xx=Sxx, sigma_stress_yy=Syy,
+                sigma_stress_xy=Sxy, mu_x=mu_x, mu_y=mu_y,
+            )
+
+            result = _fit_single_window_kspace(
+                R_AA_i, R_BB_i, R_AB_i,
+                K_X, K_Y, k_x, k_y,
+                (window, window), snr_threshold=3.0,
+                center_x=window / 2.0 + 1, center_y=window / 2.0 + 1,
+            )
+
+            labels.append(name)
+            true_Sxx.append(Sxx)
+            true_Syy.append(Syy)
+            if result['status'] == 0:
+                rec_Sxx.append(result['params'][9])
+                rec_Syy.append(result['params'][10])
+            else:
+                rec_Sxx.append(np.nan)
+                rec_Syy.append(np.nan)
+
+        # Panel 3: Sigma recovery summary
+        ax = axes[2]
+        x_pos = np.arange(len(labels))
+        w = 0.2
+        ax.bar(x_pos - 1.5 * w, true_Sxx, w, label="True Sxx", color="steelblue")
+        ax.bar(x_pos - 0.5 * w, rec_Sxx, w, label="Rec Sxx", color="coral")
+        ax.bar(x_pos + 0.5 * w, true_Syy, w, label="True Syy", color="darkblue")
+        ax.bar(x_pos + 1.5 * w, rec_Syy, w, label="Rec Syy", color="darkorange")
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels(labels, rotation=30, ha="right")
+        ax.set_ylabel("Sigma (px^2)")
+        ax.set_title("Sigma recovery across test cases")
+        ax.legend(fontsize=7)
+
+        plt.suptitle("K-Space Fitting — Diagnostic", fontsize=14, fontweight="bold")
+        plt.tight_layout()
+
+        out_path = out_dir / "kspace_fitting_diagnostic.png"
+        plt.savefig(out_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        print(f"\n  Figure saved: {out_path}")

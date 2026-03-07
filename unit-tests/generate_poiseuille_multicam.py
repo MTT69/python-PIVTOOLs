@@ -63,9 +63,9 @@ CX, CY = 550.0, 350.0
 TZ = FX / (15.0 * 1000)   # 0.333 m  → ~15 px/mm
 K1 = -0.15
 
-# Per-camera rotation vectors (~2-3 deg tilts, realistic lab misalignment)
-RVEC_CAM1 = np.array([0.03, -0.02, 0.01], dtype=np.float64)    # ~1.7deg X, ~1.1deg Y
-RVEC_CAM2 = np.array([-0.02, 0.03, -0.015], dtype=np.float64)  # different axes/signs
+# Per-camera rotation vectors (~5 deg tilts, stress-testing calibration)
+RVEC_CAM1 = np.array([0.070, -0.047, 0.023], dtype=np.float64)   # ~5 deg total
+RVEC_CAM2 = np.array([-0.043, 0.065, -0.033], dtype=np.float64)  # ~5 deg total, different axes
 
 # Camera placement: tvec controls which part of the physical domain is visible
 # Camera1: image centre maps to physical y = +13.3mm (top of domain)
@@ -83,21 +83,48 @@ def _normalize_uint16(img):
     return img.astype(np.uint16)
 
 
+def _undistort_points_independent(pts_px, camera_matrix, dist_coeffs):
+    """Independent undistortion — NO cv2.undistortPoints().
+
+    Iterative fixed-point method to invert the radial distortion model.
+    Only uses k1 (matching our synthetic data's single-coefficient model).
+    """
+    fx, fy = camera_matrix[0, 0], camera_matrix[1, 1]
+    cx, cy = camera_matrix[0, 2], camera_matrix[1, 2]
+    k1 = dist_coeffs[0]
+
+    pts = pts_px.reshape(-1, 2).astype(np.float64)
+    result = np.zeros((len(pts), 2), dtype=np.float64)
+
+    for i, (u, v) in enumerate(pts):
+        xd = (u - cx) / fx
+        yd = (v - cy) / fy
+
+        # Iterative undistortion (fixed-point iteration)
+        x, y = xd, yd
+        for _ in range(20):  # converges in ~5 iterations for |k1|<0.3
+            r2 = x * x + y * y
+            radial = 1.0 + k1 * r2
+            x = xd / radial
+            y = yd / radial
+
+        result[i] = [x, y]
+    return result
+
+
 def _pixel_to_world(pts_px, camera_matrix, dist_coeffs, rvec, tvec):
-    """Project raw pixels onto the Z=0 world plane.  Returns (N, 3) in metres."""
+    """Independent ground-truth projection — NO cv2.undistortPoints()."""
+    normalised = _undistort_points_independent(pts_px, camera_matrix, dist_coeffs)
+
     R, _ = cv2.Rodrigues(rvec)
     R_inv = R.T
     t = tvec.flatten()
-
-    pts = pts_px.reshape(-1, 1, 2).astype(np.float64)
-    normalised = cv2.undistortPoints(pts, camera_matrix, dist_coeffs, P=None)
-    normalised = normalised.reshape(-1, 2)
+    t_world = R_inv @ t
 
     world_pts = np.zeros((len(normalised), 3), dtype=np.float64)
     for i, (xn, yn) in enumerate(normalised):
         ray_cam = np.array([xn, yn, 1.0])
         ray_world = R_inv @ ray_cam
-        t_world = R_inv @ t
         s = t_world[2] / ray_world[2]
         world_pts[i] = s * ray_world - t_world
 

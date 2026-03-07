@@ -533,7 +533,7 @@ class PolynomialVectorCalibrator:
         y_origin: Optional[float] = None,
         nx: Optional[float] = None,
         ny: Optional[float] = None,
-        vector_pattern: str = "%05d.mat",
+        vector_pattern: Optional[str] = None,
         type_name: str = "instantaneous",
         config: Optional["PIVConfig"] = None,
     ):
@@ -551,15 +551,26 @@ class PolynomialVectorCalibrator:
             y_origin: Polynomial normalization origin Y
             nx: Normalization factor X
             ny: Normalization factor Y
-            vector_pattern: Vector file naming pattern
+            vector_pattern: Vector file naming pattern (reads from config if not provided)
             type_name: Data type (instantaneous, ensemble)
             config: Optional config object to read parameters from
         """
         self.base_dir = Path(base_dir)
         self.camera_num = camera_num
         self._config = config
-        self.vector_pattern = vector_pattern
         self.type_name = type_name
+
+        # Read vector_pattern from config if not explicitly provided
+        if vector_pattern is not None:
+            self.vector_pattern = vector_pattern
+        elif config is not None:
+            try:
+                fmt = config.vector_format
+                self.vector_pattern = fmt[0] if isinstance(fmt, list) else fmt
+            except (KeyError, AttributeError):
+                self.vector_pattern = "%05d.mat"
+        else:
+            self.vector_pattern = "%05d.mat"
 
         # Read parameters from config if available
         cfg = config if config is not None else get_config()
