@@ -265,9 +265,6 @@ def validate_ensemble_config(config: Config) -> Tuple[bool, List[str], List[str]
             errors.append(
                 f"kspace_snr_threshold must be positive, got {snr}"
             )
-        warnings.append(
-            "K-space fitting is BETA. Results should be validated against Gaussian fitting."
-        )
 
     # 9. Validate resume_from_pass
     resume = config.ensemble_resume_from_pass

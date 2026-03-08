@@ -416,8 +416,8 @@ def run_ensemble_piv(
         wait(images)
         logger.info("  All filtered images cached in worker RAM")
     else:
-        # Desktop / memory-constrained: sliding window re-computes filters per pass
-        logger.info(f"Large dataset ({num_chunks} chunks): using sliding window for parallel I/O")
+        # Desktop / memory-constrained: workers re-load from disk per pass
+        logger.info(f"Large dataset ({num_chunks} chunks): workers load from disk per pass")
     num_passes = config.ensemble_num_passes
     accumulator = SinglePassAccumulator(config, vector_masks)
     predictor_field = None

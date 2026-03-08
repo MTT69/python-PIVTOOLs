@@ -25,8 +25,15 @@ class _DaskNoiseFilter(logging.Filter):
 
 def _suppress_dask_verbose_logging():
     """Suppress verbose Dask internal logging to reduce noise."""
-    # Suppress worker startup/shutdown messages
+    import dask
+
+    # Set Dask config-level logging — propagates to worker subprocesses
+    # before they emit any log messages (unlike silence_logs which may be too late)
+    dask.config.set({"logging": {"distributed": "warning"}})
+
+    # Suppress worker startup/shutdown messages in main process
     for logger_name in [
+        "distributed",
         "distributed.worker",
         "distributed.scheduler",
         "distributed.nanny",

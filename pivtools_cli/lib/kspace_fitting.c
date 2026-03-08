@@ -1197,5 +1197,23 @@ PIV_EXPORT int fit_kspace_batch(
 
     fprintf(stderr, "[kspace] completed: %d/%zu succeeded\n", success_count, num_windows);
 
+    // Diagnostic: status breakdown when 0% success
+    if (success_count == 0 && num_windows > 0) {
+        int n_masked = 0, n_low_snr = 0, n_no_converge = 0;
+        int n_big_disp = 0, n_neg_var = 0;
+        for (size_t i = 0; i < num_windows; i++) {
+            switch (out_status[i]) {
+                case STATUS_MASKED:     n_masked++; break;
+                case STATUS_LOW_SNR:    n_low_snr++; break;
+                case STATUS_NO_CONVERGE: n_no_converge++; break;
+                case STATUS_BIG_DISP:   n_big_disp++; break;
+                case STATUS_NEG_VAR:    n_neg_var++; break;
+            }
+        }
+        fprintf(stderr, "[kspace] DIAGNOSTIC (0%% success): masked=%d, low_snr=%d, "
+                "no_converge=%d, big_disp=%d, neg_var=%d\n",
+                n_masked, n_low_snr, n_no_converge, n_big_disp, n_neg_var);
+    }
+
     return success_count;
 }
