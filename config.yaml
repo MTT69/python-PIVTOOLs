@@ -1,16 +1,19 @@
 paths:
   base_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\download_from_jhtdb\efe_images\test
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\stereo_images\validation
   source_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\query_JHTDB\download_from_jhtdb\efe_images
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\stereo_images
   active_paths:
   - 0
   camera_numbers:
   - 1
-  camera_count: 1
-  camera_subfolders: []
+  - 2
+  camera_count: 2
+  camera_subfolders:
+  - camera1
+  - camera2
 images:
-  num_images: 50
+  num_images: 4000
   image_format:
   - B%05d_A.tif
   - B%05d_B.tif
@@ -27,7 +30,7 @@ images:
   num_loops: 1
   num_frame_pairs: 4000
 batches:
-  size: 15
+  size: 30
 logging:
   file: pypiv.log
   level: INFO
@@ -43,8 +46,8 @@ processing:
   open_dashboard: true
   post_processing_workers: 16
   always_batch: true
-  instantaneous: true
-  ensemble: false
+  instantaneous: false
+  ensemble: true
 outlier_detection:
   enabled: true
   methods:
@@ -87,7 +90,7 @@ video:
   fps: 30
   crf: 15
   resolution: 1080p
-  source_endpoint: regular
+  source_endpoint: stereo
 statistics:
   enabled_methods:
     mean_velocity: true
@@ -113,7 +116,7 @@ statistics:
   gamma_radius: 4
   save_figures: true
   type_name: instantaneous
-  source_endpoint: regular
+  source_endpoint: stereo
 instantaneous_piv:
   window_size:
   - - 64
@@ -156,7 +159,7 @@ ensemble_piv:
   - - 16
     - 16
   - - 8
-    - 24
+    - 16
   overlap:
   - 50
   - 50
@@ -189,21 +192,21 @@ ensemble_piv:
     uy: 0
     edge: bottom
 calibration:
-  image_format: B%05d.tif
-  num_images: 1
+  image_format: planar_calibration_plate_%02d.tif
+  num_images: 20
   image_type: standard
   zero_based_indexing: false
   use_camera_subfolders: true
   subfolder: enhanced
   camera_subfolders:
-  - camera1
-  - camera2
+  - cam1
+  - cam2
   - camera3
   - camera4
   - camera5
   path_order: camera_first
-  active: scale_factor
-  piv_type: ensemble
+  active: stereo_dotboard
+  piv_type: instantaneous
   scale_factor:
     dt: 0.0057553
     px_per_mm: 13.653
@@ -212,8 +215,13 @@ calibration:
     dot_spacing_mm: 10
     dt: 4.96e-05
     datum_frame: 1
+  stereo_dotboard:
+    dot_spacing_mm: 12.22
+    dt: 0.0057553
+    datum_camera: 1
+    datum_frame: 1
   calibration_sources:
-  - C:\Users\mtt1e23\Downloads\cropped_calibrationimgs\cropped_calibrationimgs
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\stereo_images\calibrationimages
   global_coordinates:
     enabled: true
     datum_camera: 1
@@ -267,8 +275,7 @@ calibration:
       - 3018.2581625950966
       frame_a: 1
       frame_b: 1
-filters:
-- type: pod
+filters: []
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat
@@ -289,4 +296,4 @@ transforms:
   cameras:
     1:
       operations: []
-  source_endpoint: regular
+  source_endpoint: stereo

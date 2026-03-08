@@ -18,45 +18,170 @@ import argparse
 
 
 def load_wall_units(wall_units_path):
-    """Load wall units from .mat file."""
-    wall = sio.loadmat(wall_units_path, squeeze_me=True, struct_as_record=False)
-    wu = wall['wall_units']
-    return {
-        'u_tau': float(wu.u_tau),  # mm/s
-        'nu': float(wu.nu),        # mm^2/s
-        'delta_nu': float(wu.delta_nu),  # mm
-        'h_mm': float(wu.h_mm),    # mm
-        'Re_tau': float(wu.Re_tau)
-    }
+    """Load wall units from .mat file (supports v5 struct, v7.3/HDF5, and direct_stats)."""
+    wall_units_path = str(wall_units_path)
+    try:
+        wall = sio.loadmat(wall_units_path, squeeze_me=True, struct_as_record=False)
+
+        # Format: direct_stats.mat (top-level scalar keys)
+        if 'u_tau' in wall and 'delta_nu' in wall and 'Re_tau' in wall:
+            u_tau = float(wall['u_tau'])
+            delta_nu = float(wall['delta_nu'])
+            Re_tau = float(wall['Re_tau'])
+            return {
+                'u_tau': u_tau,
+                'nu': u_tau * delta_nu,
+                'delta_nu': delta_nu,
+                'h_mm': float(wall['h_mm']) if 'h_mm' in wall else Re_tau * delta_nu,
+                'Re_tau': Re_tau,
+            }
+
+        # Format: wall_units.mat (struct)
+        wu = wall['wall_units']
+        return {
+            'u_tau': float(wu.u_tau),
+            'nu': float(wu.nu),
+            'delta_nu': float(wu.delta_nu),
+            'h_mm': float(wu.h_mm),
+            'Re_tau': float(wu.Re_tau)
+        }
+    except NotImplementedError:
+        import h5py
+        with h5py.File(wall_units_path, 'r') as f:
+            d = f['diagnostics']
+            u_tau = float(d['u_tau'][0, 0])
+            Re_tau = float(d['Re_tau'][0, 0])
+            delta_nu = float(d['delta_nu'][0, 0])
+            return {
+                'u_tau': u_tau,
+                'nu': u_tau * delta_nu,
+                'delta_nu': delta_nu,
+                'h_mm': Re_tau * delta_nu,
+                'Re_tau': Re_tau
+            }
 
 
 def load_ground_truth_3d(profiles_path):
-    """Load ground truth 1px profiles including W component."""
-    profiles = sio.loadmat(profiles_path, squeeze_me=True, struct_as_record=False)
-    win1px = profiles['profiles'].win_1px
+    """Load ground truth 1px profiles including W component (supports v5 struct, v7.3/HDF5, and direct_stats)."""
+    profiles_path = str(profiles_path)
+    try:
+        profiles = sio.loadmat(profiles_path, squeeze_me=True, struct_as_record=False)
 
-    return {
-        'y_mm': win1px.y_mm,
-        'y_plus': win1px.y_plus,
-        # Velocities
-        'U': win1px.U,           # mm/s
-        'V': win1px.V,           # mm/s
-        'W': win1px.W,           # mm/s (spanwise)
-        # Normal stresses
-        'uu': win1px.uu,         # (mm/s)^2
-        'vv': win1px.vv,
-        'ww': win1px.ww,         # spanwise variance
-        # Shear stresses
-        'uv': win1px.uv,
-        'uw': win1px.uw,         # u-w shear
-        'vw': win1px.vw,         # v-w shear
-        # Pre-computed wall units
-        'U_plus': win1px.U_plus,
-        'uu_plus': win1px.uu_plus,
-        'vv_plus': win1px.vv_plus,
-        'ww_plus': win1px.ww_plus,
-        'uv_plus': win1px.uv_plus,
-    }
+        # Format: direct_stats.mat (top-level arrays)
+        if 'U_plus' in profiles and 'stress_plus' in profiles and 'y_plus' in profiles:
+            y_plus_full = profiles['y_plus']
+            Re_tau = float(profiles['Re_tau'])
+            u_tau = float(profiles['u_tau'])
+            delta_nu = float(profiles['delta_nu'])
+            u_tau2 = u_tau ** 2
+
+            # Select lower half of channel (y+ <= Re_tau)
+            mask = y_plus_full <= Re_tau
+            y_plus = y_plus_full[mask]
+            y_mm = y_plus * delta_nu
+
+            # U_plus: (N, 3) -> columns [U, V, W]
+            U_plus = profiles['U_plus'][mask, 0]
+            V_plus = profiles['U_plus'][mask, 1]
+            W_plus = profiles['U_plus'][mask, 2]
+
+            # stress_plus: (N, 3, 3) -> Reynolds stress tensor
+            uu_plus = profiles['stress_plus'][mask, 0, 0]
+            vv_plus = profiles['stress_plus'][mask, 1, 1]
+            ww_plus = profiles['stress_plus'][mask, 2, 2]
+            uv_plus = profiles['stress_plus'][mask, 0, 1]
+            uw_plus = profiles['stress_plus'][mask, 0, 2]
+            vw_plus = profiles['stress_plus'][mask, 1, 2]
+
+            return {
+                'y_mm': y_mm,
+                'y_plus': y_plus,
+                'U': U_plus * u_tau,
+                'V': V_plus * u_tau,
+                'W': W_plus * u_tau,
+                'uu': uu_plus * u_tau2,
+                'vv': vv_plus * u_tau2,
+                'ww': ww_plus * u_tau2,
+                'uv': uv_plus * u_tau2,
+                'uw': uw_plus * u_tau2,
+                'vw': vw_plus * u_tau2,
+                'U_plus': U_plus,
+                'uu_plus': uu_plus,
+                'vv_plus': vv_plus,
+                'ww_plus': ww_plus,
+                'uv_plus': uv_plus,
+            }
+
+        # Format: profiles.mat (struct)
+        win1px = profiles['profiles'].win_1px
+        return {
+            'y_mm': win1px.y_mm,
+            'y_plus': win1px.y_plus,
+            'U': win1px.U,
+            'V': win1px.V,
+            'W': win1px.W,
+            'uu': win1px.uu,
+            'vv': win1px.vv,
+            'ww': win1px.ww,
+            'uv': win1px.uv,
+            'uw': win1px.uw,
+            'vw': win1px.vw,
+            'U_plus': win1px.U_plus,
+            'uu_plus': win1px.uu_plus,
+            'vv_plus': win1px.vv_plus,
+            'ww_plus': win1px.ww_plus,
+            'uv_plus': win1px.uv_plus,
+        }
+    except NotImplementedError:
+        import h5py
+        with h5py.File(profiles_path, 'r') as f:
+            rp = f['ref_profile']
+            y_plus = rp['y_plus'][0, :]
+            U = rp['U'][0, :]
+            V = rp['V'][0, :]
+            W = rp['W'][0, :]
+
+            # Also load ensemble_stats for stress profiles (win_idx=0 = 16x16)
+            es = f['ensemble_stats']
+
+            def deref(field, idx=0):
+                ref = es[field][idx, 0]
+                return f[ref][:].flatten()
+
+            y_mm_es = deref('y_mm')
+            y_plus_es = deref('y_plus')
+
+            # Wall units from diagnostics sibling file
+            diag_path = str(Path(profiles_path).parent / 'diagnostics.mat')
+            wu = load_wall_units(diag_path)
+            u_tau = wu['u_tau']
+            u_tau2 = u_tau ** 2
+
+            uu = deref('uu_profile')
+            vv = deref('vv_profile')
+            ww = deref('ww_profile')
+            uv = deref('uv_profile')
+            uw = deref('uw_profile')
+            vw = deref('vw_profile')
+
+            return {
+                'y_mm': y_mm_es,
+                'y_plus': y_plus_es,
+                'U': deref('U_profile'),
+                'V': deref('V_profile'),
+                'W': deref('W_profile'),
+                'uu': uu,
+                'vv': vv,
+                'ww': ww,
+                'uv': uv,
+                'uw': uw,
+                'vw': vw,
+                'U_plus': deref('U_profile') / u_tau,
+                'uu_plus': uu / u_tau2,
+                'vv_plus': vv / u_tau2,
+                'ww_plus': ww / u_tau2,
+                'uv_plus': uv / u_tau2,
+            }
 
 
 def load_stereo_statistics(stats_path, coords_path, run_idx=3):
@@ -345,7 +470,8 @@ def plot_velocity_comparison(piv_plus, gt_plus, wall_units, errors, output_dir):
     ax.set_ylabel(r'$V^+$', fontsize=14)
     ax.set_title('Mean Wall-Normal Velocity - Stereo PIV', fontsize=16)
     ax.legend(fontsize=11)
-    ax.set_xlim(0, Re_tau)
+    ax.set_xscale('log')
+    ax.set_xlim(1, Re_tau)
     ax.grid(True, alpha=0.3)
 
     if 'V_plus' in errors:
@@ -371,7 +497,8 @@ def plot_velocity_comparison(piv_plus, gt_plus, wall_units, errors, output_dir):
     ax.set_ylabel(r'$W^+$', fontsize=14)
     ax.set_title('Mean Spanwise Velocity - Stereo PIV (should be ~0)', fontsize=16)
     ax.legend(fontsize=11)
-    ax.set_xlim(0, Re_tau)
+    ax.set_xscale('log')
+    ax.set_xlim(1, Re_tau)
     ax.grid(True, alpha=0.3)
 
     if 'W_plus' in errors:
@@ -408,7 +535,8 @@ def plot_velocity_comparison(piv_plus, gt_plus, wall_units, errors, output_dir):
     ax.set_ylabel(r'$V^+$', fontsize=12)
     ax.set_title('Wall-Normal Velocity', fontsize=14)
     ax.legend()
-    ax.set_xlim(0, Re_tau)
+    ax.set_xscale('log')
+    ax.set_xlim(1, Re_tau)
     ax.grid(True, alpha=0.3)
 
     # W+
@@ -420,7 +548,8 @@ def plot_velocity_comparison(piv_plus, gt_plus, wall_units, errors, output_dir):
     ax.set_ylabel(r'$W^+$', fontsize=12)
     ax.set_title('Spanwise Velocity', fontsize=14)
     ax.legend()
-    ax.set_xlim(0, Re_tau)
+    ax.set_xscale('log')
+    ax.set_xlim(1, Re_tau)
     ax.grid(True, alpha=0.3)
 
     fig.tight_layout()
@@ -443,7 +572,8 @@ def plot_normal_stresses(piv_plus, gt_plus, wall_units, errors, output_dir):
     ax.set_ylabel(r"$\overline{u'u'}^+$", fontsize=12)
     ax.set_title('Streamwise Normal Stress', fontsize=14)
     ax.legend()
-    ax.set_xlim(0, Re_tau)
+    ax.set_xscale('log')
+    ax.set_xlim(1, Re_tau)
     ax.grid(True, alpha=0.3)
     if 'uu_plus' in errors:
         ax.text(0.98, 0.98, f"R² = {errors['uu_plus']['r2']:.4f}",
@@ -458,7 +588,8 @@ def plot_normal_stresses(piv_plus, gt_plus, wall_units, errors, output_dir):
     ax.set_ylabel(r"$\overline{v'v'}^+$", fontsize=12)
     ax.set_title('Wall-Normal Normal Stress', fontsize=14)
     ax.legend()
-    ax.set_xlim(0, Re_tau)
+    ax.set_xscale('log')
+    ax.set_xlim(1, Re_tau)
     ax.grid(True, alpha=0.3)
     if 'vv_plus' in errors:
         ax.text(0.98, 0.98, f"R² = {errors['vv_plus']['r2']:.4f}",
@@ -473,7 +604,8 @@ def plot_normal_stresses(piv_plus, gt_plus, wall_units, errors, output_dir):
     ax.set_ylabel(r"$\overline{w'w'}^+$", fontsize=12)
     ax.set_title('Spanwise Normal Stress', fontsize=14)
     ax.legend()
-    ax.set_xlim(0, Re_tau)
+    ax.set_xscale('log')
+    ax.set_xlim(1, Re_tau)
     ax.grid(True, alpha=0.3)
     if 'ww_plus' in errors:
         ax.text(0.98, 0.98, f"R² = {errors['ww_plus']['r2']:.4f}",
@@ -501,7 +633,8 @@ def plot_shear_stresses(piv_plus, gt_plus, wall_units, errors, output_dir):
     ax.set_ylabel(r"$-\overline{u'v'}^+$", fontsize=12)
     ax.set_title('Reynolds Shear Stress (u-v)', fontsize=14)
     ax.legend()
-    ax.set_xlim(0, Re_tau)
+    ax.set_xscale('log')
+    ax.set_xlim(1, Re_tau)
     ax.grid(True, alpha=0.3)
     if 'uv_plus' in errors:
         ax.text(0.98, 0.98, f"R² = {errors['uv_plus']['r2']:.4f}",
@@ -517,7 +650,8 @@ def plot_shear_stresses(piv_plus, gt_plus, wall_units, errors, output_dir):
     ax.set_ylabel(r"$-\overline{u'w'}^+$", fontsize=12)
     ax.set_title('Reynolds Shear Stress (u-w)', fontsize=14)
     ax.legend()
-    ax.set_xlim(0, Re_tau)
+    ax.set_xscale('log')
+    ax.set_xlim(1, Re_tau)
     ax.grid(True, alpha=0.3)
     if 'uw_plus' in errors:
         ax.text(0.98, 0.98, f"R² = {errors['uw_plus']['r2']:.4f}",
@@ -533,7 +667,8 @@ def plot_shear_stresses(piv_plus, gt_plus, wall_units, errors, output_dir):
     ax.set_ylabel(r"$-\overline{v'w'}^+$", fontsize=12)
     ax.set_title('Reynolds Shear Stress (v-w)', fontsize=14)
     ax.legend()
-    ax.set_xlim(0, Re_tau)
+    ax.set_xscale('log')
+    ax.set_xlim(1, Re_tau)
     ax.grid(True, alpha=0.3)
     if 'vw_plus' in errors:
         ax.text(0.98, 0.98, f"R² = {errors['vw_plus']['r2']:.4f}",
@@ -546,22 +681,63 @@ def plot_shear_stresses(piv_plus, gt_plus, wall_units, errors, output_dir):
     plt.close(fig)
 
 
-def main(run_idx=3, x_min=5.0, x_max=145.0):
+def plot_combined_stresses(piv_plus, gt_plus, wall_units, errors, output_dir):
+    """Plot uu+, vv+, ww+, -uv+ all on a single axis."""
+    output_dir = Path(output_dir)
+    Re_tau = wall_units['Re_tau']
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+
+    # Ground truth / reference
+    ax.plot(gt_plus['y_plus'], gt_plus['uu_plus'], 'k-', linewidth=2, label=r"Ref $\overline{u'u'}^+$")
+    ax.plot(gt_plus['y_plus'], gt_plus['vv_plus'], 'k--', linewidth=2, label=r"Ref $\overline{v'v'}^+$")
+    ax.plot(gt_plus['y_plus'], gt_plus['ww_plus'], 'k-.', linewidth=2, label=r"Ref $\overline{w'w'}^+$")
+    ax.plot(gt_plus['y_plus'], -gt_plus['uv_plus'], 'k:', linewidth=2, label=r"Ref $-\overline{u'v'}^+$")
+
+    # Stereo PIV
+    ax.plot(piv_plus['y_plus'], piv_plus['uu_plus'], 'ro', markersize=3, alpha=0.6, label=r"Stereo $\overline{u'u'}^+$")
+    ax.plot(piv_plus['y_plus'], piv_plus['vv_plus'], 'gs', markersize=3, alpha=0.6, label=r"Stereo $\overline{v'v'}^+$")
+    ax.plot(piv_plus['y_plus'], piv_plus['ww_plus'], 'b^', markersize=3, alpha=0.6, label=r"Stereo $\overline{w'w'}^+$")
+    ax.plot(piv_plus['y_plus'], -piv_plus['uv_plus'], 'mD', markersize=3, alpha=0.6, label=r"Stereo $-\overline{u'v'}^+$")
+
+    ax.set_xlabel(r'$y^+$', fontsize=14)
+    ax.set_ylabel(r'Stress$^+$', fontsize=14)
+    ax.set_title(f'Reynolds Stresses - Stereo PIV vs Reference (Re$_\\tau$ = {Re_tau:.0f})', fontsize=16)
+    ax.legend(fontsize=10, ncol=2, loc='upper right')
+    ax.set_xscale('log')
+    ax.set_xlim(1, Re_tau)
+    ax.grid(True, alpha=0.3)
+
+    fig.tight_layout()
+    fig.savefig(output_dir / 'combined_stresses.png', dpi=150)
+    plt.close(fig)
+
+
+def main(run_idx=2, x_min=5.0, x_max=145.0, gt_dir=None, stereo_base=None, num_frames=1000, output_dir_override=None):
     """Main stereo benchmark comparison function."""
 
     # Paths
     script_dir = Path(__file__).parent
-    gt_dir = script_dir / 'ground_truth' / 'ensemble_statistics'
-    base_dir = Path('/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/'
-                   'Documents/#current_processing/query_JHTDB/download_from_jhtdb/'
-                   'bottom_channel/planar_images/validation')
+    data_root = Path(r'C:/Users/mtt1e23/OneDrive - University of Southampton'
+                     r'/Documents/#current_processing/4000_images_channel')
 
-    # Stereo data paths (stereo_validation is at planar_images level, not inside validation)
-    stereo_base = base_dir.parent / 'stereo_validation'
-    stats_path = stereo_base / 'statistics/1000/stereo/Cam1_Cam2/instantaneous/mean_stats/mean_stats.mat'
-    coords_path = stereo_base / 'stereo_calibrated/1000/Cam1_Cam2/instantaneous/coordinates.mat'
+    if gt_dir is None:
+        # Try local ground_truth first, fall back to ensemble_statistics_first_1000
+        gt_dir_local = script_dir / 'ground_truth' / 'ensemble_statistics'
+        if gt_dir_local.exists():
+            gt_dir = gt_dir_local
+        else:
+            gt_dir = data_root / 'ensemble_statistics_first_1000'
+    gt_dir = Path(gt_dir)
 
-    output_dir = script_dir / 'benchmark_results_stereo'
+    if stereo_base is None:
+        stereo_base = data_root / 'stereo_images' / 'validation_first_1000'
+    stereo_base = Path(stereo_base)
+
+    stats_path = stereo_base / f'statistics/{num_frames}/stereo/Cam1_Cam2/instantaneous/mean_stats/mean_stats.mat'
+    coords_path = stereo_base / f'stereo_calibrated/{num_frames}/Cam1_Cam2/instantaneous/coordinates.mat'
+
+    output_dir = output_dir_override or (script_dir / 'benchmark_results_stereo')
 
     print("=" * 70)
     print("STEREO PIV BENCHMARK COMPARISON")
@@ -569,15 +745,29 @@ def main(run_idx=3, x_min=5.0, x_max=145.0):
     print(f"Run index: {run_idx}")
     print(f"X range: {x_min} to {x_max} mm")
 
-    # Load data
+    # Load data - detect file format
+    wall_units_file = gt_dir / 'wall_units.mat'
+    if not wall_units_file.exists():
+        wall_units_file = gt_dir / 'diagnostics.mat'
+    if not wall_units_file.exists():
+        wall_units_file = gt_dir / 'direct_stats.mat'
+
+    profiles_file = gt_dir / 'profiles.mat'
+    if not profiles_file.exists():
+        profiles_file = gt_dir / 'ensemble_statistics_full.mat'
+    if not profiles_file.exists():
+        profiles_file = gt_dir / 'direct_stats.mat'
+
     print("\n[1] Loading wall units...")
-    wall_units = load_wall_units(gt_dir / 'wall_units.mat')
+    print(f"  Source: {wall_units_file.name}")
+    wall_units = load_wall_units(wall_units_file)
     print(f"  u_tau = {wall_units['u_tau']:.4f} mm/s")
     print(f"  delta_nu = {wall_units['delta_nu']:.4f} mm")
     print(f"  Re_tau = {wall_units['Re_tau']:.0f}")
 
-    print("\n[2] Loading ground truth (1px, 3-component)...")
-    gt = load_ground_truth_3d(gt_dir / 'profiles.mat')
+    print("\n[2] Loading ground truth (3-component)...")
+    print(f"  Source: {profiles_file.name}")
+    gt = load_ground_truth_3d(profiles_file)
     print(f"  y+ range: {gt['y_plus'].min():.1f} to {gt['y_plus'].max():.1f}")
     print(f"  U range: {gt['U'].min():.2f} to {gt['U'].max():.2f} mm/s")
     print(f"  W range: {gt['W'].min():.2f} to {gt['W'].max():.2f} mm/s")
@@ -597,7 +787,8 @@ def main(run_idx=3, x_min=5.0, x_max=145.0):
     print(f"  Applying y-offset: {y_offset_mm:.2f} mm")
 
     piv_plus = convert_to_wall_units(piv_profiles, wall_units, y_offset_mm=y_offset_mm)
-    print(f"  y+ range: {piv_plus['y_plus'].min():.1f} to {piv_plus['y_plus'].max():.1f}")
+    piv_plus['y_plus'] = piv_plus['y_plus'] + 1.0  # shift y+ by +1
+    print(f"  y+ range: {piv_plus['y_plus'].min():.1f} to {piv_plus['y_plus'].max():.1f} (after +1 shift)")
 
     # Ground truth in wall units
     u_tau = wall_units['u_tau']
@@ -646,6 +837,7 @@ def main(run_idx=3, x_min=5.0, x_max=145.0):
     plot_velocity_comparison(piv_plus, gt_plus, wall_units, errors, output_dir)
     plot_normal_stresses(piv_plus, gt_plus, wall_units, errors, output_dir)
     plot_shear_stresses(piv_plus, gt_plus, wall_units, errors, output_dir)
+    plot_combined_stresses(piv_plus, gt_plus, wall_units, errors, output_dir)
 
     print(f"\nPlots saved to: {output_dir}")
 
@@ -667,12 +859,23 @@ def main(run_idx=3, x_min=5.0, x_max=145.0):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Stereo PIV Benchmark Comparison')
-    parser.add_argument('--run', '-r', type=int, default=3,
-                        help='Run index (0-based), default=3 (finest)')
+    parser.add_argument('--run', '-r', type=int, default=2,
+                        help='Run index (0-based), default=2 (finest available)')
     parser.add_argument('--x-min', type=float, default=5.0,
                         help='Minimum x to include (mm), default=5.0')
     parser.add_argument('--x-max', type=float, default=145.0,
                         help='Maximum x to include (mm), default=145.0')
+    parser.add_argument('--gt-dir', '-g', type=str, default=None,
+                        help='Ground truth directory path')
+    parser.add_argument('--stereo-base', '-s', type=str, default=None,
+                        help='Base directory containing stereo PIV results')
+    parser.add_argument('--num-frames', '-n', type=int, default=1000,
+                        help='Frame count subdirectory in paths (default: 1000)')
+    parser.add_argument('--output-dir', '-o', type=str, default=None,
+                        help='Custom output directory for results')
     args = parser.parse_args()
 
-    main(run_idx=args.run, x_min=args.x_min, x_max=args.x_max)
+    output_dir = Path(args.output_dir) if args.output_dir else None
+    main(run_idx=args.run, x_min=args.x_min, x_max=args.x_max,
+         gt_dir=args.gt_dir, stereo_base=args.stereo_base,
+         num_frames=args.num_frames, output_dir_override=output_dir)

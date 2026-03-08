@@ -18,35 +18,222 @@ from pathlib import Path
 
 
 def load_wall_units(wall_units_path):
-    """Load wall units from .mat file."""
-    wall = sio.loadmat(wall_units_path, squeeze_me=True, struct_as_record=False)
-    wu = wall['wall_units']
-    return {
-        'u_tau': float(wu.u_tau),  # mm/s
-        'nu': float(wu.nu),        # mm^2/s
-        'delta_nu': float(wu.delta_nu),  # mm
-        'h_mm': float(wu.h_mm),    # mm
-        'Re_tau': float(wu.Re_tau)
-    }
+    """Load wall units from .mat file (scipy v5 or h5py v7.3).
+
+    Supports three formats:
+    - wall_units.mat with 'wall_units' struct
+    - diagnostics.mat with 'diagnostics' group (HDF5)
+    - direct_stats.mat with top-level u_tau, delta_nu, Re_tau keys
+    """
+    try:
+        wall = sio.loadmat(wall_units_path, squeeze_me=True, struct_as_record=False)
+
+        # Format: direct_stats.mat (top-level scalar keys)
+        if 'u_tau' in wall and 'delta_nu' in wall and 'Re_tau' in wall:
+            u_tau = float(wall['u_tau'])
+            delta_nu = float(wall['delta_nu'])
+            Re_tau = float(wall['Re_tau'])
+            return {
+                'u_tau': u_tau,
+                'nu': u_tau * delta_nu,
+                'delta_nu': delta_nu,
+                'h_mm': float(wall['h_mm']) if 'h_mm' in wall else Re_tau * delta_nu,
+                'Re_tau': Re_tau,
+            }
+
+        # Format: wall_units.mat (struct)
+        wu = wall['wall_units']
+        return {
+            'u_tau': float(wu.u_tau),  # mm/s
+            'nu': float(wu.nu),        # mm^2/s
+            'delta_nu': float(wu.delta_nu),  # mm
+            'h_mm': float(wu.h_mm),    # mm
+            'Re_tau': float(wu.Re_tau)
+        }
+    except NotImplementedError:
+        # MATLAB v7.3 (HDF5) format - use h5py
+        import h5py
+        with h5py.File(str(wall_units_path), 'r') as f:
+            if 'wall_units' in f:
+                grp = f['wall_units']
+                result = {
+                    'u_tau': float(np.array(grp['u_tau']).flat[0]),
+                    'delta_nu': float(np.array(grp['delta_nu']).flat[0]),
+                    'Re_tau': float(np.array(grp['Re_tau']).flat[0]),
+                }
+                if 'nu' in grp:
+                    result['nu'] = float(np.array(grp['nu']).flat[0])
+                else:
+                    result['nu'] = result['u_tau'] * result['delta_nu']
+                if 'h_mm' in grp:
+                    result['h_mm'] = float(np.array(grp['h_mm']).flat[0])
+                else:
+                    result['h_mm'] = result['Re_tau'] * result['delta_nu']
+                return result
+            elif 'diagnostics' in f:
+                grp = f['diagnostics']
+                result = {
+                    'u_tau': float(np.array(grp['u_tau']).flat[0]),
+                    'delta_nu': float(np.array(grp['delta_nu']).flat[0]),
+                    'Re_tau': float(np.array(grp['Re_tau']).flat[0]),
+                }
+                if 'nu' in grp:
+                    result['nu'] = float(np.array(grp['nu']).flat[0])
+                else:
+                    result['nu'] = result['u_tau'] * result['delta_nu']
+                if 'h_mm' in grp:
+                    result['h_mm'] = float(np.array(grp['h_mm']).flat[0])
+                else:
+                    result['h_mm'] = result['Re_tau'] * result['delta_nu']
+                return result
+            else:
+                raise ValueError(f"No 'wall_units' or 'diagnostics' group in {wall_units_path}")
 
 
-def load_ground_truth(profiles_path):
-    """Load ground truth 1px profiles."""
-    profiles = sio.loadmat(profiles_path, squeeze_me=True, struct_as_record=False)
-    win1px = profiles['profiles'].win_1px
-    return {
-        'y_mm': win1px.y_mm,
-        'y_plus': win1px.y_plus,
-        'U': win1px.U,           # mm/s
-        'V': win1px.V,           # mm/s
-        'uu': win1px.uu,         # (mm/s)^2
-        'vv': win1px.vv,         # (mm/s)^2
-        'uv': win1px.uv,         # (mm/s)^2
-        'U_plus': win1px.U_plus,
-        'uu_plus': win1px.uu_plus,
-        'vv_plus': win1px.vv_plus,
-        'uv_plus': win1px.uv_plus,
-    }
+def load_ground_truth(profiles_path, wall_units_path=None):
+    """Load ground truth profiles (scipy v5 or h5py v7.3).
+
+    Supports three formats:
+    - profiles.mat with 'profiles.win_1px' struct
+    - ensemble_statistics_full.mat with 'ref_profile' + 'ensemble_stats' (HDF5)
+    - direct_stats.mat with top-level y_plus, U_plus, stress_plus arrays
+    """
+    try:
+        profiles = sio.loadmat(profiles_path, squeeze_me=True, struct_as_record=False)
+
+        # Format: direct_stats.mat (top-level arrays)
+        if 'U_plus' in profiles and 'stress_plus' in profiles and 'y_plus' in profiles:
+            y_plus_full = profiles['y_plus']
+            Re_tau = float(profiles['Re_tau'])
+            u_tau = float(profiles['u_tau'])
+            delta_nu = float(profiles['delta_nu'])
+            u_tau2 = u_tau ** 2
+
+            # Select lower half of channel (y+ <= Re_tau)
+            mask = y_plus_full <= Re_tau
+            y_plus = y_plus_full[mask]
+            y_mm = y_plus * delta_nu
+
+            # U_plus: (N, 3) -> columns [U, V, W]
+            U_plus = profiles['U_plus'][mask, 0]
+            V_plus = profiles['U_plus'][mask, 1]
+
+            # stress_plus: (N, 3, 3) -> Reynolds stress tensor in plus units
+            uu_plus = profiles['stress_plus'][mask, 0, 0]
+            vv_plus = profiles['stress_plus'][mask, 1, 1]
+            uv_plus = profiles['stress_plus'][mask, 0, 1]
+
+            return {
+                'y_mm': y_mm,
+                'y_plus': y_plus,
+                'U': U_plus * u_tau,      # mm/s
+                'V': V_plus * u_tau,      # mm/s
+                'uu': uu_plus * u_tau2,   # (mm/s)^2
+                'vv': vv_plus * u_tau2,   # (mm/s)^2
+                'uv': uv_plus * u_tau2,   # (mm/s)^2
+                'U_plus': U_plus,
+                'uu_plus': uu_plus,
+                'vv_plus': vv_plus,
+                'uv_plus': uv_plus,
+            }
+
+        # Format: profiles.mat (struct)
+        win1px = profiles['profiles'].win_1px
+        return {
+            'y_mm': win1px.y_mm,
+            'y_plus': win1px.y_plus,
+            'U': win1px.U,           # mm/s
+            'V': win1px.V,           # mm/s
+            'uu': win1px.uu,         # (mm/s)^2
+            'vv': win1px.vv,         # (mm/s)^2
+            'uv': win1px.uv,         # (mm/s)^2
+            'U_plus': win1px.U_plus,
+            'uu_plus': win1px.uu_plus,
+            'vv_plus': win1px.vv_plus,
+            'uv_plus': win1px.uv_plus,
+        }
+    except NotImplementedError:
+        # MATLAB v7.3 (HDF5) format
+        import h5py
+
+        # Load wall units for normalisation
+        if wall_units_path is not None:
+            wu = load_wall_units(wall_units_path)
+        else:
+            wu_path = Path(profiles_path).parent / 'diagnostics.mat'
+            if wu_path.exists():
+                wu = load_wall_units(wu_path)
+            else:
+                raise ValueError("Need wall_units_path to normalise HDF5 ground truth")
+
+        u_tau = wu['u_tau']
+        u_tau2 = u_tau ** 2
+        delta_nu = wu['delta_nu']
+
+        with h5py.File(str(profiles_path), 'r') as f:
+            ref = f['ref_profile']
+
+            # Check if ref_profile has stress data directly
+            if 'uu' in ref:
+                y_mm = np.array(ref['y_mm']).flatten()
+                U = np.array(ref['U']).flatten()
+                V = np.array(ref['V']).flatten()
+                uu = np.array(ref['uu']).flatten()
+                vv = np.array(ref['vv']).flatten()
+                uv = np.array(ref['uv']).flatten()
+                y_plus = y_mm / delta_nu
+                return {
+                    'y_mm': y_mm, 'y_plus': y_plus,
+                    'U': U, 'V': V, 'uu': uu, 'vv': vv, 'uv': uv,
+                    'U_plus': U / u_tau, 'uu_plus': uu / u_tau2,
+                    'vv_plus': vv / u_tau2, 'uv_plus': uv / u_tau2,
+                }
+
+            # Use ensemble_stats profiles (pre-averaged, consistent y_plus)
+            if 'ensemble_stats' not in f:
+                raise ValueError("No stress data in ref_profile and no ensemble_stats")
+
+            es = f['ensemble_stats']
+            # Use finest window (index 0) as reference
+            win_idx = 0
+
+            def _deref(field, idx=win_idx):
+                refs = np.array(es[field]).flatten()
+                return np.array(f[refs[idx]]).flatten()
+
+            # Ensemble stats y_plus (255 points for 16x16 window)
+            es_y_plus = _deref('y_plus')
+            es_y_mm = es_y_plus * delta_nu
+
+            # Stresses are already in plus units
+            uu_plus = _deref('uu_plus')
+            vv_plus = _deref('vv_plus')
+            uv_plus = _deref('uv_plus')
+
+            # Velocity: interpolate DNS onto ensemble y_plus grid
+            dns_y_mm = np.array(ref['y_mm']).flatten()
+            dns_U = np.array(ref['U']).flatten()
+            dns_V = np.array(ref['V']).flatten()
+            dns_y_plus = dns_y_mm / delta_nu
+
+            U_interp = interp1d(dns_y_plus, dns_U, kind='linear',
+                                bounds_error=False, fill_value=np.nan)(es_y_plus)
+            V_interp = interp1d(dns_y_plus, dns_V, kind='linear',
+                                bounds_error=False, fill_value=np.nan)(es_y_plus)
+
+        return {
+            'y_mm': es_y_mm,
+            'y_plus': es_y_plus,
+            'U': U_interp,
+            'V': V_interp,
+            'uu': uu_plus * u_tau2,
+            'vv': vv_plus * u_tau2,
+            'uv': uv_plus * u_tau2,
+            'U_plus': U_interp / u_tau,
+            'uu_plus': uu_plus,
+            'vv_plus': vv_plus,
+            'uv_plus': uv_plus,
+        }
 
 
 def load_piv_statistics(stats_path, run_idx=3):
@@ -112,21 +299,20 @@ def compute_piv_profiles(piv_data, x_exclude_vectors=4):
     Parameters
     ----------
     piv_data : dict
-        PIV statistics dictionary
+        PIV statistics dictionary (velocities in m/s, stresses in (m/s)^2)
     x_exclude_vectors : int
         Number of vectors to exclude from each side in x-direction
 
     Returns
     -------
-    dict with y_mm, U, uu, vv, uv profiles
+    dict with y_mm, U, uu, vv, uv profiles (in mm/s and (mm/s)^2)
     """
     x = piv_data['x']
     y = piv_data['y']
 
     # Get unique y values (assuming regular grid)
-    # The grid is (ny, nx), so y varies along axis 0
-    y_unique = y[:, 0]  # First column gives y values
-    x_unique = x[0, :]  # First row gives x values
+    y_unique = y[:, 0]
+    x_unique = x[0, :]
     nx = len(x_unique)
 
     # Create mask excluding first/last x_exclude_vectors
@@ -378,7 +564,8 @@ def plot_comparison(piv_plus, gt_plus, wall_units, errors, output_dir, window_la
     ax.set_ylabel(r'$V^+$', fontsize=14)
     ax.set_title(f'Mean Wall-Normal Velocity Profile (Re$_\\tau$ = {Re_tau:.0f})', fontsize=16)
     ax.legend(fontsize=11)
-    ax.set_xlim(0, Re_tau)
+    ax.set_xscale('log')
+    ax.set_xlim(1, Re_tau)
     ax.grid(True, alpha=0.3)
 
     if 'V_plus' in errors:
@@ -400,55 +587,178 @@ def plot_comparison(piv_plus, gt_plus, wall_units, errors, output_dir, window_la
 
     ax.set_xlabel(r'$y^+$', fontsize=14)
     ax.set_ylabel(r'$U^+$', fontsize=14)
-    ax.set_title('Mean Velocity Profile (Linear Scale)', fontsize=16)
+    ax.set_title('Mean Velocity Profile', fontsize=16)
     ax.legend(fontsize=11)
-    ax.set_xlim(0, Re_tau)
+    ax.set_xscale('log')
+    ax.set_xlim(1, Re_tau)
     ax.grid(True, alpha=0.3)
 
     fig.tight_layout()
     fig.savefig(output_dir / 'U_plus_linear.png', dpi=150)
     plt.close(fig)
 
+    # Figure 5: Trace invariant (u'u' + v'v') - rotation diagnostic
+    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
+
+    # Compute trace
+    gt_trace = gt_plus['uu_plus'] + gt_plus['vv_plus']
+    piv_trace = piv_plus['uu_plus'] + piv_plus['vv_plus']
+
+    # Left: Individual components
+    ax = axes[0]
+    ax.semilogx(gt_plus['y_plus'], gt_plus['uu_plus'], 'k-', linewidth=2, label="DNS u'u'+")
+    ax.semilogx(gt_plus['y_plus'], gt_plus['vv_plus'], 'k--', linewidth=2, label="DNS v'v'+")
+    ax.semilogx(piv_plus['y_plus'], piv_plus['uu_plus'], 'ro', markersize=3, alpha=0.7, label="PIV u'u'+")
+    ax.semilogx(piv_plus['y_plus'], piv_plus['vv_plus'], 'bs', markersize=3, alpha=0.7, label="PIV v'v'+")
+    ax.set_xlabel(r'$y^+$', fontsize=12)
+    ax.set_ylabel(r"Stress$^+$", fontsize=12)
+    ax.set_title('Individual Normal Stresses', fontsize=14)
+    ax.legend(fontsize=9)
+    ax.set_xlim(1, Re_tau)
+    ax.grid(True, alpha=0.3)
+
+    # Middle: Trace comparison
+    ax = axes[1]
+    ax.semilogx(gt_plus['y_plus'], gt_trace, 'k-', linewidth=2, label='DNS')
+    ax.semilogx(piv_plus['y_plus'], piv_trace, 'ro', markersize=4, alpha=0.7, label='PIV')
+    ax.set_xlabel(r'$y^+$', fontsize=12)
+    ax.set_ylabel(r"$\overline{u'u'}^+ + \overline{v'v'}^+$", fontsize=12)
+    ax.set_title("Trace Invariant (u'u' + v'v')", fontsize=14)
+    ax.legend(fontsize=11)
+    ax.set_xlim(1, Re_tau)
+    ax.grid(True, alpha=0.3)
+
+    # Right: Ratio of components (rotation indicator)
+    ax = axes[2]
+    gt_ratio = gt_plus['uu_plus'] / (gt_plus['vv_plus'] + 1e-10)  # avoid div by zero
+    piv_ratio = piv_plus['uu_plus'] / (piv_plus['vv_plus'] + 1e-10)
+    ax.semilogx(gt_plus['y_plus'], gt_ratio, 'k-', linewidth=2, label='DNS')
+    ax.semilogx(piv_plus['y_plus'], piv_ratio, 'ro', markersize=4, alpha=0.7, label='PIV')
+    ax.set_xlabel(r'$y^+$', fontsize=12)
+    ax.set_ylabel(r"$\overline{u'u'}^+ / \overline{v'v'}^+$", fontsize=12)
+    ax.set_title("Stress Ratio (rotation indicator)", fontsize=14)
+    ax.legend(fontsize=11)
+    ax.set_xlim(1, Re_tau)
+    ax.set_ylim(0, 10)
+    ax.grid(True, alpha=0.3)
+
+    fig.suptitle("Rotation Diagnostic: Trace is invariant under rotation", fontsize=14, y=1.02)
+    fig.tight_layout()
+    fig.savefig(output_dir / 'trace_invariant.png', dpi=150)
+    plt.close(fig)
+
     print(f"\nPlots saved to: {output_dir}")
 
 
-def main(mode='instantaneous'):
+def plot_combined_stresses(piv_plus, gt_plus, wall_units, errors, output_dir, window_label='16x16'):
+    """Plot uu+, vv+, -uv+ all on one axis."""
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    Re_tau = wall_units['Re_tau']
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+
+    # Reference (solid lines)
+    ax.plot(gt_plus['y_plus'], gt_plus['uu_plus'], 'k-', linewidth=2,
+            label=r"Ref $\overline{u'u'}^+$")
+    ax.plot(gt_plus['y_plus'], gt_plus['vv_plus'], 'k--', linewidth=2,
+            label=r"Ref $\overline{v'v'}^+$")
+    ax.plot(gt_plus['y_plus'], -gt_plus['uv_plus'], 'k:', linewidth=2,
+            label=r"Ref $-\overline{u'v'}^+$")
+
+    # PIV markers
+    ax.plot(piv_plus['y_plus'], piv_plus['uu_plus'], 'ro', markersize=3, alpha=0.6,
+            label=r"PIV $\overline{u'u'}^+$")
+    ax.plot(piv_plus['y_plus'], piv_plus['vv_plus'], 'gs', markersize=3, alpha=0.6,
+            label=r"PIV $\overline{v'v'}^+$")
+    ax.plot(piv_plus['y_plus'], -piv_plus['uv_plus'], 'mD', markersize=3, alpha=0.6,
+            label=r"PIV $-\overline{u'v'}^+$")
+
+    ax.set_xlabel(r'$y^+$', fontsize=14)
+    ax.set_ylabel(r'Stress$^+$', fontsize=14)
+    ax.set_title(f'Reynolds Stresses ({window_label}) - PIV vs Reference '
+                 f'(Re$_\\tau$ = {Re_tau:.0f})', fontsize=16)
+    ax.legend(fontsize=10, ncol=2, loc='upper right')
+    ax.set_xscale('log')
+    ax.set_xlim(1, Re_tau)
+    ax.grid(True, alpha=0.3)
+
+    fig.tight_layout()
+    fig.savefig(output_dir / 'combined_stresses.png', dpi=150)
+    plt.close(fig)
+    print(f"  Combined stresses plot saved to: {output_dir / 'combined_stresses.png'}")
+
+
+def main(mode='instantaneous', gt_dir=None, base_dir=None, ensemble_dir=None, num_frames=1000, output_dir_override=None):
     """Main benchmark comparison function.
 
     Parameters
     ----------
     mode : str
         'instantaneous' or 'ensemble'
+    gt_dir : Path
+        Ground truth directory path (required)
+    base_dir : Path, optional
+        Base directory containing PIV results
+    ensemble_dir : Path, optional
+        Direct path to ensemble directory containing ensemble_result.mat and coordinates.mat.
+        If provided, overrides base_dir for ensemble mode.
+    num_frames : int
+        Number of frames subdirectory (e.g. 1000 or 4000). Used in path construction.
+    output_dir_override : Path, optional
+        Custom output directory. If None, uses default naming.
     """
+    if gt_dir is None:
+        raise ValueError("gt_dir is required. Please provide the ground truth directory path.")
+
     # Paths
     script_dir = Path(__file__).parent
-    gt_dir = script_dir / 'ground_truth' / 'ensemble_statistics'
-    base_dir = Path('/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/'
-                   'Documents/#current_processing/query_JHTDB/download_from_jhtdb/'
-                   'bottom_channel/planar_images/window_validation')
+    gt_dir = Path(gt_dir)
 
     if mode == 'ensemble':
-        ensemble_path = base_dir / 'calibrated_piv/1000/Cam1/ensemble/ensemble_result.mat'
-        coords_path = base_dir / 'calibrated_piv/1000/Cam1/ensemble/coordinates.mat'
-        output_dir = script_dir / 'benchmark_results_ensemble'
+        if ensemble_dir is not None:
+            ensemble_dir = Path(ensemble_dir)
+            ensemble_path = ensemble_dir / 'ensemble_result.mat'
+            coords_path = ensemble_dir / 'coordinates.mat'
+        elif base_dir is not None:
+            base_dir = Path(base_dir)
+            ensemble_path = base_dir / f'calibrated_piv/{num_frames}/Cam1/ensemble/ensemble_result.mat'
+            coords_path = base_dir / f'calibrated_piv/{num_frames}/Cam1/ensemble/coordinates.mat'
+        else:
+            raise ValueError("Either ensemble_dir or base_dir must be provided for ensemble mode.")
+        output_dir = output_dir_override or (script_dir / 'benchmark_results_ensemble')
     else:
-        stats_path = base_dir / 'statistics/1000/Cam1/instantaneous/mean_stats/mean_stats.mat'
-        output_dir = script_dir / 'benchmark_results'
+        if base_dir is None:
+            raise ValueError("base_dir is required for instantaneous mode.")
+        base_dir = Path(base_dir)
+        stats_path = base_dir / f'statistics/{num_frames}/Cam1/instantaneous/mean_stats/mean_stats.mat'
+        output_dir = output_dir_override or (script_dir / 'benchmark_results')
 
     print("=" * 70)
     print(f"PIV BENCHMARK COMPARISON ({mode.upper()})")
     print("=" * 70)
 
-    # Load data
+    # Load data - auto-detect file names
     print("\n[1] Loading wall units...")
-    wall_units = load_wall_units(gt_dir / 'wall_units.mat')
+    wall_units_file = gt_dir / 'wall_units.mat'
+    if not wall_units_file.exists():
+        wall_units_file = gt_dir / 'diagnostics.mat'
+    if not wall_units_file.exists():
+        wall_units_file = gt_dir / 'direct_stats.mat'
+    wall_units = load_wall_units(wall_units_file)
     print(f"  u_tau = {wall_units['u_tau']:.4f} mm/s")
     print(f"  nu = {wall_units['nu']:.4f} mm²/s")
     print(f"  delta_nu = {wall_units['delta_nu']:.4f} mm")
     print(f"  Re_tau = {wall_units['Re_tau']:.0f}")
 
-    print("\n[2] Loading ground truth (1px window)...")
-    gt = load_ground_truth(gt_dir / 'profiles.mat')
+    print("\n[2] Loading ground truth...")
+    profiles_file = gt_dir / 'profiles.mat'
+    if not profiles_file.exists():
+        profiles_file = gt_dir / 'ensemble_statistics_full.mat'
+    if not profiles_file.exists():
+        profiles_file = gt_dir / 'direct_stats.mat'
+    gt = load_ground_truth(profiles_file, wall_units_path=wall_units_file)
     print(f"  y+ range: {gt['y_plus'].min():.1f} to {gt['y_plus'].max():.1f}")
     print(f"  U range: {gt['U'].min():.2f} to {gt['U'].max():.2f} mm/s")
 
@@ -472,8 +782,9 @@ def main(mode='instantaneous'):
     print(f"  Applying y-offset: {y_offset_mm:.2f} mm (aligning y_min to wall)")
 
     piv_plus = convert_to_wall_units(piv_profiles, wall_units, y_offset_mm=y_offset_mm)
+    piv_plus['y_plus'] = piv_plus['y_plus'] + 1.0  # shift y+ by +1
     print(f"  Aligned y range: {piv_plus['y_mm'].min():.2f} to {piv_plus['y_mm'].max():.2f} mm")
-    print(f"  y+ range: {piv_plus['y_plus'].min():.1f} to {piv_plus['y_plus'].max():.1f}")
+    print(f"  y+ range: {piv_plus['y_plus'].min():.1f} to {piv_plus['y_plus'].max():.1f} (y+ +1 applied)")
     print(f"  U+ range: {np.nanmin(piv_plus['U_plus']):.2f} to {np.nanmax(piv_plus['U_plus']):.2f}")
 
     # Ground truth - convert V to wall units and include pre-computed values
@@ -531,6 +842,7 @@ def main(mode='instantaneous'):
 
     print("\n[7] Generating plots...")
     plot_comparison(piv_plus, gt_plus, wall_units, errors, output_dir)
+    plot_combined_stresses(piv_plus, gt_plus, wall_units, errors, output_dir)
 
     print("\n" + "=" * 70)
     print("BENCHMARK COMPLETE")
@@ -621,7 +933,8 @@ def plot_combined_comparison(all_results, gt_plus, wall_units, output_dir):
     ax.set_ylabel(r"$\overline{u'u'}^+$", fontsize=12)
     ax.set_title('Streamwise Normal Stress', fontsize=14)
     ax.legend(fontsize=9)
-    ax.set_xlim(0, Re_tau)
+    ax.set_xscale('log')
+    ax.set_xlim(1, Re_tau)
     ax.grid(True, alpha=0.3)
 
     # vv+
@@ -637,7 +950,8 @@ def plot_combined_comparison(all_results, gt_plus, wall_units, output_dir):
     ax.set_ylabel(r"$\overline{v'v'}^+$", fontsize=12)
     ax.set_title('Wall-Normal Normal Stress', fontsize=14)
     ax.legend(fontsize=9)
-    ax.set_xlim(0, Re_tau)
+    ax.set_xscale('log')
+    ax.set_xlim(1, Re_tau)
     ax.grid(True, alpha=0.3)
 
     # -uv+
@@ -653,7 +967,8 @@ def plot_combined_comparison(all_results, gt_plus, wall_units, output_dir):
     ax.set_ylabel(r"$-\overline{u'v'}^+$", fontsize=12)
     ax.set_title('Reynolds Shear Stress', fontsize=14)
     ax.legend(fontsize=9)
-    ax.set_xlim(0, Re_tau)
+    ax.set_xscale('log')
+    ax.set_xlim(1, Re_tau)
     ax.grid(True, alpha=0.3)
 
     fig.tight_layout()
@@ -678,7 +993,8 @@ def plot_combined_comparison(all_results, gt_plus, wall_units, output_dir):
     ax.set_ylabel(r'$V^+$', fontsize=14)
     ax.set_title(f'Mean Wall-Normal Velocity Profile - All Window Sizes (Re$_\\tau$ = {Re_tau:.0f})', fontsize=16)
     ax.legend(fontsize=10)
-    ax.set_xlim(0, Re_tau)
+    ax.set_xscale('log')
+    ax.set_xlim(1, Re_tau)
     ax.grid(True, alpha=0.3)
 
     fig.tight_layout()
@@ -700,19 +1016,69 @@ def plot_combined_comparison(all_results, gt_plus, wall_units, output_dir):
 
     ax.set_xlabel(r'$y^+$', fontsize=14)
     ax.set_ylabel(r'$U^+$', fontsize=14)
-    ax.set_title('Mean Velocity Profile (Linear Scale) - All Window Sizes', fontsize=16)
+    ax.set_title('Mean Velocity Profile - All Window Sizes', fontsize=16)
     ax.legend(fontsize=10)
-    ax.set_xlim(0, Re_tau)
+    ax.set_xscale('log')
+    ax.set_xlim(1, Re_tau)
     ax.grid(True, alpha=0.3)
 
     fig.tight_layout()
     fig.savefig(output_dir / 'U_plus_linear_combined.png', dpi=150)
     plt.close(fig)
 
+    # ==========================================================================
+    # Figure 5: Trace invariant (u'u' + v'v') - ALL WINDOWS
+    # ==========================================================================
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+
+    # Compute ground truth trace
+    gt_trace = gt_plus['uu_plus'] + gt_plus['vv_plus']
+
+    # Left: Trace comparison
+    ax = axes[0]
+    ax.semilogx(gt_plus['y_plus'], gt_trace, 'k-', linewidth=2.5, label='DNS', zorder=10)
+    for i, res in enumerate(all_results):
+        piv_plus = res['piv_plus']
+        label = res['window_label']
+        piv_trace = piv_plus['uu_plus'] + piv_plus['vv_plus']
+        ax.semilogx(piv_plus['y_plus'], piv_trace,
+                    color=colors[i % len(colors)], marker=markers[i % len(markers)],
+                    markersize=4, alpha=0.7, linestyle='none', label=f'PIV ({label})')
+    ax.set_xlabel(r'$y^+$', fontsize=12)
+    ax.set_ylabel(r"$\overline{u'u'}^+ + \overline{v'v'}^+$", fontsize=12)
+    ax.set_title("Trace Invariant (rotation-invariant)", fontsize=14)
+    ax.legend(fontsize=10)
+    ax.set_xlim(1, Re_tau)
+    ax.grid(True, alpha=0.3)
+
+    # Right: Ratio of components (rotation indicator)
+    ax = axes[1]
+    gt_ratio = gt_plus['uu_plus'] / (gt_plus['vv_plus'] + 1e-10)
+    ax.semilogx(gt_plus['y_plus'], gt_ratio, 'k-', linewidth=2.5, label='DNS', zorder=10)
+    for i, res in enumerate(all_results):
+        piv_plus = res['piv_plus']
+        label = res['window_label']
+        piv_ratio = piv_plus['uu_plus'] / (piv_plus['vv_plus'] + 1e-10)
+        ax.semilogx(piv_plus['y_plus'], piv_ratio,
+                    color=colors[i % len(colors)], marker=markers[i % len(markers)],
+                    markersize=4, alpha=0.7, linestyle='none', label=f'PIV ({label})')
+    ax.set_xlabel(r'$y^+$', fontsize=12)
+    ax.set_ylabel(r"$\overline{u'u'}^+ / \overline{v'v'}^+$", fontsize=12)
+    ax.set_title("Stress Ratio (rotation indicator)", fontsize=14)
+    ax.legend(fontsize=10)
+    ax.set_xlim(1, Re_tau)
+    ax.set_ylim(0, 10)
+    ax.grid(True, alpha=0.3)
+
+    fig.suptitle("Rotation Diagnostic: If trace matches but ratio differs, rotation problem exists", fontsize=12, y=1.02)
+    fig.tight_layout()
+    fig.savefig(output_dir / 'trace_invariant_combined.png', dpi=150)
+    plt.close(fig)
+
     print(f"\nCombined plots saved to: {output_dir}")
 
 
-def main_multi_run(mode='ensemble', run_indices=None, window_sizes=None, run_labels=None, gt_dir=None, base_dir=None, y_plus_offset=0.0):
+def main_multi_run(mode='ensemble', run_indices=None, window_sizes=None, run_labels=None, gt_dir=None, base_dir=None, ensemble_dir=None, y_plus_offset=0.0, num_frames=1000, output_dir_override=None):
     """
     Main benchmark comparison function for multiple runs/window sizes.
 
@@ -730,29 +1096,36 @@ def main_multi_run(mode='ensemble', run_indices=None, window_sizes=None, run_lab
         Ground truth directory. Defaults to script_dir/ground_truth/ensemble_statistics
     base_dir : Path, optional
         Base directory containing PIV results. Defaults to window_validation folder.
+    ensemble_dir : Path, optional
+        Direct path to ensemble directory containing ensemble_result.mat and coordinates.mat.
+        If provided, overrides base_dir for ensemble mode.
     y_plus_offset : float, optional
         Offset to add to y+ coordinates (for calibration correction)
     """
     # Paths
     script_dir = Path(__file__).parent
     if gt_dir is None:
-        gt_dir = script_dir / 'ground_truth' / 'ensemble_statistics'
-        # Alternative: 2-pass ground truth
-        # gt_dir = Path('/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/'
-        #               'Documents/#current_processing/query_JHTDB/download_from_jhtdb/'
-        #               'ensemble_statistics_2pass')
-    if base_dir is None:
-        base_dir = Path('/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/'
-                       'Documents/#current_processing/query_JHTDB/download_from_jhtdb/'
-                       'bottom_channel/planar_images/window_validation')
+        raise ValueError("gt_dir is required. Please provide the ground truth directory path.")
+    gt_dir = Path(gt_dir)
 
     if mode == 'ensemble':
-        ensemble_path = base_dir / 'calibrated_piv/1000/Cam1/ensemble/ensemble_result.mat'
-        coords_path = base_dir / 'calibrated_piv/1000/Cam1/ensemble/coordinates.mat'
-        output_dir = script_dir / 'benchmark_results_ensemble'
+        if ensemble_dir is not None:
+            ensemble_dir = Path(ensemble_dir)
+            ensemble_path = ensemble_dir / 'ensemble_result.mat'
+            coords_path = ensemble_dir / 'coordinates.mat'
+        elif base_dir is not None:
+            base_dir = Path(base_dir)
+            ensemble_path = base_dir / f'calibrated_piv/{num_frames}/Cam1/ensemble/ensemble_result.mat'
+            coords_path = base_dir / f'calibrated_piv/{num_frames}/Cam1/ensemble/coordinates.mat'
+        else:
+            raise ValueError("Either ensemble_dir or base_dir must be provided for ensemble mode.")
+        output_dir = output_dir_override or (script_dir / 'benchmark_results_ensemble')
     else:
-        stats_path = base_dir / 'statistics/1000/Cam1/instantaneous/mean_stats/mean_stats.mat'
-        output_dir = script_dir / 'benchmark_results'
+        if base_dir is None:
+            raise ValueError("base_dir is required for instantaneous mode.")
+        base_dir = Path(base_dir)
+        stats_path = base_dir / f'statistics/{num_frames}/Cam1/instantaneous/mean_stats/mean_stats.mat'
+        output_dir = output_dir_override or (script_dir / 'benchmark_results')
 
     print("=" * 70)
     print(f"PIV BENCHMARK COMPARISON ({mode.upper()}) - MULTI-RUN")
@@ -760,16 +1133,26 @@ def main_multi_run(mode='ensemble', run_indices=None, window_sizes=None, run_lab
     print(f"Processing runs: {run_indices}")
     print(f"Window sizes: {window_sizes}")
 
-    # Load common data
+    # Load common data - auto-detect file names
     print("\n[1] Loading wall units...")
-    wall_units = load_wall_units(gt_dir / 'wall_units.mat')
+    wall_units_file = gt_dir / 'wall_units.mat'
+    if not wall_units_file.exists():
+        wall_units_file = gt_dir / 'diagnostics.mat'
+    if not wall_units_file.exists():
+        wall_units_file = gt_dir / 'direct_stats.mat'
+    wall_units = load_wall_units(wall_units_file)
     print(f"  u_tau = {wall_units['u_tau']:.4f} mm/s")
     print(f"  nu = {wall_units['nu']:.4f} mm²/s")
     print(f"  delta_nu = {wall_units['delta_nu']:.4f} mm")
     print(f"  Re_tau = {wall_units['Re_tau']:.0f}")
 
-    print("\n[2] Loading ground truth (1px window)...")
-    gt = load_ground_truth(gt_dir / 'profiles.mat')
+    print("\n[2] Loading ground truth...")
+    profiles_file = gt_dir / 'profiles.mat'
+    if not profiles_file.exists():
+        profiles_file = gt_dir / 'ensemble_statistics_full.mat'
+    if not profiles_file.exists():
+        profiles_file = gt_dir / 'direct_stats.mat'
+    gt = load_ground_truth(profiles_file, wall_units_path=wall_units_file)
     print(f"  y+ range: {gt['y_plus'].min():.1f} to {gt['y_plus'].max():.1f}")
 
     # Ground truth in wall units
@@ -810,11 +1193,12 @@ def main_multi_run(mode='ensemble', run_indices=None, window_sizes=None, run_lab
             # Convert to wall units
             y_offset_mm = -piv_profiles['y_mm'].min()
             piv_plus = convert_to_wall_units(piv_profiles, wall_units, y_offset_mm=y_offset_mm)
-            # Apply y+ offset if specified
+            piv_plus['y_plus'] = piv_plus['y_plus'] + 1.0  # shift y+ by +1
+            # Apply additional y+ offset if specified
             if y_plus_offset != 0.0:
                 piv_plus['y_plus'] = piv_plus['y_plus'] + y_plus_offset
                 print(f"  y+ offset applied: {y_plus_offset:+.1f}")
-            print(f"  y+ range: {piv_plus['y_plus'].min():.1f} to {piv_plus['y_plus'].max():.1f}")
+            print(f"  y+ range: {piv_plus['y_plus'].min():.1f} to {piv_plus['y_plus'].max():.1f} (y+ +1 applied)")
 
             # Compute errors
             errors = compute_errors(piv_plus, gt_plus, y_plus_range=(10, 500))
@@ -828,6 +1212,8 @@ def main_multi_run(mode='ensemble', run_indices=None, window_sizes=None, run_lab
             # Generate individual plots
             plot_comparison(piv_plus, gt_plus, wall_units, errors, run_output_dir,
                           window_label=window_label)
+            plot_combined_stresses(piv_plus, gt_plus, wall_units, errors, run_output_dir,
+                                  window_label=window_label)
 
             # Store for combined plot
             all_results.append({
@@ -880,22 +1266,33 @@ if __name__ == '__main__':
                         help='Comma-separated window sizes for labels, e.g., "32,8,8"')
     parser.add_argument('--labels', '-l', type=str, default=None,
                         help='Comma-separated output folder labels, e.g., "run_1,run_2,run_3"')
-    parser.add_argument('--gt-dir', '-g', type=str, default=None,
-                        help='Ground truth directory path')
+    parser.add_argument('--gt-dir', '-g', type=str, required=True,
+                        help='Ground truth directory path (required)')
     parser.add_argument('--base-dir', '-b', type=str, default=None,
                         help='Base directory containing PIV results')
+    parser.add_argument('--ensemble-dir', '-e', type=str, default=None,
+                        help='Direct path to ensemble directory containing ensemble_result.mat and coordinates.mat')
     parser.add_argument('--y-plus-offset', '-y', type=float, default=0.0,
                         help='Offset to add to y+ coordinates (calibration correction)')
+    parser.add_argument('--num-frames', '-n', type=int, default=1000,
+                        help='Frame count subdirectory in paths (default: 1000)')
+    parser.add_argument('--output-dir', '-o', type=str, default=None,
+                        help='Custom output directory for results')
     args = parser.parse_args()
+
+    gt_dir = Path(args.gt_dir)
+    base_dir = Path(args.base_dir) if args.base_dir else None
+    ensemble_dir = Path(args.ensemble_dir) if args.ensemble_dir else None
+    output_dir_override = Path(args.output_dir) if args.output_dir else None
 
     if args.runs and args.windows:
         run_indices = [int(r) for r in args.runs.split(',')]
         window_sizes = [int(w) for w in args.windows.split(',')]
         run_labels = args.labels.split(',') if args.labels else None
-        gt_dir = Path(args.gt_dir) if args.gt_dir else None
-        base_dir = Path(args.base_dir) if args.base_dir else None
         main_multi_run(mode=args.mode, run_indices=run_indices, window_sizes=window_sizes,
                        run_labels=run_labels, gt_dir=gt_dir, base_dir=base_dir,
-                       y_plus_offset=args.y_plus_offset)
+                       ensemble_dir=ensemble_dir, y_plus_offset=args.y_plus_offset,
+                       num_frames=args.num_frames, output_dir_override=output_dir_override)
     else:
-        main(mode=args.mode)
+        main(mode=args.mode, gt_dir=gt_dir, base_dir=base_dir, ensemble_dir=ensemble_dir,
+             num_frames=args.num_frames, output_dir_override=output_dir_override)
