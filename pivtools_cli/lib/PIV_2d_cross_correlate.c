@@ -232,8 +232,9 @@ unsigned char bulkxcorr2d_accumulate(
     xcorr_cache_get_default_wisdom_path(wisdom_path, sizeof(wisdom_path));
     xcorr_cache_init(wisdom_path);
 
-    /* Initialize output to zero - NOTE: uses output size, not computation size! */
-    memset(fCorrelPlane_Sum, 0, nWindowsTotal * nPxPerOutput * sizeof(float));
+    /* NOTE: Output buffer is NOT zeroed here — the caller is responsible for
+     * clearing buffers before the first call.  This allows multiple calls to
+     * += accumulate into the same buffer without losing previous data. */
 
     /* OPTION C: Parallel over windows, sequential over images */
     #pragma omp parallel \
@@ -401,10 +402,9 @@ unsigned char bulkxcorr2d_accumulate_triple(
     xcorr_cache_get_default_wisdom_path(wisdom_path, sizeof(wisdom_path));
     xcorr_cache_init(wisdom_path);
 
-    /* Zero all three output buffers */
-    memset(fCorrAB_Sum, 0, (size_t)nWindowsTotal * nPxPerOutput * sizeof(float));
-    memset(fCorrAA_Sum, 0, (size_t)nWindowsTotal * nPxPerOutput * sizeof(float));
-    memset(fCorrBB_Sum, 0, (size_t)nWindowsTotal * nPxPerOutput * sizeof(float));
+    /* NOTE: Output buffers are NOT zeroed here — the caller is responsible for
+     * clearing buffers before the first call.  This allows multiple calls to
+     * += accumulate into the same buffer without losing previous data. */
 
     #pragma omp parallel \
         default(none) \

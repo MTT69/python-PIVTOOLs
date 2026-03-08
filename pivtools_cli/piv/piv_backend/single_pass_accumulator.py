@@ -424,17 +424,30 @@ class SinglePassAccumulator:
                 R_BB_ensemble = R_BB_raw - R_BB_bg
                 R_AB_ensemble = R_AB_raw - R_AB_bg
 
-        # Step 4a: Diagnostic logging to understand noise floor source
-        logging.debug(f"Pass {pass_idx + 1} BACKGROUND SUBTRACTION DIAGNOSTICS:")
-        logging.debug(f"  R_AA_raw: mean={R_AA_raw.mean():.6f}, sum={R_AA_raw.sum():.2f}")
-        logging.debug(f"  R_AA_bg:  mean={R_AA_bg.mean():.6f}, sum={R_AA_bg.sum():.2f}")
-        logging.debug(f"  R_AA_ensemble: mean={R_AA_ensemble.mean():.6f}, median={np.median(R_AA_ensemble):.6f}")
-        logging.debug(f"  R_BB_raw: mean={R_BB_raw.mean():.6f}, sum={R_BB_raw.sum():.2f}")
-        logging.debug(f"  R_BB_bg:  mean={R_BB_bg.mean():.6f}, sum={R_BB_bg.sum():.2f}")
-        logging.debug(f"  R_BB_ensemble: mean={R_BB_ensemble.mean():.6f}, median={np.median(R_BB_ensemble):.6f}")
-        logging.debug(f"  R_AB_raw: mean={R_AB_raw.mean():.6f}, sum={R_AB_raw.sum():.2f}")
-        logging.debug(f"  R_AB_bg:  mean={R_AB_bg.mean():.6f}, sum={R_AB_bg.sum():.2f}")
-        logging.debug(f"  R_AB_ensemble: mean={R_AB_ensemble.mean():.6f}, median={np.median(R_AB_ensemble):.6f}")
+        # Step 4a: Variance decomposition check
+        # By Jensen's inequality, <A⊗A> >= <A>⊗<A>, so R_AA_raw >= R_AA_bg at center.
+        # If this is violated, the correlation sums are inconsistent with the warp sums
+        # (e.g. C library zeroed buffers between accumulation calls).
+        _n_win = pass_data["n_win_y"] * pass_data["n_win_x"]
+        _cs = pass_data["corr_size"]
+        _cy, _cx = _cs[0] // 2, _cs[1] // 2
+        _aa_raw_centers = R_AA_raw.reshape(_n_win, _cs[0], _cs[1])[:, _cy, _cx]
+        _aa_bg_centers = R_AA_bg.reshape(_n_win, _cs[0], _cs[1])[:, _cy, _cx]
+        _aa_ens_centers = R_AA_ensemble.reshape(_n_win, _cs[0], _cs[1])[:, _cy, _cx]
+        _n_negative = int(np.sum(_aa_ens_centers < 0))
+        logging.info(
+            f"Pass {pass_idx + 1}: Variance check (N={N}): "
+            f"AA_raw_center=[{_aa_raw_centers.min():.4e}, {_aa_raw_centers.max():.4e}], "
+            f"AA_bg_center=[{_aa_bg_centers.min():.4e}, {_aa_bg_centers.max():.4e}], "
+            f"AA_ensemble_center=[{_aa_ens_centers.min():.4e}, {_aa_ens_centers.max():.4e}], "
+            f"negative={_n_negative}/{_n_win}"
+        )
+        if _n_negative > 0:
+            logging.warning(
+                f"Pass {pass_idx + 1}: {_n_negative}/{_n_win} windows have negative AA variance! "
+                f"This violates <A²> >= <A>². Check that C correlation buffers are not "
+                f"zeroed between accumulation calls."
+            )
 
         # Step 5: Get configuration for this pass
         win_size = pass_data["win_size"]

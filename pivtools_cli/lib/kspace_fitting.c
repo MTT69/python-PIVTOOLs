@@ -499,11 +499,10 @@ static void build_default_params(double *params,
     params[1] = amp_B;
     params[2] = amp_AB;
     // params[3..5] = 0
-    // NaN for sig_A
-    double nan_val = 0.0 / 0.0;  // NaN
-    params[6] = nan_val;
-    params[7] = nan_val;
-    params[8] = nan_val;
+    // NaN for sig_A (k-space cancels particle shape, so sig_A is not estimated)
+    params[6] = NAN;
+    params[7] = NAN;
+    params[8] = NAN;
     // params[9..11] = 0 (Sigma)
     params[12] = center_x;
     params[13] = center_y;
@@ -520,10 +519,9 @@ static void build_params_from_fit(double *params,
     params[0] = amp_A;
     params[1] = amp_B;
     params[2] = amp_AB;
-    double nan_val = 0.0 / 0.0;
-    params[6] = nan_val;
-    params[7] = nan_val;
-    params[8] = nan_val;
+    params[6] = NAN;
+    params[7] = NAN;
+    params[8] = NAN;
     params[9]  = Sxx;
     params[10] = Syy;
     params[11] = Sxy;
