@@ -11,8 +11,6 @@ Pure Multi-View Dotboard Calibration script.
 Now uses RANSAC-based automatic grid detection (no pattern size required).
 """
 
-import logging
-from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
@@ -20,17 +18,21 @@ from typing import Any, Dict, Optional, Tuple
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
+from loguru import logger
 from scipy.io import savemat
 
-from scipy.spatial import cKDTree
-from scipy.sparse import csr_matrix
-from scipy.sparse.csgraph import connected_components
-
 from pivtools_core.config import get_config, reload_config
-from pivtools_core.image_handling.load_images import read_image
-from pivtools_core.image_handling.calibration_loader import (
-    read_calibration_image as core_read_calibration_image,
-    get_calibration_frame_count,
+
+from pivtools_gui.calibration.grid_detection import (
+    to_grayscale_2d,
+    detect_grid_automatic,
+)
+from pivtools_gui.calibration.calibration_io import (
+    is_container_format,
+    read_calibration_image_with_fallback,
+    read_calibration_image_direct,
+    find_calibration_images,
+    get_camera_input_dir,
 )
 
 # ===================== CONFIGURATION =====================
@@ -66,424 +68,6 @@ NUM_CALIBRATION_IMAGES = None
 # USE_CONFIG_DIRECTLY: If True, skip updating config.yaml with above parameters
 # and load calibration settings directly from the existing config.yaml
 USE_CONFIG_DIRECTLY = True
-
-# LOGGING SETUP
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
-
-
-# ==========================================================================
-# AUTOMATIC GRID DETECTION FUNCTIONS
-# ==========================================================================
-
-def to_grayscale_2d(img: np.ndarray) -> np.ndarray:
-    """Convert image to 2D grayscale."""
-    if img.ndim == 3:
-        if img.shape[0] == 1:
-            return img[0, :, :]
-        elif img.shape[-1] == 1:
-            return img[:, :, 0]
-        elif img.shape[-1] in (3, 4):
-            return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        else:
-            gray = np.squeeze(img)
-            if gray.ndim == 3:
-                return cv2.cvtColor(gray, cv2.COLOR_BGR2GRAY)
-            return gray
-    return img.copy()
-
-
-def apply_mask_to_image(img: np.ndarray, mask: np.ndarray, fill_value: int = 255) -> np.ndarray:
-    """Apply mask: fill excluded regions (mask=0) with fill_value."""
-    masked_img = img.copy()
-    masked_img[mask == 0] = fill_value
-    return masked_img
-
-
-def find_largest_grid_component(
-    grid_indices: np.ndarray,
-) -> Tuple[np.ndarray, int, np.ndarray]:
-    """
-    Find the largest connected component of grid points.
-
-    Two points are connected if they are grid-neighbors:
-    - Same row, adjacent columns (|col_diff| == 1, row_diff == 0)
-    - Same column, adjacent rows (col_diff == 0, |row_diff| == 1)
-
-    This is used to filter out reflections, which form separate grid components
-    that are not connected to the main calibration grid.
-
-    Parameters
-    ----------
-    grid_indices : np.ndarray
-        Array of (col, row) grid indices for each point, shape (N, 2)
-
-    Returns
-    -------
-    mask : np.ndarray
-        Boolean mask of points belonging to largest component
-    n_components : int
-        Total number of connected components found
-    component_sizes : np.ndarray
-        Size of each component
-    """
-    n_points = len(grid_indices)
-
-    if n_points == 0:
-        return np.array([], dtype=bool), 0, np.array([])
-
-    # Build adjacency based on grid-neighbor relationship
-    # Create lookup: grid_index -> point_index
-    index_to_point: Dict[Tuple[int, int], int] = {}
-    for i, gi in enumerate(grid_indices):
-        key = (int(gi[0]), int(gi[1]))
-        index_to_point[key] = i
-
-    # Find all neighbor pairs (4-connected in grid space)
-    rows = []
-    cols = []
-
-    for i, gi in enumerate(grid_indices):
-        col, row = int(gi[0]), int(gi[1])
-        # Check 4-connected neighbors: right, left, down, up
-        for dc, dr in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
-            neighbor_key = (col + dc, row + dr)
-            if neighbor_key in index_to_point:
-                j = index_to_point[neighbor_key]
-                rows.append(i)
-                cols.append(j)
-
-    if len(rows) == 0:
-        # No connections found - each point is its own component
-        # Return all points (can't determine which is "main" grid)
-        return np.ones(n_points, dtype=bool), n_points, np.ones(n_points, dtype=int)
-
-    # Build sparse adjacency matrix
-    data = np.ones(len(rows), dtype=np.int8)
-    adjacency = csr_matrix((data, (rows, cols)), shape=(n_points, n_points))
-
-    # Find connected components
-    n_components, labels = connected_components(adjacency, directed=False)
-
-    # Compute component sizes
-    component_sizes = np.bincount(labels)
-
-    # Find largest component
-    largest_component = np.argmax(component_sizes)
-
-    # Return mask for largest component
-    mask = labels == largest_component
-
-    return mask, n_components, component_sizes
-
-
-def detect_grid_automatic(
-    img: np.ndarray,
-    detector: cv2.SimpleBlobDetector,
-    mask: Optional[np.ndarray] = None,
-    grid_spacing_mm: Optional[float] = None,
-) -> Tuple[bool, Optional[Dict[str, Any]], Dict[str, Any]]:
-    """
-    Automatically detect grid from blob positions - NO pattern size needed.
-
-    Uses OpenCV primitives:
-    - SimpleBlobDetector for blob detection
-    - Neighbor analysis to find grid vectors
-    - RANSAC for robust affine fitting and outlier rejection
-
-    Parameters
-    ----------
-    img : ndarray
-        Input image
-    detector : cv2.SimpleBlobDetector
-        Blob detector
-    mask : ndarray, optional
-        Binary mask (255=keep, 0=exclude)
-    grid_spacing_mm : float, optional
-        Known grid spacing in mm (for calibration output)
-
-    Returns
-    -------
-    success : bool
-    grid_data : dict or None
-        Contains: centers, grid_indices, n_cols, n_rows, spacing_px, angle_deg, grid_spacing_mm
-    info : dict
-        Detection metadata and diagnostics
-    """
-    gray = to_grayscale_2d(img)
-    original_gray = gray.copy()
-
-    if mask is not None:
-        gray = apply_mask_to_image(gray, mask, fill_value=255)
-
-    info: Dict[str, Any] = {'method': 'automatic_grid_detection'}
-
-    # Apply CLAHE to normalize uneven illumination before detection
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    gray = clahe.apply(gray)
-
-    # Step 1: Detect blobs (histogram-based single pass)
-    mean_intensity = np.mean(gray)
-    if mean_intensity > 127:
-        # Light background, dark dots - use original
-        keypoints = detector.detect(gray)
-        info['image_mode'] = 'original'
-    else:
-        # Dark background, light dots - use inverted
-        keypoints = detector.detect(255 - gray)
-        info['image_mode'] = 'inverted'
-
-    # Fallback: if too few found, try the other mode
-    if len(keypoints) < 9:
-        fallback = detector.detect(255 - gray) if mean_intensity > 127 else detector.detect(gray)
-        if len(fallback) > len(keypoints):
-            keypoints = fallback
-            info['image_mode'] = 'inverted' if mean_intensity > 127 else 'original'
-
-    if len(keypoints) < 9:
-        info['error'] = f'Too few blobs detected: {len(keypoints)}'
-        return False, None, info
-
-    centers = np.array([kp.pt for kp in keypoints], dtype=np.float32)
-    info['n_blobs_detected'] = len(centers)
-    logger.debug(f"Detected {len(centers)} blobs")
-
-    # Step 2: Find grid spacing using cKDTree (O(N log N) instead of O(N^2))
-    n_points = len(centers)
-
-    tree = cKDTree(centers)
-    # Use k=5 to detect perspective-distorted grids (stereo/Scheimpflug)
-    # where the two grid directions have very different spacings.
-    k_query = min(5, n_points)
-    nn_dists, _ = tree.query(centers, k=k_query)
-    spacing_px = np.median(nn_dists[:, 1])
-    info['spacing_px'] = float(spacing_px)
-    logger.debug(f"Estimated grid spacing: {spacing_px:.1f} pixels")
-
-    # For perspective-distorted grids, the 3rd-nearest-neighbor captures the
-    # secondary spacing (interior points have 2 short + 2 long neighbors).
-    # Use this to set a search radius that covers both grid directions.
-    if k_query >= 4:
-        secondary_spacing_px = np.median(nn_dists[:, 3])
-        search_radius = secondary_spacing_px * 1.4
-    else:
-        search_radius = spacing_px * 1.4
-
-    # Step 3: Find HORIZONTAL and VERTICAL grid vectors (vectorized)
-    angle_tolerance_deg = 20
-    angle_tolerance = np.radians(angle_tolerance_deg)
-
-    # Find all neighbor pairs within distance tolerance using cKDTree
-    pairs = tree.query_pairs(r=search_radius)
-    # Filter pairs below minimum distance and build directed index arrays
-    i_list, j_list = [], []
-    min_dist = spacing_px * 0.6
-    for i, j in pairs:
-        d = np.linalg.norm(centers[i] - centers[j])
-        if d > min_dist:
-            # Add both directions for symmetric neighbor analysis
-            i_list.append(i)
-            j_list.append(j)
-            i_list.append(j)
-            j_list.append(i)
-    i_idx = np.array(i_list, dtype=np.intp)
-    j_idx = np.array(j_list, dtype=np.intp)
-
-    if len(i_idx) < 20:
-        info['error'] = 'Not enough neighbor pairs found'
-        return False, None, info
-
-    # Compute vectors for all valid pairs
-    all_vecs = centers[j_idx] - centers[i_idx]  # (M, 2)
-    angles_from_horiz = np.arctan2(np.abs(all_vecs[:, 1]), np.abs(all_vecs[:, 0]))
-
-    # Separate horizontal and vertical
-    horiz_mask = angles_from_horiz < angle_tolerance
-    vert_mask = angles_from_horiz > (np.pi / 2 - angle_tolerance)
-
-    horizontal_vecs_arr = all_vecs[horiz_mask]
-    vertical_vecs_arr = all_vecs[vert_mask]
-
-    logger.debug(f"Found {len(horizontal_vecs_arr)} horizontal, {len(vertical_vecs_arr)} vertical neighbor pairs")
-
-    if len(horizontal_vecs_arr) < 10 or len(vertical_vecs_arr) < 10:
-        info['error'] = 'Not enough axis-aligned neighbors found'
-        return False, None, info
-
-    # Normalize horizontal vectors to point RIGHT (+x) - vectorized
-    horizontal_vecs_arr[horizontal_vecs_arr[:, 0] < 0] *= -1
-
-    # Normalize vertical vectors to point DOWN (+y in image pixel coords)
-    # This matches the old OpenCV findCirclesGrid convention where row 0 is at the top
-    vertical_vecs_arr[vertical_vecs_arr[:, 1] < 0] *= -1
-
-    # Take median to get robust grid vectors
-    vec1 = np.median(horizontal_vecs_arr, axis=0)  # X direction (right)
-    vec2 = np.median(vertical_vecs_arr, axis=0)    # Y direction (down in image = +y in pixels)
-
-    info['grid_vec1'] = vec1.tolist()
-    info['grid_vec2'] = vec2.tolist()
-    logger.debug(f"Grid vector 1 (col): [{vec1[0]:.1f}, {vec1[1]:.1f}]")
-    logger.debug(f"Grid vector 2 (row): [{vec2[0]:.1f}, {vec2[1]:.1f}]")
-
-    # Step 4: Compute grid coordinates for each point
-    # Solve: point = origin + col * vec1 + row * vec2
-    # Use BOTTOM-LEFT point as origin (min x, max y in image pixel coords)
-    origin_idx = np.argmin(centers[:, 0] - centers[:, 1])  # Bottom-left
-    origin = centers[origin_idx]
-
-    logger.debug(f"Origin (bottom-left): ({origin[0]:.1f}, {origin[1]:.1f})")
-
-    # Build transformation matrix: [vec1, vec2] @ [col, row].T = point - origin
-    A = np.column_stack([vec1, vec2])
-    A_inv = np.linalg.inv(A)
-
-    grid_coords_float = []
-    for pt in centers:
-        delta = pt - origin
-        coords = A_inv @ delta  # [col, row]
-        grid_coords_float.append(coords)
-
-    grid_coords_float = np.array(grid_coords_float)
-
-    # Round to nearest integer for grid indices
-    grid_indices = np.round(grid_coords_float).astype(np.int32)
-
-    # Shift so minimum is (0, 0) - ensures top-left of detected grid is (0,0)
-    col_min, row_min = grid_indices[:, 0].min(), grid_indices[:, 1].min()
-    grid_indices[:, 0] -= col_min
-    grid_indices[:, 1] -= row_min
-
-    logger.debug(f"Grid index range: x=[0, {grid_indices[:, 0].max()}], y=[0, {grid_indices[:, 1].max()}]")
-
-    # Step 4.5: Filter out reflections using connected component analysis
-    # Real grid and reflections form separate connected components in grid-index space
-    # Keep only the largest component (the real calibration grid)
-    component_mask, n_components, component_sizes = find_largest_grid_component(grid_indices)
-
-    info['n_components_found'] = n_components
-    info['component_sizes'] = component_sizes.tolist()
-
-    if n_components > 1:
-        n_rejected = np.sum(~component_mask)
-        n_kept = np.sum(component_mask)
-        logger.info(
-            f"Reflection filtering: Found {n_components} grid components, "
-            f"keeping largest ({n_kept} points), rejecting {n_rejected} points (likely reflections)"
-        )
-        info['n_reflection_points_rejected'] = int(n_rejected)
-
-        # Apply filter
-        centers = centers[component_mask]
-        grid_indices = grid_indices[component_mask]
-
-        # Re-normalize grid indices after filtering
-        col_min, row_min = grid_indices[:, 0].min(), grid_indices[:, 1].min()
-        grid_indices[:, 0] -= col_min
-        grid_indices[:, 1] -= row_min
-
-        logger.debug(f"After reflection filter - Grid index range: x=[0, {grid_indices[:, 0].max()}], y=[0, {grid_indices[:, 1].max()}]")
-    else:
-        info['n_reflection_points_rejected'] = 0
-        logger.debug("No reflections detected (single connected component)")
-
-    # Step 5: Use RANSAC to robustly fit affine transform and reject outliers
-    src_pts = grid_indices.astype(np.float32)
-    dst_pts = centers.astype(np.float32)
-
-    ransac_thresh = 0.15 * spacing_px  # Tighter tolerance for better outlier rejection
-    affine_matrix, inliers = cv2.estimateAffine2D(
-        src_pts, dst_pts,
-        method=cv2.RANSAC,
-        ransacReprojThreshold=ransac_thresh,
-        maxIters=1000,
-        confidence=0.97
-    )
-
-    if affine_matrix is None:
-        info['error'] = 'RANSAC failed to fit affine transform'
-        return False, None, info
-
-    inliers = inliers.flatten().astype(bool)
-    n_inliers = np.sum(inliers)
-    n_outliers = len(inliers) - n_inliers
-    logger.debug(f"RANSAC: {n_inliers} inliers, {n_outliers} outliers rejected")
-
-    centers = centers[inliers]
-    grid_indices = grid_indices[inliers]
-
-    # Step 6: Remove duplicate grid positions (keep best fit)
-    # Compute residuals for remaining points
-    src_clean = grid_indices.astype(np.float32)
-    predicted = cv2.transform(src_clean.reshape(-1, 1, 2), affine_matrix).reshape(-1, 2)
-    residuals = np.sqrt(np.sum((centers - predicted) ** 2, axis=1))
-
-    pos_to_points: Dict[Tuple[int, int], list] = defaultdict(list)
-    for i, gi in enumerate(grid_indices):
-        pos_key = (gi[0], gi[1])
-        pos_to_points[pos_key].append((i, residuals[i]))
-
-    keep_indices = []
-    n_dups = 0
-    for pos_key, point_list in pos_to_points.items():
-        if len(point_list) == 1:
-            keep_indices.append(point_list[0][0])
-        else:
-            best_idx = min(point_list, key=lambda x: x[1])[0]
-            keep_indices.append(best_idx)
-            n_dups += len(point_list) - 1
-
-    if n_dups > 0:
-        logger.debug(f"Removed {n_dups} duplicate grid positions")
-
-    keep_indices_arr = np.array(keep_indices)
-    centers = centers[keep_indices_arr]
-    grid_indices = grid_indices[keep_indices_arr]
-
-    # Recompute dimensions
-    n_cols = grid_indices[:, 0].max() + 1
-    n_rows = grid_indices[:, 1].max() + 1
-    info['n_cols'] = int(n_cols)
-    info['n_rows'] = int(n_rows)
-
-    # Extract rotation angle from affine matrix
-    angle_deg = np.degrees(np.arctan2(affine_matrix[1, 0], affine_matrix[0, 0]))
-    info['angle_deg'] = float(angle_deg)
-    info['affine_matrix'] = affine_matrix.tolist()
-
-    logger.info(f"Automatic detection: {n_cols} cols x {n_rows} rows, {len(centers)} points")
-
-    # Step 7: Subpixel refinement on original image
-    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.001)
-    try:
-        centers_refined = cv2.cornerSubPix(
-            original_gray,
-            centers.reshape(-1, 1, 2),
-            (11, 11),
-            (-1, -1),
-            criteria
-        )
-        centers = centers_refined.reshape(-1, 2)
-    except cv2.error:
-        pass  # Keep original if refinement fails
-
-    # Build output
-    grid_data = {
-        'centers': centers,
-        'grid_indices': grid_indices,
-        'n_cols': int(n_cols),
-        'n_rows': int(n_rows),
-        'spacing_px': spacing_px,
-        'angle_deg': angle_deg,
-        'grid_spacing_mm': grid_spacing_mm,
-    }
-
-    info['success'] = True
-    info['n_grid_points'] = len(centers)
-    logger.info(f"Grid detection SUCCESS: {n_cols}x{n_rows} grid with {len(centers)} points")
-
-    return True, grid_data, info
-
 
 def apply_cli_settings_to_config():
     """Update config.yaml with CLI-mode hardcoded settings.
@@ -593,20 +177,26 @@ class MultiViewCalibrator:
         self._setup_directories()
 
     def _create_blob_detector(self):
-        """Create optimized blob detector for circle grid detection"""
+        """Create optimized blob detector for circle grid detection.
+
+        Thresholds are permissive to detect perspective-distorted dots
+        (tilted boards make far-edge dots small and elliptical).  The RANSAC
+        grid fitting step downstream rejects any false-positive blobs, so we
+        can afford a low bar here.
+        """
         params = cv2.SimpleBlobDetector_Params()
         params.filterByArea = True
-        params.minArea = 50  # Reduced to catch smaller dots
+        params.minArea = 10  # Catch very small perspective-foreshortened dots
         params.maxArea = 5000
-        # Shape filtering to reject distorted reflections (relaxed thresholds)
-        params.filterByCircularity = True
-        params.minCircularity = 0.4
-        params.filterByInertia = True
-        params.minInertiaRatio = 0.3
-        params.filterByConvexity = False  # Keep disabled - not useful for dots
+        # Disable shape filtering — perspective makes dots elliptical, and
+        # pixelation at small sizes degrades circularity measurements.
+        # RANSAC grid fitting handles outlier rejection robustly.
+        params.filterByCircularity = False
+        params.filterByInertia = False
+        params.filterByConvexity = False
         params.minThreshold = 0
         params.maxThreshold = 255
-        params.thresholdStep = 10  # Faster detection (was 5)
+        params.thresholdStep = 5  # Finer steps to catch small/faint blobs
         return cv2.SimpleBlobDetector_create(params)
 
     def _setup_directories(self):
@@ -619,121 +209,24 @@ class MultiViewCalibrator:
             (cam_base / "figures").mkdir(parents=True, exist_ok=True)
 
     def _get_camera_input_dir(self, cam_num: int) -> Path:
-        """Get the input directory for calibration images.
-
-        Uses build_calibration_camera_path for path resolution from
-        calibration_sources config.
-        """
-        if self._config is not None:
-            from pivtools_core.image_handling.path_utils import build_calibration_camera_path
-            return build_calibration_camera_path(self._config, source_path_idx=0, camera=cam_num)
-
-        # Fallback: use source_dir directly
-        return self.source_dir
+        """Get the input directory for calibration images."""
+        return get_camera_input_dir(cam_num, self._config, 0, self.source_dir)
 
     def _is_container_format(self):
-        """Check if file pattern is a container format (.set, .cine).
-
-        Uses config.calibration_is_container_format when available, otherwise
-        falls back to pattern-based detection.
-
-        Note: IM7 files with % patterns (e.g., B%05d.im7) are individual files,
-        not containers. Only treat as container if it's a single file without
-        a printf-style pattern.
-        """
-        if self._config is not None:
-            return self._config.calibration_is_container_format
-
-        # Fallback: pattern-based detection
-        pattern_lower = self.file_pattern.lower()
-        # If pattern has %, it's individual numbered files, not a container
-        if "%" in self.file_pattern:
-            return False
-        # Only .set and .cine are true multi-frame containers
-        return '.set' in pattern_lower or '.cine' in pattern_lower
+        """Check if file pattern is a container format (.set, .cine)."""
+        return is_container_format(self._config, self.file_pattern)
 
     def _read_image(self, img_path=None, camera=1, img_index=1):
-        """Read calibration image using core utilities.
-
-        When config is available, uses the unified core reader which handles
-        all formats consistently. Falls back to direct reading for CLI mode.
-
-        Parameters
-        ----------
-        img_path : str or Path, optional
-            Path to image file (used for fallback/CLI mode)
-        camera : int
-            Camera number (1-based)
-        img_index : int
-            Image index (1-based)
-
-        Returns
-        -------
-        np.ndarray or None
-            Image as uint8 array, or None if reading failed
-        """
-        # Use core reader when config is available
-        if self._config is not None:
-            try:
-                img = core_read_calibration_image(
-                    idx=img_index,
-                    camera=camera,
-                    config=self._config,
-                    source_path_idx=0,
-                    normalize_uint8=True,
-                )
-                if img is not None and img.ndim == 3:
-                    img = img[0]  # Extract single frame if needed
-                logger.info(f"Read image {img_index} shape: {img.shape}, dtype: {img.dtype}")
-                return img
-            except (FileNotFoundError, ValueError) as e:
-                logger.warning(f"Error reading image {img_index}: {e}")
-                return None
-            except Exception as e:
-                logger.warning(f"Unexpected error reading image {img_index}: {e}")
-                return None
-
-        # Fallback: direct reading for CLI mode without config
-        return self._read_image_direct(img_path, camera, img_index)
+        """Read calibration image using core reader with CLI fallback."""
+        return read_calibration_image_with_fallback(
+            img_path, camera, img_index, self._config, 0, self.file_pattern,
+        )
 
     def _read_image_direct(self, img_path, camera=1, img_index=1):
         """Direct image reading fallback for CLI mode without config."""
-        try:
-            img_path_lower = str(img_path).lower()
-            if self._is_container_format():
-                if '.set' in img_path_lower:
-                    img = read_image(str(img_path), camera_no=camera, im_no=img_index)
-                elif '.cine' in img_path_lower:
-                    from pivtools_core.image_handling.readers.cine_reader import read_cine_single
-                    img = read_cine_single(str(img_path), idx=img_index)
-                else:
-                    img = read_image(str(img_path))
-            elif '.im7' in img_path_lower:
-                img = read_image(str(img_path), camera_no=camera, frames=1, frames_per_camera=1)
-            else:
-                img = read_image(str(img_path))
-
-            if img is None:
-                return None
-
-            logger.info(f"Read image shape: {img.shape}, dtype: {img.dtype}")
-
-            # Normalize to uint8
-            if img.dtype == np.bool_:
-                img = img.astype(np.uint8) * 255
-            elif img.dtype in [np.float32, np.float64]:
-                img_min, img_max = img.min(), img.max()
-                if img_max > img_min:
-                    img = ((img - img_min) / (img_max - img_min) * 255).astype(np.uint8)
-                else:
-                    img = np.zeros_like(img, dtype=np.uint8)
-            elif img.dtype == np.uint16:
-                img = (img / 256).astype(np.uint8)
-
-            return img
-        except Exception as e:
-            logger.warning(f"Error reading image {img_path}: {e}")
-            return None
+        return read_calibration_image_direct(
+            img_path, camera, img_index, self.file_pattern, self._config,
+        )
 
     def make_object_points_dynamic(
         self,
@@ -876,23 +369,8 @@ class MultiViewCalibrator:
             cam_output_base = self.base_dir / "calibration" / f"Cam{cam_num}" / "dotboard_planar"
 
             # Find images
-            image_files = []
             is_container = self._is_container_format()
-
-            if is_container:
-                container = cam_input_dir / self.file_pattern
-                if container.exists():
-                    image_files = [str(container)]
-            elif "%" in self.file_pattern:
-                i = 1
-                while True:
-                    f = cam_input_dir / (self.file_pattern % i)
-                    if not f.exists():
-                        break
-                    image_files.append(str(f))
-                    i += 1
-            else:
-                image_files = sorted([str(f) for f in cam_input_dir.glob(self.file_pattern)])
+            image_files = [str(f) for f in find_calibration_images(cam_input_dir, self.file_pattern, self._config)]
 
             if not image_files:
                 logger.error(f"No images found for Camera {cam_num}")

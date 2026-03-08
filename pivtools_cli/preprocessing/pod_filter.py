@@ -52,9 +52,10 @@ def find_auto_mode(
         Number of modes to remove (matches MATLAB N_auto convention)
     """
     # Protect against division by zero
-    # round() matches MATLAB round(N/2): for even N both give N/2,
-    # for odd N, Python // gives floor while MATLAB round gives ceil.
-    mid_idx = round(n_images / 2) - 1  # -1 for 0-based indexing
+    # MATLAB round() rounds 0.5 away from zero; Python round() uses
+    # banker's rounding (to nearest even). Use math.ceil to match MATLAB
+    # for both even and odd N: ceil(N/2) == round(N/2) in MATLAB.
+    mid_idx = -(-n_images // 2) - 1  # ceil(n_images/2), then 0-based
     norm_factor = eigvals[mid_idx] if eigvals[mid_idx] > 1e-10 else 1.0
 
     # Handle edge case of very small first eigenvalue

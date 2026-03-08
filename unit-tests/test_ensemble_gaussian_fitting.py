@@ -18,12 +18,32 @@ The C fitter OUTPUT converts [9-11] to total sigma: output[9] = sigma_A + delta.
 """
 
 import ctypes
+from pathlib import Path
 
 import numpy as np
 import pytest
 
-from tests.test_initial_guess import generate_2d_gaussian
 from synthetic_correlations import flatten_for_gaussian, make_mock_config
+
+
+def generate_2d_gaussian(X, Y, amp, cx, cy, sx, sy, sxy, offset):
+    """Generate a 2D Gaussian on coordinate grids X, Y.
+
+    Parameters match the C stacked-Gaussian model convention:
+      sx, sy  = diagonal covariance elements (variances)
+      sxy     = off-diagonal covariance element
+      offset  = DC offset (c parameter)
+    """
+    det = sx * sy - sxy * sxy
+    if abs(det) < 1e-30:
+        return np.full_like(X, offset, dtype=np.float64)
+    inv_xx = sy / det
+    inv_yy = sx / det
+    inv_xy = -sxy / det
+    dx = X - cx
+    dy = Y - cy
+    exponent = -0.5 * (inv_xx * dx * dx + 2.0 * inv_xy * dx * dy + inv_yy * dy * dy)
+    return amp * np.exp(exponent) + offset
 
 # ---------------------------------------------------------------------------
 # Library loading — skip entire module if C library not available
@@ -278,7 +298,9 @@ class TestOffsetFitting:
             # Offset disabled + nonzero offset: expect model mismatch.
             # Positions should still be reasonable, sigmas may be biased.
             # Large offsets (50+) cause ~1-2 px position bias — model limitation.
-            pos_tol = 2.0 if offset_value >= 50.0 else 1.0
+            # offset=5: small model mismatch, position should still be sub-pixel accurate
+            # offset=50: large model mismatch, known ~1-2 px bias (model limitation)
+            pos_tol = 2.0 if offset_value >= 50.0 else 0.5
             for idx in [12, 13, 14, 15]:
                 exp_val = true_params[idx]
                 fit_val = result[idx]
@@ -535,3 +557,79 @@ class TestFitWindowsOpenmp:
 
         assert np.all(status == -1)
         assert np.all(gauss == 0)
+
+
+class TestDiagnosticFigures:
+    """Generate diagnostic plots when --make-figures is passed."""
+
+    def test_make_figures(self, make_figures):
+        if not make_figures:
+            pytest.skip("Pass --make-figures to generate diagnostic plots")
+
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        out_dir = Path(__file__).resolve().parent / "test_output"
+        out_dir.mkdir(exist_ok=True)
+
+        win_size = (32, 32)
+
+        set_offset_fitting(True)
+        set_center_masking(False)
+
+        true_params = _make_default_params(win_size, dx=2.5, dy=1.5)
+        AA, BB, AB = _generate_stacked_planes(win_size, true_params)
+
+        result, status = _fit_single_window_direct(
+            AA, BB, AB, true_params.copy(), win_size,
+        )
+
+        expected = _build_expected_output(true_params)
+
+        fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+
+        # Panel 1: AB correlation plane with fitted contour
+        ax = axes[0]
+        im = ax.imshow(AB, cmap="viridis", origin="lower")
+        plt.colorbar(im, ax=ax, shrink=0.85)
+        # Overlay fitted contour
+        h, w = win_size
+        Y, X = np.meshgrid(np.arange(1, h + 1), np.arange(1, w + 1), indexing='ij')
+        sx_AB = result[6] + max(result[9] - result[6], 0)
+        sy_AB = result[7] + max(result[10] - result[7], 0)
+        sxy_AB = result[8] + (result[11] - result[8])
+        fitted_AB = generate_2d_gaussian(
+            X, Y, result[2], result[14], result[15],
+            sx_AB, sy_AB, sxy_AB, result[5],
+        )
+        ax.contour(fitted_AB, levels=5, colors='red', linewidths=0.8, alpha=0.7)
+        ax.set_title("AB plane + fitted contours")
+
+        # Panel 2: Residual map
+        ax = axes[1]
+        residual = AB - fitted_AB
+        vlim = max(np.abs(residual).max(), 1e-6)
+        im = ax.imshow(residual, cmap="RdBu_r", vmin=-vlim, vmax=vlim, origin="lower")
+        plt.colorbar(im, ax=ax, shrink=0.85)
+        ax.set_title(f"Residual (max={vlim:.2e})")
+
+        # Panel 3: Parameter recovery bar chart
+        ax = axes[2]
+        x_pos = np.arange(16)
+        width = 0.35
+        ax.bar(x_pos - width / 2, expected, width, label="True (output conv.)", color="steelblue")
+        ax.bar(x_pos + width / 2, result, width, label="Recovered", color="coral")
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels(PARAM_NAMES, rotation=45, ha="right", fontsize=7)
+        ax.set_ylabel("Parameter value")
+        ax.set_title("16-param recovery (true vs fit)")
+        ax.legend(fontsize=8)
+
+        plt.suptitle("Ensemble Gaussian Fitting — Diagnostic", fontsize=14, fontweight="bold")
+        plt.tight_layout()
+
+        out_path = out_dir / "gaussian_fitting_diagnostic.png"
+        plt.savefig(out_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        print(f"\n  Figure saved: {out_path}")

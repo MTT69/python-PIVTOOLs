@@ -23,6 +23,11 @@ from scipy.io import savemat
 from pivtools_core.config import Config, get_config
 from pivtools_core.image_handling.calibration_loader import read_calibration_image
 
+from pivtools_gui.calibration.calibration_io import (
+    is_container_format,
+    find_calibration_images,
+)
+
 
 class BaseStereoCalibrator(ABC):
     """Base class for stereo camera calibration.
@@ -175,21 +180,8 @@ class BaseStereoCalibrator(ABC):
         pass
 
     def _is_container_format(self) -> bool:
-        """Check if file pattern is a container format (.set, .cine).
-
-        Note: IM7 files with % patterns (e.g., B%05d.im7) are individual files,
-        not containers. Only .set and .cine files are true multi-frame containers.
-        """
-        if self._config is not None:
-            return self._config.calibration_is_container_format
-
-        # Fallback: pattern-based detection
-        pattern_lower = self.file_pattern.lower()
-        # If pattern has %, it's individual numbered files, not a container
-        if "%" in self.file_pattern:
-            return False
-        # Only .set and .cine are true multi-frame containers
-        return '.set' in pattern_lower or '.cine' in pattern_lower
+        """Check if file pattern is a container format (.set, .cine)."""
+        return is_container_format(self._config, self.file_pattern)
 
     def _read_calibration_image_centralized(
         self,
@@ -269,48 +261,8 @@ class BaseStereoCalibrator(ABC):
         return self.base_dir / "calibration" / f"stereo_cam{cam1}_cam{cam2}"
 
     def _find_calibration_images(self, cam_input_dir: Path) -> List[Path]:
-        """Find all calibration images matching the pattern.
-
-        Parameters
-        ----------
-        cam_input_dir : Path
-            Directory to search
-
-        Returns
-        -------
-        list[Path]
-            List of matching image paths
-        """
-        if self._is_container_format():
-            container_file = cam_input_dir / self.file_pattern
-            if container_file.exists():
-                return [container_file]
-            return []
-
-        # Glob pattern matching
-        if "*" in self.file_pattern or "?" in self.file_pattern:
-            return sorted(cam_input_dir.glob(self.file_pattern))
-
-        # Numbered pattern (e.g., "calib%05d.tif")
-        if "%" in self.file_pattern:
-            files = []
-            i = 1
-            while True:
-                try:
-                    filename = self.file_pattern % i
-                except TypeError:
-                    break
-                filepath = cam_input_dir / filename
-                if filepath.exists():
-                    files.append(filepath)
-                    i += 1
-                else:
-                    break
-            return files
-
-        # Single file
-        single = cam_input_dir / self.file_pattern
-        return [single] if single.exists() else []
+        """Find all calibration images matching the pattern."""
+        return find_calibration_images(cam_input_dir, self.file_pattern, self._config)
 
     def _perform_stereo_calibration(
         self,

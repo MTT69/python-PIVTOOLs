@@ -407,24 +407,28 @@ POST /calibrate/calibration/clear_image_cache  -> clears server-side calibration
 
 **Calibration image caching:** `shared_views.py` maintains a thread-safe LRU cache (`_cal_image_cache`, max 10 entries) keyed by `(source_path_idx, camera, idx, output_format)`. Eliminates disk I/O and percentile re-computation on frame revisits. Frontend clears on camera switch via `useCalibrationImageViewer`.
 
+**Shared calibration modules:**
+- `grid_detection.py` - Canonical home for dotboard grid detection functions: `to_grayscale_2d`, `apply_mask_to_image`, `find_largest_grid_component`, `_assign_grid_indices_bfs`, `detect_grid_automatic`. BFS neighborhood walk + homography RANSAC for perspective-robust grid fitting. Used by both planar and stereo dotboard calibrators.
+- `calibration_io.py` - Shared I/O utilities: `ARUCO_DICT_MAP`, `is_container_format()`, `read_calibration_image_with_fallback()`, `read_calibration_image_direct()`, `find_calibration_images()`, `get_camera_input_dir()`, `create_charuco_detector()`. Used by all calibration modules (planar dotboard, planar charuco, stereo base, stereo charuco).
+
 **Production files** (do the actual calibration work):
 - `scale_factor_calibration_production.py` - Simple px→mm scaling
 - `global_coordinate_alignment.py` - Global coordinate alignment. Uses chain topology (cam N↔cam N+1 pairs). Supports `invert_ux` to negate ux + UV_stress and reflect x-coordinates around datum_physical_x. **Fused into calibration workers:** `precompute_camera_shifts(type_name)` pre-computes shifts (no data I/O) → shifts/invert_ux applied inside parallel calibration workers (one file open, one save per .mat). `apply_alignment()` still exists for standalone `align-coordinates` CLI command; `_apply_invert_ux_to_camera()` uses `ProcessPoolExecutor` with `worker_initializer` (from `worker_pool.py`) to process vector .mat files in parallel. **Idempotency guard:** `alignment_applied.json` sidecar marker; blocks re-application unless `force=True`. Fresh calibration clears the marker. Pre-flight validates: datum_pixel set, method not polynomial, overlap_pairs for multi-camera.
-- `calibration_planar/planar_calibration_production.py` - Dotboard detection + model. Optimized: histogram-based single blob detection, cKDTree neighbor finding, reduced RANSAC iterations, vectorized object points, no double image reads for containers. Supports `model_type="pinhole"` (OpenCV) or `"polynomial"` (DaVis-compatible) via `MultiViewCalibrator(model_type=...)`.
-- `calibration_charuco/charuco_calibration_production.py` - ChArUco detection. Supports `model_type="pinhole"` or `"polynomial"` via `ChArUcoCalibrator(model_type=...)`. ChArUco world points are in meters (multiplied by 1000 for polynomial mm input).
+- `calibration_planar/planar_calibration_production.py` - Dotboard detection + model. Grid detection delegated to `grid_detection.py`, I/O to `calibration_io.py`. Supports `model_type="pinhole"` (OpenCV) or `"polynomial"` (DaVis-compatible) via `MultiViewCalibrator(model_type=...)`.
+- `calibration_charuco/charuco_calibration_production.py` - ChArUco detection. Board creation delegated to `calibration_io.create_charuco_detector()`, I/O to shared utilities. Supports `model_type="pinhole"` or `"polynomial"` via `ChArUcoCalibrator(model_type=...)`. ChArUco world points are in meters (multiplied by 1000 for polynomial mm input).
 - `calibration_poly/polynomial_calibration_production.py` - DaVis XML polynomial calibration consumer (`PolynomialVectorCalibrator`) + polynomial model fitting from detected points (`fit_polynomial_from_points()`, `save_polynomial_to_config()`). Fitting uses 3rd-order polynomial with 10 terms [1, s, s², s³, t, t², t³, s*t, s²*t, s*t²] solved via `np.linalg.lstsq`. mm_per_pixel estimated via median nearest-neighbor ratios (cKDTree). **Coordinate convention:** `PolynomialVectorCalibrator` converts uncalibrated coords (1-based, y-up) → raw pixels (0-based, y-down) via `_uncal_to_raw()` before polynomial evaluation, matching the space the polynomial was fitted in. `image_height` stored from config for the conversion.
 - `vector_calibration_production.py` - Applies calibration to vectors
 - `image_dewarp_overlay.py` - Standalone script: dewarps raw images from multiple cameras into physical coords, overlays them with interactive coordinate readout and measurement tools. Config-at-top pattern with config.yaml fallback. Imports `PinholeCamera`/`compute_dewarp_maps`/`dewarp_image` from `self_calibration.py` and `_pixels_to_world_mm` from `global_coordinate_alignment.py`. Uses raw pixel coords (not uncalibrated convention) throughout for consistency with dewarp maps.
-- `stereo_reconstruction/stereo_dotboard_calibration_production.py` - Stereo dotboard. Same optimizations as planar: histogram blob detection, cKDTree, reduced RANSAC, vectorized object points
-- `stereo_reconstruction/stereo_calibration_base.py` - Stereo base class. Parallel camera image reads via ThreadPoolExecutor
-- `stereo_reconstruction/stereo_charuco_calibration_production.py` - Stereo ChArUco detection
+- `stereo_reconstruction/stereo_dotboard_calibration_production.py` - Stereo dotboard. Grid detection delegated to `grid_detection.py`. Blob detector params differ from planar (stricter: minArea=50, circularity=0.4, inertia=0.3).
+- `stereo_reconstruction/stereo_calibration_base.py` - Stereo base class. Parallel camera image reads via ThreadPoolExecutor. Container format + image finding delegated to `calibration_io.py`.
+- `stereo_reconstruction/stereo_charuco_calibration_production.py` - Stereo ChArUco detection. Board creation delegated to `calibration_io.create_charuco_detector()`. `ARUCO_DICT_MAP` re-exported for backward compat.
 - `stereo_reconstruction/stereo_reconstruction_production.py` - 3D velocity reconstruction from stereo pairs. Converts uncalibrated coords → raw pixels before OpenCV triangulation. Negates y/uy on output (OpenCV y-down → physical y-up). Uses ProcessPoolExecutor for parallel frame processing.
 - `stereo_reconstruction/self_calibration.py` - Stereo self-calibration (Wieneke 2005). Detects and corrects laser-sheet Z-offset and tilts via iterative disparity minimization. Key exports: `PinholeCamera`, `SelfCalibrationResult`, `run_self_calibration()`, `compute_dewarp_maps()`. Reuses `bulkxcorr2d_accumulate` C library for ensemble cross-camera correlation, `median_outlier_detection` + `infill_local_median` for disparity cleaning. Includes pure-Python FFT fallback when C library unavailable. Test script: `scripts/test_self_calibration.py` (synthetic data + 5 diagnostic figures).
 
 **Dotboard calibration performance optimizations** (shared by planar + stereo):
 - **Blob detection:** Histogram-based single pass (checks `mean_intensity > 127` to decide original vs inverted), with fallback if <9 keypoints found
 - **Neighbor finding:** `scipy.spatial.cKDTree` replaces O(N^2) pairwise distance matrix — O(N log N) for spacing estimation and pair finding
-- **RANSAC:** Reduced to `maxIters=1000, confidence=0.97` (was 2000/0.99). Threshold `0.15 * spacing_px` unchanged
+- **RANSAC:** `maxIters=2000, confidence=0.995`. Threshold `0.15 * spacing_px`
 - **Object points:** Vectorized with NumPy (no Python loop)
 - **Container reads:** Eliminated duplicate image reads (was read-to-test then read-again)
 - **Multi-camera (planar):** `dotboard_views.py` processes all cameras in parallel via `ThreadPoolExecutor`
@@ -791,7 +795,7 @@ Defines available image filter types and their parameter schemas for the UI.
 
 **Instantaneous step (e):** `correlate_and_save_batch()` → multi-pass correlation + peak finding + save per batch. Uses `as_completed()` for any-order processing.
 
-**Ensemble step (e):** `process_pass_sliding_window()` → accumulate correlation sums per worker, reduce, then `accumulator.finalize_pass()` → distributed Gaussian (or k-space) fitting → extract velocities + stresses.
+**Ensemble step (e):** `process_pass_worker_accumulate()` → per-worker accumulation of correlation sums, tree reduction, then `accumulator.finalize_pass()` → distributed Gaussian (or k-space) fitting → extract velocities + stresses.
 
 ### Predictor Interpolation Border Mode
 
@@ -827,8 +831,8 @@ Multi-pass PIV upscales the velocity field from the previous pass to warp images
 | Function | Params | Returns | Description |
 |----------|--------|---------|-------------|
 | `main()` | — | None | CLI entry. Sets `MALLOC_TRIM_THRESHOLD_=0`, starts cluster, iterates paths×cameras. |
-| `run_ensemble_piv` | `config, client, camera_num, source_path, output_path, base_path, vector_masks, pixel_mask` | `str` | Full pipeline. Multi-pass: scatter predictor → sliding window → finalize pass → extract predictor → next pass. |
-| `process_pass_sliding_window` | `client, images, num_chunks, workers, scattered_config, pass_idx, scattered_predictor, scattered, config, output_path` | `dict` | Dynamic worker-affinity sliding window: `as_completed()` loop discovers where each batch landed via `client.who_has()`, pins reduction there (zero cross-worker transfer). Tree reduction merges K per-worker accumulators in O(log₂ K) rounds. |
+| `run_ensemble_piv` | `config, client, camera_num, source_path, output_path, base_path, vector_masks, pixel_mask` | `str` | Full pipeline. Multi-pass: scatter predictor → worker accumulation → finalize pass → extract predictor → next pass. |
+| `process_pass_worker_accumulate` | `client, num_chunks, workers, scattered_config, pass_idx, scattered_predictor, scattered, config, output_path, camera_num, source_path, pixel_mask, images=None` | `dict` | Per-worker accumulation: one task per worker, each creates ONE correlator, processes all assigned batches. Non-persisted (images=None): round-robin, workers load from disk. Persisted (images provided): `futures_of()` + `who_has()` discovers chunk placement, groups by home worker. Tree reduction merges K results in O(log₂ K) rounds. |
 | `signal_handler` | `signum, frame` | None | Same as instantaneous. |
 
 ### Ensemble Key Data Structures
@@ -871,14 +875,14 @@ Extends ensemble PIV to stereo setups, computing 3D velocity + 6 Reynolds stress
 
 ### K-Space Transfer Function Fitting
 
-Alternative to Levenberg-Marquardt Gaussian fitting. Works in Fourier domain: `T(k) = F(R_AB) / sqrt(F(R_AA) * F(R_BB))` — particle shape cancels, reducing 16 → 6 parameters. Pure Python/NumPy/SciPy (~50-100x slower per window than C Gaussian, but only ~25% total runtime impact). Improves Reynolds stress accuracy by 40-90%.
+Alternative to Levenberg-Marquardt Gaussian fitting. Works in Fourier domain: `T(k) = F(R_AB) / sqrt(F(R_AA) * F(R_BB))` — particle shape cancels, reducing 16 → 5 parameters (mu_x, mu_y, Sigma_xx, Sigma_yy, Sigma_xy). **C-accelerated** via `libkspace` (FFTW3f float32 FFTs + GSL double-precision nonlinear least-squares + OpenMP), achieving ~50-100x speedup over the previous Python/SciPy implementation, bringing it to parity with the C Gaussian fitter. Improves Reynolds stress accuracy by 40-90%.
 
 - **Config:** `ensemble_piv.fit_method: kspace`, `kspace_snr_threshold: 3.0`
-- **File:** `pivtools_cli/piv/piv_backend/kspace_fitting.py`
-- **Status codes:** 0=success, 1=no converge, 2=low SNR, 3=displacement > 3/4 window, 5=negative variance (consistent with Gaussian codes)
-- **Predictor-aware noise subtraction (all passes):** Camera noise inflates F_ref (auto-correlations) but not F_AB (cross-correlation). On warped passes, the interpolation kernel (bicubic/Lanczos-3) colors the noise spectrum — a low-pass filter whose shape depends on the fractional pixel displacement. The noise PSD is computed analytically from the kernel's DTFT: `P_noise(kx,ky) = |H(kx,fx)|² * |H(ky,fy)|²`. Joint fit: `F_ref = (A*Gaussian + N0) * P_noise` — the kernel filters everything (signal + noise), so N0 is inside the bracket. At pass 0 (f=0), `P_noise=1` everywhere (flat white noise), so the joint fit degenerates to `F_ref = A*Gauss + N0` — equivalent to the old corner-based approach. Falls back to corner-based scalar subtraction if the joint fit fails. **Key files:** `interpolation_noise_psd.py` (kernel weights/DTFTs/PSD), `kspace_fitting.py` (`_fit_fref_joint()`), `single_pass_accumulator.py` (threads predictor displacements to fitter). Per-window predictor displacement is extracted from `smoothed_predictor` in `pass_data`.
+- **Files:** `pivtools_cli/piv/piv_backend/kspace_fitting.py` (Python wrapper + ctypes), `pivtools_cli/lib/kspace_fitting.c` (C implementation), `pivtools_cli/lib/kspace_fitting.h` (API header)
+- **Status codes:** -1=masked, 0=success, 1=no converge, 2=low SNR, 3=displacement > 3/4 window, 5=negative variance (consistent with Gaussian codes)
+- **Predictor-aware noise subtraction (all passes):** Camera noise inflates F_ref (auto-correlations) but not F_AB (cross-correlation). On warped passes, the interpolation kernel (bicubic/Lanczos-3) colors the noise spectrum — a low-pass filter whose shape depends on the fractional pixel displacement. The noise PSD is computed analytically from the kernel's DTFT: `P_noise(kx,ky) = |H(kx,fx)|² * |H(ky,fy)|²`. Joint fit: `F_ref = (A*Gaussian + N0) * P_noise` — the kernel filters everything (signal + noise), so N0 is inside the bracket. At pass 0 (f=0), `P_noise=1` everywhere (flat white noise), so the joint fit degenerates to `F_ref = A*Gauss + N0` — equivalent to the old corner-based approach. Falls back to corner-based N0 estimation if the joint fit fails. **Key files:** `interpolation_noise_psd.py` (kernel weights/DTFTs/PSD — used by diagnostic plotting), `kspace_fitting.c` (joint fit in C), `single_pass_accumulator.py` (threads predictor displacements to fitter). Per-window predictor displacement is extracted from `smoothed_predictor` in `pass_data`.
 - **SNR estimation:** High-k annular ring (0.4 < |k| < 0.5) on the noise-corrected F_ref
-- **Soft weighting:** Anisotropic decay `exp(-k_x²/k0_x² - k_y²/k0_y²)` matching elliptical transfer function shape; k_max cap at 0.35 (soft) or 0.25 (hard)
+- **Soft weighting:** Anisotropic decay `exp(-k_x²/k0_x² - k_y²/k0_y²)` matching elliptical transfer function shape; k_max cap at 0.45 (soft) or 0.30 (hard)
 - **1D regressions:** Forced through origin (DC-normalised T(0)=1); per-axis k_max bounds; window-size-aware k_min = 1.5/N
 - **Gradient correction:** K-space does not estimate σ_A (particle image variance) — it's algebraically cancelled in Fourier space. When gradient correction is enabled, only the window averaging term (L²/12) is applied; the particle extent term (σ_A) is omitted. This is the dominant correction (~95-97% of total). `sig_A_x/y/xy` fields are saved as zero in the output .mat file.
 
@@ -941,9 +945,8 @@ Dask-centric utilities shared by both pipelines.
 | `apply_all_filters_slim(block, spatial_specs, temporal_specs, ...)` | Applies pixel mask → spatial → temporal filters |
 | `scatter_immutable_data(client, config, vector_masks, pixel_mask, ...)` | Creates correlator, broadcasts cache + masks |
 | `correlate_and_save_batch(batch, start_img_idx, config, ...)` | [Instantaneous] Correlate + save per batch |
-| `correlate_batch_ensemble(batch, config, pass_idx, ...)` | [Ensemble] Stateless per-batch correlation — creates correlator, correlates, returns result dict. Dask can retry safely. |
+| `correlate_worker_batches(batch_indices, config, ..., batch_images=None)` | [Ensemble] Per-worker accumulation. When `batch_images=None`, reconstructs image pipeline locally and loads from disk. When provided (persisted mode), uses pre-filtered arrays directly. Creates one correlator, processes all assigned batches, returns once. |
 | `reduce_ensemble_results(r1, r2)` | Merges two accumulated dicts via `+` (Dask retry safe — used in tree reduction) |
-| `reduce_ensemble_results_inplace(accumulated, new_result)` | In-place `+=` reduction for progressive per-worker accumulation (lower peak memory) |
 | `extract_predictor_field(pass_result)` | `np.stack([uy, ux], axis=-1)` for next pass |
 
 **Spatial filters:** gaussian (sigma), median (size), norm, maxnorm, lmax (all via `scipy.ndimage`)
@@ -959,7 +962,11 @@ Dask-centric utilities shared by both pipelines.
 
 **Data scattering:** Immutable data (correlator cache, masks, config) broadcast once. Predictor field re-scattered per pass.
 
-**Worker accumulation (ensemble):** Dynamic worker-affinity sliding window using `as_completed()`. Each batch is submitted as a stateless `correlate_batch_ensemble` task with NO worker pinning — Dask's scheduler decides placement (optimal load balancing and locality). When each task completes, `client.who_has()` discovers which worker holds the result. Reduction is pinned there via `workers=[worker]` using in-place `reduce_ensemble_results_inplace` (`+=`), achieving zero cross-worker transfer during accumulation. After all batches, K per-worker accumulators are merged via distributed tree reduction (`O(log₂ K)` rounds of pair-wise `reduce_ensemble_results` with safe `+` operator).
+**Worker accumulation (ensemble):** Single unified code path via `process_pass_worker_accumulate`. One `correlate_worker_batches` task per worker. Each worker creates ONE `EnsembleCorrelatorCPU`, processes all assigned batches sequentially — clearing buffers only on the first batch, letting the C library's native `+=` accumulate across batches, copying correlation planes out ONCE. After all workers complete, K per-worker results merge via tree reduction (`O(log₂ K)` rounds of `reduce_ensemble_results` with safe `+` operator).
+
+*Non-persisted (default):* Chunks assigned round-robin. Workers reconstruct the lazy image+filter pipeline locally and load from disk. OS page cache makes re-reads on subsequent passes nearly free.
+
+*Persisted (`persist_images: true`):* `futures_of()` + `who_has()` discovers where Dask placed each chunk during `images.persist()`. Chunks grouped by home worker and passed as futures. Dask resolves futures locally — zero cross-worker transfer. Same accumulation loop, same result format.
 
 **Memory management:**
 - `gc.collect()` on client between cameras — **NOT on workers** (FFTW causes SIGSEGV)
@@ -970,7 +977,7 @@ Dask-centric utilities shared by both pipelines.
 
 ## Build System & C Extensions
 
-### Package: `pivtools` v0.4.3
+### Package: `pivtools` v0.4.4
 
 - **Build backend:** `setuptools>=61.0` + `wheel` + `cibuildwheel>=2.16`
 - **Python:** `>=3.12` (targets: 3.12, 3.13, 3.14)
@@ -992,6 +999,7 @@ Dask-centric utilities shared by both pipelines.
 | `libbulkxcorr2d` | `peak_locate_lm.c`, `PIV_2d_cross_correlate.c`, `xcorr.c`, `xcorr_cache.c` | FFTW3f, OpenMP | Cross-correlation engine (instantaneous + ensemble accumulation) |
 | `libfusedwarp` | `fused_warp.c` | OpenMP | Fused predictor-upsample + symmetric warp + bicubic/Lanczos-3 image interpolation (replaces cv2.remap pipeline) |
 | `libmarquadt` | `marquadt_gaussian.c` | GSL, OpenMP | Ensemble 16-parameter stacked Gaussian fitting |
+| `libkspace` | `kspace_fitting.c` | GSL, FFTW3f, OpenMP | K-space transfer function fitting (float32 FFT + double GSL) |
 
 **Python-C interface:** All via `ctypes.CDLL` at runtime. No Cython/cffi.
 
@@ -1482,7 +1490,7 @@ Benchmark scripts compare PIVTOOLs output against ground truth (DNS data).
 
 3. **Dask as the computation layer.** Both instantaneous and ensemble use sliding window I/O with bounded memory. Lazy loading (~1 KB per pair), broadcast scattering for immutable data, worker pinning for locality.
 
-4. **C extensions for performance.** Three shared libraries (cross-correlation, fused image warping, Gaussian fitting) loaded via ctypes. FFTW for FFT, GSL for nonlinear least-squares, OpenMP for parallelism. Static-linked to bundled FFTW/GSL.
+4. **C extensions for performance.** Four shared libraries (cross-correlation, fused image warping, Gaussian fitting, k-space fitting) loaded via ctypes. FFTW for FFT, GSL for nonlinear least-squares, OpenMP for parallelism. Static-linked to bundled FFTW/GSL.
 
 5. **Blueprint-per-feature** (GUI) is consistent. Each feature: `module/app/views.py` (routes) + business logic. Predictable for new features.
 

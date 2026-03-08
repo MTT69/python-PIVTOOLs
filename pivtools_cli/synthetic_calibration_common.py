@@ -48,7 +48,7 @@ def make_poses(
     tx_centre = -board_centre_3d[0]
     ty_centre = -board_centre_3d[1]
 
-    max_tilt = 0.35
+    max_tilt = 0.25
 
     poses = []
     for i in range(n_views):
@@ -56,8 +56,8 @@ def make_poses(
             rvec = np.zeros(3, dtype=np.float64)
             fill = fill_high
         else:
-            rx = rng.uniform(-0.35, 0.35)
-            ry = rng.uniform(-0.35, 0.35)
+            rx = rng.uniform(-max_tilt, max_tilt)
+            ry = rng.uniform(-max_tilt, max_tilt)
             rz = rng.uniform(-0.10, 0.10)
             rvec = np.array([rx, ry, rz], dtype=np.float64)
             tilt_mag = np.sqrt(rx**2 + ry**2)

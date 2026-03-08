@@ -1,0 +1,93 @@
+batches:
+  batch_size: 1
+calibration:
+  active: polynomial
+  polynomial:
+    dt: 0.001
+    cameras:
+      '1':
+        origin:
+          x: 500.0
+          y: 500.0
+        normalisation:
+          nx: 1000.0
+          ny: 1000.0
+        mm_per_pixel: 0.06677805644243828
+        coefficients_x:
+        - 500.0000000000015
+        - 0.8358902625964432
+        - 4.901118979028753e-13
+        - -0.7539692004224814
+        - -6.166490342384935e-14
+        - 5.117210606540126e-13
+        - 8.094888670270023e-14
+        - -4.7644249068153125e-14
+        - 1.1179162128705355e-13
+        - -0.7548583031539481
+        coefficients_y:
+        - 500.0000000000015
+        - -8.581834637449307e-14
+        - 5.34299134687451e-13
+        - 1.1359313774198195e-13
+        - 0.8359233437869116
+        - 4.689849450988658e-13
+        - -0.754037490081581
+        - -7.017247193624776e-14
+        - -0.7548748414533976
+        - 1.689878148720156e-13
+        image_height: 1000.0
+filters: []
+images:
+  frame_stride: 0
+  image_format:
+  - B%05d_A.tif
+  - B%05d_B.tif
+  image_type: standard
+  num_images: 1
+  pair_stride: 1
+  pairing_preset: ab_format
+  start_index: 1
+  vector_format:
+  - B%05d.mat
+infilling:
+  final_pass:
+    method: local_median
+    parameters:
+      ksize: 3
+  mid_pass:
+    method: local_median
+    parameters:
+      ksize: 3
+instantaneous_piv:
+  overlap:
+  - 50
+  peak_finder: gauss6
+  runs:
+  - 1
+  window_size:
+  - - 64
+    - 64
+  - - 32
+    - 32
+masking:
+  enabled: false
+outlier_detection:
+  enabled: true
+  methods:
+  - epsilon: 0.1
+    threshold: 3.0
+    type: median_2d
+paths:
+  base_paths:
+  - /Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/unit-tests/poiseuille_cam_model/test_workspace_polynomial/output
+  camera_count: 1
+  camera_numbers:
+  - 1
+  source_paths:
+  - /Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/unit-tests/poiseuille_cam_model/test_workspace_polynomial/source
+processing:
+  backend: cpu
+  dask_max_in_flight_per_worker: 3
+  dask_memory_limit: 2GB
+  dask_workers_per_node: 1
+  omp_threads: 1

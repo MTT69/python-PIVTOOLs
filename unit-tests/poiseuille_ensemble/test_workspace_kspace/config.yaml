@@ -75,12 +75,12 @@ outlier_detection:
     type: median_2d
 paths:
   base_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\python-PIVTOOLs\unit-tests\poiseuille_ensemble\test_workspace_kspace\output
+  - /Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/unit-tests/poiseuille_ensemble/test_workspace_kspace/output
   camera_count: 1
   camera_numbers:
   - 1
   source_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\python-PIVTOOLs\unit-tests\poiseuille_ensemble\test_workspace_kspace\source
+  - /Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/unit-tests/poiseuille_ensemble/test_workspace_kspace/source
 processing:
   backend: cpu
   dask_max_in_flight_per_worker: 3
