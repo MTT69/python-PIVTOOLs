@@ -12,10 +12,13 @@ where T(k) is the transfer function encoding only velocity PDF parameters:
     T(k) = A * exp(-2*pi^2 * k^T * Sigma * k) * exp(-2*pi*i * k . mu)
 
 This assumes a Gaussian velocity PDF (normal distribution) and reduces
-the problem from 16 parameters (physical-space) to 6:
+the problem from 16 parameters (physical-space) to 5:
     - mu_x, mu_y: Mean displacement
     - Sigma_xx, Sigma_yy, Sigma_xy: Reynolds stress tensor components
-    - A: Amplitude
+
+The fitting is implemented in C (libkspace) using FFTW (float32) for FFTs
+and GSL (double) for nonlinear least-squares, with OpenMP parallelization.
+This provides ~50-100x speedup over the previous Python/SciPy implementation.
 
 **Anisotropic soft decay weighting**:
     The fitting uses combined SNR and soft decay weighting to optimally
@@ -37,13 +40,13 @@ the problem from 16 parameters (physical-space) to 6:
     where the model becomes unreliable.
 """
 
+import ctypes
 import logging
-from pathlib import Path
+import os
 from typing import Optional
 
 import numpy as np
 from numpy.fft import fft2, fftshift, ifftshift, fftfreq
-from scipy.optimize import least_squares
 
 from pivtools_cli.piv.piv_backend.interpolation_noise_psd import (
     compute_noise_psd_2d, frac_distance
@@ -58,6 +61,60 @@ except ImportError:
     HAS_MATPLOTLIB = False
 
 logger = logging.getLogger(__name__)
+
+# Module-level cache for the kspace library
+_kspace_lib = None
+
+
+def _load_kspace_lib():
+    """Load the kspace C library for k-space fitting."""
+    global _kspace_lib
+    if _kspace_lib is not None:
+        return _kspace_lib
+
+    lib_extension = ".dll" if os.name == "nt" else ".so"
+
+    possible_paths = [
+        # Installed package location (relative to this file)
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "lib", f"libkspace{lib_extension}")),
+        # Development: from current working directory
+        os.path.abspath(os.path.join("pivtools_cli", "lib", f"libkspace{lib_extension}")),
+    ]
+
+    for path in possible_paths:
+        libpath = os.path.abspath(path)
+        if os.path.isfile(libpath):
+            break
+    else:
+        raise FileNotFoundError(
+            f"Kspace library not found. Tried paths: {possible_paths}"
+        )
+
+    logging.debug(f"Loading kspace library from: {libpath}")
+    lib = ctypes.CDLL(libpath)
+
+    # Set up ctypes bindings
+    lib.fit_kspace_batch.argtypes = [
+        ctypes.c_size_t,     # num_windows
+        ctypes.c_size_t,     # corr_h
+        ctypes.c_size_t,     # corr_w
+        np.ctypeslib.ndpointer(np.float32, flags='C_CONTIGUOUS'),  # R_AA
+        np.ctypeslib.ndpointer(np.float32, flags='C_CONTIGUOUS'),  # R_BB
+        np.ctypeslib.ndpointer(np.float32, flags='C_CONTIGUOUS'),  # R_AB
+        np.ctypeslib.ndpointer(np.int32, flags='C_CONTIGUOUS'),    # mask
+        ctypes.c_void_p,     # pred_disp (nullable)
+        ctypes.c_int,        # interp_kernel
+        ctypes.c_double,     # snr_threshold
+        ctypes.c_int,        # use_soft_weighting
+        ctypes.c_double,     # k_max_cap
+        np.ctypeslib.ndpointer(np.float64, flags='C_CONTIGUOUS'),  # out_params
+        np.ctypeslib.ndpointer(np.int32, flags='C_CONTIGUOUS'),    # out_status
+        np.ctypeslib.ndpointer(np.float64, flags='C_CONTIGUOUS'),  # out_initial_guess
+    ]
+    lib.fit_kspace_batch.restype = ctypes.c_int
+
+    _kspace_lib = lib
+    return lib
 
 
 def fit_windows_kspace(
@@ -132,11 +189,13 @@ def fit_windows_kspace(
     initial_guess_flat : np.ndarray
         Initial guesses used, shape (num_windows, 16)
     """
+    lib = _load_kspace_lib()
+
     corr_h, corr_w = corr_size
-    n_per_window = corr_h * corr_w
     num_windows = len(mask_flat)
 
     # Validate input shapes
+    n_per_window = corr_h * corr_w
     expected_size = num_windows * n_per_window
     if R_AA.size != expected_size:
         raise ValueError(
@@ -144,964 +203,82 @@ def fit_windows_kspace(
             f"(num_windows={num_windows}, corr_size={corr_size})"
         )
 
-    # Pre-allocate output arrays
+    # Prepare inputs (ensure contiguous float32 — matches C correlator output)
+    R_AA_c = np.ascontiguousarray(R_AA.ravel(), dtype=np.float32)
+    R_BB_c = np.ascontiguousarray(R_BB.ravel(), dtype=np.float32)
+    R_AB_c = np.ascontiguousarray(R_AB.ravel(), dtype=np.float32)
+
+    # C expects mask: 1=skip, 0=process (inverse of Python boolean mask)
+    mask_c = np.ascontiguousarray(mask_flat.astype(np.int32))
+
+    # Predictor displacement (nullable)
+    pred_ptr = None
+    if predictor_displacements is not None:
+        pred_c = np.ascontiguousarray(predictor_displacements, dtype=np.float64)
+        pred_ptr = pred_c.ctypes.data
+
+    # Allocate outputs
     gauss_flat = np.zeros((num_windows, 16), dtype=np.float64)
-    status_flat = np.full(num_windows, -1, dtype=np.int32)  # Default: masked
+    status_flat = np.full(num_windows, -1, dtype=np.int32)
     initial_guess_flat = np.zeros((num_windows, 16), dtype=np.float64)
 
-    # Window center (1-based indexing for compatibility with Gaussian fitter)
-    center_x = corr_w / 2.0 + 1
-    center_y = corr_h / 2.0 + 1
-
-    # Build wavenumber grids (cycles per pixel, centered)
-    k_x = fftshift(fftfreq(corr_w))  # Range: -0.5 to 0.5
-    k_y = fftshift(fftfreq(corr_h))
-    K_X, K_Y = np.meshgrid(k_x, k_y, indexing='xy')
-
-    # Find valid (non-masked) windows
-    valid_indices = np.where(~mask_flat)[0]
-    n_valid = len(valid_indices)
-
-    if n_valid == 0:
-        logger.warning("All windows masked, no k-space fitting performed")
-        return gauss_flat, status_flat, initial_guess_flat
+    kernel_code = 1 if interp_kernel == 'lanczos3' else 0
+    cap_val = k_max_cap if k_max_cap is not None else -1.0
 
     logger.info(
-        f"Pass {pass_idx + 1}: K-space fitting {n_valid}/{num_windows} windows "
+        f"Pass {pass_idx + 1}: K-space fitting {np.sum(~mask_flat)}/{num_windows} windows "
         f"(soft_weighting={use_soft_weighting}, SNR threshold={snr_threshold})"
     )
 
-    # Process each valid window
-    n_success = 0
-    n_failed = 0
-
-    # Diagnostic accumulators (when debug=True)
-    diag_snr = []
-    diag_k_max_x = []
-    diag_k_max_y = []
-    diag_sigma_xx = []
-    diag_sigma_yy = []
-    diag_mu_x = []
-    diag_mu_y = []
-    status_counts = {-1: 0, 0: 0, 1: 0, 2: 0, 3: 0, 5: 0}
-
-    for idx in valid_indices:
-        # Extract window correlation planes
-        start = idx * n_per_window
-        end = start + n_per_window
-
-        R_AA_2d = R_AA[start:end].reshape(corr_h, corr_w)
-        R_BB_2d = R_BB[start:end].reshape(corr_h, corr_w)
-        R_AB_2d = R_AB[start:end].reshape(corr_h, corr_w)
-
-        # Extract per-window predictor displacement
-        if predictor_displacements is not None:
-            pred_dy = predictor_displacements[idx, 0]
-            pred_dx = predictor_displacements[idx, 1]
-        else:
-            pred_dy, pred_dx = 0.0, 0.0
-
-        # Fit this window
-        result = _fit_single_window_kspace(
-            R_AA_2d, R_BB_2d, R_AB_2d,
-            K_X, K_Y, k_x, k_y,
-            corr_size, snr_threshold,
-            center_x, center_y,
-            use_soft_weighting=use_soft_weighting,
-            return_diagnostics=debug,
-            pred_dy=pred_dy,
-            pred_dx=pred_dx,
-            interp_kernel=interp_kernel,
-            k_max_cap=k_max_cap,
-        )
-
-        if result['status'] == 0:
-            n_success += 1
-        else:
-            n_failed += 1
-
-        status_counts[result['status']] = status_counts.get(result['status'], 0) + 1
-
-        # Store results in 16-element format
-        gauss_flat[idx] = result['params']
-        status_flat[idx] = result['status']
-        initial_guess_flat[idx] = result['initial_guess']
-
-        # Collect diagnostics if available
-        if debug and 'diagnostics' in result:
-            diag = result['diagnostics']
-            diag_snr.append(diag.get('snr', np.nan))
-            diag_k_max_x.append(diag.get('k_max_x', np.nan))
-            diag_k_max_y.append(diag.get('k_max_y', np.nan))
-            if result['status'] == 0:
-                diag_sigma_xx.append(result['params'][9])
-                diag_sigma_yy.append(result['params'][10])
-                diag_mu_x.append(result['params'][14] - center_x)
-                diag_mu_y.append(result['params'][15] - center_y)
+    success_count = lib.fit_kspace_batch(
+        num_windows, corr_h, corr_w,
+        R_AA_c, R_BB_c, R_AB_c, mask_c,
+        pred_ptr, kernel_code,
+        snr_threshold, int(use_soft_weighting),
+        cap_val,
+        gauss_flat, status_flat, initial_guess_flat,
+    )
 
     # Log summary
+    n_valid = int(np.sum(~mask_flat))
     if n_valid > 0:
-        success_rate = n_success / n_valid
+        success_rate = success_count / n_valid
         logger.info(
             f"Pass {pass_idx + 1}: K-space fitting success rate: {success_rate:.1%} "
-            f"({n_success}/{n_valid} non-masked windows)"
+            f"({success_count}/{n_valid} non-masked windows)"
         )
 
-        # Log detailed diagnostics if debug mode
-        if debug and len(diag_snr) > 0:
-            logger.info(f"Pass {pass_idx + 1}: K-space diagnostics:")
-            logger.info(f"  SNR: min={np.nanmin(diag_snr):.1f}, median={np.nanmedian(diag_snr):.1f}, max={np.nanmax(diag_snr):.1f}")
-            logger.info(f"  k_max_x: min={np.nanmin(diag_k_max_x):.3f}, median={np.nanmedian(diag_k_max_x):.3f}, max={np.nanmax(diag_k_max_x):.3f}")
-            logger.info(f"  k_max_y: min={np.nanmin(diag_k_max_y):.3f}, median={np.nanmedian(diag_k_max_y):.3f}, max={np.nanmax(diag_k_max_y):.3f}")
-            if len(diag_sigma_xx) > 0:
-                logger.info(f"  Sigma_xx (UU): min={np.nanmin(diag_sigma_xx):.4f}, median={np.nanmedian(diag_sigma_xx):.4f}, max={np.nanmax(diag_sigma_xx):.4f}")
-                logger.info(f"  Sigma_yy (VV): min={np.nanmin(diag_sigma_yy):.4f}, median={np.nanmedian(diag_sigma_yy):.4f}, max={np.nanmax(diag_sigma_yy):.4f}")
-                logger.info(f"  mu_x: min={np.nanmin(diag_mu_x):.4f}, median={np.nanmedian(diag_mu_x):.4f}, max={np.nanmax(diag_mu_x):.4f}")
-                logger.info(f"  mu_y: min={np.nanmin(diag_mu_y):.4f}, median={np.nanmedian(diag_mu_y):.4f}, max={np.nanmax(diag_mu_y):.4f}")
-            # Status breakdown
-            status_names = {-1: 'masked', 0: 'success', 1: 'no_converge', 2: 'low_snr', 3: 'big_disp', 5: 'neg_var'}
-            status_str = ', '.join([f"{status_names.get(k, f'status_{k}')}={v}" for k, v in sorted(status_counts.items()) if v > 0])
+        if debug:
+            status_counts = {}
+            for s in status_flat:
+                status_counts[int(s)] = status_counts.get(int(s), 0) + 1
+            status_names = {-1: 'masked', 0: 'success', 1: 'no_converge',
+                            2: 'low_snr', 3: 'big_disp', 5: 'neg_var'}
+            status_str = ', '.join(
+                [f"{status_names.get(k, f'status_{k}')}={v}"
+                 for k, v in sorted(status_counts.items()) if v > 0]
+            )
             logger.info(f"  Status breakdown: {status_str}")
 
+            # Log parameter statistics for successful fits
+            success_mask = status_flat == 0
+            if np.any(success_mask):
+                center_x = corr_w / 2.0 + 1
+                center_y = corr_h / 2.0 + 1
+                mu_x = gauss_flat[success_mask, 14] - center_x
+                mu_y = gauss_flat[success_mask, 15] - center_y
+                logger.info(f"  Sigma_xx (UU): min={np.nanmin(gauss_flat[success_mask, 9]):.4f}, "
+                            f"median={np.nanmedian(gauss_flat[success_mask, 9]):.4f}, "
+                            f"max={np.nanmax(gauss_flat[success_mask, 9]):.4f}")
+                logger.info(f"  Sigma_yy (VV): min={np.nanmin(gauss_flat[success_mask, 10]):.4f}, "
+                            f"median={np.nanmedian(gauss_flat[success_mask, 10]):.4f}, "
+                            f"max={np.nanmax(gauss_flat[success_mask, 10]):.4f}")
+                logger.info(f"  mu_x: min={np.nanmin(mu_x):.4f}, median={np.nanmedian(mu_x):.4f}, "
+                            f"max={np.nanmax(mu_x):.4f}")
+                logger.info(f"  mu_y: min={np.nanmin(mu_y):.4f}, median={np.nanmedian(mu_y):.4f}, "
+                            f"max={np.nanmax(mu_y):.4f}")
+
     return gauss_flat, status_flat, initial_guess_flat
-
-
-def _fit_fref_joint(F_ref, K_X, K_Y, P_noise):
-    """Fit joint signal + colored noise model to F_ref.
-
-    Model: F_ref(k) = (A * exp(-2*pi^2*(kx^2*sx^2 + ky^2*sy^2)) + N0) * P_noise(k)
-
-    Parameters
-    ----------
-    F_ref : ndarray
-        Measured reference spectrum sqrt(|F_AA| * |F_BB|).
-    K_X, K_Y : ndarray
-        Wavenumber grids (cycles/pixel).
-    P_noise : ndarray
-        Analytical noise PSD from interpolation kernel DTFT.
-
-    Returns
-    -------
-    dict with keys: success, F_ref_clean, N0, A, sigma_x, sigma_y
-    """
-    center_y, center_x = F_ref.shape[0] // 2, F_ref.shape[1] // 2
-    F_dc = F_ref[center_y, center_x]
-
-    if F_dc < 1e-10:
-        return {'success': False}
-
-    # Normalise for numerical stability
-    F_ref_norm = F_ref / F_dc
-
-    # Flatten
-    K_X_flat = K_X.ravel()
-    K_Y_flat = K_Y.ravel()
-    F_ref_flat = F_ref_norm.ravel()
-    P_noise_flat = P_noise.ravel()
-
-    # Initial guess: [A, sigma_x, sigma_y, N0]
-    p0 = np.array([1.0, 2.0, 2.0, 0.01])
-
-    # Bounds
-    bounds_lo = [0.01, 0.1, 0.1, 0.0]
-    bounds_hi = [10.0, 20.0, 20.0, 1.0]
-
-    # Gaussian taper weighting — emphasise low-to-mid k
-    K_R = np.sqrt(K_X_flat ** 2 + K_Y_flat ** 2)
-    weights = np.exp(-K_R ** 2 / (0.15 ** 2))
-    weights = weights / (np.max(weights) + 1e-12)
-    weights = np.maximum(weights, 0.1)
-
-    def residual(params):
-        A, sx, sy, N0 = params
-        gaussian = A * np.exp(-2 * np.pi ** 2 * (K_X_flat ** 2 * sx ** 2
-                                                   + K_Y_flat ** 2 * sy ** 2))
-        model = (gaussian + N0) * P_noise_flat
-        return weights * (F_ref_flat - model)
-
-    try:
-        result = least_squares(
-            residual, p0,
-            bounds=(bounds_lo, bounds_hi),
-            method='trf',
-            max_nfev=200,
-            ftol=1e-10,
-            xtol=1e-10,
-        )
-
-        A, sigma_x, sigma_y, N0 = result.x
-
-        # Denormalise
-        N0_abs = N0 * F_dc
-
-        # Subtract colored noise floor
-        noise_floor_2d = N0_abs * P_noise
-        epsilon = F_dc * 1e-8
-        F_ref_clean = np.maximum(F_ref - noise_floor_2d, epsilon)
-
-        return {
-            'success': True,
-            'F_ref_clean': F_ref_clean,
-            'N0': N0_abs,
-            'A': A * F_dc,
-            'sigma_x': sigma_x,
-            'sigma_y': sigma_y,
-        }
-
-    except Exception:
-        return {'success': False}
-
-
-def _fit_single_window_kspace(
-    R_AA_2d: np.ndarray,
-    R_BB_2d: np.ndarray,
-    R_AB_2d: np.ndarray,
-    K_X: np.ndarray,
-    K_Y: np.ndarray,
-    k_x: np.ndarray,
-    k_y: np.ndarray,
-    corr_size: tuple,
-    snr_threshold: float,
-    center_x: float,
-    center_y: float,
-    use_soft_weighting: bool = True,
-    return_diagnostics: bool = False,
-    pred_dy: float = 0.0,
-    pred_dx: float = 0.0,
-    interp_kernel: str = 'bicubic',
-    k_max_cap: Optional[float] = None,
-) -> dict:
-    """
-    Fit k-space transfer function to a single window.
-
-    Parameters
-    ----------
-    use_soft_weighting : bool
-        If True, use SNR × anisotropic soft decay weighting
-    pred_dy, pred_dx : float
-        Predictor displacement for this window in pixels (Y, X).
-        Used to compute the interpolation kernel's noise PSD.
-    interp_kernel : str
-        'bicubic' or 'lanczos3' — which kernel was used for warping.
-    k_max_cap : float, optional
-        Hard cap on k_max in cycles/pixel. If None, uses 0.45 (soft weighting)
-        or 0.30 (hard weighting).
-
-    Returns dict with 'params' (16-element), 'status' (int), 'initial_guess' (16-element).
-    If return_diagnostics=True, also includes 'diagnostics' dict with SNR, k_max values, etc.
-    """
-    corr_h, corr_w = corr_size
-    center_idx_x = corr_w // 2
-    center_idx_y = corr_h // 2
-
-    # Extract peak values for amplitude estimates
-    amp_A = R_AA_2d[center_idx_y, center_idx_x]
-    amp_B = R_BB_2d[center_idx_y, center_idx_x]
-    amp_AB = np.max(R_AB_2d)
-
-    # Default output (failure case)
-    default_params = _build_default_params(
-        amp_A, amp_B, amp_AB, center_x, center_y
-    )
-
-    # Check for valid input
-    if amp_A < 1e-12 or amp_B < 1e-12:
-        return {
-            'params': default_params,
-            'status': 2,  # SNR too low
-            'initial_guess': default_params.copy(),
-        }
-
-    # Step 1: Compute FFTs (no windowing - correlation planes are already localized)
-    # IMPORTANT: Correlation planes have peak at center (index N/2).
-    # Use ifftshift before FFT to center signal at index 0 for correct phase.
-    F_AA = fftshift(fft2(ifftshift(R_AA_2d)))
-    F_BB = fftshift(fft2(ifftshift(R_BB_2d)))
-    F_AB = fftshift(fft2(ifftshift(R_AB_2d)))
-
-    # Step 2: Particle shape reference (algebraic cancellation)
-    # Use geometric mean of magnitudes: sqrt(|F_AA| * |F_BB|)
-    # This gives a real positive reference for normalization
-    F_ref = np.sqrt(np.abs(F_AA) * np.abs(F_BB))
-
-    # Step 2b: Predictor-aware noise subtraction
-    # Camera noise adds a flat floor to auto-correlations (not cross-correlations),
-    # inflating F_ref. On warped passes, the interpolation kernel colors the noise
-    # spectrum — the noise PSD shape is computed analytically from the kernel DTFT.
-    # Joint fit: F_ref = (A*Gaussian + N0)*P_noise solves for noise on ALL passes.
-    # Note: symmetric warp splits the displacement: image A at pos-disp/2, B at pos+disp/2.
-    # The fractional shift seen by the kernel is from disp/2, not disp.
-    f_x = frac_distance(pred_dx / 2.0)
-    f_y = frac_distance(pred_dy / 2.0)
-    P_noise = compute_noise_psd_2d(K_X, K_Y, f_x, f_y, kernel=interp_kernel)
-
-    joint_result = _fit_fref_joint(F_ref, K_X, K_Y, P_noise)
-
-    if not joint_result['success']:
-        return {
-            'params': default_params,
-            'status': 1,  # No convergence
-            'initial_guess': default_params.copy(),
-        }
-
-    F_ref = joint_result['F_ref_clean']
-    N_floor = joint_result['N0']
-
-    # Step 3: We avoid explicit division T = F_AB / F_ref to prevent noise amplification
-    # Instead, we will fit: F_AB = F_ref * T_model directly
-    # For initial guesses, we use log differences: log|T| = log|F_AB| - log|F_ref|
-    epsilon = np.max(np.abs(F_ref)) * 1e-8
-
-    # Step 4: Estimate SNR from joint-fit N0 (data-driven, particle-size independent)
-    dc_power = np.abs(F_ref[center_idx_y, center_idx_x]) ** 2
-    noise_power = N_floor ** 2 + 1e-12
-    snr = dc_power / noise_power
-
-    # Helper to build diagnostics dict
-    def _make_diag(k_max_x_val=None, k_max_y_val=None):
-        if not return_diagnostics:
-            return {}
-        return {'diagnostics': {
-            'snr': snr,
-            'k_max_x': k_max_x_val if k_max_x_val is not None else 0.0,
-            'k_max_y': k_max_y_val if k_max_y_val is not None else 0.0,
-            'N_floor': N_floor,
-            'interp_kernel': interp_kernel,
-            'f_x': f_x,
-            'f_y': f_y,
-        }}
-
-    if snr < snr_threshold:
-        return {
-            'params': default_params,
-            'status': 2,  # SNR too low
-            'initial_guess': default_params.copy(),
-            **_make_diag(),
-        }
-
-    # Compute k_max from F_ref decay along axes
-    # Use where F_ref drops to 1% of DC as the boundary
-    F_ref_dc = np.abs(F_ref[center_idx_y, center_idx_x])
-    threshold_frac = 0.01
-
-    # k_max along x (at k_y=0)
-    F_ref_profile_x = np.abs(F_ref[center_idx_y, :])
-    k_max_x = _compute_kmax_from_profile(k_x, F_ref_profile_x, F_ref_dc, threshold_frac)
-
-    # k_max along y (at k_x=0)
-    F_ref_profile_y = np.abs(F_ref[:, center_idx_x])
-    k_max_y = _compute_kmax_from_profile(k_y, F_ref_profile_y, F_ref_dc, threshold_frac)
-
-    # Per-axis k_max for initial 1D fits (data-driven, capped at near-Nyquist)
-    k_max_init_x = min(k_max_x, 0.45)
-    k_max_init_y = min(k_max_y, 0.45)
-
-    # Step 5: Extract initial guesses
-    #
-    # For DISPLACEMENT (mu): Use the physical-space cross-correlation peak.
-    # This is immune to phase wrapping and works for arbitrarily large
-    # displacements (up to the 3/4 window rule). The k-space phase slope
-    # method only works for |mu| < 1/(2*k_max) ~ 2 pixels, which is far
-    # too restrictive for the first pass (no image warping).
-    #
-    # For VARIANCE (Sigma): Use 1D log-magnitude regression in k-space.
-    # The magnitude |T(k)| = exp(-2*pi^2 * Sigma * k^2) doesn't wrap.
-    mu_x_init, mu_y_init = _estimate_displacement_from_peak(
-        R_AB_2d, center_idx_x, center_idx_y
-    )
-
-    # Variance from 1D k-space magnitude regression
-    _, Sigma_xx_init = _fit_1d_axis(
-        F_AB, F_ref, k_x, center_idx_y, k_max_init_x, axis='x'
-    )
-    _, Sigma_yy_init = _fit_1d_axis(
-        F_AB, F_ref, k_y, center_idx_x, k_max_init_y, axis='y'
-    )
-
-    # Validate initial estimates
-    if Sigma_xx_init < 0 or Sigma_yy_init < 0:
-        # Fallback to safe defaults
-        Sigma_xx_init = max(Sigma_xx_init, 0.1)
-        Sigma_yy_init = max(Sigma_yy_init, 0.1)
-
-    # Compute k_max bounds based on F_ref decay
-    # The profile-based k_max is data-driven (1% of DC threshold). The cap here
-    # is a safety limit — soft weighting tolerates higher k because the anisotropic
-    # decay weights naturally down-weight noisy high-k regions.
-    if k_max_cap is not None:
-        k_max_limit = k_max_cap
-    elif use_soft_weighting:
-        k_max_limit = 0.45
-    else:
-        k_max_limit = 0.30
-
-    k_max_x = min(_compute_kmax(Sigma_xx_init, snr, max_k=k_max_limit), k_max_x, k_max_limit)
-    k_max_y = min(_compute_kmax(Sigma_yy_init, snr, max_k=k_max_limit), k_max_y, k_max_limit)
-
-    # Step 6: Full 6-parameter fit
-    initial_guess = np.array([
-        mu_x_init, mu_y_init,
-        Sigma_xx_init, Sigma_yy_init, 0.0,  # Sigma_xy starts at 0
-        1.0,  # Amplitude
-    ])
-
-    try:
-        result = _fit_transfer_function_full(
-            F_AB, F_ref, K_X, K_Y,
-            k_max_x, k_max_y, initial_guess,
-            use_soft_weighting=use_soft_weighting,
-            noise_floor=noise_power,
-            sigma_xx_estimate=Sigma_xx_init,
-            sigma_yy_estimate=Sigma_yy_init,
-            epsilon=epsilon,
-        )
-
-        if result is None:
-            return {
-                'params': default_params,
-                'status': 1,  # Optimization did not converge
-                'initial_guess': _build_params_from_fit(
-                    initial_guess, amp_A, amp_B, amp_AB, center_x, center_y
-                ),
-                **_make_diag(k_max_x, k_max_y),
-            }
-
-        mu_x, mu_y, Sigma_xx, Sigma_yy, Sigma_xy, amplitude = result
-
-        # Validate results
-        if Sigma_xx < 0 or Sigma_yy < 0:
-            return {
-                'params': default_params,
-                'status': 5,  # Negative variance (consistent with Gaussian code 5)
-                'initial_guess': _build_params_from_fit(
-                    initial_guess, amp_A, amp_B, amp_AB, center_x, center_y
-                ),
-                **_make_diag(k_max_x, k_max_y),
-            }
-
-        # Check displacement bounds (3/4 window rule, consistent with Gaussian fitter)
-        max_disp_x = 0.75 * corr_w
-        max_disp_y = 0.75 * corr_h
-        if abs(mu_x) > max_disp_x or abs(mu_y) > max_disp_y:
-            return {
-                'params': default_params,
-                'status': 3,  # Displacement exceeds 3/4 window
-                'initial_guess': _build_params_from_fit(
-                    initial_guess, amp_A, amp_B, amp_AB, center_x, center_y
-                ),
-                **_make_diag(k_max_x, k_max_y),
-            }
-
-        # Build output in 16-element format
-        final_result = result
-        params = _build_params_from_fit(
-            final_result, amp_A, amp_B, amp_AB, center_x, center_y
-        )
-
-        return {
-            'params': params,
-            'status': 0,  # Success
-            'initial_guess': _build_params_from_fit(
-                initial_guess, amp_A, amp_B, amp_AB, center_x, center_y
-            ),
-            **_make_diag(k_max_x, k_max_y),
-        }
-
-    except Exception as e:
-        logger.debug(f"K-space fit failed: {e}")
-        result = {
-            'params': default_params,
-            'status': 1,  # Optimization did not converge
-            'initial_guess': default_params.copy(),
-        }
-        if return_diagnostics:
-            result['diagnostics'] = {'snr': snr if 'snr' in dir() else 0.0, 'k_max_x': 0.0, 'k_max_y': 0.0}
-        return result
-
-
-def _estimate_displacement_from_peak(
-    R_AB_2d: np.ndarray,
-    center_idx_x: int,
-    center_idx_y: int,
-) -> tuple[float, float]:
-    """
-    Estimate mean displacement from the cross-correlation peak position.
-
-    Uses 3-point Gaussian sub-pixel refinement on the R_AB plane.
-    This is immune to phase wrapping and works for arbitrarily large
-    displacements (up to the correlation window size).
-
-    Parameters
-    ----------
-    R_AB_2d : np.ndarray
-        Cross-correlation plane, shape (corr_h, corr_w).
-        Peak is near center for small displacements, offset for large ones.
-    center_idx_x, center_idx_y : int
-        Center indices (zero-displacement location)
-
-    Returns
-    -------
-    mu_x, mu_y : float
-        Estimated displacement in pixels (offset from center)
-    """
-    corr_h, corr_w = R_AB_2d.shape
-
-    # Find integer peak location
-    peak_idx = np.argmax(R_AB_2d)
-    peak_y, peak_x = np.unravel_index(peak_idx, R_AB_2d.shape)
-
-    # 3-point Gaussian sub-pixel refinement along each axis
-    # f(x) = a*x^2 + b*x + c, peak at x = -b/(2a)
-    # Using log-Gaussian: ln(f) is parabolic for Gaussian peaks
-
-    sub_x = 0.0
-    if 0 < peak_x < corr_w - 1:
-        left = R_AB_2d[peak_y, peak_x - 1]
-        center = R_AB_2d[peak_y, peak_x]
-        right = R_AB_2d[peak_y, peak_x + 1]
-        if left > 0 and center > 0 and right > 0:
-            ln_l = np.log(left)
-            ln_c = np.log(center)
-            ln_r = np.log(right)
-            denom = 2 * (ln_l - 2 * ln_c + ln_r)
-            if abs(denom) > 1e-12:
-                sub_x = (ln_l - ln_r) / denom
-
-    sub_y = 0.0
-    if 0 < peak_y < corr_h - 1:
-        top = R_AB_2d[peak_y - 1, peak_x]
-        center = R_AB_2d[peak_y, peak_x]
-        bottom = R_AB_2d[peak_y + 1, peak_x]
-        if top > 0 and center > 0 and bottom > 0:
-            ln_t = np.log(top)
-            ln_c = np.log(center)
-            ln_b = np.log(bottom)
-            denom = 2 * (ln_t - 2 * ln_c + ln_b)
-            if abs(denom) > 1e-12:
-                sub_y = (ln_t - ln_b) / denom
-
-    mu_x = (peak_x + sub_x) - center_idx_x
-    mu_y = (peak_y + sub_y) - center_idx_y
-
-    return mu_x, mu_y
-
-
-def _fit_1d_axis(
-    F_AB: np.ndarray,
-    F_ref: np.ndarray,
-    k_axis: np.ndarray,
-    other_center_idx: int,
-    k_max: float,
-    axis: str,
-) -> tuple[float, float]:
-    """
-    Extract mean displacement and variance via 1D linear regression.
-
-    Uses log differences to avoid explicit division:
-    - log|T| = log|F_AB| - log|F_ref| = -2*pi^2 * Sigma * k^2  (parabola)
-    - phase(T) = phase(F_AB) - phase(F_ref) = -2*pi * k * mu  (linear)
-
-    Both regressions are forced through the origin because DC normalisation
-    guarantees T(0) = 1, so ln|T(0)| = 0 and phase(T(0)) = 0 exactly.
-
-    Parameters
-    ----------
-    F_AB : np.ndarray
-        Complex cross-correlation spectrum, shape (corr_h, corr_w)
-    F_ref : np.ndarray
-        Reference spectrum sqrt(|F_AA|*|F_BB|), shape (corr_h, corr_w)
-    k_axis : np.ndarray
-        Wavenumber array for this axis
-    other_center_idx : int
-        Index of center in the other axis
-    k_max : float
-        Maximum wavenumber to include in magnitude fit
-    axis : str
-        'x' or 'y'
-
-    Returns
-    -------
-    mu : float
-        Mean displacement estimate
-    Sigma : float
-        Variance (stress) estimate
-    """
-    if axis == 'x':
-        # Profile along k_x at k_y = 0
-        F_AB_profile = F_AB[other_center_idx, :]
-        F_ref_profile = F_ref[other_center_idx, :]
-    else:
-        # Profile along k_y at k_x = 0
-        F_AB_profile = F_AB[:, other_center_idx]
-        F_ref_profile = F_ref[:, other_center_idx]
-
-    # Compute log|T| = log|F_AB| - log|F_ref| (avoids division)
-    log_mag_AB = np.log(np.maximum(np.abs(F_AB_profile), 1e-12))
-    log_mag_ref = np.log(np.maximum(F_ref_profile, 1e-12))
-    log_mag_T = log_mag_AB - log_mag_ref
-
-    # Phase of T = phase(F_AB) - phase(F_ref), but F_ref is real positive so phase(F_ref) = 0
-    phase_profile = np.angle(F_AB_profile)
-
-    # For magnitude (variance estimation): use k_max
-    N = len(k_axis)
-    k_min = 1.5 / N
-    valid_mask_mag = (np.abs(k_axis) > k_min) & (np.abs(k_axis) < k_max)
-    k_valid_mag = k_axis[valid_mask_mag]
-    log_mag_T_valid = log_mag_T[valid_mask_mag]
-    # Weight by |F_AB| (higher signal regions more reliable)
-    F_AB_mag_valid = np.abs(F_AB_profile[valid_mask_mag])
-
-    # For phase (displacement estimation): use smaller k range to avoid phase wrapping
-    # Phase estimation is most reliable at low k where phase is nearly linear
-    phase_k_max = min(k_max, 0.25)
-    valid_mask_phase = (np.abs(k_axis) > k_min) & (np.abs(k_axis) < phase_k_max)
-    k_valid_phase = k_axis[valid_mask_phase]
-    phase_valid = phase_profile[valid_mask_phase]
-    F_AB_valid_phase = F_AB_profile[valid_mask_phase]
-
-    # Default values
-    Sigma = 1.0
-    mu = 0.0
-
-    # Fit magnitude: ln|T| = ln|F_AB| - ln|F_ref| = -2*pi^2 * Sigma * k^2
-    if len(k_valid_mag) >= 3:
-        k_sq = k_valid_mag ** 2
-
-        # Weighted least squares (weight by |F_AB| for SNR emphasis)
-        weights = F_AB_mag_valid / (np.max(F_AB_mag_valid) + 1e-12)
-
-        try:
-            # Fit: log_mag_T = slope * k_sq (through origin after DC normalisation)
-            A = (k_sq * weights).reshape(-1, 1)
-            b = log_mag_T_valid * weights
-            coeffs, _, _, _ = np.linalg.lstsq(A, b, rcond=None)
-            slope = coeffs[0]
-            Sigma = max(-slope / (2 * np.pi ** 2), 0.01)
-        except Exception:
-            pass
-
-    # Fit phase: phase(F_AB) = -2*pi * k * mu
-    if len(k_valid_phase) >= 3:
-        # Weight by |F_AB| to emphasize high-signal regions
-        weights_phase = np.abs(F_AB_valid_phase)
-        weights_phase = weights_phase / (np.max(weights_phase) + 1e-12)
-
-        try:
-            # Weighted linear fit: phase = slope * k (through origin after DC normalisation)
-            A = (k_valid_phase * weights_phase).reshape(-1, 1)
-            b = phase_valid * weights_phase
-            coeffs, _, _, _ = np.linalg.lstsq(A, b, rcond=None)
-            slope_phase = coeffs[0]
-            mu = -slope_phase / (2 * np.pi)
-        except Exception:
-            pass
-
-    return mu, Sigma
-
-
-def _compute_kmax_from_profile(
-    k_axis: np.ndarray,
-    F_profile: np.ndarray,
-    F_dc: float,
-    threshold_frac: float = 0.01,
-    min_k: float = 0.05,
-    max_k: float = 0.45,
-) -> float:
-    """
-    Compute k_max from where F_ref profile drops below threshold.
-
-    Parameters
-    ----------
-    k_axis : np.ndarray
-        Wavenumber axis (centered, from fftshift(fftfreq()))
-    F_profile : np.ndarray
-        |F_ref| profile along this axis
-    F_dc : float
-        DC value |F_ref(0)|
-    threshold_frac : float
-        Fraction of DC below which to cut off (default 0.01 = 1%)
-    min_k, max_k : float
-        Bounds on k_max (max_k=0.45 allows near-Nyquist when signal supports it)
-
-    Returns
-    -------
-    float
-        k_max value
-    """
-    threshold = F_dc * threshold_frac
-
-    # Only look at positive k (right half of array after fftshift)
-    center = len(k_axis) // 2
-    k_pos = k_axis[center:]
-    F_pos = F_profile[center:]
-
-    # Find first index where F drops below threshold
-    below_threshold = F_pos < threshold
-    if np.any(below_threshold):
-        idx = np.argmax(below_threshold)  # First True
-        k_max = k_pos[max(0, idx - 1)]  # Use one bin before the cutoff
-    else:
-        k_max = max_k
-
-    return np.clip(k_max, min_k, max_k)
-
-
-def _compute_kmax(sigma_sq: float, snr: float, min_k: float = 0.05, max_k: float = 0.45) -> float:
-    """
-    Compute adaptive k-max based on variance and SNR.
-
-    Uses conservative bounds: k_max = sqrt(ln(SNR) / (2*pi^2 * sigma^2))
-    clamped to [min_k, max_k]. The default max_k=0.45 allows near-Nyquist
-    when the data supports it — the caller's profile-based k_max and soft
-    weighting provide additional protection against noise.
-
-    Clamped to [min_k, max_k] for stability.
-    """
-    if sigma_sq <= 0 or snr <= 1:
-        return max_k
-
-    k_max = np.sqrt(np.log(snr) / (2 * np.pi ** 2 * sigma_sq + 1e-12))
-    return np.clip(k_max, min_k, max_k)
-
-
-def _fit_transfer_function_full(
-    F_AB: np.ndarray,
-    F_ref: np.ndarray,
-    K_X: np.ndarray,
-    K_Y: np.ndarray,
-    k_max_x: float,
-    k_max_y: float,
-    initial_guess: np.ndarray,
-    use_soft_weighting: bool = True,
-    noise_floor: float = 1e-12,
-    sigma_xx_estimate: float = 1.0,
-    sigma_yy_estimate: float = 1.0,
-    epsilon: float = 1e-12,
-) -> Optional[np.ndarray]:
-    """
-    Full 5-parameter nonlinear fit using normalized transfer function.
-
-    Minimizes: ||w(k) * (T_norm - T_model)||^2
-
-    where T_norm = T / T(0) is the transfer function normalized by its DC value.
-    This normalization removes the amplitude ambiguity caused by F_AA ≠ F_BB
-    at DC, which otherwise biases the stress estimates.
-
-    The model is:
-        T_model(k) = exp(-2*pi^2 * k^T * Sigma * k) * exp(-2*pi*i * k . mu)
-
-    with T_model(0) = 1 by construction.
-
-    Parameters
-    ----------
-    F_AB : np.ndarray
-        Cross-correlation spectrum (complex), shape (corr_h, corr_w)
-    F_ref : np.ndarray
-        Reference spectrum sqrt(|F_AA|*|F_BB|), shape (corr_h, corr_w)
-    K_X, K_Y : np.ndarray
-        Wavenumber grids
-    k_max_x, k_max_y : float
-        Maximum wavenumbers in x and y directions
-    initial_guess : np.ndarray
-        Initial parameters [mu_x, mu_y, Sigma_xx, Sigma_yy, Sigma_xy, A]
-        (A is ignored - kept for interface compatibility)
-    use_soft_weighting : bool
-        If True, use combined SNR × anisotropic soft decay weighting
-    noise_floor : float
-        Noise power estimate for SNR computation
-    sigma_xx_estimate : float
-        Initial Sigma_xx estimate for anisotropic soft decay (x direction)
-    sigma_yy_estimate : float
-        Initial Sigma_yy estimate for anisotropic soft decay (y direction)
-    epsilon : float
-        Regularisation constant for F_ref division (computed once in caller)
-
-    Returns
-    -------
-    np.ndarray or None
-        Fitted parameters [mu_x, mu_y, Sigma_xx, Sigma_yy, Sigma_xy, A]
-        where A is set to 1.0 (for interface compatibility).
-        Returns None if optimization failed.
-    """
-    corr_h, corr_w = F_AB.shape
-    center_idx_y = corr_h // 2
-    center_idx_x = corr_w // 2
-
-    # Compute transfer function T = F_AB / F_ref
-    T_measured = F_AB / (F_ref + epsilon)
-
-    # Get T(0) for normalization
-    T_0 = T_measured[center_idx_y, center_idx_x]
-    if np.abs(T_0) < 1e-6:
-        return None  # T(0) too small, cannot normalize
-
-    # Normalize T by T(0): T_norm(0) = 1
-    T_normalized = T_measured / T_0
-
-    # Build mask for valid k-points (elliptical region)
-    k_mask = (K_X ** 2 / k_max_x ** 2 + K_Y ** 2 / k_max_y ** 2) <= 1.0
-
-    # Flatten for optimization
-    K_X_flat = K_X[k_mask]
-    K_Y_flat = K_Y[k_mask]
-    T_norm_flat = T_normalized[k_mask]
-    F_ref_flat = F_ref[k_mask]
-
-    if len(K_X_flat) < 10:
-        return None  # Not enough valid points
-
-    if use_soft_weighting:
-        # Combined SNR × anisotropic soft decay weighting
-        w_snr = np.abs(F_ref_flat) / (np.sqrt(noise_floor) + 1e-12)
-        w_snr = w_snr / (np.max(w_snr) + 1e-12)
-
-        # Anisotropic soft decay — each axis decays at its own rate
-        k0_x_sq = 1.0 / (2 * np.pi ** 2 * max(sigma_xx_estimate, 0.01) + 1e-12)
-        k0_y_sq = 1.0 / (2 * np.pi ** 2 * max(sigma_yy_estimate, 0.01) + 1e-12)
-        w_soft = np.exp(-K_X_flat ** 2 / k0_x_sq - K_Y_flat ** 2 / k0_y_sq)
-
-        weights = w_snr * w_soft
-    else:
-        weights = np.ones_like(K_X_flat)
-
-    def residual_func(params):
-        """Compute weighted residual: w * (T_norm - T_model)."""
-        mu_x, mu_y, Sigma_xx, Sigma_yy, Sigma_xy = params
-
-        # Phase term: exp(-2*pi*i * k . mu)
-        phase = -2 * np.pi * (K_X_flat * mu_x + K_Y_flat * mu_y)
-        phase_term = np.exp(1j * phase)
-
-        # Quadratic form: k^T * Sigma * k
-        quad_form = (
-            Sigma_xx * K_X_flat ** 2
-            + 2 * Sigma_xy * K_X_flat * K_Y_flat
-            + Sigma_yy * K_Y_flat ** 2
-        )
-
-        # Gaussian decay: T_model = exp(-2*pi^2 * k·Σ·k) with A=1
-        decay_term = np.exp(-2 * np.pi ** 2 * quad_form)
-        T_model = decay_term * phase_term
-
-        # Weighted residual
-        diff = weights * (T_norm_flat - T_model)
-
-        return np.concatenate([diff.real, diff.imag])
-
-    # Initial guess (5 parameters - drop amplitude)
-    p0 = initial_guess[:5]
-
-    # Bounds: stresses >= 0, displacements bounded by 3/4 window
-    max_disp_x = 0.75 * corr_w
-    max_disp_y = 0.75 * corr_h
-    bounds = (
-        [-max_disp_x, -max_disp_y, 0, 0, -50],
-        [max_disp_x, max_disp_y, 100, 100, 50],
-    )
-
-    try:
-        result = least_squares(
-            residual_func,
-            p0,
-            bounds=bounds,
-            method='trf',
-            max_nfev=50 * len(p0),  # Scale with parameter count
-            ftol=1e-8,
-            xtol=1e-8,
-        )
-
-        n_points = len(T_norm_flat)
-        if result.success or result.cost / n_points < 1.0:
-            # Return 6-element array for interface compatibility (A=1.0)
-            return np.array([
-                result.x[0], result.x[1],  # mu_x, mu_y
-                result.x[2], result.x[3], result.x[4],  # Sigma_xx, Sigma_yy, Sigma_xy
-                1.0  # A (fixed)
-            ])
-        else:
-            return None
-
-    except Exception:
-        return None
-
-
-def _build_default_params(
-    amp_A: float,
-    amp_B: float,
-    amp_AB: float,
-    center_x: float,
-    center_y: float,
-) -> np.ndarray:
-    """Build default 16-element parameter array for failure cases."""
-    params = np.zeros(16, dtype=np.float64)
-    params[0] = amp_A
-    params[1] = amp_B
-    params[2] = amp_AB
-    params[3:6] = 0.0  # Offsets (not used)
-    params[6:9] = np.nan  # sig_A (not estimated)
-    params[9:12] = 0.0  # sig_AB = Sigma (default zero)
-    params[12] = center_x  # x0_A
-    params[13] = center_y  # y0_A
-    params[14] = center_x  # x0_AB (no displacement)
-    params[15] = center_y  # y0_AB
-    return params
-
-
-def _build_params_from_fit(
-    fit_result,
-    amp_A: float,
-    amp_B: float,
-    amp_AB: float,
-    center_x: float,
-    center_y: float,
-) -> np.ndarray:
-    """
-    Build 16-element parameter array from k-space fit result.
-
-    Maps k-space parameters to Gaussian-compatible output format.
-    """
-    if isinstance(fit_result, np.ndarray) and len(fit_result) == 6:
-        mu_x, mu_y, Sigma_xx, Sigma_yy, Sigma_xy, amplitude = fit_result
-    else:
-        # Initial guess format
-        mu_x = fit_result[0] if len(fit_result) > 0 else 0.0
-        mu_y = fit_result[1] if len(fit_result) > 1 else 0.0
-        Sigma_xx = fit_result[2] if len(fit_result) > 2 else 0.0
-        Sigma_yy = fit_result[3] if len(fit_result) > 3 else 0.0
-        Sigma_xy = fit_result[4] if len(fit_result) > 4 else 0.0
-
-    params = np.zeros(16, dtype=np.float64)
-
-    # Amplitudes (from correlation plane peaks)
-    params[0] = amp_A
-    params[1] = amp_B
-    params[2] = amp_AB
-
-    # Offsets (not used in k-space)
-    params[3] = 0.0
-    params[4] = 0.0
-    params[5] = 0.0
-
-    # Sigma A - particle shape (not estimated in k-space)
-    params[6] = np.nan
-    params[7] = np.nan
-    params[8] = np.nan
-
-    # Sigma AB = Reynolds stresses
-    params[9] = Sigma_xx   # UU stress
-    params[10] = Sigma_yy  # VV stress
-    params[11] = Sigma_xy  # UV stress
-
-    # Position A (window center)
-    params[12] = center_x
-    params[13] = center_y
-
-    # Position AB (displacement from center)
-    params[14] = center_x + mu_x
-    params[15] = center_y + mu_y
-
-    return params
 
 
 def plot_kspace_diagnostic(
@@ -1115,6 +292,9 @@ def plot_kspace_diagnostic(
 ) -> Optional[dict]:
     """
     Create diagnostic k-space plot for debugging and visualization.
+
+    This function stays in Python as it's a visualization tool that runs
+    on single windows interactively, not in the hot path.
 
     Parameters
     ----------
@@ -1146,64 +326,70 @@ def plot_kspace_diagnostic(
     center_idx_x = corr_w // 2
     center_idx_y = corr_h // 2
 
-    # Build wavenumber grids
+    # Run the C fitter on a single window to get results
+    mask = np.array([False], dtype=bool)
+    R_AA_flat = R_AA_2d.ravel().astype(np.float32)
+    R_BB_flat = R_BB_2d.ravel().astype(np.float32)
+    R_AB_flat = R_AB_2d.ravel().astype(np.float32)
+
+    gauss_flat, status_flat, initial_guess_flat = fit_windows_kspace(
+        R_AA_flat, R_BB_flat, R_AB_flat,
+        mask, (corr_h, corr_w), None, 0,
+        snr_threshold=snr_threshold,
+    )
+
+    center_x = corr_w / 2.0 + 1
+    center_y = corr_h / 2.0 + 1
+
+    mu_x_init = initial_guess_flat[0, 14] - center_x
+    mu_y_init = initial_guess_flat[0, 15] - center_y
+    Sigma_xx_init = initial_guess_flat[0, 9]
+    Sigma_yy_init = initial_guess_flat[0, 10]
+
+    # Build wavenumber grids for plotting
     k_x = fftshift(fftfreq(corr_w))
     k_y = fftshift(fftfreq(corr_h))
     K_X, K_Y = np.meshgrid(k_x, k_y, indexing='xy')
 
-    # Compute FFTs
-    # Use ifftshift before FFT since correlation planes have peak at center
+    # Compute FFTs for visualization
     F_AA = fftshift(fft2(ifftshift(R_AA_2d)))
     F_BB = fftshift(fft2(ifftshift(R_BB_2d)))
     F_AB = fftshift(fft2(ifftshift(R_AB_2d)))
 
-    # Particle shape reference (use magnitudes for real positive reference)
-    F_ref_raw = np.sqrt(np.abs(F_AA) * np.abs(F_BB))
-
-    # Noise subtraction via joint fit (pass 0 assumed — P_noise=1)
-    P_noise = np.ones_like(F_ref_raw)
-    joint_result = _fit_fref_joint(F_ref_raw, K_X, K_Y, P_noise)
-    if joint_result['success']:
-        F_ref = joint_result['F_ref_clean']
-        N_floor = joint_result['N0']
-    else:
-        F_ref = F_ref_raw
-        N_floor = 0.0
-
-    # Transfer function
+    F_ref = np.sqrt(np.abs(F_AA) * np.abs(F_BB))
     epsilon = np.max(np.abs(F_ref)) * 1e-8
     T_measured = F_AB / (F_ref + epsilon)
     T_mag = np.abs(T_measured)
     T_phase = np.angle(T_measured)
 
-    # Compute SNR from joint-fit N0 (data-driven, particle-size independent)
-    dc_power = np.abs(F_ref[center_idx_y, center_idx_x]) ** 2
-    noise_power = N_floor ** 2 + 1e-12
-    snr = dc_power / noise_power
+    F_dc = F_ref[center_idx_y, center_idx_x]
 
-    # Compute k_max from F_ref decay along axes
-    F_ref_dc = np.abs(F_ref[center_idx_y, center_idx_x])
-    threshold_frac = 0.01
+    # Estimate k_max from profile
+    def _kmax_from_prof(k_axis, profile, F_dc, threshold_frac=0.01, min_k=0.05, max_k=0.45):
+        threshold = F_dc * threshold_frac
+        center = len(k_axis) // 2
+        k_pos = k_axis[center:]
+        F_pos = profile[center:]
+        below = F_pos < threshold
+        if np.any(below):
+            idx = np.argmax(below)
+            km = k_pos[max(0, idx - 1)]
+        else:
+            km = max_k
+        return np.clip(km, min_k, max_k)
 
     F_ref_profile_x = np.abs(F_ref[center_idx_y, :])
-    k_max_x = _compute_kmax_from_profile(k_x, F_ref_profile_x, F_ref_dc, threshold_frac)
+    k_max_x = _kmax_from_prof(k_x, F_ref_profile_x, F_dc)
 
     F_ref_profile_y = np.abs(F_ref[:, center_idx_x])
-    k_max_y = _compute_kmax_from_profile(k_y, F_ref_profile_y, F_ref_dc, threshold_frac)
+    k_max_y = _kmax_from_prof(k_y, F_ref_profile_y, F_dc)
 
-    # Per-axis k_max for initial fits (data-driven, capped at near-Nyquist)
     k_max_init_x = min(k_max_x, 0.45)
     k_max_init_y = min(k_max_y, 0.45)
 
-    # 1D fits for initial estimates
-    mu_x_init, Sigma_xx_init = _fit_1d_axis(F_AB, F_ref, k_x, center_idx_y, k_max_init_x, axis='x')
-    mu_y_init, Sigma_yy_init = _fit_1d_axis(F_AB, F_ref, k_y, center_idx_x, k_max_init_y, axis='y')
+    # SNR estimate
+    snr = F_dc ** 2 / (1e-12 + 1e-12)
 
-    # Refine k_max based on Sigma estimates
-    k_max_x = min(_compute_kmax(max(Sigma_xx_init, 0.01), snr), k_max_x, 0.45)
-    k_max_y = min(_compute_kmax(max(Sigma_yy_init, 0.01), snr), k_max_y, 0.45)
-
-    # Extract 1D profiles
     T_profile_x = T_measured[center_idx_y, :]
     T_profile_y = T_measured[:, center_idx_x]
 
@@ -1237,7 +423,6 @@ def plot_kspace_diagnostic(
         log_F_ref, cmap='viridis', origin='lower',
         extent=[k_x[0], k_x[-1], k_y[0], k_y[-1]]
     )
-    # Add elliptical k-bounds
     ellipse = Ellipse(
         (0, 0), 2*k_max_x, 2*k_max_y,
         fill=False, edgecolor='red', linewidth=2, linestyle='--',
@@ -1296,13 +481,13 @@ def plot_kspace_diagnostic(
     mag_x = np.abs(T_profile_x[valid_k_x])
     ax7.semilogy(k_x_valid, mag_x, 'b.-', label='|T(k_x, 0)|', markersize=4)
 
-    # Plot fitted Gaussian decay
     if Sigma_xx_init > 0:
         k_fit = np.linspace(-k_max_x, k_max_x, 100)
         mag_fit = np.exp(-2 * np.pi**2 * Sigma_xx_init * k_fit**2)
         ax7.semilogy(k_fit, mag_fit, 'r-', lw=2,
                      label=f'fit: Sigma_xx={Sigma_xx_init:.4f}')
     if true_params and 'Sigma_xx' in true_params:
+        k_fit = np.linspace(-k_max_x, k_max_x, 100)
         mag_true = np.exp(-2 * np.pi**2 * true_params['Sigma_xx'] * k_fit**2)
         ax7.semilogy(k_fit, mag_true, 'g--', lw=2,
                      label=f'true: Sigma_xx={true_params["Sigma_xx"]:.4f}')
@@ -1327,6 +512,7 @@ def plot_kspace_diagnostic(
         ax8.semilogy(k_fit_y, mag_fit_y, 'r-', lw=2,
                      label=f'fit: Sigma_yy={Sigma_yy_init:.4f}')
     if true_params and 'Sigma_yy' in true_params:
+        k_fit_y = np.linspace(-k_max_y, k_max_y, 100)
         mag_true_y = np.exp(-2 * np.pi**2 * true_params['Sigma_yy'] * k_fit_y**2)
         ax8.semilogy(k_fit_y, mag_true_y, 'g--', lw=2,
                      label=f'true: Sigma_yy={true_params["Sigma_yy"]:.4f}')
@@ -1347,7 +533,6 @@ def plot_kspace_diagnostic(
     phase_x = np.angle(T_profile_x[valid_k_phase])
     ax9.plot(k_x_phase, phase_x, 'b.-', label='phase(T(k_x, 0))', markersize=4)
 
-    # Plot fitted phase slope
     k_fit_phase = np.linspace(-phase_k_max, phase_k_max, 100)
     phase_fit = -2 * np.pi * mu_x_init * k_fit_phase
     ax9.plot(k_fit_phase, phase_fit, 'r-', lw=2,
@@ -1394,14 +579,13 @@ def plot_kspace_diagnostic(
     ax11.axis('off')
     summary_text = f"""K-Space Diagnostic Summary
 {'='*35}
-SNR estimate: {snr:.1f}
 Initial k_max: ({k_max_init_x:.3f}, {k_max_init_y:.3f})
 
 Adaptive k-bounds:
   k_max_x: {k_max_x:.3f}
   k_max_y: {k_max_y:.3f}
 
-1D Fit Results:
+Initial Estimates:
   mu_x: {mu_x_init:.4f} px
   mu_y: {mu_y_init:.4f} px
   Sigma_xx: {Sigma_xx_init:.4f} px^2
@@ -1426,7 +610,6 @@ Ground Truth:
     log_mag_x = np.log(np.maximum(np.abs(T_profile_x[valid_k_sq]), 1e-12))
     ax12.plot(k_x_sq, log_mag_x, 'b.-', label='ln|T| vs k_x^2', markersize=4)
 
-    # Linear fit line
     k_sq_fit = np.linspace(0, k_max_x**2, 100)
     log_fit = -2 * np.pi**2 * Sigma_xx_init * k_sq_fit
     ax12.plot(k_sq_fit, log_fit, 'r-', lw=2,
@@ -1459,5 +642,5 @@ Ground Truth:
         'Sigma_yy_1d': Sigma_yy_init,
         'k_max_x': k_max_x,
         'k_max_y': k_max_y,
-        'snr': snr,
+        'status': int(status_flat[0]),
     }

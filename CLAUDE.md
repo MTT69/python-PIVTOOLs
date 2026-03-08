@@ -875,14 +875,14 @@ Extends ensemble PIV to stereo setups, computing 3D velocity + 6 Reynolds stress
 
 ### K-Space Transfer Function Fitting
 
-Alternative to Levenberg-Marquardt Gaussian fitting. Works in Fourier domain: `T(k) = F(R_AB) / sqrt(F(R_AA) * F(R_BB))` — particle shape cancels, reducing 16 → 6 parameters. Pure Python/NumPy/SciPy (~50-100x slower per window than C Gaussian, but only ~25% total runtime impact). Improves Reynolds stress accuracy by 40-90%.
+Alternative to Levenberg-Marquardt Gaussian fitting. Works in Fourier domain: `T(k) = F(R_AB) / sqrt(F(R_AA) * F(R_BB))` — particle shape cancels, reducing 16 → 5 parameters (mu_x, mu_y, Sigma_xx, Sigma_yy, Sigma_xy). **C-accelerated** via `libkspace` (FFTW3f float32 FFTs + GSL double-precision nonlinear least-squares + OpenMP), achieving ~50-100x speedup over the previous Python/SciPy implementation, bringing it to parity with the C Gaussian fitter. Improves Reynolds stress accuracy by 40-90%.
 
 - **Config:** `ensemble_piv.fit_method: kspace`, `kspace_snr_threshold: 3.0`
-- **File:** `pivtools_cli/piv/piv_backend/kspace_fitting.py`
-- **Status codes:** 0=success, 1=no converge, 2=low SNR, 3=displacement > 3/4 window, 5=negative variance (consistent with Gaussian codes)
-- **Predictor-aware noise subtraction (all passes):** Camera noise inflates F_ref (auto-correlations) but not F_AB (cross-correlation). On warped passes, the interpolation kernel (bicubic/Lanczos-3) colors the noise spectrum — a low-pass filter whose shape depends on the fractional pixel displacement. The noise PSD is computed analytically from the kernel's DTFT: `P_noise(kx,ky) = |H(kx,fx)|² * |H(ky,fy)|²`. Joint fit: `F_ref = (A*Gaussian + N0) * P_noise` — the kernel filters everything (signal + noise), so N0 is inside the bracket. At pass 0 (f=0), `P_noise=1` everywhere (flat white noise), so the joint fit degenerates to `F_ref = A*Gauss + N0` — equivalent to the old corner-based approach. Falls back to corner-based scalar subtraction if the joint fit fails. **Key files:** `interpolation_noise_psd.py` (kernel weights/DTFTs/PSD), `kspace_fitting.py` (`_fit_fref_joint()`), `single_pass_accumulator.py` (threads predictor displacements to fitter). Per-window predictor displacement is extracted from `smoothed_predictor` in `pass_data`.
+- **Files:** `pivtools_cli/piv/piv_backend/kspace_fitting.py` (Python wrapper + ctypes), `pivtools_cli/lib/kspace_fitting.c` (C implementation), `pivtools_cli/lib/kspace_fitting.h` (API header)
+- **Status codes:** -1=masked, 0=success, 1=no converge, 2=low SNR, 3=displacement > 3/4 window, 5=negative variance (consistent with Gaussian codes)
+- **Predictor-aware noise subtraction (all passes):** Camera noise inflates F_ref (auto-correlations) but not F_AB (cross-correlation). On warped passes, the interpolation kernel (bicubic/Lanczos-3) colors the noise spectrum — a low-pass filter whose shape depends on the fractional pixel displacement. The noise PSD is computed analytically from the kernel's DTFT: `P_noise(kx,ky) = |H(kx,fx)|² * |H(ky,fy)|²`. Joint fit: `F_ref = (A*Gaussian + N0) * P_noise` — the kernel filters everything (signal + noise), so N0 is inside the bracket. At pass 0 (f=0), `P_noise=1` everywhere (flat white noise), so the joint fit degenerates to `F_ref = A*Gauss + N0` — equivalent to the old corner-based approach. Falls back to corner-based N0 estimation if the joint fit fails. **Key files:** `interpolation_noise_psd.py` (kernel weights/DTFTs/PSD — used by diagnostic plotting), `kspace_fitting.c` (joint fit in C), `single_pass_accumulator.py` (threads predictor displacements to fitter). Per-window predictor displacement is extracted from `smoothed_predictor` in `pass_data`.
 - **SNR estimation:** High-k annular ring (0.4 < |k| < 0.5) on the noise-corrected F_ref
-- **Soft weighting:** Anisotropic decay `exp(-k_x²/k0_x² - k_y²/k0_y²)` matching elliptical transfer function shape; k_max cap at 0.35 (soft) or 0.25 (hard)
+- **Soft weighting:** Anisotropic decay `exp(-k_x²/k0_x² - k_y²/k0_y²)` matching elliptical transfer function shape; k_max cap at 0.45 (soft) or 0.30 (hard)
 - **1D regressions:** Forced through origin (DC-normalised T(0)=1); per-axis k_max bounds; window-size-aware k_min = 1.5/N
 - **Gradient correction:** K-space does not estimate σ_A (particle image variance) — it's algebraically cancelled in Fourier space. When gradient correction is enabled, only the window averaging term (L²/12) is applied; the particle extent term (σ_A) is omitted. This is the dominant correction (~95-97% of total). `sig_A_x/y/xy` fields are saved as zero in the output .mat file.
 
@@ -977,7 +977,7 @@ Dask-centric utilities shared by both pipelines.
 
 ## Build System & C Extensions
 
-### Package: `pivtools` v0.4.3
+### Package: `pivtools` v0.4.4
 
 - **Build backend:** `setuptools>=61.0` + `wheel` + `cibuildwheel>=2.16`
 - **Python:** `>=3.12` (targets: 3.12, 3.13, 3.14)
@@ -999,6 +999,7 @@ Dask-centric utilities shared by both pipelines.
 | `libbulkxcorr2d` | `peak_locate_lm.c`, `PIV_2d_cross_correlate.c`, `xcorr.c`, `xcorr_cache.c` | FFTW3f, OpenMP | Cross-correlation engine (instantaneous + ensemble accumulation) |
 | `libfusedwarp` | `fused_warp.c` | OpenMP | Fused predictor-upsample + symmetric warp + bicubic/Lanczos-3 image interpolation (replaces cv2.remap pipeline) |
 | `libmarquadt` | `marquadt_gaussian.c` | GSL, OpenMP | Ensemble 16-parameter stacked Gaussian fitting |
+| `libkspace` | `kspace_fitting.c` | GSL, FFTW3f, OpenMP | K-space transfer function fitting (float32 FFT + double GSL) |
 
 **Python-C interface:** All via `ctypes.CDLL` at runtime. No Cython/cffi.
 
@@ -1489,7 +1490,7 @@ Benchmark scripts compare PIVTOOLs output against ground truth (DNS data).
 
 3. **Dask as the computation layer.** Both instantaneous and ensemble use sliding window I/O with bounded memory. Lazy loading (~1 KB per pair), broadcast scattering for immutable data, worker pinning for locality.
 
-4. **C extensions for performance.** Three shared libraries (cross-correlation, fused image warping, Gaussian fitting) loaded via ctypes. FFTW for FFT, GSL for nonlinear least-squares, OpenMP for parallelism. Static-linked to bundled FFTW/GSL.
+4. **C extensions for performance.** Four shared libraries (cross-correlation, fused image warping, Gaussian fitting, k-space fitting) loaded via ctypes. FFTW for FFT, GSL for nonlinear least-squares, OpenMP for parallelism. Static-linked to bundled FFTW/GSL.
 
 5. **Blueprint-per-feature** (GUI) is consistent. Each feature: `module/app/views.py` (routes) + business logic. Predictable for new features.
 

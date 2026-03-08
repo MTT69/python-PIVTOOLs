@@ -238,6 +238,9 @@ class BuildCLibraries(build):
         # --- Build libmarquadt (for ensemble PIV) ---
         self._build_marquadt()
 
+        # --- Build libkspace (k-space fitting, requires GSL + FFTW) ---
+        self._build_kspace()
+
     def _build_marquadt(self):
         """Build libmarquadt with GSL support."""
         marquadt_src = self.src_dir / "marquadt_gaussian.c"
@@ -321,6 +324,84 @@ class BuildCLibraries(build):
         if not (self.build_dir / f"libmarquadt{self.lib_ext}").exists():
             raise RuntimeError(f"Build failed: {self.build_dir / f'libmarquadt{self.lib_ext}'} not created")
         print(f"Successfully built libmarquadt{self.lib_ext}")
+
+        self._cleanup_intermediates(self.build_dir)
+
+    def _build_kspace(self):
+        """Build libkspace with GSL + FFTW support for k-space fitting."""
+        kspace_src = self.src_dir / "kspace_fitting.c"
+        if not kspace_src.exists():
+            raise RuntimeError(f"kspace source not found: {kspace_src}")
+
+        print("Building libkspace (requires GSL + FFTW)")
+
+        # Check for user-provided GSL
+        gsl_dir_env = os.environ.get("GSL_DIR")
+
+        if gsl_dir_env:
+            gsl_dir = pathlib.Path(gsl_dir_env)
+            gsl_inc = gsl_dir / "include"
+            gsl_lib = gsl_dir / "lib"
+            use_static_gsl = False
+        else:
+            if self.sys_name == "macos":
+                arch = platform.machine().lower()
+                if arch == "arm64":
+                    gsl_dir = self.pkg_dir / "static_gsl" / "macos_arm64"
+                else:
+                    raise RuntimeError(f"Unsupported macOS architecture: {arch}")
+            elif self.sys_name == "windows":
+                gsl_dir = self.pkg_dir / "static_gsl" / "windows"
+            else:
+                gsl_dir = self.pkg_dir / "static_gsl" / "linux"
+
+            if not gsl_dir.exists():
+                raise RuntimeError(f"Static GSL not found: {gsl_dir}")
+
+            gsl_inc = gsl_dir / "include"
+            gsl_lib = gsl_dir / "lib"
+            use_static_gsl = True
+
+        if self.use_msvc:
+            gsl_compile_flags = [f"/I{gsl_inc}"]
+            if use_static_gsl:
+                gsl_link_flags = [str(gsl_lib / "gsl.lib"), str(gsl_lib / "gslcblas.lib")]
+            else:
+                gsl_link_flags = [f"/LIBPATH:{gsl_lib}", "gsl.lib", "gslcblas.lib"]
+
+            output_file = self.build_dir / f"libkspace{self.lib_ext}"
+            cmd_kspace = [
+                self.compiler, *self.extra_compile, self.shared_flag,
+                f"/Fo{self.build_dir}/",
+                *gsl_compile_flags,
+                f"/I{self.fftw_inc}",
+                str(kspace_src),
+                f"/I{self.src_dir}",
+                f"/Fe{output_file}",
+                *gsl_link_flags,
+                *self.extra_link
+            ]
+        else:
+            gsl_compile_flags = [f"-I{gsl_inc}"]
+            if use_static_gsl:
+                gsl_link_flags = [str(gsl_lib / "libgsl.a"), str(gsl_lib / "libgslcblas.a")]
+            else:
+                gsl_link_flags = [f"-L{gsl_lib}", "-lgsl", "-lgslcblas"]
+
+            cmd_kspace = [
+                self.compiler, *self.extra_compile, self.shared_flag,
+                *gsl_compile_flags,
+                str(kspace_src),
+                f"-I{self.src_dir}",
+                "-o", str(self.build_dir / f"libkspace{self.lib_ext}"),
+                *gsl_link_flags,
+                *self.extra_link
+            ]
+
+        self._run(cmd_kspace)
+        if not (self.build_dir / f"libkspace{self.lib_ext}").exists():
+            raise RuntimeError(f"Build failed: libkspace{self.lib_ext} not created")
+        print(f"Successfully built libkspace{self.lib_ext}")
 
         self._cleanup_intermediates(self.build_dir)
 

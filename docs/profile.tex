@@ -36,7 +36,7 @@
 
 \begin{center}
 {\Large\bfseries PIV Processing Speed Report}\\[4pt]
-{\small\color{gray} 2026-02-27 \quad|\quad 3-pass (64$\to$32$\to$16\,px), 50\% overlap \quad|\quad 4 threads \quad|\quad 3 iterations averaged}
+{\small\color{gray} 2026-03-08 \quad|\quad gauss6, 50\% overlap, local median infilling \quad|\quad 10 OMP threads \quad|\quad 3 iterations averaged}
 \end{center}
 
 \vspace{-2pt}
@@ -44,23 +44,77 @@
 
 \section{Summary}
 
+Single-worker processing rates for two pass configurations and two image resolutions. All benchmarks use gauss6 peak finding, median outlier detection, and local median infilling.
+
 \begin{center}
 \small
-\begin{tabular}{@{}lrrl@{}}
+\begin{tabular}{@{}llrr@{}}
 \toprule
-\textbf{Resolution} & \textbf{Per pair} & \textbf{Pairs/s} & \textbf{Config} \\
+\textbf{Resolution} & \textbf{Passes} & \textbf{Per pair} & \textbf{Hz} \\
 \midrule
-4\,MP\,(2048$^2$)  & \textbf{85\,ms}  & 11.8 & fast \\
-4\,MP\,(2048$^2$)  & 138\,ms & 7.2  & accurate \\
-25\,MP\,(4600$\times$5312) & 501\,ms & 2.0  & fast \\
+1\,MP\,(1000$^2$)  & 64$\to$32       & \textbf{21\,ms}  & 46.8 \\
+1\,MP\,(1000$^2$)  & 64$\to$32$\to$16 & 46\,ms          & 21.9 \\
+4\,MP\,(2048$^2$)  & 64$\to$32       & 90\,ms           & 11.1 \\
+4\,MP\,(2048$^2$)  & 64$\to$32$\to$16 & 201\,ms         & 5.0  \\
 \bottomrule
 \end{tabular}
-\captionof{table}{Processing time per image pair (4 threads). ``Fast'' = gauss3 peak finder + local median infilling. ``Accurate'' = gauss6 + biharmonic infilling. Batch of 20 pairs (4\,MP) or 4 pairs (25\,MP).}
+\captionof{table}{Processing time per image pair on a single worker with 10 OMP threads. Batch of 20 pairs. Hz = pairs processed per second.}
 \end{center}
 
-\section{Per-Pass Breakdown (4\,MP)}
+\section{Per-Pass Breakdown}
 
-Each pair passes through three refinement stages, starting with large interrogation windows and halving each pass.
+\subsection{4\,MP --- 64$\to$32 (2 passes)}
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[
+    ybar stacked,
+    bar width=22pt,
+    width=\columnwidth,
+    height=4.8cm,
+    ymin=0, ymax=75,
+    ylabel={\small Time per pair (ms)},
+    ylabel style={at={(axis description cs:0.06,0.5)}},
+    symbolic x coords={Pass 1, Pass 2},
+    xtick=data,
+    x tick label style={font=\small},
+    legend style={at={(0.5,1.02)}, anchor=south,
+      legend columns=5, font=\tiny, draw=none},
+    every axis plot/.append style={fill opacity=0.85},
+    enlarge x limits=0.35,
+]
+\addplot[fill=warpcolor,draw=warpcolor!70!black] coordinates {
+    (Pass 1,3.3) (Pass 2,37.3)};
+\addplot[fill=xcorrcolor,draw=xcorrcolor!70!black] coordinates {
+    (Pass 1,21.1) (Pass 2,25.5)};
+\addplot[fill=outliercolor,draw=outliercolor!70!black] coordinates {
+    (Pass 1,0.6) (Pass 2,1.4)};
+\addplot[fill=infillcolor,draw=infillcolor!70!black] coordinates {
+    (Pass 1,0.2) (Pass 2,0.3)};
+\addplot[fill=othercolor,draw=othercolor!70!black] coordinates {
+    (Pass 1,0.1) (Pass 2,0.5)};
+\legend{Warping, Cross-corr, Outlier, Infilling, Other}
+\end{axis}
+\end{tikzpicture}
+\captionof{figure}{4\,MP, 64$\to$32 breakdown. Pass~1 has no image warping (raw images). Pass~2 is dominated by the fused warp kernel (${\sim}$37\,ms), which must touch every pixel.}
+\end{center}
+
+\begin{center}
+\small
+\begin{tabular}{@{}lrr@{}}
+\toprule
+& \textbf{Pass~1} & \textbf{Pass~2} \\
+& 64$\times$64\,px & 32$\times$32\,px \\
+\midrule
+Per pair (ms) & 25 & 65 \\
+Grid size & 63$^2$ & 127$^2$ \\
+\midrule
+\multicolumn{2}{@{}l}{\textbf{Total per pair:}} & \textbf{90\,ms} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{4\,MP --- 64$\to$32$\to$16 (3 passes)}
 
 \begin{center}
 \begin{tikzpicture}
@@ -69,7 +123,7 @@ Each pair passes through three refinement stages, starting with large interrogat
     bar width=18pt,
     width=\columnwidth,
     height=5.2cm,
-    ymin=0, ymax=46,
+    ymin=0, ymax=120,
     ylabel={\small Time per pair (ms)},
     ylabel style={at={(axis description cs:0.06,0.5)}},
     symbolic x coords={Pass 1, Pass 2, Pass 3},
@@ -79,26 +133,21 @@ Each pair passes through three refinement stages, starting with large interrogat
       legend columns=5, font=\tiny, draw=none},
     every axis plot/.append style={fill opacity=0.85},
     enlarge x limits=0.2,
-    nodes near coords={\pgfmathprintnumber[fixed,precision=0]
-      {\pgfplotspointmeta}},
-    nodes near coords align={center},
-    every node near coord/.append style={font=\tiny,
-      text=black, opacity=0},
 ]
 \addplot[fill=warpcolor,draw=warpcolor!70!black] coordinates {
-    (Pass 1,9.3) (Pass 2,19.6) (Pass 3,20.6)};
+    (Pass 1,4.0) (Pass 2,36.6) (Pass 3,38.9)};
 \addplot[fill=xcorrcolor,draw=xcorrcolor!70!black] coordinates {
-    (Pass 1,7.2) (Pass 2,6.6) (Pass 3,7.6)};
+    (Pass 1,21.0) (Pass 2,27.0) (Pass 3,61.9)};
 \addplot[fill=outliercolor,draw=outliercolor!70!black] coordinates {
-    (Pass 1,0.6) (Pass 2,1.7) (Pass 3,6.5)};
+    (Pass 1,0.7) (Pass 2,1.5) (Pass 3,5.1)};
 \addplot[fill=infillcolor,draw=infillcolor!70!black] coordinates {
-    (Pass 1,0.2) (Pass 2,0.3) (Pass 3,1.4)};
+    (Pass 1,0.2) (Pass 2,0.4) (Pass 3,1.0)};
 \addplot[fill=othercolor,draw=othercolor!70!black] coordinates {
-    (Pass 1,0.2) (Pass 2,0.7) (Pass 3,3.1)};
+    (Pass 1,0.1) (Pass 2,0.5) (Pass 3,2.2)};
 \legend{Warping, Cross-corr, Outlier, Infilling, Other}
 \end{axis}
 \end{tikzpicture}
-\captionof{figure}{4\,MP cost breakdown (fast config, batch of 20). Image warping (red) is nearly constant across passes~2--3 because it processes every pixel regardless of window count. Cross-correlation and outlier detection grow with the number of interrogation windows.}
+\captionof{figure}{4\,MP, 64$\to$32$\to$16 breakdown. The third pass adds 109\,ms, dominated by cross-correlation on the 255$\times$255 grid (62\,ms). Image warping is constant across passes~2--3 (${\sim}$37--39\,ms).}
 \end{center}
 
 \begin{center}
@@ -108,39 +157,66 @@ Each pair passes through three refinement stages, starting with large interrogat
 & \textbf{Pass~1} & \textbf{Pass~2} & \textbf{Pass~3} \\
 & 64$\times$64\,px & 32$\times$32\,px & 16$\times$16\,px \\
 \midrule
-Per pair (ms) & 17 & 29 & 39 \\
-Grid size (windows) & 63$^2$ & 127$^2$ & 255$^2$ \\
+Per pair (ms) & 26 & 66 & 109 \\
+Grid size & 63$^2$ & 127$^2$ & 255$^2$ \\
 \midrule
-\multicolumn{3}{@{}l}{\textbf{Total per pair:}} & \textbf{85\,ms} \\
+\multicolumn{3}{@{}l}{\textbf{Total per pair:}} & \textbf{201\,ms} \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-\section{Where the Time Goes}
+\subsection{1\,MP --- 64$\to$32 (2 passes)}
 
-At the finest pass (16$\times$16 windows, 255$\times$255 grid), image warping dominates because it must touch every pixel in every image:
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[
+    ybar stacked,
+    bar width=22pt,
+    width=\columnwidth,
+    height=4.8cm,
+    ymin=0, ymax=18,
+    ylabel={\small Time per pair (ms)},
+    ylabel style={at={(axis description cs:0.06,0.5)}},
+    symbolic x coords={Pass 1, Pass 2},
+    xtick=data,
+    x tick label style={font=\small},
+    legend style={at={(0.5,1.02)}, anchor=south,
+      legend columns=5, font=\tiny, draw=none},
+    every axis plot/.append style={fill opacity=0.85},
+    enlarge x limits=0.35,
+]
+\addplot[fill=warpcolor,draw=warpcolor!70!black] coordinates {
+    (Pass 1,0.6) (Pass 2,7.9)};
+\addplot[fill=xcorrcolor,draw=xcorrcolor!70!black] coordinates {
+    (Pass 1,4.8) (Pass 2,6.2)};
+\addplot[fill=outliercolor,draw=outliercolor!70!black] coordinates {
+    (Pass 1,0.5) (Pass 2,0.7)};
+\addplot[fill=infillcolor,draw=infillcolor!70!black] coordinates {
+    (Pass 1,0.2) (Pass 2,0.3)};
+\addplot[fill=othercolor,draw=othercolor!70!black] coordinates {
+    (Pass 1,0.0) (Pass 2,0.1)};
+\legend{Warping, Cross-corr, Outlier, Infilling, Other}
+\end{axis}
+\end{tikzpicture}
+\captionof{figure}{1\,MP, 64$\to$32 breakdown. At 1\,MP, warping costs only ${\sim}$8\,ms (vs 37\,ms at 4\,MP). Cross-correlation is comparable because the window count is similar.}
+\end{center}
 
 \begin{center}
 \small
-\begin{tabular}{@{}lrrl@{}}
+\begin{tabular}{@{}lrr@{}}
 \toprule
-\textbf{Step} & \textbf{ms} & \textbf{\%} & \textbf{Scales with} \\
+& \textbf{Pass~1} & \textbf{Pass~2} \\
+& 64$\times$64\,px & 32$\times$32\,px \\
 \midrule
-Image warping  & 20.6 & 53 & pixels \\
-Cross-corr     & 7.6  & 19 & windows \\
-Outlier filter & 6.5  & 17 & windows \\
-Gap filling    & 1.4  & 4  & windows \\
-Other          & 3.1  & 8  & windows \\
+Per pair (ms) & 6 & 15 \\
+Grid size & 30$^2$ & 61$^2$ \\
 \midrule
-\textbf{Pass total} & \textbf{39.1} & & \\
+\multicolumn{2}{@{}l}{\textbf{Total per pair:}} & \textbf{21\,ms} \\
 \bottomrule
 \end{tabular}
-\captionof{table}{Pass~3 breakdown (4\,MP, fast config, batch of 20). Image warping transforms both frames using the velocity estimate from the previous pass. Cross-correlation measures displacement in each interrogation window. ``Other'' includes peak fitting, result packaging, and boundary padding.}
 \end{center}
 
-Image warping costs ${\sim}$20\,ms per pair at 4\,MP regardless of window size---it operates on the full image. Cross-correlation, outlier detection, and gap filling scale with window count, so they grow at finer grids.
-
-\section{Resolution Scaling}
+\subsection{1\,MP --- 64$\to$32$\to$16 (3 passes)}
 
 \begin{center}
 \begin{tikzpicture}
@@ -149,7 +225,7 @@ Image warping costs ${\sim}$20\,ms per pair at 4\,MP regardless of window size--
     bar width=18pt,
     width=\columnwidth,
     height=5.2cm,
-    ymin=0, ymax=260,
+    ymin=0, ymax=28,
     ylabel={\small Time per pair (ms)},
     ylabel style={at={(axis description cs:0.06,0.5)}},
     symbolic x coords={Pass 1, Pass 2, Pass 3},
@@ -161,41 +237,61 @@ Image warping costs ${\sim}$20\,ms per pair at 4\,MP regardless of window size--
     enlarge x limits=0.2,
 ]
 \addplot[fill=warpcolor,draw=warpcolor!70!black] coordinates {
-    (Pass 1,52) (Pass 2,109) (Pass 3,115)};
+    (Pass 1,0.6) (Pass 2,7.6) (Pass 3,7.5)};
 \addplot[fill=xcorrcolor,draw=xcorrcolor!70!black] coordinates {
-    (Pass 1,44) (Pass 2,38) (Pass 3,45)};
+    (Pass 1,4.6) (Pass 2,6.5) (Pass 3,14.7)};
 \addplot[fill=outliercolor,draw=outliercolor!70!black] coordinates {
-    (Pass 1,3) (Pass 2,11) (Pass 3,46)};
+    (Pass 1,0.4) (Pass 2,0.6) (Pass 3,1.7)};
 \addplot[fill=infillcolor,draw=infillcolor!70!black] coordinates {
-    (Pass 1,1) (Pass 2,2) (Pass 3,12)};
+    (Pass 1,0.2) (Pass 2,0.2) (Pass 3,0.4)};
 \addplot[fill=othercolor,draw=othercolor!70!black] coordinates {
-    (Pass 1,2) (Pass 2,4) (Pass 3,19)};
+    (Pass 1,0.0) (Pass 2,0.2) (Pass 3,0.5)};
 \legend{Warping, Cross-corr, Outlier, Infilling, Other}
 \end{axis}
 \end{tikzpicture}
-\captionof{figure}{25\,MP cost breakdown (fast config, batch of 4). Same pattern as 4\,MP: warping is constant across passes 2--3 (${\sim}$110\,ms). Outlier filtering becomes significant at the finest grid (574$\times$663 = 380K windows).}
+\captionof{figure}{1\,MP, 64$\to$32$\to$16 breakdown. The third pass adds ${\sim}$25\,ms. Cross-correlation dominates at the finest grid (15\,ms), while warping stays at ${\sim}$7.5\,ms.}
 \end{center}
-
-Processing time scales linearly with the number of pixels:
 
 \begin{center}
 \small
 \begin{tabular}{@{}lrrr@{}}
 \toprule
-& \textbf{4\,MP} & \textbf{25\,MP} & \textbf{Ratio} \\
+& \textbf{Pass~1} & \textbf{Pass~2} & \textbf{Pass~3} \\
+& 64$\times$64\,px & 32$\times$32\,px & 16$\times$16\,px \\
 \midrule
-Pixels (millions)     & 4.2  & 24.4 & 5.8$\times$ \\
-Windows (16\,px pass) & 65K  & 380K & 5.9$\times$ \\
-\addlinespace[2pt]
-Per pair (ms)         & 85   & 501  & 5.9$\times$ \\
+Per pair (ms) & 6 & 15 & 25 \\
+Grid size & 30$^2$ & 61$^2$ & 124$^2$ \\
+\midrule
+\multicolumn{3}{@{}l}{\textbf{Total per pair:}} & \textbf{46\,ms} \\
 \bottomrule
 \end{tabular}
-\captionof{table}{The 25\,MP image has 5.8$\times$ more pixels than 4\,MP, and takes 5.9$\times$ longer to process---effectively linear scaling.}
+\end{center}
+
+\section{Resolution Scaling}
+
+Processing time scales linearly with pixel count:
+
+\begin{center}
+\small
+\begin{tabular}{@{}llrrr@{}}
+\toprule
+\textbf{Passes} & & \textbf{1\,MP} & \textbf{4\,MP} & \textbf{Ratio} \\
+\midrule
+64$\to$32 & Per pair & 21\,ms & 90\,ms & 4.3$\times$ \\
+          & Hz       & 46.8   & 11.1   & \\
+\addlinespace[2pt]
+64$\to$32$\to$16 & Per pair & 46\,ms & 201\,ms & 4.4$\times$ \\
+                  & Hz       & 21.9   & 5.0    & \\
+\addlinespace[2pt]
+\multicolumn{2}{@{}l}{Pixel ratio} & 1.0\,M & 4.2\,M & 4.2$\times$ \\
+\bottomrule
+\end{tabular}
+\captionof{table}{The 4\,MP image has 4.2$\times$ more pixels than 1\,MP, and takes 4.3--4.4$\times$ longer to process---effectively linear scaling. This confirms that image warping (the dominant cost at large resolutions) scales with pixel count.}
 \end{center}
 
 \section{Batch Size}
 
-Processing multiple image pairs together reduces per-pair overhead. This table shows total time per pair across all 3 passes:
+Batch size has negligible effect on per-pair cost when using 10 OMP threads. This table shows total time per pair for 64$\to$32 at 4\,MP:
 
 \begin{center}
 \small
@@ -203,62 +299,60 @@ Processing multiple image pairs together reduces per-pair overhead. This table s
 \toprule
 \textbf{Pairs} & \textbf{Per pair} & \textbf{Speedup} & \textbf{Working set} \\
 \midrule
-1  & 104\,ms & 1.00$\times$ & 32\,MB \\
-5  & 104\,ms & 1.00$\times$ & 160\,MB \\
-10 & 96\,ms  & 1.08$\times$ & 320\,MB \\
-20 & 85\,ms  & 1.22$\times$ & 640\,MB \\
+1  & 81\,ms & 1.00$\times$ & 34\,MB \\
+2  & 84\,ms & 0.96$\times$ & 67\,MB \\
+3  & 84\,ms & 0.97$\times$ & 101\,MB \\
+5  & 91\,ms & 0.89$\times$ & 168\,MB \\
+10 & 83\,ms & 0.98$\times$ & 336\,MB \\
+20 & 79\,ms & 1.03$\times$ & 671\,MB \\
 \bottomrule
 \end{tabular}
-\captionof{table}{Batch size effect (4\,MP, fast config). Processing 20 pairs together is 22\% faster per pair than processing them one at a time. Working set = pairs $\times$ 2 frames $\times$ 2048$^2$ $\times$ 4\,bytes.}
+\captionof{table}{Batch size effect (4\,MP, 64$\to$32, 10 OMP threads). Per-pair time is essentially flat (${\sim}$81--91\,ms) across all batch sizes. With 10 threads, the CPU is already saturated processing a single pair, leaving no room for batch-level amortisation.}
 \end{center}
 
-The speedup comes from amortising thread management overhead and allowing the CPU to interleave work across images. Gains are modest (22\% from 1 to 20) because the bottleneck---image warping---already parallelises efficiently for a single pair.
+\section{Where the Time Goes}
 
-\section{Accuracy vs Speed}
-
-Two peak-finding algorithms trade accuracy for speed. The gap comes from cross-correlation (gauss6 fits a more complex model per window) and infilling (biharmonic solves a PDE, local median uses a fast neighbourhood filter).
+At the finest pass (16$\times$16 windows), the cost breakdown shifts between resolutions:
 
 \begin{center}
 \small
-\begin{tabular}{@{}lrr@{}}
+\begin{tabular}{@{}lrrrr@{}}
 \toprule
-\textbf{Component (pass~3)} & \textbf{Fast} & \textbf{Accurate} \\
+\textbf{Step} & \multicolumn{2}{c}{\textbf{1\,MP}} & \multicolumn{2}{c}{\textbf{4\,MP}} \\
+              & ms & \% & ms & \% \\
 \midrule
-Image warping  & 20\,ms & 20\,ms \\
-Cross-corr     & 8\,ms  & 31\,ms \\
-Outlier filter & 7\,ms  & 7\,ms \\
-Gap filling    & 1\,ms  & 13\,ms \\
-Other          & 3\,ms  & 3\,ms \\
+Image warping  & 7.5  & 30 & 38.9 & 36 \\
+Cross-corr     & 14.7 & 60 & 61.9 & 57 \\
+Outlier filter & 1.7  & 7  & 5.1  & 5  \\
+Gap filling    & 0.4  & 2  & 1.0  & 1  \\
+Other          & 0.5  & 2  & 2.2  & 2  \\
 \midrule
-\textbf{Pass~3}  & \textbf{39\,ms}  & \textbf{74\,ms} \\
-\textbf{All passes} & \textbf{85\,ms} & \textbf{138\,ms} \\
+\textbf{Pass total} & \textbf{24.8} & & \textbf{109.1} & \\
 \bottomrule
 \end{tabular}
-\captionof{table}{Fast (gauss3 + local median) vs accurate (gauss6 + biharmonic), 4\,MP, batch of 20. The accurate config is 1.6$\times$ slower. Image warping and outlier filtering are identical---only cross-correlation and gap filling change.}
+\captionof{table}{Pass~3 (16$\times$16) breakdown. Cross-correlation dominates at both resolutions (57--60\%), followed by image warping (30--36\%). Both scale with pixel count: the 4.2$\times$ pixel ratio produces a 4.2--4.4$\times$ time ratio in each component.}
 \end{center}
-
-With the fast config, image warping is the bottleneck at 53\% of the final pass. With the accurate config, the bottleneck shifts to cross-correlation at 42\%.
 
 \section{How the Pipeline Works}
 
-Each image pair is processed through three multi-grid passes:
+Each image pair is processed through multi-grid refinement passes:
 
 \begin{enumerate}[leftmargin=1.4em]
-\item \textbf{Pass~1 (64\,px windows):} Cross-correlate the raw images to get a coarse velocity estimate on a 63$\times$63 grid.
-\item \textbf{Pass~2 (32\,px windows):} Warp both images using the Pass~1 estimate, then cross-correlate the warped images on a finer 127$\times$127 grid.
-\item \textbf{Pass~3 (16\,px windows):} Warp using the Pass~2 estimate, cross-correlate on the finest 255$\times$255 grid.
+\item \textbf{Pass~1 (64\,px windows):} Cross-correlate the raw images to get a coarse velocity estimate.
+\item \textbf{Pass~2 (32\,px windows):} Warp both images using the Pass~1 estimate, then cross-correlate on a finer grid.
+\item \textbf{Pass~3 (16\,px windows, optional):} Warp using Pass~2, cross-correlate on the finest grid.
 \end{enumerate}
 
-After each pass, outlier detection removes spurious vectors and gap filling replaces them from neighbours. The image warping step uses a custom C library that fuses predictor interpolation, symmetric coordinate mapping, and bicubic image sampling into a single parallel loop---roughly 3$\times$ faster than the standard OpenCV pipeline.
+After each pass, outlier detection removes spurious vectors and gap filling replaces them from neighbours. The image warping step uses a custom C library that fuses predictor interpolation, symmetric coordinate mapping, and bicubic image sampling into a single parallel loop.
 
 \section{Key Takeaways}
 
 \begin{enumerate}[leftmargin=1.4em]
-\item \textbf{85\,ms per pair} at 4\,MP (fast) or 138\,ms (accurate), with 4 CPU threads.
-\item \textbf{501\,ms per pair} at 25\,MP---the pipeline scales linearly with pixel count.
-\item Image warping is the dominant cost (53\% of the finest pass), because it must touch every pixel in the image.
-\item Larger batches help modestly: 22\% faster at 20 pairs vs 1 pair.
-\item The choice of peak finder has a bigger impact than batch size: gauss6 adds 53\,ms per pair (62\% slower) compared to gauss3.
+\item \textbf{47\,Hz at 1\,MP} (64$\to$32) or \textbf{22\,Hz} (64$\to$32$\to$16) on a single worker with 10 threads.
+\item \textbf{11\,Hz at 4\,MP} (64$\to$32) or \textbf{5\,Hz} (64$\to$32$\to$16) on the same hardware.
+\item Processing time scales linearly with pixel count (4.2$\times$ pixels $\to$ 4.3--4.4$\times$ time).
+\item Batch size has negligible effect with 10 OMP threads---the CPU is already saturated on a single pair.
+\item Adding the third pass (16\,px) roughly doubles the total cost, with cross-correlation on the $4\times$ larger grid being the main contributor.
 \end{enumerate}
 
 \end{document}
