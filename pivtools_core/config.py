@@ -1056,8 +1056,8 @@ video:
         image_format = self.image_format
         img_type = self.image_type
 
-        logging.info(f"_detect_image_shape: image_format = {image_format}, image_type = {img_type}")
-        logging.info(f"Source path: {source_path}, Camera: {camera_num}")
+        logging.debug(f"_detect_image_shape: image_format = {image_format}, image_type = {img_type}")
+        logging.debug(f"Source path: {source_path}, Camera: {camera_num}")
 
         format_str = image_format[0]  # Always tuple now
 
@@ -1068,7 +1068,7 @@ video:
             folder = self.get_camera_folder(camera_num)
             camera_path = source_path / folder if folder else source_path
 
-        logging.info(f"Camera path: {camera_path}")
+        logging.debug(f"Camera path: {camera_path}")
 
         # Determine start index
         start_idx = self.start_index
@@ -1088,7 +1088,7 @@ video:
             # Standard files - use first format for shape detection
             file_path = camera_path / (format_str % start_idx)
 
-        logging.info(f"Trying to read file: {file_path}")
+        logging.debug(f"Trying to read file: {file_path}")
 
         if not file_path.exists():
             raise FileNotFoundError(
@@ -1124,7 +1124,7 @@ video:
                 # Single image
                 shape = tuple(img.shape)
 
-            logging.info(f"Detected image shape: {shape}")
+            logging.debug(f"Detected image shape: {shape}")
             return shape
 
         except Exception as e:

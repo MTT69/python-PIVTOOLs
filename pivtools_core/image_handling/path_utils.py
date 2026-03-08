@@ -407,6 +407,7 @@ def validate_images_generic(
         "suggested_pattern": None,
         "suggested_pattern_b": None,  # For A/B pair detection
         "suggested_mode": None,  # "ab_format" or None
+        "suggested_subfolder": None,
     }
 
     start_idx = 0 if zero_based_indexing else 1
@@ -473,6 +474,10 @@ def validate_images_generic(
     # For non-.set types, camera_path must be a directory
     if not camera_path.exists():
         result["error"] = f"Camera path does not exist: {camera_path}"
+        suggestion = _suggest_camera_subfolder(camera_path, camera)
+        if suggestion:
+            result["suggested_subfolder"] = suggestion
+            result["error"] += f'. Did you mean "{suggestion}"?'
         return result
 
     if image_type == "cine":
@@ -696,6 +701,67 @@ def _suggest_pattern_for_role(
     return _suggest_pattern(candidates[0], forced_ext)
 
 
+def _suggest_camera_subfolder(camera_path: Path, camera_num: int) -> Optional[str]:
+    """Suggest a camera subfolder name when the expected one doesn't exist.
+
+    Scores candidate subdirectories in the parent folder by similarity to the
+    expected camera folder name, returning the best match or None.
+    """
+    parent = camera_path.parent
+    expected_name = camera_path.name
+
+    if not parent.exists() or not parent.is_dir():
+        return None
+
+    # List subdirectories (cap at 100 to avoid huge dirs)
+    subdirs = []
+    for entry in parent.iterdir():
+        if entry.is_dir():
+            subdirs.append(entry.name)
+            if len(subdirs) >= 100:
+                break
+
+    if not subdirs:
+        return None
+
+    best_score = 0
+    best_name = None
+
+    for candidate in subdirs:
+        score = 0
+
+        # Exact case-insensitive match (e.g. Cam1 vs cam1)
+        if expected_name.lower() == candidate.lower():
+            score = 100
+        else:
+            # Extract numbers from both names
+            expected_nums = re.findall(r'\d+', expected_name)
+            candidate_nums = re.findall(r'\d+', candidate)
+
+            if expected_nums and candidate_nums:
+                # Check if the camera number matches
+                expected_cam_num = str(camera_num)
+                has_matching_num = expected_cam_num in candidate_nums
+
+                if has_matching_num:
+                    # Camera-number match with camera-related prefix
+                    camera_prefixes = re.compile(
+                        r'(?:cam|camera|view|c)\s*[_\-]?\s*\d',
+                        re.IGNORECASE,
+                    )
+                    if camera_prefixes.search(candidate):
+                        score = 80
+                    else:
+                        # Number-only match (any directory name)
+                        score = 40
+
+        if score > best_score:
+            best_score = score
+            best_name = candidate
+
+    return best_name
+
+
 def validate_single_pattern(
     camera_path: Path,
     pattern: str,
@@ -703,6 +769,7 @@ def validate_single_pattern(
     expected_count: int,
     zero_based_indexing: bool,
     role: Optional[str] = None,
+    camera_num: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Validate a single image pattern.
 
@@ -739,6 +806,7 @@ def validate_single_pattern(
         "found_count": 0,
         "error": None,
         "suggested_pattern": None,
+        "suggested_subfolder": None,
         "sample_files": [],
     }
 
@@ -769,6 +837,13 @@ def validate_single_pattern(
 
     if not camera_path.exists():
         result["error"] = f"Camera path does not exist: {camera_path}"
+        cam = camera_num
+        if cam is None:
+            m = re.search(r'(\d+)', camera_path.name)
+            cam = int(m.group(1)) if m else 1
+        suggestion = _suggest_camera_subfolder(camera_path, cam)
+        if suggestion:
+            result["suggested_subfolder"] = suggestion
         return result
 
     if not camera_path.is_dir():

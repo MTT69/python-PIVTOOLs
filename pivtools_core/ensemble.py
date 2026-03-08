@@ -91,7 +91,8 @@ def process_pass_worker_accumulate(
 
     Then tree-reduces K per-worker results into one final result.
     """
-    from dask.distributed import as_completed
+    from dask.distributed import as_completed, Variable
+    import threading
 
     num_workers = len(workers)
     diag_path = str(output_path) if config.ensemble_save_diagnostics else None
@@ -129,9 +130,17 @@ def process_pass_worker_accumulate(
         f"{' (persisted)' if images is not None else ' (from disk)'}"
     )
 
+    # Create per-worker progress variables
+    progress_vars = []
+    worker_list = list(worker_chunks.keys())
+    for i in range(len(worker_list)):
+        var = Variable(f"_corr_p{pass_idx}_{i}", client)
+        var.set(0)
+        progress_vars.append(var)
+
     # Submit one task per worker
     worker_futures = []
-    for worker, chunk_info in worker_chunks.items():
+    for wi, (worker, chunk_info) in enumerate(worker_chunks.items()):
         chunk_indices = [idx for idx, _ in chunk_info]
         chunk_futs = [fut for _, fut in chunk_info]
         batch_images = chunk_futs if all(f is not None for f in chunk_futs) else None
@@ -149,12 +158,30 @@ def process_pass_worker_accumulate(
             pixel_mask=pixel_mask,
             output_path=diag_path if 0 in chunk_indices else None,
             batch_images=batch_images,
+            progress_var_name=f"_corr_p{pass_idx}_{wi}",
             workers=[worker],
             pure=False,
         )
         worker_futures.append(fut)
 
-    logger.info(f"  Submitted {len(worker_futures)} worker tasks, waiting...")
+    # Start progress polling thread
+    stop_progress = threading.Event()
+    last_pct = [0]
+
+    def poll_progress():
+        while not stop_progress.is_set():
+            try:
+                total_done = sum(v.get(timeout=2) for v in progress_vars)
+                pct = min(100, int(100 * total_done / num_chunks))
+                if pct > last_pct[0]:
+                    logger.info(f"  Pass {pass_idx + 1} correlation: {pct}%")
+                    last_pct[0] = pct
+            except Exception:
+                pass
+            stop_progress.wait(3)
+
+    progress_thread = threading.Thread(target=poll_progress, daemon=True)
+    progress_thread.start()
 
     # Capture pre-pass transfer bytes for locality verification
     pre_transfer = {}
@@ -179,7 +206,16 @@ def process_pass_worker_accumulate(
             for f in worker_futures:
                 f.cancel()
             raise exc
-        logger.info(f"  Worker {completed_count}/{len(worker_futures)} complete")
+        logger.debug(f"  Worker {completed_count}/{len(worker_futures)} complete")
+
+    # Stop progress polling and clean up variables
+    stop_progress.set()
+    progress_thread.join(timeout=5)
+    for v in progress_vars:
+        try:
+            v.delete()
+        except Exception:
+            pass
 
     # Verify locality: check each result is on the worker we pinned it to
     for fut, pinned_worker in zip(worker_futures, pinned_workers):
@@ -188,7 +224,7 @@ def process_pass_worker_accumulate(
             if holders:
                 held_on = list(holders.values())[0]
                 is_local = pinned_worker in held_on
-                logger.info(
+                logger.debug(
                     f"  Locality: pinned={pinned_worker.split('/')[-1]} "
                     f"held_on={[h.split('/')[-1] for h in held_on]} "
                     f"{'OK' if is_local else 'MOVED'}"
@@ -236,7 +272,7 @@ def process_pass_worker_accumulate(
             post_transfer[a]["out"] - pre_transfer.get(a, {}).get("out", 0)
             for a in post_transfer
         )
-        logger.info(
+        logger.debug(
             f"  Transfer during pass: in={total_in / 1e6:.1f} MB, "
             f"out={total_out / 1e6:.1f} MB"
         )
@@ -449,7 +485,6 @@ def run_ensemble_piv(
     images_are_persisted = (num_chunks == 1) or config.ensemble_persist_images
 
     logger.info(f"Processing passes {start_pass_idx + 1} to {num_passes} with {num_chunks} chunks each...")
-    logger.info(f"  Strategy: worker accumulation{' (persisted)' if images_are_persisted else ' (from disk)'}")
 
     for pass_idx in range(start_pass_idx, num_passes):
         if _shutdown_requested:
@@ -467,8 +502,6 @@ def run_ensemble_piv(
 
         workers = list(client.ncores().keys())
         num_workers = len(workers)
-
-        logger.info(f"  Distributing {num_chunks} chunks across {num_workers} workers...")
 
         pass_start = time.time()
 
@@ -652,21 +685,21 @@ def main():
 
                 # Load mask
                 mask = load_mask_for_camera(camera_num, config, source_path_idx=path_idx)
-                logger.info(f"DEBUG: mask loaded = {mask is not None}, masking_enabled = {config.masking_enabled}")
+                logger.debug(f"mask loaded = {mask is not None}, masking_enabled = {config.masking_enabled}")
                 if mask is not None:
-                    logger.info(f"DEBUG: pixel mask shape = {mask.shape}")
+                    logger.debug(f"pixel mask shape = {mask.shape}")
 
                 # Compute vector masks
                 vector_masks = None
                 if config.masking_enabled and mask is not None:
                     logger.info("Computing vector masks...")
-                    logger.info(f"DEBUG: config.image_shape = {config.image_shape}")
+                    logger.debug(f"config.image_shape = {config.image_shape}")
                     vector_masks = compute_vector_mask(mask, config, ensemble=True)
                     logger.info(f"  Vector masks: {len(vector_masks)} passes")
                     for i, vm in enumerate(vector_masks):
                         logger.info(f"    Pass {i}: mask shape = {vm.shape}")
                 else:
-                    logger.info(f"DEBUG: Skipping vector mask computation (enabled={config.masking_enabled}, mask={mask is not None})")
+                    logger.debug(f"Skipping vector mask computation (enabled={config.masking_enabled}, mask={mask is not None})")
 
                 # Get output path
                 output_path = get_ensemble_output_path(

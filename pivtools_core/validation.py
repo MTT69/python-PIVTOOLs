@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import List, Tuple
 
 from pivtools_core.config import Config
-from pivtools_core.image_handling.path_utils import format_to_glob
+from pivtools_core.image_handling.path_utils import format_to_glob, _suggest_camera_subfolder
 
 
 logger = logging.getLogger(__name__)
@@ -85,7 +85,11 @@ def validate_config(config: Config) -> Tuple[bool, str, List[str]]:
             camera_path = source_path / folder if folder else source_path
 
         if not camera_path.exists():
-            errors.append(f"Camera {camera_num} path does not exist: {camera_path}")
+            msg = f"Camera {camera_num} path does not exist: {camera_path}"
+            suggestion = _suggest_camera_subfolder(camera_path, camera_num)
+            if suggestion:
+                msg += f'. Did you mean "{suggestion}"?'
+            errors.append(msg)
             continue
 
         # Count files

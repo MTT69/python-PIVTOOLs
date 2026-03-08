@@ -356,7 +356,7 @@ def load_images(camera: int, config: Config, source: Path = None, batch_size: in
     # Concatenate all batches — still lazy, no computation yet
     images = da.concatenate(dask_batches, axis=0)
 
-    logging.info(
+    logging.debug(
         f"Batch loading complete: {num_batches} independent delayed tasks "
         f"(batch_size={batch_size}, {num_pairs} pairs, ~{num_batches} KB footprint)"
     )
@@ -551,8 +551,8 @@ def compute_vector_mask(
     # correlator/accumulator, NOT pixel_mask.shape. This ensures the vector
     # mask grid dimensions match the PIV data grid.
     H, W = config.image_shape
-    logging.info(f"compute_vector_mask: Using config.image_shape = ({H}, {W})")
-    logging.info(f"compute_vector_mask: pixel_mask.shape = {pixel_mask.shape}")
+    logging.debug(f"compute_vector_mask: Using config.image_shape = ({H}, {W})")
+    logging.debug(f"compute_vector_mask: pixel_mask.shape = {pixel_mask.shape}")
 
     # Validate mask dimensions match config.image_shape
     if pixel_mask.shape != (H, W):
@@ -575,7 +575,7 @@ def compute_vector_mask(
     else:
         # Fall back to config flag (should be set correctly by caller)
         is_ensemble = hasattr(config, 'ensemble_piv') and config.ensemble_piv
-    logging.info(f"compute_vector_mask: is_ensemble={is_ensemble} (explicit={ensemble}, config.ensemble_piv={getattr(config, 'ensemble_piv', None)})")
+    logging.debug(f"compute_vector_mask: is_ensemble={is_ensemble} (explicit={ensemble}, config.ensemble_piv={getattr(config, 'ensemble_piv', None)})")
 
     if is_ensemble:
         num_passes = len(config.ensemble_window_sizes)
@@ -652,7 +652,7 @@ def compute_vector_mask(
         vector_masks.append(b_mask_pass)
 
         # Log mask shape for debugging rectangular window support
-        logging.info(
+        logging.debug(
             f"compute_vector_mask: Pass {pass_idx}: window=({win_y}, {win_x}), "
             f"grid=({n_win_y}, {n_win_x}), mask_shape={b_mask_pass.shape}"
         )

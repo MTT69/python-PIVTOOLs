@@ -61,6 +61,7 @@ def make_cluster(
             memory_limit=config.dask_memory_limit,
             nanny=False,
             processes=True,
+            silence_logs=logging.WARNING,
             config={
                 "distributed.worker.profile.enabled": False,
                 # Increase heartbeat tolerance for long-running C calls
@@ -195,7 +196,7 @@ def setup_worker_logging(log_level=logging.INFO, log_file=None, log_console=True
     # Suppress noisy Dask internal logging inside worker processes too
     _suppress_dask_verbose_logging()
 
-    logger.info("Worker logging configured successfully")
+    logger.debug("Worker logging configured successfully")
 
 
 def set_worker_omp_threads(omp_threads: str):
@@ -204,4 +205,4 @@ def set_worker_omp_threads(omp_threads: str):
     """
     import os
     os.environ["OMP_NUM_THREADS"] = omp_threads
-    logging.info(f"Set OMP_NUM_THREADS to {omp_threads} in worker process")
+    logging.debug(f"Set OMP_NUM_THREADS to {omp_threads} in worker process")

@@ -314,24 +314,24 @@ def create_filter_pipeline(
     Returns:
         Dask array with filters applied lazily
     """
-    logger.info("Creating filter pipeline...")
+    logger.debug("Creating filter pipeline...")
 
     # Extract filter specs ONCE here (avoids serializing full config per chunk)
     spatial_specs = get_spatial_filter_specs(config)
     temporal_specs = get_temporal_filter_specs(config)
 
     if spatial_specs:
-        logger.info(f"  Spatial filters: {[f.get('type') for f in spatial_specs]}")
+        logger.debug(f"  Spatial filters: {[f.get('type') for f in spatial_specs]}")
     if temporal_specs:
-        logger.info(f"  Temporal filters: {[f.get('type') for f in temporal_specs]}")
+        logger.debug(f"  Temporal filters: {[f.get('type') for f in temporal_specs]}")
     if pixel_mask is not None:
-        logger.info(f"  Pixel mask: {np.sum(pixel_mask)} masked pixels")
+        logger.debug(f"  Pixel mask: {np.sum(pixel_mask)} masked pixels")
     if save_intermediate_base is not None:
-        logger.info(f"  Saving intermediate outputs to: {save_intermediate_base}/basic_filters/...")
+        logger.debug(f"  Saving intermediate outputs to: {save_intermediate_base}/basic_filters/...")
 
     # If no filters and no mask, return unchanged
     if not spatial_specs and not temporal_specs and pixel_mask is None:
-        logger.info("  No filters configured, returning images unchanged")
+        logger.debug("  No filters configured, returning images unchanged")
         return images
 
     # Prepare intermediate saving parameters
@@ -523,17 +523,13 @@ def extract_predictor_field(pass_result) -> np.ndarray:
     # NOTE: No padding here - _get_im_mesh() in cpu_ensemble.py handles
     # proper padding using n_pre_all/n_post_all which vary by pass configuration
 
-    # DEBUG: Log predictor field statistics to prove it's the WHOLE-PASS MEAN
-    # This proves the predictor is NOT batch-dependent - it's computed from
-    # ALL images accumulated across ALL batches in the previous pass
-    logger.info(
-        f"[PREDICTOR DEBUG] Extracted from pass_result (whole-pass mean field):\n"
-        f"  Shape: {predictor_field.shape} (n_win_y, n_win_x, 2)\n"
-        f"  ux (mean displacement x): mean={np.nanmean(ux):.6f}, std={np.nanstd(ux):.6f}, "
-        f"range=[{np.nanmin(ux):.4f}, {np.nanmax(ux):.4f}]\n"
-        f"  uy (mean displacement y): mean={np.nanmean(uy):.6f}, std={np.nanstd(uy):.6f}, "
-        f"range=[{np.nanmin(uy):.4f}, {np.nanmax(uy):.4f}]\n"
-        f"  Source: pass_result.ux_mat, pass_result.uy_mat (ensemble mean from ALL batches)"
+    logger.debug(
+        f"Predictor extracted from pass_result (whole-pass mean field): "
+        f"shape={predictor_field.shape}, "
+        f"ux: mean={np.nanmean(ux):.6f}, std={np.nanstd(ux):.6f}, "
+        f"range=[{np.nanmin(ux):.4f}, {np.nanmax(ux):.4f}], "
+        f"uy: mean={np.nanmean(uy):.6f}, std={np.nanstd(uy):.6f}, "
+        f"range=[{np.nanmin(uy):.4f}, {np.nanmax(uy):.4f}]"
     )
 
     return predictor_field
@@ -550,7 +546,7 @@ def _log_worker_memory(label, pass_idx, batch_idx=-1):
         import psutil
         proc = psutil.Process()
         rss_mb = proc.memory_info().rss / (1024 * 1024)
-        logger.info(
+        logger.debug(
             f"[Memory] pass={pass_idx} batch={batch_idx} {label}: RSS={rss_mb:.0f} MB"
         )
     except ImportError:
@@ -578,6 +574,7 @@ def correlate_worker_batches(
     pixel_mask: Optional[np.ndarray] = None,
     output_path: Optional[str] = None,
     batch_images: Optional[List[np.ndarray]] = None,
+    progress_var_name: Optional[str] = None,
 ) -> dict:
     """Accumulate correlation across multiple batches on one worker.
 
@@ -608,6 +605,15 @@ def correlate_worker_batches(
         config, precomputed_cache=cache, vector_masks=masks,
         active_pass_idx=pass_idx,
     )
+
+    # Set up progress reporting via Dask Variable
+    progress_var = None
+    if progress_var_name:
+        try:
+            from distributed import Variable, get_client
+            progress_var = Variable(progress_var_name, get_client())
+        except Exception:
+            pass
 
     warp_A_total = None
     warp_B_total = None
@@ -653,6 +659,12 @@ def correlate_worker_batches(
                 metadata[key] = lightweight[key]
 
         del batch_data, lightweight
+
+        if progress_var is not None:
+            try:
+                progress_var.set(i + 1)
+            except Exception:
+                pass
 
     # Copy accumulated correlation buffers ONCE
     result = correlator.get_accumulated_correlation(pass_idx)
