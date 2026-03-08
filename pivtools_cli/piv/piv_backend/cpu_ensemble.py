@@ -712,6 +712,8 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         save_diagnostics: bool = False,
         output_path: Optional[str] = None,
         is_first_batch: bool = False,
+        clear_buffers: bool = True,
+        copy_result: bool = True,
     ) -> dict:
         """
         Correlate batch and return SUMS for single-pass accumulation.
@@ -738,6 +740,13 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             Output directory for diagnostic images
         is_first_batch : bool
             If True, this is the first batch (save diagnostics for first pair)
+        clear_buffers : bool
+            If True (default), zero correlation buffers before correlating.
+            Set False to accumulate across multiple calls (worker accumulation mode).
+        copy_result : bool
+            If True (default), copy correlation planes into result dict.
+            Set False to leave them in self._corr_buffers and return a lightweight
+            dict. Call get_accumulated_correlation() once after all batches.
 
         Returns
         -------
@@ -772,13 +781,10 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         correl_AB_sum = self._corr_buffers[pass_idx]['AB']
 
         # Clear buffers (faster than reallocation)
-        correl_AA_sum.fill(0)
-        correl_BB_sum.fill(0)
-        correl_AB_sum.fill(0)
-
-        # Accumulators for warped images
-        #warp_A_sum = np.zeros((H, W), dtype=np.float32)
-        #warp_B_sum = np.zeros((H, W), dtype=np.float32)
+        if clear_buffers:
+            correl_AA_sum.fill(0)
+            correl_BB_sum.fill(0)
+            correl_AB_sum.fill(0)
 
         # Store smoothed predictor (will be set during warping if pass > 0)
         smoothed_predictor = None
@@ -856,7 +862,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             corr_size = self.window_sizes_for_corr[pass_idx]
             plane_size = total_windows * corr_size[0] * corr_size[1]
 
-            # Use pre-allocated buffers (already cleared above at lines 567-570)
+            # Use pre-allocated buffers (cleared above when clear_buffers=True)
 
             # Create mask for C library
             if vector_mask is not None:
@@ -892,27 +898,56 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         # may be reused by subsequent correlation tasks before Dask finishes
         # serializing this result for network transfer
         with self._profile_section(pass_idx, "result_copy"):
-            result = {
-                "corr_AA_sum": correl_AA_sum.copy(),
-                "corr_BB_sum": correl_BB_sum.copy(),
-                "corr_AB_sum": correl_AB_sum.copy(),
-                "warp_A_sum": warp_A_sum.copy(),
-                "warp_B_sum": warp_B_sum.copy(),
-                "n_images": N,
-                "n_win_x": n_win_x,
-                "n_win_y": n_win_y,
-                "smoothed_predictor": smoothed_predictor,  # For pass > 0
-                "padded_predictor": self.delta_ab_old.copy() if pass_idx > 0 else None,
-                "vector_mask": vector_mask,
-                # Padding values for predictor field - used in finalize_pass to store
-                # PADDED predictor matching instantaneous mode format
-                "n_pre": self.n_pre_all[pass_idx],
-                "n_post": self.n_post_all[pass_idx],
-                # First-pair warped images for diagnostic comparison (only from first batch)
-                "first_pair_A": images_a_prime[0].copy() if is_first_batch else None,
-                "first_pair_B": images_b_prime[0].copy() if is_first_batch else None,
-            }
+            if copy_result:
+                result = {
+                    "corr_AA_sum": correl_AA_sum.copy(),
+                    "corr_BB_sum": correl_BB_sum.copy(),
+                    "corr_AB_sum": correl_AB_sum.copy(),
+                    "warp_A_sum": warp_A_sum.copy(),
+                    "warp_B_sum": warp_B_sum.copy(),
+                    "n_images": N,
+                    "n_win_x": n_win_x,
+                    "n_win_y": n_win_y,
+                    "smoothed_predictor": smoothed_predictor,
+                    "padded_predictor": self.delta_ab_old.copy() if pass_idx > 0 else None,
+                    "vector_mask": vector_mask,
+                    "n_pre": self.n_pre_all[pass_idx],
+                    "n_post": self.n_post_all[pass_idx],
+                    "first_pair_A": images_a_prime[0].copy() if is_first_batch else None,
+                    "first_pair_B": images_b_prime[0].copy() if is_first_batch else None,
+                }
+            else:
+                # Lightweight return — correlation planes stay in self._corr_buffers
+                result = {
+                    "warp_A_sum": warp_A_sum,
+                    "warp_B_sum": warp_B_sum,
+                    "n_images": N,
+                    "n_win_x": n_win_x,
+                    "n_win_y": n_win_y,
+                    "smoothed_predictor": smoothed_predictor if is_first_batch else None,
+                    "padded_predictor": self.delta_ab_old.copy() if pass_idx > 0 and is_first_batch else None,
+                    "vector_mask": vector_mask if is_first_batch else None,
+                    "n_pre": self.n_pre_all[pass_idx] if is_first_batch else None,
+                    "n_post": self.n_post_all[pass_idx] if is_first_batch else None,
+                    "first_pair_A": images_a_prime[0].copy() if is_first_batch else None,
+                    "first_pair_B": images_b_prime[0].copy() if is_first_batch else None,
+                }
         return result
+
+    def get_accumulated_correlation(self, pass_idx: int) -> dict:
+        """Copy accumulated correlation buffers out. Call once after all batches."""
+        corr_size = self.window_sizes_for_corr[pass_idx]
+        n_win_y = len(self.win_ctrs_y[pass_idx])
+        n_win_x = len(self.win_ctrs_x[pass_idx])
+        total_windows = n_win_y * n_win_x
+        return {
+            "corr_AA_sum": self._corr_buffers[pass_idx]['AA'].reshape(
+                total_windows, corr_size[0], corr_size[1]).copy(),
+            "corr_BB_sum": self._corr_buffers[pass_idx]['BB'].reshape(
+                total_windows, corr_size[0], corr_size[1]).copy(),
+            "corr_AB_sum": self._corr_buffers[pass_idx]['AB'].reshape(
+                total_windows, corr_size[0], corr_size[1]).copy(),
+        }
 
     def compute_warp_sums_only(
         self,

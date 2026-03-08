@@ -795,7 +795,7 @@ Defines available image filter types and their parameter schemas for the UI.
 
 **Instantaneous step (e):** `correlate_and_save_batch()` → multi-pass correlation + peak finding + save per batch. Uses `as_completed()` for any-order processing.
 
-**Ensemble step (e):** `process_pass_sliding_window()` → accumulate correlation sums per worker, reduce, then `accumulator.finalize_pass()` → distributed Gaussian (or k-space) fitting → extract velocities + stresses.
+**Ensemble step (e):** `process_pass_worker_accumulate()` → per-worker accumulation of correlation sums, tree reduction, then `accumulator.finalize_pass()` → distributed Gaussian (or k-space) fitting → extract velocities + stresses.
 
 ### Predictor Interpolation Border Mode
 
@@ -831,8 +831,8 @@ Multi-pass PIV upscales the velocity field from the previous pass to warp images
 | Function | Params | Returns | Description |
 |----------|--------|---------|-------------|
 | `main()` | — | None | CLI entry. Sets `MALLOC_TRIM_THRESHOLD_=0`, starts cluster, iterates paths×cameras. |
-| `run_ensemble_piv` | `config, client, camera_num, source_path, output_path, base_path, vector_masks, pixel_mask` | `str` | Full pipeline. Multi-pass: scatter predictor → sliding window → finalize pass → extract predictor → next pass. |
-| `process_pass_sliding_window` | `client, images, num_chunks, workers, scattered_config, pass_idx, scattered_predictor, scattered, config, output_path` | `dict` | Dynamic worker-affinity sliding window: `as_completed()` loop discovers where each batch landed via `client.who_has()`, pins reduction there (zero cross-worker transfer). Tree reduction merges K per-worker accumulators in O(log₂ K) rounds. |
+| `run_ensemble_piv` | `config, client, camera_num, source_path, output_path, base_path, vector_masks, pixel_mask` | `str` | Full pipeline. Multi-pass: scatter predictor → worker accumulation → finalize pass → extract predictor → next pass. |
+| `process_pass_worker_accumulate` | `client, num_chunks, workers, scattered_config, pass_idx, scattered_predictor, scattered, config, output_path, camera_num, source_path, pixel_mask, images=None` | `dict` | Per-worker accumulation: one task per worker, each creates ONE correlator, processes all assigned batches. Non-persisted (images=None): round-robin, workers load from disk. Persisted (images provided): `futures_of()` + `who_has()` discovers chunk placement, groups by home worker. Tree reduction merges K results in O(log₂ K) rounds. |
 | `signal_handler` | `signum, frame` | None | Same as instantaneous. |
 
 ### Ensemble Key Data Structures
@@ -945,9 +945,8 @@ Dask-centric utilities shared by both pipelines.
 | `apply_all_filters_slim(block, spatial_specs, temporal_specs, ...)` | Applies pixel mask → spatial → temporal filters |
 | `scatter_immutable_data(client, config, vector_masks, pixel_mask, ...)` | Creates correlator, broadcasts cache + masks |
 | `correlate_and_save_batch(batch, start_img_idx, config, ...)` | [Instantaneous] Correlate + save per batch |
-| `correlate_batch_ensemble(batch, config, pass_idx, ...)` | [Ensemble] Stateless per-batch correlation — creates correlator, correlates, returns result dict. Dask can retry safely. |
+| `correlate_worker_batches(batch_indices, config, ..., batch_images=None)` | [Ensemble] Per-worker accumulation. When `batch_images=None`, reconstructs image pipeline locally and loads from disk. When provided (persisted mode), uses pre-filtered arrays directly. Creates one correlator, processes all assigned batches, returns once. |
 | `reduce_ensemble_results(r1, r2)` | Merges two accumulated dicts via `+` (Dask retry safe — used in tree reduction) |
-| `reduce_ensemble_results_inplace(accumulated, new_result)` | In-place `+=` reduction for progressive per-worker accumulation (lower peak memory) |
 | `extract_predictor_field(pass_result)` | `np.stack([uy, ux], axis=-1)` for next pass |
 
 **Spatial filters:** gaussian (sigma), median (size), norm, maxnorm, lmax (all via `scipy.ndimage`)
@@ -963,7 +962,11 @@ Dask-centric utilities shared by both pipelines.
 
 **Data scattering:** Immutable data (correlator cache, masks, config) broadcast once. Predictor field re-scattered per pass.
 
-**Worker accumulation (ensemble):** Dynamic worker-affinity sliding window using `as_completed()`. Each batch is submitted as a stateless `correlate_batch_ensemble` task with NO worker pinning — Dask's scheduler decides placement (optimal load balancing and locality). When each task completes, `client.who_has()` discovers which worker holds the result. Reduction is pinned there via `workers=[worker]` using in-place `reduce_ensemble_results_inplace` (`+=`), achieving zero cross-worker transfer during accumulation. After all batches, K per-worker accumulators are merged via distributed tree reduction (`O(log₂ K)` rounds of pair-wise `reduce_ensemble_results` with safe `+` operator).
+**Worker accumulation (ensemble):** Single unified code path via `process_pass_worker_accumulate`. One `correlate_worker_batches` task per worker. Each worker creates ONE `EnsembleCorrelatorCPU`, processes all assigned batches sequentially — clearing buffers only on the first batch, letting the C library's native `+=` accumulate across batches, copying correlation planes out ONCE. After all workers complete, K per-worker results merge via tree reduction (`O(log₂ K)` rounds of `reduce_ensemble_results` with safe `+` operator).
+
+*Non-persisted (default):* Chunks assigned round-robin. Workers reconstruct the lazy image+filter pipeline locally and load from disk. OS page cache makes re-reads on subsequent passes nearly free.
+
+*Persisted (`persist_images: true`):* `futures_of()` + `who_has()` discovers where Dask placed each chunk during `images.persist()`. Chunks grouped by home worker and passed as futures. Dask resolves futures locally — zero cross-worker transfer. Same accumulation loop, same result format.
 
 **Memory management:**
 - `gc.collect()` on client between cameras — **NOT on workers** (FFTW causes SIGSEGV)

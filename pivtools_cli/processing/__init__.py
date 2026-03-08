@@ -7,9 +7,8 @@ from .dask_pipeline import (
     scatter_immutable_data,
     correlate_and_save_batch,
     reduce_ensemble_results,
-    reduce_ensemble_results_inplace,
     extract_predictor_field,
-    correlate_batch_ensemble,
+    correlate_worker_batches,
 )
 
 __all__ = [
@@ -17,7 +16,6 @@ __all__ = [
     "scatter_immutable_data",
     "correlate_and_save_batch",
     "reduce_ensemble_results",
-    "reduce_ensemble_results_inplace",
     "extract_predictor_field",
-    "correlate_batch_ensemble",
+    "correlate_worker_batches",
 ]

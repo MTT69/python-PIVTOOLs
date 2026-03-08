@@ -51,18 +51,16 @@ from pivtools_cli.processing.dask_pipeline import (
     create_filter_pipeline,
     scatter_immutable_data,
     reduce_ensemble_results,
-    reduce_ensemble_results_inplace,
     extract_predictor_field,
-    correlate_batch_ensemble,
+    correlate_worker_batches,
 )
 
 
 logger = logging.getLogger(__name__)
 
 
-def process_pass_sliding_window(
+def process_pass_worker_accumulate(
     client,
-    images,
     num_chunks,
     workers,
     scattered_config,
@@ -71,112 +69,135 @@ def process_pass_sliding_window(
     scattered,
     config,
     output_path,
+    camera_num,
+    source_path,
+    pixel_mask,
+    images=None,
 ):
     """
-    Process one pass using sliding window with dynamic worker-affinity reduction.
+    Process one pass using per-worker accumulation.
 
-    Architecture (mirrors instantaneous pipeline's as_completed pattern):
-      - Phase 1: Fill initial window — submit filter→correlation tasks with NO
-        worker pinning. Dask's scheduler decides placement (optimal load balancing
-        and data locality).
-      - Phase 2: as_completed loop — when each correlation completes,
-        client.who_has() discovers which worker holds the result. Reduction is
-        pinned there via workers=[worker], achieving zero cross-worker transfer
-        during accumulation. A replacement task is submitted to keep the window full.
-      - Phase 3: Tree reduction — merges K per-worker accumulators in O(log₂ K)
-        rounds using safe + operator (Dask retry compatible).
+    Each worker gets ONE long-running task that:
+    1. Creates ONE EnsembleCorrelatorCPU
+    2. Loops over its assigned batches, accumulating into internal buffers
+    3. Returns the accumulated result ONCE
 
-    Memory per worker: max_in_flight_per_worker batches + 1 accumulator
-    I/O: Parallel (max_in_flight concurrent disk reads)
-    Network: Zero cross-worker transfer during Phase 2; only K results merge in Phase 3
+    Two modes:
+    - images=None (non-persisted): Assigns chunks round-robin. Workers
+      reconstruct the lazy image+filter pipeline locally and load from disk.
+    - images provided (persisted dask array): Discovers where Dask placed
+      each chunk via who_has(), groups by home worker, passes chunk futures
+      as batch_images (Dask resolves them locally — zero transfer).
+
+    Then tree-reduces K per-worker results into one final result.
     """
     from dask.distributed import as_completed
 
-    if num_chunks == 0:
-        raise ValueError("No chunks to process")
-
     num_workers = len(workers)
-    max_in_flight_per_worker = config.dask_max_in_flight_per_worker
-    max_in_flight = min(num_workers * max_in_flight_per_worker, num_chunks)
-
     diag_path = str(output_path) if config.ensemble_save_diagnostics else None
 
-    # Per-worker accumulated futures (dynamically populated via who_has)
-    accumulated = {}   # worker_address → accumulated_future
-
-    pending = {}       # corr_future → chunk_idx
-    next_to_submit = 0
-    completed_count = 0
-    last_reported_pct = -1
+    if images is not None:
+        # Persisted mode: discover where Dask placed each chunk, group by home worker
+        from dask.distributed import futures_of
+        all_futures = futures_of(images)
+        # futures_of returns one future per chunk (in graph order)
+        # Map each to its home worker via who_has
+        who_map = client.who_has(all_futures)
+        worker_chunks = {}  # worker_address → [(chunk_idx, future), ...]
+        for chunk_idx, fut in enumerate(all_futures):
+            holders = who_map.get(fut.key, [])
+            home_worker = holders[0] if holders else workers[chunk_idx % num_workers]
+            if home_worker not in worker_chunks:
+                worker_chunks[home_worker] = []
+            worker_chunks[home_worker].append((chunk_idx, fut))
+    else:
+        # Non-persisted mode: assign chunks round-robin across workers
+        worker_chunks_rr = {w: [] for w in workers}
+        for chunk_idx in range(num_chunks):
+            w = workers[chunk_idx % num_workers]
+            worker_chunks_rr[w].append(chunk_idx)
+        # Convert to same format, remove empty workers
+        worker_chunks = {
+            w: [(idx, None) for idx in indices]
+            for w, indices in worker_chunks_rr.items()
+            if indices
+        }
 
     logger.info(
-        f"  Sliding window: {num_workers} workers x {max_in_flight_per_worker} per worker "
-        f"= {max_in_flight} max_in_flight ({num_chunks} chunks total)"
+        f"  Worker accumulation: {len(worker_chunks)} workers, "
+        f"{num_chunks} chunks ({[len(c) for c in worker_chunks.values()]} per worker)"
+        f"{' (persisted)' if images is not None else ' (from disk)'}"
     )
 
-    # --- PHASE 1: Fill initial window (NO pinning — Dask decides placement) ---
-    while next_to_submit < min(max_in_flight, num_chunks):
-        filter_future = client.compute(images.blocks[next_to_submit])
-        corr_future = client.submit(
-            correlate_batch_ensemble,
-            filter_future,
-            scattered_config, pass_idx, scattered_predictor,
-            scattered['cache'], scattered['masks'],
-            batch_idx=next_to_submit,
-            output_path=diag_path if next_to_submit == 0 else None,
+    # Submit one task per worker
+    worker_futures = []
+    for worker, chunk_info in worker_chunks.items():
+        chunk_indices = [idx for idx, _ in chunk_info]
+        chunk_futs = [fut for _, fut in chunk_info]
+        batch_images = chunk_futs if all(f is not None for f in chunk_futs) else None
+
+        fut = client.submit(
+            correlate_worker_batches,
+            batch_indices=chunk_indices,
+            config=scattered_config,
+            pass_idx=pass_idx,
+            predictor_field=scattered_predictor,
+            cache=scattered['cache'],
+            masks=scattered['masks'],
+            camera_num=camera_num,
+            source_path=str(source_path),
+            pixel_mask=pixel_mask,
+            output_path=diag_path if 0 in chunk_indices else None,
+            batch_images=batch_images,
+            workers=[worker],
             pure=False,
         )
-        pending[corr_future] = next_to_submit
-        next_to_submit += 1
+        worker_futures.append(fut)
 
-    logger.info(f"  Initial window filled: {len(pending)}/{max_in_flight} tasks in flight")
+    logger.info(f"  Submitted {len(worker_futures)} worker tasks, waiting...")
 
-    # --- PHASE 2: as_completed + dynamic worker-affinity reduction ---
-    ac = as_completed(list(pending.keys()))
+    # Capture pre-pass transfer bytes for locality verification
+    pre_transfer = {}
+    try:
+        for addr, info in client.scheduler_info()["workers"].items():
+            metrics = info.get("metrics", {})
+            pre_transfer[addr] = {
+                "in": metrics.get("transfer_incoming_bytes", 0),
+                "out": metrics.get("transfer_outgoing_bytes", 0),
+            }
+    except Exception:
+        pass  # Non-critical diagnostics
+
+    # Wait for all workers (check errors without pulling data to client)
+    completed_count = 0
+    pinned_workers = list(worker_chunks.keys())
+    ac = as_completed(worker_futures)
     for completed in ac:
-        pending.pop(completed)
         completed_count += 1
+        exc = completed.exception()
+        if exc is not None:
+            for f in worker_futures:
+                f.cancel()
+            raise exc
+        logger.info(f"  Worker {completed_count}/{len(worker_futures)} complete")
 
-        # Discover which worker holds the completed result
-        who = client.who_has(completed)
-        worker = list(who[completed.key])[0]
+    # Verify locality: check each result is on the worker we pinned it to
+    for fut, pinned_worker in zip(worker_futures, pinned_workers):
+        try:
+            holders = client.who_has(fut)
+            if holders:
+                held_on = list(holders.values())[0]
+                is_local = pinned_worker in held_on
+                logger.info(
+                    f"  Locality: pinned={pinned_worker.split('/')[-1]} "
+                    f"held_on={[h.split('/')[-1] for h in held_on]} "
+                    f"{'OK' if is_local else 'MOVED'}"
+                )
+        except Exception:
+            pass
 
-        # Reduce into that worker's accumulator (pinned — zero transfer)
-        if worker not in accumulated:
-            accumulated[worker] = completed
-        else:
-            accumulated[worker] = client.submit(
-                reduce_ensemble_results_inplace, accumulated[worker], completed,
-                workers=[worker],
-                pure=False,
-            )
-
-        # Submit replacement to keep window full
-        if next_to_submit < num_chunks:
-            filter_future = client.compute(images.blocks[next_to_submit])
-            corr_future = client.submit(
-                correlate_batch_ensemble,
-                filter_future,
-                scattered_config, pass_idx, scattered_predictor,
-                scattered['cache'], scattered['masks'],
-                batch_idx=next_to_submit,
-                output_path=None,
-                pure=False,
-            )
-            pending[corr_future] = next_to_submit
-            ac.add(corr_future)
-            next_to_submit += 1
-
-        # Progress logging
-        current_pct = round((completed_count / num_chunks) * 100)
-        if current_pct > last_reported_pct:
-            logger.info(
-                f"  Correlation progress: {current_pct}% ({len(pending)} in flight)"
-            )
-            last_reported_pct = current_pct
-
-    # --- PHASE 3: Tree reduction of per-worker accumulators ---
-    futures = list(accumulated.values())
+    # Tree reduction of per-worker results
+    futures = list(worker_futures)
     logger.info(f"  Tree reduction: {len(futures)} worker results")
 
     round_idx = 0
@@ -192,11 +213,36 @@ def process_pass_sliding_window(
             else:
                 new_futures.append(futures[i])
         round_idx += 1
-        logger.debug(f"  Tree round {round_idx}: {len(futures)} → {len(new_futures)}")
+        logger.debug(f"  Tree round {round_idx}: {len(futures)} -> {len(new_futures)}")
         futures = new_futures
 
     final = futures[0].result()
     logger.info(f"  Accumulated: {final['n_images']} images")
+
+    # Report transfer bytes during this pass
+    try:
+        post_transfer = {}
+        for addr, info in client.scheduler_info()["workers"].items():
+            metrics = info.get("metrics", {})
+            post_transfer[addr] = {
+                "in": metrics.get("transfer_incoming_bytes", 0),
+                "out": metrics.get("transfer_outgoing_bytes", 0),
+            }
+        total_in = sum(
+            post_transfer[a]["in"] - pre_transfer.get(a, {}).get("in", 0)
+            for a in post_transfer
+        )
+        total_out = sum(
+            post_transfer[a]["out"] - pre_transfer.get(a, {}).get("out", 0)
+            for a in post_transfer
+        )
+        logger.info(
+            f"  Transfer during pass: in={total_in / 1e6:.1f} MB, "
+            f"out={total_out / 1e6:.1f} MB"
+        )
+    except Exception:
+        pass
+
     return final
 
 
@@ -395,7 +441,15 @@ def run_ensemble_piv(
     # Scatter config once to avoid repeated serialization
     scattered_config = client.scatter(config, broadcast=True)
 
+    # Scatter pixel_mask for worker-accumulation mode
+    scattered_pixel_mask = None
+    if pixel_mask is not None:
+        scattered_pixel_mask = client.scatter(pixel_mask, broadcast=True)
+
+    images_are_persisted = (num_chunks == 1) or config.ensemble_persist_images
+
     logger.info(f"Processing passes {start_pass_idx + 1} to {num_passes} with {num_chunks} chunks each...")
+    logger.info(f"  Strategy: worker accumulation{' (persisted)' if images_are_persisted else ' (from disk)'}")
 
     for pass_idx in range(start_pass_idx, num_passes):
         if _shutdown_requested:
@@ -411,8 +465,6 @@ def run_ensemble_piv(
             scattered_predictor = client.scatter(predictor_field, broadcast=True)
             logger.info(f"  Broadcast predictor field from previous pass")
 
-        # Sliding window accumulation: parallel I/O with bounded memory
-        # Chunks are distributed across workers in round-robin fashion
         workers = list(client.ncores().keys())
         num_workers = len(workers)
 
@@ -420,10 +472,9 @@ def run_ensemble_piv(
 
         pass_start = time.time()
 
-        # Process pass using sliding window for parallel I/O
-        accumulated = process_pass_sliding_window(
+        # Single path for both persisted and non-persisted
+        accumulated = process_pass_worker_accumulate(
             client=client,
-            images=images,
             num_chunks=num_chunks,
             workers=workers,
             scattered_config=scattered_config,
@@ -432,6 +483,10 @@ def run_ensemble_piv(
             scattered=scattered,
             config=config,
             output_path=output_path,
+            camera_num=camera_num,
+            source_path=source_path,
+            pixel_mask=scattered_pixel_mask,
+            images=images if images_are_persisted else None,
         )
 
         corr_elapsed = time.time() - pass_start

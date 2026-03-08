@@ -7,8 +7,8 @@ Uses true Dask patterns: map_blocks, persist, scatter, submit, gather.
 Key patterns:
 - apply_all_filters_slim: Unified filter function for map_blocks
 - scatter_immutable_data: Broadcast cache/masks once to all workers
-- correlate_batch_ensemble: Stateless per-batch correlation for ensemble accumulation
-- reduce_ensemble_results / reduce_ensemble_results_inplace: Merge accumulated dicts
+- correlate_worker_batches: Per-worker accumulation for ensemble processing
+- reduce_ensemble_results: Merge accumulated dicts (tree reduction)
 """
 
 import logging
@@ -566,69 +566,101 @@ def _deep_dict_nbytes(d):
     return total
 
 
-def correlate_batch_ensemble(
-    batch: np.ndarray,
+def correlate_worker_batches(
+    batch_indices: list,
     config: Config,
     pass_idx: int,
     predictor_field: Optional[np.ndarray],
     cache: dict,
     masks: Optional[List[np.ndarray]],
-    batch_idx: int = 0,
+    camera_num: int = 0,
+    source_path: str = "",
+    pixel_mask: Optional[np.ndarray] = None,
     output_path: Optional[str] = None,
+    batch_images: Optional[List[np.ndarray]] = None,
 ) -> dict:
-    """Correlate one batch for ensemble accumulation.
+    """Accumulate correlation across multiple batches on one worker.
 
-    Stateless — creates correlator, correlates, returns result dict.
-    Mirrors correlate_and_save_batch() from the instantaneous pipeline.
-    Dask can retry safely (no mutable state).
+    Two modes:
+    - batch_images=None: Reconstructs lazy image+filter pipeline locally,
+      loads each batch from disk sequentially.
+    - batch_images provided: Uses pre-filtered image arrays directly
+      (Dask auto-resolves futures before function entry).
+
+    In both modes, the EnsembleCorrelatorCPU's internal buffers accumulate
+    across batches (C library's native += behavior). Correlation planes
+    are copied out ONCE at the end.
     """
     from pivtools_cli.piv.piv_backend.cpu_ensemble import EnsembleCorrelatorCPU
 
+    # Reconstruct lazy image pipeline only when loading from disk
+    images = None
+    if batch_images is None:
+        from pivtools_core.image_handling.load_images import load_images
+        images = load_images(
+            camera_num, config, source=Path(source_path),
+            batch_size=config.batch_size,
+        )
+        images = create_filter_pipeline(images, config, pixel_mask)
+
+    # Create ONE correlator for all batches
     correlator = EnsembleCorrelatorCPU(
         config, precomputed_cache=cache, vector_masks=masks,
         active_pass_idx=pass_idx,
     )
 
-    is_first = (batch_idx == 0)
-    result = correlator.correlate_batch_for_accumulation(
-        batch, config,
-        pass_idx=pass_idx,
-        predictor_field=predictor_field,
-        is_first_batch=is_first,
-        save_diagnostics=config.ensemble_save_diagnostics if is_first else False,
-        output_path=output_path if is_first else None,
-    )
+    warp_A_total = None
+    warp_B_total = None
+    n_total = 0
+    metadata = {}
+
+    for i, batch_idx in enumerate(batch_indices):
+        # Get batch data: from persisted images or lazy pipeline
+        if batch_images is not None:
+            batch_data = batch_images[i]
+        else:
+            batch_data = images.blocks[batch_idx].compute(scheduler='synchronous')
+
+        is_first = (batch_idx == 0)
+        diag_path = output_path if is_first else None
+
+        # Accumulate into correlator's internal buffers
+        lightweight = correlator.correlate_batch_for_accumulation(
+            batch_data, config,
+            pass_idx=pass_idx,
+            predictor_field=predictor_field,
+            is_first_batch=is_first,
+            save_diagnostics=config.ensemble_save_diagnostics if is_first else False,
+            output_path=diag_path,
+            clear_buffers=(i == 0),
+            copy_result=False,
+        )
+
+        # Accumulate warp sums
+        if warp_A_total is None:
+            warp_A_total = lightweight["warp_A_sum"].copy()
+            warp_B_total = lightweight["warp_B_sum"].copy()
+        else:
+            warp_A_total += lightweight["warp_A_sum"]
+            warp_B_total += lightweight["warp_B_sum"]
+
+        n_total += lightweight["n_images"]
+
+        # Capture metadata from first batch that has it
+        for key in ["smoothed_predictor", "padded_predictor", "vector_mask",
+                     "n_pre", "n_post", "first_pair_A", "first_pair_B"]:
+            if metadata.get(key) is None and lightweight.get(key) is not None:
+                metadata[key] = lightweight[key]
+
+        del batch_data, lightweight
+
+    # Copy accumulated correlation buffers ONCE
+    result = correlator.get_accumulated_correlation(pass_idx)
+    result["warp_A_sum"] = warp_A_total
+    result["warp_B_sum"] = warp_B_total
+    result["n_images"] = n_total
+    result["n_win_x"] = len(correlator.win_ctrs_x[pass_idx])
+    result["n_win_y"] = len(correlator.win_ctrs_y[pass_idx])
+    result.update(metadata)
+
     return result
-
-
-def reduce_ensemble_results_inplace(accumulated: dict, new_result: dict) -> dict:
-    """In-place reduction: accumulated += new_result. Returns accumulated.
-
-    Used for progressive per-worker reduction (Phase 2) where peak memory matters.
-    NOT safe for tree reduction (Dask may reuse/retry inputs).
-
-    Retry note: if Dask retries this task, the accumulated array may already be
-    partially mutated from the failed attempt. This is acceptable in Phase 2
-    because the client immediately replaces accumulated[worker] with the new
-    future — the old future is never referenced again, so a retry would start
-    from a stale-but-unused accumulator. In practice, += on numpy arrays only
-    fails on OOM or hardware faults, making retry a non-concern.
-
-    Peak memory: ~2.36 GB (accumulator + new result) instead of ~3.54 GB with + operator.
-    """
-    accumulated["corr_AA_sum"] += new_result["corr_AA_sum"]
-    accumulated["corr_BB_sum"] += new_result["corr_BB_sum"]
-    accumulated["corr_AB_sum"] += new_result["corr_AB_sum"]
-    accumulated["warp_A_sum"] += new_result["warp_A_sum"]
-    accumulated["warp_B_sum"] += new_result["warp_B_sum"]
-    accumulated["n_images"] += new_result["n_images"]
-    # Keep metadata from whichever has it
-    for key in ["smoothed_predictor", "padded_predictor", "vector_mask",
-                "n_pre", "n_post"]:
-        if accumulated.get(key) is None and new_result.get(key) is not None:
-            accumulated[key] = new_result[key]
-    # First-pair images: keep from whichever has them
-    if accumulated.get("first_pair_A") is None and new_result.get("first_pair_A") is not None:
-        accumulated["first_pair_A"] = new_result["first_pair_A"]
-        accumulated["first_pair_B"] = new_result["first_pair_B"]
-    return accumulated
