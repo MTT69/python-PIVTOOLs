@@ -647,6 +647,8 @@ PIV_EXPORT int fit_kspace_batch(
     fdf_params_main.scale  = gsl_multifit_nlinear_scale_more;
     fdf_params_main.trs    = gsl_multifit_nlinear_trs_lmaccel;  // Geodesic acceleration
 
+    int diag_count = 0;  // Limit diagnostic prints (shared across threads)
+
     #ifdef _OPENMP
     #pragma omp parallel reduction(+:success_count)
     {
@@ -759,6 +761,10 @@ PIV_EXPORT int fit_kspace_batch(
                    KSPACE_PARAMS * sizeof(double));
 
             if (amp_A < 1e-12 || amp_B < 1e-12) {
+                if (diag_count < 3)
+                    fprintf(stderr, "[kspace] win %d: LOW_SNR(amp) amp_A=%.4e amp_B=%.4e\n",
+                            i, amp_A, amp_B);
+                diag_count++;
                 out_status[i] = STATUS_LOW_SNR;
                 continue;
             }
@@ -827,6 +833,9 @@ PIV_EXPORT int fit_kspace_batch(
             // ---- Step 3: Joint noise fit ----
             double F_dc = F_ref[center_idx_y * corr_w + center_idx_x];
             if (F_dc < 1e-10) {
+                if (diag_count < 3)
+                    fprintf(stderr, "[kspace] win %d: LOW_SNR(F_dc) F_dc=%.4e\n", i, F_dc);
+                diag_count++;
                 out_status[i] = STATUS_LOW_SNR;
                 continue;
             }
@@ -898,6 +907,10 @@ PIV_EXPORT int fit_kspace_batch(
             double snr = dc_power / noise_power;
 
             if (snr < snr_threshold) {
+                if (diag_count < 3)
+                    fprintf(stderr, "[kspace] win %d: LOW_SNR(snr) snr=%.4f N0=%.4e F_dc_clean=%.4e threshold=%.1f\n",
+                            i, snr, N0_abs, F_dc_clean, snr_threshold);
+                diag_count++;
                 out_status[i] = STATUS_LOW_SNR;
                 continue;
             }
