@@ -722,19 +722,6 @@ class SinglePassAccumulator:
         statuses = status_flat.reshape(n_win_y, n_win_x)
         initial_guesses = initial_guess_flat.reshape(n_win_y, n_win_x, -1)
 
-        # Calculate success rate excluding masked vectors
-        # Status -1 indicates masked/skipped windows (not fitted)
-        # Status 0 indicates successful fit
-        non_masked_windows = np.sum(statuses != -1)
-        successful_fits = np.sum(statuses == 0)
-        if non_masked_windows > 0:
-            success_rate = successful_fits / non_masked_windows
-            logging.info(
-                f"Pass {pass_idx + 1}: Gaussian fitting success rate: {success_rate:.1%} "
-                f"({successful_fits}/{non_masked_windows} non-masked windows)"
-            )
-        else:
-            logging.warning(f"Pass {pass_idx + 1}: All windows masked, no fitting performed")
 
         # Step 7: Extract velocities from fitted parameters
         with self._profile_section(pass_idx, "velocity_extraction"):

@@ -869,6 +869,7 @@ def validate_files():
                     expected_count=num_images,
                     zero_based_indexing=(cfg.start_index == 0),
                     role=role,
+                    camera_num=camera_num,
                 )
                 pattern_result["index"] = idx
                 pattern_result["label"] = label
@@ -1027,6 +1028,8 @@ def validate_files():
                 "suggested_pattern": validation.get("suggested_pattern"),
                 "suggested_pattern_b": validation.get("suggested_pattern_b"),
                 "suggested_mode": validation.get("suggested_mode"),
+                # Subfolder suggestion (when camera folder doesn't exist)
+                "suggested_subfolder": validation.get("suggested_subfolder"),
                 # New per-pattern validation fields
                 "pattern_validations": pattern_validations,
                 "ab_count_warning": ab_count_warning,
