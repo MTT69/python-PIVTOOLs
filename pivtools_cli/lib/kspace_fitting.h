@@ -74,6 +74,7 @@ extern "C" {
  * @param out_params       Output: num_windows * 16 (double, gauss_flat format)
  * @param out_status       Output: num_windows status codes (int32)
  * @param out_initial_guess Output: num_windows * 16 (double)
+ * @param out_diagnostics  Output: num_windows * 4 (double: snr, N0, k_max_x, k_max_y) or NULL
  * @return                 Number of successfully fitted windows
  */
 PIV_EXPORT int fit_kspace_batch(
@@ -91,7 +92,8 @@ PIV_EXPORT int fit_kspace_batch(
     double k_max_cap,
     double *out_params,
     int    *out_status,
-    double *out_initial_guess
+    double *out_initial_guess,
+    double *out_diagnostics
 );
 
 #ifdef __cplusplus

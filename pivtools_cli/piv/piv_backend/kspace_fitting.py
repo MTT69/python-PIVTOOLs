@@ -110,6 +110,7 @@ def _load_kspace_lib():
         np.ctypeslib.ndpointer(np.float64, flags='C_CONTIGUOUS'),  # out_params
         np.ctypeslib.ndpointer(np.int32, flags='C_CONTIGUOUS'),    # out_status
         np.ctypeslib.ndpointer(np.float64, flags='C_CONTIGUOUS'),  # out_initial_guess
+        ctypes.c_void_p,     # out_diagnostics (nullable)
     ]
     lib.fit_kspace_batch.restype = ctypes.c_int
 
@@ -131,6 +132,7 @@ def fit_windows_kspace(
     predictor_displacements: Optional[np.ndarray] = None,
     interp_kernel: str = 'bicubic',
     k_max_cap: Optional[float] = None,
+    return_diagnostics: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Fit k-space transfer function to correlation planes.
@@ -221,6 +223,11 @@ def fit_windows_kspace(
     gauss_flat = np.zeros((num_windows, 16), dtype=np.float64)
     status_flat = np.full(num_windows, -1, dtype=np.int32)
     initial_guess_flat = np.zeros((num_windows, 16), dtype=np.float64)
+    diagnostics_flat = None
+    diag_ptr = None
+    if return_diagnostics:
+        diagnostics_flat = np.full((num_windows, 4), np.nan, dtype=np.float64)
+        diag_ptr = diagnostics_flat.ctypes.data
 
     kernel_code = 1 if interp_kernel == 'lanczos3' else 0
     cap_val = k_max_cap if k_max_cap is not None else -1.0
@@ -237,6 +244,7 @@ def fit_windows_kspace(
         snr_threshold, int(use_soft_weighting),
         cap_val,
         gauss_flat, status_flat, initial_guess_flat,
+        diag_ptr,
     )
 
     # Log summary
@@ -278,6 +286,8 @@ def fit_windows_kspace(
                 logger.info(f"  mu_y: min={np.nanmin(mu_y):.4f}, median={np.nanmedian(mu_y):.4f}, "
                             f"max={np.nanmax(mu_y):.4f}")
 
+    if return_diagnostics:
+        return gauss_flat, status_flat, initial_guess_flat, diagnostics_flat
     return gauss_flat, status_flat, initial_guess_flat
 
 

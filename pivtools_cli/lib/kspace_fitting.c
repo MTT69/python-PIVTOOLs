@@ -164,10 +164,10 @@ struct joint_fit_data {
 
 static int joint_residual_f(const gsl_vector *x, void *data, gsl_vector *f) {
     struct joint_fit_data *d = (struct joint_fit_data *)data;
-    double A   = fmax(gsl_vector_get(x, 0), 0.01);
-    double sx  = fmax(gsl_vector_get(x, 1), 0.1);
-    double sy  = fmax(gsl_vector_get(x, 2), 0.1);
-    double N0  = fmax(gsl_vector_get(x, 3), 0.0);
+    double A   = fmin(fmax(gsl_vector_get(x, 0), 0.01), 10.0);
+    double sx  = fmin(fmax(gsl_vector_get(x, 1), 0.1),  20.0);
+    double sy  = fmin(fmax(gsl_vector_get(x, 2), 0.1),  20.0);
+    double N0  = fmin(fmax(gsl_vector_get(x, 3), 0.0),   1.0);
     double two_pi_sq = 2.0 * M_PI * M_PI;
 
     for (size_t i = 0; i < d->n; i++) {
@@ -181,16 +181,20 @@ static int joint_residual_f(const gsl_vector *x, void *data, gsl_vector *f) {
 
 static int joint_residual_df(const gsl_vector *x, void *data, gsl_matrix *J) {
     struct joint_fit_data *d = (struct joint_fit_data *)data;
-    double A   = fmax(gsl_vector_get(x, 0), 0.01);
-    double sx  = fmax(gsl_vector_get(x, 1), 0.1);
-    double sy  = fmax(gsl_vector_get(x, 2), 0.1);
+    double A   = fmin(fmax(gsl_vector_get(x, 0), 0.01), 10.0);
+    double sx  = fmin(fmax(gsl_vector_get(x, 1), 0.1),  20.0);
+    double sy  = fmin(fmax(gsl_vector_get(x, 2), 0.1),  20.0);
     double two_pi_sq = 2.0 * M_PI * M_PI;
 
-    // Constraint activity flags
-    int A_active  = (gsl_vector_get(x, 0) >= 0.01);
-    int sx_active = (gsl_vector_get(x, 1) >= 0.1);
-    int sy_active = (gsl_vector_get(x, 2) >= 0.1);
-    int N0_active = (gsl_vector_get(x, 3) >= 0.0);
+    // Constraint activity flags: zero Jacobian when at lower OR upper bound
+    double raw_A  = gsl_vector_get(x, 0);
+    double raw_sx = gsl_vector_get(x, 1);
+    double raw_sy = gsl_vector_get(x, 2);
+    double raw_N0 = gsl_vector_get(x, 3);
+    int A_active  = (raw_A  >= 0.01 && raw_A  <= 10.0);
+    int sx_active = (raw_sx >= 0.1  && raw_sx <= 20.0);
+    int sy_active = (raw_sy >= 0.1  && raw_sy <= 20.0);
+    int N0_active = (raw_N0 >= 0.0  && raw_N0 <= 1.0);
 
     for (size_t i = 0; i < d->n; i++) {
         double kx = d->K_X[i], ky = d->K_Y[i];
@@ -550,7 +554,8 @@ PIV_EXPORT int fit_kspace_batch(
     double k_max_cap,
     double *out_params,
     int    *out_status,
-    double *out_initial_guess)
+    double *out_initial_guess,
+    double *out_diagnostics)
 {
     if (!R_AA || !R_BB || !R_AB || !mask || !out_params || !out_status || !out_initial_guess) {
         fprintf(stderr, "[kspace] NULL pointer argument\n");
@@ -906,6 +911,14 @@ PIV_EXPORT int fit_kspace_batch(
             double noise_power = N0_abs * N0_abs + 1e-12;
             double snr = dc_power / noise_power;
 
+            // Store diagnostics (SNR, N0) regardless of outcome
+            if (out_diagnostics) {
+                out_diagnostics[i * 4 + 0] = snr;
+                out_diagnostics[i * 4 + 1] = N0_abs;
+                out_diagnostics[i * 4 + 2] = 0.0;  // k_max_x (filled later if we get there)
+                out_diagnostics[i * 4 + 3] = 0.0;  // k_max_y
+            }
+
             if (snr < snr_threshold) {
                 if (diag_count < 3)
                     fprintf(stderr, "[kspace] win %d: LOW_SNR(snr) snr=%.4f N0=%.4e F_dc_clean=%.4e threshold=%.1f\n",
@@ -980,6 +993,12 @@ PIV_EXPORT int fit_kspace_batch(
             double k_max_y = k_max_y_prof;
             if (k_max_y_var < k_max_y) k_max_y = k_max_y_var;
             if (k_max_limit < k_max_y) k_max_y = k_max_limit;
+
+            // Update diagnostics with k_max values
+            if (out_diagnostics) {
+                out_diagnostics[i * 4 + 2] = k_max_x;
+                out_diagnostics[i * 4 + 3] = k_max_y;
+            }
 
             // Save initial guess
             build_params_from_fit(out_initial_guess + i * KSPACE_PARAMS,
