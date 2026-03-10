@@ -408,6 +408,7 @@ class VectorStatisticsProcessor:
         config=None,
         use_stereo: bool = False,
         stereo_camera_pair: Optional[Tuple[int, int]] = None,
+        use_threading: bool = False,
     ):
         """
         Initialize the statistics processor.
@@ -436,6 +437,9 @@ class VectorStatisticsProcessor:
             Whether processing stereo (3D) data
         stereo_camera_pair : tuple, optional
             Camera pair for stereo data (e.g., (1, 2))
+        use_threading : bool
+            If True, use ThreadPoolExecutor instead of ProcessPoolExecutor
+            for frame-level parallelism (useful when called from GUI threads)
         """
         self.data_dir = Path(data_dir)
         self.base_dir = Path(base_dir)
@@ -448,6 +452,7 @@ class VectorStatisticsProcessor:
         self._config = config
         self.use_stereo = use_stereo
         self.stereo_camera_pair = stereo_camera_pair
+        self.use_threading = use_threading
 
         # Determine camera folder name
         if use_stereo and stereo_camera_pair:
@@ -514,11 +519,16 @@ class VectorStatisticsProcessor:
             # Determine which statistics to compute
             # Keep original requested names for logging, but also track normalized names
             if requested_statistics is None or len(requested_statistics) == 0:
-                # Default: compute common mean statistics only
-                requested_statistics = [
-                    "mean_velocity", "mean_vorticity", "mean_divergence",
-                    "reynolds_stress", "normal_stress", "mean_tke"
-                ]
+                # Try config-based defaults first
+                if self._config is not None and hasattr(self._config, 'statistics_enabled_list') and self._config.statistics_enabled_list:
+                    requested_statistics = list(self._config.statistics_enabled_list)
+                    logger.info(f"[Statistics] Using config-based statistics: {requested_statistics}")
+                else:
+                    # Hardcoded fallback when config is unavailable
+                    requested_statistics = [
+                        "mean_velocity", "mean_vorticity", "mean_divergence",
+                        "mean_stresses", "mean_tke"
+                    ]
 
             # Keep original names for reference
             original_stats = set(requested_statistics)
@@ -935,8 +945,18 @@ class VectorStatisticsProcessor:
         n_frames = len(frame_files)
         logger.info(f"[Statistics] Processing {n_frames} frames with parallelism...")
 
-        # Process frames in parallel
-        with concurrent.futures.ProcessPoolExecutor(max_workers=get_max_workers(len(frame_files)), initializer=worker_initializer) as executor:
+        # Process frames in parallel - use threading for GUI (avoids pickling issues),
+        # multiprocessing for CLI (better CPU utilization)
+        if self.use_threading:
+            executor_class = concurrent.futures.ThreadPoolExecutor
+            executor_kwargs = {"max_workers": min(8, n_frames)}
+            logger.info(f"[Statistics] Using ThreadPoolExecutor with {executor_kwargs['max_workers']} workers")
+        else:
+            executor_class = concurrent.futures.ProcessPoolExecutor
+            executor_kwargs = {"max_workers": get_max_workers(len(frame_files)), "initializer": worker_initializer}
+            logger.info(f"[Statistics] Using ProcessPoolExecutor with {executor_kwargs['max_workers']} workers")
+
+        with executor_class(**executor_kwargs) as executor:
             futures = {}
             for i, file_path in enumerate(frame_files):
                 out_name = f"{i + 1:05d}.mat"
@@ -1393,7 +1413,6 @@ if __name__ == "__main__":
                 )
 
                 result = processor.process(
-                    requested_statistics=enabled_stats,
                     save_figures=save_figures,
                 )
 
@@ -1441,7 +1460,6 @@ if __name__ == "__main__":
             )
 
             result = processor.process(
-                requested_statistics=enabled_stats,
                 save_figures=save_figures,
             )
 

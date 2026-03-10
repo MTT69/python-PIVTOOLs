@@ -2,11 +2,8 @@
 Vector Statistics API views
 
 Provides endpoints for computing instantaneous statistics (mean and Reynolds stresses)
-with progress tracking.
-
-Simplified API: single base_path_idx + process_merged boolean.
-- process_merged=False: Processes all cameras from config.camera_numbers
-- process_merged=True: Processes merged data only
+with progress tracking. Uses workflow-based API (per_camera, after_merge, both, stereo).
+Statistics selection is persisted to config and read by the processor at runtime.
 """
 
 import threading
@@ -15,7 +12,7 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request
 from loguru import logger
 
-from pivtools_core.config import get_config
+from pivtools_core.config import get_config, reload_config
 from pivtools_core.paths import get_data_paths
 from ...calibration.services.job_manager import job_manager
 from ..instantaneous_statistics import VectorStatisticsProcessor
@@ -89,9 +86,8 @@ def calculate_statistics():
             - "per_camera": Process all cameras from config.camera_numbers
             - "after_merge": Process merged data only
             - "both": Process all cameras then merged data
-        process_merged: bool - DEPRECATED, use workflow instead
         type_name: str (default: "instantaneous")
-        requested_statistics: list of statistic names (optional)
+        requested_statistics: list of statistic names (optional, persisted to config)
 
     Returns:
         JSON with parent_job_id, sub_jobs list, status
@@ -107,22 +103,30 @@ def calculate_statistics():
         cfg = get_config()
         base_paths = cfg.base_paths
 
+        # Update config with requested statistics if provided
+        if requested_statistics:
+            known_stats = set(VectorStatisticsProcessor.VALID_STATISTICS.keys())
+            enabled_methods = {}
+            for stat_name in known_stats:
+                enabled_methods[stat_name] = stat_name in requested_statistics
+            cfg.data.setdefault("statistics", {})["enabled_methods"] = enabled_methods
+            cfg.save()
+            reload_config()
+            cfg = get_config()
+            logger.info(f"Updated config with requested statistics: {requested_statistics}")
+
         # Validate path index first (needed for stereo detection)
         if base_path_idx < 0 or base_path_idx >= len(base_paths):
             return jsonify({"error": f"Invalid base_path_idx: {base_path_idx}"}), 400
 
         base_dir = base_paths[base_path_idx]
 
-        # Get workflow - support both new workflow param and deprecated process_merged
+        # Get workflow
         workflow = data.get("workflow")
         source_endpoint = data.get("source_endpoint", "regular")
         if workflow is None:
-            # Check deprecated process_merged for backward compat
-            if "process_merged" in data:
-                process_merged = bool(data.get("process_merged", False))
-                workflow = "after_merge" if process_merged else "per_camera"
-            else:
-                workflow = cfg.statistics_workflow
+            workflow = cfg.statistics_workflow
+        logger.info(f"[Statistics] Using workflow: {workflow}")
 
         # Check if stereo setup (config-based)
         is_stereo_config = cfg.is_stereo_setup
@@ -212,6 +216,8 @@ def calculate_statistics():
         if not targets:
             return jsonify({"error": "No targets to process"}), 400
 
+        logger.info(f"[Statistics] Created {len(targets)} targets: {[t['label'] for t in targets]}")
+
         # Create parent job to track all sub-jobs
         parent_job_id = job_manager.create_job(
             "statistics_parent",
@@ -269,7 +275,6 @@ def calculate_statistics():
                     type_name,
                     use_merged,
                     cam_num,
-                    requested_statistics,
                     use_stereo,
                     stereo_camera_pair,
                 ),
@@ -303,7 +308,6 @@ def _run_statistics_job(
     type_name: str,
     use_merged: bool,
     camera: int,
-    requested_statistics: list,
     use_stereo: bool = False,
     stereo_camera_pair: tuple = None,
 ):
@@ -337,10 +341,11 @@ def _run_statistics_job(
             camera=camera,
             use_stereo=use_stereo,
             stereo_camera_pair=stereo_camera_pair,
+            config=get_config(),
+            use_threading=True,
         )
 
         result = processor.process(
-            requested_statistics=requested_statistics,
             save_figures=True,
             progress_callback=progress_callback,
         )
