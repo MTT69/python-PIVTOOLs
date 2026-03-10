@@ -1,17 +1,14 @@
 paths:
   base_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\stereo_images\validation
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images\instantaneous
   source_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\stereo_images
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images_reduced_22k_noisy
   active_paths:
   - 0
   camera_numbers:
   - 1
-  - 2
-  camera_count: 2
-  camera_subfolders:
-  - camera1
-  - camera2
+  camera_count: 1
+  camera_subfolders: []
 images:
   num_images: 4000
   image_format:
@@ -30,7 +27,7 @@ images:
   num_loops: 1
   num_frame_pairs: 4000
 batches:
-  size: 30
+  size: 20
 logging:
   file: pypiv.log
   level: INFO
@@ -46,8 +43,8 @@ processing:
   open_dashboard: true
   post_processing_workers: 16
   always_batch: true
-  instantaneous: false
-  ensemble: true
+  instantaneous: true
+  ensemble: false
 outlier_detection:
   enabled: true
   methods:
@@ -90,7 +87,7 @@ video:
   fps: 30
   crf: 15
   resolution: 1080p
-  source_endpoint: stereo
+  source_endpoint: regular
 statistics:
   enabled_methods:
     mean_velocity: true
@@ -116,7 +113,7 @@ statistics:
   gamma_radius: 4
   save_figures: true
   type_name: instantaneous
-  source_endpoint: stereo
+  source_endpoint: regular
 instantaneous_piv:
   window_size:
   - - 64
@@ -144,7 +141,7 @@ ensemble_piv:
   gradient_correction: true
   persist_images: false
   predictor_smoothing: false
-  image_warp_interpolation: cubic
+  image_warp_interpolation: lanczos
   kspace_k_max_cap: 0.4
   predictor_interpolation: cubic
   kspace_snr_threshold: 3.0
@@ -160,7 +157,10 @@ ensemble_piv:
     - 16
   - - 8
     - 16
+  - - 8
+    - 16
   overlap:
+  - 50
   - 50
   - 50
   - 50
@@ -170,11 +170,13 @@ ensemble_piv:
   - single
   - single
   - single
+  - single
   runs:
   - 1
   - 2
   - 3
   - 4
+  - 5
   store_planes: false
   save_diagnostics: true
   sum_window:
@@ -184,7 +186,7 @@ ensemble_piv:
   sum_fitting_window:
   - 16
   - 16
-  resume_from_pass: 0
+  resume_from_pass: 5
   window_type: square
   predictor_boundary_conditions:
   - y_position: 0
@@ -205,7 +207,7 @@ calibration:
   - camera4
   - camera5
   path_order: camera_first
-  active: stereo_dotboard
+  active: scale_factor
   piv_type: instantaneous
   scale_factor:
     dt: 0.0057553
@@ -296,4 +298,4 @@ transforms:
   cameras:
     1:
       operations: []
-  source_endpoint: stereo
+  source_endpoint: regular

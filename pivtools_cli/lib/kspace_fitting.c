@@ -549,7 +549,6 @@ PIV_EXPORT int fit_kspace_batch(
     const int    *mask,
     const double *pred_disp,
     int    interp_kernel,
-    double snr_threshold,
     int    use_soft_weighting,
     double k_max_cap,
     double *out_params,
@@ -568,14 +567,12 @@ PIV_EXPORT int fit_kspace_batch(
     double center_x = (double)corr_w / 2.0 + 1.0;  // 1-based
     double center_y = (double)corr_h / 2.0 + 1.0;
 
-    // Default k_max_cap
+    // Default k_max_cap: 0.35 avoids corner region used for noise estimation
     double k_max_limit;
     if (k_max_cap > 0.0)
         k_max_limit = k_max_cap;
-    else if (use_soft_weighting)
-        k_max_limit = 0.45;
     else
-        k_max_limit = 0.30;
+        k_max_limit = 0.35;
 
     // Build wavenumber grids (shared, read-only)
     double *k_x = (double *)malloc(corr_w * sizeof(double));
@@ -634,8 +631,8 @@ PIV_EXPORT int fit_kspace_batch(
         }
     }
 
-    fprintf(stderr, "[kspace] %zu windows, %zux%zu, snr_threshold=%.1f, soft_weighting=%d, k_max_cap=%.2f\n",
-            num_windows, corr_h, corr_w, snr_threshold, use_soft_weighting, k_max_limit);
+    fprintf(stderr, "[kspace] %zu windows, %zux%zu, soft_weighting=%d, k_max_cap=%.2f\n",
+            num_windows, corr_h, corr_w, use_soft_weighting, k_max_limit);
 
     int success_count = 0;
 
@@ -849,11 +846,10 @@ PIV_EXPORT int fit_kspace_batch(
             for (size_t p = 0; p < n_pixels; p++)
                 F_ref_norm[p] = F_ref[p] / F_dc;
 
-            // Gaussian taper weights
+            // Flat (uniform) weights — joint model (A*Gauss + N0)*P_noise
+            // explicitly separates signal from noise at all wavenumbers
             for (size_t p = 0; p < n_pixels; p++) {
-                double K_R = sqrt(K_X[p] * K_X[p] + K_Y[p] * K_Y[p]);
-                double w = exp(-K_R * K_R / (0.15 * 0.15));
-                joint_wts[p] = fmax(w, 0.1);
+                joint_wts[p] = 1.0;
             }
 
             // Set up joint fit
@@ -905,27 +901,18 @@ PIV_EXPORT int fit_kspace_batch(
                 continue;
             }
 
-            // ---- Step 4: SNR check ----
+            // ---- Step 4: Compute SNR for diagnostics (no gate) ----
             double F_dc_clean = F_ref[center_idx_y * corr_w + center_idx_x];
             double dc_power = F_dc_clean * F_dc_clean;
             double noise_power = N0_abs * N0_abs + 1e-12;
             double snr = dc_power / noise_power;
 
-            // Store diagnostics (SNR, N0) regardless of outcome
+            // Store diagnostics (SNR, N0) — SNR is informational only, not used for gating
             if (out_diagnostics) {
                 out_diagnostics[i * 4 + 0] = snr;
                 out_diagnostics[i * 4 + 1] = N0_abs;
-                out_diagnostics[i * 4 + 2] = 0.0;  // k_max_x (filled later if we get there)
+                out_diagnostics[i * 4 + 2] = 0.0;  // k_max_x (filled later)
                 out_diagnostics[i * 4 + 3] = 0.0;  // k_max_y
-            }
-
-            if (snr < snr_threshold) {
-                if (diag_count < 3)
-                    fprintf(stderr, "[kspace] win %d: LOW_SNR(snr) snr=%.4f N0=%.4e F_dc_clean=%.4e threshold=%.1f\n",
-                            i, snr, N0_abs, F_dc_clean, snr_threshold);
-                diag_count++;
-                out_status[i] = STATUS_LOW_SNR;
-                continue;
             }
 
             // ---- Step 5: k_max from profile ----
@@ -937,16 +924,16 @@ PIV_EXPORT int fit_kspace_batch(
                 prof_ref_x[c] = F_ref_abs[center_idx_y * corr_w + c];
 
             double k_max_x_prof = compute_kmax_from_profile(k_x, prof_ref_x, corr_w,
-                                                             F_dc_clean, 0.01, 0.05, 0.45);
+                                                             F_dc_clean, 0.01, 0.05, k_max_limit);
             // Profile along y (at k_x=0)
             for (size_t r = 0; r < corr_h; r++)
                 prof_ref_y[r] = F_ref_abs[r * corr_w + center_idx_x];
 
             double k_max_y_prof = compute_kmax_from_profile(k_y, prof_ref_y, corr_h,
-                                                             F_dc_clean, 0.01, 0.05, 0.45);
+                                                             F_dc_clean, 0.01, 0.05, k_max_limit);
 
-            double k_max_init_x = (k_max_x_prof < 0.45) ? k_max_x_prof : 0.45;
-            double k_max_init_y = (k_max_y_prof < 0.45) ? k_max_y_prof : 0.45;
+            double k_max_init_x = (k_max_x_prof < k_max_limit) ? k_max_x_prof : k_max_limit;
+            double k_max_init_y = (k_max_y_prof < k_max_limit) ? k_max_y_prof : k_max_limit;
 
             // ---- Step 6: Initial guesses ----
             // Displacement from sub-pixel peak
@@ -982,17 +969,9 @@ PIV_EXPORT int fit_kspace_batch(
             if (Sxx_init < 0.0) Sxx_init = 0.1;
             if (Syy_init < 0.0) Syy_init = 0.1;
 
-            // Refine k_max
-            double k_max_x_var = compute_kmax_variance(Sxx_init, snr, 0.05, k_max_limit);
-            double k_max_y_var = compute_kmax_variance(Syy_init, snr, 0.05, k_max_limit);
-
+            // Use profile-based k_max directly (capped by k_max_limit)
             double k_max_x = k_max_x_prof;
-            if (k_max_x_var < k_max_x) k_max_x = k_max_x_var;
-            if (k_max_limit < k_max_x) k_max_x = k_max_limit;
-
             double k_max_y = k_max_y_prof;
-            if (k_max_y_var < k_max_y) k_max_y = k_max_y_var;
-            if (k_max_limit < k_max_y) k_max_y = k_max_limit;
 
             // Update diagnostics with k_max values
             if (out_diagnostics) {
@@ -1163,10 +1142,12 @@ PIV_EXPORT int fit_kspace_batch(
             }
 
             // ---- Step 8: Validation ----
-            if (Sxx_fit < 0.0 || Syy_fit < 0.0) {
-                out_status[i] = STATUS_NEG_VAR;
-                continue;
-            }
+            // Clamp variance to zero (optimizer already clamps internally via
+            // fmax in residual/Jacobian, but final value can still be slightly
+            // negative due to floating-point). No rejection — displacement is
+            // valid and stress near zero is physically plausible (e.g., near walls).
+            if (Sxx_fit < 0.0) Sxx_fit = 0.0;
+            if (Syy_fit < 0.0) Syy_fit = 0.0;
 
             double max_disp_x = 0.75 * (double)corr_w;
             double max_disp_y = 0.75 * (double)corr_h;

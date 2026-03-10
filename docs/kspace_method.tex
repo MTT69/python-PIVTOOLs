@@ -381,16 +381,9 @@ The joint model solves for all four parameters simultaneously from the full spec
 \begin{enumerate}[leftmargin=2em]
     \item \textbf{Normalise} $\Fref$ by its DC value $\Fref(\mathbf{0})$ for numerical stability; all parameters are fitted relative to DC.
 
-    \item \textbf{Weighting:} A Gaussian taper
-    %
-    \begin{equation}
-        w(\kv) = \max\!\Bigl(\exp\!\bigl(-\lvert\kv\rvert^2 / 0.15^2\bigr),\; 0.1\Bigr)
-        \label{eq:stage1_weight}
-    \end{equation}
-    %
-    concentrates fitting effort where signal-to-noise is highest.
-    The scale $0.15$~cycles/pixel reflects the signal-to-noise transition for typical $\sigma \approx 2$~px particles, where the Gaussian signal has decayed to approximately $e^{-2}$ of its DC value.
-    The floor of $0.1$ ensures that the solver retains sensitivity at high wavenumbers where only the $N_0 \cdot \Pnoise$ term remains --- this is what constrains $N_0$.
+    \item \textbf{Weighting:} Flat (uniform) weights $w(\kv) = 1$.
+    The joint model~\eqref{eq:stage1_model} explicitly separates signal ($A \cdot G$) from noise ($N_0$), so all wavenumbers are informative: low-$k$ points constrain $A$ and $\sigma$, while high-$k$ points where only the $N_0 \cdot \Pnoise$ term remains constrain $N_0$.
+    No tapering is necessary.
 
     \item \textbf{Solver:} Bounded nonlinear least-squares (trust-region reflective) with bounds $A \in [0.01, 10]$, $\sigma_x, \sigma_y \in [0.1, 20]$~px, and $N_0 \in [0, 1]$ (all relative to DC).
 \end{enumerate}
@@ -423,44 +416,29 @@ The signal-to-noise ratio is estimated directly from the Stage~1 fit:
 \end{equation}
 %
 Since $N_0$ is a parametric estimate of the noise amplitude from the joint model, this ratio measures how far the noise-corrected DC value stands above the noise floor.
-Windows with $\mathrm{SNR}$ below a threshold are rejected as having insufficient signal.
+The SNR is recorded as a diagnostic but is not used to reject windows --- windows with genuinely insufficient signal will produce small $k_\mathrm{max}$ from the profile threshold and fail at Stage~2 convergence instead.
 
 \subsection{Adaptive Fitting Region}
 
-Two complementary estimates of $k_\mathrm{max}$ are computed per axis.
-
-\textbf{Profile threshold.}
-The noise-corrected reference spectrum $\Fclean$ is sampled along each wavenumber axis (at $k_y = 0$ and $k_x = 0$).
-The profile-based $k_\mathrm{max}$ is the wavenumber at which $\lvert\Fclean\rvert$ first drops below $1\%$ of its DC value:
+The fitting region is determined from the noise-corrected reference spectrum $\Fclean$.
+The per-axis $k_\mathrm{max}$ is the wavenumber at which $\lvert\Fclean\rvert$ first drops below $1\%$ of its DC value:
 %
 \begin{equation}
-    k_\mathrm{max}^\mathrm{prof} = \max\bigl\{k > 0 \;\big\vert\; \lvert\Fclean(k)\rvert \geq 0.01 \cdot \lvert\Fclean(\mathbf{0})\rvert\bigr\}.
+    k_\mathrm{max}^\mathrm{prof} = \max\bigl\{k > 0 \;\big\vert\; \lvert\Fclean(k)\rvert \geq 0.01 \cdot \lvert\Fclean(\mathbf{0})\rvert\bigr\},
     \label{eq:kmax_prof}
 \end{equation}
 %
+sampled along each wavenumber axis (at $k_y = 0$ and $k_x = 0$ respectively).
 This is a data-driven bound that adapts to the particle image size and seeding quality of each window independently of the velocity variance.
 
-\textbf{Variance bound.}
-A model-based bound follows from setting $\lvert T(k_\mathrm{max})\rvert = 1/\mathrm{SNR}$ in equation~\eqref{eq:tmodel}:
+The profile-based bound is capped at a maximum wavenumber to avoid aliasing and corner artifacts:
 %
 \begin{equation}
-    k_\mathrm{max}^\mathrm{var} = \sqrt{\frac{\ln(\mathrm{SNR})}{2\pi^2\, \hat\Sigma}},
-    \label{eq:kmax_var}
-\end{equation}
-%
-where $\hat\Sigma$ is the initial variance estimate from the 1D regression~\eqref{eq:1d_regression}.
-Beyond this wavenumber the transfer function has decayed into the noise.
-
-\textbf{Combined bound.}
-The per-axis $k_\mathrm{max}$ is the most conservative of the two estimates, capped below Nyquist:
-%
-\begin{equation}
-    k_{\mathrm{max},x} = \min\!\bigl(k_{\mathrm{max},x}^\mathrm{prof},\;
-    k_{\mathrm{max},x}^\mathrm{var},\; k_\mathrm{cap}\bigr),
+    k_{\mathrm{max},x} = \min\!\bigl(k_{\mathrm{max},x}^\mathrm{prof},\; k_\mathrm{cap}\bigr),
     \label{eq:kmax_combined}
 \end{equation}
 %
-where $k_\mathrm{cap} = 0.45$~cycles/pixel when soft weighting is used and $k_\mathrm{cap} = 0.30$ otherwise.
+where $k_\mathrm{cap} = 0.35$~cycles/pixel by default.
 The fitting region is the ellipse
 %
 \begin{equation}
@@ -584,7 +562,9 @@ The weighted residual for the nonlinear least-squares solver is
 \end{equation}
 %
 with $T_\mathrm{model}$ as in equation~\eqref{eq:tmodel}.
-The solver minimises $\sum_\kv \lvert r(\kv)\rvert^2$ over the five parameters $(\mu_x, \mu_y, \Sigma_{xx}, \Sigma_{yy}, \Sigma_{xy})$ using bounded trust-region reflective least-squares on the stacked real and imaginary parts.
+The solver minimises $\sum_\kv \lvert r(\kv)\rvert^2$ over the five parameters $(\mu_x, \mu_y, \Sigma_{xx}, \Sigma_{yy}, \Sigma_{xy})$ using trust-region least-squares with geodesic acceleration on the stacked real and imaginary parts.
+The normal variances $\Sigma_{xx}$ and $\Sigma_{yy}$ are clamped to zero inside the residual and Jacobian evaluations, ensuring positivity by construction: the optimizer sees a flat cost surface for $\Sigma < 0$, naturally converging to $\Sigma = 0$ when the true variance is near zero (e.g., wall-normal fluctuations near a solid boundary).
+The shear stress $\Sigma_{xy}$ is unconstrained (covariance may be negative).
 
 % ============================================================================
 \section{Summary}
@@ -604,7 +584,7 @@ The complete algorithm for each interrogation window is:
 
     \item Subtract the coloured noise: $\Fclean = \max(\Fref - N_0 \cdot \Pnoise,\, \epsilon)$.
 
-    \item Determine the per-axis fitting boundary $k_{\mathrm{max},x}$, $k_{\mathrm{max},y}$ from the profile decay of $\Fclean$, the variance-based bound~\eqref{eq:kmax_var}, and the Nyquist cap~\eqref{eq:kmax_combined}.
+    \item Determine the per-axis fitting boundary $k_{\mathrm{max},x}$, $k_{\mathrm{max},y}$ from the profile decay of $\Fclean$~\eqref{eq:kmax_prof}, capped at $k_\mathrm{cap} = 0.35$~\eqref{eq:kmax_combined}.
 
     \item Form and normalise the transfer function: $T_\mathrm{norm}(\kv) = \bigl(F_{AB}(\kv)\, /\, \Fclean(\kv)\bigr)\, /\, T(\mathbf{0})$.
 

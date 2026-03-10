@@ -132,10 +132,10 @@ def _fit_fref_joint(F_ref, K_X, K_Y, P_noise):
     bounds_lo = [0.01, 0.1, 0.1, 0.0]
     bounds_hi = [10.0, 20.0, 20.0, 1.0]
 
-    K_R = np.sqrt(K_X_flat ** 2 + K_Y_flat ** 2)
-    weights = np.exp(-K_R ** 2 / (0.15 ** 2))
-    weights = weights / (np.max(weights) + 1e-12)
-    weights = np.maximum(weights, 0.1)
+    # Flat (uniform) weighting — the joint model (A*Gauss + N0)*P_noise
+    # explicitly separates signal from noise, so all k-space points are
+    # informative: low-k constrains A/sigma, high-k constrains N0.
+    weights = np.ones_like(K_X_flat)
 
     def residual(params):
         A, sx, sy, N0 = params
@@ -232,9 +232,7 @@ def _fit_single_window_kspace(
             'k_max_y': k_max_y_val or 0.0,
         }}
 
-    if snr < snr_threshold:
-        return {'params': default_params, 'status': 2,
-                'initial_guess': default_params.copy(), **_make_diag()}
+    # SNR is diagnostic only — no gate (profile-based k_max handles weak signal)
 
     F_ref_dc = np.abs(F_ref[center_idx_y, center_idx_x])
     threshold_frac = 0.01
@@ -245,8 +243,8 @@ def _fit_single_window_kspace(
     F_ref_profile_y = np.abs(F_ref[:, center_idx_x])
     k_max_y = _compute_kmax_from_profile(k_y, F_ref_profile_y, F_ref_dc, threshold_frac)
 
-    k_max_init_x = min(k_max_x, 0.45)
-    k_max_init_y = min(k_max_y, 0.45)
+    k_max_init_x = min(k_max_x, 0.35)
+    k_max_init_y = min(k_max_y, 0.35)
 
     mu_x_init, mu_y_init = _estimate_displacement_from_peak(
         R_AB_2d, center_idx_x, center_idx_y
@@ -261,13 +259,12 @@ def _fit_single_window_kspace(
 
     if k_max_cap is not None:
         k_max_limit = k_max_cap
-    elif use_soft_weighting:
-        k_max_limit = 0.45
     else:
-        k_max_limit = 0.30
+        k_max_limit = 0.35
 
-    k_max_x = min(_compute_kmax(Sigma_xx_init, snr, max_k=k_max_limit), k_max_x, k_max_limit)
-    k_max_y = min(_compute_kmax(Sigma_yy_init, snr, max_k=k_max_limit), k_max_y, k_max_limit)
+    # Use profile-based k_max directly (capped by k_max_limit)
+    k_max_x = min(k_max_x, k_max_limit)
+    k_max_y = min(k_max_y, k_max_limit)
 
     initial_guess = np.array([
         mu_x_init, mu_y_init,
@@ -296,13 +293,11 @@ def _fit_single_window_kspace(
 
         mu_x, mu_y, Sigma_xx, Sigma_yy, Sigma_xy, amplitude = result
 
-        if Sigma_xx < 0 or Sigma_yy < 0:
-            return {
-                'params': default_params, 'status': 5,
-                'initial_guess': _build_params_from_fit(
-                    initial_guess, amp_A, amp_B, amp_AB, center_x, center_y),
-                **_make_diag(k_max_x, k_max_y),
-            }
+        # Clamp variance to zero — physically plausible near walls
+        if Sigma_xx < 0:
+            Sigma_xx = 0.0
+        if Sigma_yy < 0:
+            Sigma_yy = 0.0
 
         max_disp_x = 0.75 * corr_w
         max_disp_y = 0.75 * corr_h

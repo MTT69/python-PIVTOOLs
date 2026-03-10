@@ -2489,17 +2489,6 @@ video:
         return method
 
     @property
-    def ensemble_kspace_snr_threshold(self) -> float:
-        """Return SNR threshold for k-space adaptive bounds.
-
-        Wavenumbers with SNR below this threshold are excluded from fitting.
-        Higher values are more conservative (exclude more noise).
-
-        Default: 3.0
-        """
-        return self.data.get("ensemble_piv", {}).get("kspace_snr_threshold", 3.0)
-
-    @property
     def ensemble_kspace_soft_weighting(self) -> bool:
         """Return whether to use anisotropic soft decay weighting in k-space fitting.
 

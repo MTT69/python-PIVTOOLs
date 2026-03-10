@@ -38,7 +38,6 @@ def _make_config(
     sum_fitting_window_enabled=False,
     sum_fitting_window=None,
     fit_method="gaussian",
-    kspace_snr_threshold=3.0,
     resume_from_pass=0,
     num_passes=None,
     filters=None,
@@ -102,11 +101,6 @@ def _make_config(
         type(cfg).ensemble_fit_method = PropertyMock(side_effect=fit_method_raise)
     else:
         type(cfg).ensemble_fit_method = PropertyMock(return_value=fit_method)
-
-    # kspace_snr_threshold
-    type(cfg).ensemble_kspace_snr_threshold = PropertyMock(
-        return_value=kspace_snr_threshold
-    )
 
     # resume / num_passes
     type(cfg).ensemble_resume_from_pass = PropertyMock(
@@ -215,16 +209,9 @@ class TestValidateEnsembleConfig:
         assert not valid
         assert any("fit method" in e.lower() for e in errors)
 
-    def test_kspace_negative_snr_threshold(self):
-        """K-space with SNR threshold <= 0 should produce error."""
-        cfg = _make_config(fit_method="kspace", kspace_snr_threshold=-1.0)
-        valid, errors, warnings = validate_ensemble_config(cfg)
-        assert not valid
-        assert any("snr_threshold" in e.lower() for e in errors)
-
     def test_kspace_valid_produces_beta_warning(self):
         """Valid k-space config should produce BETA warning but still pass."""
-        cfg = _make_config(fit_method="kspace", kspace_snr_threshold=3.0)
+        cfg = _make_config(fit_method="kspace")
         valid, errors, warnings = validate_ensemble_config(cfg)
         assert valid
         assert any("BETA" in w for w in warnings)

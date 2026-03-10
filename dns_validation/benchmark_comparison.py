@@ -17,6 +17,49 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 
 
+def log_smooth(y_plus, values, sigma_decades=0.06):
+    """Gaussian-weighted smooth in log(y+) space, evaluated at original points.
+
+    Each output point is a Gaussian-weighted average of neighbours, where
+    distance is measured in decades of y+. This gives visually uniform
+    smoothing on a semilog plot.
+
+    Parameters
+    ----------
+    y_plus : array
+        y+ coordinates (positive)
+    values : array
+        Values to smooth
+    sigma_decades : float
+        Smoothing width in decades of y+ (0.06 ≈ ±15% local y+)
+
+    Returns
+    -------
+    y_out, smoothed : arrays
+        Sorted y+ and smoothed values (at original data points)
+    """
+    valid = (y_plus > 0) & ~np.isnan(values)
+    yp = y_plus[valid]
+    vals = values[valid]
+    if len(yp) < 5:
+        return yp, vals
+
+    # Sort by y+
+    order = np.argsort(yp)
+    yp = yp[order]
+    vals = vals[order]
+    log_yp = np.log10(yp)
+
+    # Direct Gaussian weighting at each point
+    smoothed = np.empty_like(vals)
+    for i in range(len(vals)):
+        d = (log_yp - log_yp[i]) / sigma_decades
+        w = np.exp(-0.5 * d * d)
+        smoothed[i] = np.sum(w * vals) / np.sum(w)
+
+    return yp, smoothed
+
+
 def load_wall_units(wall_units_path):
     """Load wall units from .mat file (scipy v5 or h5py v7.3).
 
@@ -597,7 +640,76 @@ def plot_comparison(piv_plus, gt_plus, wall_units, errors, output_dir, window_la
     fig.savefig(output_dir / 'U_plus_linear.png', dpi=150)
     plt.close(fig)
 
-    # Figure 5: Trace invariant (u'u' + v'v') - rotation diagnostic
+    # Figure 5: Smoothed line plots (log-space moving average)
+    # ---- U+ smoothed ----
+    fig, ax = plt.subplots(figsize=(10, 7))
+
+    ax.semilogx(gt_plus['y_plus'], gt_plus['U_plus'], 'k-',
+                linewidth=2, label='DNS (1px)', zorder=3)
+
+    yp_s, Up_s = log_smooth(piv_plus['y_plus'], piv_plus['U_plus'])
+    ax.semilogx(piv_plus['y_plus'], piv_plus['U_plus'], 'ro',
+                markersize=2, alpha=0.25, zorder=1)
+    ax.semilogx(yp_s, Up_s, 'r-', linewidth=2,
+                label=f'PIV ({window_label}) smoothed', zorder=2)
+
+    y_log = np.logspace(1, np.log10(Re_tau), 100)
+    kappa, B = 0.41, 5.2
+    ax.semilogx(y_log, (1/kappa)*np.log(y_log)+B, 'b--', linewidth=1, alpha=0.7,
+                label=r'Log law')
+    y_visc = np.linspace(0.1, 10, 50)
+    ax.semilogx(y_visc, y_visc, 'g--', linewidth=1, alpha=0.7, label=r'$U^+=y^+$')
+
+    ax.set_xlabel(r'$y^+$', fontsize=14)
+    ax.set_ylabel(r'$U^+$', fontsize=14)
+    ax.set_title(f'Mean Velocity Profile - Smoothed ({window_label})', fontsize=16)
+    ax.legend(fontsize=11)
+    ax.set_xlim(1, Re_tau)
+    ax.set_ylim(0, 25)
+    ax.grid(True, alpha=0.3)
+    if 'U_plus' in errors:
+        ax.text(0.02, 0.98, f"R² = {errors['U_plus']['r2']:.4f}\n"
+                           f"RMS = {errors['U_plus']['rms_rel']:.1f}%",
+                transform=ax.transAxes, fontsize=11, verticalalignment='top',
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    fig.tight_layout()
+    fig.savefig(output_dir / 'U_plus_profile_smooth.png', dpi=150)
+    plt.close(fig)
+
+    # ---- Reynolds stresses smoothed ----
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+
+    stress_configs = [
+        ('uu_plus', r"$\overline{u'u'}^+$", 'Streamwise Normal Stress', 1),
+        ('vv_plus', r"$\overline{v'v'}^+$", 'Wall-Normal Normal Stress', 1),
+        ('uv_plus', r"$-\overline{u'v'}^+$", 'Reynolds Shear Stress', -1),
+    ]
+    for ax, (var, ylabel, title, sign) in zip(axes, stress_configs):
+        gt_vals = sign * gt_plus[var]
+        piv_vals = sign * piv_plus[var]
+
+        ax.semilogx(gt_plus['y_plus'], gt_vals, 'k-', linewidth=2, label='DNS')
+        ax.semilogx(piv_plus['y_plus'], piv_vals, 'ro', markersize=2, alpha=0.25)
+
+        yp_s, v_s = log_smooth(piv_plus['y_plus'], piv_vals)
+        ax.semilogx(yp_s, v_s, 'r-', linewidth=2, label='PIV smoothed')
+
+        ax.set_xlabel(r'$y^+$', fontsize=12)
+        ax.set_ylabel(ylabel, fontsize=12)
+        ax.set_title(title, fontsize=14)
+        ax.legend()
+        ax.set_xlim(1, Re_tau)
+        ax.grid(True, alpha=0.3)
+        if var in errors:
+            ax.text(0.98, 0.98, f"R² = {errors[var]['r2']:.4f}",
+                    transform=ax.transAxes, fontsize=10, ha='right', va='top',
+                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+
+    fig.tight_layout()
+    fig.savefig(output_dir / 'reynolds_stresses_smooth.png', dpi=150)
+    plt.close(fig)
+
+    # Figure 6: Trace invariant (u'u' + v'v') - rotation diagnostic
     fig, axes = plt.subplots(1, 3, figsize=(16, 5))
 
     # Compute trace
@@ -667,13 +779,18 @@ def plot_combined_stresses(piv_plus, gt_plus, wall_units, errors, output_dir, wi
     ax.plot(gt_plus['y_plus'], -gt_plus['uv_plus'], 'k:', linewidth=2,
             label=r"Ref $-\overline{u'v'}^+$")
 
-    # PIV markers
-    ax.plot(piv_plus['y_plus'], piv_plus['uu_plus'], 'ro', markersize=3, alpha=0.6,
-            label=r"PIV $\overline{u'u'}^+$")
-    ax.plot(piv_plus['y_plus'], piv_plus['vv_plus'], 'gs', markersize=3, alpha=0.6,
-            label=r"PIV $\overline{v'v'}^+$")
-    ax.plot(piv_plus['y_plus'], -piv_plus['uv_plus'], 'mD', markersize=3, alpha=0.6,
-            label=r"PIV $-\overline{u'v'}^+$")
+    # PIV markers (faded) + smoothed lines
+    smooth_configs = [
+        ('uu_plus', 1, 'r', 'o', r"PIV $\overline{u'u'}^+$"),
+        ('vv_plus', 1, 'g', 's', r"PIV $\overline{v'v'}^+$"),
+        ('uv_plus', -1, 'm', 'D', r"PIV $-\overline{u'v'}^+$"),
+    ]
+    for var, sign, col, mkr, label in smooth_configs:
+        piv_vals = sign * piv_plus[var]
+        ax.plot(piv_plus['y_plus'], piv_vals, color=col, marker=mkr,
+                markersize=3, alpha=0.3, linestyle='none')
+        yp_s, v_s = log_smooth(piv_plus['y_plus'], piv_vals)
+        ax.plot(yp_s, v_s, color=col, linewidth=2, label=label, zorder=5)
 
     ax.set_xlabel(r'$y^+$', fontsize=14)
     ax.set_ylabel(r'Stress$^+$', fontsize=14)
@@ -1027,7 +1144,83 @@ def plot_combined_comparison(all_results, gt_plus, wall_units, output_dir):
     plt.close(fig)
 
     # ==========================================================================
-    # Figure 5: Trace invariant (u'u' + v'v') - ALL WINDOWS
+    # Figure 5: Smoothed U+ combined - ALL WINDOWS
+    # ==========================================================================
+    fig, ax = plt.subplots(figsize=(12, 8))
+
+    ax.semilogx(gt_plus['y_plus'], gt_plus['U_plus'], 'k-',
+                linewidth=2.5, label='DNS (1px)', zorder=10)
+
+    for i, res in enumerate(all_results):
+        piv_plus = res['piv_plus']
+        label = res['window_label']
+        c = colors[i % len(colors)]
+        ax.semilogx(piv_plus['y_plus'], piv_plus['U_plus'],
+                    color=c, marker=markers[i % len(markers)],
+                    markersize=2, alpha=0.2, linestyle='none', zorder=2)
+        yp_s, v_s = log_smooth(piv_plus['y_plus'], piv_plus['U_plus'])
+        ax.semilogx(yp_s, v_s, color=c, linewidth=2,
+                    label=f'PIV ({label})', zorder=5-i*0.1)
+
+    y_log = np.logspace(1, np.log10(Re_tau), 100)
+    kappa, B = 0.41, 5.2
+    ax.semilogx(y_log, (1/kappa)*np.log(y_log)+B, 'b--', linewidth=1.5, alpha=0.5,
+                label='Log law')
+    y_visc = np.linspace(0.1, 10, 50)
+    ax.semilogx(y_visc, y_visc, 'g--', linewidth=1.5, alpha=0.5, label=r'$U^+=y^+$')
+
+    ax.set_xlabel(r'$y^+$', fontsize=14)
+    ax.set_ylabel(r'$U^+$', fontsize=14)
+    ax.set_title(f'Mean Velocity Profile - Smoothed (Re$_\\tau$ = {Re_tau:.0f})', fontsize=16)
+    ax.legend(fontsize=10, loc='upper left')
+    ax.set_xlim(1, Re_tau)
+    ax.set_ylim(0, 25)
+    ax.grid(True, alpha=0.3)
+
+    fig.tight_layout()
+    fig.savefig(output_dir / 'U_plus_profile_combined_smooth.png', dpi=150)
+    plt.close(fig)
+
+    # ==========================================================================
+    # Figure 6: Smoothed Reynolds stresses combined - ALL WINDOWS
+    # ==========================================================================
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+
+    stress_configs = [
+        ('uu_plus', r"$\overline{u'u'}^+$", 'Streamwise Normal Stress', 1),
+        ('vv_plus', r"$\overline{v'v'}^+$", 'Wall-Normal Normal Stress', 1),
+        ('uv_plus', r"$-\overline{u'v'}^+$", 'Reynolds Shear Stress', -1),
+    ]
+    for ax, (var, ylabel, title, sign) in zip(axes, stress_configs):
+        gt_vals = sign * gt_plus[var]
+        ax.plot(gt_plus['y_plus'], gt_vals, 'k-', linewidth=2.5, label='DNS', zorder=10)
+
+        for i, res in enumerate(all_results):
+            piv_plus = res['piv_plus']
+            label = res['window_label']
+            c = colors[i % len(colors)]
+            piv_vals = sign * piv_plus[var]
+            ax.plot(piv_plus['y_plus'], piv_vals,
+                    color=c, marker=markers[i % len(markers)],
+                    markersize=2, alpha=0.15, linestyle='none', zorder=2)
+            yp_s, v_s = log_smooth(piv_plus['y_plus'], piv_vals)
+            ax.plot(yp_s, v_s, color=c, linewidth=2,
+                    label=f'PIV ({label})', zorder=5-i*0.1)
+
+        ax.set_xlabel(r'$y^+$', fontsize=12)
+        ax.set_ylabel(ylabel, fontsize=12)
+        ax.set_title(title, fontsize=14)
+        ax.legend(fontsize=9)
+        ax.set_xscale('log')
+        ax.set_xlim(1, Re_tau)
+        ax.grid(True, alpha=0.3)
+
+    fig.tight_layout()
+    fig.savefig(output_dir / 'reynolds_stresses_combined_smooth.png', dpi=150)
+    plt.close(fig)
+
+    # ==========================================================================
+    # Figure 7: Trace invariant (u'u' + v'v') - ALL WINDOWS
     # ==========================================================================
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 

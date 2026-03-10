@@ -104,7 +104,6 @@ def _load_kspace_lib():
         np.ctypeslib.ndpointer(np.int32, flags='C_CONTIGUOUS'),    # mask
         ctypes.c_void_p,     # pred_disp (nullable)
         ctypes.c_int,        # interp_kernel
-        ctypes.c_double,     # snr_threshold
         ctypes.c_int,        # use_soft_weighting
         ctypes.c_double,     # k_max_cap
         np.ctypeslib.ndpointer(np.float64, flags='C_CONTIGUOUS'),  # out_params
@@ -126,7 +125,6 @@ def fit_windows_kspace(
     corr_size: tuple,
     config,
     pass_idx: int,
-    snr_threshold: float = 3.0,
     use_soft_weighting: bool = True,
     debug: bool = False,
     predictor_displacements: Optional[np.ndarray] = None,
@@ -156,8 +154,6 @@ def fit_windows_kspace(
         Configuration object
     pass_idx : int
         Current pass index
-    snr_threshold : float
-        Minimum SNR for including wavenumber in fit (default 3.0)
     use_soft_weighting : bool
         If True (default), use combined SNR × anisotropic soft decay weighting.
         If False, use uniform weighting within k_max bounds.
@@ -167,8 +163,8 @@ def fit_windows_kspace(
     interp_kernel : str
         Interpolation kernel used for warping: 'bicubic' or 'lanczos3'.
     k_max_cap : float, optional
-        Hard cap on k_max in cycles/pixel (0.1 to 0.5). If None, uses 0.45
-        (soft weighting) or 0.30 (hard weighting). Increase for small particles.
+        Hard cap on k_max in cycles/pixel (0.1 to 0.5). If None, uses 0.35
+        (avoids corner region used for noise estimation).
 
     Returns
     -------
@@ -234,14 +230,14 @@ def fit_windows_kspace(
 
     logger.info(
         f"Pass {pass_idx + 1}: K-space fitting {np.sum(~mask_flat)}/{num_windows} windows "
-        f"(soft_weighting={use_soft_weighting}, SNR threshold={snr_threshold})"
+        f"(soft_weighting={use_soft_weighting}, k_max_cap={cap_val:.2f})"
     )
 
     success_count = lib.fit_kspace_batch(
         num_windows, corr_h, corr_w,
         R_AA_c, R_BB_c, R_AB_c, mask_c,
         pred_ptr, kernel_code,
-        snr_threshold, int(use_soft_weighting),
+        int(use_soft_weighting),
         cap_val,
         gauss_flat, status_flat, initial_guess_flat,
         diag_ptr,
@@ -296,7 +292,6 @@ def plot_kspace_diagnostic(
     R_BB_2d: np.ndarray,
     R_AB_2d: np.ndarray,
     true_params: Optional[dict] = None,
-    snr_threshold: float = 3.0,
     save_path: Optional[str] = None,
     show: bool = True,
 ) -> Optional[dict]:
@@ -316,8 +311,6 @@ def plot_kspace_diagnostic(
         Cross-correlation AB plane, shape (h, w)
     true_params : dict, optional
         Ground truth parameters {'mu_x', 'mu_y', 'Sigma_xx', 'Sigma_yy', 'Sigma_xy'}
-    snr_threshold : float
-        SNR threshold for k-bounds computation
     save_path : str, optional
         Path to save figure
     show : bool
@@ -345,7 +338,6 @@ def plot_kspace_diagnostic(
     gauss_flat, status_flat, initial_guess_flat = fit_windows_kspace(
         R_AA_flat, R_BB_flat, R_AB_flat,
         mask, (corr_h, corr_w), None, 0,
-        snr_threshold=snr_threshold,
     )
 
     center_x = corr_w / 2.0 + 1

@@ -472,6 +472,11 @@ def run_ensemble_piv(
         predictor_field = extract_predictor_field(last_pass)
 
         logger.info(f"  Loaded {n_loaded} passes from {existing_result_path}")
+
+        # Backup pre-resume result before any intermediate saves overwrite it
+        backup_path = output_path / f"ensemble_result_before_pass{resume_from_pass}.mat.bak"
+        shutil.copy2(existing_result_path, backup_path)
+        logger.info(f"  Backed up previous result to {backup_path}")
         logger.info(f"  Predictor extracted from pass {start_pass_idx} (shape: {predictor_field.shape})")
 
     # Scatter config once to avoid repeated serialization
@@ -483,6 +488,13 @@ def run_ensemble_piv(
         scattered_pixel_mask = client.scatter(pixel_mask, broadcast=True)
 
     images_are_persisted = (num_chunks == 1) or config.ensemble_persist_images
+
+    # Pre-compute correlator metadata for intermediate saves and coordinates
+    temp_correlator = make_correlator_backend(config, ensemble=True)
+    correlator_cache = temp_correlator.get_cache_data()
+    image_height = temp_correlator.H
+    del temp_correlator
+    gradient_correction = config.ensemble_gradient_correction
 
     logger.info(f"Processing passes {start_pass_idx + 1} to {num_passes} with {num_chunks} chunks each...")
 
@@ -533,6 +545,21 @@ def run_ensemble_piv(
         # NOTE: finalize_pass() already appends to passes_results internally
         finalize_elapsed = time.time() - finalize_start
 
+        # Save intermediate result after each pass (enables debugging mid-run)
+        intermediate_result = PIVEnsembleResult()
+        for pr in accumulator.passes_results:
+            intermediate_result.add_pass(pr)
+        save_ensemble_result_distributed(
+            intermediate_result,
+            output_path,
+            runs_to_save=config.ensemble_runs_0based,
+            filename="ensemble_result.mat",
+            gradient_correction=gradient_correction,
+            image_height=image_height,
+        )
+        logger.info(f"  Saved intermediate result (pass {pass_idx + 1}/{num_passes})")
+        del intermediate_result
+
         # Extract predictor for next pass
         if pass_idx < num_passes - 1:
             predictor_field = extract_predictor_field(pass_result)
@@ -558,25 +585,10 @@ def run_ensemble_piv(
     for pass_result in accumulator.passes_results:
         ensemble_result.add_pass(pass_result)
 
-    # Backup existing result if resuming (safety measure)
-    if resume_from_pass > 0:
-        existing_path = output_path / "ensemble_result.mat"
-        if existing_path.exists():
-            backup_path = output_path / f"ensemble_result_before_pass{resume_from_pass}.mat.bak"
-            shutil.copy2(existing_path, backup_path)
-            logger.info(f"Backed up previous result to {backup_path}")
-
-    # Get correlator cache for coordinates and image height
-    temp_correlator = make_correlator_backend(config, ensemble=True)
-    correlator_cache = temp_correlator.get_cache_data()
-    image_height = temp_correlator.H
-
-    # Check if gradient correction is enabled (only for uncalibrated data)
-    gradient_correction = config.ensemble_gradient_correction
     if gradient_correction:
         logger.info("Gradient correction enabled for Reynolds stresses")
 
-    logger.info("Saving ensemble result...")
+    logger.info("Saving final ensemble result...")
     save_ensemble_result_distributed(
         ensemble_result,
         output_path,

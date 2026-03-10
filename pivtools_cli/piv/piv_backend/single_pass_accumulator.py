@@ -681,7 +681,6 @@ class SinglePassAccumulator:
                         corr_size,
                         self.config,
                         pass_idx,
-                        self.config.ensemble_kspace_snr_threshold,
                         self.config.ensemble_kspace_soft_weighting,  # True for anisotropic soft decay
                         self.config.debug,  # Enable k-space diagnostics when debug=True
                         pred_disp_futures[i],  # Per-window predictor displacements

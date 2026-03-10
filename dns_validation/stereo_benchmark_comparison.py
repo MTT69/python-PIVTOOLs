@@ -17,6 +17,47 @@ from pathlib import Path
 import argparse
 
 
+def log_smooth(y_plus, values, sigma_decades=0.06):
+    """Gaussian-weighted smooth in log(y+) space, evaluated at original points.
+
+    Each output point is a Gaussian-weighted average of neighbours, where
+    distance is measured in decades of y+. This gives visually uniform
+    smoothing on a semilog plot.
+
+    Parameters
+    ----------
+    y_plus : array
+        y+ coordinates (positive)
+    values : array
+        Values to smooth
+    sigma_decades : float
+        Smoothing width in decades of y+ (0.06 ~ +/-15% local y+)
+
+    Returns
+    -------
+    y_out, smoothed : arrays
+        Sorted y+ and smoothed values (at original data points)
+    """
+    valid = (y_plus > 0) & ~np.isnan(values)
+    yp = y_plus[valid]
+    vals = values[valid]
+    if len(yp) < 5:
+        return yp, vals
+
+    order = np.argsort(yp)
+    yp = yp[order]
+    vals = vals[order]
+    log_yp = np.log10(yp)
+
+    smoothed = np.empty_like(vals)
+    for i in range(len(vals)):
+        d = (log_yp - log_yp[i]) / sigma_decades
+        w = np.exp(-0.5 * d * d)
+        smoothed[i] = np.sum(w * vals) / np.sum(w)
+
+    return yp, smoothed
+
+
 def load_wall_units(wall_units_path):
     """Load wall units from .mat file (supports v5 struct, v7.3/HDF5, and direct_stats)."""
     wall_units_path = str(wall_units_path)
@@ -556,6 +597,41 @@ def plot_velocity_comparison(piv_plus, gt_plus, wall_units, errors, output_dir):
     fig.savefig(output_dir / 'velocities_combined.png', dpi=150)
     plt.close(fig)
 
+    # ==========================================================================
+    # Figure 5: Smoothed velocities combined
+    # ==========================================================================
+    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
+
+    vel_configs = [
+        ('U_plus', r'$U^+$', 'Streamwise Velocity', 'r'),
+        ('V_plus', r'$V^+$', 'Wall-Normal Velocity', 'r'),
+        ('W_plus', r'$W^+$', 'Spanwise Velocity', 'b'),
+    ]
+    for ax, (var, ylabel, title, col) in zip(axes, vel_configs):
+        gt_key = var
+        ax.plot(gt_plus['y_plus'], gt_plus[gt_key], 'k-', linewidth=2, label='DNS')
+        ax.plot(piv_plus['y_plus'], piv_plus[var], color=col, marker='o',
+                markersize=2, alpha=0.2, linestyle='none')
+        yp_s, v_s = log_smooth(piv_plus['y_plus'], piv_plus[var])
+        ax.plot(yp_s, v_s, color=col, linewidth=2, label='Stereo smoothed')
+        if var != 'U_plus':
+            ax.axhline(y=0, color='gray', linestyle='--', linewidth=0.5)
+        ax.set_xlabel(r'$y^+$', fontsize=12)
+        ax.set_ylabel(ylabel, fontsize=12)
+        ax.set_title(title, fontsize=14)
+        ax.legend()
+        ax.set_xscale('log')
+        ax.set_xlim(1, Re_tau)
+        ax.grid(True, alpha=0.3)
+        if var in errors:
+            ax.text(0.98, 0.98, f"R² = {errors[var]['r2']:.4f}",
+                    transform=ax.transAxes, fontsize=10, ha='right', va='top',
+                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+
+    fig.tight_layout()
+    fig.savefig(output_dir / 'velocities_combined_smooth.png', dpi=150)
+    plt.close(fig)
+
 
 def plot_normal_stresses(piv_plus, gt_plus, wall_units, errors, output_dir):
     """Generate normal stress plots (uu+, vv+, ww+)."""
@@ -615,6 +691,37 @@ def plot_normal_stresses(piv_plus, gt_plus, wall_units, errors, output_dir):
     fig.suptitle('Normal Reynolds Stresses - Stereo PIV', fontsize=16, y=1.02)
     fig.tight_layout()
     fig.savefig(output_dir / 'normal_stresses.png', dpi=150)
+    plt.close(fig)
+
+    # Smoothed normal stresses
+    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
+
+    norm_configs = [
+        ('uu_plus', r"$\overline{u'u'}^+$", 'Streamwise', 'r'),
+        ('vv_plus', r"$\overline{v'v'}^+$", 'Wall-Normal', 'g'),
+        ('ww_plus', r"$\overline{w'w'}^+$", 'Spanwise', 'b'),
+    ]
+    for ax, (var, ylabel, title, col) in zip(axes, norm_configs):
+        ax.plot(gt_plus['y_plus'], gt_plus[var], 'k-', linewidth=2, label='DNS')
+        ax.plot(piv_plus['y_plus'], piv_plus[var], color=col, marker='o',
+                markersize=2, alpha=0.2, linestyle='none')
+        yp_s, v_s = log_smooth(piv_plus['y_plus'], piv_plus[var])
+        ax.plot(yp_s, v_s, color=col, linewidth=2, label='Stereo smoothed')
+        ax.set_xlabel(r'$y^+$', fontsize=12)
+        ax.set_ylabel(ylabel, fontsize=12)
+        ax.set_title(f'{title} Normal Stress', fontsize=14)
+        ax.legend()
+        ax.set_xscale('log')
+        ax.set_xlim(1, Re_tau)
+        ax.grid(True, alpha=0.3)
+        if var in errors:
+            ax.text(0.98, 0.98, f"R² = {errors[var]['r2']:.4f}",
+                    transform=ax.transAxes, fontsize=10, ha='right', va='top',
+                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+
+    fig.suptitle('Normal Reynolds Stresses - Smoothed', fontsize=16, y=1.02)
+    fig.tight_layout()
+    fig.savefig(output_dir / 'normal_stresses_smooth.png', dpi=150)
     plt.close(fig)
 
 
@@ -680,6 +787,39 @@ def plot_shear_stresses(piv_plus, gt_plus, wall_units, errors, output_dir):
     fig.savefig(output_dir / 'shear_stresses.png', dpi=150)
     plt.close(fig)
 
+    # Smoothed shear stresses
+    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
+
+    shear_configs = [
+        ('uv_plus', r"$-\overline{u'v'}^+$", 'u-v', 'r'),
+        ('uw_plus', r"$-\overline{u'w'}^+$", 'u-w', 'g'),
+        ('vw_plus', r"$-\overline{v'w'}^+$", 'v-w', 'b'),
+    ]
+    for ax, (var, ylabel, title, col) in zip(axes, shear_configs):
+        ax.plot(gt_plus['y_plus'], -gt_plus[var], 'k-', linewidth=2, label='DNS')
+        ax.plot(piv_plus['y_plus'], -piv_plus[var], color=col, marker='o',
+                markersize=2, alpha=0.2, linestyle='none')
+        yp_s, v_s = log_smooth(piv_plus['y_plus'], -piv_plus[var])
+        ax.plot(yp_s, v_s, color=col, linewidth=2, label='Stereo smoothed')
+        if var != 'uv_plus':
+            ax.axhline(y=0, color='gray', linestyle='--', linewidth=0.5)
+        ax.set_xlabel(r'$y^+$', fontsize=12)
+        ax.set_ylabel(ylabel, fontsize=12)
+        ax.set_title(f'Shear Stress ({title})', fontsize=14)
+        ax.legend()
+        ax.set_xscale('log')
+        ax.set_xlim(1, Re_tau)
+        ax.grid(True, alpha=0.3)
+        if var in errors:
+            ax.text(0.98, 0.98, f"R² = {errors[var]['r2']:.4f}",
+                    transform=ax.transAxes, fontsize=10, ha='right', va='top',
+                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+
+    fig.suptitle('Reynolds Shear Stresses - Smoothed', fontsize=16, y=1.02)
+    fig.tight_layout()
+    fig.savefig(output_dir / 'shear_stresses_smooth.png', dpi=150)
+    plt.close(fig)
+
 
 def plot_combined_stresses(piv_plus, gt_plus, wall_units, errors, output_dir):
     """Plot uu+, vv+, ww+, -uv+ all on a single axis."""
@@ -694,11 +834,19 @@ def plot_combined_stresses(piv_plus, gt_plus, wall_units, errors, output_dir):
     ax.plot(gt_plus['y_plus'], gt_plus['ww_plus'], 'k-.', linewidth=2, label=r"Ref $\overline{w'w'}^+$")
     ax.plot(gt_plus['y_plus'], -gt_plus['uv_plus'], 'k:', linewidth=2, label=r"Ref $-\overline{u'v'}^+$")
 
-    # Stereo PIV
-    ax.plot(piv_plus['y_plus'], piv_plus['uu_plus'], 'ro', markersize=3, alpha=0.6, label=r"Stereo $\overline{u'u'}^+$")
-    ax.plot(piv_plus['y_plus'], piv_plus['vv_plus'], 'gs', markersize=3, alpha=0.6, label=r"Stereo $\overline{v'v'}^+$")
-    ax.plot(piv_plus['y_plus'], piv_plus['ww_plus'], 'b^', markersize=3, alpha=0.6, label=r"Stereo $\overline{w'w'}^+$")
-    ax.plot(piv_plus['y_plus'], -piv_plus['uv_plus'], 'mD', markersize=3, alpha=0.6, label=r"Stereo $-\overline{u'v'}^+$")
+    # Stereo PIV — faded markers + smoothed lines
+    smooth_configs = [
+        ('uu_plus', 1, 'r', 'o', r"Stereo $\overline{u'u'}^+$"),
+        ('vv_plus', 1, 'g', 's', r"Stereo $\overline{v'v'}^+$"),
+        ('ww_plus', 1, 'b', '^', r"Stereo $\overline{w'w'}^+$"),
+        ('uv_plus', -1, 'm', 'D', r"Stereo $-\overline{u'v'}^+$"),
+    ]
+    for var, sign, col, mkr, label in smooth_configs:
+        piv_vals = sign * piv_plus[var]
+        ax.plot(piv_plus['y_plus'], piv_vals, color=col, marker=mkr,
+                markersize=3, alpha=0.3, linestyle='none')
+        yp_s, v_s = log_smooth(piv_plus['y_plus'], piv_vals)
+        ax.plot(yp_s, v_s, color=col, linewidth=2, label=label, zorder=5)
 
     ax.set_xlabel(r'$y^+$', fontsize=14)
     ax.set_ylabel(r'Stress$^+$', fontsize=14)
@@ -710,6 +858,39 @@ def plot_combined_stresses(piv_plus, gt_plus, wall_units, errors, output_dir):
 
     fig.tight_layout()
     fig.savefig(output_dir / 'combined_stresses.png', dpi=150)
+    plt.close(fig)
+
+    # Smoothed combined stresses
+    fig, ax = plt.subplots(figsize=(12, 8))
+
+    ax.plot(gt_plus['y_plus'], gt_plus['uu_plus'], 'k-', linewidth=2, label=r"Ref $\overline{u'u'}^+$")
+    ax.plot(gt_plus['y_plus'], gt_plus['vv_plus'], 'k--', linewidth=2, label=r"Ref $\overline{v'v'}^+$")
+    ax.plot(gt_plus['y_plus'], gt_plus['ww_plus'], 'k-.', linewidth=2, label=r"Ref $\overline{w'w'}^+$")
+    ax.plot(gt_plus['y_plus'], -gt_plus['uv_plus'], 'k:', linewidth=2, label=r"Ref $-\overline{u'v'}^+$")
+
+    smooth_configs = [
+        ('uu_plus', 1, 'r', r"$\overline{u'u'}^+$"),
+        ('vv_plus', 1, 'g', r"$\overline{v'v'}^+$"),
+        ('ww_plus', 1, 'b', r"$\overline{w'w'}^+$"),
+        ('uv_plus', -1, 'm', r"$-\overline{u'v'}^+$"),
+    ]
+    for var, sign, col, label in smooth_configs:
+        piv_vals = sign * piv_plus[var]
+        ax.plot(piv_plus['y_plus'], piv_vals, color=col, marker='o',
+                markersize=2, alpha=0.15, linestyle='none')
+        yp_s, v_s = log_smooth(piv_plus['y_plus'], piv_vals)
+        ax.plot(yp_s, v_s, color=col, linewidth=2, label=f"Stereo {label}")
+
+    ax.set_xlabel(r'$y^+$', fontsize=14)
+    ax.set_ylabel(r'Stress$^+$', fontsize=14)
+    ax.set_title(f'Reynolds Stresses - Smoothed (Re$_\\tau$ = {Re_tau:.0f})', fontsize=16)
+    ax.legend(fontsize=10, ncol=2, loc='upper right')
+    ax.set_xscale('log')
+    ax.set_xlim(1, Re_tau)
+    ax.grid(True, alpha=0.3)
+
+    fig.tight_layout()
+    fig.savefig(output_dir / 'combined_stresses_smooth.png', dpi=150)
     plt.close(fig)
 
 

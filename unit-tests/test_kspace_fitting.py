@@ -47,13 +47,12 @@ def _fft_correlations(R_AA, R_BB, R_AB):
     return F_AA, F_BB, F_AB
 
 
-def _fit_single_window(R_AA, R_BB, R_AB, corr_size, snr_threshold=3.0):
+def _fit_single_window(R_AA, R_BB, R_AB, corr_size):
     """Convenience: fit a single window via the C library."""
     R_AA_f, R_BB_f, R_AB_f, mask, cs = flatten_for_kspace(R_AA, R_BB, R_AB)
     config = make_mock_config()
     gauss, status, initial = fit_windows_kspace(
         R_AA_f, R_BB_f, R_AB_f, mask, cs, config, pass_idx=0,
-        snr_threshold=snr_threshold,
     )
     return gauss[0], status[0], initial[0]
 

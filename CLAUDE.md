@@ -730,7 +730,7 @@ Defines available image filter types and their parameter schemas for the UI.
 - **`ScaleFactorCalibration.tsx`** / `DotboardCalibration.tsx` / `ChArUcoCalibration.tsx` / `PolynomialCalibration.tsx` / `StereoCalibration.tsx` / `StereoCharucoCalibration.tsx` - Method-specific calibration UIs.
 - **`Masking.tsx`** - Mask configuration + polygon editor.
 - **`InstantaneousPIV.tsx`** - Instantaneous PIV settings: multi-pass table, peak finder, predictor & peak settings (predictor_smoothing, secondary_peak, num_peaks), outlier detection, infilling, performance.
-- **`EnsemblePIV.tsx`** - Ensemble PIV settings: multi-pass table, ensemble options (fit_method, background_subtraction, gradient_correction, kspace_snr_threshold), predictor & boundary settings (predictor_smoothing, interpolation, image_warp_interpolation, boundary conditions), correlation & fitting (fit_offset, mask_center_pixel, persist_images, sum_fitting_window), peak finder, outlier detection, infilling, performance.
+- **`EnsemblePIV.tsx`** - Ensemble PIV settings: multi-pass table, ensemble options (fit_method, background_subtraction, gradient_correction), predictor & boundary settings (predictor_smoothing, interpolation, image_warp_interpolation, boundary conditions), correlation & fitting (fit_offset, mask_center_pixel, persist_images, sum_fitting_window), peak finder, outlier detection, infilling, performance.
 - **`RunPIV.tsx`** - PIV execution controls with progress monitoring.
 - **`POD.tsx`** - Proper Orthogonal Decomposition settings.
 - **`ValidationAlert.tsx`** - Shows file validation results.
@@ -877,12 +877,14 @@ Extends ensemble PIV to stereo setups, computing 3D velocity + 6 Reynolds stress
 
 Alternative to Levenberg-Marquardt Gaussian fitting. Works in Fourier domain: `T(k) = F(R_AB) / sqrt(F(R_AA) * F(R_BB))` — particle shape cancels, reducing 16 → 5 parameters (mu_x, mu_y, Sigma_xx, Sigma_yy, Sigma_xy). **C-accelerated** via `libkspace` (FFTW3f float32 FFTs + GSL double-precision nonlinear least-squares + OpenMP), achieving ~50-100x speedup over the previous Python/SciPy implementation, bringing it to parity with the C Gaussian fitter. Improves Reynolds stress accuracy by 40-90%.
 
-- **Config:** `ensemble_piv.fit_method: kspace`, `kspace_snr_threshold: 3.0`
+- **Config:** `ensemble_piv.fit_method: kspace`
 - **Files:** `pivtools_cli/piv/piv_backend/kspace_fitting.py` (Python wrapper + ctypes), `pivtools_cli/lib/kspace_fitting.c` (C implementation), `pivtools_cli/lib/kspace_fitting.h` (API header)
-- **Status codes:** -1=masked, 0=success, 1=no converge, 2=low SNR, 3=displacement > 3/4 window, 5=negative variance (consistent with Gaussian codes)
+- **Status codes:** -1=masked, 0=success (negative variance clamped to zero), 1=no converge, 3=displacement > 3/4 window
 - **Predictor-aware noise subtraction (all passes):** Camera noise inflates F_ref (auto-correlations) but not F_AB (cross-correlation). On warped passes, the interpolation kernel (bicubic/Lanczos-3) colors the noise spectrum — a low-pass filter whose shape depends on the fractional pixel displacement. The noise PSD is computed analytically from the kernel's DTFT: `P_noise(kx,ky) = |H(kx,fx)|² * |H(ky,fy)|²`. Joint fit: `F_ref = (A*Gaussian + N0) * P_noise` — the kernel filters everything (signal + noise), so N0 is inside the bracket. At pass 0 (f=0), `P_noise=1` everywhere (flat white noise), so the joint fit degenerates to `F_ref = A*Gauss + N0` — equivalent to the old corner-based approach. Falls back to corner-based N0 estimation if the joint fit fails. **Key files:** `interpolation_noise_psd.py` (kernel weights/DTFTs/PSD — used by diagnostic plotting), `kspace_fitting.c` (joint fit in C), `single_pass_accumulator.py` (threads predictor displacements to fitter). Per-window predictor displacement is extracted from `smoothed_predictor` in `pass_data`.
-- **SNR estimation:** High-k annular ring (0.4 < |k| < 0.5) on the noise-corrected F_ref
-- **Soft weighting:** Anisotropic decay `exp(-k_x²/k0_x² - k_y²/k0_y²)` matching elliptical transfer function shape; k_max cap at 0.45 (soft) or 0.30 (hard)
+- **SNR estimation:** Diagnostic only (no gate). Computed from high-k annular ring (0.4 < |k| < 0.5) on noise-corrected F_ref
+- **Stage 1 weights:** Flat (uniform) — joint model `(A*Gauss + N0)*P_noise` explicitly separates signal from noise, so all k-space points are informative
+- **k_max:** Profile-based (where F_ref_clean drops below 1% of DC), capped at 0.35 (default). No SNR-based k_max refinement
+- **Soft weighting:** Anisotropic decay `exp(-k_x²/k0_x² - k_y²/k0_y²)` matching elliptical transfer function shape
 - **1D regressions:** Forced through origin (DC-normalised T(0)=1); per-axis k_max bounds; window-size-aware k_min = 1.5/N
 - **Gradient correction:** K-space does not estimate σ_A (particle image variance) — it's algebraically cancelled in Fourier space. When gradient correction is enabled, only the window averaging term (L²/12) is applied; the particle extent term (σ_A) is omitted. This is the dominant correction (~95-97% of total). `sig_A_x/y/xy` fields are saved as zero in the output .mat file.
 

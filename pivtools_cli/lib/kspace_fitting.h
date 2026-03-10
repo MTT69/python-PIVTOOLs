@@ -32,10 +32,9 @@ extern "C" {
  *   1. FFT correlation planes (float32 fftwf)
  *   2. Compute F_ref = sqrt(|F_AA| * |F_BB|)
  *   3. Joint noise fit: F_ref = (A*Gauss + N0) * P_noise  (4 params, GSL double)
- *   4. SNR check
- *   5. Initial guesses: sub-pixel peak (displacement), 1D log-regression (variance)
- *   6. Full 5-param fit of T_norm = T/T(0)  (GSL double)
- *   7. Validation and output in 16-element gauss_flat format
+ *   4. Initial guesses: sub-pixel peak (displacement), 1D log-regression (variance)
+ *   5. Full 5-param fit of T_norm = T/T(0)  (GSL double)
+ *   6. Validation and output in 16-element gauss_flat format
  *
  * Parameters per window (16 total, same as Gaussian fitter):
  *   [0]  amp_A        - Peak height in R_AA at center
@@ -53,11 +52,9 @@ extern "C" {
  *
  * Status codes:
  *   -1  Masked/skipped
- *    0  Success
+ *    0  Success (negative variance clamped to zero)
  *    1  Optimizer did not converge / joint fit failed
- *    2  SNR too low
  *    3  Displacement > 3/4 window
- *    5  Negative variance
  *
  * @param num_windows      Number of windows
  * @param corr_h           Correlation plane height
@@ -68,9 +65,8 @@ extern "C" {
  * @param mask             Per-window mask: 1=skip, 0=process (int32)
  * @param pred_disp        Per-window predictor displacement (num_windows*2: dy,dx) or NULL
  * @param interp_kernel    0=bicubic, 1=lanczos3
- * @param snr_threshold    Minimum SNR (e.g. 3.0)
  * @param use_soft_weighting  1=anisotropic soft decay, 0=uniform
- * @param k_max_cap        Hard cap on k_max (<=0 = default 0.45 soft / 0.30 hard)
+ * @param k_max_cap        Hard cap on k_max (<=0 = default 0.35)
  * @param out_params       Output: num_windows * 16 (double, gauss_flat format)
  * @param out_status       Output: num_windows status codes (int32)
  * @param out_initial_guess Output: num_windows * 16 (double)
@@ -87,7 +83,6 @@ PIV_EXPORT int fit_kspace_batch(
     const int    *mask,
     const double *pred_disp,
     int    interp_kernel,
-    double snr_threshold,
     int    use_soft_weighting,
     double k_max_cap,
     double *out_params,

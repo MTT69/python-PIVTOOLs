@@ -258,14 +258,6 @@ def validate_ensemble_config(config: Config) -> Tuple[bool, List[str], List[str]
         errors.append(f"Ensemble fit method: {e}")
         fit_method = None
 
-    # 8. K-space SNR threshold must be positive
-    if fit_method == 'kspace':
-        snr = config.ensemble_kspace_snr_threshold
-        if snr <= 0:
-            errors.append(
-                f"kspace_snr_threshold must be positive, got {snr}"
-            )
-
     # 9. Validate resume_from_pass
     resume = config.ensemble_resume_from_pass
     num_passes = config.ensemble_num_passes
