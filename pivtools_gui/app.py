@@ -735,8 +735,8 @@ def filter_single_frame():
         if filters:
             spatial_specs = [f for f in filters if f.get("type") not in ("time", "pod")]
             if spatial_specs:
-                from pivtools_cli.processing.dask_pipeline import _apply_spatial_filters_numpy
-                arr = _apply_spatial_filters_numpy(arr, spatial_specs)
+                from pivtools_cli.processing.dask_pipeline import apply_all_filters_slim
+                arr = apply_all_filters_slim(arr, spatial_specs, temporal_specs=[], pixel_mask=None)
 
         result = arr
         

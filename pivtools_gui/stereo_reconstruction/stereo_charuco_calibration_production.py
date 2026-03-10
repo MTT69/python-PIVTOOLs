@@ -304,11 +304,12 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
         objp: np.ndarray,
         result1: Tuple,
         result2: Tuple,
-    ) -> Optional[np.ndarray]:
+    ) -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
         """Match object points between two cameras using corner IDs.
 
-        For ChArUco, we need to find the intersection of detected corner IDs
-        and return only the object points corresponding to those IDs.
+        Finds the intersection of detected corner IDs and returns matched
+        object points and image points for both cameras, matching the
+        3-tuple contract used by StereoDotboardCalibrator.
 
         Parameters
         ----------
@@ -321,8 +322,8 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
 
         Returns
         -------
-        np.ndarray or None
-            Matched object points, or None if matching failed
+        tuple or None
+            (obj_pts, img_pts_1, img_pts_2) with matched points only
         """
         _, corners1, ids1 = result1
         _, corners2, ids2 = result2
@@ -337,224 +338,15 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
             logger.warning(f"Only {len(common_ids)} common corners found (need {self.min_corners})")
             return None
 
-        # Get object points for common IDs
-        return objp[common_ids].astype(np.float32)
+        # Get indices of common IDs in each detection
+        idx1 = [np.where(ids1 == cid)[0][0] for cid in common_ids]
+        idx2 = [np.where(ids2 == cid)[0][0] for cid in common_ids]
 
-    def process_camera_pair(
-        self,
-        cam1: Optional[int] = None,
-        cam2: Optional[int] = None,
-        progress_callback=None,
-        save_visualizations: bool = True,
-    ) -> Dict[str, Any]:
-        """Process a camera pair for stereo calibration with ChArUco ID matching.
+        matched_corners1 = corners1[idx1].astype(np.float32)
+        matched_corners2 = corners2[idx2].astype(np.float32)
+        obj_pts = objp[common_ids].astype(np.float32)
 
-        This overrides the base class method to handle ChArUco-specific
-        corner ID matching between cameras.
-
-        Parameters
-        ----------
-        cam1 : int, optional
-            First camera number
-        cam2 : int, optional
-            Second camera number
-        progress_callback : callable, optional
-            Progress callback
-        save_visualizations : bool
-            Whether to save visualizations
-
-        Returns
-        -------
-        dict
-            Calibration result
-        """
-        # Use default camera pair if not specified
-        cam1 = cam1 if cam1 is not None else self.camera_pair[0]
-        cam2 = cam2 if cam2 is not None else self.camera_pair[1]
-
-        logger.info(f"Processing ChArUco stereo pair: Camera {cam1} and Camera {cam2}")
-
-        output_dir = self._get_output_dir(cam1, cam2)
-
-        # Get number of calibration images from config
-        if self._config is None:
-            return {'success': False, 'error': 'Config required for stereo calibration'}
-
-        num_frame_pairs = self._config.calibration_image_count
-        if num_frame_pairs == 0:
-            return {'success': False, 'error': 'No calibration images found (calibration_image_count=0)'}
-
-        logger.info(f"Processing {num_frame_pairs} calibration frame pairs")
-
-        # Collect calibration data
-        objpoints = []
-        imgpoints1 = []
-        imgpoints2 = []
-        successful_pairs = []
-        indices_data = {}
-        image_size = None
-
-        board, _ = self.detector
-
-        processed_count = 0
-
-        # Iterate through image indices (1-based) using centralized reader
-        for img_index in range(1, num_frame_pairs + 1):
-            filename = f"frame_{img_index:05d}"
-
-            # Use centralized image reader (handles all formats: standard, .set, .im7, .cine)
-            img1 = self._read_calibration_image_centralized(camera=cam1, img_index=img_index)
-            img2 = self._read_calibration_image_centralized(camera=cam2, img_index=img_index)
-
-            if img1 is None:
-                if img_index == 1:
-                    return {'success': False, 'error': f'Could not read first image for camera {cam1}'}
-                # For containers, None means we've reached the end
-                if self._is_container_format():
-                    logger.info(f"Reached end of images at index {img_index}")
-                    break
-                continue
-            if img2 is None:
-                if img_index == 1:
-                    return {'success': False, 'error': f'Could not read first image for camera {cam2}'}
-                if self._is_container_format():
-                    break
-                continue
-
-            processed_count += 1
-
-            if image_size is None:
-                image_size = img1.shape[:2][::-1]
-
-            # Detect ChArUco in both images
-            found1, corners1, ids1 = self.detect_pattern(img1)
-            found2, corners2, ids2 = self.detect_pattern(img2)
-
-            if not found1 or not found2:
-                logger.debug(f"ChArUco not found in pair {filename}")
-                continue
-
-            # Find common corner IDs
-            common_ids = np.intersect1d(ids1, ids2)
-
-            if len(common_ids) < self.min_corners:
-                logger.warning(f"Only {len(common_ids)} common corners in {filename}")
-                continue
-
-            # Get indices of common IDs in each detection
-            idx1 = [np.where(ids1 == cid)[0][0] for cid in common_ids]
-            idx2 = [np.where(ids2 == cid)[0][0] for cid in common_ids]
-
-            # Extract matched corners
-            matched_corners1 = corners1[idx1].astype(np.float32)
-            matched_corners2 = corners2[idx2].astype(np.float32)
-
-            # Get object points for common IDs
-            obj_pts = board.getChessboardCorners()[common_ids].astype(np.float32)
-
-            # Add to calibration data
-            objpoints.append(obj_pts)
-            imgpoints1.append(matched_corners1)
-            imgpoints2.append(matched_corners2)
-
-            frame_idx = len(successful_pairs) + 1
-            successful_pairs.append(filename)
-
-            # Store indices data
-            indices_data[frame_idx] = {
-                'grid_points_cam1': matched_corners1,
-                'grid_points_cam2': matched_corners2,
-                'corner_ids': common_ids,
-                'all_corners_cam1': corners1,
-                'all_corners_cam2': corners2,
-                'all_ids_cam1': ids1,
-                'all_ids_cam2': ids2,
-                'object_points': obj_pts,
-                'frame_index': frame_idx,
-                'original_filename': filename,
-            }
-
-            # Save visualizations
-            if save_visualizations:
-                self._save_detection_visualization(
-                    img1, matched_corners1, cam1, frame_idx, output_dir, filename
-                )
-                self._save_detection_visualization(
-                    img2, matched_corners2, cam2, frame_idx, output_dir, filename
-                )
-
-            logger.info(f"Processed pair {filename}: {len(common_ids)} matched corners")
-
-            if progress_callback:
-                progress_callback({
-                    'progress': min(int((processed_count / max(num_frame_pairs, 1)) * 70), 70),
-                    'stage': 'detecting',
-                    'processed_pairs': processed_count,
-                    'valid_pairs': len(successful_pairs),
-                    'total_pairs': num_frame_pairs,
-                })
-
-        if len(successful_pairs) < 3:
-            return {
-                'success': False,
-                'error': f'Insufficient valid image pairs: {len(successful_pairs)} (need >= 3)'
-            }
-
-        logger.info(f"Using {len(successful_pairs)} image pairs for ChArUco calibration")
-
-        if progress_callback:
-            progress_callback({
-                'progress': 70,
-                'stage': 'calibrating',
-                'processed_pairs': processed_count,
-                'valid_pairs': len(successful_pairs),
-                'total_pairs': num_frame_pairs,
-            })
-
-        # Perform stereo calibration
-        assert image_size is not None, "image_size should be set after processing pairs"
-        try:
-            calibration_result = self._perform_stereo_calibration(
-                objpoints, imgpoints1, imgpoints2, image_size
-            )
-        except cv2.error as e:
-            return {'success': False, 'error': f'OpenCV calibration failed: {e}'}
-        except Exception as e:
-            logger.exception(f"Unexpected error: {e}")
-            return {'success': False, 'error': str(e)}
-
-        if progress_callback:
-            progress_callback({
-                'progress': 90,
-                'stage': 'saving',
-                'processed_pairs': processed_count,
-                'valid_pairs': len(successful_pairs),
-                'total_pairs': num_frame_pairs,
-            })
-
-        # Save results
-        model_path = self._save_stereo_results(
-            cam1, cam2, calibration_result, successful_pairs, image_size, indices_data
-        )
-
-        if progress_callback:
-            progress_callback({
-                'progress': 100,
-                'stage': 'complete',
-                'processed_pairs': processed_count,
-                'valid_pairs': len(successful_pairs),
-                'total_pairs': num_frame_pairs,
-            })
-
-        return {
-            'success': True,
-            'stereo_rms_error': calibration_result['stereo_rms_error'],
-            'cam1_rms_error': calibration_result['cam1_rms_error'],
-            'cam2_rms_error': calibration_result['cam2_rms_error'],
-            'num_pairs_used': len(successful_pairs),
-            'model_path': str(model_path),
-            'relative_angle_deg': calibration_result['relative_angle_deg'],
-        }
+        return obj_pts, matched_corners1, matched_corners2
 
 
 def main():

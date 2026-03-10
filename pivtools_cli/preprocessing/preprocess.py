@@ -7,7 +7,11 @@ import numpy as np
 from pivtools_core.config import Config
 
 from pivtools_cli.preprocessing.filters import requires_batch
-from pivtools_cli.processing.dask_pipeline import _apply_spatial_filters_numpy
+from pivtools_cli.processing.dask_pipeline import (
+    apply_all_filters_slim,
+    get_spatial_filter_specs,
+    get_temporal_filter_specs,
+)
 
 
 def get_batch_size_for_filters(config: Config) -> int:
@@ -52,11 +56,8 @@ def apply_filters_to_batch(
     """
     Apply ALL filters (temporal and spatial) to a batch, including pixel masking.
 
-    Unified function that handles both batch and spatial filters.
-    Used by UnifiedBatchPipeline for consistent filter application.
-
-    The pixel mask is applied FIRST before any other filters to ensure masked
-    regions have zero intensity throughout the entire preprocessing pipeline.
+    Thin wrapper around apply_all_filters_slim that extracts filter specs
+    from config and handles diagnostics saving.
 
     Args:
         batch: Numpy array of shape (N, 2, H, W)
@@ -70,49 +71,17 @@ def apply_filters_to_batch(
     Returns:
         Filtered batch of same shape
     """
-    filters = config.filters
-
-    # Track filter stages for diagnostics
     filter_stages = {}
     if save_diagnostics and batch_idx == 0:
         filter_stages["00_original"] = batch.copy()
 
-    # Apply pixel mask FIRST (before any other filters)
-    # This ensures masked regions are zeroed throughout preprocessing
-    if pixel_mask is not None:
-        from pivtools_cli.preprocessing.filters import apply_pixel_mask_to_batch
-        batch = apply_pixel_mask_to_batch(batch, pixel_mask)
-        if save_diagnostics and batch_idx == 0:
-            filter_stages["01_pixel_mask"] = batch.copy()
+    spatial_specs = get_spatial_filter_specs(config)
+    temporal_specs = get_temporal_filter_specs(config)
 
-    if not filters:
-        return batch
+    batch = apply_all_filters_slim(batch, spatial_specs, temporal_specs, pixel_mask=pixel_mask)
 
-    # Separate filters into spatial and temporal
-    spatial_specs = [f for f in filters if f.get("type") not in ("pod", "time")]
-    temporal_specs = [f for f in filters if f.get("type") in ("pod", "time")]
-
-    # Apply spatial filters using unified numpy function
-    if spatial_specs:
-        batch = _apply_spatial_filters_numpy(batch, spatial_specs)
-        if save_diagnostics and batch_idx == 0:
-            filter_stages["02_spatial_filters"] = batch.copy()
-
-    # Apply temporal filters
-    for filter_spec in temporal_specs:
-        filter_type = filter_spec.get("type")
-        if filter_type == "pod":
-            from pivtools_cli.preprocessing.pod_filter import pod_filter_batch
-            batch = pod_filter_batch(batch, eps_auto_psi=filter_spec.get('eps_auto_psi', 0.01), eps_auto_sigma=filter_spec.get('eps_auto_sigma', 0.01))
-        elif filter_type == "time":
-            from pivtools_cli.preprocessing.pod_filter import time_filter_batch
-            batch = time_filter_batch(batch)
-
-        if save_diagnostics and batch_idx == 0:
-            filter_stages[f"03_{filter_type}"] = batch.copy()
-
-    # Save diagnostic images if enabled
     if save_diagnostics and batch_idx == 0 and output_dir is not None:
+        filter_stages["final"] = batch.copy()
         from pivtools_cli.preprocessing.diagnostics import save_filter_diagnostics
         save_filter_diagnostics(
             original_batch=filter_stages.get("00_original"),

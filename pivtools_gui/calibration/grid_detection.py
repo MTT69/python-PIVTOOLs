@@ -158,7 +158,12 @@ def _assign_grid_indices_bfs(
     """
     n = len(centers)
     tree = cKDTree(centers)
-    max_dist = spacing_px * 1.5  # generous search radius for neighbors
+    # Search radius must cover the LONGER grid axis. Under perspective
+    # distortion one axis can be much larger than median NN spacing
+    # (e.g. 163 px vs spacing_px=94 px).  Using just spacing_px * 1.5
+    # would miss the far-axis neighbors entirely.
+    max_vec_len = max(np.linalg.norm(vec1), np.linalg.norm(vec2))
+    max_dist = max(max_vec_len, spacing_px) * 1.5
 
     # Normalized direction templates for the 4 grid neighbors
     directions = [
@@ -310,57 +315,108 @@ def detect_grid_automatic(
     else:
         search_radius = spacing_px * 1.4
 
-    # Step 3: Find HORIZONTAL and VERTICAL grid vectors (vectorized)
+    # Step 3: Find the two grid direction vectors (rotation-invariant)
+    #
+    # Previous approach assumed the grid was roughly axis-aligned (horizontal
+    # < 20° from x-axis, vertical > 70°).  Stereo calibration boards can be
+    # rotated 25-30° or more, so we instead find the two dominant neighbor
+    # directions from the data.
+    #
+    # Use k=4 nearest neighbors (not radius search) for direction finding.
+    # Interior grid points always have 4 grid neighbors as their nearest
+    # neighbors, so diagonals (5th+ nearest) are naturally excluded.  A
+    # radius search can include diagonals when the grid axes have similar
+    # spacing, corrupting the direction histogram.
     angle_tolerance_deg = 20
     angle_tolerance = np.radians(angle_tolerance_deg)
 
-    # Find all neighbor pairs within distance tolerance using cKDTree
-    pairs = tree.query_pairs(r=search_radius)
-    # Filter pairs below minimum distance and build directed index arrays
-    i_list, j_list = [], []
-    min_dist = spacing_px * 0.6
-    for i, j in pairs:
-        d = np.linalg.norm(centers[i] - centers[j])
-        if d > min_dist:
-            # Add both directions for symmetric neighbor analysis
-            i_list.append(i)
-            j_list.append(j)
-            i_list.append(j)
-            j_list.append(i)
-    i_idx = np.array(i_list, dtype=np.intp)
-    j_idx = np.array(j_list, dtype=np.intp)
+    # Use k-nearest neighbors: each point's 4 nearest neighbors give
+    # the grid direction vectors.  This is robust to perspective distortion
+    # and avoids diagonal contamination that radius searches suffer from.
+    k_nn = min(5, n_points)  # 4 neighbors + self
+    nn_dists_k, nn_idxs_k = tree.query(centers, k=k_nn)
 
-    if len(i_idx) < 20:
+    # Build direction vectors from k-NN (skip self at index 0)
+    all_vecs_list = []
+    min_dist = spacing_px * 0.4
+    for i in range(n_points):
+        for ki in range(1, k_nn):
+            j = nn_idxs_k[i, ki]
+            d = nn_dists_k[i, ki]
+            if d > min_dist:
+                all_vecs_list.append(centers[j] - centers[i])
+
+    if len(all_vecs_list) < 20:
         info['error'] = 'Not enough neighbor pairs found'
         return False, None, info
 
-    # Compute vectors for all valid pairs
-    all_vecs = centers[j_idx] - centers[i_idx]  # (M, 2)
-    angles_from_horiz = np.arctan2(np.abs(all_vecs[:, 1]), np.abs(all_vecs[:, 0]))
+    all_vecs = np.array(all_vecs_list, dtype=np.float32)
 
-    # Separate horizontal and vertical
-    horiz_mask = angles_from_horiz < angle_tolerance
-    vert_mask = angles_from_horiz > (np.pi / 2 - angle_tolerance)
+    # Map all vectors into the upper half-plane so opposing directions merge.
+    # A vector and its negation represent the same grid direction.
+    # Fold so that y > 0, or if y == 0 then x > 0.  This maps angles to [0, π).
+    half_vecs = all_vecs.copy()
+    flip_mask = (half_vecs[:, 1] < 0) | ((half_vecs[:, 1] == 0) & (half_vecs[:, 0] < 0))
+    half_vecs[flip_mask] *= -1
+    half_angles = np.arctan2(half_vecs[:, 1], half_vecs[:, 0])  # [0, π)
 
-    horizontal_vecs_arr = all_vecs[horiz_mask]
-    vertical_vecs_arr = all_vecs[vert_mask]
+    # Find dominant direction: histogram with 1° bins, pick the peak
+    n_bins = 180
+    hist, bin_edges = np.histogram(np.degrees(half_angles), bins=n_bins, range=(0, 180))
+    # Smooth histogram to handle noise (circular convolution with ±3° window)
+    kernel = np.ones(7) / 7
+    hist_smooth = np.convolve(np.tile(hist, 3), kernel, mode='same')[n_bins:2*n_bins]
+    peak1_bin = int(np.argmax(hist_smooth))
+    dir1_angle_deg = peak1_bin + 0.5  # center of bin
 
-    logger.debug(f"Found {len(horizontal_vecs_arr)} horizontal, {len(vertical_vecs_arr)} vertical neighbor pairs")
+    # Second direction: mask out ±25° around first peak, find next peak
+    # (grid directions are approximately orthogonal)
+    mask_width = 25
+    suppressed = hist_smooth.copy()
+    for offset in range(-mask_width, mask_width + 1):
+        suppressed[(peak1_bin + offset) % n_bins] = 0
+    peak2_bin = int(np.argmax(suppressed))
+    dir2_angle_deg = peak2_bin + 0.5
 
-    if len(horizontal_vecs_arr) < 10 or len(vertical_vecs_arr) < 10:
-        info['error'] = 'Not enough axis-aligned neighbors found'
+    dir1_angle = np.radians(dir1_angle_deg)
+    dir2_angle = np.radians(dir2_angle_deg)
+
+    # Classify vectors into direction 1 vs direction 2
+    angle_diff_1 = np.abs(half_angles - dir1_angle)
+    angle_diff_1 = np.minimum(angle_diff_1, np.pi - angle_diff_1)  # wrap-aware
+    angle_diff_2 = np.abs(half_angles - dir2_angle)
+    angle_diff_2 = np.minimum(angle_diff_2, np.pi - angle_diff_2)
+
+    dir1_mask = angle_diff_1 < angle_tolerance
+    dir2_mask = angle_diff_2 < angle_tolerance
+
+    dir1_vecs = half_vecs[dir1_mask]
+    dir2_vecs = half_vecs[dir2_mask]
+
+    logger.debug(f"Found {len(dir1_vecs)} dir1 ({dir1_angle_deg:.1f}°), {len(dir2_vecs)} dir2 ({dir2_angle_deg:.1f}°) neighbor pairs")
+
+    if len(dir1_vecs) < 10 or len(dir2_vecs) < 10:
+        info['error'] = f'Not enough neighbors in grid directions ({len(dir1_vecs)}, {len(dir2_vecs)})'
         return False, None, info
 
-    # Normalize horizontal vectors to point RIGHT (+x) - vectorized
-    horizontal_vecs_arr[horizontal_vecs_arr[:, 0] < 0] *= -1
-
-    # Normalize vertical vectors to point DOWN (+y in image pixel coords)
-    # This matches the old OpenCV findCirclesGrid convention where row 0 is at the top
-    vertical_vecs_arr[vertical_vecs_arr[:, 1] < 0] *= -1
-
     # Take median to get robust grid vectors
-    vec1 = np.median(horizontal_vecs_arr, axis=0)  # X direction (right)
-    vec2 = np.median(vertical_vecs_arr, axis=0)    # Y direction (down in image = +y in pixels)
+    raw_vec1 = np.median(dir1_vecs, axis=0)
+    raw_vec2 = np.median(dir2_vecs, axis=0)
+
+    # Convention: vec1 = column direction (more horizontal component),
+    # vec2 = row direction (more vertical component).
+    # Ensure vec1 has larger |x| component, vec2 has larger |y| component.
+    if abs(raw_vec1[0]) < abs(raw_vec2[0]):
+        raw_vec1, raw_vec2 = raw_vec2, raw_vec1
+
+    # Normalize vec1 to point RIGHT (+x), vec2 to point DOWN (+y)
+    if raw_vec1[0] < 0:
+        raw_vec1 *= -1
+    if raw_vec2[1] < 0:
+        raw_vec2 *= -1
+
+    vec1 = raw_vec1
+    vec2 = raw_vec2
 
     info['grid_vec1'] = vec1.tolist()
     info['grid_vec2'] = vec2.tolist()

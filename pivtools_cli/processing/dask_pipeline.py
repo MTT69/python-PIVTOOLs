@@ -196,9 +196,9 @@ def apply_all_filters_slim(
             eps_auto_psi = spec.get('eps_auto_psi', 0.01)
             eps_auto_sigma = spec.get('eps_auto_sigma', 0.01)
             block = pod_filter_batch(
-                block, None,  # Don't need config, specs are already extracted
+                block,
                 eps_auto_psi=eps_auto_psi,
-                eps_auto_sigma=eps_auto_sigma
+                eps_auto_sigma=eps_auto_sigma,
             )
         elif filter_type == 'time':
             block = time_filter_batch(block)
@@ -234,13 +234,17 @@ def _apply_spatial_filters_numpy(
         uniform_filter as scipy_uniform,
     )
 
+    # In-place arithmetic below requires floating-point dtype
+    if not np.issubdtype(block.dtype, np.floating):
+        block = block.astype(np.float32)
+
     for spec in filter_specs:
         filter_type = spec.get('type')
 
         if filter_type == 'gaussian':
             sigma = spec.get('sigma', 1.0)
-            # Apply to spatial dimensions only (last 2)
-            block = scipy_gaussian(block, sigma=(0, 0, sigma, sigma))
+            # Apply to spatial dimensions only (last 2), in-place
+            scipy_gaussian(block, sigma=(0, 0, sigma, sigma), output=block)
 
         elif filter_type == 'median':
             size = spec.get('size', (5, 5))
@@ -258,11 +262,12 @@ def _apply_spatial_filters_numpy(
             size = tuple(s + (s + 1) % 2 for s in size)
             spatial_size = (1, 1) + size
 
-            block_float = block.astype(np.float32)
-            local_min = scipy_minimum(block_float, size=spatial_size)
-            local_max = scipy_maximum(block_float, size=spatial_size)
-            denom = np.maximum(local_max - local_min, 1.0 / max_gain)
-            block = ((block_float - local_min) / denom).astype(block.dtype)
+            local_min = scipy_minimum(block, size=spatial_size)
+            local_max = scipy_maximum(block, size=spatial_size)
+            local_max -= local_min                                 # range in-place
+            np.maximum(local_max, 1.0 / max_gain, out=local_max)  # clamp in-place
+            block -= local_min                                     # in-place
+            block /= local_max                                     # in-place
 
         elif filter_type == 'maxnorm':
             size = spec.get('size', (7, 7))
@@ -272,11 +277,11 @@ def _apply_spatial_filters_numpy(
             size = tuple(s + (s + 1) % 2 for s in size)
             spatial_size = (1, 1) + size
 
-            block_float = block.astype(np.float32)
-            local_max = scipy_maximum(block_float, size=spatial_size)
-            smoothed_max = scipy_uniform(local_max, size=spatial_size)
-            denom = np.maximum(smoothed_max, 1.0 / max_gain)
-            block = (np.maximum(block_float, 0) / denom).astype(block.dtype)
+            local_max = scipy_maximum(block, size=spatial_size)
+            scipy_uniform(local_max, size=spatial_size, output=local_max)  # smooth in-place
+            np.maximum(local_max, 1.0 / max_gain, out=local_max)
+            np.maximum(block, 0, out=block)
+            block /= local_max
 
         elif filter_type == 'lmax':
             size = spec.get('size', (7, 7))

@@ -186,13 +186,14 @@ class MultiViewCalibrator:
         """
         params = cv2.SimpleBlobDetector_Params()
         params.filterByArea = True
-        params.minArea = 10  # Catch very small perspective-foreshortened dots
-        params.maxArea = 5000
-        # Disable shape filtering — perspective makes dots elliptical, and
-        # pixelation at small sizes degrades circularity measurements.
-        # RANSAC grid fitting handles outlier rejection robustly.
-        params.filterByCircularity = False
-        params.filterByInertia = False
+        params.minArea = 50
+        params.maxArea = 50000
+        # Shape filtering rejects noise blobs on high-res images while
+        # still accepting perspective-distorted dots (relaxed thresholds).
+        params.filterByCircularity = True
+        params.minCircularity = 0.4
+        params.filterByInertia = True
+        params.minInertiaRatio = 0.3
         params.filterByConvexity = False
         params.minThreshold = 0
         params.maxThreshold = 255

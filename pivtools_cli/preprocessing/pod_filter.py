@@ -187,7 +187,6 @@ def pod_filter_single_channel(
 
 def pod_filter_batch(
     batch: np.ndarray,
-    config=None,
     eps_auto_psi: float = 0.01,
     eps_auto_sigma: float = 0.01,
     verbose: bool = True,
@@ -206,8 +205,6 @@ def pod_filter_batch(
         - N: number of image pairs
         - 2: channels (A=0, B=1)
         - H, W: image dimensions
-    config : Config, optional
-        Configuration object (can extract eps values if present)
     eps_auto_psi : float
         Threshold for mean eigenvector criterion
     eps_auto_sigma : float
@@ -220,16 +217,6 @@ def pod_filter_batch(
     np.ndarray
         Filtered batch of same shape
     """
-    # Extract parameters from config if available
-    if config is not None:
-        # Check if config has POD-specific parameters
-        filters = getattr(config, 'filters', []) or []
-        for f in filters:
-            if isinstance(f, dict) and f.get('type') == 'pod':
-                eps_auto_psi = f.get('eps_auto_psi', eps_auto_psi)
-                eps_auto_sigma = f.get('eps_auto_sigma', eps_auto_sigma)
-                break
-
     n_pairs = batch.shape[0]
 
     if verbose:
