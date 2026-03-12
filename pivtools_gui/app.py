@@ -732,11 +732,13 @@ def filter_single_frame():
 
         arr = np.stack([pair], axis=0)  # Shape: (1, 2, H, W)
 
-        if filters:
+        # Load mask (same as /filter route - mask should apply to all filter types)
+        mask = load_mask_for_camera(camera, cfg, source_path_idx)
+
+        if filters or mask is not None:
             spatial_specs = [f for f in filters if f.get("type") not in ("time", "pod")]
-            if spatial_specs:
-                from pivtools_cli.processing.dask_pipeline import apply_all_filters_slim
-                arr = apply_all_filters_slim(arr, spatial_specs, temporal_specs=[], pixel_mask=None)
+            from pivtools_cli.processing.dask_pipeline import apply_all_filters_slim
+            arr = apply_all_filters_slim(arr, spatial_specs, temporal_specs=[], pixel_mask=mask)
 
         result = arr
         
