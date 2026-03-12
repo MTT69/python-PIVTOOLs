@@ -1400,6 +1400,8 @@ instantaneous_piv:
   secondary_peak: false
   predictor_smoothing: true
   image_warp_interpolation: cubic
+  save_mode: full
+  save_compression: true
 ensemble_piv:
   fit_method: kspace
   skip_background_subtraction: false

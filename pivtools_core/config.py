@@ -2850,6 +2850,36 @@ video:
         return method
 
     @property
+    def instantaneous_save_mode(self) -> str:
+        """Return save mode for instantaneous PIV results.
+
+        Options:
+        - 'full': Save all 11 fields per pass (default, backward compatible).
+        - 'minimal': Save only ux, uy, b_mask — the 3 fields read downstream.
+
+        Default: 'full'
+        """
+        mode = self.data.get("instantaneous_piv", {}).get("save_mode", "full")
+        valid = {'full', 'minimal'}
+        if mode not in valid:
+            raise ValueError(
+                f"Invalid instantaneous save_mode '{mode}'. "
+                f"Must be one of {valid}"
+            )
+        return mode
+
+    @property
+    def instantaneous_save_compression(self) -> bool:
+        """Return whether to use zlib compression when saving instantaneous .mat files.
+
+        When True (default), scipy.io.savemat uses zlib compression.
+        When False, saves uncompressed — faster writes, larger files.
+
+        Default: True
+        """
+        return self.data.get("instantaneous_piv", {}).get("save_compression", True)
+
+    @property
     def secondary_peak(self):
         """Return True if secondary peak detection is enabled."""
         return self.data.get("instantaneous_piv", {}).get("secondary_peak", False)

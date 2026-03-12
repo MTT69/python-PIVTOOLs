@@ -138,6 +138,8 @@ instantaneous_piv:
   peak_finder: gauss6
   secondary_peak: false
   predictor_smoothing: false
+  save_mode: minimal
+  save_compression: false
 ensemble_piv:
   fit_method: kspace
   skip_background_subtraction: false

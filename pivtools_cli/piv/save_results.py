@@ -24,6 +24,8 @@ def save_piv_result_distributed(
     frame_number: int,
     runs_to_save: Optional[List[int]] = None,
     vector_fmt: str = "B%05d.mat",
+    save_mode: str = "full",
+    do_compression: bool = True,
 ) -> str:
     """
     Save a PIV result to disk. Designed to be submitted to Dask workers.
@@ -45,7 +47,11 @@ def save_piv_result_distributed(
         For passes not in this list, empty arrays will be saved.
     vector_fmt : str
         Format string for the filename, e.g., "B%05d.mat".
-        
+    save_mode : str
+        "full" saves all 11 fields; "minimal" saves only ux, uy, b_mask.
+    do_compression : bool
+        If True, use zlib compression in savemat. If False, save uncompressed.
+
     Returns
     -------
     str
@@ -65,10 +71,10 @@ def save_piv_result_distributed(
     
     # Create single struct with arrays indexed by pass number
     # All data is already in piv_result, no external lists needed
-    mat_data = _create_piv_struct_all_passes(piv_result, runs_to_save)
-    
-    # Save to .mat file with compression to reduce I/O
-    scipy.io.savemat(filename, {"piv_result": mat_data}, oned_as="row", do_compression=True)
+    mat_data = _create_piv_struct_all_passes(piv_result, runs_to_save, save_mode=save_mode)
+
+    # Save to .mat file
+    scipy.io.savemat(filename, {"piv_result": mat_data}, oned_as="row", do_compression=do_compression)
     logging.debug(f"Worker saved PIV result to {filename}")
     
     return str(filename)
@@ -608,6 +614,7 @@ def _create_ensemble_struct_all_passes(
 def _create_piv_struct_all_passes(
     piv_result: PIVResult,
     runs_to_save: Optional[List[int]] = None,
+    save_mode: str = "full",
 ) -> np.ndarray:
     """
     Create a MATLAB-compatible struct with arrays indexed by pass number.
@@ -627,7 +634,9 @@ def _create_piv_struct_all_passes(
     runs_to_save : Optional[List[int]]
         List of pass indices (0-based) to save with data. If None, save all passes.
         For passes not in this list, empty arrays will be saved.
-        
+    save_mode : str
+        "full" saves all 11 fields; "minimal" saves only ux, uy, b_mask.
+
     Returns
     -------
     np.ndarray
@@ -643,45 +652,43 @@ def _create_piv_struct_all_passes(
     if runs_to_save is None:
         runs_to_save = passes_to_save
     
-    # Create structured dtype with all fields
-    dtype = [
-        ('ux', object),
-        ('uy', object),
-        ('b_mask', object),
-        ('nan_mask', object),
-        ('win_ctrs_x', object),
-        ('win_ctrs_y', object),
-        ('peak_mag', object),
-        ('peak_choice', object),
-        ('n_windows', object),
-        ('predictor_field', object),
-        ('window_size', object),
-    ]
-    
+    # Create structured dtype — minimal mode saves only the 3 fields read downstream
+    if save_mode == "minimal":
+        dtype = [
+            ('ux', object),
+            ('uy', object),
+            ('b_mask', object),
+        ]
+    else:
+        dtype = [
+            ('ux', object),
+            ('uy', object),
+            ('b_mask', object),
+            ('nan_mask', object),
+            ('win_ctrs_x', object),
+            ('win_ctrs_y', object),
+            ('peak_mag', object),
+            ('peak_choice', object),
+            ('n_windows', object),
+            ('predictor_field', object),
+            ('window_size', object),
+        ]
+
     # Create the struct with shape (n_passes_to_save,)
     piv_struct = np.empty((n_passes_to_save,), dtype=dtype)
-    
+
     # Get dtype from first pass for creating empty arrays
     first_pass = piv_result.passes[0]
     if first_pass.ux_mat is not None and first_pass.ux_mat.size > 0:
         data_dtype = first_pass.ux_mat.dtype
     else:
         data_dtype = np.float64
-    
+
     # Initialize all passes with empty arrays
     empty = np.empty((0, 0), dtype=data_dtype)
     for i in range(n_passes_to_save):
-        piv_struct['ux'][i] = empty
-        piv_struct['uy'][i] = empty
-        piv_struct['b_mask'][i] = empty
-        piv_struct['nan_mask'][i] = empty
-        piv_struct['win_ctrs_x'][i] = empty
-        piv_struct['win_ctrs_y'][i] = empty
-        piv_struct['peak_mag'][i] = empty
-        piv_struct['peak_choice'][i] = empty
-        piv_struct['n_windows'][i] = empty
-        piv_struct['predictor_field'][i] = empty
-        piv_struct['window_size'][i] = empty
+        for field_name in piv_struct.dtype.names:
+            piv_struct[field_name][i] = empty
     
     # Fill with actual data for selected passes
     for local_idx, global_pass_idx in enumerate(passes_to_save):
@@ -703,6 +710,10 @@ def _create_piv_struct_all_passes(
         elif pass_result.nan_mask is not None:
             # Fallback to nan_mask if b_mask not available
             piv_struct['b_mask'][local_idx] = pass_result.nan_mask
+
+        # In minimal mode, only ux/uy/b_mask are saved — skip remaining fields
+        if save_mode == "minimal":
+            continue
 
         if pass_result.nan_mask is not None:
             piv_struct['nan_mask'][local_idx] = pass_result.nan_mask

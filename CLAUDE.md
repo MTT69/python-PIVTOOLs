@@ -1223,6 +1223,8 @@ Both `cpu_instantaneous.py` and `cpu_ensemble.py` use `cv2.setNumThreads(1)` + c
 | `runs` | `instantaneous_runs_0based` | Which passes to save (0-based) |
 | `peak_finder` | `peak_finder` | `"gauss3"`→3, `"gauss4"`→4, `"gauss5"`→5, `"gauss6"`→6 DOF |
 | `predictor_smoothing` | `instantaneous_predictor_smoothing` | Gaussian smooth predictor between passes (default `true`) |
+| `save_mode` | `instantaneous_save_mode` | `"full"` (default, all 11 fields) or `"minimal"` (ux, uy, b_mask only — faster saves) |
+| `save_compression` | `instantaneous_save_compression` | `true` (default, zlib) or `false` (uncompressed — faster saves, larger files) |
 
 **`ensemble_piv` block:**
 
