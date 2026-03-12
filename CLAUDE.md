@@ -995,7 +995,7 @@ Dask-centric utilities shared by both pipelines.
 
 ## Build System & C Extensions
 
-### Package: `pivtools` v0.4.4
+### Package: `pivtools` v0.4.5
 
 - **Build backend:** `setuptools>=61.0` + `wheel` + `cibuildwheel>=2.16`
 - **Python:** `>=3.12` (targets: 3.12, 3.13, 3.14)
