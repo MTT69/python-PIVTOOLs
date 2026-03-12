@@ -52,3 +52,7 @@ unit-tests/test_output/
 
 # Validation benchmark results
 validation/
+
+# Profiling benchmark outputs
+profile/*.csv
+profile/*.png

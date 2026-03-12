@@ -1,8 +1,8 @@
 paths:
   base_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images\instantaneous
+  - C:\Users\mtt1e23\Downloads\cavity
   source_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images_reduced_22k_noisy
+  - E:\CAVITY DATA + RESULTS\181124_polyamide\90degree_400light_100hz_3000dt_0
   active_paths:
   - 0
   camera_numbers:
@@ -10,24 +10,23 @@ paths:
   camera_count: 1
   camera_subfolders: []
 images:
-  num_images: 4000
+  num_images: 100
   image_format:
-  - B%05d_A.tif
-  - B%05d_B.tif
+  - Camera%d.cine
   vector_format:
   - '%05d.mat'
   dtype: float32
-  image_type: standard
+  image_type: cine
   use_camera_subfolders: false
   start_index: 1
-  frame_stride: 0
+  frame_stride: 1
   pair_stride: 1
-  pairing_preset: ab_format
+  pairing_preset: time_resolved
   per_loop_frame_pairs: 4000
   num_loops: 1
   num_frame_pairs: 4000
 batches:
-  size: 20
+  size: 25
 logging:
   file: pypiv.log
   level: INFO
@@ -36,9 +35,9 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 3
-  dask_workers_per_node: 7
-  dask_memory_limit: 7GB
+  omp_threads: 2
+  dask_workers_per_node: 10
+  dask_memory_limit: 5GB
   dask_max_in_flight_per_worker: 2
   open_dashboard: true
   post_processing_workers: 16
@@ -55,7 +54,7 @@ infilling:
     method: local_median
     parameters: {}
   final_pass:
-    enabled: true
+    enabled: false
     method: biharmonic
     parameters: {}
 ensemble_outlier_detection:
@@ -127,12 +126,11 @@ instantaneous_piv:
   - 50
   - 50
   runs:
-  - 2
   - 3
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
-  peak_finder: gauss6
+  peak_finder: gauss3
   secondary_peak: false
   predictor_smoothing: false
 ensemble_piv:
@@ -277,7 +275,8 @@ calibration:
       - 3018.2581625950966
       frame_a: 1
       frame_b: 1
-filters: []
+filters:
+- type: time
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat

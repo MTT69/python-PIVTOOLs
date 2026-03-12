@@ -45,16 +45,22 @@ if _project_root not in sys.path:
 # Configuration — edit these for your machine
 # ---------------------------------------------------------------------------
 TOTAL_CORES = 20
-N_PAIRS = 100
+BATCHES_PER_WORKER = 3   # Each worker processes exactly this many batches
 BATCH_SIZE = 10
 N_ITERATIONS = 1
-IMAGE_SHAPE = [2048, 2048]
-WINDOW_SIZES = [[64, 64], [32, 32]]
-OVERLAPS = [50, 50]
+WINDOW_SIZES = [[64, 64], [32, 32], [16, 16]]
+OVERLAPS = [50, 50, 50]
+MAX_WORKERS = 10          # Capped by RAM: 64GB / ~5GB per worker
+WORKER_MEMORY = "5GB"     # Per-worker memory limit
 
 SOURCE_DIR = (
-    r"C:\path\to\your\4mp\images"  # UPDATE THIS or use --source flag
+    r"C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images"
 )
+
+
+def n_pairs_for_workers(workers):
+    """Compute image pairs so each worker gets exactly BATCHES_PER_WORKER batches."""
+    return workers * BATCHES_PER_WORKER * BATCH_SIZE
 
 
 # ---------------------------------------------------------------------------
@@ -69,22 +75,23 @@ def get_thread_sweep():
 
 
 def get_worker_sweep():
-    """Fixed 4 threads/worker, vary workers: pure worker scaling."""
+    """Fixed 2 threads/worker, vary workers up to MAX_WORKERS."""
     return [
-        {"workers": w, "threads": 4, "label": "worker_sweep"}
-        for w in [1, 2, 4, 5]
+        {"workers": w, "threads": 2, "label": "worker_sweep"}
+        for w in [1, 2, 4, 5, 10]
+        if w <= MAX_WORKERS
     ]
 
 
 def get_matrix_sweep():
-    """All valid w x t combos where w*t <= TOTAL_CORES."""
-    worker_options = [1, 2, 4, 5, 10, 20]
+    """All valid w x t combos where w*t <= TOTAL_CORES and w <= MAX_WORKERS."""
+    worker_options = [1, 2, 4, 5, 10]
     thread_options = [1, 2, 4, 5, 10, 20]
     configs = []
     seen = set()
     for w in worker_options:
         for t in thread_options:
-            if w * t <= TOTAL_CORES and (w, t) not in seen:
+            if w * t <= TOTAL_CORES and w <= MAX_WORKERS and (w, t) not in seen:
                 seen.add((w, t))
                 configs.append({"workers": w, "threads": t, "label": "matrix"})
     configs.sort(key=lambda c: (c["workers"] * c["threads"], c["workers"]))
@@ -92,20 +99,20 @@ def get_matrix_sweep():
 
 
 def get_oversub_sweep():
-    """Oversubscribed configs where w*t > TOTAL_CORES."""
+    """Oversubscribed configs where w*t > TOTAL_CORES (capped at MAX_WORKERS)."""
     return [
-        # 1.5x oversubscription (30 logical on 20 physical)
-        {"workers": 5, "threads": 6, "label": "oversub_1.5x"},
-        {"workers": 10, "threads": 3, "label": "oversub_1.5x"},
-        {"workers": 2, "threads": 15, "label": "oversub_1.5x"},
-        # 2x oversubscription (40 logical)
-        {"workers": 4, "threads": 10, "label": "oversub_2x"},
-        {"workers": 10, "threads": 4, "label": "oversub_2x"},
-        {"workers": 20, "threads": 2, "label": "oversub_2x"},
-        {"workers": 2, "threads": 20, "label": "oversub_2x"},
-        # Heavy oversubscription (80-100 logical)
-        {"workers": 10, "threads": 10, "label": "oversub_5x"},
-        {"workers": 20, "threads": 4, "label": "oversub_4x"},
+        cfg for cfg in [
+            # 1.5x oversubscription (30 logical on 20 physical)
+            {"workers": 5, "threads": 6, "label": "oversub_1.5x"},
+            {"workers": 10, "threads": 3, "label": "oversub_1.5x"},
+            {"workers": 2, "threads": 15, "label": "oversub_1.5x"},
+            # 2x oversubscription (40 logical)
+            {"workers": 4, "threads": 10, "label": "oversub_2x"},
+            {"workers": 10, "threads": 4, "label": "oversub_2x"},
+            # Heavy oversubscription
+            {"workers": 10, "threads": 10, "label": "oversub_5x"},
+        ]
+        if cfg["workers"] <= MAX_WORKERS
     ]
 
 
@@ -189,29 +196,26 @@ def print_dry_run(configs, n_iterations):
 
     print(f"\n{'='*70}")
     print(f"DRY RUN: {len(configs)} unique configs x {n_iterations} iterations = {total} runs")
-    print(f"  {N_PAIRS} pairs, batch_size={BATCH_SIZE}, {IMAGE_SHAPE[0]}x{IMAGE_SHAPE[1]}")
+    print(f"  n_pairs = workers x {BATCHES_PER_WORKER} x {BATCH_SIZE} (dynamic per config)")
+    print(f"  batch_size={BATCH_SIZE}, memory={WORKER_MEMORY}/worker")
     print(f"{'='*70}")
 
-    print(f"\n{'#':>4} {'Workers':>8} {'Threads':>8} {'Cores':>6} {'Oversub':>8} {'Label':<16}")
-    print("-" * 56)
+    print(f"\n{'#':>4} {'Workers':>8} {'Threads':>8} {'Cores':>6} {'Oversub':>8} {'Pairs':>7} {'Label':<16}")
+    print("-" * 73)
     for i, cfg in enumerate(configs, 1):
         w, t = cfg["workers"], cfg["threads"]
         cores = w * t
+        n_pairs = n_pairs_for_workers(w)
         oversub = f"{cores/TOTAL_CORES:.1f}x" if cores > TOTAL_CORES else "-"
-        print(f"{i:>4} {w:>8} {t:>8} {cores:>6} {oversub:>8} {cfg['label']:<16}")
+        print(f"{i:>4} {w:>8} {t:>8} {cores:>6} {oversub:>8} {n_pairs:>7} {cfg['label']:<16}")
 
-    # Time estimate
-    # Rough model: fastest ~20s, slowest (1w1t) ~160s, average ~45s
-    est_avg = 45
-    est_total = total * est_avg
-    print(f"\nEstimated total time: ~{est_total/60:.0f} minutes ({est_total/3600:.1f} hours)")
-    print(f"  (based on ~{est_avg}s average per run)")
+    print(f"\n{total} runs total. ETA computed from measured wall times during execution.")
 
 
 # ---------------------------------------------------------------------------
 # Config file builder
 # ---------------------------------------------------------------------------
-def make_config_yaml(tmpdir, workers, threads):
+def make_config_yaml(tmpdir, workers, threads, n_pairs):
     output_dir = os.path.join(tmpdir, "output")
     os.makedirs(output_dir, exist_ok=True)
 
@@ -220,13 +224,13 @@ def make_config_yaml(tmpdir, workers, threads):
             "source_paths": [SOURCE_DIR],
             "base_paths": [output_dir],
             "camera_count": 1,
-            "camera_subfolders": False,
+            "camera_numbers": [1],
+            "camera_subfolders": [],
             "active_paths": [0],
         },
         "images": {
-            "shape": IMAGE_SHAPE,
-            "num_images": N_PAIRS * 2,
-            "format": ["B%05d_A.tif", "B%05d_B.tif"],
+            "num_images": n_pairs * 2,
+            "image_format": ["B%05d_A.tif", "B%05d_B.tif"],
             "type": "standard",
             "start_index": 1,
             "frame_stride": 0,
@@ -238,7 +242,7 @@ def make_config_yaml(tmpdir, workers, threads):
             "backend": "cpu",
             "omp_threads": threads,
             "dask_workers_per_node": workers,
-            "dask_memory_limit": f"{max(2, 16 // workers)}GB",
+            "dask_memory_limit": WORKER_MEMORY,
             "dask_max_in_flight_per_worker": 3,
             "cluster_type": "local",
             "open_dashboard": False,
@@ -312,10 +316,10 @@ def run_warmup(source_dir):
         images = np.stack(pairs)
 
         cfg_dict = {
-            "images": {"shape": IMAGE_SHAPE, "num_images": 4, "format": ["B%05d_A.tif", "B%05d_B.tif"],
+            "images": {"num_images": 4, "image_format": ["B%05d_A.tif", "B%05d_B.tif"],
                         "type": "standard", "start_index": 1, "frame_stride": 0, "pair_stride": 1,
                         "pairing_preset": "ab_format"},
-            "paths": {"source_paths": ["."], "base_paths": ["."], "camera_count": 1},
+            "paths": {"source_paths": ["."], "base_paths": ["."], "camera_count": 1, "camera_numbers": [1], "camera_subfolders": []},
             "processing": {"backend": "cpu", "omp_threads": 4},
             "instantaneous_piv": {"window_size": WINDOW_SIZES, "overlap": OVERLAPS,
                                    "peak_finder": "gauss6", "secondary_peak": False,
@@ -396,6 +400,7 @@ def _run_sliding_window(
 
 def run_single_benchmark(workers, threads, label, iteration=0):
     """Run the full Dask pipeline. Returns a result dict (always, even on failure)."""
+    n_pairs = n_pairs_for_workers(workers)
     tmpdir = tempfile.mkdtemp(prefix=f"piv_scale_w{workers}_t{threads}_")
     total_cores = workers * threads
     oversub_ratio = round(total_cores / TOTAL_CORES, 2)
@@ -407,7 +412,7 @@ def run_single_benchmark(workers, threads, label, iteration=0):
         "oversub_ratio": oversub_ratio,
         "label": label,
         "iteration": iteration,
-        "n_pairs": N_PAIRS,
+        "n_pairs": n_pairs,
         "batch_size": BATCH_SIZE,
         "n_saved": 0,
         "cluster_startup_s": 0, "load_s": 0, "scatter_s": 0,
@@ -417,7 +422,7 @@ def run_single_benchmark(workers, threads, label, iteration=0):
     }
 
     try:
-        cfg_path = make_config_yaml(tmpdir, workers, threads)
+        cfg_path = make_config_yaml(tmpdir, workers, threads, n_pairs)
 
         from pivtools_core.config import Config
         os.environ["OMP_NUM_THREADS"] = str(threads)
@@ -482,12 +487,12 @@ def run_single_benchmark(workers, threads, label, iteration=0):
 
             t_pipeline_total = time.perf_counter() - t_pipeline_start
             n_saved = len(saved_paths)
-            per_pair_ms = (t_correlate / N_PAIRS) * 1000.0
-            pairs_per_s = N_PAIRS / t_correlate if t_correlate > 0 else 0
+            per_pair_ms = (t_correlate / n_pairs) * 1000.0
+            pairs_per_s = n_pairs / t_correlate if t_correlate > 0 else 0
 
-            # Sanity check
-            valid = n_saved == N_PAIRS
-            error = "" if valid else f"Expected {N_PAIRS} saved, got {n_saved}"
+            # Sanity check: n_saved should be a positive multiple of n_pairs
+            valid = n_saved > 0 and n_saved % n_pairs == 0
+            error = "" if valid else f"Expected multiple of {n_pairs} saved, got {n_saved}"
 
             base_result.update({
                 "n_saved": n_saved,
@@ -541,27 +546,34 @@ def run_sweep(configs, csv_path, n_iterations=1):
     elapsed_times = []
     started_at = datetime.now()
 
+    max_pairs = max(n_pairs_for_workers(cfg["workers"]) for cfg, _ in tasks)
     print(f"\n{'='*70}")
     print(f"SCALING BENCHMARK: {total} runs to go")
-    print(f"  {N_PAIRS} pairs, batch_size={BATCH_SIZE}, {IMAGE_SHAPE[0]}x{IMAGE_SHAPE[1]}")
+    print(f"  n_pairs = workers x {BATCHES_PER_WORKER} x {BATCH_SIZE} (dynamic)")
+    print(f"  batch_size={BATCH_SIZE}, memory={WORKER_MEMORY}/worker")
+    print(f"  Max pairs in any run: {max_pairs} (need at least this many images)")
     print(f"  Results: {csv_path}")
     print(f"  Started: {started_at.strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'='*70}\n")
 
     for i, (cfg, iteration) in enumerate(tasks):
         w, t = cfg["workers"], cfg["threads"]
+        n_pairs = n_pairs_for_workers(w)
 
-        # ETA from running average
+        # ETA from running average of actual measured wall times
         if elapsed_times:
             avg = sum(elapsed_times) / len(elapsed_times)
             remaining = (total - i) * avg
             eta = datetime.now() + timedelta(seconds=remaining)
-            eta_str = f"  ETA: {eta.strftime('%H:%M:%S')} (~{remaining/60:.0f}m left)"
+            elapsed_total = (datetime.now() - started_at).total_seconds()
+            eta_str = (f"  ETA: {eta.strftime('%H:%M:%S')} "
+                       f"(~{remaining/60:.0f}m left, "
+                       f"{elapsed_total/60:.0f}m elapsed)")
         else:
             eta_str = ""
 
         print(f"[{i+1}/{total}] {cfg['label']}: {w}w x {t}t "
-              f"= {w*t} cores{eta_str}", flush=True)
+              f"= {w*t} cores, {n_pairs} pairs{eta_str}", flush=True)
 
         t0 = time.perf_counter()
         result = run_single_benchmark(w, t, cfg["label"], iteration)
@@ -622,7 +634,7 @@ def generate_plots(csv_path):
 
     if len(thread_data) >= 2:
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-        fig.suptitle(f"Thread Scaling (1 worker, {N_PAIRS} pairs, batch={BATCH_SIZE})", fontsize=14)
+        fig.suptitle(f"Thread Scaling (1 worker, dynamic pairs, batch={BATCH_SIZE})", fontsize=14)
 
         threads = [k[1] for k, _ in thread_data]
         tp_mean = [agg(v, "pairs_per_s")[0] for _, v in thread_data]
@@ -669,7 +681,7 @@ def generate_plots(csv_path):
 
         data.sort(key=lambda x: x[0][0])
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-        fig.suptitle(f"Worker Scaling ({fixed_t} threads/worker, {N_PAIRS} pairs, batch={BATCH_SIZE})",
+        fig.suptitle(f"Worker Scaling ({fixed_t} threads/worker, dynamic pairs, batch={BATCH_SIZE})",
                      fontsize=14)
 
         workers = [k[0] for k, _ in data]
@@ -712,7 +724,7 @@ def generate_plots(csv_path):
     # ---- Plot 3: Heatmap (workers x threads -> throughput) ----
     if len(grouped) >= 4:
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
-        fig.suptitle(f"Worker x Thread Scaling ({N_PAIRS} pairs, batch={BATCH_SIZE})", fontsize=14)
+        fig.suptitle(f"Worker x Thread Scaling (dynamic pairs, batch={BATCH_SIZE})", fontsize=14)
 
         all_w = sorted(set(k[0] for k in grouped))
         all_t = sorted(set(k[1] for k in grouped))
@@ -773,7 +785,7 @@ def generate_plots(csv_path):
 
     # ---- Plot 4: Total cores vs throughput (scatter, all configs) ----
     fig, ax = plt.subplots(figsize=(12, 7))
-    ax.set_title(f"Throughput vs Total Cores ({N_PAIRS} pairs, batch={BATCH_SIZE})", fontsize=14)
+    ax.set_title(f"Throughput vs Total Cores (dynamic pairs, batch={BATCH_SIZE})", fontsize=14)
 
     # Color by whether oversubscribed
     for (w, t), v in sorted(grouped.items()):
@@ -808,6 +820,169 @@ def generate_plots(csv_path):
     plt.savefig(path, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"  Saved: {path}")
+
+    # ---- Plot 5: Strong scaling — Speedup & Efficiency (standard HPC format) ----
+    # Uses worker sweep at fixed thread count (2t), the cleanest scaling data.
+    # Speedup S(N) = T(1)/T(N), Efficiency E(N) = S(N)/N
+    # Compare against Amdahl's law: S(N) = 1 / (f + (1-f)/N) where f = serial fraction
+
+    # Find the best thread count that has a 1-worker baseline
+    best_fixed_t = None
+    best_count = 0
+    for fixed_t, data in sorted(thread_groups.items()):
+        has_baseline = any(k[0] == 1 for k, _ in data)
+        if has_baseline and len(data) > best_count:
+            best_count = len(data)
+            best_fixed_t = fixed_t
+
+    if best_fixed_t is not None:
+        data = thread_groups[best_fixed_t]
+        data.sort(key=lambda x: x[0][0])
+        workers = [k[0] for k, _ in data]
+        pp_mean = [agg(v, "per_pair_ms")[0] for _, v in data]
+
+        # Baseline: 1 worker
+        t1 = pp_mean[0]
+        if t1 > 0:
+            speedup = [t1 / t for t in pp_mean]
+            efficiency = [s / w * 100 for s, w in zip(speedup, workers)]
+
+            # Fit Amdahl's law: S(N) = 1/(f + (1-f)/N)
+            # Rearrange: 1/S = f + (1-f)/N → linear regression of 1/S vs 1/N
+            from scipy.optimize import curve_fit
+            def amdahl(n, f):
+                return 1.0 / (f + (1.0 - f) / n)
+
+            try:
+                popt, _ = curve_fit(amdahl, workers, speedup, p0=[0.1], bounds=(0, 1))
+                f_serial = popt[0]
+                amdahl_fitted = True
+            except Exception:
+                f_serial = 0.0
+                amdahl_fitted = False
+
+            # Gustafson's law: S(N) = N - f*(N-1)  (weak scaling comparison)
+            # Not fitted — just shown for reference at the same f
+
+            fig, axes = plt.subplots(1, 3, figsize=(20, 6))
+            fig.suptitle(
+                f"Strong Scaling Analysis ({best_fixed_t} threads/worker, batch={BATCH_SIZE})",
+                fontsize=14,
+            )
+
+            # -- Speedup --
+            ax = axes[0]
+            ax.plot(workers, speedup, "s-", color="tab:orange", linewidth=2,
+                    markersize=8, label="Measured", zorder=3)
+            ax.plot(workers, workers, "--", color="gray", alpha=0.5,
+                    label="Ideal (linear)", linewidth=1.5)
+            if amdahl_fitted:
+                w_fine = np.linspace(1, max(workers) * 2, 200)
+                ax.plot(w_fine, amdahl(w_fine, f_serial), "-.", color="tab:red",
+                        alpha=0.7, label=f"Amdahl (f={f_serial:.1%})", linewidth=1.5)
+                # Show theoretical max speedup
+                s_max = 1.0 / f_serial if f_serial > 0 else float("inf")
+                if s_max < max(workers) * 2:
+                    ax.axhline(y=s_max, color="tab:red", linestyle=":",
+                               alpha=0.3, linewidth=1)
+                    ax.annotate(f"S_max = {s_max:.1f}x",
+                                xy=(max(workers), s_max),
+                                textcoords="offset points", xytext=(5, 5),
+                                fontsize=9, color="tab:red")
+            ax.set_xlabel("Workers (N)")
+            ax.set_ylabel("Speedup S(N) = T(1)/T(N)")
+            ax.set_title("Speedup")
+            ax.legend(loc="upper left")
+            ax.grid(True, alpha=0.3)
+            ax.set_xticks(workers)
+            ax.set_xlim(0, max(workers) + 1)
+            ax.set_ylim(0, max(max(speedup), max(workers)) * 1.1)
+
+            # -- Efficiency --
+            ax = axes[1]
+            colors = ["tab:green" if e >= 70 else "tab:orange" if e >= 50
+                      else "tab:red" for e in efficiency]
+            ax.bar(range(len(workers)), efficiency,
+                   tick_label=[str(w) for w in workers], color=colors,
+                   edgecolor="black", linewidth=0.5)
+            ax.axhline(y=100, color="gray", linestyle="--", alpha=0.5,
+                       label="Ideal (100%)")
+            ax.axhline(y=70, color="tab:green", linestyle=":", alpha=0.3,
+                       label="Good (>70%)")
+            ax.axhline(y=50, color="tab:orange", linestyle=":", alpha=0.3,
+                       label="Fair (>50%)")
+            # Annotate each bar
+            for i, (w, e) in enumerate(zip(workers, efficiency)):
+                ax.text(i, e + 2, f"{e:.0f}%", ha="center", fontsize=9,
+                        fontweight="bold")
+            ax.set_xlabel("Workers (N)")
+            ax.set_ylabel("Parallel Efficiency E(N) = S(N)/N × 100%")
+            ax.set_title("Efficiency")
+            ax.legend(loc="upper right", fontsize=8)
+            ax.set_ylim(0, 120)
+            ax.grid(True, alpha=0.3, axis="y")
+
+            # -- Context: how does this compare? --
+            ax = axes[2]
+            ax.set_xlim(0, 10)
+            ax.set_ylim(0, 10)
+            ax.axis("off")
+            ax.set_title("Scaling Context", fontsize=12)
+
+            context_text = (
+                "How does this compare?\n"
+                "─────────────────────────────\n\n"
+            )
+            if amdahl_fitted:
+                context_text += f"Serial fraction (Amdahl): {f_serial:.1%}\n"
+                s_max_val = 1.0 / f_serial if f_serial > 0 else float("inf")
+                context_text += f"Theoretical max speedup: {s_max_val:.1f}x\n\n"
+
+            # Classify the scaling quality
+            eff_at_max = efficiency[-1]
+            if eff_at_max >= 80:
+                verdict = "Excellent — near-linear scaling"
+                comparison = "Comparable to embarrassingly\nparallel workloads (image rendering,\nMonte Carlo, map-reduce)."
+            elif eff_at_max >= 60:
+                verdict = "Good — typical for scientific computing"
+                comparison = ("On par with well-optimised CFD,\n"
+                              "molecular dynamics, and FFT-based\n"
+                              "codes at this core count.")
+            elif eff_at_max >= 40:
+                verdict = "Fair — some serial bottleneck"
+                comparison = ("Common for codes with shared state,\n"
+                              "I/O bottlenecks, or load imbalance.\n"
+                              "Typical of many real-world HPC apps.")
+            else:
+                verdict = "Poor — significant serial fraction"
+                comparison = ("Suggests Amdahl's limit is close.\n"
+                              "Consider algorithmic changes to\n"
+                              "reduce the serial fraction.")
+
+            context_text += (
+                f"At {max(workers)} workers:\n"
+                f"  Speedup:    {speedup[-1]:.1f}x\n"
+                f"  Efficiency: {eff_at_max:.0f}%\n\n"
+                f"Verdict: {verdict}\n\n"
+                f"{comparison}\n\n"
+                "─────────────────────────────\n"
+                "Typical HPC efficiency targets:\n"
+                "  >80%  Excellent\n"
+                "  60-80%  Good\n"
+                "  40-60%  Acceptable\n"
+                "  <40%  Investigate bottleneck"
+            )
+            ax.text(0.05, 0.95, context_text, transform=ax.transAxes,
+                    fontsize=10, verticalalignment="top",
+                    fontfamily="monospace",
+                    bbox=dict(boxstyle="round,pad=0.5", facecolor="lightyellow",
+                              edgecolor="gray", alpha=0.8))
+
+            plt.tight_layout()
+            path = os.path.join(out_dir, f"{stem}_strong_scaling.png")
+            plt.savefig(path, dpi=150, bbox_inches="tight")
+            plt.close()
+            print(f"  Saved: {path}")
 
     # ---- Summary table (sorted by throughput, best first) ----
     print(f"\n{'Workers':>8} {'Threads':>8} {'Cores':>6} {'Oversub':>8} "
@@ -871,15 +1046,16 @@ def main():
         print("Use --source <path> or edit SOURCE_DIR in the script")
         sys.exit(1)
 
+    max_pairs = max(n_pairs_for_workers(cfg["workers"]) for cfg in configs)
     first_file = os.path.join(SOURCE_DIR, "B00001_A.tif")
-    last_file = os.path.join(SOURCE_DIR, f"B{N_PAIRS:05d}_A.tif")
+    last_file = os.path.join(SOURCE_DIR, f"B{max_pairs:05d}_A.tif")
     if not os.path.exists(first_file):
         print(f"ERROR: First image not found: {first_file}")
-        print(f"Need B00001_A.tif through B{N_PAIRS:05d}_A.tif in {SOURCE_DIR}")
+        print(f"Need B00001_A.tif through B{max_pairs:05d}_A.tif in {SOURCE_DIR}")
         sys.exit(1)
     if not os.path.exists(last_file):
         print(f"ERROR: Last image not found: {last_file}")
-        print(f"Need {N_PAIRS} image pairs but source directory has fewer")
+        print(f"Need {max_pairs} image pairs (max across configs) but source has fewer")
         sys.exit(1)
 
     # --- CSV path ---
