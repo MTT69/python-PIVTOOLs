@@ -1930,6 +1930,33 @@ video:
         """Return True if ux should be negated for the global coordinate system."""
         return self.global_coordinates_config.get("invert_ux", False)
 
+    # --- Self-calibration properties ---
+    @property
+    def self_calibration_config(self) -> dict:
+        """Return self-calibration configuration block."""
+        return self.data.get("calibration", {}).get("self_calibration", {})
+
+    @property
+    def self_calibration_z_offset(self) -> float:
+        """Return self-cal Z-offset of laser sheet from calibration plane (mm)."""
+        return self.self_calibration_config.get("z_offset", 0.0)
+
+    @property
+    def self_calibration_tilt_x(self) -> float:
+        """Return self-cal tilt about X-axis (radians)."""
+        return self.self_calibration_config.get("tilt_x", 0.0)
+
+    @property
+    def self_calibration_tilt_y(self) -> float:
+        """Return self-cal tilt about Y-axis (radians)."""
+        return self.self_calibration_config.get("tilt_y", 0.0)
+
+    @property
+    def has_self_calibration(self) -> bool:
+        """Return True if self-calibration has been run and converged."""
+        sc = self.self_calibration_config
+        return sc.get("converged", False) and "z_offset" in sc
+
     # --- Merging properties ---
     @property
     def merging(self) -> dict:

@@ -290,6 +290,26 @@ def _apply_spatial_filters_numpy(
             size = tuple(s + (s + 1) % 2 for s in size)
             block = scipy_maximum(block, size=(1, 1) + size)
 
+        elif filter_type == 'invert':
+            img_max = block.max(axis=(-2, -1), keepdims=True)
+            np.subtract(img_max, block, out=block)
+
+        elif filter_type == 'clahe':
+            import cv2
+            clip_limit = spec.get('clip_limit', 2.0)
+            tile_size = spec.get('tile_grid_size', (8, 8))
+            if isinstance(tile_size, list):
+                tile_size = tuple(tile_size)
+            clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_size)
+            for i in range(block.shape[0]):
+                for j in range(block.shape[1]):
+                    frame = block[i, j]
+                    fmin, fmax = frame.min(), frame.max()
+                    if fmax > fmin:
+                        norm = ((frame - fmin) / (fmax - fmin) * 65535).astype(np.uint16)
+                        result = clahe.apply(norm)
+                        block[i, j] = result.astype(np.float32) / 65535.0 * (fmax - fmin) + fmin
+
         else:
             logger.warning(f"Unknown spatial filter type: {filter_type}")
 

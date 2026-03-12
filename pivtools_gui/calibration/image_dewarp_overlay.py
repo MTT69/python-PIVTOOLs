@@ -35,6 +35,10 @@ from pivtools_gui.stereo_reconstruction.self_calibration import (
     dewarp_image,
 )
 from pivtools_gui.calibration.global_coordinate_alignment import _pixels_to_world_mm
+from pivtools_gui.calibration.camera_model_utils import (
+    load_pinhole_camera,
+    compute_camera_world_bounds,
+)
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -133,110 +137,9 @@ def resolve_config() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Step 1: Load pinhole camera models
+# Step 1–2: load_pinhole_camera and compute_camera_world_bounds are now
+#           imported from pivtools_gui.calibration.camera_model_utils
 # ---------------------------------------------------------------------------
-
-def load_pinhole_camera(
-    base_dir: str, cam_num: int, method: str
-) -> Tuple[PinholeCamera, dict]:
-    """Load a .mat pinhole model and return (PinholeCamera, raw_model_dict).
-
-    Model path: {base_dir}/calibration/Cam{N}/{method}_planar/model/{file}.mat
-    Uses datum_frame stored in the model (if present) for rvec/tvec selection.
-    """
-    calib_paths = get_data_paths(
-        base_dir, num_frame_pairs=1, cam=cam_num, type_name="", calibration=True
-    )
-    calib_dir = calib_paths["calib_dir"]
-
-    if method == "charuco":
-        model_path = calib_dir / "charuco_planar" / "model" / "camera_model.mat"
-    else:
-        model_path = calib_dir / "dotboard_planar" / "model" / "dotboard_model.mat"
-
-    if not model_path.exists():
-        raise FileNotFoundError(
-            f"Calibration model not found: {model_path}. Run 'Generate Model' first."
-        )
-
-    mat = loadmat(str(model_path), squeeze_me=True, struct_as_record=False)
-
-    K = np.array(mat["camera_matrix"]).astype(np.float64)
-    dist = np.array(mat["dist_coeffs"]).flatten().astype(np.float64)
-    rvecs = mat["rvecs"]
-    tvecs = mat["tvecs"]
-
-    # Select rvec/tvec using datum_frame from model (1-based), fallback to index 0
-    datum_frame = int(mat["datum_frame"]) if "datum_frame" in mat else 0
-    if rvecs.ndim == 1:
-        # Single calibration frame — rvecs/tvecs are 1-D
-        rvec = rvecs.astype(np.float64)
-        tvec = tvecs.astype(np.float64)
-    else:
-        idx = max(0, datum_frame - 1) if datum_frame > 0 else 0
-        rvec = rvecs[idx].flatten().astype(np.float64)
-        tvec = tvecs[idx].flatten().astype(np.float64)
-
-    R, _ = cv2.Rodrigues(rvec)
-    w = int(mat["image_width"])
-    h = int(mat["image_height"])
-
-    camera = PinholeCamera(
-        K=K, dist=dist, R=R, t=tvec.reshape(3, 1), image_size=(w, h)
-    )
-
-    model_dict = {
-        "camera_matrix": K,
-        "dist_coeffs": dist,
-        "rvec": rvec,
-        "tvec": tvec,
-        "image_width": w,
-        "image_height": h,
-    }
-    return camera, model_dict
-
-
-# ---------------------------------------------------------------------------
-# Step 2: Compute world-coordinate bounding box per camera
-# ---------------------------------------------------------------------------
-
-def compute_camera_world_bounds(
-    camera_matrix: np.ndarray,
-    dist_coeffs: np.ndarray,
-    rvec: np.ndarray,
-    tvec: np.ndarray,
-    w: int,
-    h: int,
-) -> Tuple[float, float, float, float]:
-    """Sample ~80 points along all 4 image edges, project to Z=0 world plane.
-
-    Returns (x_min, x_max, y_min, y_max) in mm.
-    """
-    n = 20  # points per edge
-    top = np.column_stack([np.linspace(0, w - 1, n), np.zeros(n)])
-    bottom = np.column_stack([np.linspace(0, w - 1, n), np.full(n, h - 1)])
-    left = np.column_stack([np.zeros(n), np.linspace(0, h - 1, n)])
-    right = np.column_stack([np.full(n, w - 1), np.linspace(0, h - 1, n)])
-    pts_px = np.vstack([top, bottom, left, right]).astype(np.float32)
-
-    # Pass raw pixels directly — must match PinholeCamera.project() convention
-    # (the uncalibrated conversion used in the production vector pipeline would
-    # flip the y-axis here, breaking consistency with compute_dewarp_maps)
-    world_pts = _pixels_to_world_mm(pts_px, camera_matrix, dist_coeffs, rvec, tvec)
-    valid = ~np.isnan(world_pts).any(axis=1)
-    world_pts = world_pts[valid]
-
-    if world_pts.size == 0:
-        raise ValueError(
-            "All edge projections returned NaN — check camera model parameters"
-        )
-
-    return (
-        float(world_pts[:, 0].min()),
-        float(world_pts[:, 0].max()),
-        float(world_pts[:, 1].min()),
-        float(world_pts[:, 1].max()),
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -372,7 +275,7 @@ def load_and_dewarp_camera(
             f"Consider increasing MM_PER_PIXEL to reduce memory usage."
         )
 
-    map_x, map_y = compute_dewarp_maps(camera, (out_h, out_w), bounds)
+    map_x, map_y = compute_dewarp_maps(camera, bounds, mm_per_pixel)
     dewarped = dewarp_image(raw, map_x, map_y)
 
     logger.info(

@@ -14,7 +14,6 @@ Usage
     result = run_self_calibration(
         cam1, cam2,
         images_cam1, images_cam2,
-        output_size=(512, 512),
         world_bounds=(-40, 40, -40, 40),
     )
 """
@@ -101,10 +100,59 @@ class SelfCalibrationResult:
 # Dewarping primitives
 # ---------------------------------------------------------------------------
 
+def estimate_pixel_scale(
+    cam1: PinholeCamera,
+    cam2: PinholeCamera,
+    world_bounds: Tuple[float, float, float, float],
+    z: float = 0.0,
+) -> float:
+    """Estimate the native pixel scale (mm/pixel) on the world plane.
+
+    Projects small steps in world X and Y through each camera to measure
+    how many raw pixels correspond to 1 mm.  Returns the coarsest scale
+    (largest mm/px) across both cameras and both directions, so that
+    neither camera is upsampled in any direction.
+
+    Parameters
+    ----------
+    cam1, cam2 : PinholeCamera instances
+    world_bounds : (x_min, x_max, y_min, y_max) in mm
+    z : Z-coordinate of the world plane (mm)
+
+    Returns
+    -------
+    mm_per_pixel : float
+    """
+    x_min, x_max, y_min, y_max = world_bounds
+    cx = (x_min + x_max) / 2.0
+    cy = (y_min + y_max) / 2.0
+    step = 0.5  # mm
+
+    center = np.array([[cx, cy, z]])
+    dx_pt = np.array([[cx + step, cy, z]])
+    dy_pt = np.array([[cx, cy + step, z]])
+
+    mm_per_px_values = []
+    for cam in [cam1, cam2]:
+        p0 = cam.project(center)[0]
+        px = cam.project(dx_pt)[0]
+        py = cam.project(dy_pt)[0]
+
+        px_per_mm_x = np.linalg.norm(px - p0) / step
+        px_per_mm_y = np.linalg.norm(py - p0) / step
+
+        # Coarsest direction for this camera
+        coarsest_px_per_mm = min(px_per_mm_x, px_per_mm_y)
+        mm_per_px_values.append(1.0 / coarsest_px_per_mm)
+
+    # Use the coarsest camera (largest mm/px)
+    return max(mm_per_px_values)
+
+
 def compute_dewarp_maps(
     camera: PinholeCamera,
-    output_size: Tuple[int, int],
     world_bounds: Tuple[float, float, float, float],
+    mm_per_pixel: float,
     z_offset: float = 0.0,
     tilt_x: float = 0.0,
     tilt_y: float = 0.0,
@@ -114,16 +162,17 @@ def compute_dewarp_maps(
     Parameters
     ----------
     camera : PinholeCamera
-    output_size : (out_h, out_w)
     world_bounds : (x_min, x_max, y_min, y_max) in mm
+    mm_per_pixel : spatial scale of the dewarped output grid
     z_offset, tilt_x, tilt_y : laser-sheet correction parameters
 
     Returns
     -------
     map_x, map_y : float32 arrays of shape (out_h, out_w)
     """
-    out_h, out_w = output_size
     x_min, x_max, y_min, y_max = world_bounds
+    out_w = max(1, int(round((x_max - x_min) / mm_per_pixel)))
+    out_h = max(1, int(round((y_max - y_min) / mm_per_pixel)))
 
     # Build world-coordinate meshgrid
     world_x = np.linspace(x_min, x_max, out_w, dtype=np.float64)
@@ -520,14 +569,12 @@ def run_self_calibration(
     cam2: PinholeCamera,
     images_cam1: List[np.ndarray],
     images_cam2: List[np.ndarray],
-    output_size: Tuple[int, int],
     world_bounds: Tuple[float, float, float, float],
     window_size: int = 64,
     overlap: float = 50.0,
     max_iterations: int = 10,
     convergence_threshold: float = 0.1,
     quality_threshold: float = 0.3,
-    use_c_library: bool = True,
 ) -> SelfCalibrationResult:
     """Run iterative stereo PIV self-calibration.
 
@@ -535,26 +582,28 @@ def run_self_calibration(
     ----------
     cam1, cam2 : PinholeCamera instances
     images_cam1, images_cam2 : lists of uint8 images (same length)
-    output_size : (out_h, out_w) dewarped image size
     world_bounds : (x_min, x_max, y_min, y_max) in mm
     window_size : correlation window size in pixels
     overlap : window overlap percentage
     max_iterations : maximum correction iterations
     convergence_threshold : RMS disparity (px) below which to stop
     quality_threshold : minimum peak quality to accept a disparity vector
-    use_c_library : if True, use C library for correlation; else pure Python
 
     Returns
     -------
     SelfCalibrationResult
     """
     n_images = len(images_cam1)
-    out_h, out_w = output_size
     x_min, x_max, y_min, y_max = world_bounds
 
-    mm_per_pixel_x = (x_max - x_min) / out_w
-    mm_per_pixel_y = (y_max - y_min) / out_h
-    mm_per_pixel = (mm_per_pixel_x + mm_per_pixel_y) / 2.0
+    # Compute pixel scale from native camera resolution
+    mm_per_pixel = estimate_pixel_scale(cam1, cam2, world_bounds)
+    out_w = max(1, int(round((x_max - x_min) / mm_per_pixel)))
+    out_h = max(1, int(round((y_max - y_min) / mm_per_pixel)))
+    logger.info(
+        f"Native pixel scale: {mm_per_pixel:.4f} mm/px -> "
+        f"dewarped size {out_w}x{out_h}"
+    )
 
     # Stereo half-angle from relative rotation
     R_rel = cam2.R @ cam1.R.T
@@ -565,6 +614,23 @@ def run_self_calibration(
         f"Stereo full angle: {math.degrees(full_angle):.1f} deg, "
         f"half-angle: {math.degrees(stereo_half_angle):.1f} deg"
     )
+
+    # Auto-size window to ensure the search range covers expected disparities.
+    # A Z-offset of dZ mm produces a disparity of 2*tan(theta)*dZ/mm_per_pixel px.
+    # The correlation search range is ±(window_size/2), so we need
+    # window_size > 2 * max_expected_disparity.  Use 5mm as conservative max.
+    max_z_mm = 5.0
+    max_disp_px = 2.0 * math.tan(stereo_half_angle) * max_z_mm / mm_per_pixel
+    min_window = int(math.ceil(2.0 * max_disp_px))
+    # Round up to next power of 2 (required by FFT correlation)
+    min_window = max(min_window, 32)
+    min_window_pow2 = 1 << (min_window - 1).bit_length()
+    if window_size < min_window_pow2:
+        logger.info(
+            f"Window size {window_size} too small for max disparity "
+            f"{max_disp_px:.0f} px — increasing to {min_window_pow2}"
+        )
+        window_size = min_window_pow2
 
     # Window grid
     wc = compute_window_centers(
@@ -584,14 +650,8 @@ def run_self_calibration(
     grid_y_mm_1d = world_y_1d[np.clip(grid_y_px, 0, out_h - 1)]
     grid_x_mm, grid_y_mm = np.meshgrid(grid_x_mm_1d, grid_y_mm_1d)
 
-    # Load C library if requested
-    lib = None
-    if use_c_library:
-        try:
-            lib = _load_xcorr_library()
-        except FileNotFoundError:
-            logger.warning("C library not found, falling back to Python correlation")
-            use_c_library = False
+    # Load C library
+    lib = _load_xcorr_library()
 
     cumulative_z = 0.0
     cumulative_tilt_x = 0.0
@@ -608,11 +668,11 @@ def run_self_calibration(
 
         # Build dewarp maps with cumulative corrections
         maps_cam1 = compute_dewarp_maps(
-            cam1, output_size, world_bounds,
+            cam1, world_bounds, mm_per_pixel,
             cumulative_z, cumulative_tilt_x, cumulative_tilt_y,
         )
         maps_cam2 = compute_dewarp_maps(
-            cam2, output_size, world_bounds,
+            cam2, world_bounds, mm_per_pixel,
             cumulative_z, cumulative_tilt_x, cumulative_tilt_y,
         )
 
@@ -627,17 +687,11 @@ def run_self_calibration(
         ])
 
         # Cross-correlate cam1 vs cam2
-        if use_c_library and lib is not None:
-            corr_sum = accumulate_ensemble_correlation(
-                lib, dw1, dw2,
-                win_ctrs_x, win_ctrs_y,
-                n_win_x, n_win_y, window_size,
-            )
-        else:
-            corr_sum = _python_ensemble_correlation(
-                dw1, dw2, win_ctrs_x, win_ctrs_y,
-                n_win_x, n_win_y, window_size,
-            )
+        corr_sum = accumulate_ensemble_correlation(
+            lib, dw1, dw2,
+            win_ctrs_x, win_ctrs_y,
+            n_win_x, n_win_y, window_size,
+        )
 
         # Extract disparity field
         dx_raw, dy_raw, peak_q = extract_disparity_field(corr_sum, n_images)
@@ -699,8 +753,19 @@ def run_self_calibration(
             f"tilt_y={math.degrees(cumulative_tilt_y):.4f} deg"
         )
 
-        if rms < convergence_threshold:
-            logger.info(f"Converged at iteration {iteration + 1} (RMS={rms:.4f} px)")
+        # Convergence: corrections have stabilised (parameters stopped changing).
+        # Check that all three corrections are below threshold, meaning the
+        # algorithm has found the misalignment and further iterations won't help.
+        corrections_stable = (
+            abs(delta_z) < convergence_threshold * mm_per_pixel
+            and abs(delta_tx) < math.radians(0.01)
+            and abs(delta_ty) < math.radians(0.01)
+        )
+        if corrections_stable and iteration >= 1:
+            logger.info(
+                f"Converged at iteration {iteration + 1} — corrections "
+                f"stabilised (dZ={delta_z:.4f} mm, RMS={rms:.4f} px)"
+            )
             dx_after = dx_raw.copy()
             dy_after = dy_raw.copy()
             return SelfCalibrationResult(
@@ -723,11 +788,11 @@ def run_self_calibration(
     # Did not converge — do one final pass to get "after" disparity
     logger.info("Generating final disparity field...")
     maps_cam1 = compute_dewarp_maps(
-        cam1, output_size, world_bounds,
+        cam1, world_bounds, mm_per_pixel,
         cumulative_z, cumulative_tilt_x, cumulative_tilt_y,
     )
     maps_cam2 = compute_dewarp_maps(
-        cam2, output_size, world_bounds,
+        cam2, world_bounds, mm_per_pixel,
         cumulative_z, cumulative_tilt_x, cumulative_tilt_y,
     )
     dw1 = np.stack([
@@ -738,28 +803,46 @@ def run_self_calibration(
         dewarp_image(img, maps_cam2[0], maps_cam2[1]).astype(np.float32)
         for img in images_cam2
     ])
-    if use_c_library and lib is not None:
-        corr_sum = accumulate_ensemble_correlation(
-            lib, dw1, dw2,
-            win_ctrs_x, win_ctrs_y,
-            n_win_x, n_win_y, window_size,
-        )
-    else:
-        corr_sum = _python_ensemble_correlation(
-            dw1, dw2, win_ctrs_x, win_ctrs_y,
-            n_win_x, n_win_y, window_size,
-        )
+    corr_sum = accumulate_ensemble_correlation(
+        lib, dw1, dw2,
+        win_ctrs_x, win_ctrs_y,
+        n_win_x, n_win_y, window_size,
+    )
     dx_after, dy_after, _ = extract_disparity_field(corr_sum, n_images)
 
     final_rms = history[-1].rms_disparity if history else float("inf")
-    if final_rms > 1.0 and len(history) >= 5:
+
+    # Check if corrections were small in the last iterations even though
+    # we exhausted max_iterations (still converged, just slowly)
+    last = history[-1] if history else None
+    final_converged = last is not None and (
+        abs(last.delta_z) < convergence_threshold * mm_per_pixel
+        and abs(last.delta_tilt_x) < math.radians(0.01)
+        and abs(last.delta_tilt_y) < math.radians(0.01)
+    )
+
+    # Also check if RMS improved significantly from initial
+    initial_rms = history[0].rms_disparity if history else float("inf")
+    rms_improved = final_rms < initial_rms * 0.5  # at least 2x improvement
+
+    if not final_converged and not rms_improved:
         logger.warning(
-            f"Self-calibration did not converge well (RMS={final_rms:.2f} px "
-            f"after {len(history)} iterations)"
+            f"Self-calibration did not converge (RMS={final_rms:.2f} px "
+            f"after {len(history)} iterations, corrections still changing)"
+        )
+    elif final_converged:
+        logger.info(
+            f"Self-calibration converged (corrections stabilised after "
+            f"{len(history)} iterations, final RMS={final_rms:.2f} px)"
+        )
+    else:
+        logger.info(
+            f"Self-calibration improved RMS {initial_rms:.1f} -> {final_rms:.1f} px "
+            f"({initial_rms/final_rms:.1f}x) but corrections still changing"
         )
 
     return SelfCalibrationResult(
-        converged=final_rms < convergence_threshold,
+        converged=final_converged or rms_improved,
         n_iterations=len(history),
         z_offset=cumulative_z,
         tilt_x=cumulative_tilt_x,
@@ -774,63 +857,3 @@ def run_self_calibration(
         grid_y_mm=grid_y_mm,
         peak_quality=peak_q,
     )
-
-
-# ---------------------------------------------------------------------------
-# Pure-Python fallback correlation (no C library needed)
-# ---------------------------------------------------------------------------
-
-def _python_ensemble_correlation(
-    images_a: np.ndarray,
-    images_b: np.ndarray,
-    win_ctrs_x: np.ndarray,
-    win_ctrs_y: np.ndarray,
-    n_win_x: int,
-    n_win_y: int,
-    window_size: int,
-) -> np.ndarray:
-    """Pure-Python ensemble cross-correlation (FFT-based, NumPy only).
-
-    Slower than C but works without compiled libraries.
-    """
-    N, H, W = images_a.shape
-    ws = window_size
-    half = ws // 2
-    hann = np.outer(np.hanning(ws), np.hanning(ws)).astype(np.float64)
-
-    corr_sum = np.zeros((n_win_y, n_win_x, ws, ws), dtype=np.float64)
-
-    for n in range(N):
-        img_a = images_a[n].astype(np.float64)
-        img_b = images_b[n].astype(np.float64)
-
-        for iy in range(n_win_y):
-            cy = int(round(win_ctrs_y[iy]))
-            y0 = cy - half
-            y1 = y0 + ws
-            if y0 < 0 or y1 > H:
-                continue
-
-            for ix in range(n_win_x):
-                cx = int(round(win_ctrs_x[ix]))
-                x0 = cx - half
-                x1 = x0 + ws
-                if x0 < 0 or x1 > W:
-                    continue
-
-                win_a = img_a[y0:y1, x0:x1] * hann
-                win_b = img_b[y0:y1, x0:x1] * hann
-
-                # Subtract mean
-                win_a = win_a - win_a.mean()
-                win_b = win_b - win_b.mean()
-
-                # FFT cross-correlation
-                fa = np.fft.rfft2(win_a, s=(ws, ws))
-                fb = np.fft.rfft2(win_b, s=(ws, ws))
-                cc = np.fft.irfft2(fa * np.conj(fb), s=(ws, ws))
-                cc = np.fft.fftshift(cc)
-
-                corr_sum[iy, ix] += cc
-
-    return corr_sum.astype(np.float32)

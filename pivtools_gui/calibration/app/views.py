@@ -21,6 +21,7 @@ from pivtools_gui.calibration.app.shared_views import calibration_shared_bp
 from pivtools_gui.calibration.app.stereo_dotboard_views import stereo_dotboard_bp
 from pivtools_gui.calibration.app.stereo_charuco_views import stereo_charuco_bp
 from pivtools_gui.calibration.app.polynomial_views import polynomial_bp
+from pivtools_gui.calibration.app.self_calibration_views import self_calibration_bp
 
 # Main calibration blueprint that aggregates all sub-blueprints
 calibration_bp = Blueprint("calibration", __name__)
@@ -33,6 +34,7 @@ calibration_bp.register_blueprint(stereo_dotboard_bp)
 calibration_bp.register_blueprint(stereo_charuco_bp)
 calibration_bp.register_blueprint(calibration_shared_bp)
 calibration_bp.register_blueprint(polynomial_bp)
+calibration_bp.register_blueprint(self_calibration_bp)
 
 # Try to import charuco views if available
 try:
