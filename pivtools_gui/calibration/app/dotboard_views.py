@@ -28,6 +28,7 @@ from pivtools_core.image_handling.path_utils import build_calibration_camera_pat
 
 from pivtools_gui.calibration.calibration_planar.planar_calibration_production import MultiViewCalibrator
 from pivtools_gui.calibration.services.job_manager import job_manager
+from pivtools_gui.calibration.app.shared_views import set_active_calibration_method
 from pivtools_gui.utils import camera_number, numpy_to_png_base64
 
 dotboard_bp = Blueprint("dotboard", __name__)
@@ -179,6 +180,8 @@ def planar_generate_model():
     source_path_idx = int(data.get("source_path_idx", 0))
     camera = camera_number(data.get("camera", 1))
     model_type = data.get("model_type", "pinhole")
+
+    set_active_calibration_method("dotboard")
 
     # Create job
     job_id = job_manager.create_job(
@@ -414,6 +417,8 @@ def planar_generate_model_all():
     data = request.get_json() or {}
     source_path_idx = int(data.get("source_path_idx", 0))
     model_type = data.get("model_type", "pinhole")
+
+    set_active_calibration_method("dotboard")
 
     try:
         cfg = get_config()

@@ -256,6 +256,8 @@ def make_config_yaml(tmpdir, workers, threads, n_pairs):
             "runs": list(range(1, len(WINDOW_SIZES) + 1)),
             "predictor_smoothing": True,
             "image_warp_interpolation": "cubic",
+            "save_mode": "minimal",
+            "save_compression": False,
         },
         "outlier_detection": {
             "enabled": True,

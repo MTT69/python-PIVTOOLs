@@ -31,6 +31,26 @@ from pivtools_gui.utils import camera_number, numpy_to_png_base64, numpy_to_base
 
 calibration_shared_bp = Blueprint("calibration_shared", __name__)
 
+
+def set_active_calibration_method(method_name: str, cfg: "Config" = None) -> "Config":
+    """Set the active calibration method in config and save.
+
+    Call at the start of any calibration endpoint so that downstream code
+    (e.g. GlobalCoordinateAligner, statistics workflow selection) sees the
+    correct method even if the user didn't explicitly click "Set as Active".
+
+    Returns the (possibly reloaded) Config instance.
+    """
+    if cfg is None:
+        cfg = reload_config()
+    current = cfg.active_calibration_method
+    if current != method_name:
+        cfg.data.setdefault("calibration", {})["active"] = method_name
+        cfg.save()
+        logger.info(f"Auto-set active calibration method: {current!r} -> {method_name!r}")
+    return cfg
+
+
 # Calibration image cache: {(source_path_idx, camera, idx, output_format): response_dict}
 _cal_image_cache = {}
 _cal_cache_lock = threading.Lock()

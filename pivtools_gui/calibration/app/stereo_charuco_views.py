@@ -28,6 +28,7 @@ from pivtools_core.image_handling.calibration_loader import (
 from pivtools_gui.stereo_reconstruction.stereo_charuco_calibration_production import StereoCharucoCalibrator
 from pivtools_gui.stereo_reconstruction.stereo_reconstruction_production import StereoReconstructor
 from pivtools_gui.calibration.services.job_manager import job_manager
+from pivtools_gui.calibration.app.shared_views import set_active_calibration_method
 from pivtools_gui.utils import camera_number, numpy_to_base64
 
 stereo_charuco_bp = Blueprint("stereo_charuco", __name__)
@@ -211,6 +212,8 @@ def stereo_charuco_generate_model():
     source_path_idx = int(data.get("source_path_idx", 0))
     cam1 = camera_number(data.get("cam1", 1))
     cam2 = camera_number(data.get("cam2", 2))
+
+    set_active_calibration_method("stereo_charuco")
 
     # Create job
     job_id = job_manager.create_job(
@@ -618,6 +621,7 @@ def stereo_charuco_generate_model_batch():
     logger.info(f"Received batch stereo ChArUco calibration request: {data}")
 
     try:
+        set_active_calibration_method("stereo_charuco")
         cfg = get_config()
         base_paths = cfg.base_paths
         stereo_charuco_cfg = cfg.data.get("calibration", {}).get("stereo_charuco", {})

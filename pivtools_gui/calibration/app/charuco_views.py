@@ -23,7 +23,8 @@ from pivtools_core.image_handling.path_utils import build_calibration_camera_pat
 
 from pivtools_gui.calibration.calibration_charuco import ChArUcoCalibrator
 from pivtools_gui.calibration.services.job_manager import job_manager
-from pivtools_gui.utils import camera_number 
+from pivtools_gui.calibration.app.shared_views import set_active_calibration_method
+from pivtools_gui.utils import camera_number
 
 charuco_bp = Blueprint("charuco", __name__)
 
@@ -107,6 +108,7 @@ def charuco_calibrate():
     camera = camera_number(data.get("camera", 1))
     model_type = data.get("model_type", "pinhole")
 
+    set_active_calibration_method("charuco")
     cfg = get_config()
     charuco_cfg = cfg.charuco_calibration
 
@@ -227,6 +229,7 @@ def charuco_calibrate_all():
     source_path_idx = int(data.get("source_path_idx", 0))
     model_type = data.get("model_type", "pinhole")
 
+    set_active_calibration_method("charuco")
     cfg = get_config()
     charuco_cfg = cfg.charuco_calibration
 
@@ -535,6 +538,7 @@ def charuco_calibrate_batch():
     logger.info(f"Received batch ChArUco calibration request: {data}")
 
     try:
+        set_active_calibration_method("charuco")
         cfg = get_config()
         base_paths = cfg.base_paths
         source_paths = cfg.source_paths

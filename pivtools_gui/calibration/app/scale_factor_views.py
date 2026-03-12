@@ -16,6 +16,7 @@ from pivtools_core.batch_utils import iter_batch_targets
 
 from pivtools_gui.calibration.services.job_manager import job_manager
 from pivtools_gui.calibration.scale_factor_calibration_production import ScaleFactorCalibrator
+from pivtools_gui.calibration.app.shared_views import set_active_calibration_method
 
 scale_factor_bp = Blueprint("scale_factor", __name__)
 
@@ -40,8 +41,8 @@ def scale_factor_calibrate_vectors():
     image_count = int(data.get("image_count", 1000))
     type_name = data.get("type_name", "instantaneous")
 
-    # Reload config to get latest dt/px_per_mm values
-    cfg = reload_config()
+    # Reload config and ensure active method is scale_factor
+    cfg = set_active_calibration_method("scale_factor")
     camera_numbers = cfg.camera_numbers
     base_root = Path(cfg.base_paths[source_path_idx])
 
@@ -239,7 +240,7 @@ def scale_factor_calibrate_vectors_batch():
     logger.info(f"Received batch scale factor calibration request: {data}")
 
     try:
-        cfg = reload_config()
+        cfg = set_active_calibration_method("scale_factor")
         base_paths = cfg.base_paths
 
         # Get batch parameters

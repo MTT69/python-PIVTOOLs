@@ -1,14 +1,23 @@
 """
-Benchmark instantaneous PIV: batch size sweep + resolution comparison.
+Benchmark instantaneous PIV: batch size, resolution, and save I/O.
 
-Test 1: 4MP images, batch sizes 1,2,3,5,10,20, 1 worker, 10 OMP threads, 64-32 passes
-Test 2: 4MP and 1MP (centre 1000x1000 crop) at 64-32 and 64-32-16, 10 OMP threads
+Test 1: Batch size sweep — 4MP, batch sizes 1..20, 10 OMP threads, 64->32
+Test 2: Resolution + pass config — 4MP/1MP x 64->32/64->32->16
+Test 3: Save I/O — 4 save mode combos (full/minimal x compressed/uncompressed)
+
+All correlation tests use minimal save + no compression for best raw speed.
+Results saved to CSV for write-up.
+
+Thread and worker scaling is handled by benchmark_scaling.py (full Dask pipeline).
 """
 
+import csv
 import os
 import sys
 import tempfile
 import time
+import shutil
+from datetime import datetime
 
 import cv2
 import numpy as np
@@ -20,19 +29,36 @@ if _project_root not in sys.path:
 
 from pivtools_core.config import Config
 from pivtools_cli.piv.piv_backend.cpu_instantaneous import InstantaneousCorrelatorCPU
+from pivtools_cli.piv.save_results import save_piv_result_distributed
 
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
 SOURCE_4MP = (
-    "/Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton"
-    "/Documents/#current_processing/4000_images_channel/Profile_images"
+    r"C:\Users\mtt1e23\OneDrive - University of Southampton\Documents"
+    r"\#current_processing\4000_images_channel\planar_images"
 )
 SOURCE_1MP = os.path.join(SOURCE_4MP, "1mp")
 
 N_PAIRS = 20
 OMP_THREADS = 10
 N_ITERATIONS = 3
+
+
+# ---------------------------------------------------------------------------
+# CSV output
+# ---------------------------------------------------------------------------
+def make_csv_path(test_name):
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return os.path.join(os.path.dirname(__file__), f"{test_name}_{timestamp}.csv")
+
+
+def write_csv(csv_path, fieldnames, rows):
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+    print(f"\n  Results saved to: {csv_path}")
 
 
 # ---------------------------------------------------------------------------
@@ -51,7 +77,8 @@ def load_image_pairs(source_dir, n_pairs):
     return np.stack(pairs)
 
 
-def make_config(image_shape, window_sizes, overlaps, omp_threads):
+def make_config(image_shape, window_sizes, overlaps, omp_threads,
+                save_mode="full", save_compression=True):
     cfg_dict = {
         "images": {
             "shape": image_shape,
@@ -72,6 +99,8 @@ def make_config(image_shape, window_sizes, overlaps, omp_threads):
             "secondary_peak": False,
             "window_type": "gaussian",
             "runs": list(range(1, len(window_sizes) + 1)),
+            "save_mode": save_mode,
+            "save_compression": save_compression,
         },
         "outlier_detection": {
             "enabled": True,
@@ -118,9 +147,11 @@ def get_per_pass_breakdown(profiles, n_pairs):
     return result
 
 
-def run_benchmark(images, image_shape, window_sizes, overlaps, omp_threads, n_iterations):
+def run_benchmark(images, image_shape, window_sizes, overlaps, omp_threads,
+                  n_iterations, save_mode="minimal", save_compression=False):
     """Run benchmark, return list of profile dicts."""
-    config = make_config(image_shape, window_sizes, overlaps, omp_threads)
+    config = make_config(image_shape, window_sizes, overlaps, omp_threads,
+                         save_mode=save_mode, save_compression=save_compression)
     correlator = InstantaneousCorrelatorCPU(config)
     correlator.profiling_enabled = True
 
@@ -132,6 +163,48 @@ def run_benchmark(images, image_shape, window_sizes, overlaps, omp_threads, n_it
         correlator.correlate_batch(images, config)
         profiles.append(correlator.get_profile_summary())
     return profiles, config
+
+
+def run_benchmark_with_save(images, image_shape, window_sizes, overlaps, omp_threads,
+                            n_iterations, save_mode="full", save_compression=True):
+    """Run benchmark including save timing. Returns (profiles, config, file_size_kb)."""
+    config = make_config(image_shape, window_sizes, overlaps, omp_threads,
+                         save_mode=save_mode, save_compression=save_compression)
+    correlator = InstantaneousCorrelatorCPU(config)
+    correlator.profiling_enabled = True
+
+    runs_to_save = config.instantaneous_runs_0based
+    n_passes = len(window_sizes)
+    last_pass = n_passes - 1
+    save_tmpdir = tempfile.mkdtemp(prefix="piv_bench_save_")
+
+    # Warmup (correlation only)
+    correlator.correlate_batch(images, config)
+
+    profiles = []
+    for _ in range(n_iterations):
+        piv_results = correlator.correlate_batch(images, config)
+        profile = correlator.get_profile_summary()
+
+        # Time the save
+        t0 = time.perf_counter()
+        for i, piv_result in enumerate(piv_results):
+            save_piv_result_distributed(
+                piv_result, save_tmpdir, i + 1, runs_to_save,
+                save_mode=config.instantaneous_save_mode,
+                do_compression=config.instantaneous_save_compression,
+            )
+        t_save = time.perf_counter() - t0
+        profile.setdefault(last_pass, {})["save"] = t_save
+
+        profiles.append(profile)
+
+    # Measure file size from the last saved file
+    sample_file = os.path.join(save_tmpdir, "B00001.mat")
+    file_size_kb = os.path.getsize(sample_file) / 1024.0 if os.path.exists(sample_file) else 0.0
+
+    shutil.rmtree(save_tmpdir, ignore_errors=True)
+    return profiles, config, file_size_kb
 
 
 # ---------------------------------------------------------------------------
@@ -155,11 +228,12 @@ def create_1mp_crops():
 
 
 # ---------------------------------------------------------------------------
-# Test 1: Batch size sweep (4MP, 64-32)
+# Test 1: Batch size sweep (4MP, 64->32)
 # ---------------------------------------------------------------------------
 def test_batch_sizes():
     print("\n" + "=" * 70)
     print("TEST 1: Batch size sweep (4MP 2048x2048, 64->32, 10 OMP threads)")
+    print("        save_mode=minimal, save_compression=off")
     print("=" * 70)
 
     all_images = load_image_pairs(SOURCE_4MP, N_PAIRS)
@@ -185,18 +259,23 @@ def test_batch_sizes():
         print(f"  Per pair: {mean_ms:.1f} +/- {std_ms:.1f} ms  ({pairs_per_s:.1f} pairs/s)  Working set: {mem_mb:.0f} MB")
         results.append({
             "batch_size": bs,
-            "mean_ms": mean_ms,
-            "std_ms": std_ms,
-            "pairs_per_s": pairs_per_s,
-            "mem_mb": mem_mb,
+            "per_pair_ms": round(mean_ms, 1),
+            "std_ms": round(std_ms, 1),
+            "pairs_per_s": round(pairs_per_s, 1),
+            "working_set_mb": round(mem_mb, 0),
         })
 
+    # Summary
     print("\n\nBatch Size Summary (4MP, 64->32, 10 threads):")
     print(f"{'Batch':>6} {'Per pair (ms)':>14} {'Pairs/s':>10} {'Speedup':>10} {'Memory':>10}")
-    base = results[0]["mean_ms"]
+    base = results[0]["per_pair_ms"]
     for r in results:
-        speedup = base / r["mean_ms"]
-        print(f"{r['batch_size']:>6} {r['mean_ms']:>10.1f} ms {r['pairs_per_s']:>10.1f} {speedup:>9.2f}x {r['mem_mb']:>8.0f} MB")
+        speedup = base / r["per_pair_ms"]
+        print(f"{r['batch_size']:>6} {r['per_pair_ms']:>10.1f} ms {r['pairs_per_s']:>10.1f} {speedup:>9.2f}x {r['working_set_mb']:>8.0f} MB")
+
+    # CSV
+    csv_path = make_csv_path("batch_sweep")
+    write_csv(csv_path, ["batch_size", "per_pair_ms", "std_ms", "pairs_per_s", "working_set_mb"], results)
 
     return results
 
@@ -206,10 +285,10 @@ def test_batch_sizes():
 # ---------------------------------------------------------------------------
 def test_resolution_and_passes():
     print("\n" + "=" * 70)
-    print("TEST 2: Resolution (4MP vs 1MP) x Pass config (64-32 vs 64-32-16)")
+    print("TEST 2: Resolution (4MP vs 1MP) x Pass config (64->32 vs 64->32->16)")
+    print("        save_mode=minimal, save_compression=off")
     print("=" * 70)
 
-    # Load images
     print("\nLoading 4MP images...")
     images_4mp = load_image_pairs(SOURCE_4MP, N_PAIRS)
     print(f"  Shape: {images_4mp.shape}")
@@ -224,11 +303,12 @@ def test_resolution_and_passes():
     ]
 
     resolutions = [
-        ("4MP (2048x2048)", [2048, 2048], images_4mp),
-        ("1MP (1000x1000)", [1000, 1000], images_1mp),
+        ("4MP", [2048, 2048], images_4mp),
+        ("1MP", [1000, 1000], images_1mp),
     ]
 
-    all_results = []
+    summary_rows = []
+    breakdown_rows = []
 
     for res_label, shape, images in resolutions:
         for cfg_label, windows, overlaps in configs:
@@ -247,7 +327,14 @@ def test_resolution_and_passes():
 
             print(f"  Per pair: {mean_ms:.1f} +/- {std_ms:.1f} ms  ({pairs_per_s:.1f} Hz)")
 
-            # Print per-pass breakdown
+            summary_rows.append({
+                "resolution": res_label,
+                "passes": cfg_label,
+                "per_pair_ms": round(mean_ms, 1),
+                "std_ms": round(std_ms, 1),
+                "pairs_per_s": round(pairs_per_s, 1),
+            })
+
             for pass_idx in sorted(breakdown.keys()):
                 sections = breakdown[pass_idx]
                 pass_total = sum(v for k, v in sections.items() if k not in PC_SUB_SECTIONS)
@@ -258,33 +345,158 @@ def test_resolution_and_passes():
                 other = pass_total - warp - xcorr - outlier - infill
                 print(f"  Pass {pass_idx+1}: {pass_total:.1f} ms  (warp={warp:.1f}, xcorr={xcorr:.1f}, outlier={outlier:.1f}, infill={infill:.1f}, other={other:.1f})")
 
-            all_results.append({
-                "resolution": res_label,
-                "config": cfg_label,
-                "mean_ms": mean_ms,
-                "std_ms": std_ms,
-                "pairs_per_s": pairs_per_s,
-                "breakdown": breakdown,
-            })
+                win_size = windows[pass_idx]
+                from pivtools_core.window_utils import compute_window_centers
+                wc = compute_window_centers(
+                    image_shape=tuple(shape), window_size=tuple(win_size),
+                    overlap=overlaps[pass_idx], validate=False,
+                )
 
+                breakdown_rows.append({
+                    "resolution": res_label,
+                    "passes": cfg_label,
+                    "pass_num": pass_idx + 1,
+                    "window_size": f"{win_size[0]}x{win_size[1]}",
+                    "grid_size": f"{wc.n_win_y}x{wc.n_win_x}",
+                    "total_ms": round(pass_total, 1),
+                    "warp_ms": round(warp, 1),
+                    "xcorr_ms": round(xcorr, 1),
+                    "outlier_ms": round(outlier, 1),
+                    "infill_ms": round(infill, 1),
+                    "other_ms": round(other, 1),
+                })
+
+    # Summary
     print("\n\nSummary Table:")
-    print(f"{'Resolution':<20} {'Config':<12} {'Per pair (ms)':>14} {'Hz':>8}")
-    print("-" * 58)
-    for r in all_results:
-        print(f"{r['resolution']:<20} {r['config']:<12} {r['mean_ms']:>10.1f} ms {r['pairs_per_s']:>8.1f}")
+    print(f"{'Resolution':<12} {'Config':<12} {'Per pair (ms)':>14} {'Hz':>8}")
+    print("-" * 50)
+    for r in summary_rows:
+        print(f"{r['resolution']:<12} {r['passes']:<12} {r['per_pair_ms']:>10.1f} ms {r['pairs_per_s']:>8.1f}")
 
-    return all_results
+    # CSVs
+    csv_summary = make_csv_path("resolution_summary")
+    write_csv(csv_summary, ["resolution", "passes", "per_pair_ms", "std_ms", "pairs_per_s"], summary_rows)
+
+    csv_breakdown = make_csv_path("resolution_breakdown")
+    write_csv(csv_breakdown,
+              ["resolution", "passes", "pass_num", "window_size", "grid_size",
+               "total_ms", "warp_ms", "xcorr_ms", "outlier_ms", "infill_ms", "other_ms"],
+              breakdown_rows)
+
+    return summary_rows, breakdown_rows
+
+
+# ---------------------------------------------------------------------------
+# Test 3: Save I/O benchmark (4 combos)
+# ---------------------------------------------------------------------------
+def test_save_io():
+    print("\n" + "=" * 70)
+    print("TEST 3: Save I/O benchmark (4MP 2048x2048, 64->32, 20 pairs, 10 threads)")
+    print("        Comparing 4 save mode combinations")
+    print("=" * 70)
+
+    images = load_image_pairs(SOURCE_4MP, N_PAIRS)
+    print(f"Loaded {N_PAIRS} pairs, shape={images.shape}")
+
+    save_combos = [
+        ("full + compressed",      "full",    True),
+        ("full + uncompressed",    "full",    False),
+        ("minimal + compressed",   "minimal", True),
+        ("minimal + uncompressed", "minimal", False),
+    ]
+
+    results = []
+
+    for label, save_mode, save_compression in save_combos:
+        print(f"\n--- {label} ---")
+        profiles, config, file_size_kb = run_benchmark_with_save(
+            images,
+            image_shape=[2048, 2048],
+            window_sizes=[[64, 64], [32, 32]],
+            overlaps=[50, 50],
+            omp_threads=OMP_THREADS,
+            n_iterations=N_ITERATIONS,
+            save_mode=save_mode,
+            save_compression=save_compression,
+        )
+
+        # Extract save time (attributed to last pass)
+        save_times_ms = []
+        corr_times_ms = []
+        for profile in profiles:
+            save_t = 0.0
+            corr_t = 0.0
+            for pass_idx in profile:
+                for section, elapsed in profile[pass_idx].items():
+                    if section == "save":
+                        save_t += elapsed
+                    elif section not in PC_SUB_SECTIONS:
+                        corr_t += elapsed
+            # corr_t includes save since it's in the profile dict, subtract it
+            corr_t -= save_t
+            save_times_ms.append(save_t / N_PAIRS * 1000.0)
+            corr_times_ms.append(corr_t / N_PAIRS * 1000.0)
+
+        save_mean = np.mean(save_times_ms)
+        save_std = np.std(save_times_ms) if len(save_times_ms) > 1 else 0.0
+        corr_mean = np.mean(corr_times_ms)
+        total_mean = save_mean + corr_mean
+
+        print(f"  Correlation: {corr_mean:.1f} ms/pair")
+        print(f"  Save:        {save_mean:.1f} +/- {save_std:.1f} ms/pair")
+        print(f"  File size:   {file_size_kb:.0f} KB")
+        print(f"  Total:       {total_mean:.1f} ms/pair")
+
+        results.append({
+            "label": label,
+            "save_mode": save_mode,
+            "compressed": save_compression,
+            "corr_ms": round(corr_mean, 1),
+            "save_ms": round(save_mean, 1),
+            "save_std_ms": round(save_std, 1),
+            "total_ms": round(total_mean, 1),
+            "file_kb": round(file_size_kb, 0),
+        })
+
+    # Summary
+    print("\n\nSave I/O Summary (4MP, 64->32, 20 pairs, 10 threads):")
+    print(f"{'Mode':<26} {'Corr (ms)':>10} {'Save (ms)':>10} {'Total (ms)':>11} {'File (KB)':>10} {'Save %':>8}")
+    print("-" * 80)
+    for r in results:
+        save_pct = r["save_ms"] / r["total_ms"] * 100 if r["total_ms"] > 0 else 0
+        print(f"{r['label']:<26} {r['corr_ms']:>8.1f} {r['save_ms']:>8.1f} {r['total_ms']:>9.1f} {r['file_kb']:>8.0f} {save_pct:>7.1f}%")
+
+    # CSV
+    csv_path = make_csv_path("save_io")
+    write_csv(csv_path,
+              ["label", "save_mode", "compressed", "corr_ms", "save_ms", "save_std_ms", "total_ms", "file_kb"],
+              results)
+
+    return results
 
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    print("Creating 1MP centre crops...")
-    create_1mp_crops()
+    import argparse
+    parser = argparse.ArgumentParser(description="PIV benchmark suite")
+    parser.add_argument("--test", type=int, choices=[1, 2, 3],
+                        help="Run only a specific test (1=batch, 2=resolution, 3=save)")
+    args = parser.parse_args()
 
-    batch_results = test_batch_sizes()
-    resolution_results = test_resolution_and_passes()
+    if args.test is None or args.test == 2:
+        print("Creating 1MP centre crops...")
+        create_1mp_crops()
+
+    if args.test is None or args.test == 1:
+        test_batch_sizes()
+
+    if args.test is None or args.test == 2:
+        test_resolution_and_passes()
+
+    if args.test is None or args.test == 3:
+        test_save_io()
 
     print("\n\n" + "=" * 70)
     print("ALL BENCHMARKS COMPLETE")

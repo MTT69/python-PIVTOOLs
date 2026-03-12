@@ -1,6 +1,6 @@
 import math
 from pathlib import Path
-from typing import Tuple, Optional, List
+from typing import Callable, Tuple, Optional, List
 import logging
 
 import dask
@@ -112,6 +112,20 @@ def read_single_frame(
     else:
         # Standard formats (.tif, .png, .jpg, etc.)
         return read_image(str(file_path))
+
+
+def create_piv_frame_reader(
+    camera_path: Path, camera_num: int, config: Config
+) -> Callable[[int], np.ndarray]:
+    """Build a reader closure for validate_images_generic.
+
+    Returns a function that takes a 1-based frame index
+    and returns a single (H, W) image array.
+    """
+    def read_frame(idx: int) -> np.ndarray:
+        pair = read_pair(idx, camera_path, camera_num, config)
+        return pair[0]
+    return read_frame
 
 
 def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.ndarray:

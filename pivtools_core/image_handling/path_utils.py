@@ -606,14 +606,13 @@ def validate_images_generic(
         else:
             result["valid"] = True
 
-        # Try to read first for preview
+        # Try to read first for preview (non-fatal if it fails)
         try:
             img = read_frame_fn(1)
             result["image_size"] = (img.shape[1], img.shape[0])
             result["first_image_preview"] = _image_to_base64(img)
         except Exception as e:
-            result["error"] = f"Could not read first image: {e}"
-            result["valid"] = False
+            logging.warning(f"Could not read preview for camera: {e}")
 
         return result
 

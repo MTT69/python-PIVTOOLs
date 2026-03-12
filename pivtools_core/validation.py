@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import List, Tuple
 
 from pivtools_core.config import Config
+from pivtools_core.image_handling.load_images import create_piv_frame_reader
 from pivtools_core.image_handling.path_utils import format_to_glob, validate_images_generic
 
 
@@ -85,13 +86,12 @@ def validate_config(config: Config) -> Tuple[bool, str, List[str]]:
             camera_path = source_path / folder if folder else source_path
 
         # Use the canonical validator (handles .set, .cine, .im7, standard)
-        def _noop_reader(idx):
-            raise RuntimeError("no preview in CLI validation")
+        read_frame = create_piv_frame_reader(camera_path, camera_num, config)
 
         result = validate_images_generic(
             camera_path, camera_num, format_str, image_type,
             config.num_images, config.start_index == 0,
-            read_frame_fn=_noop_reader,
+            read_frame_fn=read_frame,
         )
 
         if result["error"]:

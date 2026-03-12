@@ -34,6 +34,7 @@ if _project_root not in sys.path:
 
 from pivtools_core.config import Config
 from pivtools_cli.piv.piv_backend.cpu_instantaneous import InstantaneousCorrelatorCPU
+from pivtools_cli.piv.save_results import save_piv_result_distributed
 
 # ---------------------------------------------------------------------------
 # Hardcoded image presets
@@ -93,6 +94,8 @@ def make_config(
     outlier_enabled: bool,
     infilling_method: str = "local_median",
     peak_finder: str = "gauss6",
+    save_mode: str = "full",
+    save_compression: bool = True,
 ) -> Config:
     """Create a minimal Config from a temporary YAML file."""
     cfg_dict = {
@@ -122,6 +125,8 @@ def make_config(
             "secondary_peak": False,
             "window_type": "gaussian",
             "runs": list(range(1, len(window_sizes) + 1)),
+            "save_mode": save_mode,
+            "save_compression": save_compression,
         },
         "outlier_detection": {
             "enabled": outlier_enabled,
@@ -170,6 +175,7 @@ SECTION_ORDER = [
     "infilling",
     "padding_stacking",
     "result_construction",
+    "save",
 ]
 
 
@@ -315,6 +321,8 @@ def run_profile(
     infilling_method: str = "local_median",
     peak_finder: str = "gauss6",
     threading_enabled: bool = True,
+    save_mode: str = "full",
+    save_compression: bool = True,
 ):
     preset = IMAGE_PRESETS[preset_name]
     print(f"\nLoading images from: {preset['path']}")
@@ -334,6 +342,8 @@ def run_profile(
         outlier_enabled=outlier_enabled,
         infilling_method=infilling_method,
         peak_finder=peak_finder,
+        save_mode=save_mode,
+        save_compression=save_compression,
     )
 
     print(f"\nCreating correlator...")
@@ -352,6 +362,11 @@ def run_profile(
     print(f"  Infilling: {infilling_method}")
     print(f"  Peak finder: {peak_finder}")
     print(f"  Threading: {'ON' if threading_enabled else 'OFF'}")
+    print(f"  Save mode: {save_mode}")
+    print(f"  Save compression: {'ON' if save_compression else 'OFF'}")
+
+    # Create temp output dir for save profiling
+    save_tmpdir = tempfile.mkdtemp(prefix="piv_profile_save_")
 
     if do_warmup:
         print(f"\nWarmup pass (FFTW plan creation)...")
@@ -361,14 +376,36 @@ def run_profile(
         print(f"  Warmup completed in {warmup_time:.2f}s")
 
     all_profiles = []
+    runs_to_save = config.instantaneous_runs_0based
+
     for iteration in range(n_iterations):
         if n_iterations > 1:
             print(f"\nIteration {iteration + 1}/{n_iterations}...")
         else:
             print(f"\nRunning profiled correlation...")
 
-        correlator.correlate_batch(images, config)
-        all_profiles.append(correlator.get_profile_summary())
+        piv_results = correlator.correlate_batch(images, config)
+        profile = correlator.get_profile_summary()
+
+        # Profile save for each image in the batch
+        n_passes = len(config.window_sizes)
+        last_pass = n_passes - 1
+        t_save_start = time.perf_counter()
+        for i, piv_result in enumerate(piv_results):
+            save_piv_result_distributed(
+                piv_result, save_tmpdir, i + 1, runs_to_save,
+                save_mode=config.instantaneous_save_mode,
+                do_compression=config.instantaneous_save_compression,
+            )
+        t_save = time.perf_counter() - t_save_start
+        # Attribute save time to the last pass (it saves all passes at once)
+        profile.setdefault(last_pass, {})["save"] = t_save
+
+        all_profiles.append(profile)
+
+    # Clean up temp save files
+    import shutil
+    shutil.rmtree(save_tmpdir, ignore_errors=True)
 
     print_results(all_profiles, config, preset["label"])
 
@@ -441,6 +478,18 @@ Examples:
         action="store_true",
         help="Disable thread pool (direct sequential calls)",
     )
+    parser.add_argument(
+        "--save-mode",
+        type=str,
+        default="full",
+        choices=["full", "minimal"],
+        help="Save mode: full (11 fields) or minimal (ux, uy, b_mask only) (default: full)",
+    )
+    parser.add_argument(
+        "--no-save-compression",
+        action="store_true",
+        help="Disable zlib compression on .mat save (faster, larger files)",
+    )
 
     args = parser.parse_args()
 
@@ -463,6 +512,8 @@ Examples:
             infilling_method=args.infilling,
             peak_finder=args.peak_finder,
             threading_enabled=not args.no_threading,
+            save_mode=args.save_mode,
+            save_compression=not args.no_save_compression,
         )
 
 

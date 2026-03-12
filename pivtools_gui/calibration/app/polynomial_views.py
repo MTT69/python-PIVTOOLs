@@ -29,6 +29,7 @@ from pivtools_gui.calibration.calibration_poly.polynomial_calibration_production
     PolynomialVectorCalibrator,
 )
 from pivtools_gui.calibration.services.job_manager import job_manager
+from pivtools_gui.calibration.app.shared_views import set_active_calibration_method
 
 
 polynomial_bp = Blueprint("polynomial", __name__)
@@ -301,8 +302,8 @@ def polynomial_calibrate():
     camera = camera_number(data.get("camera", 1))
 
     try:
-        # Get config
-        cfg = reload_config()
+        # Get config and set active method
+        cfg = set_active_calibration_method("polynomial")
         poly_cfg = cfg.polynomial_calibration
 
         if not hasattr(cfg, "source_paths") or source_path_idx >= len(cfg.source_paths):
@@ -417,8 +418,8 @@ def polynomial_calibrate_all():
     source_path_idx = int(data.get("source_path_idx", 0))
 
     try:
-        # Reload config to get latest settings
-        cfg = reload_config()
+        # Reload config and set active method
+        cfg = set_active_calibration_method("polynomial")
         camera_numbers = cfg.camera_numbers
         base_root = Path(cfg.base_paths[source_path_idx])
         num_frame_pairs = cfg.num_frame_pairs
@@ -729,7 +730,7 @@ def polynomial_calibrate_batch():
     logger.info(f"Received batch polynomial calibration request: {data}")
 
     try:
-        cfg = reload_config()
+        cfg = set_active_calibration_method("polynomial")
         base_paths = cfg.base_paths
         source_paths = cfg.source_paths
         poly_cfg = cfg.polynomial_calibration

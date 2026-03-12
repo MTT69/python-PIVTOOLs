@@ -21,7 +21,7 @@ from loguru import logger
 import os
 from pivtools_gui.calibration.app.views import calibration_bp
 from pivtools_core.config import get_config, reload_config, Config
-from pivtools_core.image_handling.load_images import read_pair, load_mask_for_camera
+from pivtools_core.image_handling.load_images import create_piv_frame_reader, read_pair, load_mask_for_camera
 from pivtools_core.image_handling.path_utils import build_piv_camera_path, validate_images_generic
 from pivtools_gui.masking.app.views import masking_bp
 from pivtools_core.paths import get_data_paths
@@ -850,9 +850,7 @@ def validate_files():
             format_str = patterns[0]  # Primary pattern for generic validation
 
             # Create a frame reader function for preview generation
-            def read_frame(idx: int):
-                pair = read_pair(idx, camera_path, camera_num, cfg)
-                return pair[0]  # Return first frame of pair for preview
+            read_frame = create_piv_frame_reader(camera_path, camera_num, cfg)
 
             # --- Per-pattern validation ---
             pattern_validations = []
