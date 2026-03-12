@@ -7,8 +7,11 @@ paths:
   - 0
   camera_numbers:
   - 1
-  camera_count: 1
-  camera_subfolders: []
+  - 2
+  camera_count: 2
+  camera_subfolders:
+  - camera1
+  - camera2
 images:
   num_images: 100
   image_format:
@@ -133,6 +136,8 @@ instantaneous_piv:
   peak_finder: gauss3
   secondary_peak: false
   predictor_smoothing: false
+  save_mode: minimal
+  save_compression: false
 ensemble_piv:
   fit_method: kspace
   skip_background_subtraction: false
@@ -205,7 +210,7 @@ calibration:
   - camera4
   - camera5
   path_order: camera_first
-  active: scale_factor
+  active: stereo_dotboard
   piv_type: instantaneous
   scale_factor:
     dt: 0.0057553
@@ -221,7 +226,7 @@ calibration:
     datum_camera: 1
     datum_frame: 1
   calibration_sources:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\stereo_images\calibrationimages
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/4000_images_channel/stereo_images/calibrationimages
   global_coordinates:
     enabled: true
     datum_camera: 1
@@ -275,8 +280,17 @@ calibration:
       - 3018.2581625950966
       frame_a: 1
       frame_b: 1
-filters:
-- type: time
+  self_calibration:
+    z_offset: 0.6135643557892455
+    tilt_x: 0.0012305824817954469
+    tilt_y: 4.666204843280828e-05
+    converged: true
+    n_iterations: 6
+    final_rms_disparity: 2.7277215709086886
+    n_images: 20
+    window_size: 128
+    overlap: 50.0
+filters: []
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat

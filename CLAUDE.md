@@ -63,7 +63,8 @@ Config is stored as config.yaml (single source of truth), loaded via Config clas
 | Calibration (ChArUco) | `calibration/app/charuco_views.py` | `useChArUcoCalibration` | `ChArUcoCalibration` |
 | Calibration (polynomial) | `calibration/app/polynomial_views.py` | `useCalibration` | `PolynomialCalibration` |
 | Calibration (stereo) | `calibration/app/stereo_*_views.py` | `useStereoCalibration` | `StereoCalibration` |
-| Self-calibration | `stereo_reconstruction/self_calibration.py` | N/A (script) | N/A |
+| Self-calibration (algo) | `stereo_reconstruction/self_calibration.py` | N/A | N/A |
+| Self-calibration (GUI) | `calibration/app/self_calibration_views.py` | `useSelfCalibration` | `SelfCalibrationSection` (in `StereoCalibration`, `StereoCharucoCalibration`) |
 | Image dewarp overlay | `calibration/image_dewarp_overlay.py` | N/A (script) | N/A |
 | Calibration images | `calibration/app/shared_views.py` | `useCalibrationImageViewer` | `CalibrationImageViewer` |
 | Global coordinates | `calibration/global_coordinate_alignment.py` | `useGlobalCoordinates` | `GCInlineControls` (inline in CalibrationImageViewer settings bar) |
@@ -143,6 +144,13 @@ class Config:
     global_coordinates_overlap_points: list  # [{target_camera, pixel_on_datum_cam, pixel_on_target, target_frame}] (legacy)
     global_coordinates_overlap_pairs: list   # [{camera_a, camera_b, pixel_on_a, pixel_on_b, frame_a, frame_b}] (chain topology, with backward compat from overlap_points)
     global_coordinates_invert_ux: bool       # True to negate ux + UV_stress + reflect x-coords during alignment
+
+    # --- Self-calibration properties ---
+    self_calibration_config: dict             # calibration.self_calibration section
+    self_calibration_z_offset: float          # Z-offset of laser sheet from calibration plane (mm), default 0.0
+    self_calibration_tilt_x: float            # Tilt about X-axis (radians), default 0.0
+    self_calibration_tilt_y: float            # Tilt about Y-axis (radians), default 0.0
+    has_self_calibration: bool                # True if converged self-cal results exist in config
 
     # --- Statistics properties ---
     statistics: dict
@@ -386,6 +394,7 @@ class PivRunner:
 | `stereo_dotboard_bp` | `/calibrate/stereo_dotboard` | Stereo dotboard calibration |
 | `stereo_charuco_bp` | `/calibrate/stereo_charuco` | Stereo ChArUco calibration |
 | `calibration_shared_bp` | `/calibrate` | Shared: datum, status, image loading |
+| `self_calibration_bp` | `/calibrate/self_calibration` | Stereo self-calibration (Wieneke 2005) |
 
 **Key calibration routes:**
 ```
@@ -403,6 +412,10 @@ POST /calibrate/global_coordinates/pixel_to_physical  {pixel_x, pixel_y, camera,
 GET  /calibrate/calibration/snapshot       ?base_path_idx= -> {exists, date?, calibration_method?}
 POST /calibrate/calibration/snapshot/load  {base_path_idx} -> restores saved calibration config
 POST /calibrate/calibration/clear_image_cache  -> clears server-side calibration frame cache
+POST /calibrate/self_calibration/dewarp_preview  {cam1, cam2, method, frame_idx, z_offset?, tilt_x?, tilt_y?} -> red-cyan overlay base64
+POST /calibrate/self_calibration/run             {cam1, cam2, method, n_images, window_size, overlap} -> {job_id}
+GET  /calibrate/self_calibration/job/<job_id>    -> job status + convergence history on completion
+GET  /calibrate/self_calibration/status          -> current self-cal state from config
 ```
 
 **Calibration image caching:** `shared_views.py` maintains a thread-safe LRU cache (`_cal_image_cache`, max 10 entries) keyed by `(source_path_idx, camera, idx, output_format)`. Eliminates disk I/O and percentile re-computation on frame revisits. Frontend clears on camera switch via `useCalibrationImageViewer`.
@@ -417,13 +430,15 @@ POST /calibrate/calibration/clear_image_cache  -> clears server-side calibration
 - `calibration_planar/planar_calibration_production.py` - Dotboard detection + model. Grid detection delegated to `grid_detection.py`, I/O to `calibration_io.py`. Supports `model_type="pinhole"` (OpenCV) or `"polynomial"` (DaVis-compatible) via `MultiViewCalibrator(model_type=...)`.
 - `calibration_charuco/charuco_calibration_production.py` - ChArUco detection. Board creation delegated to `calibration_io.create_charuco_detector()`, I/O to shared utilities. Supports `model_type="pinhole"` or `"polynomial"` via `ChArUcoCalibrator(model_type=...)`. ChArUco world points are in meters (multiplied by 1000 for polynomial mm input).
 - `calibration_poly/polynomial_calibration_production.py` - DaVis XML polynomial calibration consumer (`PolynomialVectorCalibrator`) + polynomial model fitting from detected points (`fit_polynomial_from_points()`, `save_polynomial_to_config()`). Fitting uses 3rd-order polynomial with 10 terms [1, s, s², s³, t, t², t³, s*t, s²*t, s*t²] solved via `np.linalg.lstsq`. mm_per_pixel estimated via median nearest-neighbor ratios (cKDTree). **Coordinate convention:** `PolynomialVectorCalibrator` converts uncalibrated coords (1-based, y-up) → raw pixels (0-based, y-down) via `_uncal_to_raw()` before polynomial evaluation, matching the space the polynomial was fitted in. `image_height` stored from config for the conversion.
-- `vector_calibration_production.py` - Applies calibration to vectors
-- `image_dewarp_overlay.py` - Standalone script: dewarps raw images from multiple cameras into physical coords, overlays them with interactive coordinate readout and measurement tools. Config-at-top pattern with config.yaml fallback. Imports `PinholeCamera`/`compute_dewarp_maps`/`dewarp_image` from `self_calibration.py` and `_pixels_to_world_mm` from `global_coordinate_alignment.py`. Uses raw pixel coords (not uncalibrated convention) throughout for consistency with dewarp maps.
+- `vector_calibration_production.py` - Applies calibration to vectors. `VectorCalibrator` accepts `z_world`/`tilt_x`/`tilt_y` params from self-calibration, threaded through all 13 call sites to `_pixels_to_world_mm()`.
+- `camera_model_utils.py` - Shared utilities: `load_pinhole_camera(base_dir, cam_num, method)` loads per-camera planar .mat model, `compute_camera_world_bounds(...)` projects image edges to Z=0 world plane. Used by `image_dewarp_overlay.py` and `self_calibration_service.py`.
+- `image_dewarp_overlay.py` - Standalone script: dewarps raw images from multiple cameras into physical coords, overlays them with interactive coordinate readout and measurement tools. Config-at-top pattern with config.yaml fallback. Imports shared utilities from `camera_model_utils.py`, `PinholeCamera`/`compute_dewarp_maps`/`dewarp_image` from `self_calibration.py`, and `_pixels_to_world_mm` from `global_coordinate_alignment.py`. Uses raw pixel coords (not uncalibrated convention) throughout for consistency with dewarp maps.
+- `services/self_calibration_service.py` - Service layer for stereo self-calibration. Orchestrates camera loading, source image loading (evenly sampled frame A), red-cyan dewarp overlay generation, and `run_self_calibration()` invocation. Saves results to `config.calibration.self_calibration`. Used by both GUI routes (`self_calibration_views.py`) and CLI (`pivtools-cli self-calibrate`).
 - `stereo_reconstruction/stereo_dotboard_calibration_production.py` - Stereo dotboard. Grid detection delegated to `grid_detection.py`. Blob detector params differ from planar (stricter: minArea=50, circularity=0.4, inertia=0.3).
 - `stereo_reconstruction/stereo_calibration_base.py` - Stereo base class. Parallel camera image reads via ThreadPoolExecutor. Container format + image finding delegated to `calibration_io.py`.
 - `stereo_reconstruction/stereo_charuco_calibration_production.py` - Stereo ChArUco detection. Board creation delegated to `calibration_io.create_charuco_detector()`. `ARUCO_DICT_MAP` re-exported for backward compat.
 - `stereo_reconstruction/stereo_reconstruction_production.py` - 3D velocity reconstruction from stereo pairs. Converts uncalibrated coords → raw pixels before OpenCV triangulation. Negates y/uy on output (OpenCV y-down → physical y-up). Uses ProcessPoolExecutor for parallel frame processing.
-- `stereo_reconstruction/self_calibration.py` - Stereo self-calibration (Wieneke 2005). Detects and corrects laser-sheet Z-offset and tilts via iterative disparity minimization. Key exports: `PinholeCamera`, `SelfCalibrationResult`, `run_self_calibration()`, `compute_dewarp_maps()`. Reuses `bulkxcorr2d_accumulate` C library for ensemble cross-camera correlation, `median_outlier_detection` + `infill_local_median` for disparity cleaning. Includes pure-Python FFT fallback when C library unavailable. Test script: `scripts/test_self_calibration.py` (synthetic data + 5 diagnostic figures).
+- `stereo_reconstruction/self_calibration.py` - Stereo self-calibration (Wieneke 2005). Detects and corrects laser-sheet Z-offset and tilts via iterative disparity minimization. Key exports: `PinholeCamera`, `SelfCalibrationResult`, `run_self_calibration()`, `compute_dewarp_maps()`. Requires `bulkxcorr2d_accumulate` C library for ensemble cross-camera correlation, `median_outlier_detection` + `infill_local_median` for disparity cleaning. **Production integration:** Results (z_offset, tilt_x, tilt_y) stored in `config.calibration.self_calibration` and automatically applied during `apply-calibration` via `VectorCalibrator(z_world=..., tilt_x=..., tilt_y=...)`. GUI: `SelfCalibrationSection` component in both stereo calibration tabs. CLI: `pivtools-cli self-calibrate`. Unit tests: `test_self_calibration_recovery.py` (6 tests), `test_selfcal_velocity_correction.py` (16 tests).
 
 **Dotboard calibration performance optimizations** (shared by planar + stereo):
 - **Blob detection:** Histogram-based single pass (checks `mean_intensity > 127` to decide original vs inverted), with fallback if <9 keypoints found
@@ -708,6 +723,7 @@ useStereoCharucoCalibration(config)     // POST /backend/calibrate/stereo_charuc
 useCalibrationValidation(config)        // Validation state for calibration
 useCalibrationImageViewer(config)       // GET /backend/calibrate/calibration_image
 useCalibrationSnapshot(basePathIdx)     // GET/POST /backend/calibration/snapshot - check/load saved calibration
+useSelfCalibration(cam1, cam2, method)  // POST /backend/calibrate/self_calibration/{dewarp_preview,run}, GET .../job, .../status
 ```
 
 #### `filterDefinitions.ts`
@@ -1081,6 +1097,7 @@ Triggered on GitHub release or manual dispatch. Builds wheels for {ubuntu, macos
 | `detect-stereo-planar` / `detect-stereo-charuco` | Stereo calibration detection |
 | `apply-calibration` / `apply-stereo` | Apply calibration (px → m/s). `--method` accepts `dotboard`, `charuco`, `scale_factor`, `polynomial`. `--align-coordinates` flag auto-applies global alignment. |
 | `align-coordinates` | Apply global coordinate alignment to calibrated vectors (reads datum/overlap from config). `--force` flag overrides idempotency guard. |
+| `self-calibrate` | Run stereo self-calibration (Wieneke 2005). `--camera-pair 1,2`, `--method dotboard\|charuco`, `--n-images 20`, `--window-size 64`. Saves z_offset/tilt_x/tilt_y to `config.calibration.self_calibration`. |
 | `transform` | Geometric transforms (`flip_ud`, `flip_lr`, `rotate_90_cw/ccw`, `rotate_180`, `swap_ux_uy`, `invert_ux_uy`, `invert_ux`, `invert_uy`, `scale_velocity:N`, `scale_coords:N`) |
 | `merge` | Multi-camera Hanning window blending |
 | `statistics` | Mean, TKE, vorticity, divergence, gamma |
@@ -1206,6 +1223,8 @@ Both `cpu_instantaneous.py` and `cpu_ensemble.py` use `cv2.setNumThreads(1)` + c
 | `runs` | `instantaneous_runs_0based` | Which passes to save (0-based) |
 | `peak_finder` | `peak_finder` | `"gauss3"`→3, `"gauss4"`→4, `"gauss5"`→5, `"gauss6"`→6 DOF |
 | `predictor_smoothing` | `instantaneous_predictor_smoothing` | Gaussian smooth predictor between passes (default `true`) |
+| `save_mode` | `instantaneous_save_mode` | `"full"` (default, all 11 fields) or `"minimal"` (ux, uy, b_mask only — faster saves) |
+| `save_compression` | `instantaneous_save_compression` | `true` (default, zlib) or `false` (uncompressed — faster saves, larger files) |
 
 **`ensemble_piv` block:**
 

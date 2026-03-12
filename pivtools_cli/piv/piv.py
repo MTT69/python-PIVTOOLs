@@ -70,7 +70,9 @@ def _process_and_save_batch(
     for i, piv_result in enumerate(piv_results):
         img_idx = start_img_idx + i
         path = save_piv_result_distributed(
-            piv_result, output_path, img_idx, runs_to_save, vector_format
+            piv_result, output_path, img_idx, runs_to_save, vector_format,
+            save_mode=config.instantaneous_save_mode,
+            do_compression=config.instantaneous_save_compression,
         )
         saved_paths.append(path)
 

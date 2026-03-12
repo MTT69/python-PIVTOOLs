@@ -637,6 +637,9 @@ def vectors_calibrate():
                         dt=dt,
                         type_name=type_name,
                         runs=None,  # Always all runs
+                        z_world=cfg.self_calibration_z_offset,
+                        tilt_x=cfg.self_calibration_tilt_x,
+                        tilt_y=cfg.self_calibration_tilt_y,
                     )
                     calibrator.process_run(
                         num_frame_pairs,

@@ -430,8 +430,62 @@ def detect_grid_automatic(
     # Instead we build the grid by walking the neighbor graph: each dot's grid
     # index is determined by its local relationship to already-indexed neighbors.
     # This is robust to arbitrary smooth distortions.
-
     grid_indices = _assign_grid_indices_bfs(centers, vec1, vec2, spacing_px)
+
+    # Step 4a: Parallelogram shear correction
+    #
+    # When the two grid direction vectors are far from orthogonal (e.g. under
+    # strong perspective from stereo/Scheimpflug cameras), the BFS assigns
+    # parallelogram-shaped grid indices.  For example, vec1=[92,-21] and
+    # vec2=[80,142] causes each +row step to also shift the column by ~1,
+    # producing a 19x10 grid instead of 10x10.
+    #
+    # Fix: detect the column-vs-row shear (linear trend of median column per
+    # row) and subtract it.  This converts the parallelogram back to a
+    # rectangle.
+    grid_indices[:, 0] -= grid_indices[:, 0].min()
+    grid_indices[:, 1] -= grid_indices[:, 1].min()
+
+    nc_raw = grid_indices[:, 0].max() + 1
+    nr_raw = grid_indices[:, 1].max() + 1
+    fill_raw = len(centers) / max(nc_raw * nr_raw, 1)
+
+    if fill_raw < 0.85:
+        # Compute median column per row to detect shear
+        unique_rows = np.unique(grid_indices[:, 1])
+        if len(unique_rows) >= 2:
+            row_vals = []
+            median_cols = []
+            for r in unique_rows:
+                mask = grid_indices[:, 1] == r
+                if np.sum(mask) >= 2:
+                    row_vals.append(r)
+                    median_cols.append(np.median(grid_indices[mask, 0]))
+
+            if len(row_vals) >= 2:
+                row_vals = np.array(row_vals, dtype=np.float64)
+                median_cols = np.array(median_cols, dtype=np.float64)
+                # Fit linear trend: median_col = slope * row + intercept
+                slope, intercept = np.polyfit(row_vals, median_cols, 1)
+
+                if abs(slope) > 0.3:  # significant shear detected
+                    # Subtract the shear from column indices
+                    col_shift = np.round(slope * grid_indices[:, 1].astype(np.float64)).astype(np.int32)
+                    grid_indices[:, 0] -= col_shift
+                    grid_indices[:, 0] -= grid_indices[:, 0].min()
+                    grid_indices[:, 1] -= grid_indices[:, 1].min()
+
+                    nc_new = grid_indices[:, 0].max() + 1
+                    nr_new = grid_indices[:, 1].max() + 1
+                    fill_new = len(centers) / max(nc_new * nr_new, 1)
+                    logger.info(
+                        f"Shear correction: slope={slope:.2f}, "
+                        f"{nc_raw}x{nr_raw} (fill={fill_raw:.0%}) → "
+                        f"{nc_new}x{nr_new} (fill={fill_new:.0%})"
+                    )
+
+    logger.debug(f"BFS grid: {grid_indices[:, 0].max()+1}x{grid_indices[:, 1].max()+1}, "
+                 f"fill={len(centers)/max((grid_indices[:, 0].max()+1)*(grid_indices[:, 1].max()+1),1):.0%}")
 
     # Shift so minimum is (0, 0)
     col_min, row_min = grid_indices[:, 0].min(), grid_indices[:, 1].min()
@@ -471,9 +525,18 @@ def detect_grid_automatic(
         info['n_reflection_points_rejected'] = 0
         logger.debug("No reflections detected (single connected component)")
 
-    # Step 5: Use RANSAC homography to robustly reject outliers
-    # Homography (8 DOF) correctly models perspective-distorted grids,
-    # unlike affine (6 DOF) which fails at oblique viewing angles.
+    # Step 5: RANSAC homography + homography-based index refinement
+    #
+    # Under strong perspective distortion (stereo/Scheimpflug) the BFS can
+    # mis-assign grid indices at the edges where the local inter-dot direction
+    # deviates significantly from the global median.  However, interior points
+    # (the majority) are always correct.  Strategy:
+    #   (a) Fit a RANSAC homography from BFS grid_indices → pixel centers.
+    #       The RANSAC inliers are the correctly-assigned points.
+    #   (b) Re-fit a clean homography from inliers only.
+    #   (c) Project ALL original blob centers through H⁻¹ to grid space and
+    #       round to nearest integer → clean grid indices for every point.
+    #   (d) Validate: reject any point whose reprojection residual is too high.
     src_pts = grid_indices.astype(np.float32)
     dst_pts = centers.astype(np.float32)
 
@@ -495,8 +558,53 @@ def detect_grid_automatic(
     n_outliers = len(inliers) - n_inliers
     logger.debug(f"RANSAC homography: {n_inliers} inliers, {n_outliers} outliers rejected")
 
-    centers = centers[inliers]
-    grid_indices = grid_indices[inliers]
+    # Step 5b: Re-fit clean homography from inliers only, then re-assign ALL
+    # points via H⁻¹ projection.  This corrects BFS edge-point errors under
+    # strong perspective where the global direction templates break down.
+    if n_outliers > 0 and n_inliers >= 9:
+        inlier_src = grid_indices[inliers].astype(np.float32)
+        inlier_dst = centers[inliers].astype(np.float32)
+        H_clean, _ = cv2.findHomography(inlier_src, inlier_dst, method=0)  # least-squares
+
+        if H_clean is not None:
+            H_inv = np.linalg.inv(H_clean)
+            # Project ALL blob centers to grid space
+            pts_h = np.hstack([centers, np.ones((len(centers), 1), dtype=np.float32)])
+            grid_space = (H_inv @ pts_h.T).T
+            grid_space = grid_space[:, :2] / grid_space[:, 2:3]
+            new_indices = np.round(grid_space).astype(np.int32)
+
+            # Shift so minimum is (0, 0)
+            new_indices[:, 0] -= new_indices[:, 0].min()
+            new_indices[:, 1] -= new_indices[:, 1].min()
+
+            # Validate: check reprojection residual for each point
+            proj_h = np.hstack([new_indices.astype(np.float32), np.ones((len(new_indices), 1), dtype=np.float32)])
+            reprojected = (H_clean @ proj_h.T).T
+            reprojected = reprojected[:, :2] / reprojected[:, 2:3]
+            residuals = np.sqrt(np.sum((centers - reprojected) ** 2, axis=1))
+            valid = residuals < ransac_thresh * 2  # generous threshold
+
+            if np.sum(valid) >= n_inliers:
+                n_recovered = np.sum(valid) - n_inliers
+                if n_recovered > 0:
+                    logger.info(
+                        f"Homography refinement recovered {n_recovered} points "
+                        f"({n_inliers} → {np.sum(valid)})"
+                    )
+                centers = centers[valid]
+                grid_indices = new_indices[valid]
+                H_matrix = H_clean
+            else:
+                # Refinement didn't help, keep RANSAC result
+                centers = centers[inliers]
+                grid_indices = grid_indices[inliers]
+        else:
+            centers = centers[inliers]
+            grid_indices = grid_indices[inliers]
+    else:
+        centers = centers[inliers]
+        grid_indices = grid_indices[inliers]
 
     # Step 6: Remove duplicate grid positions (keep best fit)
     src_h = np.hstack([grid_indices.astype(np.float32), np.ones((len(grid_indices), 1), dtype=np.float32)])

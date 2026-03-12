@@ -130,6 +130,9 @@ def apply_calibration_command(args):
                         type_name=type_name,
                         runs=runs_to_process,
                         config=config,
+                        z_world=config.self_calibration_z_offset,
+                        tilt_x=config.self_calibration_tilt_x,
+                        tilt_y=config.self_calibration_tilt_y,
                     )
                     calibrator.process_run(alignment=alignment)
                     result = {"success": True, "calibrated_count": "N/A"}
@@ -220,6 +223,109 @@ def align_coordinates_command(args):
             success = False
 
     sys.exit(0 if success else 1)
+
+
+# =============================================================================
+# SELF-CALIBRATE COMMAND
+# =============================================================================
+
+def self_calibrate_command(args):
+    """Run stereo self-calibration (Wieneke 2005) to correct laser sheet misalignment."""
+    import math
+    from pivtools_core.config import get_config
+    from pivtools_gui.calibration.services.self_calibration_service import (
+        run_self_cal_job, save_self_cal_to_config, result_to_dict,
+    )
+
+    config = get_config()
+
+    # Parse camera pair
+    if args.camera_pair:
+        camera_pair = [int(c.strip()) for c in args.camera_pair.split(",")]
+    elif config.stereo_pairs:
+        camera_pair = list(config.stereo_pairs[0])
+    else:
+        camera_pair = [1, 2]
+
+    cam1_num, cam2_num = camera_pair[0], camera_pair[1]
+
+    # Determine method
+    method = args.method or config.active_calibration_method
+    if method.startswith("stereo_"):
+        method = method.replace("stereo_", "")
+
+    # Parameters
+    source_path_idx = int(args.active_paths.split(",")[0]) if args.active_paths else 0
+    sc_cfg = config.self_calibration_config
+    n_images = args.n_images or sc_cfg.get("n_images", 20)
+    window_size = args.window_size or sc_cfg.get("window_size", 64)
+    overlap = sc_cfg.get("overlap", 50.0)
+
+    base_dir = str(config.base_paths[0])
+
+    print("=" * 60)
+    print("Self-Calibration (Wieneke 2005)")
+    print("=" * 60)
+    print(f"Camera pair: {cam1_num}, {cam2_num}")
+    print(f"Method: {method}")
+    print(f"Source images: {n_images} (source path idx {source_path_idx})")
+    print(f"Window: {window_size} px, overlap: {overlap}%")
+    print()
+
+    def progress_cb(data):
+        status = data.get("status", "")
+        pct = data.get("progress", 0)
+        print(f"  [{pct:3d}%] {status}")
+
+    try:
+        result = run_self_cal_job(
+            config=config,
+            base_dir=base_dir,
+            source_path_idx=source_path_idx,
+            cam1_num=cam1_num,
+            cam2_num=cam2_num,
+            method=method,
+            n_images=n_images,
+            window_size=window_size,
+            overlap=overlap,
+            progress_callback=progress_cb,
+        )
+
+        # Save to config
+        save_self_cal_to_config(
+            config, result,
+            n_images=n_images,
+            window_size=window_size,
+            overlap=overlap,
+        )
+
+        # Print summary
+        print()
+        print("=" * 60)
+        print("RESULTS")
+        print("=" * 60)
+        print(f"  Converged:    {result.converged}")
+        print(f"  Iterations:   {result.n_iterations}")
+        print(f"  Z-offset:     {result.z_offset:.4f} mm")
+        print(f"  Tilt X:       {math.degrees(result.tilt_x):.4f}°")
+        print(f"  Tilt Y:       {math.degrees(result.tilt_y):.4f}°")
+        print(f"  Final RMS:    {result.final_rms_disparity:.4f} px")
+        print()
+
+        if result.converged:
+            print("Self-calibration params saved to config.yaml")
+            print("These will be applied automatically during 'apply-calibration'.")
+        else:
+            print("WARNING: Self-calibration did not converge.")
+            print("Results saved but may not improve accuracy.")
+
+        sys.exit(0 if result.converged else 1)
+
+    except Exception as e:
+        print(f"\nERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
 
 # =============================================================================
@@ -1294,6 +1400,8 @@ instantaneous_piv:
   secondary_peak: false
   predictor_smoothing: true
   image_warp_interpolation: cubic
+  save_mode: full
+  save_compression: true
 ensemble_piv:
   fit_method: kspace
   skip_background_subtraction: false
@@ -1402,6 +1510,10 @@ calibration:
     aruco_dict: DICT_4X4_1000
     min_corners: 6
     dt: 1
+  self_calibration:
+    n_images: 20
+    window_size: 64
+    overlap: 50.0
 filters: []
 masking:
   enabled: false
@@ -1826,6 +1938,34 @@ def main():
         help="Force alignment even if already applied (WARNING: will double shifts)"
     )
     align_parser.set_defaults(func=align_coordinates_command)
+
+    # self-calibrate command
+    selfcal_parser = subparsers.add_parser(
+        "self-calibrate",
+        help="Run stereo self-calibration (Wieneke 2005) to correct laser sheet misalignment"
+    )
+    selfcal_parser.add_argument(
+        "--camera-pair", "-c", default=None,
+        help="Camera pair as 'CAM1,CAM2' (e.g., '1,2'). Default: from config"
+    )
+    selfcal_parser.add_argument(
+        "--method", "-m", default=None,
+        choices=["dotboard", "charuco"],
+        help="Calibration method (default: from config)"
+    )
+    selfcal_parser.add_argument(
+        "--n-images", "-n", type=int, default=None,
+        help="Number of source images for self-cal (default: 20)"
+    )
+    selfcal_parser.add_argument(
+        "--window-size", "-w", type=int, default=None,
+        help="Correlation window size in pixels (default: 64)"
+    )
+    selfcal_parser.add_argument(
+        "--active-paths", "-p", default=None,
+        help="Source path index (e.g., '0')"
+    )
+    selfcal_parser.set_defaults(func=self_calibrate_command)
 
     args = parser.parse_args()
 

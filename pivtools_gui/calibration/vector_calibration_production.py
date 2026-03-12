@@ -8,6 +8,7 @@ Supports both ChArUco and Planar (circle grid) calibration models.
 """
 
 import logging
+import math
 import os
 import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -95,12 +96,18 @@ def _pixels_to_world_mm(
     dist_coeffs: np.ndarray,
     rvec: np.ndarray,
     tvec: np.ndarray,
+    z_world: float = 0.0,
+    tilt_x: float = 0.0,
+    tilt_y: float = 0.0,
 ) -> np.ndarray:
     """
-    Convert pixel coordinates to world coordinates (mm) on the Z=0 plane.
+    Convert pixel coordinates to world coordinates (mm) on a plane.
 
     Uses the pinhole camera model with distortion correction to project
-    pixel coordinates back to the calibration plane (Z=0).
+    pixel coordinates back to a world plane. The plane is defined by:
+        Z = z_world + X * tan(tilt_y) + Y * tan(tilt_x)
+
+    When z_world=0, tilt_x=0, tilt_y=0, this reduces to the Z=0 plane.
 
     Args:
         pts_px: Pixel coordinates, shape (N, 2)
@@ -108,9 +115,12 @@ def _pixels_to_world_mm(
         dist_coeffs: Distortion coefficients
         rvec: Rotation vector (3,)
         tvec: Translation vector (3,)
+        z_world: Z-offset of the plane from the calibration plane (mm)
+        tilt_x: Tilt angle about the X-axis (radians)
+        tilt_y: Tilt angle about the Y-axis (radians)
 
     Returns:
-        World coordinates (mm) on Z=0 plane, shape (N, 2)
+        World coordinates (mm) on the specified plane, shape (N, 2)
     """
     if pts_px.size == 0:
         return pts_px
@@ -127,36 +137,35 @@ def _pixels_to_world_mm(
     # Build rotation matrix from rvec
     R, _ = cv2.Rodrigues(rvec)
 
-    # For Z=0 plane projection:
+    # Ray-plane intersection for plane: Z = z_world + X*tan(tilt_y) + Y*tan(tilt_x)
     # Camera ray: [x_norm, y_norm, 1] (normalized coords with z=1)
-    # World point: P_world = R^T @ (s * ray - t) where s is scale factor
-    # On Z=0 plane: P_world[2] = 0
-    # Solving: R^T @ (s * [x_n, y_n, 1]^T - t) has z-component = 0
+    # World point: P_world = R^T @ (s * ray - t) = s * ray_world - t_world
+    # Plane equation: P_world[2] = z_world + P_world[0]*tan_ty + P_world[1]*tan_tx
+    # Substituting and solving for s:
+    #   s*rw[2] - tw[2] = z_world + (s*rw[0] - tw[0])*tan_ty + (s*rw[1] - tw[1])*tan_tx
+    #   s*(rw[2] - rw[0]*tan_ty - rw[1]*tan_tx) = z_world + tw[2] - tw[0]*tan_ty - tw[1]*tan_tx
 
     R_inv = R.T
     t = tvec.flatten()
+
+    tan_tx = math.tan(tilt_x)
+    tan_ty = math.tan(tilt_y)
 
     world_pts = np.zeros((pts_normalized.shape[0], 2), dtype=np.float64)
 
     for i, (xn, yn) in enumerate(pts_normalized):
         ray = np.array([xn, yn, 1.0])
 
-        # Transform ray and translation to world frame
-        # P_cam = s * ray, P_world = R^T @ (P_cam - t)
-        # P_world = R^T @ s @ ray - R^T @ t
-        # For P_world[2] = 0:
-        # (R^T @ ray)[2] * s = (R^T @ t)[2]
-        # s = (R^T @ t)[2] / (R^T @ ray)[2]
-
         ray_world = R_inv @ ray
         t_world = R_inv @ t
 
-        if abs(ray_world[2]) < 1e-10:
-            # Ray is parallel to Z=0 plane, use large value
+        denom = ray_world[2] - ray_world[0] * tan_ty - ray_world[1] * tan_tx
+        if abs(denom) < 1e-10:
             world_pts[i] = [np.nan, np.nan]
             continue
 
-        s = t_world[2] / ray_world[2]
+        numer = z_world + t_world[2] - t_world[0] * tan_ty - t_world[1] * tan_tx
+        s = numer / denom
         P_world = s * ray_world - t_world
 
         world_pts[i] = P_world[:2]
@@ -176,11 +185,12 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
         args: Tuple of (file_idx, vector_file_path, output_file_path,
                        coords_by_run, camera_matrix, dist_coeffs,
                        rvec, tvec, dt, max_run, valid_run_nums, invert_ux,
-                       image_height)
+                       image_height, z_world, tilt_x, tilt_y)
                where coords_by_run is Dict[int, Tuple[ndarray, ndarray]]
                mapping 1-based run numbers to (x_coords, y_coords).
                invert_ux: bool - if True, negate ux and UV_stress after calibration.
                image_height: int - image height in pixels for uncal→raw conversion.
+               z_world, tilt_x, tilt_y: self-cal laser sheet correction params.
 
     Returns:
         Dict with results or None if failed
@@ -199,6 +209,9 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
         valid_run_nums,
         invert_ux,
         image_height,
+        z_world,
+        tilt_x,
+        tilt_y,
     ) = args
 
     def _uncal_to_raw_local(x_uncal, y_uncal):
@@ -263,7 +276,8 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
                 return None
 
             coords_world = _pixels_to_world_mm(
-                coords_flat, camera_matrix, dist_coeffs, rvec, tvec
+                coords_flat, camera_matrix, dist_coeffs, rvec, tvec,
+                z_world=z_world, tilt_x=tilt_x, tilt_y=tilt_y,
             )
             # Displaced positions: compute in uncal space, then convert to raw
             disp_x_uncal = coords_x_px + ux_px
@@ -273,7 +287,8 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
                 [disp_raw_x.flatten(), disp_raw_y.flatten()], axis=-1
             ).astype(np.float32)
             disp_world = _pixels_to_world_mm(
-                disp_flat, camera_matrix, dist_coeffs, rvec, tvec
+                disp_flat, camera_matrix, dist_coeffs, rvec, tvec,
+                z_world=z_world, tilt_x=tilt_x, tilt_y=tilt_y,
             )
             delta_mm = disp_world - coords_world
             ux_ms = (delta_mm[:, 0] / 1000.0) / dt
@@ -351,7 +366,8 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
                 ).astype(np.float32)
 
                 coords_world = _pixels_to_world_mm(
-                    coords_flat, camera_matrix, dist_coeffs, rvec, tvec
+                    coords_flat, camera_matrix, dist_coeffs, rvec, tvec,
+                    z_world=z_world, tilt_x=tilt_x, tilt_y=tilt_y,
                 )
                 # Displaced positions: compute in uncal space, then convert to raw
                 disp_x_uncal = coords_x_px + ux_px
@@ -361,7 +377,8 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
                     [disp_raw_x.flatten(), disp_raw_y.flatten()], axis=-1
                 ).astype(np.float32)
                 disp_world = _pixels_to_world_mm(
-                    disp_flat, camera_matrix, dist_coeffs, rvec, tvec
+                    disp_flat, camera_matrix, dist_coeffs, rvec, tvec,
+                    z_world=z_world, tilt_x=tilt_x, tilt_y=tilt_y,
                 )
                 delta_mm = disp_world - coords_world
                 ux_ms = (delta_mm[:, 0] / 1000.0) / dt
@@ -381,11 +398,13 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
                     delta_px = 1.0
                     coords_disp_x = coords_flat + np.array([delta_px, 0.0], dtype=np.float32)
                     world_disp_x = _pixels_to_world_mm(
-                        coords_disp_x, camera_matrix, dist_coeffs, rvec, tvec
+                        coords_disp_x, camera_matrix, dist_coeffs, rvec, tvec,
+                        z_world=z_world, tilt_x=tilt_x, tilt_y=tilt_y,
                     )
                     coords_disp_y = coords_flat + np.array([0.0, delta_px], dtype=np.float32)
                     world_disp_y = _pixels_to_world_mm(
-                        coords_disp_y, camera_matrix, dist_coeffs, rvec, tvec
+                        coords_disp_y, camera_matrix, dist_coeffs, rvec, tvec,
+                        z_world=z_world, tilt_x=tilt_x, tilt_y=tilt_y,
                     )
                     delta_world_x = np.linalg.norm(world_disp_x - coords_world, axis=1)
                     delta_world_y = np.linalg.norm(world_disp_y - coords_world, axis=1)
@@ -440,6 +459,9 @@ class VectorCalibrator:
         runs: Optional[List[int]] = None,
         num_workers: Optional[int] = None,
         config=None,
+        z_world: float = 0.0,
+        tilt_x: float = 0.0,
+        tilt_y: float = 0.0,
     ):
         """
         Initialize vector calibrator.
@@ -457,6 +479,9 @@ class VectorCalibrator:
             runs: List of 1-indexed run numbers to process, or None for all runs
             num_workers: Number of parallel workers, None = os.cpu_count()
             config: Optional Config object to read settings from
+            z_world: Self-cal Z-offset of laser sheet from calibration plane (mm)
+            tilt_x: Self-cal tilt angle about X-axis (radians)
+            tilt_y: Self-cal tilt angle about Y-axis (radians)
         """
         self._config = config
 
@@ -512,6 +537,11 @@ class VectorCalibrator:
         self.tvec = self.calibration_model["tvec"]  # First view
         self.dot_spacing_mm = self.calibration_model["dot_spacing_mm"]
         self.image_height = self.calibration_model["image_height"]
+
+        # Self-calibration sheet correction parameters
+        self.z_world = z_world
+        self.tilt_x = tilt_x
+        self.tilt_y = tilt_y
 
         logger.info(f"Initialized calibrator for Camera {camera_num}")
         logger.info(f"Model type: {self.model_type}")
@@ -640,9 +670,10 @@ class VectorCalibrator:
         if pts.size == 0:
             return coords_x, coords_y
 
-        # Project to world coordinates (mm) on Z=0 plane
+        # Project to world coordinates (mm) on the calibration/sheet plane
         world_pts = _pixels_to_world_mm(
-            pts, self.camera_matrix, self.dist_coeffs, self.rvec, self.tvec
+            pts, self.camera_matrix, self.dist_coeffs, self.rvec, self.tvec,
+            z_world=self.z_world, tilt_x=self.tilt_x, tilt_y=self.tilt_y,
         )
 
         x_mm = world_pts[:, 0].reshape(coords_x.shape)
@@ -690,7 +721,8 @@ class VectorCalibrator:
 
         # Project original positions to world (mm)
         coords_world = _pixels_to_world_mm(
-            coords_flat, self.camera_matrix, self.dist_coeffs, self.rvec, self.tvec
+            coords_flat, self.camera_matrix, self.dist_coeffs, self.rvec, self.tvec,
+            z_world=self.z_world, tilt_x=self.tilt_x, tilt_y=self.tilt_y,
         )
 
         # Displaced positions: compute in uncalibrated space, then convert to raw.
@@ -705,7 +737,8 @@ class VectorCalibrator:
 
         # Project displaced positions to world (mm)
         disp_world = _pixels_to_world_mm(
-            disp_flat, self.camera_matrix, self.dist_coeffs, self.rvec, self.tvec
+            disp_flat, self.camera_matrix, self.dist_coeffs, self.rvec, self.tvec,
+            z_world=self.z_world, tilt_x=self.tilt_x, tilt_y=self.tilt_y,
         )
 
         # Compute displacement in mm, convert to m/s
@@ -756,19 +789,22 @@ class VectorCalibrator:
 
         # Project original positions to world (mm)
         coords_world = _pixels_to_world_mm(
-            coords_flat, self.camera_matrix, self.dist_coeffs, self.rvec, self.tvec
+            coords_flat, self.camera_matrix, self.dist_coeffs, self.rvec, self.tvec,
+            z_world=self.z_world, tilt_x=self.tilt_x, tilt_y=self.tilt_y,
         )
 
         # Project positions displaced by delta_px in x direction
         coords_disp_x = coords_flat + np.array([delta_px, 0.0], dtype=np.float32)
         world_disp_x = _pixels_to_world_mm(
-            coords_disp_x, self.camera_matrix, self.dist_coeffs, self.rvec, self.tvec
+            coords_disp_x, self.camera_matrix, self.dist_coeffs, self.rvec, self.tvec,
+            z_world=self.z_world, tilt_x=self.tilt_x, tilt_y=self.tilt_y,
         )
 
         # Project positions displaced by delta_px in y direction
         coords_disp_y = coords_flat + np.array([0.0, delta_px], dtype=np.float32)
         world_disp_y = _pixels_to_world_mm(
-            coords_disp_y, self.camera_matrix, self.dist_coeffs, self.rvec, self.tvec
+            coords_disp_y, self.camera_matrix, self.dist_coeffs, self.rvec, self.tvec,
+            z_world=self.z_world, tilt_x=self.tilt_x, tilt_y=self.tilt_y,
         )
 
         # Compute displacement magnitudes in world coordinates (mm)
@@ -1042,6 +1078,9 @@ class VectorCalibrator:
             valid_run_nums,
             invert_ux,
             self.image_height,
+            self.z_world,
+            self.tilt_x,
+            self.tilt_y,
         ))
 
         if result and result.get("success"):
@@ -1096,6 +1135,9 @@ class VectorCalibrator:
                     valid_run_nums,
                     invert_ux,
                     self.image_height,
+                    self.z_world,
+                    self.tilt_x,
+                    self.tilt_y,
                 )
             )
 

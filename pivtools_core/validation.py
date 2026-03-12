@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import List, Tuple
 
 from pivtools_core.config import Config
-from pivtools_core.image_handling.path_utils import format_to_glob, _suggest_camera_subfolder
+from pivtools_core.image_handling.path_utils import format_to_glob, validate_images_generic
 
 
 logger = logging.getLogger(__name__)
@@ -78,71 +78,52 @@ def validate_config(config: Config) -> Tuple[bool, str, List[str]]:
     for camera_num in camera_numbers:
         # Determine camera path
         format_str = config.image_format[0]
-        if image_type in ("lavision_set", "lavision_im7"):
+        if image_type in ("lavision_set", "lavision_im7", "cine"):
             camera_path = source_path
         else:
             folder = config.get_camera_folder(camera_num)
             camera_path = source_path / folder if folder else source_path
 
-        if not camera_path.exists():
-            msg = f"Camera {camera_num} path does not exist: {camera_path}"
-            suggestion = _suggest_camera_subfolder(camera_path, camera_num)
-            if suggestion:
-                msg += f'. Did you mean "{suggestion}"?'
-            errors.append(msg)
-            continue
+        # Use the canonical validator (handles .set, .cine, .im7, standard)
+        def _noop_reader(idx):
+            raise RuntimeError("no preview in CLI validation")
 
-        # Count files
-        if image_type == "lavision_set":
-            # Set files: single file
-            if camera_path.is_file():
-                set_file = camera_path
-            else:
-                set_file = camera_path / format_str
+        result = validate_images_generic(
+            camera_path, camera_num, format_str, image_type,
+            config.num_images, config.start_index == 0,
+            read_frame_fn=_noop_reader,
+        )
 
-            if not set_file.exists():
-                errors.append(f"Camera {camera_num}: Set file not found: {set_file}")
+        if result["error"]:
+            errors.append(f"Camera {camera_num}: {result['error']}")
+        elif result["valid"]:
+            # Check for processing subset (found > expected)
+            found = result["found_count"]
+            if isinstance(found, int) and found > config.num_images:
+                warnings.append(
+                    f"Camera {camera_num}: Processing subset - using {config.num_images} of {found} available files"
+                )
 
-            # Multi-loop validation: check all loop .set files exist
-            if config.num_loops > 1:
-                for loop_idx in range(config.num_loops):
-                    loop_path = config.get_loop_source_path(source_path, loop_idx)
-                    if not loop_path.exists():
-                        errors.append(
-                            f"Camera {camera_num}: Loop {loop_idx} .set file not found: {loop_path}"
-                        )
+        # Supplementary: multi-loop .set validation
+        if image_type == "lavision_set" and config.num_loops > 1:
+            for loop_idx in range(config.num_loops):
+                loop_path = config.get_loop_source_path(source_path, loop_idx)
+                if not loop_path.exists():
+                    errors.append(
+                        f"Camera {camera_num}: Loop {loop_idx} .set file not found: {loop_path}"
+                    )
 
-        elif image_type == "lavision_im7":
-            # IM7 files
+        # Supplementary: indexing mismatch check (standard types only)
+        if image_type == "standard" and result["valid"] and camera_path.exists():
             pattern = format_to_glob(format_str)
             matching_files = list(camera_path.glob(pattern))
-            expected = config.num_images
-            if len(matching_files) != expected:
-                errors.append(
-                    f"Camera {camera_num}: Found {len(matching_files)} IM7 files, expected {expected}. "
-                    f"Path: {camera_path}, Pattern: {pattern}"
-                )
-        else:
-            # Standard files
-            expected = config.num_images
-            if len(config.image_format) == 2:
-                # A/B format: count A files
-                pattern_a = format_to_glob(config.image_format[0])
-                matching_files = list(camera_path.glob(pattern_a))
-            else:
-                # Time-resolved: count all files
-                pattern = format_to_glob(format_str)
-                matching_files = list(camera_path.glob(pattern))
-
-            # Check for indexing mismatch
-            if image_type == "standard" and matching_files:
+            if matching_files:
                 indices = []
                 for f in matching_files:
                     try:
-                        match = re.search(r'(\d+)', f.name)
-                        if match:
-                            idx = int(match.group(1))
-                            indices.append(idx)
+                        m = re.search(r'(\d+)', f.name)
+                        if m:
+                            indices.append(int(m.group(1)))
                     except Exception:
                         pass
                 if indices:
@@ -153,22 +134,6 @@ def validate_config(config: Config) -> Tuple[bool, str, List[str]]:
                             f"Camera {camera_num}: File indexing mismatch - found files starting at {min_idx}, "
                             f"but start_index is {expected_min}"
                         )
-
-            if len(matching_files) < expected:
-                # ERROR: Not enough files
-                all_files = sorted([f.name for f in camera_path.iterdir() if f.is_file()])[:5]
-                file_list = ', '.join(all_files) if all_files else "(empty folder)"
-                errors.append(
-                    f"Camera {camera_num}: Missing files - found {len(matching_files)}, expected {expected}.\n"
-                    f"  Path: {camera_path}\n"
-                    f"  Pattern: {format_str}\n"
-                    f"  Found files: {file_list}"
-                )
-            elif len(matching_files) > expected:
-                # WARNING: Processing subset (this is fine!)
-                warnings.append(
-                    f"Camera {camera_num}: Processing subset - using {expected} of {len(matching_files)} available files"
-                )
 
     if errors:
         return False, "\n".join(errors), warnings

@@ -23,6 +23,8 @@ run_self_calibration
     Iterative stereo self-calibration (Wieneke 2005)
 compute_dewarp_maps
     Build remap tables for dewarping camera images onto world plane
+estimate_pixel_scale
+    Estimate native pixel scale (mm/px) from camera pair
 """
 
 from .stereo_calibration_base import BaseStereoCalibrator
@@ -34,6 +36,7 @@ from .self_calibration import (
     SelfCalibrationResult,
     run_self_calibration,
     compute_dewarp_maps,
+    estimate_pixel_scale,
 )
 
 __all__ = [
@@ -45,4 +48,5 @@ __all__ = [
     "SelfCalibrationResult",
     "run_self_calibration",
     "compute_dewarp_maps",
+    "estimate_pixel_scale",
 ]

@@ -1930,6 +1930,33 @@ video:
         """Return True if ux should be negated for the global coordinate system."""
         return self.global_coordinates_config.get("invert_ux", False)
 
+    # --- Self-calibration properties ---
+    @property
+    def self_calibration_config(self) -> dict:
+        """Return self-calibration configuration block."""
+        return self.data.get("calibration", {}).get("self_calibration", {})
+
+    @property
+    def self_calibration_z_offset(self) -> float:
+        """Return self-cal Z-offset of laser sheet from calibration plane (mm)."""
+        return self.self_calibration_config.get("z_offset", 0.0)
+
+    @property
+    def self_calibration_tilt_x(self) -> float:
+        """Return self-cal tilt about X-axis (radians)."""
+        return self.self_calibration_config.get("tilt_x", 0.0)
+
+    @property
+    def self_calibration_tilt_y(self) -> float:
+        """Return self-cal tilt about Y-axis (radians)."""
+        return self.self_calibration_config.get("tilt_y", 0.0)
+
+    @property
+    def has_self_calibration(self) -> bool:
+        """Return True if self-calibration has been run and converged."""
+        sc = self.self_calibration_config
+        return sc.get("converged", False) and "z_offset" in sc
+
     # --- Merging properties ---
     @property
     def merging(self) -> dict:
@@ -2821,6 +2848,36 @@ video:
                 f"Must be one of {valid_methods}"
             )
         return method
+
+    @property
+    def instantaneous_save_mode(self) -> str:
+        """Return save mode for instantaneous PIV results.
+
+        Options:
+        - 'full': Save all 11 fields per pass (default, backward compatible).
+        - 'minimal': Save only ux, uy, b_mask — the 3 fields read downstream.
+
+        Default: 'full'
+        """
+        mode = self.data.get("instantaneous_piv", {}).get("save_mode", "full")
+        valid = {'full', 'minimal'}
+        if mode not in valid:
+            raise ValueError(
+                f"Invalid instantaneous save_mode '{mode}'. "
+                f"Must be one of {valid}"
+            )
+        return mode
+
+    @property
+    def instantaneous_save_compression(self) -> bool:
+        """Return whether to use zlib compression when saving instantaneous .mat files.
+
+        When True (default), scipy.io.savemat uses zlib compression.
+        When False, saves uncompressed — faster writes, larger files.
+
+        Default: True
+        """
+        return self.data.get("instantaneous_piv", {}).get("save_compression", True)
 
     @property
     def secondary_peak(self):
