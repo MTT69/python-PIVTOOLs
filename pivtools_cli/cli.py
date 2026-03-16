@@ -1439,8 +1439,8 @@ ensemble_piv:
   - 16
   sum_fitting_window_enabled: true
   sum_fitting_window:
-  - 16
-  - 16
+  - 32
+  - 32
   resume_from_pass: 0
   predictor_smoothing: false
   predictor_boundary_conditions: []

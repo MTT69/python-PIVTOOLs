@@ -12,17 +12,38 @@ Usage:
 import numpy as np
 import scipy.io as sio
 from scipy.interpolate import interp1d
+import matplotlib
 import matplotlib.pyplot as plt
 from pathlib import Path
 import argparse
 
+# Ensure MiKTeX is on PATH if installed
+import os
+_miktex_bin = r'C:\Program Files\MiKTeX\miktex\bin\x64'
+if os.path.isdir(_miktex_bin) and _miktex_bin not in os.environ.get('PATH', ''):
+    os.environ['PATH'] += os.pathsep + _miktex_bin
+
+# LaTeX fonts throughout
+matplotlib.rcParams.update({
+    'text.usetex': True,
+    'font.family': 'serif',
+    'font.serif': ['Computer Modern Roman'],
+    'axes.labelsize': 14,
+    'axes.titlesize': 16,
+    'legend.fontsize': 11,
+    'xtick.labelsize': 12,
+    'ytick.labelsize': 12,
+})
+
 
 def log_smooth(y_plus, values, sigma_decades=0.06):
-    """Gaussian-weighted smooth in log(y+) space, evaluated at original points.
+    """LOWESS-style smooth in log(y+) space, evaluated at original points.
 
-    Each output point is a Gaussian-weighted average of neighbours, where
-    distance is measured in decades of y+. This gives visually uniform
-    smoothing on a semilog plot.
+    Each output point is a locally-weighted LINEAR regression of neighbours,
+    where distance is measured in decades of y+. Using local linear fits
+    instead of local averages gives:
+      - Better peak tracking (local slope captures gradients)
+      - Better edge behaviour (linear extrapolation, not mean bias)
 
     Parameters
     ----------
@@ -53,9 +74,47 @@ def log_smooth(y_plus, values, sigma_decades=0.06):
     for i in range(len(vals)):
         d = (log_yp - log_yp[i]) / sigma_decades
         w = np.exp(-0.5 * d * d)
-        smoothed[i] = np.sum(w * vals) / np.sum(w)
+        # Local linear regression (LOWESS) instead of weighted mean
+        wsum = np.sum(w)
+        wmean_x = np.sum(w * log_yp) / wsum
+        wmean_y = np.sum(w * vals) / wsum
+        dx = log_yp - wmean_x
+        denom = np.sum(w * dx * dx)
+        if denom > 1e-30:
+            slope = np.sum(w * dx * vals) / denom
+            smoothed[i] = wmean_y + slope * (log_yp[i] - wmean_x)
+        else:
+            smoothed[i] = wmean_y
 
     return yp, smoothed
+
+
+def plot_ci_band(ax, y_plus, ci_lo, ci_hi, sign=1, color='k', alpha=0.3, zorder=1):
+    """Plot a 95% CI shaded band around a reference line.
+
+    Parameters
+    ----------
+    ax : matplotlib Axes
+    y_plus : array
+        x-axis values (y+ coordinates)
+    ci_lo, ci_hi : array
+        Lower/upper CI bounds (same units as the plotted variable)
+    sign : int
+        1 or -1 (for variables like -uv+ that flip sign)
+    color : str
+        Fill color
+    alpha : float
+        Fill transparency
+    zorder : int
+        Drawing order
+    """
+    lo = sign * ci_lo if sign == 1 else sign * ci_hi  # sign flip swaps lo/hi
+    hi = sign * ci_hi if sign == 1 else sign * ci_lo
+    ax.fill_between(y_plus, lo, hi, color=color, alpha=alpha, zorder=zorder,
+                    linewidth=0)
+    # Add thin edge lines so the CI is visible even when narrow
+    ax.plot(y_plus, lo, color=color, linewidth=0.5, alpha=0.4, zorder=zorder)
+    ax.plot(y_plus, hi, color=color, linewidth=0.5, alpha=0.4, zorder=zorder)
 
 
 def load_wall_units(wall_units_path):
@@ -134,7 +193,7 @@ def load_ground_truth_3d(profiles_path):
             uw_plus = profiles['stress_plus'][mask, 0, 2]
             vw_plus = profiles['stress_plus'][mask, 1, 2]
 
-            return {
+            result = {
                 'y_mm': y_mm,
                 'y_plus': y_plus,
                 'U': U_plus * u_tau,
@@ -152,6 +211,30 @@ def load_ground_truth_3d(profiles_path):
                 'ww_plus': ww_plus,
                 'uv_plus': uv_plus,
             }
+
+            # Load 95% confidence intervals if available
+            if 'stress_ci_lo' in profiles and 'stress_ci_hi' in profiles:
+                result['uu_plus_ci_lo'] = profiles['stress_ci_lo'][mask, 0, 0]
+                result['uu_plus_ci_hi'] = profiles['stress_ci_hi'][mask, 0, 0]
+                result['vv_plus_ci_lo'] = profiles['stress_ci_lo'][mask, 1, 1]
+                result['vv_plus_ci_hi'] = profiles['stress_ci_hi'][mask, 1, 1]
+                result['ww_plus_ci_lo'] = profiles['stress_ci_lo'][mask, 2, 2]
+                result['ww_plus_ci_hi'] = profiles['stress_ci_hi'][mask, 2, 2]
+                result['uv_plus_ci_lo'] = profiles['stress_ci_lo'][mask, 0, 1]
+                result['uv_plus_ci_hi'] = profiles['stress_ci_hi'][mask, 0, 1]
+                result['uw_plus_ci_lo'] = profiles['stress_ci_lo'][mask, 0, 2]
+                result['uw_plus_ci_hi'] = profiles['stress_ci_hi'][mask, 0, 2]
+                result['vw_plus_ci_lo'] = profiles['stress_ci_lo'][mask, 1, 2]
+                result['vw_plus_ci_hi'] = profiles['stress_ci_hi'][mask, 1, 2]
+            if 'umean_ci_lo' in profiles and 'umean_ci_hi' in profiles:
+                result['U_plus_ci_lo'] = profiles['umean_ci_lo'][mask, 0]
+                result['U_plus_ci_hi'] = profiles['umean_ci_hi'][mask, 0]
+                result['V_plus_ci_lo'] = profiles['umean_ci_lo'][mask, 1]
+                result['V_plus_ci_hi'] = profiles['umean_ci_hi'][mask, 1]
+                result['W_plus_ci_lo'] = profiles['umean_ci_lo'][mask, 2]
+                result['W_plus_ci_hi'] = profiles['umean_ci_hi'][mask, 2]
+
+            return result
 
         # Format: profiles.mat (struct)
         win1px = profiles['profiles'].win_1px
@@ -456,12 +539,16 @@ def plot_velocity_comparison(piv_plus, gt_plus, wall_units, errors, output_dir):
     output_dir.mkdir(parents=True, exist_ok=True)
 
     Re_tau = wall_units['Re_tau']
+    has_ci = 'uu_plus_ci_lo' in gt_plus
 
     # ==========================================================================
     # Figure 1: U+ profile (semilog)
     # ==========================================================================
     fig, ax = plt.subplots(figsize=(10, 7))
 
+    if has_ci and 'U_plus_ci_lo' in gt_plus:
+        plot_ci_band(ax, gt_plus['y_plus'], gt_plus['U_plus_ci_lo'],
+                     gt_plus['U_plus_ci_hi'], color='k', alpha=0.15, zorder=1)
     ax.semilogx(gt_plus['y_plus'], gt_plus['U_plus'], 'k-',
                 linewidth=2, label='DNS (1px)', zorder=3)
     ax.semilogx(piv_plus['y_plus'], piv_plus['U_plus'], 'ro',
@@ -502,6 +589,9 @@ def plot_velocity_comparison(piv_plus, gt_plus, wall_units, errors, output_dir):
     # ==========================================================================
     fig, ax = plt.subplots(figsize=(10, 7))
 
+    if has_ci and 'V_plus_ci_lo' in gt_plus:
+        plot_ci_band(ax, gt_plus['y_plus'], gt_plus['V_plus_ci_lo'],
+                     gt_plus['V_plus_ci_hi'], color='k', alpha=0.15, zorder=1)
     ax.plot(gt_plus['y_plus'], gt_plus['V_plus'], 'k-', linewidth=2, label='DNS')
     ax.plot(piv_plus['y_plus'], piv_plus['V_plus'], 'ro', markersize=4,
             alpha=0.7, label='Stereo PIV')
@@ -529,6 +619,9 @@ def plot_velocity_comparison(piv_plus, gt_plus, wall_units, errors, output_dir):
     # ==========================================================================
     fig, ax = plt.subplots(figsize=(10, 7))
 
+    if has_ci and 'W_plus_ci_lo' in gt_plus:
+        plot_ci_band(ax, gt_plus['y_plus'], gt_plus['W_plus_ci_lo'],
+                     gt_plus['W_plus_ci_hi'], color='k', alpha=0.15, zorder=1)
     ax.plot(gt_plus['y_plus'], gt_plus['W_plus'], 'k-', linewidth=2, label='DNS')
     ax.plot(piv_plus['y_plus'], piv_plus['W_plus'], 'bo', markersize=4,
             alpha=0.7, label='Stereo PIV')
@@ -558,6 +651,9 @@ def plot_velocity_comparison(piv_plus, gt_plus, wall_units, errors, output_dir):
 
     # U+
     ax = axes[0]
+    if has_ci and 'U_plus_ci_lo' in gt_plus:
+        plot_ci_band(ax, gt_plus['y_plus'], gt_plus['U_plus_ci_lo'],
+                     gt_plus['U_plus_ci_hi'], color='k', alpha=0.15, zorder=1)
     ax.semilogx(gt_plus['y_plus'], gt_plus['U_plus'], 'k-', linewidth=2, label='DNS')
     ax.semilogx(piv_plus['y_plus'], piv_plus['U_plus'], 'ro', markersize=3, alpha=0.7, label='Stereo')
     ax.set_xlabel(r'$y^+$', fontsize=12)
@@ -569,6 +665,9 @@ def plot_velocity_comparison(piv_plus, gt_plus, wall_units, errors, output_dir):
 
     # V+
     ax = axes[1]
+    if has_ci and 'V_plus_ci_lo' in gt_plus:
+        plot_ci_band(ax, gt_plus['y_plus'], gt_plus['V_plus_ci_lo'],
+                     gt_plus['V_plus_ci_hi'], color='k', alpha=0.15, zorder=1)
     ax.plot(gt_plus['y_plus'], gt_plus['V_plus'], 'k-', linewidth=2, label='DNS')
     ax.plot(piv_plus['y_plus'], piv_plus['V_plus'], 'ro', markersize=3, alpha=0.7, label='Stereo')
     ax.axhline(y=0, color='gray', linestyle='--', linewidth=0.5)
@@ -582,6 +681,9 @@ def plot_velocity_comparison(piv_plus, gt_plus, wall_units, errors, output_dir):
 
     # W+
     ax = axes[2]
+    if has_ci and 'W_plus_ci_lo' in gt_plus:
+        plot_ci_band(ax, gt_plus['y_plus'], gt_plus['W_plus_ci_lo'],
+                     gt_plus['W_plus_ci_hi'], color='k', alpha=0.15, zorder=1)
     ax.plot(gt_plus['y_plus'], gt_plus['W_plus'], 'k-', linewidth=2, label='DNS')
     ax.plot(piv_plus['y_plus'], piv_plus['W_plus'], 'bo', markersize=3, alpha=0.7, label='Stereo')
     ax.axhline(y=0, color='gray', linestyle='--', linewidth=0.5)
@@ -597,51 +699,20 @@ def plot_velocity_comparison(piv_plus, gt_plus, wall_units, errors, output_dir):
     fig.savefig(output_dir / 'velocities_combined.png', dpi=150)
     plt.close(fig)
 
-    # ==========================================================================
-    # Figure 5: Smoothed velocities combined
-    # ==========================================================================
-    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
-
-    vel_configs = [
-        ('U_plus', r'$U^+$', 'Streamwise Velocity', 'r'),
-        ('V_plus', r'$V^+$', 'Wall-Normal Velocity', 'r'),
-        ('W_plus', r'$W^+$', 'Spanwise Velocity', 'b'),
-    ]
-    for ax, (var, ylabel, title, col) in zip(axes, vel_configs):
-        gt_key = var
-        ax.plot(gt_plus['y_plus'], gt_plus[gt_key], 'k-', linewidth=2, label='DNS')
-        ax.plot(piv_plus['y_plus'], piv_plus[var], color=col, marker='o',
-                markersize=2, alpha=0.2, linestyle='none')
-        yp_s, v_s = log_smooth(piv_plus['y_plus'], piv_plus[var])
-        ax.plot(yp_s, v_s, color=col, linewidth=2, label='Stereo smoothed')
-        if var != 'U_plus':
-            ax.axhline(y=0, color='gray', linestyle='--', linewidth=0.5)
-        ax.set_xlabel(r'$y^+$', fontsize=12)
-        ax.set_ylabel(ylabel, fontsize=12)
-        ax.set_title(title, fontsize=14)
-        ax.legend()
-        ax.set_xscale('log')
-        ax.set_xlim(1, Re_tau)
-        ax.grid(True, alpha=0.3)
-        if var in errors:
-            ax.text(0.98, 0.98, f"R² = {errors[var]['r2']:.4f}",
-                    transform=ax.transAxes, fontsize=10, ha='right', va='top',
-                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-
-    fig.tight_layout()
-    fig.savefig(output_dir / 'velocities_combined_smooth.png', dpi=150)
-    plt.close(fig)
-
 
 def plot_normal_stresses(piv_plus, gt_plus, wall_units, errors, output_dir):
     """Generate normal stress plots (uu+, vv+, ww+)."""
     output_dir = Path(output_dir)
     Re_tau = wall_units['Re_tau']
+    has_ci = 'uu_plus_ci_lo' in gt_plus
 
     fig, axes = plt.subplots(1, 3, figsize=(16, 5))
 
     # uu+
     ax = axes[0]
+    if has_ci:
+        plot_ci_band(ax, gt_plus['y_plus'], gt_plus['uu_plus_ci_lo'],
+                     gt_plus['uu_plus_ci_hi'], color='k', zorder=1)
     ax.plot(gt_plus['y_plus'], gt_plus['uu_plus'], 'k-', linewidth=2, label='DNS')
     ax.plot(piv_plus['y_plus'], piv_plus['uu_plus'], 'ro', markersize=3, alpha=0.7, label='Stereo')
     ax.set_xlabel(r'$y^+$', fontsize=12)
@@ -658,6 +729,9 @@ def plot_normal_stresses(piv_plus, gt_plus, wall_units, errors, output_dir):
 
     # vv+
     ax = axes[1]
+    if has_ci:
+        plot_ci_band(ax, gt_plus['y_plus'], gt_plus['vv_plus_ci_lo'],
+                     gt_plus['vv_plus_ci_hi'], color='k', zorder=1)
     ax.plot(gt_plus['y_plus'], gt_plus['vv_plus'], 'k-', linewidth=2, label='DNS')
     ax.plot(piv_plus['y_plus'], piv_plus['vv_plus'], 'go', markersize=3, alpha=0.7, label='Stereo')
     ax.set_xlabel(r'$y^+$', fontsize=12)
@@ -674,6 +748,9 @@ def plot_normal_stresses(piv_plus, gt_plus, wall_units, errors, output_dir):
 
     # ww+
     ax = axes[2]
+    if has_ci and 'ww_plus_ci_lo' in gt_plus:
+        plot_ci_band(ax, gt_plus['y_plus'], gt_plus['ww_plus_ci_lo'],
+                     gt_plus['ww_plus_ci_hi'], color='k', zorder=1)
     ax.plot(gt_plus['y_plus'], gt_plus['ww_plus'], 'k-', linewidth=2, label='DNS')
     ax.plot(piv_plus['y_plus'], piv_plus['ww_plus'], 'bo', markersize=3, alpha=0.7, label='Stereo')
     ax.set_xlabel(r'$y^+$', fontsize=12)
@@ -693,47 +770,20 @@ def plot_normal_stresses(piv_plus, gt_plus, wall_units, errors, output_dir):
     fig.savefig(output_dir / 'normal_stresses.png', dpi=150)
     plt.close(fig)
 
-    # Smoothed normal stresses
-    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
-
-    norm_configs = [
-        ('uu_plus', r"$\overline{u'u'}^+$", 'Streamwise', 'r'),
-        ('vv_plus', r"$\overline{v'v'}^+$", 'Wall-Normal', 'g'),
-        ('ww_plus', r"$\overline{w'w'}^+$", 'Spanwise', 'b'),
-    ]
-    for ax, (var, ylabel, title, col) in zip(axes, norm_configs):
-        ax.plot(gt_plus['y_plus'], gt_plus[var], 'k-', linewidth=2, label='DNS')
-        ax.plot(piv_plus['y_plus'], piv_plus[var], color=col, marker='o',
-                markersize=2, alpha=0.2, linestyle='none')
-        yp_s, v_s = log_smooth(piv_plus['y_plus'], piv_plus[var])
-        ax.plot(yp_s, v_s, color=col, linewidth=2, label='Stereo smoothed')
-        ax.set_xlabel(r'$y^+$', fontsize=12)
-        ax.set_ylabel(ylabel, fontsize=12)
-        ax.set_title(f'{title} Normal Stress', fontsize=14)
-        ax.legend()
-        ax.set_xscale('log')
-        ax.set_xlim(1, Re_tau)
-        ax.grid(True, alpha=0.3)
-        if var in errors:
-            ax.text(0.98, 0.98, f"R² = {errors[var]['r2']:.4f}",
-                    transform=ax.transAxes, fontsize=10, ha='right', va='top',
-                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-
-    fig.suptitle('Normal Reynolds Stresses - Smoothed', fontsize=16, y=1.02)
-    fig.tight_layout()
-    fig.savefig(output_dir / 'normal_stresses_smooth.png', dpi=150)
-    plt.close(fig)
-
 
 def plot_shear_stresses(piv_plus, gt_plus, wall_units, errors, output_dir):
     """Generate shear stress plots (-uv+, -uw+, -vw+)."""
     output_dir = Path(output_dir)
     Re_tau = wall_units['Re_tau']
+    has_ci = 'uv_plus_ci_lo' in gt_plus
 
     fig, axes = plt.subplots(1, 3, figsize=(16, 5))
 
     # -uv+
     ax = axes[0]
+    if has_ci:
+        plot_ci_band(ax, gt_plus['y_plus'], gt_plus['uv_plus_ci_lo'],
+                     gt_plus['uv_plus_ci_hi'], sign=-1, color='k', zorder=1)
     ax.plot(gt_plus['y_plus'], -gt_plus['uv_plus'], 'k-', linewidth=2, label='DNS')
     ax.plot(piv_plus['y_plus'], -piv_plus['uv_plus'], 'ro', markersize=3, alpha=0.7, label='Stereo')
     ax.set_xlabel(r'$y^+$', fontsize=12)
@@ -750,6 +800,9 @@ def plot_shear_stresses(piv_plus, gt_plus, wall_units, errors, output_dir):
 
     # -uw+
     ax = axes[1]
+    if has_ci and 'uw_plus_ci_lo' in gt_plus:
+        plot_ci_band(ax, gt_plus['y_plus'], gt_plus['uw_plus_ci_lo'],
+                     gt_plus['uw_plus_ci_hi'], sign=-1, color='k', zorder=1)
     ax.plot(gt_plus['y_plus'], -gt_plus['uw_plus'], 'k-', linewidth=2, label='DNS')
     ax.plot(piv_plus['y_plus'], -piv_plus['uw_plus'], 'go', markersize=3, alpha=0.7, label='Stereo')
     ax.axhline(y=0, color='gray', linestyle='--', linewidth=0.5)
@@ -767,6 +820,9 @@ def plot_shear_stresses(piv_plus, gt_plus, wall_units, errors, output_dir):
 
     # -vw+
     ax = axes[2]
+    if has_ci and 'vw_plus_ci_lo' in gt_plus:
+        plot_ci_band(ax, gt_plus['y_plus'], gt_plus['vw_plus_ci_lo'],
+                     gt_plus['vw_plus_ci_hi'], sign=-1, color='k', zorder=1)
     ax.plot(gt_plus['y_plus'], -gt_plus['vw_plus'], 'k-', linewidth=2, label='DNS')
     ax.plot(piv_plus['y_plus'], -piv_plus['vw_plus'], 'bo', markersize=3, alpha=0.7, label='Stereo')
     ax.axhline(y=0, color='gray', linestyle='--', linewidth=0.5)
@@ -787,46 +843,26 @@ def plot_shear_stresses(piv_plus, gt_plus, wall_units, errors, output_dir):
     fig.savefig(output_dir / 'shear_stresses.png', dpi=150)
     plt.close(fig)
 
-    # Smoothed shear stresses
-    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
-
-    shear_configs = [
-        ('uv_plus', r"$-\overline{u'v'}^+$", 'u-v', 'r'),
-        ('uw_plus', r"$-\overline{u'w'}^+$", 'u-w', 'g'),
-        ('vw_plus', r"$-\overline{v'w'}^+$", 'v-w', 'b'),
-    ]
-    for ax, (var, ylabel, title, col) in zip(axes, shear_configs):
-        ax.plot(gt_plus['y_plus'], -gt_plus[var], 'k-', linewidth=2, label='DNS')
-        ax.plot(piv_plus['y_plus'], -piv_plus[var], color=col, marker='o',
-                markersize=2, alpha=0.2, linestyle='none')
-        yp_s, v_s = log_smooth(piv_plus['y_plus'], -piv_plus[var])
-        ax.plot(yp_s, v_s, color=col, linewidth=2, label='Stereo smoothed')
-        if var != 'uv_plus':
-            ax.axhline(y=0, color='gray', linestyle='--', linewidth=0.5)
-        ax.set_xlabel(r'$y^+$', fontsize=12)
-        ax.set_ylabel(ylabel, fontsize=12)
-        ax.set_title(f'Shear Stress ({title})', fontsize=14)
-        ax.legend()
-        ax.set_xscale('log')
-        ax.set_xlim(1, Re_tau)
-        ax.grid(True, alpha=0.3)
-        if var in errors:
-            ax.text(0.98, 0.98, f"R² = {errors[var]['r2']:.4f}",
-                    transform=ax.transAxes, fontsize=10, ha='right', va='top',
-                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-
-    fig.suptitle('Reynolds Shear Stresses - Smoothed', fontsize=16, y=1.02)
-    fig.tight_layout()
-    fig.savefig(output_dir / 'shear_stresses_smooth.png', dpi=150)
-    plt.close(fig)
-
 
 def plot_combined_stresses(piv_plus, gt_plus, wall_units, errors, output_dir):
     """Plot uu+, vv+, ww+, -uv+ all on a single axis."""
     output_dir = Path(output_dir)
     Re_tau = wall_units['Re_tau']
+    has_ci = 'uu_plus_ci_lo' in gt_plus
 
     fig, ax = plt.subplots(figsize=(12, 8))
+
+    # CI bands (behind everything)
+    if has_ci:
+        plot_ci_band(ax, gt_plus['y_plus'], gt_plus['uu_plus_ci_lo'],
+                     gt_plus['uu_plus_ci_hi'], color='k', alpha=0.12, zorder=1)
+        plot_ci_band(ax, gt_plus['y_plus'], gt_plus['vv_plus_ci_lo'],
+                     gt_plus['vv_plus_ci_hi'], color='k', alpha=0.12, zorder=1)
+        if 'ww_plus_ci_lo' in gt_plus:
+            plot_ci_band(ax, gt_plus['y_plus'], gt_plus['ww_plus_ci_lo'],
+                         gt_plus['ww_plus_ci_hi'], color='k', alpha=0.12, zorder=1)
+        plot_ci_band(ax, gt_plus['y_plus'], gt_plus['uv_plus_ci_lo'],
+                     gt_plus['uv_plus_ci_hi'], sign=-1, color='k', alpha=0.12, zorder=1)
 
     # Ground truth / reference
     ax.plot(gt_plus['y_plus'], gt_plus['uu_plus'], 'k-', linewidth=2, label=r"Ref $\overline{u'u'}^+$")
@@ -834,24 +870,22 @@ def plot_combined_stresses(piv_plus, gt_plus, wall_units, errors, output_dir):
     ax.plot(gt_plus['y_plus'], gt_plus['ww_plus'], 'k-.', linewidth=2, label=r"Ref $\overline{w'w'}^+$")
     ax.plot(gt_plus['y_plus'], -gt_plus['uv_plus'], 'k:', linewidth=2, label=r"Ref $-\overline{u'v'}^+$")
 
-    # Stereo PIV — faded markers + smoothed lines
-    smooth_configs = [
+    # Stereo PIV — markers only (no smoothed lines)
+    piv_configs = [
         ('uu_plus', 1, 'r', 'o', r"Stereo $\overline{u'u'}^+$"),
         ('vv_plus', 1, 'g', 's', r"Stereo $\overline{v'v'}^+$"),
         ('ww_plus', 1, 'b', '^', r"Stereo $\overline{w'w'}^+$"),
         ('uv_plus', -1, 'm', 'D', r"Stereo $-\overline{u'v'}^+$"),
     ]
-    for var, sign, col, mkr, label in smooth_configs:
+    for var, sign, col, mkr, label in piv_configs:
         piv_vals = sign * piv_plus[var]
         ax.plot(piv_plus['y_plus'], piv_vals, color=col, marker=mkr,
-                markersize=3, alpha=0.3, linestyle='none')
-        yp_s, v_s = log_smooth(piv_plus['y_plus'], piv_vals)
-        ax.plot(yp_s, v_s, color=col, linewidth=2, label=label, zorder=5)
+                markersize=4, alpha=0.7, linestyle='none', label=label, zorder=5)
 
-    ax.set_xlabel(r'$y^+$', fontsize=14)
-    ax.set_ylabel(r'Stress$^+$', fontsize=14)
-    ax.set_title(f'Reynolds Stresses - Stereo PIV vs Reference (Re$_\\tau$ = {Re_tau:.0f})', fontsize=16)
-    ax.legend(fontsize=10, ncol=2, loc='upper right')
+    ax.set_xlabel(r'$y^+$')
+    ax.set_ylabel(r'Stress$^+$')
+    ax.set_title(r'Reynolds Stresses -- Stereo PIV vs Reference ($\mathrm{Re}_\tau$ = ' + f'{Re_tau:.0f})')
+    ax.legend(ncol=2, loc='upper right')
     ax.set_xscale('log')
     ax.set_xlim(1, Re_tau)
     ax.grid(True, alpha=0.3)
@@ -860,41 +894,192 @@ def plot_combined_stresses(piv_plus, gt_plus, wall_units, errors, output_dir):
     fig.savefig(output_dir / 'combined_stresses.png', dpi=150)
     plt.close(fig)
 
-    # Smoothed combined stresses
-    fig, ax = plt.subplots(figsize=(12, 8))
 
-    ax.plot(gt_plus['y_plus'], gt_plus['uu_plus'], 'k-', linewidth=2, label=r"Ref $\overline{u'u'}^+$")
-    ax.plot(gt_plus['y_plus'], gt_plus['vv_plus'], 'k--', linewidth=2, label=r"Ref $\overline{v'v'}^+$")
-    ax.plot(gt_plus['y_plus'], gt_plus['ww_plus'], 'k-.', linewidth=2, label=r"Ref $\overline{w'w'}^+$")
-    ax.plot(gt_plus['y_plus'], -gt_plus['uv_plus'], 'k:', linewidth=2, label=r"Ref $-\overline{u'v'}^+$")
+def plot_residuals(piv_plus, gt_plus, wall_units, output_dir):
+    """Plot residuals (PIV - Ref) for velocities and stresses."""
+    output_dir = Path(output_dir)
+    Re_tau = wall_units['Re_tau']
 
-    smooth_configs = [
-        ('uu_plus', 1, 'r', r"$\overline{u'u'}^+$"),
-        ('vv_plus', 1, 'g', r"$\overline{v'v'}^+$"),
-        ('ww_plus', 1, 'b', r"$\overline{w'w'}^+$"),
-        ('uv_plus', -1, 'm', r"$-\overline{u'v'}^+$"),
+    fig, axes = plt.subplots(2, 3, figsize=(16, 10))
+
+    # Interpolate ground truth onto PIV y+ grid
+    gt_interp_fn = {}
+    for var in ['U_plus', 'V_plus', 'W_plus', 'uu_plus', 'vv_plus', 'ww_plus',
+                'uv_plus', 'uw_plus', 'vw_plus']:
+        if var in gt_plus:
+            gt_interp_fn[var] = interp1d(gt_plus['y_plus'], gt_plus[var], kind='linear',
+                                         bounds_error=False, fill_value=np.nan)
+
+    # Top row: velocity residuals (U+, V+, W+)
+    vel_configs = [
+        ('U_plus', r"$U^+_{\mathrm{PIV}} - U^+_{\mathrm{Ref}}$",
+         'Streamwise Velocity Residual', 1),
+        ('V_plus', r"$V^+_{\mathrm{PIV}} - V^+_{\mathrm{Ref}}$",
+         'Wall-Normal Velocity Residual', 1),
+        ('W_plus', r"$W^+_{\mathrm{PIV}} - W^+_{\mathrm{Ref}}$",
+         'Spanwise Velocity Residual', 1),
     ]
-    for var, sign, col, label in smooth_configs:
-        piv_vals = sign * piv_plus[var]
-        ax.plot(piv_plus['y_plus'], piv_vals, color=col, marker='o',
-                markersize=2, alpha=0.15, linestyle='none')
-        yp_s, v_s = log_smooth(piv_plus['y_plus'], piv_vals)
-        ax.plot(yp_s, v_s, color=col, linewidth=2, label=f"Stereo {label}")
+    for ax, (var, ylabel, title, sign) in zip(axes[0, :], vel_configs):
+        gt_at_piv = gt_interp_fn[var](piv_plus['y_plus'])
+        residual = sign * piv_plus[var] - sign * gt_at_piv
 
-    ax.set_xlabel(r'$y^+$', fontsize=14)
-    ax.set_ylabel(r'Stress$^+$', fontsize=14)
-    ax.set_title(f'Reynolds Stresses - Smoothed (Re$_\\tau$ = {Re_tau:.0f})', fontsize=16)
-    ax.legend(fontsize=10, ncol=2, loc='upper right')
-    ax.set_xscale('log')
-    ax.set_xlim(1, Re_tau)
-    ax.grid(True, alpha=0.3)
+        ax.semilogx(piv_plus['y_plus'], residual, 'ro', markersize=3, alpha=0.5)
+        yp_s, r_s = log_smooth(piv_plus['y_plus'], residual)
+        ax.semilogx(yp_s, r_s, 'r-', linewidth=2, label='Stereo PIV')
+        ax.axhline(y=0, color='k', linestyle='-', linewidth=1, alpha=0.5)
+
+        ax.set_xlabel(r'$y^+$', fontsize=12)
+        ax.set_ylabel(ylabel, fontsize=12)
+        ax.set_title(title, fontsize=14)
+        ax.legend()
+        ax.set_xlim(1, Re_tau)
+        ax.grid(True, alpha=0.3)
+
+    # Bottom row: normal stress residuals (uu+, vv+, ww+)
+    stress_configs = [
+        ('uu_plus', r"$\overline{u'u'}^+_{\mathrm{PIV}} - \overline{u'u'}^+_{\mathrm{Ref}}$",
+         'Streamwise Normal Stress Residual', 1),
+        ('vv_plus', r"$\overline{v'v'}^+_{\mathrm{PIV}} - \overline{v'v'}^+_{\mathrm{Ref}}$",
+         'Wall-Normal Normal Stress Residual', 1),
+        ('ww_plus', r"$\overline{w'w'}^+_{\mathrm{PIV}} - \overline{w'w'}^+_{\mathrm{Ref}}$",
+         'Spanwise Normal Stress Residual', 1),
+    ]
+    for ax, (var, ylabel, title, sign) in zip(axes[1, :], stress_configs):
+        gt_at_piv = gt_interp_fn[var](piv_plus['y_plus'])
+        residual = sign * piv_plus[var] - sign * gt_at_piv
+
+        ax.semilogx(piv_plus['y_plus'], residual, 'ro', markersize=3, alpha=0.5)
+        yp_s, r_s = log_smooth(piv_plus['y_plus'], residual)
+        ax.semilogx(yp_s, r_s, 'r-', linewidth=2, label='Stereo PIV')
+        ax.axhline(y=0, color='k', linestyle='-', linewidth=1, alpha=0.5)
+
+        ax.set_xlabel(r'$y^+$', fontsize=12)
+        ax.set_ylabel(ylabel, fontsize=12)
+        ax.set_title(title, fontsize=14)
+        ax.legend()
+        ax.set_xlim(1, Re_tau)
+        ax.grid(True, alpha=0.3)
 
     fig.tight_layout()
-    fig.savefig(output_dir / 'combined_stresses_smooth.png', dpi=150)
+    fig.savefig(output_dir / 'residuals.png', dpi=150)
+    plt.close(fig)
+
+    # Additional figure: shear stress residuals (uv+, uw+, vw+)
+    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
+
+    shear_configs = [
+        ('uv_plus', r"$-\overline{u'v'}^+_{\mathrm{PIV}} - (-\overline{u'v'}^+_{\mathrm{Ref}})$",
+         'Shear Stress Residual (u-v)', -1),
+        ('uw_plus', r"$-\overline{u'w'}^+_{\mathrm{PIV}} - (-\overline{u'w'}^+_{\mathrm{Ref}})$",
+         'Shear Stress Residual (u-w)', -1),
+        ('vw_plus', r"$-\overline{v'w'}^+_{\mathrm{PIV}} - (-\overline{v'w'}^+_{\mathrm{Ref}})$",
+         'Shear Stress Residual (v-w)', -1),
+    ]
+    for ax, (var, ylabel, title, sign) in zip(axes, shear_configs):
+        gt_at_piv = gt_interp_fn[var](piv_plus['y_plus'])
+        residual = sign * piv_plus[var] - sign * gt_at_piv
+
+        ax.semilogx(piv_plus['y_plus'], residual, 'ro', markersize=3, alpha=0.5)
+        yp_s, r_s = log_smooth(piv_plus['y_plus'], residual)
+        ax.semilogx(yp_s, r_s, 'r-', linewidth=2, label='Stereo PIV')
+        ax.axhline(y=0, color='k', linestyle='-', linewidth=1, alpha=0.5)
+
+        ax.set_xlabel(r'$y^+$', fontsize=12)
+        ax.set_ylabel(ylabel, fontsize=12)
+        ax.set_title(title, fontsize=14)
+        ax.legend()
+        ax.set_xlim(1, Re_tau)
+        ax.grid(True, alpha=0.3)
+
+    fig.suptitle('Shear Stress Residuals - Stereo PIV', fontsize=14, y=1.02)
+    fig.tight_layout()
+    fig.savefig(output_dir / 'residuals_shear.png', dpi=150)
     plt.close(fig)
 
 
-def main(run_idx=2, x_min=5.0, x_max=145.0, gt_dir=None, stereo_base=None, num_frames=1000, output_dir_override=None):
+def plot_noise_gradient_decomposition(piv_plus, gt_plus, wall_units, output_dir):
+    """Plot noise floor vs gradient correction decomposition.
+
+    Uses the fact that PIV measurement noise is approximately isotropic
+    (vv+ residual ~ noise floor), while velocity gradient bias is
+    anisotropic (uu+ - vv+ removes the isotropic noise contribution).
+    Extended for stereo: ww+ residual provides an independent noise floor check.
+    """
+    output_dir = Path(output_dir)
+    Re_tau = wall_units['Re_tau']
+
+    # Interpolate ground truth onto PIV y+ grid
+    gt_interp = {}
+    for var in ['uu_plus', 'vv_plus', 'ww_plus']:
+        gt_interp[var] = interp1d(gt_plus['y_plus'], gt_plus[var], kind='linear',
+                                  bounds_error=False, fill_value=np.nan)
+
+    uu_residual = piv_plus['uu_plus'] - gt_interp['uu_plus'](piv_plus['y_plus'])
+    vv_residual = piv_plus['vv_plus'] - gt_interp['vv_plus'](piv_plus['y_plus'])
+    ww_residual = piv_plus['ww_plus'] - gt_interp['ww_plus'](piv_plus['y_plus'])
+    gradient_only = uu_residual - vv_residual
+
+    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
+
+    # Left: Noise floor (vv+ residual — isotropic)
+    ax = axes[0]
+    ax.semilogx(piv_plus['y_plus'], vv_residual, 'bo', markersize=2, alpha=0.3)
+    yp_s, r_s = log_smooth(piv_plus['y_plus'], vv_residual)
+    ax.semilogx(yp_s, r_s, 'b-', linewidth=2.5, label=r"$v'v'$ residual (noise floor)")
+    # Overlay ww+ as independent noise check
+    ax.semilogx(piv_plus['y_plus'], ww_residual, 'co', markersize=2, alpha=0.2)
+    yp_s_ww, r_s_ww = log_smooth(piv_plus['y_plus'], ww_residual)
+    ax.semilogx(yp_s_ww, r_s_ww, 'c--', linewidth=2, label=r"$w'w'$ residual (check)")
+    ax.axhline(y=0, color='k', linestyle='-', linewidth=1, alpha=0.5)
+    ax.set_xlabel(r'$y^+$', fontsize=12)
+    ax.set_ylabel(r"Noise floor residual$^+$", fontsize=12)
+    ax.set_title('Noise Floor (isotropic)', fontsize=14)
+    ax.legend(fontsize=10)
+    ax.set_xlim(1, Re_tau)
+    ax.grid(True, alpha=0.3)
+
+    # Middle: Gradient-only residual (uu+ - vv+ removes isotropic noise)
+    ax = axes[1]
+    ax.semilogx(piv_plus['y_plus'], gradient_only, 'ro', markersize=2, alpha=0.3)
+    yp_s, r_s = log_smooth(piv_plus['y_plus'], gradient_only)
+    ax.semilogx(yp_s, r_s, 'r-', linewidth=2.5,
+                label=r"$(\overline{u'u'} - \overline{v'v'})_{\mathrm{PIV}} - (\overline{u'u'} - \overline{v'v'})_{\mathrm{Ref}}$")
+    ax.axhline(y=0, color='k', linestyle='-', linewidth=1, alpha=0.5)
+    ax.set_xlabel(r'$y^+$', fontsize=12)
+    ax.set_ylabel(r"Gradient-only residual$^+$", fontsize=12)
+    ax.set_title(r"Gradient Correction Residual ($u'u' - v'v'$ removes noise)", fontsize=14)
+    ax.legend(fontsize=9)
+    ax.set_xlim(1, Re_tau)
+    ax.grid(True, alpha=0.3)
+
+    # Right: All overlaid
+    ax = axes[2]
+    ax.semilogx(piv_plus['y_plus'], uu_residual, 'ro', markersize=2, alpha=0.15)
+    yp_s_uu, r_s_uu = log_smooth(piv_plus['y_plus'], uu_residual)
+    ax.semilogx(yp_s_uu, r_s_uu, 'r-', linewidth=2, label=r"$u'u'$ residual (total)")
+
+    ax.semilogx(piv_plus['y_plus'], vv_residual, 'bo', markersize=2, alpha=0.15)
+    yp_s_vv, r_s_vv = log_smooth(piv_plus['y_plus'], vv_residual)
+    ax.semilogx(yp_s_vv, r_s_vv, 'b-', linewidth=2, label=r"$v'v'$ residual (noise floor)")
+
+    yp_s_g, r_s_g = log_smooth(piv_plus['y_plus'], gradient_only)
+    ax.semilogx(yp_s_g, r_s_g, 'g--', linewidth=2, label=r"$u'u' - v'v'$ residual (gradient only)")
+
+    ax.axhline(y=0, color='k', linestyle='-', linewidth=1, alpha=0.5)
+    ax.set_xlabel(r'$y^+$', fontsize=12)
+    ax.set_ylabel(r"Residual$^+$", fontsize=12)
+    ax.set_title('Decomposition: Total = Noise + Gradient', fontsize=14)
+    ax.legend(fontsize=9)
+    ax.set_xlim(1, Re_tau)
+    ax.grid(True, alpha=0.3)
+
+    fig.suptitle('Noise Floor vs Gradient Correction - Stereo PIV', fontsize=14, y=1.02)
+    fig.tight_layout()
+    fig.savefig(output_dir / 'noise_gradient_decomposition.png', dpi=150)
+    plt.close(fig)
+
+
+def main(run_idx=2, x_min=5.0, x_max=145.0, gt_dir=None, stereo_base=None, num_frames=1000, output_dir_override=None, trim_top=0):
     """Main stereo benchmark comparison function."""
 
     # Paths
@@ -971,6 +1156,18 @@ def main(run_idx=2, x_min=5.0, x_max=145.0, gt_dir=None, stereo_base=None, num_f
     piv_plus['y_plus'] = piv_plus['y_plus'] + 1.0  # shift y+ by +1
     print(f"  y+ range: {piv_plus['y_plus'].min():.1f} to {piv_plus['y_plus'].max():.1f} (after +1 shift)")
 
+    if trim_top > 0:
+        # Sort by y+ to ensure we trim from the correct end
+        sort_idx = np.argsort(piv_plus['y_plus'])
+        for key in piv_plus:
+            piv_plus[key] = piv_plus[key][sort_idx]
+        # Now trim the last N points (highest y+)
+        keep = slice(None, len(piv_plus['y_plus']) - trim_top)
+        for key in piv_plus:
+            piv_plus[key] = piv_plus[key][keep]
+        print(f"  Trimmed top {trim_top} highest-y+ points -> {len(piv_plus['y_plus'])} remaining")
+        print(f"  y+ range after trim: {piv_plus['y_plus'].min():.1f} to {piv_plus['y_plus'].max():.1f}")
+
     # Ground truth in wall units
     u_tau = wall_units['u_tau']
     u_tau2 = u_tau ** 2
@@ -986,6 +1183,15 @@ def main(run_idx=2, x_min=5.0, x_max=145.0, gt_dir=None, stereo_base=None, num_f
         'uw_plus': gt['uw'] / u_tau2,
         'vw_plus': gt['vw'] / u_tau2,
     }
+    # Thread CI bounds through if available
+    for ci_key in ['U_plus_ci_lo', 'U_plus_ci_hi', 'V_plus_ci_lo', 'V_plus_ci_hi',
+                   'W_plus_ci_lo', 'W_plus_ci_hi',
+                   'uu_plus_ci_lo', 'uu_plus_ci_hi', 'vv_plus_ci_lo', 'vv_plus_ci_hi',
+                   'ww_plus_ci_lo', 'ww_plus_ci_hi',
+                   'uv_plus_ci_lo', 'uv_plus_ci_hi', 'uw_plus_ci_lo', 'uw_plus_ci_hi',
+                   'vw_plus_ci_lo', 'vw_plus_ci_hi']:
+        if ci_key in gt:
+            gt_plus[ci_key] = gt[ci_key]
 
     print("\n[6] Computing error metrics (y+ = 10-500)...")
     errors = compute_errors(piv_plus, gt_plus, y_plus_range=(10, 500))
@@ -1019,6 +1225,8 @@ def main(run_idx=2, x_min=5.0, x_max=145.0, gt_dir=None, stereo_base=None, num_f
     plot_normal_stresses(piv_plus, gt_plus, wall_units, errors, output_dir)
     plot_shear_stresses(piv_plus, gt_plus, wall_units, errors, output_dir)
     plot_combined_stresses(piv_plus, gt_plus, wall_units, errors, output_dir)
+    plot_residuals(piv_plus, gt_plus, wall_units, output_dir)
+    plot_noise_gradient_decomposition(piv_plus, gt_plus, wall_units, output_dir)
 
     print(f"\nPlots saved to: {output_dir}")
 
@@ -1054,9 +1262,12 @@ if __name__ == '__main__':
                         help='Frame count subdirectory in paths (default: 1000)')
     parser.add_argument('--output-dir', '-o', type=str, default=None,
                         help='Custom output directory for results')
+    parser.add_argument('--trim-top', '-t', type=int, default=0,
+                        help='Number of highest-y+ vectors to exclude (default: 0)')
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir) if args.output_dir else None
     main(run_idx=args.run, x_min=args.x_min, x_max=args.x_max,
          gt_dir=args.gt_dir, stereo_base=args.stereo_base,
-         num_frames=args.num_frames, output_dir_override=output_dir)
+         num_frames=args.num_frames, output_dir_override=output_dir,
+         trim_top=args.trim_top)

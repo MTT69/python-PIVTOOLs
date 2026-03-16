@@ -38,15 +38,19 @@
 
 \begin{center}
 {\Large\bfseries PIV Processing Speed Report}\\[4pt]
-{\small\color{gray} 2026-03-12 \quad$|$\quad gauss6, 50\% overlap, median outlier, local median infill}\\[1pt]
+{\small\color{gray} 2026-03-13 \quad$|$\quad gauss6, 50\% overlap, median outlier, local median infill}\\[1pt]
 {\small\color{gray} 20-core / 64\,GB workstation \quad$|$\quad save\_mode=minimal, compression=off}
 \end{center}
 
 \vspace{-2pt}
 \rule{\columnwidth}{0.4pt}
 
+\vspace{4pt}
+\noindent
+PIVTOOLs processes 1\,MP image pairs at \textbf{81\,Hz} (64$\to$32, 2-pass) or \textbf{41\,Hz} (64$\to$32$\to$16, 3-pass) on a single worker with 10~OMP threads---comfortably exceeding the 10--15\,Hz acquisition rate of most double-pulsed PIV cameras. Processing time scales linearly with pixel count: 4\,MP images take 4.1--4.3$\times$ longer (50\,ms and 105\,ms per pair respectively). Batch size has no effect on per-pair throughput---the CPU is already saturated on a single pair at 10~threads. Save I/O is negligible when uncompressed (${\sim}$1\,ms/pair), but enabling zlib compression costs $12\times$ more I/O time while reducing file size 4--6$\times$; the recommended default is uncompressed for throughput, compressed only for archival. For distributed processing, independent Dask workers scale $2\times$ more efficiently than adding threads to a single worker (62\% vs 27\% parallel efficiency at 20~cores), because the bottleneck is memory bandwidth rather than compute---the optimal allocation is 2--4~OMP threads per worker with remaining cores as additional workers. On a 20-core workstation with 10~workers $\times$ 2~threads, a 4000-pair 4\,MP dataset completes in ${\sim}$13~minutes; at 1\,MP with 2~passes, a single worker finishes the same dataset in under 1~minute.
+
 % ======================================================================
-\section{Summary}
+\section{Headline Rates}
 % ======================================================================
 
 Bare-correlator processing rates for two image resolutions and two multi-pass configurations. All benchmarks use 10~OMP threads on a single worker. Save I/O is excluded from these timings; Section~\ref{sec:saveio} quantifies the save overhead separately.
@@ -66,7 +70,7 @@ Bare-correlator processing rates for two image resolutions and two multi-pass co
 \captionof{table}{Bare correlator: time per image pair (10 OMP threads, batch of 20, 3 iterations averaged). Hz~$=$~pairs processed per second.}
 \end{center}
 
-At 1\,MP with 20 OMP threads, including minimal saves, the engine sustains \textbf{73\,Hz} (64$\to$32) or \textbf{37\,Hz} (64$\to$32$\to$16)---see Section~\ref{sec:realtime}.
+Including minimal uncompressed saves (${\sim}$1\,ms overhead), the 1\,MP engine sustains \textbf{${\sim}$75\,Hz} (64$\to$32) or \textbf{${\sim}$39\,Hz} (64$\to$32$\to$16)---comfortably exceeding the frame rate of most double-pulsed PIV cameras.
 
 % ======================================================================
 \section{How the Pipeline Works}
@@ -402,6 +406,8 @@ Increasing OpenMP threads accelerates the C~libraries but faces diminishing retu
 \captionof{table}{Full Dask pipeline thread scaling (1 worker, 4\,MP, 64$\to$32$\to$16). Parallel efficiency drops below 50\% beyond 8~threads. Adding more threads yields diminishing returns because the FFT and image warp kernels are memory-bandwidth limited, not compute limited.}
 \end{center}
 
+\textbf{At 1\,MP, 20~threads is no faster than~10.} Bare-correlator benchmarks at 1\,MP show 12.4\,ms/pair at 20~threads vs 12.3\,ms at~10 (within measurement noise). Even disabling outlier detection entirely yields only 80\,Hz---still below the 81\,Hz at 10~threads. The smaller working set fits in cache; beyond 10~threads there is no additional memory bandwidth to exploit, and scheduling overhead slightly increases latency.
+
 \subsection{Worker Scaling}
 
 Adding independent Dask workers---each processing separate batches---scales far more effectively than threading. Each worker uses 2~OMP threads, so 10 workers $\times$ 2 threads = 20~physical cores.
@@ -480,30 +486,6 @@ At 20 physical cores, the choice is between allocating cores as threads within o
 \textbf{Optimal allocation rule:} 2--4 threads per worker (enough for intra-pair FFT parallelism), with remaining cores allocated as additional workers. On a 20-core machine: $10\text{w} \times 2\text{t}$ or $5\text{w} \times 4\text{t}$. On a 40-core HPC node: $20\text{w} \times 2\text{t}$.
 
 % ======================================================================
-\section{1\,MP Real-Time Performance}
-\label{sec:realtime}
-% ======================================================================
-
-To measure peak throughput, 20 image pairs were processed at 1\,MP with 20 OMP threads (single worker, bare correlator). Save timing (minimal, uncompressed) is measured separately and added.
-
-\begin{center}
-\small
-\begin{tabular}{@{}lrrrr@{}}
-\toprule
-\textbf{Passes} & \textbf{Corr} & \textbf{Save} & \textbf{Total} & \textbf{Hz} \\
-\midrule
-64$\to$32       & 12.9\,ms & 0.8\,ms & 13.7\,ms & \textbf{73} \\
-64$\to$32$\to$16 & 25.7\,ms & 1.1\,ms & 26.7\,ms & \textbf{37} \\
-\bottomrule
-\end{tabular}
-\captionof{table}{1\,MP maximum throughput (20 OMP threads, 5 iterations averaged). Save overhead is $<$8\% of total. At 73\,Hz (2-pass) or 37\,Hz (3-pass), this exceeds the frame rate of most double-pulsed PIV cameras.}
-\end{center}
-
-\textbf{What 73\,Hz means in practice:} A typical PIV camera records 10--15 image pairs per second. At 73\,Hz processing rate, the pipeline can keep up with $5\times$ the camera rate in real time---even with 3-pass processing. This opens the door to live feedback during experiments: adjust seeding density, laser sheet position, or flow conditions while observing the velocity field update in real time.
-
-\textbf{Multi-worker throughput:} With 10 workers at $6.2\times$ scaling, a 1\,MP dataset could theoretically sustain ${\sim}450$\,Hz (2-pass). In practice, I/O and scheduling overhead would limit this, but the raw compute capacity is far beyond any current camera system.
-
-% ======================================================================
 \section{Production Estimates}
 % ======================================================================
 
@@ -542,7 +524,7 @@ Wall-clock time for a typical 4000-pair dataset:
 
 \begin{enumerate}[leftmargin=1.4em]
 
-\item \textbf{81\,Hz at 1\,MP} (64$\to$32) or \textbf{41\,Hz} (64$\to$32$\to$16) on a single worker with 10 threads. With 20 threads and minimal saves: \textbf{73\,Hz} and \textbf{37\,Hz} including I/O.
+\item \textbf{81\,Hz at 1\,MP} (64$\to$32) or \textbf{41\,Hz} (64$\to$32$\to$16) on a single worker with 10 threads. Including minimal saves: ${\sim}$75\,Hz and ${\sim}$39\,Hz. Doubling to 20~threads does not help---the working set fits in cache and memory bandwidth is already saturated at~10.
 
 \item \textbf{20\,Hz at 4\,MP} (64$\to$32) or \textbf{10\,Hz} (64$\to$32$\to$16). Fast enough for many production workflows without parallelisation.
 
@@ -560,7 +542,7 @@ Wall-clock time for a typical 4000-pair dataset:
 
 \item \textbf{4000 pairs in 3--13 minutes} depending on resolution, passes, and parallelisation. 1\,MP 2-pass completes in under 1~minute on a single worker.
 
-\item \textbf{Real-time processing is achievable} at 1\,MP: the 73\,Hz throughput exceeds the acquisition rate of most PIV camera systems.
+\item \textbf{Real-time processing is achievable} at 1\,MP: 75\,Hz including saves exceeds the 10--15\,Hz acquisition rate of most double-pulsed PIV cameras by $5\times$.
 \end{enumerate}
 
 \end{document}

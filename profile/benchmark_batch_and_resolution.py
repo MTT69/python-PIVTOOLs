@@ -41,7 +41,7 @@ SOURCE_4MP = (
 SOURCE_1MP = os.path.join(SOURCE_4MP, "1mp")
 
 N_PAIRS = 20
-OMP_THREADS = 10
+OMP_THREADS = 10  # overridden by --threads
 N_ITERATIONS = 3
 
 
@@ -78,7 +78,8 @@ def load_image_pairs(source_dir, n_pairs):
 
 
 def make_config(image_shape, window_sizes, overlaps, omp_threads,
-                save_mode="full", save_compression=True):
+                save_mode="full", save_compression=True,
+                outlier_enabled=True, infill_enabled=True):
     cfg_dict = {
         "images": {
             "shape": image_shape,
@@ -103,12 +104,12 @@ def make_config(image_shape, window_sizes, overlaps, omp_threads,
             "save_compression": save_compression,
         },
         "outlier_detection": {
-            "enabled": True,
+            "enabled": outlier_enabled,
             "methods": [{"type": "median_2d", "threshold": 2.0, "epsilon": 0.2}],
         },
         "infilling": {
-            "mid_pass": {"enabled": True, "method": "local_median", "parameters": {"ksize": 3}},
-            "final_pass": {"enabled": True, "method": "local_median", "parameters": {"ksize": 3}},
+            "mid_pass": {"enabled": infill_enabled, "method": "local_median", "parameters": {"ksize": 3}},
+            "final_pass": {"enabled": infill_enabled, "method": "local_median", "parameters": {"ksize": 3}},
         },
     }
     tmpdir = tempfile.mkdtemp(prefix="piv_bench_")
@@ -148,10 +149,12 @@ def get_per_pass_breakdown(profiles, n_pairs):
 
 
 def run_benchmark(images, image_shape, window_sizes, overlaps, omp_threads,
-                  n_iterations, save_mode="minimal", save_compression=False):
+                  n_iterations, save_mode="minimal", save_compression=False,
+                  outlier_enabled=True, infill_enabled=True):
     """Run benchmark, return list of profile dicts."""
     config = make_config(image_shape, window_sizes, overlaps, omp_threads,
-                         save_mode=save_mode, save_compression=save_compression)
+                         save_mode=save_mode, save_compression=save_compression,
+                         outlier_enabled=outlier_enabled, infill_enabled=infill_enabled)
     correlator = InstantaneousCorrelatorCPU(config)
     correlator.profiling_enabled = True
 
@@ -166,10 +169,12 @@ def run_benchmark(images, image_shape, window_sizes, overlaps, omp_threads,
 
 
 def run_benchmark_with_save(images, image_shape, window_sizes, overlaps, omp_threads,
-                            n_iterations, save_mode="full", save_compression=True):
+                            n_iterations, save_mode="full", save_compression=True,
+                            outlier_enabled=True, infill_enabled=True):
     """Run benchmark including save timing. Returns (profiles, config, file_size_kb)."""
     config = make_config(image_shape, window_sizes, overlaps, omp_threads,
-                         save_mode=save_mode, save_compression=save_compression)
+                         save_mode=save_mode, save_compression=save_compression,
+                         outlier_enabled=outlier_enabled, infill_enabled=infill_enabled)
     correlator = InstantaneousCorrelatorCPU(config)
     correlator.profiling_enabled = True
 
@@ -283,10 +288,11 @@ def test_batch_sizes():
 # ---------------------------------------------------------------------------
 # Test 2: Resolution + pass config comparison
 # ---------------------------------------------------------------------------
-def test_resolution_and_passes():
+def test_resolution_and_passes(outlier_enabled=True, infill_enabled=True):
+    outlier_label = "ON" if outlier_enabled else "OFF"
     print("\n" + "=" * 70)
-    print("TEST 2: Resolution (4MP vs 1MP) x Pass config (64->32 vs 64->32->16)")
-    print("        save_mode=minimal, save_compression=off")
+    print(f"TEST 2: Resolution (4MP vs 1MP) x Pass config (64->32 vs 64->32->16)")
+    print(f"        {OMP_THREADS} OMP threads, outlier={outlier_label}, save_mode=minimal, compression=off")
     print("=" * 70)
 
     print("\nLoading 4MP images...")
@@ -320,6 +326,8 @@ def test_resolution_and_passes():
                 overlaps=overlaps,
                 omp_threads=OMP_THREADS,
                 n_iterations=N_ITERATIONS,
+                outlier_enabled=outlier_enabled,
+                infill_enabled=infill_enabled,
             )
             mean_ms, std_ms = get_per_pair_ms(profiles, N_PAIRS)
             pairs_per_s = 1000.0 / mean_ms
@@ -483,7 +491,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="PIV benchmark suite")
     parser.add_argument("--test", type=int, choices=[1, 2, 3],
                         help="Run only a specific test (1=batch, 2=resolution, 3=save)")
+    parser.add_argument("--threads", type=int, default=10,
+                        help="OMP threads (default: 10)")
+    parser.add_argument("--no-outlier", action="store_true",
+                        help="Disable outlier detection and infilling")
     args = parser.parse_args()
+
+    OMP_THREADS = args.threads
+    outlier_on = not args.no_outlier
 
     if args.test is None or args.test == 2:
         print("Creating 1MP centre crops...")
@@ -493,7 +508,7 @@ if __name__ == "__main__":
         test_batch_sizes()
 
     if args.test is None or args.test == 2:
-        test_resolution_and_passes()
+        test_resolution_and_passes(outlier_enabled=outlier_on, infill_enabled=outlier_on)
 
     if args.test is None or args.test == 3:
         test_save_io()

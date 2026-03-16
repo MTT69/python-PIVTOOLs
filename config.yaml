@@ -1,6 +1,6 @@
 paths:
   base_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images\ensemble
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\stereo_images_reduced_22k_noisy\stereo
   source_paths:
   - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images
   active_paths:
@@ -36,15 +36,15 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 4
-  dask_workers_per_node: 5
-  dask_memory_limit: 10GB
+  omp_threads: 2
+  dask_workers_per_node: 10
+  dask_memory_limit: 5GB
   dask_max_in_flight_per_worker: 2
   open_dashboard: false
   post_processing_workers: 16
   always_batch: true
-  instantaneous: false
-  ensemble: true
+  instantaneous: true
+  ensemble: false
 outlier_detection:
   enabled: true
   methods:
@@ -80,37 +80,40 @@ video:
   data_source: calibrated
   variable: ux
   run: 2
-  piv_type: ensemble
+  piv_type: instantaneous
   cmap: jet
   lower: ''
   upper: ''
   fps: 30
   crf: 15
   resolution: 1080p
-  source_endpoint: regular
+  source_endpoint: stereo
 statistics:
   enabled_methods:
-    inst_velocity: false
-    mean_vorticity: false
-    mean_divergence: false
-    mean_velocity: true
-    inst_stresses: false
-    fluctuating_velocity: false
-    inst_gamma: false
-    tke: false
-    gamma1: false
-    divergence: false
-    inst_vorticity: false
     mean_peak_height: false
-    inst_divergence: false
-    gamma2: false
+    inst_vorticity: false
+    reynolds_stress: false
+    tke: false
+    inst_fluctuations: false
+    gamma1: false
+    mean_divergence: false
+    divergence: false
+    fluctuating_velocity: false
     mean_tke: false
-    vorticity: false
+    inst_gamma: false
+    normal_stress: false
+    gamma2: false
+    mean_vorticity: false
+    inst_stresses: false
     mean_stresses: true
+    vorticity: false
+    inst_divergence: false
+    mean_velocity: true
+    inst_velocity: false
   gamma_radius: 4
   save_figures: true
-  type_name: ensemble
-  source_endpoint: regular
+  type_name: instantaneous
+  source_endpoint: stereo
 instantaneous_piv:
   window_size:
   - - 128
@@ -209,7 +212,7 @@ calibration:
   - camera5
   path_order: camera_first
   active: scale_factor
-  piv_type: ensemble
+  piv_type: instantaneous
   scale_factor:
     dt: 0.0057553
     px_per_mm: 13.653
@@ -224,7 +227,7 @@ calibration:
     datum_camera: 1
     datum_frame: 1
   calibration_sources:
-  - \Users\morgan\Library\CloudStorage\OneDrive-UniversityofSouthampton\Documents\#current_processing\4000_images_channel\stereo_images\calibrationimages
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\stereo_images\calibrationimages
   global_coordinates:
     enabled: true
     datum_camera: 1
@@ -279,13 +282,13 @@ calibration:
       frame_a: 1
       frame_b: 1
   self_calibration:
-    z_offset: 0.6135643557892455
-    tilt_x: 0.0012305824817954469
-    tilt_y: 4.666204843280828e-05
+    z_offset: 0.8862484814418804
+    tilt_x: -0.002351031360713836
+    tilt_y: -0.0006818390561802796
     converged: true
-    n_iterations: 6
-    final_rms_disparity: 2.7277215709086886
-    n_images: 20
+    n_iterations: 9
+    final_rms_disparity: 2.101528022157098
+    n_images: 120
     window_size: 128
     overlap: 50.0
 filters: []
@@ -300,13 +303,13 @@ masking:
     left: 0
     right: 0
 merging:
-  type_name: ensemble
+  type_name: instantaneous
   base_path_idx: 0
   cameras: null
 transforms:
   base_path_idx: 0
-  type_name: ensemble
+  type_name: instantaneous
   cameras:
     1:
       operations: []
-  source_endpoint: regular
+  source_endpoint: stereo

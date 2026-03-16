@@ -1443,19 +1443,111 @@ base_path/
 
 ## Validation & Benchmarking
 
-Benchmark scripts compare PIVTOOLs output against ground truth (DNS data).
+Benchmark scripts compare PIVTOOLs output against ground truth (DNS data). Two directories:
+- `validation/` — README, predictor upscaling tests, ground truth comparison utilities
+- `dns_validation/` — Main benchmark scripts (planar + stereo)
 
-**Key files:**
-- `validation/README.md` — **Read this first.** Comprehensive reference for all benchmark scripts, data formats, and recorded results.
-- `validation/benchmark_comparison.py` — Planar benchmark
-- `validation/stereo_benchmark_comparison.py` — Stereo benchmark (hardcoded `data_root` in `main()`)
-- `validation/test_predictor_upscaling.py` — Predictor field construction diagnostic. Compares 6 methods for constructing the predictor from coarse→fine grid (pad+cubic, no-pad cubic/linear, PCHIP, cubic spline+wall BC, linear extrap). Usage: `python validation/test_predictor_upscaling.py -e <ensemble_result.mat> -g <gt_dir>`
+### `dns_validation/benchmark_comparison.py` — Planar & Ensemble Benchmark
+
+Compares instantaneous or ensemble PIV results against DNS ground truth. Generates U+, Reynolds stress, residual, trace invariant, and noise decomposition plots.
+
+**CLI usage:**
+```bash
+# Single run (defaults to run_idx=3, 16x16 window)
+python -m dns_validation.benchmark_comparison \
+    --mode instantaneous \
+    --gt-dir <ground_truth_dir> \
+    --base-dir <piv_results_base> \
+    --num-frames 4000
+
+# Multi-run (multiple window sizes)
+python -m dns_validation.benchmark_comparison \
+    --mode instantaneous \
+    --runs 2,3 --windows 32,16 \
+    --gt-dir <ground_truth_dir> \
+    --base-dir <piv_results_base> \
+    --num-frames 4000 \
+    --output-dir <output_path>
+
+# Ensemble mode (direct path to ensemble directory)
+python -m dns_validation.benchmark_comparison \
+    --mode ensemble \
+    --runs 3,4 --windows 8,8 \
+    --labels 8x16_pass4,8x16_pass5 \
+    --gt-dir <ground_truth_dir> \
+    --ensemble-dir <path/to/ensemble_result.mat/directory> \
+    --num-frames 4000 \
+    --output-dir <output_path>
+```
+
+**CLI flags:**
+| Flag | Description |
+|------|-------------|
+| `--mode` / `-m` | `instantaneous` or `ensemble` |
+| `--runs` / `-r` | Comma-separated 0-based run indices (e.g., `2,3`) |
+| `--windows` / `-w` | Comma-separated window sizes for labels (e.g., `32,16`) |
+| `--labels` / `-l` | Custom output folder names (e.g., `8x16_pass4,8x16_pass5`) |
+| `--gt-dir` / `-g` | Ground truth directory (required) |
+| `--base-dir` / `-b` | Base PIV results directory (instantaneous mode) |
+| `--ensemble-dir` / `-e` | Direct path to directory with `ensemble_result.mat` + `coordinates.mat` |
+| `--num-frames` / `-n` | Frame count subdirectory (default: 1000) |
+| `--output-dir` / `-o` | Custom output directory |
+| `--y-plus-offset` / `-y` | Additional y+ offset (default: 0.0). Added on top of the hardcoded +1.0 |
+| `--show-fit-lines` | Show log-law and viscous sublayer reference lines on U+ plots (default: off) |
+
+**Python API (for custom paths like stereo):**
+```python
+from dns_validation.benchmark_comparison import (
+    load_wall_units, load_ground_truth, load_piv_statistics,
+    load_ensemble_statistics, compute_piv_profiles, convert_to_wall_units,
+    compute_errors, plot_comparison, plot_combined_stresses, plot_combined_comparison
+)
+```
+
+**Key functions:**
+| Function | Description |
+|----------|-------------|
+| `load_wall_units(path)` | Auto-detects `wall_units.mat`, `diagnostics.mat`, or `direct_stats.mat` |
+| `load_ground_truth(path, wall_units_path)` | Auto-detects `profiles.mat`, `ensemble_statistics_full.mat`, or `direct_stats.mat` |
+| `load_piv_statistics(stats_path, run_idx)` | Loads from `mean_stats.mat` (instantaneous statistics) |
+| `load_ensemble_statistics(ensemble_path, coords_path, run_idx)` | Loads from `ensemble_result.mat` + `coordinates.mat` |
+| `compute_piv_profiles(piv_data, x_exclude_vectors)` | X-averaged profiles, excluding edge vectors |
+| `convert_to_wall_units(profiles, wall_units, y_offset_mm)` | Convert to plus units with y alignment |
+| `compute_errors(piv_plus, gt_plus, y_plus_range)` | RMS, MAE, R², correlation (default y+=10–500) |
+| `plot_comparison(...)` | 8 figures: U+, stresses, V+, linear, smoothed, residuals, trace, noise decomposition |
+| `plot_combined_stresses(...)` | All 3 stresses on one axis |
+| `plot_combined_comparison(...)` | Multi-window overlay plots (9 combined figures) |
+
+**y+ offset:** The code applies a hardcoded +1.0 offset to align PIV y=0 with the wall. The `--y-plus-offset` flag adds on top of this. Optimal values depend on the dataset — typical range is +0 to +3.0 additional.
+
+**Instantaneous path convention:** `base_dir/statistics/{num_frames}/Cam1/instantaneous/mean_stats/mean_stats.mat`
+
+**Ensemble path convention:** Either `base_dir/calibrated_piv/{num_frames}/Cam1/ensemble/` or direct via `--ensemble-dir`.
+
+**Stereo data:** The standard `load_piv_statistics` works for stereo stats files, but `compute_piv_profiles` fails on stereo grids (NaN borders from camera overlap). For stereo, call the loading/plotting functions directly with NaN-aware profile extraction — use a middle column for y values and mask valid rows/cols. See stereo example in session history.
+
+**Run index mapping:** 0-based. For a 4-pass config `[128, 64, 32, 16]`, run_idx=2 → 32x32, run_idx=3 → 16x16. Not all runs may have data (early passes often empty in stats files).
+
+**Plots generated per run:** `U_plus_profile.png`, `reynolds_stresses.png`, `V_plus_profile.png`, `U_plus_linear.png`, `U_plus_profile_smooth.png`, `reynolds_stresses_smooth.png`, `trace_invariant.png`, `residuals.png`, `noise_gradient_decomposition.png`, `combined_stresses.png`
+
+**Combined plots (multi-run):** `*_combined.png` versions of all above, plus `*_combined_smooth.png`
+
+**Font:** Computer Modern serif via `mathtext.fontset: cm` (no LaTeX install required).
+
+### `dns_validation/stereo_benchmark_comparison.py` — Stereo 3-Component Benchmark
+
+Compares stereo PIV (3-component: U, V, W) and all 6 Reynolds stresses against DNS. Uses `text.usetex: True` (requires MiKTeX/LaTeX installation).
+
+### `validation/` — Additional Utilities
+
+- `validation/README.md` — Comprehensive reference for all benchmark scripts, data formats, and recorded results.
+- `validation/test_predictor_upscaling.py` — Predictor field construction diagnostic. Compares 6 methods for coarse→fine grid predictor construction. Usage: `python validation/test_predictor_upscaling.py -e <ensemble_result.mat> -g <gt_dir>`
+- `validation/compare_ground_truths.py` — Compare different ground truth datasets
+- `validation/compare_stresses.py` — Compare stress profiles between datasets
 
 **Unit conventions:** PIVTOOLs stores velocity in m/s (×1000→mm/s for display), stresses in (m/s)² (×1e6→(mm/s)²).
 
-**Ground truth format:** Auto-detects MATLAB v5 (`profiles.mat`) vs v7.3/HDF5 (`ensemble_statistics_full.mat`). HDF5 `ref_profile` has DNS velocity (2049 pts) but NO stresses; stresses come from `ensemble_stats` (255 pts) — never mix without interpolation.
-
-**Common flags:** `--num-frames`/`-n` controls the subdirectory (e.g., `calibrated_piv/1000/`). y+ offset of `+1.0` works for current channel dataset.
+**Ground truth format:** Auto-detects MATLAB v5 (`profiles.mat`) vs v7.3/HDF5 (`ensemble_statistics_full.mat`) vs direct format (`direct_stats.mat` with top-level arrays). HDF5 `ref_profile` has DNS velocity (2049 pts) but NO stresses; stresses come from `ensemble_stats` (255 pts) — never mix without interpolation.
 
 ---
 

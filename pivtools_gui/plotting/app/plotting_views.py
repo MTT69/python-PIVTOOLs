@@ -39,6 +39,13 @@ from .shared_utils import (
 vector_plot_bp = Blueprint("vector_plot", __name__)
 
 
+def _nan_safe(v):
+    """Convert NaN/Inf floats to None so jsonify emits valid JSON (null)."""
+    if v is None:
+        return None
+    return None if np.isnan(v) or np.isinf(v) else v
+
+
 # =============================================================================
 # Plotting Endpoints
 # =============================================================================
@@ -1139,11 +1146,11 @@ def get_vector_at_position():
 
         return jsonify({
             "success": True,
-            "x": coord_x,
-            "y": coord_y,
-            "ux": ux_val,
-            "uy": uy_val,
-            "value": value_val,
+            "x": _nan_safe(coord_x),
+            "y": _nan_safe(coord_y),
+            "ux": _nan_safe(ux_val),
+            "uy": _nan_safe(uy_val),
+            "value": _nan_safe(value_val),
             "i": i,
             "j": j,
         })
@@ -1252,11 +1259,11 @@ def get_stats_value_at_position():
 
         return jsonify({
             "success": True,
-            "x": coord_x,
-            "y": coord_y,
-            "ux": ux_val,
-            "uy": uy_val,
-            "value": val,
+            "x": _nan_safe(coord_x),
+            "y": _nan_safe(coord_y),
+            "ux": _nan_safe(ux_val),
+            "uy": _nan_safe(uy_val),
+            "value": _nan_safe(val),
             "i": i,
             "j": j,
         })
