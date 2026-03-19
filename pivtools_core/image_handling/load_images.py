@@ -1,4 +1,5 @@
 import math
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable, Tuple, Optional, List
 import logging
@@ -14,6 +15,11 @@ from ..window_utils import compute_window_centers, compute_window_centers_single
 
 # Import all readers to register them
 from .readers import get_reader
+
+# Module-level thread pool for concurrent A+B reading.
+# Two threads is optimal: one per file in a pair.
+# Created once, reused across all read_pair calls (avoids per-pair thread creation overhead).
+_read_pool = ThreadPoolExecutor(max_workers=2)
 
 
 def read_image(file_path: str, **kwargs) -> np.ndarray:
@@ -64,10 +70,12 @@ def read_single_frame(
         FileNotFoundError: If the file does not exist
         ValueError: If the image cannot be read or format is unsupported
     """
-    file_path = Path(file_path)
-
-    if not file_path.exists():
-        raise FileNotFoundError(f"Image file not found: {file_path}")
+    # Container formats need an existence check upfront (one file, many frames).
+    # Standard formats skip this — the reader raises on missing files directly.
+    if image_type in ("lavision_set", "lavision_im7", "cine"):
+        file_path = Path(file_path)
+        if not file_path.exists():
+            raise FileNotFoundError(f"Image file not found: {file_path}")
 
     if image_type == "lavision_set":
         # .set container: all cameras and frames in one file
@@ -240,8 +248,13 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
             file_a = camera_path / (format_str % frame_a_idx)
             file_b = camera_path / (format_str % frame_b_idx)
 
-        frame_a = read_single_frame(file_a, camera, frame_a_idx, image_type)
-        frame_b = read_single_frame(file_b, camera, frame_b_idx, image_type)
+        # Read A and B concurrently — tifffile releases the GIL during I/O,
+        # so two threads can decode different files in parallel.
+        # Uses module-level pool to avoid per-pair thread creation overhead.
+        future_a = _read_pool.submit(read_single_frame, file_a, camera, frame_a_idx, image_type)
+        future_b = _read_pool.submit(read_single_frame, file_b, camera, frame_b_idx, image_type)
+        frame_a = future_a.result()
+        frame_b = future_b.result()
         return np.stack([frame_a, frame_b], axis=0)
 
 

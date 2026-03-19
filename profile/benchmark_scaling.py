@@ -45,13 +45,14 @@ if _project_root not in sys.path:
 # Configuration — edit these for your machine
 # ---------------------------------------------------------------------------
 TOTAL_CORES = 20
-BATCHES_PER_WORKER = 3   # Each worker processes exactly this many batches
+BATCHES_PER_WORKER = 10   # Each worker processes exactly this many batches (was 3; increased for steady-state)
+WARMUP_BATCHES = 1        # Extra batches per worker for pipeline warmup (not timed)
 BATCH_SIZE = 10
 N_ITERATIONS = 1
 WINDOW_SIZES = [[64, 64], [32, 32], [16, 16]]
 OVERLAPS = [50, 50, 50]
-MAX_WORKERS = 10          # Capped by RAM: 64GB / ~5GB per worker
-WORKER_MEMORY = "5GB"     # Per-worker memory limit
+MAX_WORKERS = 15          # Capped by RAM: 64GB / ~4GB per worker
+WORKER_MEMORY = "3.2GB"   # Per-worker memory limit (lowered for 15-worker configs on 64GB)
 
 SOURCE_DIR = (
     r"C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images"
@@ -78,7 +79,7 @@ def get_worker_sweep():
     """Fixed 2 threads/worker, vary workers up to MAX_WORKERS."""
     return [
         {"workers": w, "threads": 2, "label": "worker_sweep"}
-        for w in [1, 2, 4, 5, 10]
+        for w in [1, 2, 4, 5, 10, 15]
         if w <= MAX_WORKERS
     ]
 
@@ -229,7 +230,7 @@ def make_config_yaml(tmpdir, workers, threads, n_pairs):
             "active_paths": [0],
         },
         "images": {
-            "num_images": n_pairs * 2,
+            "num_images": n_pairs,
             "image_format": ["B%05d_A.tif", "B%05d_B.tif"],
             "type": "standard",
             "start_index": 1,
@@ -478,6 +479,22 @@ def run_single_benchmark(workers, threads, label, iteration=0):
             )
             runs_0based = config.instantaneous_runs_0based
             vector_format = config.vector_format
+
+            # --- In-pipeline warmup ---
+            # Run WARMUP_BATCHES batches through the actual Dask pipeline to warm
+            # each worker's DLL loading, FFTW plan creation, OMP thread pool, and
+            # OS page cache. This ensures the timed run measures steady-state.
+            warmup_chunks = min(WARMUP_BATCHES * num_workers, num_chunks)
+            if warmup_chunks > 0:
+                _run_sliding_window(
+                    client, images, warmup_chunks, max_in_flight,
+                    scattered_config, scattered, output_path,
+                    runs_0based, vector_format,
+                )
+                # Clean up warmup output files
+                import glob
+                for f in glob.glob(os.path.join(str(output_path), "*.mat")):
+                    os.remove(f)
 
             t0 = time.perf_counter()
             saved_paths = _run_sliding_window(
@@ -1022,11 +1039,20 @@ def main():
                         help=f"Iterations per config for error bars (default: {N_ITERATIONS})")
     parser.add_argument("--source", type=str, default=None,
                         help="Path to directory containing B00001_A.tif etc.")
+    parser.add_argument("--windows", type=str, default=None,
+                        help="Comma-separated window sizes per pass, e.g. '64,32,16' or '64,32'. "
+                             "Default: 64,32,16")
     args = parser.parse_args()
 
     if args.source:
         global SOURCE_DIR
         SOURCE_DIR = args.source
+
+    if args.windows:
+        global WINDOW_SIZES, OVERLAPS
+        sizes = [int(s.strip()) for s in args.windows.split(",")]
+        WINDOW_SIZES = [[s, s] for s in sizes]
+        OVERLAPS = [50] * len(sizes)
 
     # --- Plots only ---
     if args.plots_only:

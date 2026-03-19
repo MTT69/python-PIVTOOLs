@@ -94,8 +94,8 @@ def make_config(
     outlier_enabled: bool,
     infilling_method: str = "local_median",
     peak_finder: str = "gauss6",
-    save_mode: str = "full",
-    save_compression: bool = True,
+    save_mode: str = "minimal",
+    save_compression: bool = False,
 ) -> Config:
     """Create a minimal Config from a temporary YAML file."""
     cfg_dict = {
@@ -321,8 +321,8 @@ def run_profile(
     infilling_method: str = "local_median",
     peak_finder: str = "gauss6",
     threading_enabled: bool = True,
-    save_mode: str = "full",
-    save_compression: bool = True,
+    save_mode: str = "minimal",
+    save_compression: bool = False,
 ):
     preset = IMAGE_PRESETS[preset_name]
     print(f"\nLoading images from: {preset['path']}")
@@ -481,14 +481,15 @@ Examples:
     parser.add_argument(
         "--save-mode",
         type=str,
-        default="full",
+        default="minimal",
         choices=["full", "minimal"],
-        help="Save mode: full (11 fields) or minimal (ux, uy, b_mask only) (default: full)",
+        help="Save mode: full (11 fields) or minimal (ux, uy, b_mask only) (default: minimal)",
     )
     parser.add_argument(
         "--no-save-compression",
         action="store_true",
-        help="Disable zlib compression on .mat save (faster, larger files)",
+        default=True,
+        help="Disable zlib compression on .mat save (default: disabled)",
     )
 
     args = parser.parse_args()

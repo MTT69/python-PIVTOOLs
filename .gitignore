@@ -56,3 +56,6 @@ validation/
 # Profiling benchmark outputs
 profile/*.csv
 profile/*.png
+
+# Documentation
+docs/

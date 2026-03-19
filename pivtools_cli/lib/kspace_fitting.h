@@ -31,9 +31,9 @@ extern "C" {
  * For each non-masked window:
  *   1. FFT correlation planes (float32 fftwf)
  *   2. Compute F_ref = sqrt(|F_AA| * |F_BB|)
- *   3. Joint noise fit: F_ref = (A*Gauss + N0) * P_noise  (4 params, GSL double)
+ *   3. Joint noise fit: F_ref = (A*Gauss*(1+beta*q^2) + N0) * P_noise  (5 params, GSL double)
  *   4. Initial guesses: sub-pixel peak (displacement), 1D log-regression (variance)
- *   5. Full 5-param fit of T_norm = T/T(0)  (GSL double)
+ *   5. Full 5-param Gaussian fit of T_norm = T/T(0)  (GSL double)
  *   6. Validation and output in 16-element gauss_flat format
  *
  * Parameters per window (16 total, same as Gaussian fitter):

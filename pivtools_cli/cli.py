@@ -1400,8 +1400,8 @@ instantaneous_piv:
   secondary_peak: false
   predictor_smoothing: true
   image_warp_interpolation: cubic
-  save_mode: full
-  save_compression: true
+  save_mode: minimal
+  save_compression: false
 ensemble_piv:
   fit_method: kspace
   skip_background_subtraction: false
@@ -1435,8 +1435,8 @@ ensemble_piv:
   store_planes: false
   save_diagnostics: false
   sum_window:
-  - 16
-  - 16
+  - 32
+  - 32
   sum_fitting_window_enabled: true
   sum_fitting_window:
   - 32

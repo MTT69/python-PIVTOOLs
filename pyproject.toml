@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pivtools"
-version = "0.4.5"
+version = "0.4.6"
 description = "PIVTOOLs - Particle Image Velocimetry Tools with CLI and GUI"
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -55,6 +55,7 @@ dependencies = [
     "matplotlib==3.10.5",
     "imagecodecs",
     "imageio-ffmpeg>=0.5.0",
+    "bokeh",
 ]
 
 [project.urls]

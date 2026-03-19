@@ -39,12 +39,12 @@ mpl.rcParams.update({
     'text.usetex': False,
     'axes.labelsize': 12,
     'axes.titlesize': 13,
-    'legend.fontsize': 9,
+    'legend.fontsize': 11,
     'xtick.labelsize': 10,
     'ytick.labelsize': 10,
     'lines.linewidth': 1.5,
-    'figure.dpi': 300,
-    'savefig.dpi': 300,
+    'figure.dpi': 600,
+    'savefig.dpi': 600,
     'savefig.bbox': 'tight',
     'savefig.pad_inches': 0.05,
 })
@@ -56,6 +56,14 @@ METHOD_STYLES = {
     'Stereo':        {'color': '#009E73', 'marker': '^'},   # teal
 }
 DNS_COLOR = 'k'
+
+
+def _get_style(name):
+    """Look up style by method name prefix (e.g. 'Instantaneous (16x16)' → Instantaneous)."""
+    for key in METHOD_STYLES:
+        if name.startswith(key):
+            return METHOD_STYLES[key]
+    return {'color': 'gray', 'marker': 'x'}
 
 
 # =============================================================================
@@ -234,7 +242,7 @@ def plot_velocity_comparison(methods, gt_plus, wall_units, output_dir, title_suf
 
     # PIV methods
     for name, piv_plus in methods.items():
-        sty = METHOD_STYLES[name]
+        sty = _get_style(name)
         ax.semilogx(piv_plus['y_plus'], piv_plus['U_plus'],
                     color=sty['color'], marker=sty['marker'],
                     markersize=3.5, alpha=0.7, linestyle='none',
@@ -287,7 +295,7 @@ def plot_stresses_subplots(methods, gt_plus, wall_units, output_dir, title_suffi
 
         # PIV methods
         for name, piv_plus in methods.items():
-            sty = METHOD_STYLES[name]
+            sty = _get_style(name)
             ax.plot(piv_plus['y_plus'], sign * piv_plus[var],
                     color=sty['color'], marker=sty['marker'],
                     markersize=2.5, alpha=0.65, linestyle='none',
@@ -347,7 +355,7 @@ def plot_combined_stresses(methods, gt_plus, wall_units, output_dir, title_suffi
 
     # ── PIV method markers ───────────────────────────────────────────────
     for name, piv_plus in methods.items():
-        sty = METHOD_STYLES[name]
+        sty = _get_style(name)
         for var, csty in component_styles.items():
             sign = csty['sign']
             ax.plot(piv_plus['y_plus'], sign * piv_plus[var],
@@ -359,7 +367,7 @@ def plot_combined_stresses(methods, gt_plus, wall_units, output_dir, title_suffi
     # Part 1: method colours (dummy markers)
     method_handles = []
     for name in methods:
-        sty = METHOD_STYLES[name]
+        sty = _get_style(name)
         h = plt.Line2D([], [], color=sty['color'], marker=sty['marker'],
                         markersize=5, linestyle='none', label=name)
         method_handles.append(h)
@@ -378,7 +386,7 @@ def plot_combined_stresses(methods, gt_plus, wall_units, output_dir, title_suffi
     leg1 = ax.legend(handles=method_handles, loc='upper right',
                      framealpha=0.9, title='Method')
     ax.add_artist(leg1)
-    ax.legend(handles=comp_handles, loc='center right',
+    ax.legend(handles=comp_handles, loc='upper left',
               framealpha=0.9, title='Component')
 
     ax.set_xlabel(r'$y^+$')
@@ -439,6 +447,10 @@ def compare_methods(
     # Shared
     x_exclude=4,
     title_suffix='',
+    inst_window_label=None,
+    ens_window_label=None,
+    stereo_window_label=None,
+    trim_near_wall=0,
 ):
     """
     Compare one pass from each method against DNS ground truth.
@@ -477,28 +489,46 @@ def compare_methods(
 
     methods = {}
 
+    def _trim(piv_plus, n):
+        """Remove n lowest y+ points (nearest wall)."""
+        if n <= 0:
+            return piv_plus
+        yp = piv_plus['y_plus']
+        if yp[0] > yp[-1]:
+            # Sorted high-to-low: wall is at the end
+            sl = slice(None, -n if n > 0 else None)
+        else:
+            # Sorted low-to-high: wall is at the start
+            sl = slice(n, None)
+        return {k: (v[sl] if isinstance(v, np.ndarray) and len(v) > n else v)
+                for k, v in piv_plus.items()}
+
     if inst_stats_path is not None:
-        print(f"\nLoading Instantaneous (run {inst_run_idx}, y+ offset +{inst_y_offset})...")
-        methods['Instantaneous'] = load_instantaneous(
-            inst_stats_path, inst_run_idx, wu, inst_y_offset, x_exclude)
-        p = methods['Instantaneous']
+        label = f"Instantaneous ({inst_window_label})" if inst_window_label else "Instantaneous"
+        print(f"\nLoading {label} (run {inst_run_idx}, y+ offset +{inst_y_offset})...")
+        data = load_instantaneous(inst_stats_path, inst_run_idx, wu, inst_y_offset, x_exclude)
+        methods[label] = _trim(data, trim_near_wall)
+        p = methods[label]
         print(f"  y+ range: {p['y_plus'].min():.1f} – {p['y_plus'].max():.1f}")
 
     if ens_ensemble_path is not None and ens_coords_path is not None:
-        print(f"\nLoading Ensemble (run {ens_run_idx}, y+ offset +{ens_y_offset})...")
-        methods['Ensemble'] = load_ensemble(
+        label = f"Ensemble ({ens_window_label})" if ens_window_label else "Ensemble"
+        print(f"\nLoading {label} (run {ens_run_idx}, y+ offset +{ens_y_offset})...")
+        methods[label] = load_ensemble(
             ens_ensemble_path, ens_coords_path,
             ens_run_idx, wu, ens_y_offset, x_exclude)
-        p = methods['Ensemble']
+        p = methods[label]
         print(f"  y+ range: {p['y_plus'].min():.1f} – {p['y_plus'].max():.1f}")
 
     if stereo_stats_path is not None:
-        print(f"\nLoading Stereo (run {stereo_run_idx}, y+ offset +{stereo_y_offset}, "
+        label = f"Stereo ({stereo_window_label})" if stereo_window_label else "Stereo"
+        print(f"\nLoading {label} (run {stereo_run_idx}, y+ offset +{stereo_y_offset}, "
               f"trim top {stereo_trim_top})...")
-        methods['Stereo'] = load_stereo(
+        data = load_stereo(
             stereo_stats_path, stereo_run_idx, wu, stereo_y_offset,
             x_exclude, stereo_trim_top)
-        p = methods['Stereo']
+        methods[label] = _trim(data, trim_near_wall)
+        p = methods[label]
         print(f"  y+ range: {p['y_plus'].min():.1f} – {p['y_plus'].max():.1f}")
 
     if not methods:

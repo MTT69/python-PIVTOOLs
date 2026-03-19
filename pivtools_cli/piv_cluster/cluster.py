@@ -73,9 +73,10 @@ def make_cluster(
                 "distributed.worker.profile.enabled": False,
                 # Increase heartbeat tolerance for long-running C calls
                 # that block the worker thread (e.g., dense PIV passes with 700+ windows)
-                "distributed.scheduler.worker-ttl": "120s",  # Default: 60s
+                "distributed.scheduler.worker-ttl": "30m",  # Default: 60s
                 "distributed.worker.heartbeat": "5s",  # Default: 1s
                 "distributed.comm.timeouts.connect": "60s",  # Default: 30s
+                "distributed.comm.timeouts.tcp": "600s",  # Default: 30s
             },
             dashboard_address=":8788"
         )
@@ -89,9 +90,10 @@ def make_cluster(
         import dask
         # Set heartbeat tolerance for long-running C calls on SLURM too
         dask.config.set({
-            "distributed.scheduler.worker-ttl": "120s",
+            "distributed.scheduler.worker-ttl": "30m",
             "distributed.worker.heartbeat": "5s",
             "distributed.comm.timeouts.connect": "60s",
+            "distributed.comm.timeouts.tcp": "600s",
         })
         cluster = SLURMCluster(
             queue=config.slurm_partition,

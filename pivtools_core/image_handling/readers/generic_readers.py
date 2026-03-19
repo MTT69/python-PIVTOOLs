@@ -14,8 +14,6 @@ def read_tiff(file_path: str) -> np.ndarray:
     """
     import tifffile
 
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"Image file not found: {file_path}")
     img = tifffile.imread(file_path)
     if img.ndim > 2 and img.shape[-1] > 1:
         logging.debug(f"Converting color TIFF image to grayscale: {Path(file_path).name}")

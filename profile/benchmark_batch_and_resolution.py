@@ -78,7 +78,7 @@ def load_image_pairs(source_dir, n_pairs):
 
 
 def make_config(image_shape, window_sizes, overlaps, omp_threads,
-                save_mode="full", save_compression=True,
+                save_mode="minimal", save_compression=False,
                 outlier_enabled=True, infill_enabled=True):
     cfg_dict = {
         "images": {
@@ -169,7 +169,7 @@ def run_benchmark(images, image_shape, window_sizes, overlaps, omp_threads,
 
 
 def run_benchmark_with_save(images, image_shape, window_sizes, overlaps, omp_threads,
-                            n_iterations, save_mode="full", save_compression=True,
+                            n_iterations, save_mode="minimal", save_compression=False,
                             outlier_enabled=True, infill_enabled=True):
     """Run benchmark including save timing. Returns (profiles, config, file_size_kb)."""
     config = make_config(image_shape, window_sizes, overlaps, omp_threads,

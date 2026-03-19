@@ -37,7 +37,7 @@
 #endif
 
 #define KSPACE_PARAMS 16
-#define JOINT_NPARAMS 4
+#define JOINT_NPARAMS 5
 #define MAIN_NPARAMS 5
 #define JOINT_MAX_ITER 200
 #define MAIN_MAX_ITER 250
@@ -164,16 +164,18 @@ struct joint_fit_data {
 
 static int joint_residual_f(const gsl_vector *x, void *data, gsl_vector *f) {
     struct joint_fit_data *d = (struct joint_fit_data *)data;
-    double A   = fmin(fmax(gsl_vector_get(x, 0), 0.01), 10.0);
-    double sx  = fmin(fmax(gsl_vector_get(x, 1), 0.1),  20.0);
-    double sy  = fmin(fmax(gsl_vector_get(x, 2), 0.1),  20.0);
-    double N0  = fmin(fmax(gsl_vector_get(x, 3), 0.0),   1.0);
+    double A    = fmin(fmax(gsl_vector_get(x, 0), 0.01), 10.0);
+    double sx   = fmin(fmax(gsl_vector_get(x, 1), 0.1),  20.0);
+    double sy   = fmin(fmax(gsl_vector_get(x, 2), 0.1),  20.0);
+    double N0   = fmin(fmax(gsl_vector_get(x, 3), 0.0),   1.0);
+    double beta = fmin(fmax(gsl_vector_get(x, 4), -1.0), 10.0);
     double two_pi_sq = 2.0 * M_PI * M_PI;
 
     for (size_t i = 0; i < d->n; i++) {
         double kx = d->K_X[i], ky = d->K_Y[i];
-        double gauss = A * exp(-two_pi_sq * (kx * kx * sx * sx + ky * ky * sy * sy));
-        double model = (gauss + N0) * d->P_noise[i];
+        double q = two_pi_sq * (kx * kx * sx * sx + ky * ky * sy * sy);
+        double signal = A * exp(-q) * (1.0 + beta * q * q);
+        double model = (signal + N0) * d->P_noise[i];
         gsl_vector_set(f, i, d->weights[i] * (d->F_ref_norm[i] - model));
     }
     return GSL_SUCCESS;
@@ -181,36 +183,48 @@ static int joint_residual_f(const gsl_vector *x, void *data, gsl_vector *f) {
 
 static int joint_residual_df(const gsl_vector *x, void *data, gsl_matrix *J) {
     struct joint_fit_data *d = (struct joint_fit_data *)data;
-    double A   = fmin(fmax(gsl_vector_get(x, 0), 0.01), 10.0);
-    double sx  = fmin(fmax(gsl_vector_get(x, 1), 0.1),  20.0);
-    double sy  = fmin(fmax(gsl_vector_get(x, 2), 0.1),  20.0);
+    double A    = fmin(fmax(gsl_vector_get(x, 0), 0.01), 10.0);
+    double sx   = fmin(fmax(gsl_vector_get(x, 1), 0.1),  20.0);
+    double sy   = fmin(fmax(gsl_vector_get(x, 2), 0.1),  20.0);
+    double beta = fmin(fmax(gsl_vector_get(x, 4), -1.0), 10.0);
     double two_pi_sq = 2.0 * M_PI * M_PI;
 
     // Constraint activity flags: zero Jacobian when at lower OR upper bound
-    double raw_A  = gsl_vector_get(x, 0);
-    double raw_sx = gsl_vector_get(x, 1);
-    double raw_sy = gsl_vector_get(x, 2);
-    double raw_N0 = gsl_vector_get(x, 3);
-    int A_active  = (raw_A  >= 0.01 && raw_A  <= 10.0);
-    int sx_active = (raw_sx >= 0.1  && raw_sx <= 20.0);
-    int sy_active = (raw_sy >= 0.1  && raw_sy <= 20.0);
-    int N0_active = (raw_N0 >= 0.0  && raw_N0 <= 1.0);
+    double raw_A    = gsl_vector_get(x, 0);
+    double raw_sx   = gsl_vector_get(x, 1);
+    double raw_sy   = gsl_vector_get(x, 2);
+    double raw_N0   = gsl_vector_get(x, 3);
+    double raw_beta = gsl_vector_get(x, 4);
+    int A_active    = (raw_A    >= 0.01 && raw_A    <= 10.0);
+    int sx_active   = (raw_sx   >= 0.1  && raw_sx   <= 20.0);
+    int sy_active   = (raw_sy   >= 0.1  && raw_sy   <= 20.0);
+    int N0_active   = (raw_N0   >= 0.0  && raw_N0   <= 1.0);
+    int beta_active = (raw_beta >= -1.0 && raw_beta <= 10.0);
 
     for (size_t i = 0; i < d->n; i++) {
         double kx = d->K_X[i], ky = d->K_Y[i];
-        double arg = -two_pi_sq * (kx * kx * sx * sx + ky * ky * sy * sy);
-        double gauss = A * exp(arg);
+        double q = two_pi_sq * (kx * kx * sx * sx + ky * ky * sy * sy);
+        double exp_neg_q = exp(-q);
+        double kurt_factor = 1.0 + beta * q * q;
         double w = d->weights[i];
         double P = d->P_noise[i];
 
-        // d/dA
-        gsl_matrix_set(J, i, 0, A_active ? -w * exp(arg) * P : 0.0);
-        // d/dsx
-        gsl_matrix_set(J, i, 1, sx_active ? -w * gauss * (-two_pi_sq * 2.0 * kx * kx * sx) * P : 0.0);
-        // d/dsy
-        gsl_matrix_set(J, i, 2, sy_active ? -w * gauss * (-two_pi_sq * 2.0 * ky * ky * sy) * P : 0.0);
-        // d/dN0
+        // dsignal/dq = A*exp(-q)*[-(1+beta*q^2) + 2*beta*q]
+        //            = A*exp(-q)*[-1 - beta*q^2 + 2*beta*q]
+        double dsignal_dq = A * exp_neg_q * (-1.0 - beta * q * q + 2.0 * beta * q);
+
+        // d/dA: signal/A * P = exp(-q)*(1+beta*q^2)*P
+        gsl_matrix_set(J, i, 0, A_active ? -w * exp_neg_q * kurt_factor * P : 0.0);
+        // d/dsx: dsignal/dq * dq/dsx * P, where dq/dsx = 2*two_pi_sq*kx^2*sx
+        double dq_dsx = 2.0 * two_pi_sq * kx * kx * sx;
+        gsl_matrix_set(J, i, 1, sx_active ? -w * dsignal_dq * dq_dsx * P : 0.0);
+        // d/dsy: dsignal/dq * dq/dsy * P, where dq/dsy = 2*two_pi_sq*ky^2*sy
+        double dq_dsy = 2.0 * two_pi_sq * ky * ky * sy;
+        gsl_matrix_set(J, i, 2, sy_active ? -w * dsignal_dq * dq_dsy * P : 0.0);
+        // d/dN0: unchanged
         gsl_matrix_set(J, i, 3, N0_active ? -w * P : 0.0);
+        // d/dbeta: A*exp(-q)*q^2*P
+        gsl_matrix_set(J, i, 4, beta_active ? -w * A * exp_neg_q * q * q * P : 0.0);
     }
     return GSL_SUCCESS;
 }
@@ -275,11 +289,6 @@ static int main_residual_df(const gsl_vector *x, void *data, gsl_matrix *J) {
         double cos_p = cos(phase), sin_p = sin(phase);
         double w = d->weights[i];
 
-        // Model: T_r = decay*cos(phase), T_i = decay*sin(phase)
-        // Residual real: w * (T_norm_r - T_r)
-        // d(res_r)/d(param) = -w * d(T_r)/d(param)
-
-        // d(T_r)/d(mu_x) = decay * sin(phase) * 2*pi*kx
         double dphase_dmux = -two_pi * kx;
         double dphase_dmuy = -two_pi * ky;
         double dTr_dmux = decay * (-sin_p * dphase_dmux);
@@ -292,7 +301,6 @@ static int main_residual_df(const gsl_vector *x, void *data, gsl_matrix *J) {
         gsl_matrix_set(J, i,         1, -w * dTr_dmuy);
         gsl_matrix_set(J, i + d->n,  1, -w * dTi_dmuy);
 
-        // d(decay)/d(Sxx) = decay * (-two_pi_sq * kx^2)
         double ddecay_dSxx = decay * (-two_pi_sq * kx * kx);
         double ddecay_dSyy = decay * (-two_pi_sq * ky * ky);
         double ddecay_dSxy = decay * (-two_pi_sq * 2.0 * kx * ky);
@@ -305,7 +313,6 @@ static int main_residual_df(const gsl_vector *x, void *data, gsl_matrix *J) {
             gsl_matrix_set(J, i,         3, -w * ddecay_dSyy * cos_p);
             gsl_matrix_set(J, i + d->n,  3, -w * ddecay_dSyy * sin_p);
         }
-        // Sxy always active (no non-negativity constraint)
         gsl_matrix_set(J, i,         4, -w * ddecay_dSxy * cos_p);
         gsl_matrix_set(J, i + d->n,  4, -w * ddecay_dSxy * sin_p);
     }
@@ -869,7 +876,7 @@ PIV_EXPORT int fit_kspace_batch(
             joint_fdf.p      = JOINT_NPARAMS;
             joint_fdf.params = &jdata;
 
-            double joint_p0[4] = {1.0, 2.0, 2.0, 0.01};
+            double joint_p0[5] = {1.0, 2.0, 2.0, 0.01, 0.0};
             gsl_vector_view joint_xv = gsl_vector_view_array(joint_p0, JOINT_NPARAMS);
             int joint_init_status = gsl_multifit_nlinear_init(&joint_xv.vector, &joint_fdf, joint_work);
 

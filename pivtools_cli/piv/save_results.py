@@ -143,16 +143,15 @@ def save_coordinates_from_config_distributed(
             # Create meshgrid (MATLAB-style 1-based coords)
             x_grid, y_grid = np.meshgrid(x_centers + 1, y_physical + 1, indexing='xy')
 
-            # Convert to half precision for space saving
-            x_grid = _convert_to_half_precision(x_grid, 'x_grid')
-            y_grid = _convert_to_half_precision(y_grid, 'y_grid')
-
+            # Keep as float32 — float16 ULP exceeds grid spacing for large
+            # images (e.g. >4096 px: ULP=4, but step may be 2), collapsing
+            # adjacent coordinates to the same value.
             coords_struct['x'][i] = x_grid
             coords_struct['y'][i] = y_grid
         else:
             # Empty arrays for non-selected passes
-            coords_struct['x'][i] = np.array([], dtype=np.float16)
-            coords_struct['y'][i] = np.array([], dtype=np.float16)
+            coords_struct['x'][i] = np.array([], dtype=np.float32)
+            coords_struct['y'][i] = np.array([], dtype=np.float32)
 
     output_path = Path(output_path)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -288,16 +287,15 @@ def save_ensemble_coordinates_from_config_distributed(
             # Create meshgrid (MATLAB-style 1-based coords)
             x_grid, y_grid = np.meshgrid(x_centers + 1, y_physical + 1, indexing='xy')
 
-            # Convert to half precision for space saving
-            x_grid = _convert_to_half_precision(x_grid, 'x_grid')
-            y_grid = _convert_to_half_precision(y_grid, 'y_grid')
-
+            # Keep as float32 — float16 ULP exceeds grid spacing for large
+            # images (e.g. >4096 px: ULP=4, but step may be 2), collapsing
+            # adjacent coordinates to the same value.
             coords_struct['x'][i] = x_grid
             coords_struct['y'][i] = y_grid
         else:
             # Empty arrays for non-selected passes
-            coords_struct['x'][i] = np.array([], dtype=np.float16)
-            coords_struct['y'][i] = np.array([], dtype=np.float16)
+            coords_struct['x'][i] = np.array([], dtype=np.float32)
+            coords_struct['y'][i] = np.array([], dtype=np.float32)
 
     output_path = Path(output_path)
     output_path.mkdir(parents=True, exist_ok=True)

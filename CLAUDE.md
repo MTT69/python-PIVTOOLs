@@ -18,6 +18,8 @@
 
 - **No Dead Code:** All changes must be forward-facing. When replacing or refactoring code, delete the old implementation entirely — do not leave deprecated wrappers, legacy fallback functions, backward-compatibility shims, or commented-out code paths. If a function is superseded, remove it and update all references (imports, `__init__.py` exports, docstrings, CLAUDE.md). Dead code accumulates silently and misleads future contributors.
 
+- **No Silent Fallbacks:** Do not add fallback chains where a new code path silently degrades to an old one on failure. If something fails, it should fail visibly (return an error status, raise an exception) so bugs are caught during testing. Silent fallbacks mask problems and make validation impossible.
+
 ---
 
 ## Architecture Overview
@@ -896,7 +898,8 @@ Alternative to Levenberg-Marquardt Gaussian fitting. Works in Fourier domain: `T
 - **Config:** `ensemble_piv.fit_method: kspace`
 - **Files:** `pivtools_cli/piv/piv_backend/kspace_fitting.py` (Python wrapper + ctypes), `pivtools_cli/lib/kspace_fitting.c` (C implementation), `pivtools_cli/lib/kspace_fitting.h` (API header)
 - **Status codes:** -1=masked, 0=success (negative variance clamped to zero), 1=no converge, 3=displacement > 3/4 window
-- **Predictor-aware noise subtraction (all passes):** Camera noise inflates F_ref (auto-correlations) but not F_AB (cross-correlation). On warped passes, the interpolation kernel (bicubic/Lanczos-3) colors the noise spectrum — a low-pass filter whose shape depends on the fractional pixel displacement. The noise PSD is computed analytically from the kernel's DTFT: `P_noise(kx,ky) = |H(kx,fx)|² * |H(ky,fy)|²`. Joint fit: `F_ref = (A*Gaussian + N0) * P_noise` — the kernel filters everything (signal + noise), so N0 is inside the bracket. At pass 0 (f=0), `P_noise=1` everywhere (flat white noise), so the joint fit degenerates to `F_ref = A*Gauss + N0` — equivalent to the old corner-based approach. Falls back to corner-based N0 estimation if the joint fit fails. **Key files:** `interpolation_noise_psd.py` (kernel weights/DTFTs/PSD — used by diagnostic plotting), `kspace_fitting.c` (joint fit in C), `single_pass_accumulator.py` (threads predictor displacements to fitter). Per-window predictor displacement is extracted from `smoothed_predictor` in `pass_data`.
+- **Predictor-aware noise subtraction (all passes):** Camera noise inflates F_ref (auto-correlations) but not F_AB (cross-correlation). On warped passes, the interpolation kernel (bicubic/Lanczos-3) colors the noise spectrum — a low-pass filter whose shape depends on the fractional pixel displacement. The noise PSD is computed analytically from the kernel's DTFT: `P_noise(kx,ky) = |H(kx,fx)|² * |H(ky,fy)|²`. Joint fit: `F_ref = (A*Gauss*(1+beta*q²) + N0) * P_noise` — 5 params (A, sx, sy, N0, beta). The `(1+beta*q²)` kurtosis correction absorbs leptokurtic PDF tails (Edgeworth expansion in Fourier domain), preventing N0 inflation that would otherwise bias stress estimates by 2-5%. At beta=0 degenerates to pure Gaussian. At pass 0 (f=0), `P_noise=1` everywhere (flat white noise). Falls back to corner-based N0 estimation if the joint fit fails. **Key files:** `interpolation_noise_psd.py` (kernel weights/DTFTs/PSD — used by diagnostic plotting), `kspace_fitting.c` (joint fit in C), `single_pass_accumulator.py` (threads predictor displacements to fitter). Per-window predictor displacement is extracted from `smoothed_predictor` in `pass_data`.
+- **Gaussian Stage 2:** Standard 5-param Gaussian fit `|T(k)| = exp(-2π²·k^T·Σ·k)` for displacement (μx, μy) and stress (Sxx, Syy, Sxy). The Gaussian model is sufficient for Stage 2 because: (a) the kurtosis-corrected Stage 1 provides an accurate N0 → clean T(k), and (b) soft weighting down-weights high k where non-Gaussian tails live, concentrating the fit near the peak where the Gaussian approximation is best. Adding a kurtosis parameter to Stage 2 was tested but creates Σ-β degeneracy at low turbulence intensity (high y+), overpredicting stresses.
 - **SNR estimation:** Diagnostic only (no gate). Computed from high-k annular ring (0.4 < |k| < 0.5) on noise-corrected F_ref
 - **Stage 1 weights:** Flat (uniform) — joint model `(A*Gauss + N0)*P_noise` explicitly separates signal from noise, so all k-space points are informative
 - **k_max:** Profile-based (where F_ref_clean drops below 1% of DC), capped at 0.35 (default). No SNR-based k_max refinement
@@ -995,7 +998,7 @@ Dask-centric utilities shared by both pipelines.
 
 ## Build System & C Extensions
 
-### Package: `pivtools` v0.4.5
+### Package: `pivtools` v0.4.6
 
 - **Build backend:** `setuptools>=61.0` + `wheel` + `cibuildwheel>=2.16`
 - **Python:** `>=3.12` (targets: 3.12, 3.13, 3.14)
@@ -1081,6 +1084,8 @@ Override with: `FFTW_INC_DIR`, `FFTW_LIB_DIR`, `GSL_DIR`
 | Windows | MSVC (`cl`) | `/O2 /std:c11 /experimental:c11atomics /openmp:experimental /MT` | `.dll` |
 | macOS | `gcc-15` (Homebrew) | `-O3 -fPIC -fopenmp -DFFTW_THREADS` | `.so` |
 | Linux | `gcc` | `-O3 -fPIC -fopenmp -DFFTW_THREADS` | `.so` |
+
+**Windows build:** Must use the **x64 Native Tools Command Prompt for VS** (or run `vcvarsall.bat` first). From that prompt: `python setup.py build`. A regular shell cannot find `cl.exe` and the build will fail silently.
 
 ### CI/CD (`.github/workflows/publish-to-pypi.yml`)
 
