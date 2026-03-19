@@ -12,29 +12,29 @@ calibration:
         normalisation:
           nx: 1000.0
           ny: 1000.0
-        mm_per_pixel: 0.06677805644243828
+        mm_per_pixel: 0.06677805644243831
         coefficients_x:
-        - 500.0000000000015
-        - 0.8358902625964432
-        - 4.901118979028753e-13
-        - -0.7539692004224814
-        - -6.166490342384935e-14
-        - 5.117210606540126e-13
-        - 8.094888670270023e-14
-        - -4.7644249068153125e-14
-        - 1.1179162128705355e-13
-        - -0.7548583031539481
+        - 500.00000000000057
+        - 0.8358902625965839
+        - -1.0802470029602773e-13
+        - -0.7539692004224077
+        - -1.5302393332884201e-13
+        - 1.7541523789077473e-14
+        - 1.9588284306107406e-13
+        - -1.2429197902938998e-13
+        - 2.9156651249183633e-13
+        - -0.7548583031537818
         coefficients_y:
-        - 500.0000000000015
-        - -8.581834637449307e-14
-        - 5.34299134687451e-13
-        - 1.1359313774198195e-13
-        - 0.8359233437869116
-        - 4.689849450988658e-13
-        - -0.754037490081581
-        - -7.017247193624776e-14
-        - -0.7548748414533976
-        - 1.689878148720156e-13
+        - 500.0000000000007
+        - -6.325372962501155e-14
+        - 3.446847334555882e-14
+        - 8.522349492778865e-14
+        - 0.8359233437870506
+        - 6.826897173581199e-14
+        - -0.7540374900814801
+        - -5.4119469322655446e-14
+        - -0.754874841453436
+        - 1.2448375663609573e-13
         image_height: 1000.0
 filters: []
 images:
@@ -79,12 +79,12 @@ outlier_detection:
     type: median_2d
 paths:
   base_paths:
-  - /Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/unit-tests/poiseuille_cam_model/test_workspace_polynomial/output
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\python-PIVTOOLs\unit-tests\poiseuille_cam_model\test_workspace_polynomial\output
   camera_count: 1
   camera_numbers:
   - 1
   source_paths:
-  - /Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/unit-tests/poiseuille_cam_model/test_workspace_polynomial/source
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\python-PIVTOOLs\unit-tests\poiseuille_cam_model\test_workspace_polynomial\source
 processing:
   backend: cpu
   dask_max_in_flight_per_worker: 3

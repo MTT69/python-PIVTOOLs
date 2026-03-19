@@ -299,6 +299,15 @@ class ChArUcoCalibrator:
 
         logger.info(f"Found {len(image_files)} images (or container files)")
 
+        # Limit to num_images from config (if set)
+        max_images = None
+        if self._config:
+            max_images = self._config.data.get("calibration", {}).get("num_images")
+        if max_images and max_images > 0 and not is_container:
+            if len(image_files) > max_images:
+                logger.info(f"Limiting to {max_images} of {len(image_files)} images (from config num_images)")
+                image_files = image_files[:max_images]
+
         all_obj_points = []
         all_img_points = []
         img_size = None
@@ -312,15 +321,16 @@ class ChArUcoCalibrator:
         # Count total images for progress tracking
         total_images = len(image_files)
         if is_container:
-            # Estimate container size (will update as we read)
-            total_images = 100  # Max container frames to try
+            # Limit container frames if num_images set
+            total_images = max_images if max_images and max_images > 0 else 100
 
         processed_count = 0
 
         for idx, img_path in enumerate(image_files):
             # Container logic
             if is_container:
-                for img_idx in range(1, 101):  # Attempt reading up to 100 frames
+                container_limit = max_images if max_images and max_images > 0 else 100
+                for img_idx in range(1, container_limit + 1):
                     image = self._read_calibration_image(img_path, camera=cam_num, img_index=img_idx)
                     if image is None:
                         # Update total_images when we hit end of container

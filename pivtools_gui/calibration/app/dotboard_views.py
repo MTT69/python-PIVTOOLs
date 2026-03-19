@@ -247,15 +247,13 @@ def planar_generate_model():
             )
 
             if result.get("success"):
-                job_manager.complete_job(
-                    job_id,
-                    camera_matrix=result.get("camera_matrix"),
-                    dist_coeffs=result.get("dist_coeffs"),
-                    rms_error=result.get("rms_error"),
-                    num_images_used=result.get("num_images_used"),
-                    model_path=result.get("model_path"),
-                )
-                logger.info(f"Dotboard calibration completed for camera {camera}")
+                # Pass only non-None result fields to job metadata
+                job_result = {
+                    k: v for k, v in result.items()
+                    if k != "success" and v is not None
+                }
+                job_manager.complete_job(job_id, **job_result)
+                logger.info(f"Camera {camera} calibration completed")
             else:
                 job_manager.fail_job(job_id, result.get("error", "Calibration failed"))
 
@@ -320,11 +318,19 @@ def planar_load_model():
         base_root = Path(cfg.base_paths[source_path_idx])
         cam_output_base = base_root / "calibration" / f"Cam{camera}" / "dotboard_planar"
 
-        model_file = cam_output_base / "model" / "dotboard_model.mat"
+        pinhole_file = cam_output_base / "model" / "dotboard_model.mat"
+        poly_file = cam_output_base / "model" / "polynomial_model.mat"
         indices_folder = cam_output_base / "indices"
 
-        # Check if model exists
-        if not model_file.exists():
+        # Determine which model exists (prefer polynomial if newer)
+        if poly_file.exists() and pinhole_file.exists():
+            # Use whichever was modified most recently
+            model_file = poly_file if poly_file.stat().st_mtime > pinhole_file.stat().st_mtime else pinhole_file
+        elif poly_file.exists():
+            model_file = poly_file
+        elif pinhole_file.exists():
+            model_file = pinhole_file
+        else:
             return jsonify({
                 "exists": False,
                 "message": f"No saved camera model found for camera {camera}",
@@ -335,20 +341,43 @@ def planar_load_model():
             str(model_file), struct_as_record=False, squeeze_me=True
         )
 
-        camera_model = {
-            "camera_matrix": model_data["camera_matrix"].tolist(),
-            "dist_coeffs": model_data["dist_coeffs"].flatten().tolist(),
-            "reprojection_error": float(model_data.get("reprojection_error", 0)),
-            "focal_length": [
-                float(model_data["camera_matrix"][0, 0]),
-                float(model_data["camera_matrix"][1, 1]),
-            ],
-            "principal_point": [
-                float(model_data["camera_matrix"][0, 2]),
-                float(model_data["camera_matrix"][1, 2]),
-            ],
-            "num_images_used": int(model_data.get("num_images_used", 0)),
-        }
+        # Detect model type from file content or filename
+        is_polynomial = (
+            str(model_data.get("model_type", "")) == "polynomial"
+            or "polynomial" in model_file.stem
+        )
+
+        if is_polynomial:
+            camera_model = {
+                "model_type": "polynomial",
+                "mm_per_pixel": float(model_data.get("mm_per_pixel", 0)),
+                "origin_x": float(model_data.get("origin_x", 0)),
+                "origin_y": float(model_data.get("origin_y", 0)),
+                "normalisation_nx": float(model_data.get("normalisation_nx", 0)),
+                "normalisation_ny": float(model_data.get("normalisation_ny", 0)),
+                "coefficients_x": np.array(model_data.get("coefficients_x", [])).flatten().tolist(),
+                "coefficients_y": np.array(model_data.get("coefficients_y", [])).flatten().tolist(),
+                "reprojection_error": float(model_data.get("rms_fit_error_px", 0)),
+                "num_images_used": int(model_data.get("num_images_used", 0)),
+                "image_width": int(model_data.get("image_width", 0)),
+                "image_height": int(model_data.get("image_height", 0)),
+            }
+        else:
+            camera_model = {
+                "model_type": "pinhole",
+                "camera_matrix": model_data["camera_matrix"].tolist(),
+                "dist_coeffs": model_data["dist_coeffs"].flatten().tolist(),
+                "reprojection_error": float(model_data.get("reprojection_error", 0)),
+                "focal_length": [
+                    float(model_data["camera_matrix"][0, 0]),
+                    float(model_data["camera_matrix"][1, 1]),
+                ],
+                "principal_point": [
+                    float(model_data["camera_matrix"][0, 2]),
+                    float(model_data["camera_matrix"][1, 2]),
+                ],
+                "num_images_used": int(model_data.get("num_images_used", 0)),
+            }
 
         # Load per-frame detections
         detections = {}

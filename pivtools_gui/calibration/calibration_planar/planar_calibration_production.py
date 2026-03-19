@@ -592,13 +592,23 @@ class MultiViewCalibrator:
         if not image_files:
             return {"success": False, "error": f"No images found for Camera {cam_num} in {cam_input_dir}"}
 
+        # Limit to num_images from config (if set)
+        max_images = None
+        if self._config:
+            max_images = self._config.data.get("calibration", {}).get("num_images")
+        if max_images and max_images > 0:
+            if not is_container and len(image_files) > max_images:
+                logger.info(f"Limiting to {max_images} of {len(image_files)} images (from config num_images)")
+                image_files = image_files[:max_images]
+
         # Determine loop range
         if is_container:
-            loop_range = range(1, 101)  # Arbitrary limit for containers
+            container_limit = max_images if max_images and max_images > 0 else 101
+            loop_range = range(1, container_limit + 1)
         else:
             loop_range = range(1, len(image_files) + 1)
 
-        total_images = len(image_files) if not is_container else 100
+        total_images = len(image_files) if not is_container else (max_images or 100)
 
         all_objpoints = []
         all_imgpoints = []
