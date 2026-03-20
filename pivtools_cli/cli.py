@@ -1305,6 +1305,7 @@ processing:
   dask_max_in_flight_per_worker: 3
   cluster_type: local
   open_dashboard: false
+  dask_nanny: false
   post_processing_workers: null
   always_batch: true
   instantaneous: true

@@ -40,6 +40,7 @@ processing:
   dask_memory_limit: 10GB
   dask_max_in_flight_per_worker: 2
   open_dashboard: false
+  dask_nanny: false
   post_processing_workers: 16
   always_batch: true
   instantaneous: true

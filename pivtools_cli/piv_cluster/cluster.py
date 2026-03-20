@@ -66,7 +66,7 @@ def make_cluster(
             n_workers=config.dask_workers_per_node,
             threads_per_worker=1,
             memory_limit=config.dask_memory_limit,
-            nanny=False,
+            nanny=config.dask_nanny,
             processes=True,
             silence_logs=logging.WARNING,
             config={

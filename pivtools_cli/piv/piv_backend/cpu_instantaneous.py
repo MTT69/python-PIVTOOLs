@@ -300,18 +300,16 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         logging.debug(f"Processing batch of {N} image pairs")
 
         try:
-                # Convert images to C-contiguous (row-major) format
-            #images_a = images[:, 0, :, :].astype(np.float32, copy=False)
-            #images_b = images[:, 1, :, :].astype(np.float32, copy=False)
-
-#            if not images_a.flags["C_CONTIGUOUS"]:
-#                images_a = np.ascontiguousarray(images_a)
-#            if not images_b.flags["C_CONTIGUOUS"]:
-#                images_b = np.ascontiguousarray(images_b)
-
                 # Pass image_size as [H, W] in C-contiguous format
             image_size = np.ascontiguousarray(np.array([H, W], dtype=np.int32))
             batch_results = [PIVResult() for _ in range(N)]
+
+            # Make one contiguous copy of each channel before the pass loop.
+            # images[:, 0, :, :] is a non-contiguous view (stride skips channel dim),
+            # but the C library requires contiguous memory. Without this, every pass
+            # re-copies ~10.6 GB per channel via .copy() or np.ascontiguousarray().
+            images_a_contig = np.ascontiguousarray(images[:, 0, :, :], dtype=np.float32)
+            images_b_contig = np.ascontiguousarray(images[:, 1, :, :], dtype=np.float32)
 
             for pass_idx, win_size in enumerate(config.window_sizes):
 
@@ -324,8 +322,8 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     images_a_prime, images_b_prime, self.delta_ab_pred = (
                             self._predictor_corrector_batch(
                                 pass_idx,
-                                images[:, 0, :, :].astype(np.float32, copy=False),
-                                images[:, 1, :, :].astype(np.float32, copy=False),
+                                images_a_contig,
+                                images_b_contig,
                                 config=config
                             )
                         )
@@ -695,9 +693,11 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 self.win_spacing_x[pass_idx],
             )
 
+            # No copy needed — images_a/b are already contiguous
+            # (pre-copied once before the pass loop in correlate_batch)
             return (
-                images_a.copy(),
-                images_b.copy(),
+                images_a,
+                images_b,
                 self.delta_ab_pred,
             )
         else:
@@ -761,9 +761,10 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 image_a_prime_batch = np.zeros((N, H, W), dtype=np.float32)
                 image_b_prime_batch = np.zeros((N, H, W), dtype=np.float32)
 
+                # images_a/b are already contiguous float32 (pre-copied in correlate_batch)
                 ret = self._fw_lib.fused_symmetric_warp_batch(
-                    np.ascontiguousarray(images_a, dtype=np.float32),
-                    np.ascontiguousarray(images_b, dtype=np.float32),
+                    images_a,
+                    images_b,
                     image_a_prime_batch, image_b_prime_batch,
                     pred_dy, pred_dx,
                     N, H, W, nPY, nPX,
