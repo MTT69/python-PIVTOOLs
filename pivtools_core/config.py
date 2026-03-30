@@ -2199,6 +2199,18 @@ video:
         return self.data.get("processing", {}).get("open_dashboard", False)
 
     @property
+    def dask_nanny(self):
+        """Whether to use nanny processes for Dask workers.
+
+        When True, each worker is managed by a nanny process that monitors
+        memory usage and captures exit codes/reasons when workers crash.
+        Useful for diagnosing worker failures on HPC clusters.
+
+        Default: True.
+        """
+        return self.data.get("processing", {}).get("dask_nanny", False)
+
+    @property
     def always_batch(self):
         """
         Force batch mode even for spatial filters (unified pipeline).
