@@ -1290,7 +1290,7 @@ images:
   image_type: standard
   use_camera_subfolders: false
 batches:
-  size: 25
+  size: 10
 logging:
   file: pypiv.log
   level: INFO
@@ -1300,8 +1300,8 @@ processing:
   debug: false
   auto_compute_params: false
   omp_threads: 4
-  dask_workers_per_node: 2
-  dask_memory_limit: 8GB
+  dask_workers_per_node: 1
+  dask_memory_limit: 12GB
   dask_max_in_flight_per_worker: 3
   cluster_type: local
   open_dashboard: false

@@ -457,9 +457,16 @@ def validate_images_generic(
             return result
 
         result["valid"] = True
-        result["found_count"] = "container"
         result["format_detected"] = "set"
         result["sample_files"] = [set_file.name]
+
+        # Get entry count from .set file (opens file briefly, no pixel decode)
+        try:
+            from .readers.lavision_reader import get_set_entry_count
+            result["found_count"] = get_set_entry_count(str(set_file))
+        except Exception as e:
+            logging.warning(f"Could not read .set entry count: {e}")
+            result["found_count"] = "container"
 
         # Try to read first frame for preview
         try:

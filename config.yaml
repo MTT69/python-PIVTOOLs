@@ -1,8 +1,8 @@
 paths:
   base_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\cavitydebug
+  - E:\CAVITY DATA + RESULTS\181124_polyamide\output
   source_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Cavity Flows Data - 181124_polyamide\90degree_400light_100hz_3000dt_0
+  - E:\CAVITY DATA + RESULTS\181124_polyamide\30degree_250light_250hz_1000dt_0
   active_paths:
   - 0
   camera_numbers:
@@ -10,7 +10,6 @@ paths:
   camera_count: 1
   camera_subfolders: []
 images:
-  num_images: 101
   image_format:
   - Camera%d.cine
   vector_format:
@@ -22,9 +21,11 @@ images:
   frame_stride: 1
   pair_stride: 1
   pairing_preset: time_resolved
-  per_loop_frame_pairs: 4000
-  num_loops: 1
-  num_frame_pairs: 4000
+  num_loops: 5
+  num_images: 7200
+  image_shape:
+  - 1200
+  - 2560
 batches:
   size: 20
 logging:
@@ -227,37 +228,6 @@ calibration:
   polynomial:
     cameras:
       1:
-        origin:
-          x: 1024.0
-          y: 1024.0
-        normalisation:
-          nx: 2048.0
-          ny: 2048.0
-        mm_per_pixel: 0.059880239520958084
-        coefficients_x:
-        - 271.97596240130696
-        - -0.399355471806388
-        - 0.8270943979854173
-        - -0.8139854517077841
-        - 0.00018972838254959173
-        - 0.2858029654715386
-        - -0.00015301653144948692
-        - 2.8563475198762068e-05
-        - -0.00015699883048924857
-        - -0.022412790433232094
-        coefficients_y:
-        - 271.97596240130696
-        - 0.0001897283825046392
-        - 0.2858029654715954
-        - -0.0001530165313595393
-        - -0.39935547180643055
-        - 0.8270943979854753
-        - -0.8139854517077056
-        - 2.8563475241106163e-05
-        - -0.022412790433100373
-        - -0.00015699883036353684
-        image_height: 2048.0
-      '1':
         origin:
           x: 1024.0
           y: 1024.0

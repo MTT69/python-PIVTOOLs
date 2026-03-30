@@ -167,6 +167,34 @@ def cache_key(source_path_idx, camera, cfg):
     return (str(source_path), str(camera))
 
 
+def _resolve_loop_read(cfg, source_path_idx, pair_idx, camera):
+    """Resolve multi-loop pair to (source_path, local_pair_idx) for read_pair.
+
+    For single-loop, returns the normal source_path and original pair_idx.
+    For multi-loop, resolves the global pair to the correct loop source
+    and local pair index within that loop.
+
+    Always operates on the raw cfg.source_paths entry (before camera folder),
+    so get_loop_source_path modifies the correct path component.
+    """
+    base_source = cfg.source_paths[source_path_idx]
+    image_type = cfg.image_type
+
+    if cfg.num_loops > 1:
+        loop_idx, local_pair = cfg.resolve_loop_for_pair(pair_idx)
+        effective_base = cfg.get_loop_source_path(base_source, loop_idx)
+    else:
+        effective_base = base_source
+        local_pair = pair_idx
+
+    # Derive camera-specific path
+    if image_type in ("lavision_set", "lavision_im7", "cine"):
+        return effective_base, local_pair
+    folder = cfg.get_camera_folder(camera)
+    source = effective_base / folder if folder else effective_base
+    return source, local_pair
+
+
 def get_percentile_stats(img_array):
     """Calculate vmin/vmax as percentages (0-100) of the data range.
 
@@ -287,12 +315,8 @@ def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: 
 
             try:
                 # Multi-loop: resolve global pair index to loop-specific source
-                if cfg.num_loops > 1 and image_type == "lavision_set":
-                    loop_idx, local_pair = cfg.resolve_loop_for_pair(idx)
-                    loop_source = cfg.get_loop_source_path(source_path, loop_idx)
-                    pair = read_pair(local_pair, loop_source, camera, cfg)
-                else:
-                    pair = read_pair(idx, source_path, camera, cfg)
+                resolved_source, local_idx = _resolve_loop_read(cfg, source_path_idx, idx, camera)
+                pair = read_pair(local_idx, resolved_source, camera, cfg)
                 b64_a = numpy_to_base64(pair[0], format=img_format)
                 b64_b = numpy_to_base64(pair[1], format=img_format)
 
@@ -342,6 +366,8 @@ def get_frame_pair():
     cache_key_tuple = make_raw_cache_key(source_path_idx, camera, idx, img_format, cfg)
 
     # Determine source path for reading (if cache miss)
+    if not cfg.image_format:
+        return jsonify({"error": "No image format configured"}), 400
     format_str = cfg.image_format[0]
     image_type = cfg.image_type
     if image_type in ("lavision_set", "lavision_im7"):
@@ -370,12 +396,8 @@ def get_frame_pair():
 
     try:
         # Multi-loop: resolve global pair index to loop-specific source and local index
-        if cfg.num_loops > 1 and image_type == "lavision_set":
-            loop_idx, local_pair = cfg.resolve_loop_for_pair(idx)
-            loop_source = cfg.get_loop_source_path(source_path, loop_idx)
-            pair = read_pair(local_pair, loop_source, camera, cfg)
-        else:
-            pair = read_pair(idx, source_path, camera, cfg)
+        resolved_source, local_idx = _resolve_loop_read(cfg, source_path_idx, idx, camera)
+        pair = read_pair(local_idx, resolved_source, camera, cfg)
     except FileNotFoundError as e:
         # Provide detailed error with search path and patterns
         image_format = cfg.image_format
@@ -554,15 +576,10 @@ def filter_images_endpoint():
         """Load pairs in parallel using ThreadPoolExecutor."""
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        is_multi_loop = cfg.num_loops > 1 and image_type == "lavision_set"
-
         def _read_one_pair(idx):
             """Read a single pair, resolving loop if needed."""
-            if is_multi_loop:
-                loop_idx, local_pair = cfg.resolve_loop_for_pair(idx)
-                loop_source = cfg.get_loop_source_path(source_path, loop_idx)
-                return read_pair(local_pair, loop_source, camera, cfg)
-            return read_pair(idx, source_path, camera, cfg)
+            resolved_source, local_idx = _resolve_loop_read(cfg, source_path_idx, idx, camera)
+            return read_pair(local_idx, resolved_source, camera, cfg)
 
         # Use thread pool for I/O-bound image reading
         max_workers = min(os.cpu_count(), len(indices), 8)
@@ -723,12 +740,8 @@ def filter_single_frame():
     
     try:
         # Multi-loop: resolve global pair index to loop-specific source and local index
-        if cfg.num_loops > 1 and image_type == "lavision_set":
-            loop_idx, local_pair = cfg.resolve_loop_for_pair(frame_idx)
-            loop_source = cfg.get_loop_source_path(source_path, loop_idx)
-            pair = read_pair(local_pair, loop_source, camera, cfg)
-        else:
-            pair = read_pair(frame_idx, source_path, camera, cfg)
+        resolved_source, local_idx = _resolve_loop_read(cfg, source_path_idx, frame_idx, camera)
+        pair = read_pair(local_idx, resolved_source, camera, cfg)
 
         arr = np.stack([pair], axis=0)  # Shape: (1, 2, H, W)
 
@@ -897,25 +910,33 @@ def validate_files():
                 read_frame_fn=read_frame,
             )
 
-            # PIV-specific: Test first and last pairs (more thorough than generic)
+            # PIV-specific: Test first and last pairs
             first_frame_status = "missing"
             last_frame_status = "missing"
             color_detected = False
 
-            try:
-                first_pair = read_pair(1, camera_path, camera_num, cfg)
-                first_frame_status = "exists"
-                # Check if color (ndim > 2 means we got a color image before conversion)
-                if first_pair.ndim > 2 and first_pair.shape[-1] > 1:
-                    color_detected = True
-            except Exception as e:
-                logger.debug(f"First frame check failed for camera {camera_num}: {e}")
+            if cfg.is_container_format:
+                # Container formats (.set, .cine): validate_images_generic already
+                # read frame 1 for preview. If the container exists and frame 1
+                # reads, all frames exist — skip expensive redundant reads.
+                if validation.get("first_image_preview"):
+                    first_frame_status = "exists"
+                    last_frame_status = "exists"
+            else:
+                # Standard/im7: individual files can be missing, test both ends
+                try:
+                    first_pair = read_pair(1, camera_path, camera_num, cfg)
+                    first_frame_status = "exists"
+                    if first_pair.ndim > 2 and first_pair.shape[-1] > 1:
+                        color_detected = True
+                except Exception as e:
+                    logger.debug(f"First frame check failed for camera {camera_num}: {e}")
 
-            try:
-                read_pair(num_pairs, camera_path, camera_num, cfg)
-                last_frame_status = "exists"
-            except Exception as e:
-                logger.debug(f"Last frame check failed for camera {camera_num}: {e}")
+                try:
+                    read_pair(num_pairs, camera_path, camera_num, cfg)
+                    last_frame_status = "exists"
+                except Exception as e:
+                    logger.debug(f"Last frame check failed for camera {camera_num}: {e}")
 
             # PIV-specific: Check for indexing mismatch (only for standard formats)
             indexing_warning = None
@@ -937,15 +958,15 @@ def validate_files():
                 except Exception as e:
                     logger.debug(f"Indexing check failed: {e}")
 
-            # Multi-loop validation: check all loop .set files exist
+            # Multi-loop validation: check all loop sources exist
             loop_errors = []
-            if image_type == "lavision_set" and cfg.num_loops > 1:
+            if cfg.num_loops > 1:
                 base_source = cfg.source_paths[source_path_idx]
                 for loop_idx in range(cfg.num_loops):
                     loop_path = cfg.get_loop_source_path(base_source, loop_idx)
                     if not loop_path.exists():
                         loop_errors.append(
-                            f"Loop {loop_idx} .set file not found: {loop_path.name}"
+                            f"Loop {loop_idx} source not found: {loop_path.name}"
                         )
 
             # Determine status based on both generic validation and pair checks
@@ -1012,11 +1033,16 @@ def validate_files():
             if status == "error":
                 overall_valid = False
 
+            # detected_count: the actual number of frames/files found (integer),
+            # or None if detection wasn't possible (e.g. .set on macOS)
+            detected_count = actual_count if isinstance(actual_count, int) else None
+
             results[f"camera_{camera_num}"] = {
                 "first_frame": first_frame_status,
                 "last_frame": last_frame_status,
                 "expected_count": num_images,
                 "actual_count": actual_count,
+                "detected_count": detected_count,
                 "status": status,
                 "camera_path": str(camera_path),
                 "color_detected": color_detected,
@@ -1030,6 +1056,8 @@ def validate_files():
                 "suggested_mode": validation.get("suggested_mode"),
                 # Subfolder suggestion (when camera folder doesn't exist)
                 "suggested_subfolder": validation.get("suggested_subfolder"),
+                # Files found in folder (for error context)
+                "sample_files": validation.get("sample_files", []),
                 # New per-pattern validation fields
                 "pattern_validations": pattern_validations,
                 "ab_count_warning": ab_count_warning,
@@ -1053,10 +1081,51 @@ def validate_files():
             ).start()
         logger.debug(f"Validation passed - preloading first 10 frames for {len(camera_numbers)} camera(s)")
 
+    # Extract detected_count and image_shape from first camera (all cameras should match)
+    top_detected_count = None
+    for cam_key, cam_result in results.items():
+        dc = cam_result.get("detected_count")
+        if isinstance(dc, int):
+            top_detected_count = dc
+            break
+
+    # Store detected image_shape in config data so /config endpoint can return it
+    # (avoids expensive re-read; image_size is [W, H] from validation, store as [H, W])
+    for cam_key, cam_result in results.items():
+        img_size = cam_result.get("image_size")
+        if img_size and len(img_size) == 2:
+            w, h = img_size
+            cfg.data.setdefault("images", {})["image_shape"] = [h, w]
+            break
+
+    # Memory estimation check — fail validation if worker memory is insufficient
+    memory_warning = None
+    if overall_valid:
+        from pivtools_core.validation import validate_memory_for_images
+        memory_warning = validate_memory_for_images(cfg) or None
+        if memory_warning:
+            overall_valid = False
+
     return jsonify({
         "valid": overall_valid,
+        "detected_count": top_detected_count,
+        "memory_warning": memory_warning,
         "details": results
     })
+
+
+def _normalize_dict_keys(obj):
+    """Recursively convert all dict keys to strings.
+
+    Flask's jsonify uses sort_keys=True which raises TypeError when a dict
+    has mixed int/str keys. This happens when YAML loads camera numbers as
+    both int (1:) and str ('1':). Normalizing to str prevents the crash.
+    """
+    if isinstance(obj, dict):
+        return {str(k): _normalize_dict_keys(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_normalize_dict_keys(item) for item in obj]
+    return obj
 
 
 @api_bp.route("/config", methods=["GET"])
@@ -1071,6 +1140,9 @@ def config_endpoint():
     config_data["images"]["frame_stride"] = cfg.frame_stride
     config_data["images"]["pair_stride"] = cfg.pair_stride
     config_data["images"]["pairing_preset"] = cfg.pairing_preset
+    # Normalize all keys to strings to prevent jsonify sort_keys TypeError
+    # when YAML loads camera numbers as mixed int/str keys
+    config_data = _normalize_dict_keys(config_data)
     return jsonify(config_data)
 
 
@@ -1087,9 +1159,14 @@ def preview_frame_pairs():
     num_pairs = cfg.num_frame_pairs
     num_loops = cfg.num_loops
     per_loop = cfg.per_loop_frame_pairs
-    format_str = cfg.image_format[0]
-    has_ab = len(cfg.image_format) == 2
-    is_multi_loop = num_loops > 1 and cfg.image_type == "lavision_set"
+    img_format = cfg.image_format
+    if not img_format:
+        return jsonify({"pairs": [], "total_pairs": 0, "num_images": 0,
+                        "preset": cfg.pairing_preset, "frame_stride": 0,
+                        "pair_stride": 1, "start_index": 0})
+    format_str = img_format[0]
+    has_ab = len(img_format) == 2
+    is_multi_loop = num_loops > 1
     pairs = []
 
     for p in range(1, min(count + 1, num_pairs + 1)):
@@ -1099,19 +1176,34 @@ def preview_frame_pairs():
             local_idx_a, local_idx_b = cfg.get_frame_pair_indices(local_pair)
             try:
                 source_path = cfg.source_paths[0]
-                loop_file = cfg.get_loop_source_path(source_path, loop_idx).name
+                loop_source = cfg.get_loop_source_path(source_path, loop_idx)
+                loop_label = loop_source.name
             except (IndexError, ValueError):
-                loop_file = f"loop={loop_idx}"
+                loop_label = f"loop={loop_idx}"
             pair_entry = {
                 "pair": p,
-                "frame_a": f"{loop_file} frame {local_idx_a}",
-                "frame_b": f"{loop_file} frame {local_idx_b}" if cfg.frame_stride > 0 else "(internal B)",
+                "frame_a": f"{loop_label} frame {local_idx_a}",
+                "frame_b": f"{loop_label} frame {local_idx_b}" if cfg.frame_stride > 0 else "(internal B)",
                 "loop": loop_idx,
                 "local_pair": local_pair,
             }
         else:
             idx_a, idx_b = cfg.get_frame_pair_indices(p)
-            if has_ab:
+            if cfg.is_container_format:
+                # Container files (.cine, .set): frames come from within
+                # a single file, not separate files. Format string uses
+                # camera number (not frame index).
+                try:
+                    container_name = format_str % cfg.camera_numbers[0]
+                except TypeError:
+                    container_name = format_str
+                if cfg.frame_stride == 0:
+                    name_a = f"{container_name} frame {idx_a}"
+                    name_b = "(internal B)"
+                else:
+                    name_a = f"{container_name} frame {idx_a}"
+                    name_b = f"{container_name} frame {idx_b}"
+            elif has_ab:
                 try:
                     name_a = cfg.image_format[0] % idx_a
                     name_b = cfg.image_format[1] % idx_a
@@ -1119,7 +1211,7 @@ def preview_frame_pairs():
                     name_a = cfg.image_format[0]
                     name_b = cfg.image_format[1]
             elif cfg.frame_stride == 0:
-                # Pre-paired container: same file, internal A+B
+                # Pre-paired standard files: same file, internal A+B
                 try:
                     name_a = format_str % idx_a
                 except TypeError:
@@ -1731,7 +1823,7 @@ def system_info():
     # Dask config
     dask_info = {
         "workers_per_node": cfg.data.get("processing", {}).get("dask_workers_per_node", 1),
-        "memory_limit": cfg.data.get("processing", {}).get("dask_memory_limit", "4GB"),
+        "memory_limit": cfg.data.get("processing", {}).get("dask_memory_limit", "12GB"),
         "backend": cfg.data.get("processing", {}).get("backend", "cpu"),
         "omp_threads": cfg.data.get("processing", {}).get("omp_threads", 1),
     }

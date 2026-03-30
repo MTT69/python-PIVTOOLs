@@ -252,6 +252,36 @@ def read_lavision_ims(
     return data.astype(np.float32)
 
 
+def get_set_entry_count(set_file_path: str) -> int:
+    """Get the number of entries in a .set file without reading pixel data.
+
+    For pre-paired .set files, each entry contains an A+B pair for all cameras,
+    so entry_count == num_images (pairs). For time-resolved .set files, each
+    entry is a single timestep.
+
+    Note: lvpyio has no metadata-only API, so this opens the file briefly.
+    Still much faster than reading actual frame data for large images.
+
+    Args:
+        set_file_path: Path to the .set file
+
+    Returns:
+        int: Number of entries in the .set file
+    """
+    import sys
+    if sys.platform == "darwin":
+        raise ImportError("lvpyio is not supported on macOS.")
+    try:
+        import lvpyio as lv
+    except ImportError:
+        raise ImportError("LaVision library not available. Please install.")
+
+    set_file = lv.read_set(set_file_path)
+    count = len(set_file)
+    set_file.close()
+    return count
+
+
 def read_lavision_ims_pair(file_path: str, **kwargs) -> np.ndarray:
     """Read LaVision .set file and return as frame pair."""
     return read_lavision_ims(file_path, **kwargs)

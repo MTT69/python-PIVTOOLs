@@ -22,6 +22,23 @@
 
 ---
 
+## Development Environment
+
+**Working directory:** Always `cd` into `python-PIVTOOLs/` before running any Python commands.
+
+**Virtual environment:** The project venv is at `env/` inside the repo root. Always use the venv Python, never the system Python:
+```bash
+# Correct — use the venv python:
+"C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\python-PIVTOOLs\env\Scripts\python.exe" -c "..."
+
+# Or from the repo root:
+env/Scripts/python.exe -c "..."
+```
+
+**CRITICAL:** All `python` and `pip` commands MUST use the venv at `python-PIVTOOLs/env/Scripts/python.exe`. The system Python does not have project dependencies installed.
+
+---
+
 ## Architecture Overview
 
 ```
@@ -118,10 +135,10 @@ class Config:
     frame_stride: int                # Gap between A and B within a pair (0=pre-paired)
     pair_stride: int                 # Gap between starts of consecutive pairs
     pairing_preset: str              # "ab_format" | "skip_frames" | "time_resolved" | "pre_paired" | "custom"
-    num_loops: int                   # Number of acquisition loops (default 1). Multiple .set files combined into one dataset
+    num_loops: int                   # Number of acquisition loops (default 1). Multiple sources combined into one dataset (any image type)
     per_loop_frame_pairs: int        # Frame pairs within a single loop (stride formula)
     num_frame_pairs: int             # Total across all loops: num_loops * per_loop_frame_pairs
-    get_loop_source_path(source_path, loop_idx) -> Path  # Resolve .set file for a specific loop
+    get_loop_source_path(source_path, loop_idx) -> Path  # Resolve source for a specific loop (uses last number in name)
     resolve_loop_for_pair(global_pair_1based) -> (loop_idx, local_pair_1based)  # Map global pair to loop
     time_resolved: bool              # Backward-compat: True when frame_stride > 0
     pairing_mode: str                # Backward-compat: derived from preset
@@ -290,7 +307,7 @@ path_utils.py:      build_piv_camera_path(cfg, source_path_idx, camera_num) -> P
                     validate_single_pattern(...) -> dict
 
 readers/__init__.py: get_reader(extension) -> callable  # Reader registry
-readers/lavision_reader.py: read_lavision_pair(...), read_lavision_set_pair(...)
+readers/lavision_reader.py: read_lavision_pair(...), read_lavision_set_pair(...), get_set_entry_count(...)
 readers/cine_reader.py:     read_cine_pair(...)
 readers/generic_readers.py: read_tiff(...), read_png_jpeg(...)
 ```
@@ -327,7 +344,7 @@ POST /download_image        {type, frame, data, frame_idx, camera}
 GET  /config                -> full config JSON (includes computed pairing properties)
 GET  /preview_frame_pairs   ?count=5 -> first N pairs with resolved filenames
 POST /update_config         {any config subset} -> recursive merge + save
-POST /validate_files        {source_path_idx} -> per-camera validation
+POST /validate_files        {source_path_idx} -> per-camera validation + detected_count (auto-detected frame/file count)
 POST /run_piv               {cameras, source_path_idx, base_path_idx, active_paths, mode}
 GET  /piv_status            ?job_id=
 POST /cancel_run            {job_id}
@@ -618,6 +635,7 @@ Config flows top-down: `page.tsx` fetches config on mount, passes as props. Upda
 useConfigUpdate() -> { updateConfig(payload) -> Promise<{success, data?, error?}>, isUpdating, updateError }
 useAutoValidation(config) -> ValidationState
     // Auto-validates when config changes, calls POST /backend/validate_files
+    // ValidationState includes detectedCount (auto-detected frame/file count from containers or glob)
 ```
 
 #### `useImagePair.ts`
@@ -977,7 +995,7 @@ Dask-centric utilities shared by both pipelines.
 
 **Batch loading:** `load_images(batch_size=N)` creates one `dask.delayed` per batch (~1 KB each), concatenated into `da.Array(N, 2, H, W)`. Chunks are already `(batch_size, 2, H, W)` — no rechunk step needed. Each batch task is fully independent (no cross-dependencies), enabling even worker distribution from the start.
 
-**Multi-loop loading:** When `config.num_loops > 1` and `image_type == "lavision_set"`, `load_images()` creates batches per loop and concatenates them into one array. Each batch reads LOCAL pair indices from a single .set file (e.g., `loop=0.set`, `loop=1.set`). Batch size is capped at `per_loop_frame_pairs` to prevent cross-loop batches. Downstream code sees a single unified array (e.g., 5 loops × 40 pairs = 200-pair dask array). The GUI image viewer resolves global pair numbers to (loop_idx, local_pair) via `config.resolve_loop_for_pair()`.
+**Multi-loop loading:** When `config.num_loops > 1`, `load_images()` creates batches per loop and concatenates them into one array. Works with **all image types**: .set files (separate files), .cine (separate folders), standard/im7 (separate folders). Each batch reads LOCAL pair indices from a single source. `get_loop_source_path()` finds the **last number** in the source name and increments it (e.g., `experiment_0/` → `experiment_1/`, `loop=0.set` → `loop=1.set`). Batch size is capped at `per_loop_frame_pairs` to prevent cross-loop batches. Downstream code sees a single unified array (e.g., 5 loops × 40 pairs = 200-pair dask array). The GUI image viewer resolves global pair numbers to (loop_idx, local_pair) via `config.resolve_loop_for_pair()`. Helper `_resolve_loop_read()` in `app.py` encapsulates multi-loop source resolution for all 6 read-pair call sites.
 
 **Sliding window I/O:** Bounds memory to ~`max_in_flight_per_worker` batches per worker. `max_in_flight = min(max_in_flight_per_worker * num_workers, num_chunks)` (default 3 per worker). Completed filter futures are replaced, keeping pipeline full.
 
@@ -1213,7 +1231,7 @@ Both `cpu_instantaneous.py` and `cpu_ensemble.py` use `cv2.setNumThreads(1)` + c
 | `backend` | str | `"cpu"` | `"cpu"` or `"gpu"` |
 | `omp_threads` | int | 1 | OpenMP threads for C extensions |
 | `dask_workers_per_node` | int | 1 | Dask worker count |
-| `dask_memory_limit` | str | `"4GB"` | Per-worker memory |
+| `dask_memory_limit` | str | `"12GB"` | Per-worker memory |
 | `dask_max_in_flight_per_worker` | int | 3 | Max concurrent tasks per worker in sliding window (HPC: 4-6) |
 | `cluster_type` | str | `"local"` | `"local"` or `"slurm"` |
 | `open_dashboard` | bool | `false` | Auto-open Dask dashboard in browser on cluster start |
