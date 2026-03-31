@@ -25,6 +25,15 @@
 #define NAN (0.0f/0.0f) 
 #endif 
 
+/* Export macro for shared library symbols */
+#ifndef EXPORT
+  #ifdef _WIN32
+    #define EXPORT __declspec(dllexport)
+  #else
+    #define EXPORT
+  #endif
+#endif
+
 #define CHUNKSIZE							256
 #define NUMTHREADS_MAX					omp_get_max_threads()
 

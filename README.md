@@ -1,79 +1,54 @@
-# PIVTOOLs
+# GPU Benchmarks for PIVTOOLs
 
-Particle Image Velocimetry Tools - A comprehensive toolkit for PIV analysis with both command-line and GUI interfaces.
+Standalone GPU benchmarks comparing cuFFT + custom CUDA kernels against the existing CPU C libraries (FFTW3f + fused_warp).
 
-We present **PIVTOOLS**, an open-source Python framework built for community expansion with a React-based GUI, which integrates planar, stereoscopic, and ensemble PIV pipelines into a single end-to-end environment. Computationally intensive routines are implemented in optimised C and parallelised with Dask, enabling datasets of large scale datasets to be processed efficiently on both workstations and distributed HPC clusters.
+## Prerequisites
 
-The framework provides a complete pipeline from raw image import to image preprocessing, parallel vector computation, calibration, and interactive visualisation. Ensemble extensions allow direct estimation of Reynolds stresses from correlation maps, offering statistical fidelity beyond what is achievable with instantaneous methods. Validation against synthetic channel flow demonstrates mean velocity profiles accurate to within 1% of DNS reference down to \( y^+ \approx 40-50 \) with instantaneous PIV, and to \( y^+ \approx 5 \) with ensemble methods.
+- NVIDIA GPU (tested on RTX 4060, A100, H100)
+- CUDA Toolkit 12.6+ (`nvcc --version` to verify)
+- Python 3.12+ with numpy, scipy
 
-## Features
+## Build
 
-- Planar, stereoscopic, and ensemble PIV pipelines
-- React-based GUI for interactive analysis
-- Optimized C extensions for performance
-- Parallel processing with Dask
-- Support for terabyte-scale datasets
-- Complete pipeline from image import to visualization
-
-## Installation
-
-Install PIVTOOLs with a single command:
-
-```bash
-pip install pivtools
+**Windows:**
+```
+build.bat
 ```
 
-This installs the complete toolkit including:
-- **Core utilities** for image handling and vector processing
-- **Command-line interface** (`pivtools-cli`) for automated workflows
-- **React-based GUI** (`pivtools-gui`) for interactive analysis
-
-The package includes pre-compiled C extensions for optimal performance on Windows, macOS, and Linux.
-
-## Quick Start
-
-### Initialize a new PIVTOOLs workspace
-
-```bash
-pivtools-cli init
+**Linux / HPC:**
+```
+chmod +x build.sh
+./build.sh
 ```
 
-This creates a default `config.yaml` file in your current directory that you can edit to configure your PIV analysis.
+This produces `bench_xcorr.dll/.so` and `bench_warp.dll/.so` in the project root.
 
-### Run PIV analysis (command-line)
+## Run
 
-```bash
-pivtools-cli run
+```
+python python/bench_fft.py
+python python/bench_interpolation.py
 ```
 
-This runs the PIV analysis using the `config.yaml` in your current directory.
+### Options
 
-### Launch the GUI
-
-```bash
-pivtools-gui
+```
+python python/bench_fft.py --windows 32,64 --counts 1024,4096 --csv results.csv
+python python/bench_interpolation.py --sizes 1024,2048 --batches 1,5,10 --csv results.csv
 ```
 
-This starts the React-based GUI where you can interactively configure and run PIV analysis.
+Both scripts:
+- Verify numerical correctness before timing
+- Report median of 10 timed runs after 3 warmup runs
+- Show GPU total time (including PCIe transfer) and compute-only time separately
+- Optionally compare against the C libraries if they're found in the main codebase
 
-## Configuration
+## What's Measured
 
-Both `pivtools-cli` and `pivtools-gui` applications use `config.yaml` in the current working directory.
+### FFT Cross-Correlation (`bench_fft.py`)
+Batched 2D cross-correlation matching `xcorr.c`:
+zero-pad (centred) → R2C FFT → conjugate multiply → C2R IFFT → normalise → fftshift → extract
 
-When you run either `pivtools-cli init` or start `pivtools-gui` for the first time, if no `config.yaml` exists in the current directory, it automatically copies the default config from the package to `config.yaml` in your current working directory.
-
-For detailed configuration options, see [piv.tools/manual](https://piv.tools/manual).
-
-## Requirements
-
-- Python 3.12+
-
-## License
-
-BSD 3-Clause License - See [LICENSE](LICENSE) for details.
-
-**Note:** Pre-built binaries link against GPL-licensed libraries (FFTW3, GSL). Binary distributions must comply with GPL terms unless these dependencies are replaced with alternatively-licensed implementations. See the LICENSE and NOTICE files for complete details.
-
-## Contributing
-
-Contributions welcome! Please see the GitHub repository for issues and pull requests.
+### Bicubic Interpolation (`bench_interpolation.py`)
+Symmetric image warping matching `fused_warp.c`:
+Keys a=-0.75 bicubic → 4x4 stencil → BORDER_CONSTANT=0

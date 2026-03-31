@@ -1,6 +1,7 @@
 #ifndef XCORR_H
 #define XCORR_H
 
+#include "common.h"
 #include <fftw3.h>
 
 /**** defines ****/
@@ -19,12 +20,12 @@ typedef struct _sPlan
 } sPlan;
 
 /**** functions ****/
-unsigned convolve(const float *w1, const float *w2, float *conv, const int *N);
-unsigned xcorr(const float *w1, const float *w2, float *corr, const int *N);
+EXPORT unsigned convolve(const float *w1, const float *w2, float *conv, const int *N);
+EXPORT unsigned xcorr(const float *w1, const float *w2, float *corr, const int *N);
 
-unsigned xcorr_create_plan(const int *N, sPlan *pPlanStruct);
-unsigned xcorr_destroy_plan(sPlan *pPlanStruct);
-unsigned xcorr_preplanned(const float *w1, const float *w2, float *corr, sPlan *pPlanStruct);
+EXPORT unsigned xcorr_create_plan(const int *N, sPlan *pPlanStruct);
+EXPORT unsigned xcorr_destroy_plan(sPlan *pPlanStruct);
+EXPORT unsigned xcorr_preplanned(const float *w1, const float *w2, float *corr, sPlan *pPlanStruct);
 
 void multiply_conjugate(const fftwf_complex * restrict A, const fftwf_complex * restrict B, fftwf_complex * restrict C, int N);
 
