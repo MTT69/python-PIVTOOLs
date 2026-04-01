@@ -389,9 +389,16 @@ def planar_load_model():
                         str(idx_file), struct_as_record=False, squeeze_me=True
                     )
 
-                    detections[str(frame_num)] = {
+                    det_entry = {
                         "grid_points": grid_data["grid_points"].tolist(),
                     }
+
+                    if "grid_indices" in grid_data:
+                        gi = grid_data["grid_indices"]
+                        if hasattr(gi, 'tolist'):
+                            det_entry["grid_indices"] = gi.tolist()
+
+                    detections[str(frame_num)] = det_entry
 
                     if "reprojection_error" in grid_data:
                         detections[str(frame_num)]["reprojection_error"] = float(
@@ -490,10 +497,21 @@ def planar_generate_model_all():
                 config=cfg,
             )
 
+            # Progress callback for per-frame updates
+            def cam_progress(info, camera=camera):
+                job_manager.update_job(
+                    job_id,
+                    current_camera=camera,
+                    current_camera_progress=info.get("progress", 0),
+                    processed_images=info.get("processed_images", 0),
+                    total_images=info.get("total_images", 0),
+                    valid_images=info.get("valid_images", 0),
+                )
+
             # Run calibration
             result = calibrator.process_single_camera(
                 cam_num=camera,
-                progress_callback=None,
+                progress_callback=cam_progress,
                 save_visualizations=False,
             )
 

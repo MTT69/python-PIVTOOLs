@@ -20,6 +20,8 @@
 
 - **No Silent Fallbacks:** Do not add fallback chains where a new code path silently degrades to an old one on failure. If something fails, it should fail visibly (return an error status, raise an exception) so bugs are caught during testing. Silent fallbacks mask problems and make validation impossible.
 
+- **No Silent Algorithm Changes:** When porting prototype code to production, the mathematical algorithm and approach MUST be preserved exactly. Never substitute a different calibration method, fitting approach, or mathematical formulation without explicit user approval. If the prototype uses derived stereo pose from individual extrinsics, the production code must do the same — not silently switch to cv2.stereoCalibrate. Ask before changing any algorithm, even if the alternative seems "better".
+
 ---
 
 ## Development Environment
@@ -82,6 +84,7 @@ Config is stored as config.yaml (single source of truth), loaded via Config clas
 | Calibration (ChArUco) | `calibration/app/charuco_views.py` | `useChArUcoCalibration` | `ChArUcoCalibration` |
 | Calibration (polynomial) | `calibration/app/polynomial_views.py` | `useCalibration` | `PolynomialCalibration` |
 | Calibration (stereo) | `calibration/app/stereo_*_views.py` | `useStereoCalibration` | `StereoCalibration` |
+| Calibration (stepped board) | `calibration/app/stepped_board_views.py` | `useSteppedBoardCalibration` | `SteppedBoardCalibration` |
 | Self-calibration (algo) | `stereo_reconstruction/self_calibration.py` | N/A | N/A |
 | Self-calibration (GUI) | `calibration/app/self_calibration_views.py` | `useSelfCalibration` | `SelfCalibrationSection` (in `StereoCalibration`, `StereoCharucoCalibration`) |
 | Image dewarp overlay | `calibration/image_dewarp_overlay.py` | N/A (script) | N/A |
@@ -153,7 +156,7 @@ class Config:
     filters: List[dict]
 
     # --- Calibration properties ---
-    active_calibration_method: str   # "scale_factor" | "dotboard" | "charuco" | "polynomial" | "stereo_*"
+    active_calibration_method: str   # "scale_factor" | "dotboard" | "charuco" | "polynomial" | "stereo_*" | "stepped_board"
     calibration_piv_type: str
     global_coordinates_config: dict          # calibration.global_coordinates section
     global_coordinates_enabled: bool
@@ -412,6 +415,7 @@ class PivRunner:
 | `polynomial_bp` | `/calibrate/polynomial` | DaVis XML polynomial calibration |
 | `stereo_dotboard_bp` | `/calibrate/stereo_dotboard` | Stereo dotboard calibration |
 | `stereo_charuco_bp` | `/calibrate/stereo_charuco` | Stereo ChArUco calibration |
+| `stepped_board_bp` | `/calibrate/stepped_board` | Stepped board stereo calibration |
 | `calibration_shared_bp` | `/calibrate` | Shared: datum, status, image loading |
 | `self_calibration_bp` | `/calibrate/self_calibration` | Stereo self-calibration (Wieneke 2005) |
 
@@ -440,7 +444,7 @@ GET  /calibrate/self_calibration/status          -> current self-cal state from 
 **Calibration image caching:** `shared_views.py` maintains a thread-safe LRU cache (`_cal_image_cache`, max 10 entries) keyed by `(source_path_idx, camera, idx, output_format)`. Eliminates disk I/O and percentile re-computation on frame revisits. Frontend clears on camera switch via `useCalibrationImageViewer`.
 
 **Shared calibration modules:**
-- `grid_detection.py` - Canonical home for dotboard grid detection functions: `to_grayscale_2d`, `apply_mask_to_image`, `find_largest_grid_component`, `_assign_grid_indices_bfs`, `detect_grid_automatic`. BFS neighborhood walk + homography RANSAC for perspective-robust grid fitting. Used by both planar and stereo dotboard calibrators.
+- `grid_detection.py` - Canonical home for dotboard grid detection. Full pipeline: **float32 photometric flat-fielding** (downsampled morphological close at ~2x dot diameter, division normalization) → **contour/ellipse blob detection** (circularity > 0.4, median area band-pass 0.15x–3.0x, `cv2.fitEllipse` sub-pixel) → **auto-polarity by grid quality** (tries both polarities, picks whichever assembles the largest grid — not most blobs) → **direction histogram** (k=9 NN, 0.3x–3.0x distance, 60°–120° orthogonality constraint, 15° tolerance, flip-before-median) → **reciprocal BFS grid walk** (1.8x search radius, 0.4x–1.6x directional bands, 30° cone, inline reciprocity check, locally-adaptive step vectors) → **RANSAC homography** (0.15 × spacing, 2000 iter, 0.995 confidence) → **template-matching rescue** (local homography + NCC > 0.65 for missing interior dots) → **grid smoothness enforcement** (two-pass homography outlier detection, infills droplet-biased dots from clean model) → **connected component filtering**. Key exports: `detect_grid_automatic()`, `detect_dotboard_blobs()`, `_bfs_grid_walk_dict()`, `_find_grid_directions()`, `_rescue_missing_dots()`, `_refine_grid_outliers()`, `find_largest_grid_component()`, `to_grayscale_2d()`, `apply_mask_to_image()`. Used by planar dotboard, stereo dotboard, and stepped board calibrators. **Removed** (2026-04): SimpleBlobDetector, CLAHE, grid-alignment score filter, shear correction, cornerSubPix, ring marker detection/recovery, deduplication.
 - `calibration_io.py` - Shared I/O utilities: `ARUCO_DICT_MAP`, `is_container_format()`, `read_calibration_image_with_fallback()`, `read_calibration_image_direct()`, `find_calibration_images()`, `get_camera_input_dir()`, `create_charuco_detector()`. Used by all calibration modules (planar dotboard, planar charuco, stereo base, stereo charuco).
 
 **Production files** (do the actual calibration work):
@@ -453,21 +457,19 @@ GET  /calibrate/self_calibration/status          -> current self-cal state from 
 - `camera_model_utils.py` - Shared utilities: `load_pinhole_camera(base_dir, cam_num, method)` loads per-camera planar .mat model, `compute_camera_world_bounds(...)` projects image edges to Z=0 world plane. Used by `image_dewarp_overlay.py` and `self_calibration_service.py`.
 - `image_dewarp_overlay.py` - Standalone script: dewarps raw images from multiple cameras into physical coords, overlays them with interactive coordinate readout and measurement tools. Config-at-top pattern with config.yaml fallback. Imports shared utilities from `camera_model_utils.py`, `PinholeCamera`/`compute_dewarp_maps`/`dewarp_image` from `self_calibration.py`, and `_pixels_to_world_mm` from `global_coordinate_alignment.py`. Uses raw pixel coords (not uncalibrated convention) throughout for consistency with dewarp maps.
 - `services/self_calibration_service.py` - Service layer for stereo self-calibration. Orchestrates camera loading, source image loading (evenly sampled frame A), red-cyan dewarp overlay generation, and `run_self_calibration()` invocation. Saves results to `config.calibration.self_calibration`. Used by both GUI routes (`self_calibration_views.py`) and CLI (`pivtools-cli self-calibrate`).
-- `stereo_reconstruction/stereo_dotboard_calibration_production.py` - Stereo dotboard. Grid detection delegated to `grid_detection.py`. Blob detector params differ from planar (stricter: minArea=50, circularity=0.4, inertia=0.3).
+- `stereo_reconstruction/stereo_dotboard_calibration_production.py` - Stereo dotboard. Grid detection delegated to `grid_detection.py` (flat-field pipeline, no external detector needed).
 - `stereo_reconstruction/stereo_calibration_base.py` - Stereo base class. Parallel camera image reads via ThreadPoolExecutor. Container format + image finding delegated to `calibration_io.py`.
 - `stereo_reconstruction/stereo_charuco_calibration_production.py` - Stereo ChArUco detection. Board creation delegated to `calibration_io.create_charuco_detector()`. `ARUCO_DICT_MAP` re-exported for backward compat.
 - `stereo_reconstruction/stereo_reconstruction_production.py` - 3D velocity reconstruction from stereo pairs. Converts uncalibrated coords → raw pixels before OpenCV triangulation. Negates y/uy on output (OpenCV y-down → physical y-up). Uses ProcessPoolExecutor for parallel frame processing.
 - `stereo_reconstruction/self_calibration.py` - Stereo self-calibration (Wieneke 2005). Detects and corrects laser-sheet Z-offset and tilts via iterative disparity minimization. Key exports: `PinholeCamera`, `SelfCalibrationResult`, `run_self_calibration()`, `compute_dewarp_maps()`. Requires `bulkxcorr2d_accumulate` C library for ensemble cross-camera correlation, `median_outlier_detection` + `infill_local_median` for disparity cleaning. **Production integration:** Results (z_offset, tilt_x, tilt_y) stored in `config.calibration.self_calibration` and automatically applied during `apply-calibration` via `VectorCalibrator(z_world=..., tilt_x=..., tilt_y=...)`. GUI: `SelfCalibrationSection` component in both stereo calibration tabs. CLI: `pivtools-cli self-calibrate`. Unit tests: `test_self_calibration_recovery.py` (6 tests), `test_selfcal_velocity_correction.py` (16 tests).
 
-**Dotboard calibration performance optimizations** (shared by planar + stereo):
-- **Blob detection:** Histogram-based single pass (checks `mean_intensity > 127` to decide original vs inverted), with fallback if <9 keypoints found
-- **Neighbor finding:** `scipy.spatial.cKDTree` replaces O(N^2) pairwise distance matrix — O(N log N) for spacing estimation and pair finding
-- **RANSAC:** `maxIters=2000, confidence=0.995`. Threshold `0.15 * spacing_px`
-- **Object points:** Vectorized with NumPy (no Python loop)
-- **Container reads:** Eliminated duplicate image reads (was read-to-test then read-again)
+**Dotboard calibration pipeline** (shared by planar + stereo + stepped):
+- **Blob detection:** Float32 photometric flat-fielding (morphological close at ~2x dot diameter, downsampled 0.25x for speed). Contour extraction + ellipse fitting for sub-pixel centers. Auto-polarity selects by assembled grid size, not blob count.
+- **Direction finding:** k=9 NN direction histogram with 60°–120° orthogonality constraint (bans diagonal capture). Convention: v1→+x, v2→+y. Stepped boards use k=5 after level separation.
+- **Grid assembly:** Reciprocal BFS with 1.8x search radius, 0.4x–1.6x directional distance bands, 30° angle cone, inline reciprocity check. Locally-adaptive step vectors track perspective gradients.
+- **Validation:** RANSAC homography (`maxIters=2000, confidence=0.995, threshold=0.15×spacing`). Template-matching rescue for missing interior dots. Two-pass outlier refinement detects and infills droplet-biased dots from clean grid model.
 - **Multi-camera (planar):** `dotboard_views.py` processes all cameras in parallel via `ThreadPoolExecutor`
 - **Stereo reads:** Both camera images read in parallel via `ThreadPoolExecutor(max_workers=2)`
-- **Preserved:** Reflection filtering (connected components), RANSAC outlier threshold, grid deduplication, subpixel refinement
 
 **`services/job_manager.py`** - Shared across all long-running operations:
 ```python

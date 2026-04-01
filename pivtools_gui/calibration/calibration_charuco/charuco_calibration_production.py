@@ -8,6 +8,8 @@ Saves results to: {BASE_DIR}/calibration/Cam{N}/charuco_planar/
 """
 
 import json
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -206,6 +208,14 @@ class ChArUcoCalibrator:
         else:
             gray = image
 
+        # ArUco detector requires uint8 input
+        if gray.dtype != np.uint8:
+            gmin, gmax = float(gray.min()), float(gray.max())
+            if gmax > gmin:
+                gray = ((gray.astype(np.float64) - gmin) / (gmax - gmin) * 255).astype(np.uint8)
+            else:
+                gray = np.zeros(gray.shape, dtype=np.uint8)
+
         corners, ids, marker_corners, marker_ids = self.detector.detectBoard(gray)
 
         if ids is None or len(corners) < self.min_corners:
@@ -313,6 +323,8 @@ class ChArUcoCalibrator:
         img_size = None
         stats = {"empty": 0, "no_detect": 0, "valid": 0}
         valid_images = []
+        best_image = None         # For model summary figure background
+        best_image_npts = 0
 
         # Store per-frame detection data for indices saving
         # Key: frame index (1-based), Value: dict with corners, ids, filename
@@ -326,87 +338,141 @@ class ChArUcoCalibrator:
 
         processed_count = 0
 
-        for idx, img_path in enumerate(image_files):
-            # Container logic
-            if is_container:
-                container_limit = max_images if max_images and max_images > 0 else 100
-                for img_idx in range(1, container_limit + 1):
-                    image = self._read_calibration_image(img_path, camera=cam_num, img_index=img_idx)
-                    if image is None:
-                        # Update total_images when we hit end of container
-                        total_images = img_idx - 1
-                        break
+        # --- Worker: read + detect a single frame (no shared state mutation) ---
+        def _detect_one_charuco(frame_idx, img_path, img_name):
+            """Returns (frame_idx, image, detection_result_or_None, status)."""
+            image = self._read_calibration_image(img_path, camera=cam_num, img_index=frame_idx)
+            if image is None:
+                return frame_idx, None, None, "none"
 
-                    processed_count += 1
+            if np.mean(image) < 10:
+                return frame_idx, image, None, "empty"
 
-                    if img_size is None and image is not None:
-                        h, w = image.shape[:2]
-                        img_size = (w, h)
+            found, corners, ids, marker_corners, marker_ids = self.detect_charuco_corners(image)
+            if not found:
+                return frame_idx, image, None, "no_detect"
 
-                    detection_result = self._process_single_image_with_data(
-                        image,
-                        f"{img_path.stem}_img{img_idx:03d}",
-                        all_obj_points,
-                        all_img_points,
-                        valid_images,
-                        stats,
-                        detections_dir if save_visualizations else None,
-                    )
+            obj_pts, img_pts = self.board.matchImagePoints(corners, ids)
+            if obj_pts is None or len(obj_pts) < self.min_corners:
+                return frame_idx, image, None, "no_detect"
 
-                    if detection_result is not None:
-                        valid_indices_map[img_idx] = detection_result
+            corners_2d = corners.reshape(-1, 2) if corners is not None else np.array([])
+            ids_flat = ids.flatten() if ids is not None else np.array([])
 
-                    # Report progress
-                    if progress_callback:
-                        progress_callback({
-                            "processed_images": processed_count,
-                            "valid_images": stats["valid"],
-                            "total_images": max(total_images, processed_count),
-                            "progress": int((processed_count / max(total_images, processed_count)) * 100),
-                        })
+            # Save detection visualization in worker (thread-safe file I/O)
+            if save_visualizations and detections_dir is not None:
+                self._save_detection_visualization(
+                    image, corners, ids, marker_corners, img_name, detections_dir
+                )
 
-            # Standard file logic
-            else:
-                image = self._read_calibration_image(img_path, camera=cam_num, img_index=idx + 1)
-                processed_count += 1
+            return frame_idx, image, {
+                "corners": corners_2d,
+                "ids": ids_flat,
+                "name": img_name,
+                "obj_pts": obj_pts,
+                "img_pts": img_pts,
+            }, "valid"
 
-                if image is None:
-                    if progress_callback:
-                        progress_callback({
-                            "processed_images": processed_count,
-                            "valid_images": stats["valid"],
-                            "total_images": total_images,
-                            "progress": int((processed_count / total_images) * 100),
-                        })
-                    continue
-
+        # --- For containers, discover frame count first ---
+        if is_container:
+            container_count = 0
+            container_limit = max_images if max_images and max_images > 0 else 100
+            for probe_idx in range(1, container_limit + 1):
+                probe_img = self._read_calibration_image(image_files[0], camera=cam_num, img_index=probe_idx)
+                if probe_img is None:
+                    break
+                container_count += 1
                 if img_size is None:
+                    h, w = probe_img.shape[:2]
+                    img_size = (w, h)
+            total_images = container_count
+            logger.info(f"Container has {container_count} frames")
+
+        # --- Build work items ---
+        work_items = []
+        if is_container:
+            for frame_idx in range(1, total_images + 1):
+                work_items.append((frame_idx, image_files[0], f"{image_files[0].stem}_img{frame_idx:03d}"))
+        else:
+            for idx, img_path in enumerate(image_files):
+                work_items.append((idx + 1, img_path, img_path.stem))
+
+        # --- Parallel detection ---
+        max_workers = min(os.cpu_count() or 4, len(work_items), 8)
+        raw_results = {}
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(_detect_one_charuco, fi, ip, nm): fi
+                for fi, ip, nm in work_items
+            }
+            for future in as_completed(futures):
+                frame_idx, image, det_result, status = future.result()
+                raw_results[frame_idx] = (image, det_result, status)
+                processed_count += 1
+                valid_count_tmp = sum(1 for _, _, s in raw_results.values() if s == "valid")
+                if progress_callback:
+                    progress = int((processed_count / max(total_images, 1)) * 90)
+                    progress_callback({
+                        "processed_images": processed_count,
+                        "valid_images": valid_count_tmp,
+                        "total_images": total_images,
+                        "progress": min(progress, 90),
+                    })
+
+        # --- Collect results in frame order ---
+        for frame_idx in sorted(raw_results.keys()):
+            image, det_result, status = raw_results[frame_idx]
+
+            if status == "empty":
+                stats["empty"] += 1
+            elif status == "no_detect":
+                stats["no_detect"] += 1
+            elif status == "valid" and det_result is not None:
+                all_obj_points.append(det_result["obj_pts"])
+                all_img_points.append(det_result["img_pts"])
+                valid_images.append(det_result["name"])
+                stats["valid"] += 1
+
+                entry = {"corners": det_result["corners"], "ids": det_result["ids"], "name": det_result["name"]}
+                if not is_container:
+                    # Find original filename from work_items
+                    for fi, ip, nm in work_items:
+                        if fi == frame_idx:
+                            entry["original_filename"] = Path(ip).name
+                            break
+                valid_indices_map[frame_idx] = entry
+
+                n_pts = len(det_result["corners"])
+                if n_pts > best_image_npts:
+                    best_image = image.copy() if image is not None else None
+                    best_image_npts = n_pts
+
+                if img_size is None and image is not None:
                     h, w = image.shape[:2]
                     img_size = (w, h)
 
-                frame_index = idx + 1  # 1-based frame index
-                detection_result = self._process_single_image_with_data(
-                    image,
-                    img_path.stem,
-                    all_obj_points,
-                    all_img_points,
-                    valid_images,
-                    stats,
-                    detections_dir if save_visualizations else None,
-                )
+                logger.info(f"  {det_result['name']}: OK ({n_pts} corners)")
 
-                if detection_result is not None:
-                    detection_result["original_filename"] = img_path.name
-                    valid_indices_map[frame_index] = detection_result
-
-                # Report progress
-                if progress_callback:
-                    progress_callback({
-                        "processed_images": processed_count,
-                        "valid_images": stats["valid"],
-                        "total_images": total_images,
-                        "progress": int((processed_count / total_images) * 100),
-                    })
+                # Generate per-frame detection figure
+                try:
+                    from pivtools_gui.calibration.calibration_figures import make_charuco_detection_figure
+                    figures_dir = cam_output_base / "figures"
+                    figures_dir.mkdir(parents=True, exist_ok=True)
+                    board_params = {
+                        "squares_h": self.squares_h,
+                        "squares_v": self.squares_v,
+                        "square_size_mm": self.square_size * 1000.0,
+                        "marker_ratio": self.marker_ratio,
+                    }
+                    make_charuco_detection_figure(
+                        image, det_result["corners"], det_result["ids"],
+                        board_params,
+                        figures_dir / f"detection_{frame_idx:03d}.png",
+                        title=det_result["name"],
+                    )
+                except Exception:
+                    pass
 
         logger.info(
             f"Valid: {stats['valid']}, Empty: {stats['empty']}, No detection: {stats['no_detect']}"
@@ -509,7 +575,8 @@ class ChArUcoCalibrator:
 
         # --- PINHOLE MODEL FITTING (default) ---
         rms, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(
-            all_obj_points, all_img_points, img_size, None, None
+            all_obj_points, all_img_points, img_size, None, None,
+            flags=cv2.CALIB_FIX_ASPECT_RATIO,
         )
 
         logger.info(f"RMS reprojection error: {rms:.4f} pixels")
@@ -573,6 +640,21 @@ class ChArUcoCalibrator:
         json_path = cam_output_base / "model" / "camera_model.json"
         with open(json_path, "w") as f:
             json.dump(json_data, f, indent=2)
+
+        # Generate calibration model summary figure
+        try:
+            from pivtools_gui.calibration.calibration_figures import make_calibration_model_figure
+            figures_dir = cam_output_base / "figures"
+            figures_dir.mkdir(parents=True, exist_ok=True)
+            make_calibration_model_figure(
+                mtx, dist, rvecs, tvecs, rms,
+                all_img_points, all_obj_points,
+                img_size,
+                figures_dir / "model_summary.png",
+                best_image=best_image,
+            )
+        except Exception:
+            pass
 
         return {
             "success": True,

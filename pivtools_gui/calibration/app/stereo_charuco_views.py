@@ -415,26 +415,30 @@ def stereo_charuco_load_model():
                         detection1 = {
                             "grid_points": grid_data["grid_points_cam1"].tolist(),
                         }
-                        # Include corner_ids if available (ChArUco-specific)
-                        if "corner_ids" in grid_data:
-                            corner_ids = grid_data["corner_ids"]
-                            if hasattr(corner_ids, "tolist"):
-                                detection1["corner_ids"] = corner_ids.tolist()
-                            else:
-                                detection1["corner_ids"] = list(corner_ids)
+                        # Include per-camera corner_ids if available
+                        for cid_key in ("corner_ids_cam1", "corner_ids"):
+                            if cid_key in grid_data:
+                                corner_ids = grid_data[cid_key]
+                                if hasattr(corner_ids, "tolist"):
+                                    detection1["corner_ids"] = corner_ids.tolist()
+                                else:
+                                    detection1["corner_ids"] = list(corner_ids)
+                                break
                         detections_cam1[str(frame_num)] = detection1
 
                     if "grid_points_cam2" in grid_data:
                         detection2 = {
                             "grid_points": grid_data["grid_points_cam2"].tolist(),
                         }
-                        # Include corner_ids if available (ChArUco-specific)
-                        if "corner_ids" in grid_data:
-                            corner_ids = grid_data["corner_ids"]
-                            if hasattr(corner_ids, "tolist"):
-                                detection2["corner_ids"] = corner_ids.tolist()
-                            else:
-                                detection2["corner_ids"] = list(corner_ids)
+                        # Include per-camera corner_ids if available
+                        for cid_key in ("corner_ids_cam2", "corner_ids"):
+                            if cid_key in grid_data:
+                                corner_ids = grid_data[cid_key]
+                                if hasattr(corner_ids, "tolist"):
+                                    detection2["corner_ids"] = corner_ids.tolist()
+                                else:
+                                    detection2["corner_ids"] = list(corner_ids)
+                                break
                         detections_cam2[str(frame_num)] = detection2
 
                 except Exception as e:
@@ -536,9 +540,9 @@ def stereo_charuco_reconstruct():
                 job_manager.update_job(
                     job_id,
                     progress=progress_data.get("progress", 0),
-                    processed_frames=progress_data.get("processed", 0),
-                    successful_frames=progress_data.get("successful", 0),
-                    total_frames=progress_data.get("total", 0),
+                    processed_frames=progress_data.get("processed_frames", 0),
+                    successful_frames=progress_data.get("successful_frames", 0),
+                    total_frames=progress_data.get("total_frames", 0),
                 )
 
             # Run reconstruction

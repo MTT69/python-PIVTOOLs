@@ -114,6 +114,8 @@ def load_pinhole_camera(
 
     if method == "charuco":
         model_path = calib_dir / "charuco_planar" / "model" / "camera_model.mat"
+    elif method == "stepped_board":
+        model_path = calib_dir / "stepped_board" / "model" / "camera_model.mat"
     else:
         model_path = calib_dir / "dotboard_planar" / "model" / "dotboard_model.mat"
 

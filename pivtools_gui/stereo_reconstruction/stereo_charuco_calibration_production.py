@@ -231,7 +231,9 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
             self.marker_ratio, self.aruco_dict_name,
         )
 
-    def detect_pattern(self, image: np.ndarray) -> Tuple[bool, Optional[np.ndarray], Optional[np.ndarray]]:
+    def detect_pattern(
+        self, image: np.ndarray
+    ) -> Tuple[bool, Optional[np.ndarray], Optional[np.ndarray], Optional[Dict[str, Any]]]:
         """Detect ChArUco corners in image.
 
         Parameters
@@ -242,9 +244,10 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
         Returns
         -------
         tuple
-            (found: bool, corners: np.ndarray or None, ids: np.ndarray or None)
+            (found: bool, corners: np.ndarray or None, ids: np.ndarray or None, info: dict or None)
             corners shape: (N, 2) if found
             ids shape: (N,) if found
+            info contains board_params for figure generation
         """
         # Convert to grayscale if needed
         if image.ndim == 3:
@@ -255,17 +258,36 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
         else:
             gray = image
 
+        # ArUco detector requires uint8 input
+        if gray.dtype != np.uint8:
+            gmin, gmax = float(gray.min()), float(gray.max())
+            if gmax > gmin:
+                gray = ((gray.astype(np.float64) - gmin) / (gmax - gmin) * 255).astype(np.uint8)
+            else:
+                gray = np.zeros(gray.shape, dtype=np.uint8)
+
         board, detector = self.detector
         corners, ids, marker_corners, marker_ids = detector.detectBoard(gray)
 
+        # Build info dict for figure generation
+        info = {
+            'board_params': {
+                'squares_h': self.squares_h,
+                'squares_v': self.squares_v,
+                'square_size': self.square_size,
+                'square_size_mm': self.square_size * 1000,
+                'marker_ratio': self.marker_ratio,
+            },
+        }
+
         if ids is None or len(corners) < self.min_corners:
-            return False, None, None
+            return False, None, None, info
 
         # Reshape corners from (N, 1, 2) to (N, 2)
         corners_2d = corners.reshape(-1, 2).astype(np.float32)
         ids_flat = ids.flatten()
 
-        return True, corners_2d, ids_flat
+        return True, corners_2d, ids_flat, info
 
     def make_object_points(self) -> np.ndarray:
         """Generate 3D object points from ChArUco board geometry.
@@ -316,17 +338,19 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
         objp : np.ndarray
             Full object points array from board.getChessboardCorners()
         result1 : tuple
-            Detection result from camera 1: (found, corners, ids)
+            Detection result from camera 1: (found, corners, ids, info)
         result2 : tuple
-            Detection result from camera 2: (found, corners, ids)
+            Detection result from camera 2: (found, corners, ids, info)
 
         Returns
         -------
         tuple or None
             (obj_pts, img_pts_1, img_pts_2) with matched points only
         """
-        _, corners1, ids1 = result1
-        _, corners2, ids2 = result2
+        corners1 = result1[1]
+        ids1 = result1[2]
+        corners2 = result2[1]
+        ids2 = result2[2]
 
         if ids1 is None or ids2 is None:
             return None

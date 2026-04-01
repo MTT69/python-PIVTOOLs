@@ -168,47 +168,35 @@ class StereoDotboardCalibrator(BaseStereoCalibrator):
             dt=dt,
         )
 
-    def _create_detector(self) -> cv2.SimpleBlobDetector:
-        """Create optimized blob detector for circle grid detection."""
-        params = cv2.SimpleBlobDetector_Params()
-        params.filterByArea = True
-        params.minArea = 50  # Reduced to catch smaller dots
-        params.maxArea = 5000
-        # Shape filtering to reject distorted reflections (relaxed thresholds)
-        params.filterByCircularity = True
-        params.minCircularity = 0.4
-        params.filterByInertia = True
-        params.minInertiaRatio = 0.3
-        params.filterByConvexity = False  # Keep disabled - not useful for dots
-        params.minThreshold = 0
-        params.maxThreshold = 255
-        params.thresholdStep = 10  # Faster detection (was 5)
-        return cv2.SimpleBlobDetector_create(params)
+    def _create_detector(self):
+        """No external detector needed — flat-field pipeline is internal."""
+        return None
 
     def detect_pattern(
         self, image: np.ndarray
-    ) -> Tuple[bool, Optional[np.ndarray], Optional[Dict[str, Any]]]:
+    ) -> Tuple[bool, Optional[np.ndarray], Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
         """Detect grid using automatic RANSAC-based detection.
 
         Returns
         -------
         tuple
-            (found: bool, centers: np.ndarray or None, grid_data: dict or None)
+            (found: bool, centers: np.ndarray or None, grid_data: dict or None, info: dict or None)
             grid_data includes grid_indices, n_cols, n_rows for point matching
+            info contains diagnostic data from detect_grid_automatic()
         """
         gray = to_grayscale_2d(image)
 
         success, grid_data, info = detect_grid_automatic(
-            gray, self.detector, mask=None, grid_spacing_mm=self.dot_spacing_mm
+            gray, mask=None, grid_spacing_mm=self.dot_spacing_mm,
         )
 
         if success and grid_data is not None:
             self._detected_cols = grid_data['n_cols']
             self._detected_rows = grid_data['n_rows']
             logger.debug(f"Auto-detected {grid_data['n_cols']}x{grid_data['n_rows']} grid with {len(grid_data['centers'])} points")
-            return True, grid_data['centers'], grid_data
+            return True, grid_data['centers'], grid_data, info
 
-        return False, None, None
+        return False, None, None, info
 
     def make_object_points(self) -> np.ndarray:
         """Create placeholder object points - actual points created dynamically."""
@@ -242,7 +230,7 @@ class StereoDotboardCalibrator(BaseStereoCalibrator):
             (obj_pts, img_pts_1, img_pts_2) with matched points only
         """
         # Extract grid data from detection results
-        # result format: (found, centers, grid_data)
+        # result format: (found, centers, grid_data, info)
         if len(result1) < 3 or len(result2) < 3:
             return None
 

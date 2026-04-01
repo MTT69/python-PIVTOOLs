@@ -266,15 +266,15 @@ def calibration_get_frame():
     output_format = request.args.get("format", default="jpeg", type=str).lower()
     quality = request.args.get("quality", default=85, type=int)
 
-    # Check calibration image cache
-    cal_cache_key = (source_path_idx, camera, idx, output_format)
+    # Check calibration image cache — include actual source path so key invalidates on source change
+    cfg = get_config()
+    cal_source = str(cfg.calibration_sources[source_path_idx]) if source_path_idx < len(cfg.calibration_sources) else str(source_path_idx)
+    cal_cache_key = (cal_source, camera, idx, output_format)
     with _cal_cache_lock:
         if cal_cache_key in _cal_image_cache:
             return jsonify(_cal_image_cache[cal_cache_key])
 
     try:
-        cfg = get_config()
-
         # Early bounds validation
         frame_count = get_calibration_frame_count(camera, cfg, source_path_idx)
         if frame_count > 0 and idx > frame_count:
@@ -531,6 +531,11 @@ def detect_calibration_model_type(base_dir: Path, camera_num: int) -> Optional[s
     charuco_model = calib_base / "charuco_planar" / "model" / "camera_model.mat"
     if charuco_model.exists():
         return "charuco"
+
+    # Check for stepped board model
+    stepped_model = calib_base / "stepped_board" / "model" / "camera_model.mat"
+    if stepped_model.exists():
+        return "stepped_board"
 
     # Check for dotboard model
     dotboard_model = calib_base / "dotboard_planar" / "model" / "dotboard_model.mat"

@@ -760,6 +760,20 @@ def _suggest_camera_subfolder(camera_path: Path, camera_num: int) -> Optional[st
                     else:
                         # Number-only match (any directory name)
                         score = 40
+            else:
+                # Fuzzy match: check if candidate contains the camera number
+                # and has a similar prefix (handles typos like "Camrr" → "Cam1")
+                expected_cam_num = str(camera_num)
+                if expected_cam_num in re.findall(r'\d+', candidate):
+                    # Candidate has the right camera number
+                    # Check prefix similarity (strip trailing digits/typos)
+                    exp_prefix = re.sub(r'[\d]+.*$', '', expected_name).lower()
+                    cand_prefix = re.sub(r'[\d]+.*$', '', candidate).lower()
+                    if exp_prefix and cand_prefix and (
+                        exp_prefix.startswith(cand_prefix) or cand_prefix.startswith(exp_prefix)
+                        or exp_prefix[:2] == cand_prefix[:2]
+                    ):
+                        score = 60
 
         if score > best_score:
             best_score = score

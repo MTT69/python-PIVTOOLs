@@ -12,6 +12,7 @@ import base64
 import io
 import math
 import threading
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -96,6 +97,15 @@ def dewarp_preview():
         # Load single frame pair
         from pivtools_core.image_handling.load_images import read_pair
         from pivtools_core.image_handling.path_utils import build_piv_camera_path
+
+        # Validate source path exists
+        if source_path_idx >= len(config.source_paths):
+            return jsonify({"error": f"Source path index {source_path_idx} out of range "
+                           f"(have {len(config.source_paths)} source paths configured)"}), 400
+        source_path = config.source_paths[source_path_idx]
+        if not Path(str(source_path)).exists():
+            return jsonify({"error": f"Source path does not exist: {source_path}. "
+                           f"Check Paths > Source in the Setup tab."}), 400
 
         cam1_path = build_piv_camera_path(config, source_path_idx, cam1_num)
         cam2_path = build_piv_camera_path(config, source_path_idx, cam2_num)

@@ -1511,6 +1511,17 @@ calibration:
     aruco_dict: DICT_4X4_1000
     min_corners: 6
     dt: 1
+  stepped_board:
+    dot_spacing_mm: 15.0
+    step_height_mm: 3.0
+    board_thickness_mm: 14.8
+    dt: 1.0
+    camera_pair:
+    - 1
+    - 2
+    stereo_config: transmission
+    datum_camera: 1
+    datum_frame: 1
   self_calibration:
     n_images: 20
     window_size: 64
@@ -1735,7 +1746,7 @@ def main():
     )
     apply_calibration_parser.add_argument(
         "--method", "-m", default=None,
-        choices=["dotboard", "charuco", "scale_factor", "polynomial"],
+        choices=["dotboard", "charuco", "scale_factor", "polynomial", "stepped_board"],
         help="Calibration method (default: from config.yaml calibration.active)"
     )
     apply_calibration_parser.add_argument(

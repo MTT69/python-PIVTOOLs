@@ -1823,6 +1823,11 @@ video:
         return self.calibration.get("stereo_dotboard", {})
 
     @property
+    def stepped_board_calibration(self):
+        """Return stepped board calibration parameters."""
+        return self.calibration.get("stepped_board", {})
+
+    @property
     def charuco_calibration(self):
         """Return ChArUco board calibration parameters."""
         return self.calibration.get("charuco", {})
@@ -2069,6 +2074,8 @@ video:
             return self.stereo_charuco_calibration.get("dt", 1)
         elif active_method == "polynomial":
             return self.polynomial_calibration.get("dt", 1)
+        elif active_method == "stepped_board":
+            return self.stepped_board_calibration.get("dt", 1)
         return 1
 
     @property

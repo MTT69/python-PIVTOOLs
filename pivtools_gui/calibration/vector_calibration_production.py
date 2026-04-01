@@ -497,6 +497,8 @@ class VectorCalibrator:
                 self.model_type = "charuco"
             elif active_method == "dotboard":
                 self.model_type = "dotboard"
+            elif active_method == "stepped_board":
+                self.model_type = "stepped_board"
             else:
                 raise ValueError(f"Cannot determine model_type from config.active_calibration_method: {active_method}")
             self.dt = dt if dt is not None else config.dt
@@ -524,9 +526,9 @@ class VectorCalibrator:
         self.num_workers = num_workers if num_workers else get_max_workers(999999)
 
         # Validate model type
-        if self.model_type not in ("charuco", "dotboard"):
+        if self.model_type not in ("charuco", "dotboard", "stepped_board"):
             raise ValueError(
-                f"model_type must be 'charuco' or 'dotboard', got '{self.model_type}'"
+                f"model_type must be 'charuco', 'dotboard', or 'stepped_board', got '{self.model_type}'"
             )
 
         # Load calibration model
@@ -567,6 +569,8 @@ class VectorCalibrator:
         # Build model path based on model type
         if self.model_type == "charuco":
             model_path = calib_dir / "charuco_planar" / "model" / "camera_model.mat"
+        elif self.model_type == "stepped_board":
+            model_path = calib_dir / "stepped_board" / "model" / "camera_model.mat"
         else:  # dotboard
             model_path = calib_dir / "dotboard_planar" / "model" / "dotboard_model.mat"
 

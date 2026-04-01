@@ -427,13 +427,23 @@ def stereo_dotboard_load_model():
                         source_frame_idx = int(idx_file.stem.split("_")[1])
 
                     if "grid_points_cam1" in grid_data:
-                        detections_cam1[str(source_frame_idx)] = {
+                        det1 = {
                             "grid_points": grid_data["grid_points_cam1"].tolist(),
                         }
+                        # Include grid_indices if available
+                        if "grid_indices_cam1" in grid_data:
+                            gi = grid_data["grid_indices_cam1"]
+                            det1["grid_indices"] = gi.tolist() if hasattr(gi, "tolist") else list(gi)
+                        detections_cam1[str(source_frame_idx)] = det1
                     if "grid_points_cam2" in grid_data:
-                        detections_cam2[str(source_frame_idx)] = {
+                        det2 = {
                             "grid_points": grid_data["grid_points_cam2"].tolist(),
                         }
+                        # Include grid_indices if available
+                        if "grid_indices_cam2" in grid_data:
+                            gi = grid_data["grid_indices_cam2"]
+                            det2["grid_indices"] = gi.tolist() if hasattr(gi, "tolist") else list(gi)
+                        detections_cam2[str(source_frame_idx)] = det2
 
                 except Exception as e:
                     logger.warning(f"Could not load {idx_file}: {e}")
