@@ -1,8 +1,8 @@
 paths:
   base_paths:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/Properties/planardotboard
+  - D:\Andre\NEW\Project_FlowMaster_260129_103855_x0_2\Recording_Date=260129_Time=114615_AoA0\MT_test
   source_paths:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/4000_images_channel/planar_images
+  - D:\Andre\NEW\Project_FlowMaster_260129_103855_x0_2\Recording_Date=260129_Time=114615_AoA0.set
   active_paths:
   - 0
   camera_numbers:
@@ -11,23 +11,24 @@ paths:
   camera_count: 2
   camera_subfolders: []
 images:
-  image_format: []
+  image_format:
+  - data.set
   vector_format:
   - '%05d.mat'
   dtype: float32
-  image_type: standard
+  image_type: lavision_set
   use_camera_subfolders: false
   start_index: 1
   frame_stride: 0
   pair_stride: 1
-  pairing_preset: ab_format
+  pairing_preset: pre_paired
   num_loops: 1
-  num_images: 4000
+  num_images: 750
   image_shape:
-  - 2048
-  - 2048
+  - 3352
+  - 5312
 batches:
-  size: 20
+  size: 10
 logging:
   file: pypiv.log
   level: INFO
@@ -38,14 +39,14 @@ processing:
   auto_compute_params: false
   omp_threads: 4
   dask_workers_per_node: 5
-  dask_memory_limit: 10GB
+  dask_memory_limit: 12GB
   dask_max_in_flight_per_worker: 2
-  open_dashboard: false
+  open_dashboard: true
   dask_nanny: false
   post_processing_workers: 16
   always_batch: true
-  instantaneous: false
-  ensemble: true
+  instantaneous: true
+  ensemble: false
 outlier_detection:
   enabled: true
   methods:
@@ -91,7 +92,7 @@ video:
   fps: 30
   crf: 15
   resolution: 1080p
-  source_endpoint: regular
+  source_endpoint: stereo
 statistics:
   enabled_methods:
     mean_peak_height: false
@@ -117,7 +118,7 @@ statistics:
   gamma_radius: 4
   save_figures: true
   type_name: instantaneous
-  source_endpoint: regular
+  source_endpoint: stereo
 instantaneous_piv:
   window_size:
   - - 128
@@ -126,16 +127,12 @@ instantaneous_piv:
     - 64
   - - 32
     - 32
-  - - 16
-    - 16
   overlap:
-  - 50
   - 50
   - 50
   - 50
   runs:
   - 3
-  - 4
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
@@ -197,17 +194,17 @@ ensemble_piv:
     uy: 0
     edge: bottom
 calibration:
-  image_format: cal_%03d.tif
-  num_images: 6
-  image_type: standard
+  image_format: B%05d.im7
+  num_images: 1
+  image_type: lavision_im7
   zero_based_indexing: false
   use_camera_subfolders: true
   subfolder: enhanced
   camera_subfolders:
-  - camera1_tiff
-  - camera2_tiff
+  - camera1
+  - camera2
   path_order: camera_first
-  active: dotboard
+  active: stepped_board
   piv_type: instantaneous
   scale_factor:
     dt: 0.0057553
@@ -272,7 +269,7 @@ calibration:
     datum_camera: 1
     datum_frame: 1
   calibration_sources:
-  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/Properties/Calibration
+  - D:\Andre\NEW\Project_FlowMaster_260129_103855_x0_2\Properties\Calibration
   global_coordinates:
     enabled: true
     datum_camera: 1
@@ -284,21 +281,11 @@ calibration:
     overlap_points: []
     invert_ux: false
     overlap_pairs: []
-  self_calibration:
-    z_offset: 0.8862484814418804
-    tilt_x: -0.002351031360713836
-    tilt_y: -0.0006818390561802796
-    converged: true
-    n_iterations: 9
-    final_rms_disparity: 2.101528022157098
-    n_images: 120
-    window_size: 128
-    overlap: 50.0
   stepped_board:
     dot_spacing_mm: 15
     step_height_mm: 3
     board_thickness_mm: 14.8
-    dt: 1
+    dt: 5.0e-06
     camera_pair:
     - 1
     - 2
@@ -349,4 +336,4 @@ transforms:
   cameras:
     1:
       operations: []
-  source_endpoint: regular
+  source_endpoint: stereo

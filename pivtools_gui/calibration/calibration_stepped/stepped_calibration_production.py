@@ -957,6 +957,13 @@ class SteppedCalibrator:
             cam1, cam2, pr1, pr2, R_stereo, T_stereo, relative_angle_deg,
         )
 
+        # Clear any stale self-calibration from a previous stereo model
+        sc_path = (self.base_dir / "calibration"
+                   / f"stereo_cam{cam1}_cam{cam2}" / "self_calibration.yaml")
+        if sc_path.exists():
+            sc_path.unlink()
+            logger.info("Cleared stale self-calibration file")
+
         # Generate diagnostic figures
         try:
             from pivtools_gui.calibration.calibration_figures import (
@@ -1145,6 +1152,15 @@ class SteppedCalibrator:
         t2 = R @ t1 + T.reshape(3, 1)
         rvec2, _ = cv2.Rodrigues(R2)
 
+        # Stereo rectification — needed by stereo reconstruction for
+        # triangulation. stereoRectify only requires R, T, K, and dist
+        # (not common 3D points), so it works with the derived pose.
+        rect_R1, rect_R2, P1, P2, Q, roi1, roi2 = cv2.stereoRectify(
+            pr1['K'], pr1['dist'], pr2['K'], pr2['dist'],
+            (W1, H1), R, T.reshape(3, 1),
+            flags=cv2.CALIB_ZERO_DISPARITY, alpha=-1,
+        )
+
         save_dict = {
             'camera_matrix_1': pr1['K'],
             'dist_coeffs_1': pr1['dist'],
@@ -1152,6 +1168,10 @@ class SteppedCalibrator:
             'dist_coeffs_2': pr2['dist'],
             'rotation_matrix': R,
             'translation_vector': T,
+            'rectification_R1': rect_R1,
+            'rectification_R2': rect_R2,
+            'projection_P1': P1,
+            'projection_P2': P2,
             'image_size': np.array([W1, H1]),
             'cam1_rms_error': float(pr1['rms']),
             'cam2_rms_error': float(pr2['rms']),

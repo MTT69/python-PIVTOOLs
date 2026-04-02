@@ -7,7 +7,7 @@ import os
 import numpy as np
 import pytest
 
-from im7_reader import (
+from pivtools_core.image_handling.readers.im7_reader import (
     BUFFER_FORMAT_FLOAT,
     HEADER_SIZE,
     IM7Header,

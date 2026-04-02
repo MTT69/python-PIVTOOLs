@@ -462,7 +462,7 @@ def validate_images_generic(
 
         # Get entry count from .set file (opens file briefly, no pixel decode)
         try:
-            from .readers.lavision_reader import get_set_entry_count
+            from .readers import get_set_entry_count
             result["found_count"] = get_set_entry_count(str(set_file))
         except Exception as e:
             logging.warning(f"Could not read .set entry count: {e}")

@@ -317,12 +317,25 @@ def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: 
                 # Multi-loop: resolve global pair index to loop-specific source
                 resolved_source, local_idx = _resolve_loop_read(cfg, source_path_idx, idx, camera)
                 pair = read_pair(local_idx, resolved_source, camera, cfg)
-                b64_a = numpy_to_base64(pair[0], format=img_format)
-                b64_b = numpy_to_base64(pair[1], format=img_format)
 
+                # Percentile-clip before 8-bit encoding for better contrast
+                raw_stats_a = get_percentile_stats(pair[0])
+                raw_stats_b = get_percentile_stats(pair[1])
+                img_min_a, img_max_a = float(pair[0].min()), float(pair[0].max())
+                img_min_b, img_max_b = float(pair[1].min()), float(pair[1].max())
+                range_a = img_max_a - img_min_a
+                range_b = img_max_b - img_min_b
+                b64_a = numpy_to_base64(pair[0], format=img_format,
+                    vmin=img_min_a + range_a * raw_stats_a["vmin_pct"] / 100.0,
+                    vmax=img_min_a + range_a * raw_stats_a["vmax_pct"] / 100.0)
+                b64_b = numpy_to_base64(pair[1], format=img_format,
+                    vmin=img_min_b + range_b * raw_stats_b["vmin_pct"] / 100.0,
+                    vmax=img_min_b + range_b * raw_stats_b["vmax_pct"] / 100.0)
+
+                # Image is already contrast-optimised
                 stats = {
-                    "A": get_percentile_stats(pair[0]),
-                    "B": get_percentile_stats(pair[1])
+                    "A": {"vmin_pct": 0.0, "vmax_pct": 100.0},
+                    "B": {"vmin_pct": 0.0, "vmax_pct": 100.0}
                 }
 
                 # Thread-safe cache write with timestamp
@@ -415,12 +428,29 @@ def get_frame_pair():
             "source_path": str(source_path)
         }), 500
 
-    b64_a = numpy_to_base64(pair[0], format=img_format)
-    b64_b = numpy_to_base64(pair[1], format=img_format)
+    # Compute percentile limits on the raw high-bit-depth data
+    raw_stats_a = get_percentile_stats(pair[0])
+    raw_stats_b = get_percentile_stats(pair[1])
 
+    # Encode with percentile clipping: map the 1st-99th percentile range to
+    # the full 0-255 output. This gives high-bit-depth images (12/16-bit)
+    # much better contrast than mapping the full min-max range.
+    img_min_a, img_max_a = float(pair[0].min()), float(pair[0].max())
+    img_min_b, img_max_b = float(pair[1].min()), float(pair[1].max())
+    range_a = img_max_a - img_min_a
+    range_b = img_max_b - img_min_b
+    b64_a = numpy_to_base64(pair[0], format=img_format,
+        vmin=img_min_a + range_a * raw_stats_a["vmin_pct"] / 100.0,
+        vmax=img_min_a + range_a * raw_stats_a["vmax_pct"] / 100.0)
+    b64_b = numpy_to_base64(pair[1], format=img_format,
+        vmin=img_min_b + range_b * raw_stats_b["vmin_pct"] / 100.0,
+        vmax=img_min_b + range_b * raw_stats_b["vmax_pct"] / 100.0)
+
+    # Tell the frontend the 8-bit image is already contrast-optimised —
+    # the slider starts at full range of the encoded image
     stats = {
-        "A": get_percentile_stats(pair[0]),
-        "B": get_percentile_stats(pair[1])
+        "A": {"vmin_pct": 0.0, "vmax_pct": 100.0},
+        "B": {"vmin_pct": 0.0, "vmax_pct": 100.0}
     }
 
     # Thread-safe cache write with timestamp

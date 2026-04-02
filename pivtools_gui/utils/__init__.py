@@ -47,7 +47,7 @@ def numpy_to_png_base64(arr: np.ndarray, compress_level: int = 1) -> str:
     return numpy_to_base64(arr, format="png", compress_level=compress_level)
 
 
-def numpy_to_base64(arr: np.ndarray, format: str = "png", compress_level: int = 1, jpeg_quality: int = 85) -> str:
+def numpy_to_base64(arr: np.ndarray, format: str = "png", compress_level: int = 1, jpeg_quality: int = 85, vmin: float = None, vmax: float = None) -> str:
     """Convert a numpy array to a base64 encoded image string.
 
     Args:
@@ -55,16 +55,19 @@ def numpy_to_base64(arr: np.ndarray, format: str = "png", compress_level: int = 
         format: Image format - "png" or "jpeg"
         compress_level: PNG compression level (0-9). Lower = faster, higher = smaller.
         jpeg_quality: JPEG quality (1-95). Higher = better quality, larger files.
+        vmin: If provided, clip pixel values below this before normalising to 0-255.
+        vmax: If provided, clip pixel values above this before normalising to 0-255.
+              When vmin/vmax are set, the full 0-255 range maps to [vmin, vmax],
+              giving much better contrast for high-bit-depth images.
     """
     if arr.dtype != np.uint8:
         a = arr.astype(np.float32, copy=False)
         if a.size:
-            mn = float(a.min())
-            mx = float(a.max())
+            mn = float(vmin) if vmin is not None else float(a.min())
+            mx = float(vmax) if vmax is not None else float(a.max())
             if mx > mn:
-                a = (255 * (a - mn) / (mx - mn)).astype(np.uint8)
+                a = (255 * (np.clip(a, mn, mx) - mn) / (mx - mn)).astype(np.uint8)
             else:
-                # Completely flat -> black; log once so caller can trace
                 logger.debug("Flat image (min==max); producing black output")
                 a = np.zeros_like(a, dtype=np.uint8)
         else:

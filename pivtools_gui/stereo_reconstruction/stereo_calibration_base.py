@@ -813,6 +813,12 @@ class BaseStereoCalibrator(ABC):
             cam1_val, cam2_val, calibration_result, successful_pairs, image_size, indices_data
         )
 
+        # Clear any stale self-calibration from a previous stereo model
+        sc_path = output_dir / "self_calibration.yaml"
+        if sc_path.exists():
+            sc_path.unlink()
+            logger.info("Cleared stale self-calibration file")
+
         # Generate camera placement figure (never blocks calibration)
         try:
             from pivtools_gui.calibration.calibration_figures import make_camera_placement_figure

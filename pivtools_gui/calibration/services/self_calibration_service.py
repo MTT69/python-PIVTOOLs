@@ -151,12 +151,21 @@ def generate_dewarp_overlay(
     dw1 = dewarp_image(img1, map1_x, map1_y)
     dw2 = dewarp_image(img2, map2_x, map2_y)
 
-    # Normalize to 0-255
+    # Normalize to 0-255 using percentile contrast stretch.
+    # PIV particle images have a dark background (~95% of pixels) with sparse
+    # bright particles. Linear min-max normalization crushes everything to
+    # near-zero. Percentile-based clipping gives visible contrast.
     def _norm_u8(img):
-        lo, hi = float(img.min()), float(img.max())
-        if hi - lo < 1e-6:
+        # Use only positive pixels (zero/negative = out-of-bounds from remap)
+        pos = img[img > 0]
+        if pos.size == 0:
             return np.zeros(img.shape, dtype=np.uint8)
-        return ((img - lo) / (hi - lo) * 255).astype(np.uint8)
+        lo = float(np.percentile(pos, 1))
+        hi = float(np.percentile(pos, 99.5))
+        if hi - lo < 1e-6:
+            hi = lo + 1.0
+        scaled = (img - lo) / (hi - lo) * 255
+        return np.clip(scaled, 0, 255).astype(np.uint8)
 
     r = _norm_u8(dw1)
     c = _norm_u8(dw2)
@@ -221,8 +230,43 @@ def run_self_cal_job(
     return result
 
 
-def save_self_cal_to_config(config, result: SelfCalibrationResult, **params):
-    """Save self-calibration results to config.yaml."""
+def _self_cal_file_path(config, cam1: int = None, cam2: int = None) -> Path:
+    """Return path to the self_calibration.yaml file for the active stereo pair."""
+    base = Path(str(config.base_paths[0]))
+    if cam1 is None or cam2 is None:
+        pairs = config.stereo_pairs
+        if pairs:
+            cam1, cam2 = pairs[0]
+        else:
+            cam1, cam2 = 1, 2
+    return base / "calibration" / f"stereo_cam{cam1}_cam{cam2}" / "self_calibration.yaml"
+
+
+def load_self_cal_from_file(config, cam1: int = None, cam2: int = None) -> dict:
+    """Load self-calibration results from the stereo model directory.
+
+    Returns empty dict if no file exists.
+    """
+    path = _self_cal_file_path(config, cam1, cam2)
+    if not path.exists():
+        return {}
+    try:
+        import yaml
+        with open(path) as f:
+            data = yaml.safe_load(f) or {}
+        return data
+    except Exception as e:
+        logger.warning(f"Failed to load self-cal from {path}: {e}")
+        return {}
+
+
+def save_self_cal_to_file(
+    config, result: SelfCalibrationResult,
+    cam1: int = None, cam2: int = None, **params
+):
+    """Save self-calibration results alongside the stereo model."""
+    import yaml
+
     sc_data = {
         "z_offset": float(result.z_offset),
         "tilt_x": float(result.tilt_x),
@@ -231,7 +275,41 @@ def save_self_cal_to_config(config, result: SelfCalibrationResult, **params):
         "n_iterations": result.n_iterations,
         "final_rms_disparity": float(result.final_rms_disparity),
     }
-    # Merge with any user-set parameters
+    sc_data.update(params)
+
+    path = _self_cal_file_path(config, cam1, cam2)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        yaml.safe_dump(sc_data, f, default_flow_style=False)
+
+    logger.info(f"Saved self-cal to {path}")
+
+
+def clear_self_cal_file(config, cam1: int = None, cam2: int = None):
+    """Delete the self_calibration.yaml file (invalidates old results)."""
+    path = _self_cal_file_path(config, cam1, cam2)
+    if path.exists():
+        path.unlink()
+        logger.info(f"Cleared self-cal: {path}")
+
+
+def save_self_cal_to_config(config, result: SelfCalibrationResult, **params):
+    """Save self-calibration results to file alongside stereo model.
+
+    Also writes to config.yaml for backward compatibility during migration.
+    """
+    # Save to file (new canonical location)
+    save_self_cal_to_file(config, result, **params)
+
+    # Also save to config.yaml for backward compat
+    sc_data = {
+        "z_offset": float(result.z_offset),
+        "tilt_x": float(result.tilt_x),
+        "tilt_y": float(result.tilt_y),
+        "converged": result.converged,
+        "n_iterations": result.n_iterations,
+        "final_rms_disparity": float(result.final_rms_disparity),
+    }
     sc_data.update(params)
 
     if "calibration" not in config.data:

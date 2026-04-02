@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 """Convert LaVision .im7 files to TIFF images.
 
+Uses the pure-Python im7_reader (no lvpyio dependency). Works on all platforms.
+
 Reads .im7 files from a directory (optionally with Cam{N}/ subdirectories)
 and saves extracted frames as 32-bit float TIFF files (or optionally uint16).
 Supports both multi-camera .im7 files and single-camera subdirectory layouts.
@@ -37,12 +39,11 @@ except ImportError:
     sys.exit("Error: tifffile is required. Install with: pip install tifffile")
 
 try:
-    import lvpyio as lv
+    from pivtools_core.image_handling.readers.im7_reader import read_im7
 except ImportError:
-    sys.exit(
-        "Error: lvpyio is required. Install with: pip install lvpyio\n"
-        "Note: lvpyio is only available on Windows."
-    )
+    # Fallback for running standalone (same directory)
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from im7_reader import read_im7
 
 
 def natural_sort_key(path: str):
@@ -96,33 +97,30 @@ def extract_frames_from_im7(filepath: str, camera_no: int, frames_per_camera: in
 
     Returns a list of float32 arrays, one per frame for this camera.
     """
-    buffer = lv.read_buffer(filepath)
+    header, pixels, scales = read_im7(filepath)
+
+    # Apply intensity scale
+    pixels = (pixels.astype(np.float32) * scales.slope + scales.offset).astype(np.float32)
+
+    # Ensure at least 3D: (F, H, W)
+    if pixels.ndim == 2:
+        pixels = pixels[np.newaxis, :, :]
+    elif pixels.ndim == 4:
+        pixels = pixels[:, 0, :, :]  # collapse Z
+
+    # Extract frames for the requested camera
     start_frame = (camera_no - 1) * frames_per_camera
-    end_frame = start_frame + frames_per_camera
+    end_frame = min(start_frame + frames_per_camera, pixels.shape[0])
 
-    result = []
-    for idx, img in enumerate(buffer):
-        if idx < start_frame:
-            continue
-        elif idx < end_frame:
-            slope = img.scales.i.slope
-            offset = img.scales.i.offset
-            pixel_data = img.components["PIXEL"].planes[0]
-            arr = (pixel_data * slope + offset).astype(np.float32)
-            result.append(arr)
-        else:
-            break
-
-    return result
+    if start_frame >= pixels.shape[0]:
+        return []
+    return [pixels[i] for i in range(start_frame, end_frame)]
 
 
 def detect_total_frames(filepath: str) -> int:
     """Count total frames in an .im7 file."""
-    buffer = lv.read_buffer(filepath)
-    count = 0
-    for _ in buffer:
-        count += 1
-    return count
+    header, _, _ = read_im7(filepath)
+    return max(header.size_f, 1)
 
 
 def save_tiff(arr: np.ndarray, path: str, as_uint16: bool = False) -> None:
@@ -222,14 +220,7 @@ def convert_subfolder_piv(
 
             try:
                 # Single-camera files: camera_no=1, read all frames
-                buffer = lv.read_buffer(filepath)
-                frames = []
-                for img in buffer:
-                    slope = img.scales.i.slope
-                    offset = img.scales.i.offset
-                    pixel_data = img.components["PIXEL"].planes[0]
-                    arr = (pixel_data * slope + offset).astype(np.float32)
-                    frames.append(arr)
+                frames = extract_frames_from_im7(filepath, camera_no=1, frames_per_camera=2)
 
                 if len(frames) == 2:
                     path_a = os.path.join(cam_dir, f"B{file_num:05d}_A.tif")
@@ -276,15 +267,13 @@ def convert_subfolder_calibration(
             basename = os.path.splitext(os.path.basename(filepath))[0]
 
             try:
-                buffer = lv.read_buffer(filepath)
-                first_img = next(iter(buffer))
-                slope = first_img.scales.i.slope
-                offset = first_img.scales.i.offset
-                pixel_data = first_img.components["PIXEL"].planes[0]
-                arr = (pixel_data * slope + offset).astype(np.float32)
+                frames = extract_frames_from_im7(filepath, camera_no=1, frames_per_camera=1)
+                if not frames:
+                    warnings.warn(f"    {basename}: no frames found")
+                    continue
 
                 path = os.path.join(cam_dir, f"cal_{entry_num:03d}.tif")
-                save_tiff(arr, path, as_uint16)
+                save_tiff(frames[0], path, as_uint16)
                 print(f"    {basename}: saved")
             except Exception as e:
                 warnings.warn(f"    {basename}: FAILED ({e})")

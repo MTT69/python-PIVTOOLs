@@ -149,6 +149,84 @@ def estimate_pixel_scale(
     return max(mm_per_px_values)
 
 
+def estimate_disparity_sensitivity(
+    cam1: PinholeCamera,
+    cam2: PinholeCamera,
+    world_bounds: Tuple[float, float, float, float],
+    mm_per_pixel: float,
+    z: float = 0.0,
+) -> Tuple[float, np.ndarray]:
+    """Numerically estimate disparity sensitivity and direction.
+
+    A particle at Z=dZ projects to different raw pixels in each camera.
+    When dewarped to Z=0, each camera places the particle at a different
+    apparent world position.  The disparity vector (in dewarped pixels)
+    encodes both the magnitude and direction of the stereo mismatch.
+
+    Works for any stereo geometry including transmission (~180°).
+
+    Parameters
+    ----------
+    cam1, cam2 : PinholeCamera instances
+    world_bounds : (x_min, x_max, y_min, y_max) in mm
+    mm_per_pixel : dewarped output scale
+    z : current Z-plane
+
+    Returns
+    -------
+    disp_px_per_mm : float
+        Disparity magnitude (dewarped pixels) per mm of Z-offset.
+    disp_direction : ndarray, shape (2,)
+        Unit vector [dx, dy] in dewarped pixel space giving the direction
+        of the disparity.  For horizontal stereo this is ~[1, 0]; for
+        transmission it may be ~[0, -1] or any direction.
+    """
+    from pivtools_gui.calibration.global_coordinate_alignment import (
+        _pixels_to_world_mm,
+    )
+
+    x_min, x_max, y_min, y_max = world_bounds
+    cx = (x_min + x_max) / 2.0
+    cy = (y_min + y_max) / 2.0
+    dz = 0.1  # mm perturbation
+
+    pt_dz = np.array([[cx, cy, z + dz]])
+    raw_px_cam1 = cam1.project(pt_dz)
+    raw_px_cam2 = cam2.project(pt_dz)
+
+    rvec1, _ = cv2.Rodrigues(cam1.R)
+    rvec2, _ = cv2.Rodrigues(cam2.R)
+
+    q1 = _pixels_to_world_mm(
+        raw_px_cam1.astype(np.float32), cam1.K, cam1.dist,
+        rvec1.flatten(), cam1.t.flatten(),
+    )[0]
+
+    q2 = _pixels_to_world_mm(
+        raw_px_cam2.astype(np.float32), cam2.K, cam2.dist,
+        rvec2.flatten(), cam2.t.flatten(),
+    )[0]
+
+    disp_mm = q2 - q1
+    disp_px = disp_mm / mm_per_pixel
+    disp_magnitude_px = float(np.linalg.norm(disp_px))
+    disp_px_per_mm = disp_magnitude_px / dz
+
+    # Unit direction vector
+    if disp_magnitude_px > 1e-10:
+        disp_direction = (disp_px / disp_magnitude_px).astype(np.float64)
+    else:
+        disp_direction = np.array([1.0, 0.0])  # default to horizontal
+
+    angle_deg = float(np.degrees(np.arctan2(disp_direction[1], disp_direction[0])))
+    logger.info(
+        f"Disparity sensitivity: {disp_px_per_mm:.2f} dewarped-px/mm, "
+        f"direction: [{disp_direction[0]:.3f}, {disp_direction[1]:.3f}] "
+        f"({angle_deg:.1f} deg from horizontal)"
+    )
+    return disp_px_per_mm, disp_direction
+
+
 def compute_dewarp_maps(
     camera: PinholeCamera,
     world_bounds: Tuple[float, float, float, float],
@@ -505,33 +583,42 @@ def fit_disparity_plane(
     dy: np.ndarray,
     grid_x_mm: np.ndarray,
     grid_y_mm: np.ndarray,
-    stereo_angle_rad: float,
+    disp_px_per_mm: float,
     mm_per_pixel: float,
+    disp_direction: Optional[np.ndarray] = None,
 ) -> dict:
-    """Fit a plane to the dx disparity field → physical corrections.
+    """Fit a plane to the disparity field projected onto the stereo direction.
 
-    The dx disparity (horizontal) encodes the stereo mismatch caused by
-    Z-offset and tilts.  dy is expected to be small and is not used for
-    the plane fit.
+    Projects the measured (dx, dy) disparity onto the known disparity
+    direction (from ``estimate_disparity_sensitivity``), then fits a plane
+    to recover Z-offset and tilts.  This works for any camera arrangement:
+    horizontal stereo (disparity ~pure dx), vertical, or transmission
+    (~pure dy).
 
     Parameters
     ----------
-    dx : (n_win_y, n_win_x) disparity in pixels
-    dy : (n_win_y, n_win_x) disparity in pixels (informational)
+    dx, dy : (n_win_y, n_win_x) disparity in dewarped pixels
     grid_x_mm, grid_y_mm : world-coordinate grids in mm
-    stereo_angle_rad : half-angle between cameras
+    disp_px_per_mm : disparity magnitude per mm of Z-offset
     mm_per_pixel : spatial scale
+    disp_direction : (2,) unit vector giving expected disparity direction.
+        If None, defaults to [1, 0] (horizontal — backward compatible).
 
     Returns
     -------
     dict with z_offset, tilt_x, tilt_y, rms_residual
     """
-    valid = np.isfinite(dx)
+    if disp_direction is None:
+        disp_direction = np.array([1.0, 0.0])
+
+    # Project (dx, dy) onto the disparity direction to get a scalar field
+    valid = np.isfinite(dx) & np.isfinite(dy)
     X = grid_x_mm[valid].ravel()
     Y = grid_y_mm[valid].ravel()
-    D = dx[valid].ravel()
+    D = (dx[valid].ravel() * disp_direction[0] +
+         dy[valid].ravel() * disp_direction[1])
 
-    # Least-squares: dx = a + b*X + c*Y
+    # Least-squares: D_projected = a + b*X + c*Y
     A_mat = np.column_stack([np.ones_like(X), X, Y])
     coeffs, _, _, _ = np.linalg.lstsq(A_mat, D, rcond=None)
     a, b, c = coeffs
@@ -539,14 +626,17 @@ def fit_disparity_plane(
     residual = D - A_mat @ coeffs
     rms = float(np.sqrt(np.mean(residual ** 2)))
 
-    # Convert pixel disparity to physical corrections.
-    # Positive dx disparity means cam2 is shifted right relative to cam1,
-    # which results from a positive Z offset.  The correction applied to
-    # the dewarp maps must therefore be in the SAME direction as the fitted
-    # offset:  dZ = +a * conversion.
-    # disparity (px) = 2 * tan(theta) * dZ(mm) / mm_per_pixel
-    # => dZ = disparity * mm_per_pixel / (2 * tan(theta))
-    conversion = mm_per_pixel / (2.0 * np.tan(stereo_angle_rad))
+    # Convert projected disparity to physical corrections.
+    # D_projected (px) = disp_px_per_mm * dZ(mm)
+    # => dZ = D_projected / disp_px_per_mm
+    if disp_px_per_mm < 1e-6:
+        logger.warning(
+            f"Disparity sensitivity too low ({disp_px_per_mm:.4f} px/mm) — "
+            f"Z-offset estimation unreliable"
+        )
+        conversion = 0.0
+    else:
+        conversion = 1.0 / disp_px_per_mm
     z_offset = a * conversion
     tilt_y = np.arctan(b * conversion)
     tilt_x = np.arctan(c * conversion)
@@ -605,22 +695,26 @@ def run_self_calibration(
         f"dewarped size {out_w}x{out_h}"
     )
 
-    # Stereo half-angle from relative rotation
+    # Stereo angle (informational)
     R_rel = cam2.R @ cam1.R.T
     trace_val = np.trace(R_rel)
     full_angle = math.acos(max(-1.0, min(1.0, (trace_val - 1.0) / 2.0)))
-    stereo_half_angle = full_angle / 2.0
     logger.info(
-        f"Stereo full angle: {math.degrees(full_angle):.1f} deg, "
-        f"half-angle: {math.degrees(stereo_half_angle):.1f} deg"
+        f"Stereo full angle: {math.degrees(full_angle):.1f} deg"
+    )
+
+    # Numerically compute disparity sensitivity and direction — works for any
+    # stereo geometry including transmission (~180°) where the analytic
+    # tan(θ) formula diverges.
+    disp_px_per_mm, disp_direction = estimate_disparity_sensitivity(
+        cam1, cam2, world_bounds, mm_per_pixel,
     )
 
     # Auto-size window to ensure the search range covers expected disparities.
-    # A Z-offset of dZ mm produces a disparity of 2*tan(theta)*dZ/mm_per_pixel px.
     # The correlation search range is ±(window_size/2), so we need
     # window_size > 2 * max_expected_disparity.  Use 5mm as conservative max.
     max_z_mm = 5.0
-    max_disp_px = 2.0 * math.tan(stereo_half_angle) * max_z_mm / mm_per_pixel
+    max_disp_px = disp_px_per_mm * max_z_mm
     min_window = int(math.ceil(2.0 * max_disp_px))
     # Round up to next power of 2 (required by FFT correlation)
     min_window = max(min_window, 32)
@@ -721,7 +815,8 @@ def run_self_calibration(
         fit = fit_disparity_plane(
             dx_clean, dy_clean,
             grid_x_mm, grid_y_mm,
-            stereo_half_angle, mm_per_pixel,
+            disp_px_per_mm, mm_per_pixel,
+            disp_direction=disp_direction,
         )
         delta_z = fit["z_offset"]
         delta_tx = fit["tilt_x"]

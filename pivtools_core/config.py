@@ -1952,8 +1952,26 @@ video:
     # --- Self-calibration properties ---
     @property
     def self_calibration_config(self) -> dict:
-        """Return self-calibration configuration block."""
-        return self.data.get("calibration", {}).get("self_calibration", {})
+        """Return self-calibration data from the file alongside the stereo model.
+
+        Checks: {base_path}/calibration/stereo_cam{A}_cam{B}/self_calibration.yaml
+        Returns empty dict if no file exists (no fallback to config.yaml —
+        stale values in config.yaml must not leak across datasets).
+        """
+        try:
+            pairs = self.stereo_pairs
+            if pairs and self.base_paths:
+                cam1, cam2 = pairs[0]
+                base = Path(str(self.base_paths[0]))
+                sc_path = base / "calibration" / f"stereo_cam{cam1}_cam{cam2}" / "self_calibration.yaml"
+                if sc_path.exists():
+                    import yaml
+                    with open(sc_path) as f:
+                        data = yaml.safe_load(f) or {}
+                    return data
+        except Exception:
+            pass
+        return {}
 
     @property
     def self_calibration_z_offset(self) -> float:

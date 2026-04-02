@@ -310,7 +310,9 @@ path_utils.py:      build_piv_camera_path(cfg, source_path_idx, camera_num) -> P
                     validate_single_pattern(...) -> dict
 
 readers/__init__.py: get_reader(extension) -> callable  # Reader registry
-readers/lavision_reader.py: read_lavision_pair(...), read_lavision_set_pair(...), get_set_entry_count(...)
+readers/im7_reader.py:      read_im7(filepath), read_im7_camera(filepath, camera_no, frames_per_camera)  # Pure-Python .im7 reader
+readers/set_reader.py:      read_set_pair(...), read_set_frame(...), read_set_info(...), get_set_entry_count(...)  # Pure-Python .set reader
+readers/lavision_reader.py: read_lavision_pair(...), read_lavision_ims_pair(...)  # Thin wrappers over im7_reader/set_reader (no lvpyio)
 readers/cine_reader.py:     read_cine_pair(...)
 readers/generic_readers.py: read_tiff(...), read_png_jpeg(...)
 ```
@@ -460,7 +462,7 @@ GET  /calibrate/self_calibration/status          -> current self-cal state from 
 - `stereo_reconstruction/stereo_dotboard_calibration_production.py` - Stereo dotboard. Grid detection delegated to `grid_detection.py` (flat-field pipeline, no external detector needed).
 - `stereo_reconstruction/stereo_calibration_base.py` - Stereo base class. Parallel camera image reads via ThreadPoolExecutor. Container format + image finding delegated to `calibration_io.py`.
 - `stereo_reconstruction/stereo_charuco_calibration_production.py` - Stereo ChArUco detection. Board creation delegated to `calibration_io.create_charuco_detector()`. `ARUCO_DICT_MAP` re-exported for backward compat.
-- `stereo_reconstruction/stereo_reconstruction_production.py` - 3D velocity reconstruction from stereo pairs. Converts uncalibrated coords → raw pixels before OpenCV triangulation. Negates y/uy on output (OpenCV y-down → physical y-up). Uses ProcessPoolExecutor for parallel frame processing.
+- `stereo_reconstruction/stereo_reconstruction_production.py` - Willert/Soloff geometric 3D velocity reconstruction from stereo pairs. **Coordinates:** single-camera projection (cam1 grid → world plane via `_pixels_to_world_mm`), no triangulation. **Velocities:** Jacobian-based geometric decomposition — projects cam1 world grid into cam2 image (`cv2.projectPoints`), interpolates cam2 displacements (`RegularGridInterpolator`), computes d(pixel)/d(world) Jacobian numerically (6 `cv2.projectPoints` calls per camera), solves 4×3 least-squares per grid point for (Ux, Uy, Uz). Uz negated on output (board-Z → physical-Z convention). Self-calibration params (z_world, tilt_x, tilt_y) threaded through coordinate projection and Jacobian evaluation. Works for all stereo configurations (same-side, transmission, asymmetric). Uses ProcessPoolExecutor for parallel frame processing. See `docs/stereo_reconstruction_algorithm.md` for full mathematical description.
 - `stereo_reconstruction/self_calibration.py` - Stereo self-calibration (Wieneke 2005). Detects and corrects laser-sheet Z-offset and tilts via iterative disparity minimization. Key exports: `PinholeCamera`, `SelfCalibrationResult`, `run_self_calibration()`, `compute_dewarp_maps()`. Requires `bulkxcorr2d_accumulate` C library for ensemble cross-camera correlation, `median_outlier_detection` + `infill_local_median` for disparity cleaning. **Production integration:** Results (z_offset, tilt_x, tilt_y) stored in `config.calibration.self_calibration` and automatically applied during `apply-calibration` via `VectorCalibrator(z_world=..., tilt_x=..., tilt_y=...)`. GUI: `SelfCalibrationSection` component in both stereo calibration tabs. CLI: `pivtools-cli self-calibrate`. Unit tests: `test_self_calibration_recovery.py` (6 tests), `test_selfcal_velocity_correction.py` (16 tests).
 
 **Dotboard calibration pipeline** (shared by planar + stereo + stepped):
@@ -1030,7 +1032,7 @@ Dask-centric utilities shared by both pipelines.
 | Category | Packages |
 |----------|----------|
 | **Core** | dask==2025.7.0, numpy==2.2.6, scipy==1.16.1, opencv-python==4.12.0.88, pandas==2.3.1 |
-| **CLI** | numba==0.61.2, scikit-image==0.25.2, scikit-learn==1.7.2, lvpyio (non-macOS) |
+| **CLI** | numba==0.61.2, scikit-image==0.25.2, scikit-learn==1.7.2 |
 | **GUI** | Flask==3.1.1, flask-cors, matplotlib==3.10.5, imageio-ffmpeg |
 
 ### C Libraries (compiled at build time via `setup.py`)
@@ -1609,7 +1611,7 @@ Compares stereo PIV (3-component: U, V, W) and all 6 Reynolds stresses against D
 - **`coordinates.mat` race condition:** `transform_all_frames()` transforms coordinates once per camera then must pass `None` (not `coords_file`) to parallel workers. Workers re-reading and re-saving causes double-transform and Windows "Access is denied".
 - **`invert_ux`/`invert_uy` UV_stress signs:** When negating only one velocity component, UV_stress must also be negated: `(-u')v' = -(u'v')`. But `invert_ux_uy` leaves UV_stress unchanged. Uses XOR logic.
 - **Batch transform frame count:** Source frame was already processed but excluded from `total_frames_to_process`. Fix: add 1 and start `processed_frames` at 1.
-- **Coordinate convention invariant (planar + stereo + polynomial):** OpenCV calibration models (pinhole and stereo) are fitted with raw pixel coordinates (0-based, y-down). All OpenCV functions (`_pixels_to_world_mm`, `cv2.undistortPoints`, `cv2.triangulatePoints`) **must** receive raw pixels. PIVTOOLs stores uncalibrated coords (1-based, y-up). Conversion: `x_raw = x_uncal - 1`, `y_raw = image_height - y_uncal`. The `image_height` is loaded from the model .mat file's `image_size` field. **Y-axis negation rule:** All calibration paths negate world y to convert from model y-down to physical y-up: pinhole `calibrate_coordinates` (`y_mm = -world[:,1]`) and `calibrate_vectors` (`uy_ms = -delta[:,1]`); polynomial `calibrate_coordinates` (`y_mm = -y_world_px * mm_per_pixel`) and `calibrate_vectors` (`v_ms = -v_world_mm`); stereo negates `y_grid`, `uy`, `z_grid`, and `uz` on output.
+- **Coordinate convention invariant (planar + polynomial):** OpenCV calibration models are fitted with raw pixel coordinates (0-based, y-down). `_pixels_to_world_mm`, `cv2.undistortPoints` **must** receive raw pixels. PIVTOOLs stores uncalibrated coords (1-based, y-up). Conversion: `x_raw = x_uncal - 1`, `y_raw = image_height - y_uncal`. The `image_height` is loaded from the model .mat file's `image_size` field. **Y-axis negation rule (planar + polynomial only):** Pinhole `calibrate_coordinates` (`y_mm = -world[:,1]`) and `calibrate_vectors` (`uy_ms = -delta[:,1]`); polynomial `calibrate_coordinates` (`y_mm = -y_world_px * mm_per_pixel`) and `calibrate_vectors` (`v_ms = -v_world_mm`). **Stereo reconstruction (Willert/Soloff):** Does NOT use `cv2.triangulatePoints`. Coordinates from single-camera projection (`_pixels_to_world_mm`). Velocities from Jacobian decomposition of paired 2D displacements (cam1 direct, cam2 via `cv2.projectPoints` + `RegularGridInterpolator` correspondence). No blanket Y-negation — board Y-direction depends on calibration target orientation. Only Uz is negated (board-Z toward cameras → physical-Z away). See `docs/stereo_reconstruction_algorithm.md`.
 
 ### PIV Polling & Status Image
 - Polling interval: 1000ms. Image refresh interval: 3000ms.

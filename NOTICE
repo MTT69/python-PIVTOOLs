@@ -24,12 +24,11 @@ Binary distributions that include these libraries must comply with GPL terms,
 unless you replace them with alternatively-licensed implementations or obtain
 a commercial FFTW license.
 
-Proprietary Dependencies (Restricted License):
-----------------------------------------------
-  * lvpyio (LaVision GmbH) - "Free To Use But Restricted"
-    Required only for reading LaVision .im7/.set files (Windows/Linux only).
-    Subject to LaVision's license terms. Contact: python@lavision.de
-    Optional - use standard image formats (.tif, .png) to avoid this dependency.
+Proprietary Dependencies (Removed):
+------------------------------------
+  * lvpyio (LaVision GmbH) - REMOVED as of 2026-04.
+    Replaced with pure-Python readers (im7_reader.py, set_reader.py) that are
+    cross-platform, faster, and use less memory. See lavision_conversion/LAVISION_READER.md.
 
 Other Dependencies:
 -------------------
