@@ -1,5 +1,5 @@
 PIVTools
-Copyright 2025 University of Southampton
+Copyright 2025-2026 University of Southampton
 
 This product includes software developed at the University of Southampton,
 Faculty of Engineering and Physical Sciences.
@@ -23,12 +23,6 @@ Pre-built binaries link against the following GPL-licensed libraries:
 Binary distributions that include these libraries must comply with GPL terms,
 unless you replace them with alternatively-licensed implementations or obtain
 a commercial FFTW license.
-
-Proprietary Dependencies (Removed):
-------------------------------------
-  * lvpyio (LaVision GmbH) - REMOVED as of 2026-04.
-    Replaced with pure-Python readers (im7_reader.py, set_reader.py) that are
-    cross-platform, faster, and use less memory. See lavision_conversion/LAVISION_READER.md.
 
 Other Dependencies:
 -------------------

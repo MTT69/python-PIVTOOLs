@@ -15,7 +15,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 import matplotlib.pyplot as plt
@@ -118,6 +118,11 @@ class MultiViewCalibrator:
     detected from the calibration images.
     """
 
+    # Output subdirectory name under `calibration/Cam{N}/`. Subclasses
+    # override this to land their results in a different folder without
+    # having to touch any of the discovery / save / figure plumbing.
+    output_subdir_name: str = "dotboard_planar"
+
     def __init__(
         self,
         source_dir,
@@ -153,7 +158,7 @@ class MultiViewCalibrator:
         datum_frame : int
             Which calibration image defines the world coordinate origin (1-based, default: 1)
         model_type : str
-            Calibration model type: "pinhole" (OpenCV) or "polynomial" (DaVis-compatible)
+            Calibration model type: "pinhole" (OpenCV) or "polynomial" (3rd-order bivariate)
         pattern_cols, pattern_rows : int, optional
             DEPRECATED: Grid dimensions are now automatically detected
         asymmetric : bool
@@ -179,7 +184,7 @@ class MultiViewCalibrator:
         """Create output directories with /dotboard_planar structure"""
         for cam_num in range(1, self.camera_count + 1):
             # NEW PATH STRUCTURE: .../CamX/dotboard_planar/
-            cam_base = self.base_dir / "calibration" / f"Cam{cam_num}" / "dotboard_planar"
+            cam_base = self.base_dir / "calibration" / f"Cam{cam_num}" / self.output_subdir_name
             (cam_base / "indices").mkdir(parents=True, exist_ok=True)
             (cam_base / "model").mkdir(parents=True, exist_ok=True)
             (cam_base / "figures").mkdir(parents=True, exist_ok=True)
@@ -343,7 +348,7 @@ class MultiViewCalibrator:
 
             # Path setup: calibration_source / camera_folder (via build_calibration_camera_path)
             cam_input_dir = self._get_camera_input_dir(cam_num)
-            cam_output_base = self.base_dir / "calibration" / f"Cam{cam_num}" / "dotboard_planar"
+            cam_output_base = self.base_dir / "calibration" / f"Cam{cam_num}" / self.output_subdir_name
 
             # Find images
             is_container = self._is_container_format()
@@ -539,7 +544,7 @@ class MultiViewCalibrator:
 
         # Path setup: calibration_source / camera_folder (via build_calibration_camera_path)
         cam_input_dir = self._get_camera_input_dir(cam_num)
-        cam_output_base = self.base_dir / "calibration" / f"Cam{cam_num}" / "dotboard_planar"
+        cam_output_base = self.base_dir / "calibration" / f"Cam{cam_num}" / self.output_subdir_name
 
         # Ensure directories exist
         (cam_output_base / "indices").mkdir(parents=True, exist_ok=True)
@@ -641,7 +646,10 @@ class MultiViewCalibrator:
         results = {}
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {executor.submit(_detect_one, idx): idx for idx in loop_range}
+            futures = {
+                executor.submit(_detect_one, idx): idx
+                for idx in loop_range
+            }
             for future in as_completed(futures):
                 idx, img, found, corners, grid_data, det_info, img_name = future.result()
                 results[idx] = (img, found, corners, grid_data, det_info, img_name)
@@ -745,13 +753,44 @@ class MultiViewCalibrator:
 
         if self.model_type == "polynomial":
             # --- POLYNOMIAL MODEL FITTING ---
+            # Polynomial calibration is a 2D bivariate fit and must use ONLY the
+            # datum frame.  Multi-image fitting stacks points from poses at
+            # differing world-Z which the model cannot represent — pinhole is
+            # the right choice for multi-image calibration.
             from pivtools_gui.calibration.calibration_poly.polynomial_calibration_production import (
                 fit_polynomial_from_points, save_polynomial_to_config
             )
 
-            # Stack all detected points into flat arrays
-            all_img_flat = np.vstack([pts.reshape(-1, 2) for pts in all_imgpoints])
-            all_obj_flat = np.vstack([pts.reshape(-1, 3)[:, :2] for pts in all_objpoints])
+            sorted_valid_frames = sorted(valid_indices_map.keys())
+            if self.datum_frame not in valid_indices_map:
+                return {
+                    "success": False,
+                    "error": (
+                        f"Polynomial calibration requires the datum frame "
+                        f"(frame {self.datum_frame}) to be detected, but detection "
+                        f"failed on that frame. Valid frames: {sorted_valid_frames}."
+                    ),
+                }
+
+            datum_list_idx = sorted_valid_frames.index(self.datum_frame)
+            datum_img_pts = all_imgpoints[datum_list_idx]
+            datum_obj_pts = all_objpoints[datum_list_idx]
+
+            warnings_out = []
+            if len(sorted_valid_frames) > 1:
+                ignored = len(sorted_valid_frames) - 1
+                msg = (
+                    f"Polynomial calibration uses only the datum frame "
+                    f"(frame {self.datum_frame}). {ignored} additional detected "
+                    f"frame(s) were ignored — the polynomial model is a 2D fit "
+                    f"and is not designed for multi-image calibration. Use "
+                    f"pinhole for multi-image."
+                )
+                logger.warning(msg)
+                warnings_out.append(msg)
+
+            all_img_flat = datum_img_pts.reshape(-1, 2)
+            all_obj_flat = datum_obj_pts.reshape(-1, 3)[:, :2]
             # Object points are already in mm (from dot_spacing_mm)
 
             try:
@@ -777,7 +816,7 @@ class MultiViewCalibrator:
                 "coefficients_x": np.array(fit_result["coefficients_x"]),
                 "coefficients_y": np.array(fit_result["coefficients_y"]),
                 "rms_fit_error_px": fit_result["rms_fit_error_px"],
-                "num_images_used": valid_count,
+                "num_images_used": 1,
                 "image_width": img_shape[0],
                 "image_height": img_shape[1],
                 "image_size": np.array([img_shape[0], img_shape[1]]),
@@ -804,13 +843,26 @@ class MultiViewCalibrator:
                 "model_type": "polynomial",
                 "rms_error": float(fit_result["rms_fit_error_px"]),
                 "mm_per_pixel": float(fit_result["mm_per_pixel"]),
-                "num_images_used": valid_count,
+                "num_images_used": 1,
                 "detected_cols": detected_cols,
                 "detected_rows": detected_rows,
                 "model_path": str(out_file),
+                "warnings": warnings_out,
             }
 
         # --- PINHOLE MODEL FITTING (default) ---
+        # TODO: factory-intrinsics / seed-from-prior workflow.
+        #   Scope: add `seed_model_path` and `freeze_intrinsics` kwargs to
+        #   MultiViewCalibrator.__init__, load K + dist from the prior .mat,
+        #   and pass CALIB_USE_INTRINSIC_GUESS | FIX_FOCAL_LENGTH
+        #   | FIX_PRINCIPAL_POINT | FIX_K1..K3 | ZERO_TANGENT_DIST so only
+        #   extrinsics get solved. ~30 lines here + a conditional branch.
+        #   Keep it CLI-only — factory-intrinsics is a per-project power-user
+        #   decision that belongs in scripts, not the GUI (GUI file pickers
+        #   make it too easy to seed from a stale or wrong-camera .mat and
+        #   silently produce garbage extrinsics). Existing loader:
+        #   camera_model_utils.py::load_pinhole_camera. Defer until a real
+        #   camera with real factory specs motivates the design choices.
         try:
             ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(
                 all_objpoints, all_imgpoints, img_shape, None, None,

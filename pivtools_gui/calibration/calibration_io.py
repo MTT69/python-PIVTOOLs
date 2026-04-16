@@ -199,8 +199,11 @@ def find_calibration_images(
         while True:
             try:
                 filename = file_pattern % i
-            except TypeError:
-                break
+            except TypeError as e:
+                raise ValueError(
+                    f"file_pattern {file_pattern!r} contains '%' but is not a numbered format "
+                    f"(expected e.g. 'calib%05d.tif'): {e}"
+                ) from e
             filepath = cam_input_dir / filename
             if filepath.exists():
                 files.append(filepath)

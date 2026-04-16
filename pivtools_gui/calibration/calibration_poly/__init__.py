@@ -1,4 +1,4 @@
-"""Polynomial (DAVIS) calibration module."""
+"""Polynomial calibration module."""
 
 from .polynomial_calibration_production import (
     PolynomialVectorCalibrator,

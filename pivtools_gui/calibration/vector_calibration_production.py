@@ -134,43 +134,37 @@ def _pixels_to_world_mm(
         P=None,  # No rectification, get normalized coords
     ).reshape(-1, 2)
 
-    # Build rotation matrix from rvec
-    R, _ = cv2.Rodrigues(rvec)
-
     # Ray-plane intersection for plane: Z = z_world + X*tan(tilt_y) + Y*tan(tilt_x)
     # Camera ray: [x_norm, y_norm, 1] (normalized coords with z=1)
     # World point: P_world = R^T @ (s * ray - t) = s * ray_world - t_world
     # Plane equation: P_world[2] = z_world + P_world[0]*tan_ty + P_world[1]*tan_tx
     # Substituting and solving for s:
-    #   s*rw[2] - tw[2] = z_world + (s*rw[0] - tw[0])*tan_ty + (s*rw[1] - tw[1])*tan_tx
     #   s*(rw[2] - rw[0]*tan_ty - rw[1]*tan_tx) = z_world + tw[2] - tw[0]*tan_ty - tw[1]*tan_tx
 
+    R, _ = cv2.Rodrigues(rvec)
     R_inv = R.T
-    t = tvec.flatten()
+    t_world = R_inv @ tvec.flatten()  # (3,) — constant across all points
 
     tan_tx = math.tan(tilt_x)
     tan_ty = math.tan(tilt_y)
 
-    world_pts = np.zeros((pts_normalized.shape[0], 2), dtype=np.float64)
+    # Build rays [xn, yn, 1] in a single (N, 3) array
+    N = pts_normalized.shape[0]
+    rays = np.empty((N, 3), dtype=np.float64)
+    rays[:, :2] = pts_normalized
+    rays[:, 2] = 1.0
 
-    for i, (xn, yn) in enumerate(pts_normalized):
-        ray = np.array([xn, yn, 1.0])
+    rays_world = rays @ R_inv.T  # (N, 3)
 
-        ray_world = R_inv @ ray
-        t_world = R_inv @ t
+    denom = rays_world[:, 2] - rays_world[:, 0] * tan_ty - rays_world[:, 1] * tan_tx
+    numer = z_world + t_world[2] - t_world[0] * tan_ty - t_world[1] * tan_tx
 
-        denom = ray_world[2] - ray_world[0] * tan_ty - ray_world[1] * tan_tx
-        if abs(denom) < 1e-10:
-            world_pts[i] = [np.nan, np.nan]
-            continue
+    s = np.full(N, np.nan, dtype=np.float64)
+    valid = np.abs(denom) >= 1e-10
+    s[valid] = numer / denom[valid]
 
-        numer = z_world + t_world[2] - t_world[0] * tan_ty - t_world[1] * tan_tx
-        s = numer / denom
-        P_world = s * ray_world - t_world
-
-        world_pts[i] = P_world[:2]
-
-    return world_pts
+    world_3d = s[:, None] * rays_world - t_world  # (N, 3); NaN propagates for invalid
+    return world_3d[:, :2]
 
 
 def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
@@ -499,6 +493,8 @@ class VectorCalibrator:
                 self.model_type = "dotboard"
             elif active_method == "stepped_board":
                 self.model_type = "stepped_board"
+            elif active_method == "stepped_planar":
+                self.model_type = "stepped_planar"
             else:
                 raise ValueError(f"Cannot determine model_type from config.active_calibration_method: {active_method}")
             self.dt = dt if dt is not None else config.dt
@@ -526,9 +522,10 @@ class VectorCalibrator:
         self.num_workers = num_workers if num_workers else get_max_workers(999999)
 
         # Validate model type
-        if self.model_type not in ("charuco", "dotboard", "stepped_board"):
+        if self.model_type not in ("charuco", "dotboard", "stepped_board", "stepped_planar"):
             raise ValueError(
-                f"model_type must be 'charuco', 'dotboard', or 'stepped_board', got '{self.model_type}'"
+                f"model_type must be 'charuco', 'dotboard', 'stepped_board', "
+                f"or 'stepped_planar', got '{self.model_type}'"
             )
 
         # Load calibration model
@@ -571,6 +568,12 @@ class VectorCalibrator:
             model_path = calib_dir / "charuco_planar" / "model" / "camera_model.mat"
         elif self.model_type == "stepped_board":
             model_path = calib_dir / "stepped_board" / "model" / "camera_model.mat"
+        elif self.model_type == "stepped_planar":
+            # Per-camera 3D pinhole model from a stepped board (both Z
+            # levels). Produced by SteppedPlanarCalibrator via the shared
+            # _save_per_camera_model routine, so the file name matches
+            # the stepped_board branch above.
+            model_path = calib_dir / "stepped_planar" / "model" / "camera_model.mat"
         else:  # dotboard
             model_path = calib_dir / "dotboard_planar" / "model" / "dotboard_model.mat"
 

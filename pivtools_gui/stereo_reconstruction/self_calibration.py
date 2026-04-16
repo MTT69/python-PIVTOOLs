@@ -94,6 +94,23 @@ class SelfCalibrationResult:
     grid_x_mm: Optional[np.ndarray] = None
     grid_y_mm: Optional[np.ndarray] = None
     peak_quality: Optional[np.ndarray] = None
+    # Accumulated cross-correlation planes from the first and final
+    # iterations, shape (n_win_y, n_win_x, ws, ws). Saved by the production
+    # pipeline as `correlation_planes.mat` for diagnostic inspection. None
+    # if the run aborted before iteration 1.
+    corr_first_iter: Optional[np.ndarray] = None
+    corr_last_iter: Optional[np.ndarray] = None
+    win_ctrs_x: Optional[np.ndarray] = None
+    win_ctrs_y: Optional[np.ndarray] = None
+    n_win_x: Optional[int] = None
+    n_win_y: Optional[int] = None
+    window_size_used: Optional[int] = None
+    mm_per_pixel: Optional[float] = None
+    # Geometric disparity sensitivity from estimate_disparity_sensitivity.
+    # Used by diagnostics to predict the expected disparity field from the
+    # converged (z, tilt_x, tilt_y) for forward-model validation.
+    disp_px_per_mm: Optional[float] = None
+    disp_direction: Optional[np.ndarray] = None  # unit vector (dx, dy) in dewarped px
 
 
 # ---------------------------------------------------------------------------
@@ -372,9 +389,8 @@ def accumulate_ensemble_correlation(
     image_size = np.array([H, W], dtype=np.int32)
     n_windows = np.array([n_win_y, n_win_x], dtype=np.int32)
 
-    # Hanning window weight
-    hann = np.outer(np.hanning(ws), np.hanning(ws)).astype(np.float32)
-    weight = np.ascontiguousarray(hann.ravel())
+    # Match main PIV ensemble pipeline: square window (all ones), no taper.
+    weight = np.ones(ws * ws, dtype=np.float32)
 
     win_size_arr = np.array([ws, ws], dtype=np.int32)
 
@@ -492,7 +508,8 @@ def fit_gaussian_6dof_peak(corr_plane: np.ndarray):
             method='lm', max_nfev=20,
         )
         A_fit, i0_fit, j0_fit = result.x[0], result.x[1], result.x[2]
-    except Exception:
+    except (RuntimeError, ValueError, np.linalg.LinAlgError) as e:
+        logger.debug(f"Gaussian 6-DOF peak fit failed: {e}")
         return np.nan, np.nan, np.nan
 
     # Reject bad fits
@@ -710,21 +727,13 @@ def run_self_calibration(
         cam1, cam2, world_bounds, mm_per_pixel,
     )
 
-    # Auto-size window to ensure the search range covers expected disparities.
-    # The correlation search range is ±(window_size/2), so we need
-    # window_size > 2 * max_expected_disparity.  Use 5mm as conservative max.
-    max_z_mm = 5.0
-    max_disp_px = disp_px_per_mm * max_z_mm
-    min_window = int(math.ceil(2.0 * max_disp_px))
-    # Round up to next power of 2 (required by FFT correlation)
-    min_window = max(min_window, 32)
-    min_window_pow2 = 1 << (min_window - 1).bit_length()
-    if window_size < min_window_pow2:
-        logger.info(
-            f"Window size {window_size} too small for max disparity "
-            f"{max_disp_px:.0f} px — increasing to {min_window_pow2}"
-        )
-        window_size = min_window_pow2
+    # Use the user-supplied window size verbatim. If the search range
+    # (±window_size/2) is too small for the real disparity, the user
+    # can bump the window themselves.
+    logger.info(
+        f"Self-cal window size: {window_size} px "
+        f"(disparity sensitivity: {disp_px_per_mm:.1f} px/mm)"
+    )
 
     # Window grid
     wc = compute_window_centers(
@@ -756,6 +765,8 @@ def run_self_calibration(
     dx_after = None
     dy_after = None
     peak_q = None
+    corr_first_iter = None  # iteration 1 accumulated correlation planes
+    corr_last_iter = None   # most recent accumulated correlation planes
 
     for iteration in range(max_iterations):
         logger.info(f"Self-calibration iteration {iteration + 1}/{max_iterations}")
@@ -786,6 +797,12 @@ def run_self_calibration(
             win_ctrs_x, win_ctrs_y,
             n_win_x, n_win_y, window_size,
         )
+
+        # Capture correlation planes — first iteration is kept verbatim,
+        # last iteration is overwritten each loop until we exit
+        if iteration == 0:
+            corr_first_iter = corr_sum.copy()
+        corr_last_iter = corr_sum.copy()
 
         # Extract disparity field
         dx_raw, dy_raw, peak_q = extract_disparity_field(corr_sum, n_images)
@@ -878,6 +895,16 @@ def run_self_calibration(
                 grid_x_mm=grid_x_mm,
                 grid_y_mm=grid_y_mm,
                 peak_quality=peak_q,
+                corr_first_iter=corr_first_iter,
+                corr_last_iter=corr_last_iter,
+                win_ctrs_x=win_ctrs_x,
+                win_ctrs_y=win_ctrs_y,
+                n_win_x=n_win_x,
+                n_win_y=n_win_y,
+                window_size_used=window_size,
+                mm_per_pixel=mm_per_pixel,
+                disp_px_per_mm=float(disp_px_per_mm),
+                disp_direction=np.asarray(disp_direction, dtype=np.float64),
             )
 
     # Did not converge — do one final pass to get "after" disparity
@@ -903,6 +930,9 @@ def run_self_calibration(
         win_ctrs_x, win_ctrs_y,
         n_win_x, n_win_y, window_size,
     )
+    # The post-loop pass IS the most recent correlation we have at the
+    # final cumulative correction — overwrite corr_last_iter with it.
+    corr_last_iter = corr_sum.copy()
     dx_after, dy_after, _ = extract_disparity_field(corr_sum, n_images)
 
     final_rms = history[-1].rms_disparity if history else float("inf")
@@ -951,4 +981,14 @@ def run_self_calibration(
         grid_x_mm=grid_x_mm,
         grid_y_mm=grid_y_mm,
         peak_quality=peak_q,
+        corr_first_iter=corr_first_iter,
+        corr_last_iter=corr_last_iter,
+        win_ctrs_x=win_ctrs_x,
+        win_ctrs_y=win_ctrs_y,
+        n_win_x=n_win_x,
+        n_win_y=n_win_y,
+        window_size_used=window_size,
+        mm_per_pixel=mm_per_pixel,
+        disp_px_per_mm=float(disp_px_per_mm),
+        disp_direction=np.asarray(disp_direction, dtype=np.float64),
     )

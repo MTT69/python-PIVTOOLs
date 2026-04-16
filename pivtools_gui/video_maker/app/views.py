@@ -320,7 +320,7 @@ _cancel_events_lock = threading.Lock()
 
 @video_maker_bp.route("/list_videos", methods=["GET"])
 def list_videos():
-    """Optimized video listing with glob and caching."""
+    """List videos with metadata for rich browse experience."""
     try:
         base_path_str = request.args.get("base_path")
         cfg = get_config(refresh=True)
@@ -329,12 +329,12 @@ def list_videos():
 
         logger.info(f"[VIDEO] Listing videos under base path: {base}")
 
-        videos: List[str] = []
+        video_paths: List[Path] = []
 
         videos_dir = base / "videos"
         if videos_dir.exists():
             for ext in VIDEO_EXTENSIONS:
-                videos.extend([str(f) for f in videos_dir.glob(f"**/*{ext}")])
+                video_paths.extend(list(videos_dir.glob(f"**/*{ext}")))
 
         cam_dirs = [d for d in base.glob("**/Cam*") if d.is_dir()]
         for cam_dir in cam_dirs:
@@ -342,32 +342,74 @@ def list_videos():
                 video_dir = cam_dir / video_subdir
                 if video_dir.exists():
                     for ext in VIDEO_EXTENSIONS:
-                        videos.extend([str(f) for f in video_dir.glob(f"*{ext}")])
+                        video_paths.extend(list(video_dir.glob(f"*{ext}")))
 
-        if not videos:
+        if not video_paths:
 
-            def find_videos(directory: Path, current_depth: int = 0) -> List[str]:
+            def find_videos(directory: Path, current_depth: int = 0) -> List[Path]:
                 if current_depth > MAX_DEPTH:
                     return []
                 found = []
                 try:
                     for item in directory.iterdir():
                         if item.is_file() and item.suffix.lower() in VIDEO_EXTENSIONS:
-                            found.append(str(item))
+                            found.append(item)
                         elif item.is_dir():
                             found.extend(find_videos(item, current_depth + 1))
                 except (PermissionError, OSError):
                     pass
                 return found
 
-            videos = find_videos(base)
+            video_paths = find_videos(base)
 
-        videos.sort(
-            key=lambda x: os.path.getmtime(x) if os.path.exists(x) else 0, reverse=True
+        # Deduplicate by resolved path
+        seen = set()
+        unique_paths = []
+        for p in video_paths:
+            resolved = str(p.resolve())
+            if resolved not in seen:
+                seen.add(resolved)
+                unique_paths.append(p)
+
+        # Sort by modification time (newest first)
+        unique_paths.sort(
+            key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True
         )
 
-        logger.info(f"[VIDEO] Found {len(videos)} videos")
-        return jsonify({"videos": videos})
+        # Build metadata for each video
+        def _infer_data_source(p: Path) -> str:
+            """Infer data source from directory structure."""
+            parts_lower = [part.lower() for part in p.parts]
+            if "stereo" in parts_lower:
+                return "stereo"
+            if "merged" in parts_lower:
+                return "merged"
+            if "uncalibrated" in parts_lower:
+                return "uncalibrated"
+            if "stats" in parts_lower:
+                return "inst_stats"
+            return "calibrated"
+
+        videos_meta = []
+        for p in unique_paths:
+            try:
+                stat = p.stat()
+                videos_meta.append({
+                    "path": str(p),
+                    "filename": p.name,
+                    "size_mb": round(stat.st_size / (1024 * 1024), 2),
+                    "modified": stat.st_mtime,
+                    "data_source": _infer_data_source(p),
+                })
+            except OSError:
+                continue
+
+        logger.info(f"[VIDEO] Found {len(videos_meta)} videos")
+        # Return both formats for backward compat
+        return jsonify({
+            "videos": [v["path"] for v in videos_meta],
+            "videos_meta": videos_meta,
+        })
     except Exception as e:
         logger.exception(f"[VIDEO] Failed to list videos: {e}")
         return jsonify({"error": str(e), "videos": []}), 500
@@ -844,7 +886,9 @@ def start_video():
 
     # Resolution: request override or config
     resolution_str = data.get("resolution", cfg.video_resolution_str)
-    if resolution_str == "4k":
+    if resolution_str == "native":
+        resolution = None
+    elif resolution_str == "4k":
         resolution = (2160, 3840)
     else:
         resolution = cfg.video_resolution
@@ -1418,6 +1462,43 @@ def download_video():
     except Exception as e:
         logger.error(f"Error serving video file: {e}")
         return jsonify({"error": f"Error serving file: {str(e)}"}), 500
+
+
+@video_maker_bp.route("/delete_video", methods=["DELETE"])
+def delete_video():
+    """Delete a video file. Validates path is within allowed directories."""
+    try:
+        data = request.get_json(silent=True) or {}
+        video_path = data.get("path")
+        if not video_path:
+            return jsonify({"error": "No path specified"}), 400
+
+        abs_path = Path(video_path).resolve()
+        if not abs_path.is_file() or abs_path.suffix.lower() not in VIDEO_EXTENSIONS:
+            return jsonify({"error": "File not found or invalid type"}), 404
+
+        # Security: reuse same allowed-roots logic as download
+        cfg = get_config(refresh=True)
+        config_base_paths = [Path(bp).resolve() for bp in cfg.base_paths if Path(bp).exists()]
+        allowed_roots = [Path.home(), Path.cwd()]
+        allowed_roots.extend(config_base_paths)
+        if os.name == "nt":
+            allowed_roots.extend([Path("C:\\Users"), Path("C:\\temp"), Path("C:\\tmp")])
+
+        path_allowed = any(
+            allowed_root in abs_path.parents or abs_path == allowed_root
+            for allowed_root in allowed_roots
+        )
+        if not path_allowed:
+            logger.warning(f"Attempted delete of disallowed path: {abs_path}")
+            return jsonify({"error": "File not allowed"}), 403
+
+        abs_path.unlink()
+        logger.info(f"[VIDEO] Deleted video: {abs_path}")
+        return jsonify({"success": True, "deleted": str(abs_path)})
+    except Exception as e:
+        logger.error(f"Error deleting video: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @video_maker_bp.route("/check_runs", methods=["GET"])

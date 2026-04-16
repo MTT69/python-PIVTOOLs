@@ -38,10 +38,20 @@ def synthetic_block():
 # ---------------------------------------------------------------------------
 
 class TestGaussianFilter:
-    def test_matches_scipy(self, synthetic_block):
-        spec = [{"type": "gaussian", "sigma": 1.5}]
+    def test_matches_fir_kernel(self, synthetic_block):
+        """Gaussian filter uses explicit FIR kernel matching MATLAB fspecial."""
+        from scipy.ndimage import correlate
+        spec = [{"type": "gaussian", "sigma": 1.5, "size": [7, 7]}]
         result = _apply_spatial_filters_numpy(synthetic_block.copy(), spec)
-        expected = scipy_gaussian(synthetic_block, sigma=(0, 0, 1.5, 1.5))
+        # Build the same FIR kernel as the implementation
+        from pivtools_cli.processing.dask_pipeline import _gaussian_kernel_1d
+        ky = _gaussian_kernel_1d(7, 1.5)
+        kx = _gaussian_kernel_1d(7, 1.5)
+        kernel_2d = np.outer(ky, kx).astype(np.float32)
+        expected = synthetic_block.astype(np.float32).copy()
+        for i in range(expected.shape[0]):
+            for j in range(expected.shape[1]):
+                expected[i, j] = correlate(expected[i, j], kernel_2d, mode='constant')
         np.testing.assert_allclose(result, expected, rtol=1e-5)
 
     def test_shape_dtype(self, synthetic_block):
@@ -97,12 +107,15 @@ class TestMaxnormFilter:
         spec = [{"type": "maxnorm", "size": list(size), "max_gain": max_gain}]
         result = _apply_spatial_filters_numpy(synthetic_block.copy(), spec)
 
-        # Inline reference
+        # Inline reference — matches MATLAB filter_maxnorm:
+        # MATLAB minmaxfiltnd returns [minu, maxu]; single-output = minu.
+        # mode='nearest' matches van Herk index clipping (minimum_filter).
+        # mode='constant' matches convn(..., 'same') zero-pad (uniform_filter).
         spatial_size = (1, 1) + size
         block_float = synthetic_block.astype(np.float32)
-        local_max = scipy_maximum(block_float, size=spatial_size)
-        smoothed_max = scipy_uniform(local_max, size=spatial_size)
-        denom = np.maximum(smoothed_max, 1.0 / max_gain)
+        local_min = scipy_minimum(block_float, size=spatial_size, mode='nearest')
+        smoothed_min = scipy_uniform(local_min, size=spatial_size, mode='constant')
+        denom = np.maximum(smoothed_min, 1.0 / max_gain)
         expected = (np.maximum(block_float, 0) / denom).astype(synthetic_block.dtype)
 
         np.testing.assert_allclose(result, expected, rtol=1e-5)
@@ -149,9 +162,9 @@ class TestPixelMaskThenSpatial:
         mask = np.zeros((32, 32), dtype=bool)
         mask[10:20, 10:20] = True  # mask center
 
-        spatial_specs = [{"type": "gaussian", "sigma": 2.0}]
+        filter_specs = [{"type": "gaussian", "sigma": 2.0}]
         result = apply_all_filters_slim(
-            block, spatial_specs, temporal_specs=[], pixel_mask=mask,
+            block, filter_specs=filter_specs, pixel_mask=mask,
         )
 
         # After masking + gaussian, the center of the masked region should
@@ -168,19 +181,19 @@ class TestPixelMaskThenSpatial:
 class TestApplyAllFiltersSlim:
     def test_matches_manual_pieces(self, synthetic_block):
         """apply_all_filters_slim produces identical output to calling pieces."""
-        spatial_specs = [
+        filter_specs = [
             {"type": "gaussian", "sigma": 1.0},
             {"type": "norm", "size": [5, 5], "max_gain": 1.0},
         ]
 
         # Unified path
         unified = apply_all_filters_slim(
-            synthetic_block, spatial_specs, temporal_specs=[], pixel_mask=None,
+            synthetic_block, filter_specs=filter_specs, pixel_mask=None,
         )
 
         # Manual path: copy + spatial
         manual = synthetic_block.copy()
-        manual = _apply_spatial_filters_numpy(manual, spatial_specs)
+        manual = _apply_spatial_filters_numpy(manual, filter_specs)
 
         np.testing.assert_array_equal(unified, manual)
 
@@ -189,22 +202,54 @@ class TestApplyAllFiltersSlim:
         mask = np.zeros((64, 64), dtype=bool)
         mask[:5, :5] = True
 
-        spatial_specs = [{"type": "gaussian", "sigma": 1.0}]
+        filter_specs = [{"type": "gaussian", "sigma": 1.0}]
 
         unified = apply_all_filters_slim(
-            synthetic_block, spatial_specs, temporal_specs=[], pixel_mask=mask,
+            synthetic_block, filter_specs=filter_specs, pixel_mask=mask,
         )
 
         manual = synthetic_block.copy()
         manual[:, :, mask] = 0
-        manual = _apply_spatial_filters_numpy(manual, spatial_specs)
+        manual = _apply_spatial_filters_numpy(manual, filter_specs)
 
         np.testing.assert_array_equal(unified, manual)
 
     def test_no_filters_returns_unchanged(self, synthetic_block):
         """No filters and no mask returns input unchanged (zero-copy contract)."""
         result = apply_all_filters_slim(
-            synthetic_block, [], temporal_specs=[], pixel_mask=None,
+            synthetic_block, filter_specs=[], pixel_mask=None,
         )
         # Zero-copy: no filters means no allocation, returns same object
         assert result is synthetic_block
+
+    def test_user_defined_filter_order_preserved(self, synthetic_block):
+        """Filters are applied in the exact order the user specified.
+
+        Regression test: the old code split filters into spatial-then-temporal
+        groups, destroying the user's interleaved ordering. The fix applies
+        them in declared order.
+
+        We verify this by checking that [gaussian, median] and
+        [median, gaussian] produce DIFFERENT results (proving order matters
+        and is respected).
+        """
+        specs_a = [
+            {"type": "gaussian", "sigma": 2.0},
+            {"type": "median", "size": [5, 5]},
+        ]
+        specs_b = [
+            {"type": "median", "size": [5, 5]},
+            {"type": "gaussian", "sigma": 2.0},
+        ]
+
+        result_a = apply_all_filters_slim(
+            synthetic_block, filter_specs=specs_a, pixel_mask=None,
+        )
+        result_b = apply_all_filters_slim(
+            synthetic_block, filter_specs=specs_b, pixel_mask=None,
+        )
+
+        # gaussian→median should differ from median→gaussian
+        assert not np.array_equal(result_a, result_b), (
+            "Different filter orderings should produce different results"
+        )

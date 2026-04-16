@@ -70,7 +70,7 @@ class PlotSettings:
 
     # Quality knobs - optimized for sharp, production-quality output
     use_ffmpeg: bool = True  # only ffmpeg supported
-    crf: int = 8  # Maximum quality (lower = higher quality, range 0-51)
+    crf: int = 15  # High quality default (lower = higher quality, range 0-51)
     codec: str = "libx264"  # ensure H.264 by default
     pix_fmt: str = "yuv420p"  # 4:2:0 for maximum compatibility (macOS, Windows, browsers)
     preset: str = "veryslow"  # Maximum quality encoding (slower but better compression)
@@ -223,22 +223,33 @@ def _select_variable_from_arrs(
     if isinstance(arrs, np.ndarray):
         try:
             if arrs.ndim == 4:
-                # Common layout: (R, N, H, W) with N>=3 (ux=0, uy=1, b_mask=2), R is runs
-                # Validate run_index
+                # Layout: (R, C, H, W) where C=3 (ux,uy,b_mask) or C=4 (ux,uy,uz,b_mask)
+                # b_mask is ALWAYS the last channel
                 if not (0 <= run_index < arrs.shape[0]):
                     logger.warning(f"run_index {run_index} out of bounds for {filepath}, using 0")
                     run_index = 0
+                C = arrs.shape[1]
+                mask_idx = C - 1  # b_mask is always last channel
                 var_idx = None
                 if isinstance(var, str):
                     if var == "ux":
                         var_idx = 0
                     elif var == "uy":
                         var_idx = 1
-                    elif var == "mag":  # Calculate magnitude for vector field
+                    elif var == "uz":
+                        if C >= 4:
+                            var_idx = 2
+                        else:
+                            raise ValueError(f"uz not available for 2D data (C={C}) in {filepath}")
+                    elif var == "mag":
                         ux = arrs[run_index, 0]
                         uy = arrs[run_index, 1]
-                        arr = np.sqrt(ux**2 + uy**2)
-                        b_mask = arrs[run_index, 2] if arrs.shape[1] > 2 else None
+                        if C >= 4:
+                            uz = arrs[run_index, 2]
+                            arr = np.sqrt(ux**2 + uy**2 + uz**2)
+                        else:
+                            arr = np.sqrt(ux**2 + uy**2)
+                        b_mask = arrs[run_index, mask_idx] if C > 2 else None
                         return arr, (b_mask if b_mask is not None else None)
                     else:
                         # allow numeric string like "0"/"1"
@@ -249,28 +260,38 @@ def _select_variable_from_arrs(
                 elif isinstance(var, int):
                     var_idx = var
 
-                if var_idx is not None and 0 <= var_idx < arrs.shape[1]:
+                if var_idx is not None and 0 <= var_idx < C:
                     arr = arrs[run_index, var_idx]
-                    b_mask = arrs[run_index, 2] if arrs.shape[1] > 2 else None
+                    b_mask = arrs[run_index, mask_idx] if C > 2 else None
                     if arr.ndim != 2:
                         raise ValueError(f"Expected 2D array for {var} in {filepath} (run_index {run_index}), but got {arr.ndim}D with shape {arr.shape}. The MAT file may contain 1D data for this run; try a different run (e.g., run=1).")
                     return arr, (b_mask if b_mask is not None else None)
             elif arrs.ndim == 3:
-                # Layout: (N, H, W) with N>=3 (ux=0, uy=1, b_mask=2) - single run already selected
+                # Layout: (C, H, W) where C=3 (ux,uy,b_mask) or C=4 (ux,uy,uz,b_mask)
+                C = arrs.shape[0]
+                mask_idx = C - 1  # b_mask is always last channel
                 var_idx = None
                 if isinstance(var, str):
                     if var == "ux":
                         var_idx = 0
                     elif var == "uy":
                         var_idx = 1
-                    elif var == "mag":  # Calculate magnitude for vector field
+                    elif var == "uz":
+                        if C >= 4:
+                            var_idx = 2
+                        else:
+                            raise ValueError(f"uz not available for 2D data (C={C}) in {filepath}")
+                    elif var == "mag":
                         ux = arrs[0]
                         uy = arrs[1]
-                        arr = np.sqrt(ux**2 + uy**2)
-                        b_mask = arrs[2] if arrs.shape[0] > 2 else None
+                        if C >= 4:
+                            uz = arrs[2]
+                            arr = np.sqrt(ux**2 + uy**2 + uz**2)
+                        else:
+                            arr = np.sqrt(ux**2 + uy**2)
+                        b_mask = arrs[mask_idx] if C > 2 else None
                         return arr, (b_mask if b_mask is not None else None)
                     else:
-                        # allow numeric string like "0"/"1"
                         try:
                             var_idx = int(var)
                         except Exception:
@@ -278,20 +299,18 @@ def _select_variable_from_arrs(
                 elif isinstance(var, int):
                     var_idx = var
 
-                if var_idx is not None and 0 <= var_idx < arrs.shape[0]:
+                if var_idx is not None and 0 <= var_idx < C:
                     arr = arrs[var_idx]
-                    b_mask = arrs[2] if arrs.shape[0] > 2 else None
+                    b_mask = arrs[mask_idx] if C > 2 else None
                     if arr.ndim != 2:
                         raise ValueError(f"Expected 2D array for {var} in {filepath} (3D case), but got {arr.ndim}D with shape {arr.shape}. The MAT file may contain 1D data.")
                     return arr, (b_mask if b_mask is not None else None)
                 else:
-                    # If var_idx is invalid, default to first component (ux) for 3D arrays
                     logger.warning(f"Invalid variable '{var}' for 3D array in {filepath}, defaulting to index 0 (ux)")
                     arr = arrs[0]
-                    b_mask = arrs[2] if arrs.shape[0] > 2 else None
+                    b_mask = arrs[mask_idx] if C > 2 else None
                     if arr.ndim != 2:
                         raise ValueError(f"Expected 2D array for default variable (index 0) in {filepath} (3D case), but got {arr.ndim}D with shape {arr.shape}.")
-                    # logger.debug(f"Returning default arr from 3D: arr.shape={arr.shape}, b_mask.shape={getattr(b_mask, 'shape', 'N/A')}")
                     return arr, (b_mask if b_mask is not None else None)
 
             # fallback: flatten first item (for non-3D/4D or invalid var_idx)
@@ -367,7 +386,11 @@ def _select_variable_from_arrs(
         if var == "mag" and "ux" in mat and "uy" in mat:
             ux = np.asarray(mat["ux"])
             uy = np.asarray(mat["uy"])
-            arr = np.sqrt(ux**2 + uy**2)
+            if "uz" in mat:
+                uz = np.asarray(mat["uz"])
+                arr = np.sqrt(ux**2 + uy**2 + uz**2)
+            else:
+                arr = np.sqrt(ux**2 + uy**2)
             b_mask = None
             for key in ("b_mask", "bmask", "mask", "valid_mask"):
                 if key in mat:
@@ -381,18 +404,20 @@ def _select_variable_from_arrs(
     # If arrs is dict-like, try to pull key directly
     try:
         if hasattr(arrs, "get") and not isinstance(arrs, np.ndarray):
-            # Only proceed if it's actually dict-like and not a numpy array
             if var in arrs:
                 arr = np.asarray(arrs[var])
                 b_mask = arrs.get("b_mask", arrs.get("mask", None))
- 
+
                 return arr, (np.asarray(b_mask) if b_mask is not None else None)
 
-            # Try to calculate magnitude if requested
             if var == "mag" and "ux" in arrs and "uy" in arrs:
                 ux = np.asarray(arrs["ux"])
                 uy = np.asarray(arrs["uy"])
-                arr = np.sqrt(ux**2 + uy**2)
+                if "uz" in arrs:
+                    uz = np.asarray(arrs["uz"])
+                    arr = np.sqrt(ux**2 + uy**2 + uz**2)
+                else:
+                    arr = np.sqrt(ux**2 + uy**2)
                 b_mask = arrs.get("b_mask", arrs.get("mask", None))
 
                 return arr, (np.asarray(b_mask) if b_mask is not None else None)
@@ -423,9 +448,13 @@ def _compute_global_limits_from_files(
         try:
             arrs = read_mat_contents(str(f), run_index=run_index)
             arr, b_mask = _select_variable_from_arrs(arrs, str(f), var, 0)  # Run already selected by read_mat_contents
-            masked = np.ma.array(
-                arr, mask=b_mask.astype(bool) if b_mask is not None else None
-            )
+            # Combine b_mask and NaN into a single mask
+            nan_mask = np.isnan(arr)
+            if b_mask is not None:
+                combined_mask = b_mask.astype(bool) | nan_mask
+            else:
+                combined_mask = nan_mask
+            masked = np.ma.array(arr, mask=combined_mask)
             return masked.compressed() if masked.count() > 0 else None
         except Exception:
             return None
@@ -749,6 +778,20 @@ def make_video_from_scalar(
 
     Hout, Wout = _resolve_upscale(H, W, settings.upscale)
 
+    # Minimum dimension guard: yuv420p chroma subsampling causes visible
+    # color bleed on tiny grids. Auto-upscale to at least 480px height.
+    MIN_DIM = 480
+    if Hout < MIN_DIM:
+        scale = MIN_DIM / Hout
+        Hout = MIN_DIM
+        Wout = int(round(W * scale))
+        # Ensure even dimensions for yuv420p
+        if Hout % 2:
+            Hout += 1
+        if Wout % 2:
+            Wout += 1
+        logger.info(f"Auto-upscaled from {H}x{W} to {Hout}x{Wout} (min dimension guard)")
+
     try:
         writer = FFmpegVideoWriter(
             settings.out_path,
@@ -776,6 +819,14 @@ def make_video_from_scalar(
             try:
                 arrs = read_mat_contents(str(f), run_index=run_index)
                 field, b_mask = _select_variable_from_arrs(arrs, str(f), var, 0)  # Run already selected by read_mat_contents
+                # Merge NaN pixels into mask (prevents NaN->0->blue in LUT)
+                nan_mask = np.isnan(field)
+                if np.any(nan_mask):
+                    field = np.where(nan_mask, 0.0, field)  # Replace NaN before LUT indexing
+                    if b_mask is not None:
+                        b_mask = b_mask.astype(bool) | nan_mask
+                    else:
+                        b_mask = nan_mask
                 field_indices = _to_uint16_var(field, vmin, vmax)
                 rgb = lut[field_indices]
                 if Hout != H or Wout != W:
@@ -790,7 +841,7 @@ def make_video_from_scalar(
                         else None
                     )
                 if b_mask is not None:
-                    rgb[b_mask] = settings.mask_rgb
+                    rgb[b_mask.astype(bool)] = settings.mask_rgb
                 writer.write(rgb)
                 if settings.progress_callback:
                     settings.progress_callback(i + j + 1, total_frames)
@@ -1042,8 +1093,22 @@ class VideoMaker:
 
             # Determine output filename
             if out_name is None:
+                # Camera string: stereo pair or single camera
+                if data_source == "stereo" and self._config and self._config.stereo_pairs:
+                    cam_pair = self._config.stereo_pairs[0]
+                    cam_str = f"Cam{cam_pair[0]}_Cam{cam_pair[1]}"
+                else:
+                    cam_str = f"Cam{self.camera}"
+                # Colormap
+                cmap_str = cmap if cmap and cmap != "default" else "bwr"
+                # Limits
+                if lower_limit is not None and upper_limit is not None:
+                    limits_str = f"{lower_limit:.2f}to{upper_limit:.2f}"
+                else:
+                    limits_str = "auto"
                 source_suffix = f"_{data_source}" if data_source != "calibrated" else ""
-                out_name = f"run{run}_Cam{self.camera}_{variable}{source_suffix}{'_test' if test_mode else ''}.mp4"
+                test_suffix = "_test" if test_mode else ""
+                out_name = f"run{run}_{cam_str}_{variable}_{cmap_str}_{limits_str}{source_suffix}{test_suffix}.mp4"
 
             out_path = str(video_dir / out_name)
 

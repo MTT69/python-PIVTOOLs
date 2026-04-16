@@ -30,7 +30,7 @@ from pivtools_gui.stereo_reconstruction.stereo_dotboard_calibration_production i
 from pivtools_gui.stereo_reconstruction.stereo_reconstruction_production import StereoReconstructor
 from pivtools_gui.calibration.services.job_manager import job_manager
 from pivtools_gui.calibration.app.shared_views import set_active_calibration_method
-from pivtools_gui.utils import camera_number, numpy_to_base64
+from pivtools_gui.utils import camera_number, numpy_to_base64, get_display_contrast_stats
 
 stereo_dotboard_bp = Blueprint("stereo_dotboard", __name__)
 
@@ -148,28 +148,15 @@ def stereo_dotboard_frame(idx: int):
         if img is None:
             return jsonify({"error": f"Could not read frame {idx} for camera {camera}"}), 404
 
-        # Calculate stats - vmin/vmax as percentages (0-100) of the data range
-        img_min = float(img.min())
-        img_max = float(img.max())
-        data_range = img_max - img_min
-        p1 = float(np.percentile(img, 1))
-        p99 = float(np.percentile(img, 99))
-        if data_range > 0:
-            vmin_pct = 100.0 * (p1 - img_min) / data_range
-            vmax_pct = 100.0 * (p99 - img_min) / data_range
-        else:
-            vmin_pct = 0.0
-            vmax_pct = 100.0
+        # numpy_to_base64 handles sqrt + percentile clipping internally
+        contrast = get_display_contrast_stats(img)
         stats = {
-            "min": img_min,
-            "max": img_max,
+            "min": float(img.min()),
+            "max": float(img.max()),
             "mean": float(img.mean()),
-            "vmin_pct": vmin_pct,
-            "vmax_pct": vmax_pct,
+            "vmin_pct": contrast["vmin_pct"],
+            "vmax_pct": contrast["vmax_pct"],
         }
-
-        # Encode to base64 using shared utility (min-max normalization for
-        # non-uint8, as-is for uint8).  Matches app.py so frontend vmin/vmax works.
         b64 = numpy_to_base64(img)
 
         return jsonify({

@@ -1,7 +1,7 @@
 """
 Polynomial Calibration Views.
 
-Clean API for polynomial (DaVis XML) calibration:
+Clean API for polynomial calibration (fitted model + DaVis XML import):
 - /calibration/polynomial/validate_xml - Validate Calibration.xml exists
 - /calibration/polynomial/read_xml - Read and parse XML coefficients
 - /calibration/polynomial/load_xml_to_config - Load XML data into config.yaml

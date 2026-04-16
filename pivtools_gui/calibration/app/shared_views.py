@@ -27,7 +27,7 @@ from pivtools_core.image_handling.calibration_loader import (
 from pivtools_core.coordinate_utils import extract_coordinates
 from pivtools_gui.calibration.vector_calibration_production import VectorCalibrator
 from pivtools_gui.calibration.services.job_manager import job_manager
-from pivtools_gui.utils import camera_number, numpy_to_png_base64, numpy_to_base64
+from pivtools_gui.utils import camera_number, numpy_to_png_base64, numpy_to_base64, get_display_contrast_stats
 
 calibration_shared_bp = Blueprint("calibration_shared", __name__)
 
@@ -290,46 +290,20 @@ def calibration_get_frame():
         if img is None:
             return jsonify({"error": "Could not read calibration image"}), 500
 
-        # Calculate statistics (use float32 to halve memory vs float64)
+        # Calculate basic statistics on raw data for display
         img_float = img.astype(np.float32)
-        img_min = float(img_float.min())
-        img_max = float(img_float.max())
-        data_range = img_max - img_min
-
         stats = {
-            "min": img_min,
-            "max": img_max,
+            "min": float(img_float.min()),
+            "max": float(img_float.max()),
             "mean": float(img_float.mean()),
             "dtype": str(img.dtype),
         }
 
-        # Calculate vmin/vmax as percentages (0-100) of the data range
-        # This matches the logic in app.py get_percentile_stats()
-        # For large images (>4MP), subsample for percentile computation
-        total_pixels = img_float.size
-        if total_pixels > 4_000_000:
-            # Stride-sample: take every Nth pixel for fast percentile
-            stride = max(2, int(np.sqrt(total_pixels / 1_000_000)))
-            img_sampled = img_float[::stride, ::stride].ravel()
-        else:
-            img_sampled = img_float.ravel()
+        # Tighter auto-scale window within the sqrt-normalised encoding
+        contrast = get_display_contrast_stats(img)
+        stats["vmin_pct"] = contrast["vmin_pct"]
+        stats["vmax_pct"] = contrast["vmax_pct"]
 
-        p1 = float(np.percentile(img_sampled, 1))
-        p99 = float(np.percentile(img_sampled, 99))
-
-        if data_range > 0:
-            vmin_pct = 100.0 * (p1 - img_min) / data_range
-            vmax_pct = 100.0 * (p99 - img_min) / data_range
-        else:
-            vmin_pct = 0.0
-            vmax_pct = 100.0
-
-        stats["vmin_pct"] = round(vmin_pct, 2)
-        stats["vmax_pct"] = round(vmax_pct, 2)
-
-        # Encode to base64 using shared utility (min-max normalization for
-        # non-uint8, as-is for uint8).  This matches app.py get_frame_pair
-        # so the frontend vmin/vmax contrast controls work correctly.
         b64_image = numpy_to_base64(img, format=output_format, jpeg_quality=quality)
         mime_type = f"image/{output_format}"
 

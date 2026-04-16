@@ -759,8 +759,8 @@ class BaseStereoCalibrator(ABC):
                         figures_dir / f"detection_cam{cam2_val}_{frame_idx:03d}.png",
                         title=f"Cam{cam2_val} {filename}",
                     )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Stereo detection figure failed for frame {frame_idx}: {e}")
 
             logger.info(f"Successfully processed pair {filename}")
 
@@ -818,23 +818,6 @@ class BaseStereoCalibrator(ABC):
         if sc_path.exists():
             sc_path.unlink()
             logger.info("Cleared stale self-calibration file")
-
-        # Generate camera placement figure (never blocks calibration)
-        try:
-            from pivtools_gui.calibration.calibration_figures import make_camera_placement_figure
-            figures_dir = output_dir / "figures"
-            figures_dir.mkdir(parents=True, exist_ok=True)
-            rvecs_1 = calibration_result['rvecs_1']
-            tvecs_1 = calibration_result['tvecs_1']
-            rvecs_2 = calibration_result['rvecs_2']
-            tvecs_2 = calibration_result['tvecs_2']
-            cam_data_list = [
-                {'label': f'Cam {cam1_val}', 'rvec': rvecs_1[0], 'tvec': tvecs_1[0], 'color': 'blue'},
-                {'label': f'Cam {cam2_val}', 'rvec': rvecs_2[0], 'tvec': tvecs_2[0], 'color': 'red'},
-            ]
-            make_camera_placement_figure(cam_data_list, figures_dir / "camera_placement.png")
-        except Exception:
-            pass
 
         # Report completion
         if progress_callback:

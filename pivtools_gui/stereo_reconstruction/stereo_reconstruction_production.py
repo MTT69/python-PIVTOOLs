@@ -982,8 +982,8 @@ class StereoReconstructor:
                             "successful_frames": successful,
                             "failed_frames": failed,
                         })
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Progress callback error: {e}")
 
         logger.info(f"Processing complete: {successful} successful, {failed} failed")
 

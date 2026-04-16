@@ -784,6 +784,490 @@ def detect_stereo_charuco_command(args):
 
 
 # =============================================================================
+# DETECT-STEPPED-STEREO COMMAND (Stereo pinhole from a stepped board sequence)
+# =============================================================================
+
+def _load_fiducials_json(path: str) -> dict:
+    """Read a fiducials JSON file and return the parsed dict.
+
+    Schema:
+      {
+        "1": {"origin": [x, y], "x_axis": [x, y], "y_axis": [x, y],
+              "clicked_level": "peak" | "trough"},
+        "2": {...}
+      }
+
+    Top-level keys are camera numbers as strings (matches the
+    convention used inside `detections_per_pose`). Per-camera dict
+    has the three fiducial pixel pairs plus the clicked level. Pixel
+    coordinates may be rough — they will be snapped to the nearest
+    detected blob via `SteppedCalibrator.snap_to_nearest`.
+    """
+    import json
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"Fiducials JSON not found: {p}")
+    raw = json.loads(p.read_text())
+    if not isinstance(raw, dict):
+        raise ValueError(f"Fiducials JSON must be an object, got {type(raw).__name__}")
+    return raw
+
+
+def _validate_fiducials_for_camera(fids: dict, cam_label: str) -> dict:
+    """Validate one camera's fiducials block. Returns the same dict
+    on success, raises ValueError on missing keys."""
+    required = ("origin", "x_axis", "y_axis", "clicked_level")
+    missing = [k for k in required if k not in fids or fids[k] is None]
+    if missing:
+        raise ValueError(
+            f"Fiducials for {cam_label} missing required field(s): "
+            f"{', '.join(missing)}"
+        )
+    for k in ("origin", "x_axis", "y_axis"):
+        v = fids[k]
+        if not (isinstance(v, (list, tuple)) and len(v) == 2):
+            raise ValueError(
+                f"Fiducials for {cam_label}.{k} must be a [x, y] pair, got {v!r}"
+            )
+    if fids["clicked_level"] not in ("peak", "trough"):
+        raise ValueError(
+            f"Fiducials for {cam_label}.clicked_level must be "
+            f"'peak' or 'trough', got {fids['clicked_level']!r}"
+        )
+    return fids
+
+
+def _snap_and_warn(calibrator, datum_det, raw_fids: dict, cam_label: str) -> dict:
+    """Snap each fiducial click to the nearest detected blob and
+    print a warning if the snap distance is large (rough JSON click).
+
+    Returns a dict in the shape `generate_model` expects:
+      {origin: [x, y], x_axis: [x, y], y_axis: [x, y]}
+    The clicked_level is consumed separately by the caller.
+    """
+    spacing_px = None
+    lv_A = datum_det.get("_level_A_full")
+    lv_B = datum_det.get("_level_B_full")
+    for lv in (lv_A, lv_B):
+        if lv is not None and "spacing_px" in lv:
+            spacing_px = float(lv["spacing_px"])
+            break
+    snapped = {}
+    for key in ("origin", "x_axis", "y_axis"):
+        click = tuple(raw_fids[key])
+        snap = calibrator.snap_to_nearest(click, datum_det)
+        snapped[key] = [snap["snapped_x"], snap["snapped_y"]]
+        snap_dist = snap["snap_dist"]
+        if spacing_px is not None and snap_dist > 0.5 * spacing_px:
+            print(
+                f"  WARN: {cam_label}.{key} snap distance {snap_dist:.1f}px "
+                f"exceeds 0.5×spacing ({0.5 * spacing_px:.1f}px) — JSON "
+                f"click may be far from any detected blob."
+            )
+        else:
+            print(f"  {cam_label}.{key}: click->snap dist {snap_dist:.2f}px")
+    return snapped
+
+
+def _maybe_load_config_file(args):
+    """If --config-file is provided, install a Config built from that
+    path as the module global so subsequent get_config() returns it."""
+    if not getattr(args, "config_file", None):
+        return
+    from pivtools_core.config import Config
+    import pivtools_core.config as _cfg_mod
+    _cfg_mod._CONFIG = Config(path=args.config_file)
+    print(f"Loaded config from: {args.config_file}")
+
+
+def detect_stepped_stereo_command(args):
+    """Detect a stepped board across a multi-pose sequence and generate
+    a stereo camera model from a fiducials JSON file (no GUI required)."""
+    _maybe_load_config_file(args)
+    from pivtools_core.config import get_config
+    from pivtools_gui.calibration.calibration_stepped.stepped_calibration_production import (
+        SteppedCalibrator,
+    )
+
+    config = get_config()
+
+    if args.calibration_source:
+        config.data.setdefault("calibration", {})["calibration_sources"] = [args.calibration_source]
+        print(f"Using calibration source override: {args.calibration_source}")
+
+    active_paths = get_active_paths_from_args(args, config)
+    if not active_paths:
+        print("Error: No active paths configured in config.yaml")
+        sys.exit(1)
+
+    fids_raw = _load_fiducials_json(args.fiducials)
+
+    print("=" * 60)
+    print("Stepped Board Stereo Calibration (CLI) - Starting")
+    print("=" * 60)
+    print(f"Active paths: {len(active_paths)}")
+    print(f"Fiducials: {args.fiducials}")
+    print(f"Stereo config: {args.stereo_config}")
+
+    stepped_cfg = config.data.get("calibration", {}).get("stepped_board", {}) \
+        or config.data.get("calibration", {}).get("stepped_board_calibration", {})
+    camera_pair = stepped_cfg.get("camera_pair", [1, 2])
+    print(f"Camera pair: {camera_pair}")
+    cam1, cam2 = int(camera_pair[0]), int(camera_pair[1])
+
+    # Per-camera fiducials lookup using string keys (matches detections shape)
+    try:
+        fids1 = _validate_fiducials_for_camera(fids_raw[str(cam1)], f"cam{cam1}")
+        fids2 = _validate_fiducials_for_camera(fids_raw[str(cam2)], f"cam{cam2}")
+    except KeyError as e:
+        print(f"Error: fiducials JSON missing camera {e} block")
+        sys.exit(1)
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+    results = []
+    for path_idx in active_paths:
+        source_dir = config.source_paths[path_idx]
+        base_dir = config.base_paths[path_idx]
+        print(f"\nPath {path_idx + 1}/{len(active_paths)}:")
+        print(f"  Source: {source_dir}")
+        print(f"  Base: {base_dir}")
+        print("-" * 40)
+
+        try:
+            calibrator = SteppedCalibrator(
+                config=config,
+                source_path_idx=path_idx,
+                base_path_idx=path_idx,
+                camera_pair=[cam1, cam2],
+            )
+
+            # Resolve frame indices. Defaults: 1-based start_frame=1 to
+            # cover the lavision/cine convention; if the dataset uses
+            # 0-based file naming the user passes --start-frame 0.
+            start_frame = args.start_frame
+            num_frames = args.num_frames
+            if num_frames is None:
+                num_frames = stepped_cfg.get("num_frames", 11)
+            datum_frame = args.datum_frame if args.datum_frame is not None else start_frame
+
+            frame_indices = list(range(start_frame, start_frame + num_frames))
+            if datum_frame not in frame_indices:
+                print(
+                    f"  Error: datum_frame {datum_frame} not in frame range "
+                    f"[{start_frame}, {start_frame + num_frames - 1}]"
+                )
+                sys.exit(1)
+            datum_pose_index = frame_indices.index(datum_frame)
+            print(f"  Frames: {frame_indices} (datum at pose index {datum_pose_index})")
+
+            # Detect every pose for both cameras
+            print(f"  Detecting {num_frames} poses × 2 cameras...")
+            detections_per_pose = []
+            for pose_idx, frame_idx in enumerate(frame_indices):
+                pose_entry = {}
+                for cam_num in (cam1, cam2):
+                    det = calibrator.detect_single_camera(cam_num, frame_idx)
+                    pose_entry[str(cam_num)] = det
+                detections_per_pose.append(pose_entry)
+                lvA1 = detections_per_pose[-1][str(cam1)]['level_A']['n_points']
+                lvB1 = detections_per_pose[-1][str(cam1)]['level_B']['n_points']
+                lvA2 = detections_per_pose[-1][str(cam2)]['level_A']['n_points']
+                lvB2 = detections_per_pose[-1][str(cam2)]['level_B']['n_points']
+                print(
+                    f"    pose {pose_idx} (frame {frame_idx}): "
+                    f"cam{cam1} A/B={lvA1}/{lvB1} dots, "
+                    f"cam{cam2} A/B={lvA2}/{lvB2} dots"
+                )
+
+            # Snap fiducial clicks against the datum pose detection
+            print(f"  Snapping fiducials against datum pose...")
+            datum_pose = detections_per_pose[datum_pose_index]
+            snapped1 = _snap_and_warn(
+                calibrator, datum_pose[str(cam1)], fids1, f"cam{cam1}",
+            )
+            snapped2 = _snap_and_warn(
+                calibrator, datum_pose[str(cam2)], fids2, f"cam{cam2}",
+            )
+
+            fiducials = {
+                str(cam1): snapped1,
+                str(cam2): snapped2,
+            }
+            # Per-pose peak/trough labels: required by the backend since
+            # the auto-detect was removed. Read from config.yaml under
+            # stepped_board.cam{1,2}_pose_levels — dict keyed by frame_idx.
+            cam1_pose_levels_raw = stepped_cfg.get("cam1_pose_levels")
+            cam2_pose_levels_raw = stepped_cfg.get("cam2_pose_levels")
+            if cam1_pose_levels_raw is None or cam2_pose_levels_raw is None:
+                print(
+                    "  Error: config.yaml must contain "
+                    "calibration.stepped_board.cam1_pose_levels and "
+                    "cam2_pose_levels (dict of frame_idx → 'peak'/'trough'). "
+                    "Populate via the GUI or edit config.yaml by hand."
+                )
+                sys.exit(1)
+            try:
+                cam1_pose_levels = {int(k): str(v) for k, v in cam1_pose_levels_raw.items()}
+                cam2_pose_levels = {int(k): str(v) for k, v in cam2_pose_levels_raw.items()}
+            except (TypeError, ValueError) as exc:
+                print(f"  Error: cam*_pose_levels has non-integer keys: {exc}")
+                sys.exit(1)
+            missing1 = [f for f in frame_indices if f not in cam1_pose_levels]
+            missing2 = [f for f in frame_indices if f not in cam2_pose_levels]
+            if missing1 or missing2:
+                print(
+                    f"  Error: cam1_pose_levels missing frames {missing1}, "
+                    f"cam2_pose_levels missing frames {missing2}. Every frame "
+                    f"in {frame_indices} needs an explicit 'peak' or 'trough' "
+                    f"label — no auto-detect fallback."
+                )
+                sys.exit(1)
+
+            params = {
+                "stereo_config": args.stereo_config,
+                "cam1_clicked_level": fids1["clicked_level"],
+                "cam2_clicked_level": fids2["clicked_level"],
+                "cam1_pose_levels": cam1_pose_levels,
+                "cam2_pose_levels": cam2_pose_levels,
+                "frame_indices": frame_indices,
+            }
+            print(
+                f"  Click levels: cam{cam1}={fids1['clicked_level']}, "
+                f"cam{cam2}={fids2['clicked_level']}"
+            )
+            print(
+                f"  Per-pose labels: cam{cam1}={cam1_pose_levels}, "
+                f"cam{cam2}={cam2_pose_levels}"
+            )
+
+            print(f"  Fitting...")
+            result = calibrator.generate_model(
+                detections_per_pose, fiducials, params,
+                datum_pose_index=datum_pose_index,
+            )
+            result["path_idx"] = path_idx
+            results.append(result)
+
+            if result.get("success"):
+                d1 = result["cam1_details"]
+                d2 = result["cam2_details"]
+                print(f"\n  Camera {cam1}: RMS={result['cam1_rms']:.4f}px, "
+                      f"fx={d1['focal_length'][0]:.1f}, fy={d1['focal_length'][1]:.1f}, "
+                      f"cx={d1['principal_point'][0]:.1f}, cy={d1['principal_point'][1]:.1f}")
+                print(f"  Camera {cam2}: RMS={result['cam2_rms']:.4f}px, "
+                      f"fx={d2['focal_length'][0]:.1f}, fy={d2['focal_length'][1]:.1f}, "
+                      f"cx={d2['principal_point'][0]:.1f}, cy={d2['principal_point'][1]:.1f}")
+                print(f"  Stereo: config={result['stereo_config_resolved']}, "
+                      f"angle={result['relative_angle_deg']:.2f}°, "
+                      f"baseline={result['baseline_mm']:.2f}mm")
+                if result.get("warnings"):
+                    print()
+                    for w in result["warnings"]:
+                        print(f"  WARNING: {w}")
+            else:
+                print(f"  FAILED - {result.get('error', 'Unknown')}")
+
+        except Exception as e:
+            print(f"  FAILED - {e}")
+            import traceback
+            traceback.print_exc()
+            results.append({"success": False, "error": str(e), "path_idx": path_idx})
+
+    print("\n" + "=" * 60)
+    print("SUMMARY")
+    print("=" * 60)
+    success_count = sum(1 for r in results if r.get("success"))
+    print(f"Total: {success_count}/{len(results)} stereo calibrations succeeded")
+    sys.exit(0 if success_count == len(results) else 1)
+
+
+# =============================================================================
+# DETECT-STEPPED-PLANAR COMMAND (Per-camera 3D pinhole from a stepped board)
+# =============================================================================
+
+def detect_stepped_planar_command(args):
+    """Detect a stepped board and fit a per-camera 3D pinhole model
+    (uses BOTH Z levels for non-coplanar calibration). Runs each
+    requested camera independently — no stereo composition."""
+    _maybe_load_config_file(args)
+    from pivtools_core.config import get_config
+    from pivtools_gui.calibration.calibration_stepped.stepped_planar_calibrator import (
+        SteppedPlanarCalibrator,
+    )
+
+    config = get_config()
+
+    if args.calibration_source:
+        config.data.setdefault("calibration", {})["calibration_sources"] = [args.calibration_source]
+        print(f"Using calibration source override: {args.calibration_source}")
+
+    active_paths = get_active_paths_from_args(args, config)
+    if not active_paths:
+        print("Error: No active paths configured in config.yaml")
+        sys.exit(1)
+
+    fids_raw = _load_fiducials_json(args.fiducials)
+
+    # Resolve which cameras to run. Default: every camera key in the
+    # fiducials JSON. Single-camera shortcut via --camera N.
+    if args.camera is not None:
+        cameras = [int(args.camera)]
+    else:
+        cameras = sorted(int(k) for k in fids_raw.keys())
+    if not cameras:
+        print("Error: no cameras to process (fiducials JSON empty?)")
+        sys.exit(1)
+
+    print("=" * 60)
+    print("Stepped Board Per-Camera 3D Calibration (CLI) - Starting")
+    print("=" * 60)
+    print(f"Active paths: {len(active_paths)}")
+    print(f"Cameras: {cameras}")
+    print(f"Fiducials: {args.fiducials}")
+
+    results = []
+    for path_idx in active_paths:
+        source_dir = config.source_paths[path_idx]
+        base_dir = config.base_paths[path_idx]
+        print(f"\nPath {path_idx + 1}/{len(active_paths)}:")
+        print(f"  Source: {source_dir}")
+        print(f"  Base: {base_dir}")
+        print("-" * 40)
+
+        for cam_num in cameras:
+            try:
+                fids_cam = _validate_fiducials_for_camera(
+                    fids_raw[str(cam_num)], f"cam{cam_num}",
+                )
+            except (KeyError, ValueError) as e:
+                print(f"  cam{cam_num}: fiducials error — {e}")
+                results.append({"success": False, "cam": cam_num, "path_idx": path_idx})
+                continue
+
+            try:
+                calibrator = SteppedPlanarCalibrator(
+                    config=config,
+                    source_path_idx=path_idx,
+                    base_path_idx=path_idx,
+                )
+
+                start_frame = args.start_frame
+                num_frames = args.num_frames
+                if num_frames is None:
+                    stepped_cfg = (
+                        config.data.get("calibration", {}).get("stepped_planar", {})
+                        or config.data.get("calibration", {}).get("stepped_board", {})
+                    )
+                    num_frames = stepped_cfg.get("num_frames", 11)
+                datum_frame = args.datum_frame if args.datum_frame is not None else start_frame
+
+                frame_indices = list(range(start_frame, start_frame + num_frames))
+                if datum_frame not in frame_indices:
+                    print(
+                        f"  cam{cam_num}: datum_frame {datum_frame} not in "
+                        f"frame range [{start_frame}, {start_frame + num_frames - 1}]"
+                    )
+                    sys.exit(1)
+                datum_pose_index = frame_indices.index(datum_frame)
+                print(
+                    f"\n  cam{cam_num}: detecting {num_frames} poses, "
+                    f"datum at pose index {datum_pose_index}"
+                )
+
+                detections_per_pose = []
+                for pose_idx, frame_idx in enumerate(frame_indices):
+                    det = calibrator.detect_single_camera(cam_num, frame_idx)
+                    detections_per_pose.append({str(cam_num): det})
+                    print(
+                        f"    pose {pose_idx} (frame {frame_idx}): "
+                        f"A={det['level_A']['n_points']}/B={det['level_B']['n_points']} dots"
+                    )
+
+                datum_det = detections_per_pose[datum_pose_index][str(cam_num)]
+                snapped = _snap_and_warn(
+                    calibrator, datum_det, fids_cam, f"cam{cam_num}",
+                )
+
+                # Per-pose peak/trough labels for THIS camera — required.
+                # Read from config.yaml under
+                # stepped_planar.pose_levels[str(cam_num)].
+                stepped_cfg_pl = (
+                    config.data.get("calibration", {}).get("stepped_planar", {})
+                    or config.data.get("calibration", {}).get("stepped_board", {})
+                )
+                pose_levels_all = stepped_cfg_pl.get("pose_levels") or {}
+                pose_levels_raw = (
+                    pose_levels_all.get(str(cam_num))
+                    or pose_levels_all.get(cam_num)
+                )
+                if pose_levels_raw is None:
+                    print(
+                        f"  cam{cam_num}: config.yaml must contain "
+                        f"calibration.stepped_planar.pose_levels[\"{cam_num}\"] "
+                        f"(dict of frame_idx → 'peak'/'trough'). Populate via "
+                        f"the GUI or edit config.yaml."
+                    )
+                    sys.exit(1)
+                try:
+                    pose_levels = {int(k): str(v) for k, v in pose_levels_raw.items()}
+                except (TypeError, ValueError) as exc:
+                    print(f"  cam{cam_num}: pose_levels has non-integer keys: {exc}")
+                    sys.exit(1)
+                missing = [f for f in frame_indices if f not in pose_levels]
+                if missing:
+                    print(
+                        f"  cam{cam_num}: pose_levels missing frames {missing}. "
+                        f"Every frame in {frame_indices} needs an explicit "
+                        f"'peak' or 'trough' label — no auto-detect fallback."
+                    )
+                    sys.exit(1)
+
+                print(
+                    f"  cam{cam_num}: fitting (clicked_level={fids_cam['clicked_level']}, "
+                    f"pose_levels={pose_levels})..."
+                )
+                result = calibrator.generate_camera_model(
+                    cam_num=cam_num,
+                    detections_per_pose=detections_per_pose,
+                    fiducials_for_camera=snapped,
+                    clicked_level=fids_cam["clicked_level"],
+                    frame_indices=frame_indices,
+                    pose_levels=pose_levels,
+                    datum_pose_index=datum_pose_index,
+                )
+                result["path_idx"] = path_idx
+                result["cam"] = cam_num
+                results.append(result)
+
+                if result.get("success"):
+                    K = result["K"]
+                    print(
+                        f"  cam{cam_num}: RMS={result['rms']:.4f}px, "
+                        f"fx={K[0][0]:.1f}, fy={K[1][1]:.1f}, "
+                        f"cx={K[0][2]:.1f}, cy={K[1][2]:.1f}, "
+                        f"poses={result['num_poses']}"
+                    )
+                else:
+                    print(f"  cam{cam_num}: FAILED — {result.get('error', 'Unknown')}")
+
+            except Exception as e:
+                print(f"  cam{cam_num}: FAILED — {e}")
+                import traceback
+                traceback.print_exc()
+                results.append({"success": False, "cam": cam_num, "path_idx": path_idx,
+                                "error": str(e)})
+
+    print("\n" + "=" * 60)
+    print("SUMMARY")
+    print("=" * 60)
+    success_count = sum(1 for r in results if r.get("success"))
+    print(f"Total: {success_count}/{len(results)} per-camera fits succeeded")
+    sys.exit(0 if success_count == len(results) else 1)
+
+
+# =============================================================================
 # TRANSFORM COMMAND
 # =============================================================================
 
@@ -1522,10 +2006,6 @@ calibration:
     stereo_config: transmission
     datum_camera: 1
     datum_frame: 1
-  self_calibration:
-    n_images: 20
-    window_size: 64
-    overlap: 50.0
 filters: []
 masking:
   enabled: false
@@ -1664,7 +2144,7 @@ def main():
     detect_planar_parser.add_argument(
         "--model-type", default="pinhole",
         choices=["pinhole", "polynomial"],
-        help="Calibration model type: pinhole (OpenCV) or polynomial (DaVis-compatible)"
+        help="Calibration model type: pinhole (OpenCV) or polynomial (3rd-order bivariate)"
     )
     detect_planar_parser.set_defaults(func=detect_planar_command)
 
@@ -1688,7 +2168,7 @@ def main():
     detect_charuco_parser.add_argument(
         "--model-type", default="pinhole",
         choices=["pinhole", "polynomial"],
-        help="Calibration model type: pinhole (OpenCV) or polynomial (DaVis-compatible)"
+        help="Calibration model type: pinhole (OpenCV) or polynomial (3rd-order bivariate)"
     )
     detect_charuco_parser.set_defaults(func=detect_charuco_command)
 
@@ -1721,6 +2201,85 @@ def main():
         help="Direct path to calibration images (overrides config.calibration_sources)"
     )
     detect_stereo_charuco_parser.set_defaults(func=detect_stereo_charuco_command)
+
+    # detect-stepped-stereo command
+    detect_stepped_stereo_parser = subparsers.add_parser(
+        "detect-stepped-stereo",
+        help="Detect a stepped board on a multi-pose sequence and generate a stereo camera model"
+    )
+    detect_stepped_stereo_parser.add_argument(
+        "--active-paths", "-p", default=None,
+        help="Comma-separated path indices to process (e.g., '0,1,2')"
+    )
+    detect_stepped_stereo_parser.add_argument(
+        "--calibration-source", "-cs", default=None,
+        help="Direct path to calibration images (overrides config.calibration_sources)"
+    )
+    detect_stepped_stereo_parser.add_argument(
+        "--config-file", default=None,
+        help="Path to a config.yaml to use instead of the default cwd lookup"
+    )
+    detect_stepped_stereo_parser.add_argument(
+        "--fiducials", "-f", required=True,
+        help="Path to a fiducials JSON file. Schema: {'1': {origin,x_axis,y_axis,clicked_level}, '2': {...}}"
+    )
+    detect_stepped_stereo_parser.add_argument(
+        "--num-frames", "-n", type=int, default=None,
+        help="Number of poses (default: from config stepped_board.num_frames or 11)"
+    )
+    detect_stepped_stereo_parser.add_argument(
+        "--start-frame", "-s", type=int, default=1,
+        help="First frame index (default 1; pass 0 for 0-based pose naming)"
+    )
+    detect_stepped_stereo_parser.add_argument(
+        "--datum-frame", "-d", type=int, default=None,
+        help="Datum frame index (default: same as --start-frame)"
+    )
+    detect_stepped_stereo_parser.add_argument(
+        "--stereo-config", default="auto",
+        choices=["auto", "same_side", "transmission"],
+        help="Stereo configuration. 'auto' (default) tries both Z assignments and picks lower RMS"
+    )
+    detect_stepped_stereo_parser.set_defaults(func=detect_stepped_stereo_command)
+
+    # detect-stepped-planar command (per-camera 3D pinhole from a stepped board)
+    detect_stepped_planar_parser = subparsers.add_parser(
+        "detect-stepped-planar",
+        help="Detect a stepped board and fit a per-camera 3D pinhole model (uses both Z levels)"
+    )
+    detect_stepped_planar_parser.add_argument(
+        "--camera", "-c", type=int, default=None,
+        help="Single camera number to process (default: every camera key in the fiducials JSON)"
+    )
+    detect_stepped_planar_parser.add_argument(
+        "--active-paths", "-p", default=None,
+        help="Comma-separated path indices to process (e.g., '0,1,2')"
+    )
+    detect_stepped_planar_parser.add_argument(
+        "--calibration-source", "-cs", default=None,
+        help="Direct path to calibration images (overrides config.calibration_sources)"
+    )
+    detect_stepped_planar_parser.add_argument(
+        "--config-file", default=None,
+        help="Path to a config.yaml to use instead of the default cwd lookup"
+    )
+    detect_stepped_planar_parser.add_argument(
+        "--fiducials", "-f", required=True,
+        help="Path to a fiducials JSON file. Schema: {'<cam>': {origin,x_axis,y_axis,clicked_level}}"
+    )
+    detect_stepped_planar_parser.add_argument(
+        "--num-frames", "-n", type=int, default=None,
+        help="Number of poses (default: from config or 11)"
+    )
+    detect_stepped_planar_parser.add_argument(
+        "--start-frame", "-s", type=int, default=1,
+        help="First frame index (default 1; pass 0 for 0-based pose naming)"
+    )
+    detect_stepped_planar_parser.add_argument(
+        "--datum-frame", "-d", type=int, default=None,
+        help="Datum frame index (default: same as --start-frame)"
+    )
+    detect_stepped_planar_parser.set_defaults(func=detect_stepped_planar_command)
 
     # apply-calibration command
     apply_calibration_parser = subparsers.add_parser(
@@ -1962,7 +2521,7 @@ def main():
     )
     selfcal_parser.add_argument(
         "--method", "-m", default=None,
-        choices=["dotboard", "charuco"],
+        choices=["dotboard", "charuco", "stepped_board"],
         help="Calibration method (default: from config)"
     )
     selfcal_parser.add_argument(

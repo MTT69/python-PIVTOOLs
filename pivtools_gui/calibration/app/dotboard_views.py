@@ -29,7 +29,7 @@ from pivtools_core.image_handling.path_utils import build_calibration_camera_pat
 from pivtools_gui.calibration.calibration_planar.planar_calibration_production import MultiViewCalibrator
 from pivtools_gui.calibration.services.job_manager import job_manager
 from pivtools_gui.calibration.app.shared_views import set_active_calibration_method
-from pivtools_gui.utils import camera_number, numpy_to_png_base64
+from pivtools_gui.utils import camera_number, numpy_to_png_base64, get_display_contrast_stats
 
 dotboard_bp = Blueprint("dotboard", __name__)
 
@@ -110,36 +110,18 @@ def planar_frame(idx: int):
         if img is None:
             return jsonify({"error": f"Could not read frame {idx}"}), 404
 
-        # Calculate stats - vmin/vmax as percentages (0-100) of the data range
-        img_min = float(img.min())
-        img_max = float(img.max())
-        data_range = img_max - img_min
-        p1 = float(np.percentile(img, 1))
-        p99 = float(np.percentile(img, 99))
-        if data_range > 0:
-            vmin_pct = 100.0 * (p1 - img_min) / data_range
-            vmax_pct = 100.0 * (p99 - img_min) / data_range
-        else:
-            vmin_pct = 0.0
-            vmax_pct = 100.0
+        # numpy_to_png_base64 handles sqrt + percentile clipping internally
+        contrast = get_display_contrast_stats(img)
         stats = {
-            "min": img_min,
-            "max": img_max,
+            "min": float(img.min()),
+            "max": float(img.max()),
             "mean": float(img.mean()),
-            "vmin_pct": vmin_pct,
-            "vmax_pct": vmax_pct,
+            "vmin_pct": contrast["vmin_pct"],
+            "vmax_pct": contrast["vmax_pct"],
         }
 
-        # Normalize to uint8 for display
-        vmin = np.percentile(img, 1)
-        vmax = np.percentile(img, 99)
-        if vmax > vmin:
-            disp = ((img - vmin) / (vmax - vmin) * 255).clip(0, 255).astype(np.uint8)
-        else:
-            disp = np.zeros_like(img, dtype=np.uint8)
-
-        # Encode to base64
-        b64 = numpy_to_png_base64(disp)
+        # Encode to base64 — sqrt + percentile normalisation done internally
+        b64 = numpy_to_png_base64(img)
 
         return jsonify({
             "image": b64,
@@ -538,6 +520,7 @@ def planar_generate_model_all():
                                     "status": "completed",
                                     "rms_error": result.get("rms_error"),
                                     "num_images_used": result.get("num_images_used"),
+                                    "warnings": result.get("warnings", []),
                                 }
                                 logger.info(f"Camera {cam} calibration completed")
                             else:

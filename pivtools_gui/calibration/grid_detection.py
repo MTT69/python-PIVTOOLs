@@ -661,8 +661,8 @@ def _rescue_missing_dots(
                 rescued_centers.append((float(cx_global), float(cy_global)))
                 rescued_grid[(mc, mr)] = len(rescued_centers) - 1
                 rescued_nodes.append((mc, mr))
-        except cv2.error:
-            pass
+        except cv2.error as e:
+            logger.debug(f"Template match rescue failed at grid ({mc},{mr}): {e}")
 
     n_rescued = len(rescued_nodes)
     if n_rescued > 0:
@@ -837,7 +837,8 @@ def detect_grid_automatic(
 
         try:
             grid_dict = _bfs_grid_walk_dict(ctrs, v1, v2, pr_tree)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"BFS grid walk failed for polarity candidate: {e}")
             continue
 
         if best_grid is None or len(grid_dict) > len(best_grid):

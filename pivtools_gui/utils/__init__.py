@@ -47,24 +47,90 @@ def numpy_to_png_base64(arr: np.ndarray, compress_level: int = 1) -> str:
     return numpy_to_base64(arr, format="png", compress_level=compress_level)
 
 
+def get_display_contrast_stats(arr: np.ndarray) -> dict:
+    """Compute contrast slider positions for the sqrt-normalised 8-bit encoding.
+
+    Returns vmin_pct/vmax_pct as percentages (0-100) of the encoded 8-bit
+    range, representing a tighter window than the full [0, 100] default.
+    This gives the frontend slider a meaningful starting position: the user
+    can widen toward [0, 100] to see more, or tighten to boost contrast.
+
+    The percentiles (5th–95th) are computed in the sqrt domain to match
+    the encoding in numpy_to_base64().
+    """
+    if arr.dtype == np.uint8:
+        return {"vmin_pct": 0.0, "vmax_pct": 100.0}
+
+    a = np.sqrt(np.maximum(arr.astype(np.float32, copy=False), 0))
+    if not a.size:
+        return {"vmin_pct": 0.0, "vmax_pct": 100.0}
+
+    total = a.size
+    if total > 4_000_000:
+        stride = max(2, int(np.sqrt(total / 1_000_000)))
+        sampled = a[::stride, ::stride].ravel()
+    else:
+        sampled = a.ravel()
+
+    # The encoding window used by numpy_to_base64
+    enc_lo = float(np.percentile(sampled, 0.5))
+    enc_hi = float(np.percentile(sampled, 99.5))
+    enc_range = enc_hi - enc_lo
+    if enc_range <= 0:
+        return {"vmin_pct": 0.0, "vmax_pct": 100.0}
+
+    # Tighter auto-scale window within the encoded range
+    p5 = float(np.percentile(sampled, 5))
+    p95 = float(np.percentile(sampled, 95))
+
+    vmin_pct = max(0.0, 100.0 * (p5 - enc_lo) / enc_range)
+    vmax_pct = min(100.0, 100.0 * (p95 - enc_lo) / enc_range)
+
+    return {"vmin_pct": round(vmin_pct, 2), "vmax_pct": round(vmax_pct, 2)}
+
+
 def numpy_to_base64(arr: np.ndarray, format: str = "png", compress_level: int = 1, jpeg_quality: int = 85, vmin: float = None, vmax: float = None) -> str:
     """Convert a numpy array to a base64 encoded image string.
+
+    For high-bit-depth images (12/16-bit), applies a sqrt transform before
+    the linear percentile clip.  This is the variance-stabilising transform
+    for Poisson (photon-counting) noise and compresses the dynamic range so
+    that dim PIV particles are visible in the 8-bit output without affecting
+    well-exposed images (sqrt is nearly linear for large values).
+
+    When vmin/vmax are not provided, automatic 0.5th–99.5th percentile
+    clipping is applied on the sqrt-transformed data.  This rejects hot
+    pixels and sensor defects while preserving the full particle signal.
 
     Args:
         arr: Input numpy array
         format: Image format - "png" or "jpeg"
         compress_level: PNG compression level (0-9). Lower = faster, higher = smaller.
         jpeg_quality: JPEG quality (1-95). Higher = better quality, larger files.
-        vmin: If provided, clip pixel values below this before normalising to 0-255.
-        vmax: If provided, clip pixel values above this before normalising to 0-255.
-              When vmin/vmax are set, the full 0-255 range maps to [vmin, vmax],
-              giving much better contrast for high-bit-depth images.
+        vmin: If provided, clip sqrt-domain values below this before normalising
+              to 0-255. When omitted, the 0.5th percentile is used.
+        vmax: If provided, clip sqrt-domain values above this before normalising
+              to 0-255. When omitted, the 99.5th percentile is used.
     """
     if arr.dtype != np.uint8:
-        a = arr.astype(np.float32, copy=False)
+        # Apply sqrt for variance-stabilised normalisation of photon-count data.
+        # This dramatically improves contrast for low-count PIV images (12/16-bit
+        # cameras using <10% of sensor range) while being nearly invisible on
+        # well-exposed images where sqrt(x) ≈ linear for large x.
+        a = np.sqrt(np.maximum(arr.astype(np.float32, copy=False), 0))
         if a.size:
-            mn = float(vmin) if vmin is not None else float(a.min())
-            mx = float(vmax) if vmax is not None else float(a.max())
+            if vmin is not None and vmax is not None:
+                mn, mx = float(vmin), float(vmax)
+            else:
+                # Auto percentile clipping in sqrt domain
+                total = a.size
+                if total > 4_000_000:
+                    stride = max(2, int(np.sqrt(total / 1_000_000)))
+                    sampled = a[::stride, ::stride].ravel()
+                else:
+                    sampled = a.ravel()
+                mn = float(np.percentile(sampled, 0.5))
+                mx = float(np.percentile(sampled, 99.5))
             if mx > mn:
                 a = (255 * (np.clip(a, mn, mx) - mn) / (mx - mn)).astype(np.uint8)
             else:

@@ -54,9 +54,13 @@ N_ITERATIONS = 5
 # ---------------------------------------------------------------------------
 # CSV helpers
 # ---------------------------------------------------------------------------
+RESULTS_DIR = os.path.join(os.path.dirname(__file__), "results")
+
+
 def make_csv_path(test_name):
+    os.makedirs(RESULTS_DIR, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return os.path.join(os.path.dirname(__file__), f"{test_name}_{timestamp}.csv")
+    return os.path.join(RESULTS_DIR, f"{test_name}_{timestamp}.csv")
 
 
 def write_csv(csv_path, fieldnames, rows):

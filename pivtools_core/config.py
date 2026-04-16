@@ -696,9 +696,16 @@ video:
                 return ("B%05d_A.tiff", "B%05d_B.tiff")
 
         if isinstance(raw, str):
-            return (raw,)
+            return (raw,) if raw else ("B%05d_A.tiff", "B%05d_B.tiff")
         elif isinstance(raw, (list, tuple)):
-            return tuple(raw)
+            filtered = tuple(r for r in raw if r)
+            if not filtered:
+                # Empty list/tuple — fall back to defaults
+                if self.time_resolved:
+                    return ("B%05d.tiff",)
+                else:
+                    return ("B%05d_A.tiff", "B%05d_B.tiff")
+            return filtered
         else:
             raise ValueError(f"Invalid image_format type: {type(raw)}")
 
@@ -1471,10 +1478,12 @@ video:
         return self.video.get("crf", 15)
 
     @property
-    def video_resolution(self) -> tuple:
-        """Return video resolution as (height, width) tuple."""
+    def video_resolution(self):
+        """Return video resolution as (height, width) tuple, or None for native."""
         res = self.video.get("resolution", "1080p")
         if isinstance(res, str):
+            if res == "native":
+                return None
             if res == "4k":
                 return (2160, 3840)
             return (1080, 1920)
@@ -1484,7 +1493,7 @@ video:
 
     @property
     def video_resolution_str(self) -> str:
-        """Return resolution as string: '1080p' or '4k'."""
+        """Return resolution as string: 'native', '1080p', or '4k'."""
         res = self.video.get("resolution", "1080p")
         if isinstance(res, str):
             return res

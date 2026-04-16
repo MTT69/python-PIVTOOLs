@@ -96,6 +96,15 @@ def load_cameras_from_stereo_model(
         "rvec": rvec2, "tvec": tvec2,
         "image_width": w, "image_height": h,
     }
+    # Optional: calibration object points (saved by newer calibrators).
+    # Not currently consumed for bounds — reserved for future diagnostics.
+    if "object_points_1" in mat and "object_points_2" in mat:
+        md1["object_points"] = np.asarray(
+            mat["object_points_1"], dtype=np.float64,
+        ).reshape(-1, 3)
+        md2["object_points"] = np.asarray(
+            mat["object_points_2"], dtype=np.float64,
+        ).reshape(-1, 3)
     return cam1, cam2, md1, md2
 
 

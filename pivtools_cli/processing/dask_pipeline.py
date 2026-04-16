@@ -65,32 +65,22 @@ def _save_intermediate_frame(
 # FILTER HELPERS
 # =============================================================================
 
-def get_spatial_filter_specs(config: Config) -> List[dict]:
-    """
-    Get list of spatial filter specifications from config.
+TEMPORAL_FILTERS = {'time', 'pod'}
 
-    Spatial filters operate element-wise and don't need temporal context.
+
+def get_filter_specs(config: Config) -> List[dict]:
+    """
+    Get the ordered list of filter specifications from config.
+
+    Returns the filters in the exact order the user defined them,
+    preserving interleaved spatial/temporal ordering.
 
     Returns:
-        List of filter spec dicts (e.g., [{'type': 'gaussian', 'sigma': 1.0}])
+        List of filter spec dicts (e.g., [{'type': 'gaussian', 'sigma': 1.0}, {'type': 'pod'}])
     """
-    TEMPORAL_FILTERS = {'time', 'pod'}
-    filters = config.filters or []
-    return [f for f in filters if f.get('type') not in TEMPORAL_FILTERS]
+    return config.filters or []
 
 
-def get_temporal_filter_specs(config: Config) -> List[dict]:
-    """
-    Get list of temporal filter specifications from config.
-
-    Temporal filters (POD, time) need multiple images in the batch.
-
-    Returns:
-        List of filter spec dicts (e.g., [{'type': 'pod'}])
-    """
-    TEMPORAL_FILTERS = {'time', 'pod'}
-    filters = config.filters or []
-    return [f for f in filters if f.get('type') in TEMPORAL_FILTERS]
 
 
 # =============================================================================
@@ -99,8 +89,7 @@ def get_temporal_filter_specs(config: Config) -> List[dict]:
 
 def apply_all_filters_slim(
     block: np.ndarray,
-    spatial_specs: List[dict],
-    temporal_specs: List[dict],
+    filter_specs: Optional[List[dict]] = None,
     pixel_mask: Optional[np.ndarray] = None,
     save_intermediate_base: Optional[str] = None,
     num_frame_pairs: Optional[int] = None,
@@ -112,18 +101,17 @@ def apply_all_filters_slim(
     This version takes filter specs directly instead of the full config object,
     avoiding repeated serialization of the entire config for every chunk.
 
-    Applies all configured filters in order:
+    Applies all configured filters in the user-defined order:
     1. Pixel mask (zero masked regions)
-    2. Spatial filters (gaussian, median, norm, etc.)
-    3. Temporal filters (POD, time) - only if configured
+    2. Filters in order (spatial and temporal interleaved as configured)
 
     This function is called by dask.array.map_blocks on each chunk.
     The chunk is already computed when it reaches this function.
 
     Args:
         block: Image batch of shape (N, 2, H, W)
-        spatial_specs: List of spatial filter specifications
-        temporal_specs: List of temporal filter specifications
+        filter_specs: Ordered list of all filter specifications (spatial and temporal
+            interleaved in the user's chosen order)
         pixel_mask: Boolean mask (H, W) where True = masked (optional)
         save_intermediate_base: Base path for saving intermediate outputs (optional)
             If provided, saves frames to {base}/basic_filters/{num_frame_pairs}/{batch_no}/
@@ -134,6 +122,9 @@ def apply_all_filters_slim(
         Filtered block of same shape
     """
     from pivtools_cli.preprocessing.pod_filter import pod_filter_batch, time_filter_batch
+
+    if filter_specs is None:
+        filter_specs = []
 
     # Validate input
     if block.ndim != 4:
@@ -148,7 +139,7 @@ def apply_all_filters_slim(
         save_intermediate_base is not None and
         num_frame_pairs is not None and
         block_id is not None and
-        (spatial_specs or temporal_specs or pixel_mask is not None)
+        (filter_specs or pixel_mask is not None)
     )
 
     if save_intermediate:
@@ -158,7 +149,7 @@ def apply_all_filters_slim(
 
     # Single copy at start - all subsequent operations modify in-place
     # This avoids multiple copies if both mask and filters are applied
-    needs_copy = (pixel_mask is not None or spatial_specs or temporal_specs)
+    needs_copy = (pixel_mask is not None or filter_specs)
     if needs_copy:
         block = block.copy()
 
@@ -179,35 +170,56 @@ def apply_all_filters_slim(
         else:
             logger.warning(f"Pixel mask shape {pixel_mask.shape} != image shape ({H}, {W})")
 
-    # 2. Apply spatial filters (one at a time for intermediate saving)
-    if spatial_specs:
-        for spec in spatial_specs:
-            filter_type = spec.get('type')
-            block = _apply_spatial_filters_numpy(block, [spec])
-            if save_intermediate:
-                _save_intermediate_frame(block, save_dir, f"{filter_idx:02d}_after_{filter_type}")
-                filter_idx += 1
-
-    # 3. Apply temporal filters (POD, time)
-    for spec in temporal_specs:
+    # 2. Apply filters in user-defined order (spatial and temporal interleaved)
+    for spec in filter_specs:
         filter_type = spec.get('type')
 
-        if filter_type == 'pod':
-            eps_auto_psi = spec.get('eps_auto_psi', 0.01)
-            eps_auto_sigma = spec.get('eps_auto_sigma', 0.01)
-            block = pod_filter_batch(
-                block,
-                eps_auto_psi=eps_auto_psi,
-                eps_auto_sigma=eps_auto_sigma,
-            )
-        elif filter_type == 'time':
-            block = time_filter_batch(block)
+        if filter_type in TEMPORAL_FILTERS:
+            # Temporal filter (needs full batch)
+            if filter_type == 'pod':
+                eps_auto_psi = spec.get('eps_auto_psi', 0.01)
+                eps_auto_sigma = spec.get('eps_auto_sigma', 0.01)
+                block = pod_filter_batch(
+                    block,
+                    eps_auto_psi=eps_auto_psi,
+                    eps_auto_sigma=eps_auto_sigma,
+                )
+            elif filter_type == 'time':
+                block = time_filter_batch(block)
+        else:
+            # Spatial filter (element-wise)
+            block = _apply_spatial_filters_numpy(block, [spec])
 
         if save_intermediate:
             _save_intermediate_frame(block, save_dir, f"{filter_idx:02d}_after_{filter_type}")
             filter_idx += 1
 
     return block
+
+
+def _normalize_kernel_size(size, default: Tuple[int, int] = (7, 7)) -> Tuple[int, int]:
+    """Normalize a filter kernel size to an odd-valued 2-tuple.
+
+    Handles all representations that may arrive from JSON, YAML, or config:
+    scalar int/float, list, or tuple.  Even values are bumped to the next odd.
+    """
+    if size is None:
+        size = default
+    if isinstance(size, (int, float)):
+        size = (int(size), int(size))
+    elif isinstance(size, list):
+        size = tuple(int(s) for s in size)
+    # Ensure odd
+    return tuple(s + (s + 1) % 2 for s in size)
+
+
+def _gaussian_kernel_1d(size: int, sigma: float) -> np.ndarray:
+    """Build a 1-D Gaussian kernel matching MATLAB's fspecial('gaussian')."""
+    half = (size - 1) / 2.0
+    x = np.arange(size) - half
+    k = np.exp(-x ** 2 / (2.0 * sigma ** 2))
+    k /= k.sum()
+    return k
 
 
 def _apply_spatial_filters_numpy(
@@ -227,7 +239,7 @@ def _apply_spatial_filters_numpy(
         Filtered block
     """
     from scipy.ndimage import (
-        gaussian_filter as scipy_gaussian,
+        correlate as scipy_correlate,
         median_filter as scipy_median,
         maximum_filter as scipy_maximum,
         minimum_filter as scipy_minimum,
@@ -242,52 +254,91 @@ def _apply_spatial_filters_numpy(
         filter_type = spec.get('type')
 
         if filter_type == 'gaussian':
+            # FIR Gaussian kernel matching MATLAB fspecial('gaussian', size, sigma).
+            # Uses explicit kernel + correlation (not scipy IIR gaussian_filter).
+            size = _normalize_kernel_size(spec.get('size'), default=(7, 7))
             sigma = spec.get('sigma', 1.0)
-            # Apply to spatial dimensions only (last 2), in-place
-            scipy_gaussian(block, sigma=(0, 0, sigma, sigma), output=block)
+            ky = _gaussian_kernel_1d(size[0], sigma)
+            kx = _gaussian_kernel_1d(size[1], sigma)
+            kernel_2d = np.outer(ky, kx).astype(np.float32)
+            for i in range(block.shape[0]):
+                for j in range(block.shape[1]):
+                    block[i, j] = scipy_correlate(block[i, j], kernel_2d, mode='constant')
 
         elif filter_type == 'median':
-            size = spec.get('size', (5, 5))
-            if isinstance(size, list):
-                size = tuple(size)
-            # Ensure odd size
-            size = tuple(s + (s + 1) % 2 for s in size)
+            size = _normalize_kernel_size(spec.get('size'), default=(5, 5))
             block = scipy_median(block, size=(1, 1) + size)
 
         elif filter_type == 'norm':
-            size = spec.get('size', (7, 7))
+            size = _normalize_kernel_size(spec.get('size'), default=(7, 7))
             max_gain = spec.get('max_gain', 1.0)
-            if isinstance(size, list):
-                size = tuple(size)
-            size = tuple(s + (s + 1) % 2 for s in size)
-            spatial_size = (1, 1) + size
-
-            local_min = scipy_minimum(block, size=spatial_size)
-            local_max = scipy_maximum(block, size=spatial_size)
-            local_max -= local_min                                 # range in-place
-            np.maximum(local_max, 1.0 / max_gain, out=local_max)  # clamp in-place
-            block -= local_min                                     # in-place
-            block /= local_max                                     # in-place
+            gain_floor = 1.0 / max_gain
+            # Per-frame to avoid 3x block-size memory allocation
+            for i in range(block.shape[0]):
+                for j in range(block.shape[1]):
+                    frame = block[i, j]
+                    local_min = scipy_minimum(frame, size=size)
+                    local_range = scipy_maximum(frame, size=size)
+                    local_range -= local_min
+                    np.maximum(local_range, gain_floor, out=local_range)
+                    frame -= local_min
+                    frame /= local_range
 
         elif filter_type == 'maxnorm':
-            size = spec.get('size', (7, 7))
+            # Background normalization: divides by a smoothed local minimum
+            # (local background level), with a maximum gain limit. Equalizes
+            # illumination gradients while preserving particle contrast.
+            # Name kept as 'maxnorm' for config backward compatibility.
+            # Matches MATLAB filter_maxnorm (minmaxfiltnd single-output = min).
+            size = _normalize_kernel_size(spec.get('size'), default=(7, 7))
             max_gain = spec.get('max_gain', 1.0)
-            if isinstance(size, list):
-                size = tuple(size)
-            size = tuple(s + (s + 1) % 2 for s in size)
-            spatial_size = (1, 1) + size
+            gain_floor = 1.0 / max_gain
+            for i in range(block.shape[0]):
+                for j in range(block.shape[1]):
+                    frame = block[i, j]
+                    local_min = scipy_minimum(frame, size=size, mode='nearest')
+                    scipy_uniform(local_min, size=size, output=local_min, mode='constant')
+                    np.maximum(local_min, gain_floor, out=local_min)
+                    np.maximum(frame, 0, out=frame)
+                    frame /= local_min
 
-            local_max = scipy_maximum(block, size=spatial_size)
-            scipy_uniform(local_max, size=spatial_size, output=local_max)  # smooth in-place
-            np.maximum(local_max, 1.0 / max_gain, out=local_max)
-            np.maximum(block, 0, out=block)
-            block /= local_max
+        elif filter_type == 'norm2':
+            # Smoothed range normalization: like 'norm' but box-smooths both
+            # the min and max envelopes before subtracting/dividing. Gives a
+            # more stable normalization that's less sensitive to single-pixel
+            # noise spikes. Matches MATLAB filter_norm2.
+            size = _normalize_kernel_size(spec.get('size'), default=(7, 7))
+            max_gain = spec.get('max_gain', 1.0)
+            gain_floor = 1.0 / max_gain
+            for i in range(block.shape[0]):
+                for j in range(block.shape[1]):
+                    frame = block[i, j]
+                    local_min = scipy_minimum(frame, size=size, mode='nearest')
+                    local_max = scipy_maximum(frame, size=size, mode='nearest')
+                    scipy_uniform(local_min, size=size, output=local_min, mode='constant')
+                    scipy_uniform(local_max, size=size, output=local_max, mode='constant')
+                    local_max -= local_min
+                    np.maximum(local_max, gain_floor, out=local_max)
+                    frame -= local_min
+                    frame /= local_max
+
+        elif filter_type == 'ssmin':
+            # Sliding minimum background subtraction: median-smooths the
+            # image first (removes noise), then extracts the local minimum
+            # (background envelope), box-smooths it, and subtracts. Output
+            # is clipped to >= 0. Matches MATLAB filter_ssmin.
+            size = _normalize_kernel_size(spec.get('size'), default=(7, 7))
+            for i in range(block.shape[0]):
+                for j in range(block.shape[1]):
+                    frame = block[i, j]
+                    bg = scipy_median(frame, size=(3, 3), mode='constant')
+                    bg = scipy_minimum(bg, size=size, mode='nearest')
+                    scipy_uniform(bg, size=size, output=bg, mode='constant')
+                    frame -= bg
+                    np.maximum(frame, 0, out=frame)
 
         elif filter_type == 'lmax':
-            size = spec.get('size', (7, 7))
-            if isinstance(size, list):
-                size = tuple(size)
-            size = tuple(s + (s + 1) % 2 for s in size)
+            size = _normalize_kernel_size(spec.get('size'), default=(7, 7))
             block = scipy_maximum(block, size=(1, 1) + size)
 
         elif filter_type == 'invert':
@@ -297,9 +348,7 @@ def _apply_spatial_filters_numpy(
         elif filter_type == 'clahe':
             import cv2
             clip_limit = spec.get('clip_limit', 2.0)
-            tile_size = spec.get('tile_grid_size', (8, 8))
-            if isinstance(tile_size, list):
-                tile_size = tuple(tile_size)
+            tile_size = _normalize_kernel_size(spec.get('tile_grid_size'), default=(8, 8))
             clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_size)
             for i in range(block.shape[0]):
                 for j in range(block.shape[1]):
@@ -342,20 +391,17 @@ def create_filter_pipeline(
     logger.debug("Creating filter pipeline...")
 
     # Extract filter specs ONCE here (avoids serializing full config per chunk)
-    spatial_specs = get_spatial_filter_specs(config)
-    temporal_specs = get_temporal_filter_specs(config)
+    filter_specs = get_filter_specs(config)
 
-    if spatial_specs:
-        logger.debug(f"  Spatial filters: {[f.get('type') for f in spatial_specs]}")
-    if temporal_specs:
-        logger.debug(f"  Temporal filters: {[f.get('type') for f in temporal_specs]}")
+    if filter_specs:
+        logger.debug(f"  Filters (in order): {[f.get('type') for f in filter_specs]}")
     if pixel_mask is not None:
         logger.debug(f"  Pixel mask: {np.sum(pixel_mask)} masked pixels")
     if save_intermediate_base is not None:
         logger.debug(f"  Saving intermediate outputs to: {save_intermediate_base}/basic_filters/...")
 
     # If no filters and no mask, return unchanged
-    if not spatial_specs and not temporal_specs and pixel_mask is None:
+    if not filter_specs and pixel_mask is None:
         logger.debug("  No filters configured, returning images unchanged")
         return images
 
@@ -368,8 +414,7 @@ def create_filter_pipeline(
     # Use block_id to get the batch number for intermediate saving
     filtered = images.map_blocks(
         apply_all_filters_slim,
-        spatial_specs=spatial_specs,
-        temporal_specs=temporal_specs,
+        filter_specs=filter_specs,
         pixel_mask=pixel_mask,
         save_intermediate_base=save_base_str,
         num_frame_pairs=num_frame_pairs,

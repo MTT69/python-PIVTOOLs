@@ -33,7 +33,7 @@ from pivtools_gui.plotting.app.transform_views import transform_bp
 # but is NOT registered as a Flask blueprint - the frontend uses the plotting transform API
 from pivtools_cli.preprocessing.preprocess import apply_filters_to_batch
 # from pivtools_gui.stereo_reconstruction.app.views import stereo_bp
-from pivtools_gui.utils import camera_number, numpy_to_png_base64, numpy_to_base64
+from pivtools_gui.utils import camera_number, numpy_to_png_base64, numpy_to_base64, get_display_contrast_stats
 from pivtools_gui.vector_statistics.app.views import statistics_bp
 from pivtools_gui.vector_merging.app.views import merging_bp
 from pivtools_gui.video_maker.app.views import video_maker_bp
@@ -195,33 +195,6 @@ def _resolve_loop_read(cfg, source_path_idx, pair_idx, camera):
     return source, local_pair
 
 
-def get_percentile_stats(img_array):
-    """Calculate vmin/vmax as percentages (0-100) of the data range.
-
-    This allows the frontend to work with any bit depth since the image
-    is normalized to 8-bit before sending, and contrast is expressed as
-    percentages of the display range.
-    """
-    total_pixels = img_array.size
-    if total_pixels > 4_000_000:
-        stride = max(2, int(np.sqrt(total_pixels / 1_000_000)))
-        sampled = img_array[::stride, ::stride].ravel()
-    else:
-        sampled = img_array.ravel()
-
-    p1 = float(np.percentile(sampled, 1))
-    p99 = float(np.percentile(sampled, 99))
-    img_min = float(img_array.min())  # min/max on full array (fast single pass)
-    img_max = float(img_array.max())
-    data_range = img_max - img_min
-    if data_range > 0:
-        vmin_pct = 100.0 * (p1 - img_min) / data_range
-        vmax_pct = 100.0 * (p99 - img_min) / data_range
-    else:
-        vmin_pct = 0.0
-        vmax_pct = 100.0
-    return {"vmin_pct": round(vmin_pct, 2), "vmax_pct": round(vmax_pct, 2)}
-
 
 def get_cached_pair(frame, typ, camera, source_path_idx, cfg, auto_limits=False):
     """Fetch a cached pair (A, B) for given frame/type/camera/source_path_idx."""
@@ -318,24 +291,12 @@ def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: 
                 resolved_source, local_idx = _resolve_loop_read(cfg, source_path_idx, idx, camera)
                 pair = read_pair(local_idx, resolved_source, camera, cfg)
 
-                # Percentile-clip before 8-bit encoding for better contrast
-                raw_stats_a = get_percentile_stats(pair[0])
-                raw_stats_b = get_percentile_stats(pair[1])
-                img_min_a, img_max_a = float(pair[0].min()), float(pair[0].max())
-                img_min_b, img_max_b = float(pair[1].min()), float(pair[1].max())
-                range_a = img_max_a - img_min_a
-                range_b = img_max_b - img_min_b
-                b64_a = numpy_to_base64(pair[0], format=img_format,
-                    vmin=img_min_a + range_a * raw_stats_a["vmin_pct"] / 100.0,
-                    vmax=img_min_a + range_a * raw_stats_a["vmax_pct"] / 100.0)
-                b64_b = numpy_to_base64(pair[1], format=img_format,
-                    vmin=img_min_b + range_b * raw_stats_b["vmin_pct"] / 100.0,
-                    vmax=img_min_b + range_b * raw_stats_b["vmax_pct"] / 100.0)
-
-                # Image is already contrast-optimised
+                # numpy_to_base64 handles sqrt + percentile clipping internally
+                b64_a = numpy_to_base64(pair[0], format=img_format)
+                b64_b = numpy_to_base64(pair[1], format=img_format)
                 stats = {
-                    "A": {"vmin_pct": 0.0, "vmax_pct": 100.0},
-                    "B": {"vmin_pct": 0.0, "vmax_pct": 100.0}
+                    "A": get_display_contrast_stats(pair[0]),
+                    "B": get_display_contrast_stats(pair[1]),
                 }
 
                 # Thread-safe cache write with timestamp
@@ -428,29 +389,14 @@ def get_frame_pair():
             "source_path": str(source_path)
         }), 500
 
-    # Compute percentile limits on the raw high-bit-depth data
-    raw_stats_a = get_percentile_stats(pair[0])
-    raw_stats_b = get_percentile_stats(pair[1])
-
-    # Encode with percentile clipping: map the 1st-99th percentile range to
-    # the full 0-255 output. This gives high-bit-depth images (12/16-bit)
-    # much better contrast than mapping the full min-max range.
-    img_min_a, img_max_a = float(pair[0].min()), float(pair[0].max())
-    img_min_b, img_max_b = float(pair[1].min()), float(pair[1].max())
-    range_a = img_max_a - img_min_a
-    range_b = img_max_b - img_min_b
-    b64_a = numpy_to_base64(pair[0], format=img_format,
-        vmin=img_min_a + range_a * raw_stats_a["vmin_pct"] / 100.0,
-        vmax=img_min_a + range_a * raw_stats_a["vmax_pct"] / 100.0)
-    b64_b = numpy_to_base64(pair[1], format=img_format,
-        vmin=img_min_b + range_b * raw_stats_b["vmin_pct"] / 100.0,
-        vmax=img_min_b + range_b * raw_stats_b["vmax_pct"] / 100.0)
-
-    # Tell the frontend the 8-bit image is already contrast-optimised —
-    # the slider starts at full range of the encoded image
+    # numpy_to_base64 handles sqrt + percentile clipping internally.
+    # get_display_contrast_stats computes a tighter auto-scale window
+    # so the slider starts at a useful narrowed range.
+    b64_a = numpy_to_base64(pair[0], format=img_format)
+    b64_b = numpy_to_base64(pair[1], format=img_format)
     stats = {
-        "A": {"vmin_pct": 0.0, "vmax_pct": 100.0},
-        "B": {"vmin_pct": 0.0, "vmax_pct": 100.0}
+        "A": get_display_contrast_stats(pair[0]),
+        "B": get_display_contrast_stats(pair[1]),
     }
 
     # Thread-safe cache write with timestamp
@@ -665,14 +611,16 @@ def filter_images_endpoint():
             k = cache_key(source_path_idx, camera, cfg)
             processed_store["processed"].setdefault(k, {})
 
-            # Batch update dictionary — store as (b64_A, b64_B, stats) at insertion time
+            # Batch update dictionary — store as (b64_A, b64_B, stats) at insertion time.
+            # numpy_to_png_base64 handles sqrt + percentile clipping internally.
+            # get_display_contrast_stats provides a tighter auto-scale window.
             processed_store["processed"][k].update({
                 abs_idx: (
                     numpy_to_png_base64(processed_all[rel][0]),
                     numpy_to_png_base64(processed_all[rel][1]),
                     {
-                        "A": get_percentile_stats(processed_all[rel][0]),
-                        "B": get_percentile_stats(processed_all[rel][1]),
+                        "A": get_display_contrast_stats(processed_all[rel][0]),
+                        "B": get_display_contrast_stats(processed_all[rel][1]),
                     },
                 )
                 for rel, abs_idx in enumerate(indices)
@@ -779,9 +727,10 @@ def filter_single_frame():
         mask = load_mask_for_camera(camera, cfg, source_path_idx)
 
         if filters or mask is not None:
-            spatial_specs = [f for f in filters if f.get("type") not in ("time", "pod")]
-            from pivtools_cli.processing.dask_pipeline import apply_all_filters_slim
-            arr = apply_all_filters_slim(arr, spatial_specs, temporal_specs=[], pixel_mask=mask)
+            # Single-frame preview: exclude temporal filters (need multiple frames)
+            from pivtools_cli.processing.dask_pipeline import apply_all_filters_slim, TEMPORAL_FILTERS
+            single_frame_specs = [f for f in filters if f.get("type") not in TEMPORAL_FILTERS]
+            arr = apply_all_filters_slim(arr, filter_specs=single_frame_specs, pixel_mask=mask)
 
         result = arr
         
@@ -796,8 +745,8 @@ def filter_single_frame():
         
         if auto_limits:
             response["stats"] = {
-                "A": get_percentile_stats(processed_pair[0]),
-                "B": get_percentile_stats(processed_pair[1])
+                "A": get_display_contrast_stats(processed_pair[0]),
+                "B": get_display_contrast_stats(processed_pair[1]),
             }
             
         return jsonify(response)
@@ -1170,6 +1119,8 @@ def config_endpoint():
     config_data["images"]["frame_stride"] = cfg.frame_stride
     config_data["images"]["pair_stride"] = cfg.pair_stride
     config_data["images"]["pairing_preset"] = cfg.pairing_preset
+    # Normalize image_format through property (handles empty lists → defaults)
+    config_data["images"]["image_format"] = list(cfg.image_format)
     # Normalize all keys to strings to prevent jsonify sort_keys TypeError
     # when YAML loads camera numbers as mixed int/str keys
     config_data = _normalize_dict_keys(config_data)
@@ -1365,6 +1316,51 @@ def update_config():
                 "overlap_pairs": [],
             }
             logger.info("Calibration sources changed — reset pixel-dependent global coordinate fields")
+
+            # Reset derived calibration results that depend on calibration images
+            cal_data = data.setdefault("calibration", {})
+
+            # Polynomial coefficients (fitted from detection points on old images)
+            cal_data.setdefault("polynomial", {})["cameras"] = {}
+
+            # Stepped board derived data (fiducials, clicked levels, pose labels)
+            sb = cal_data.setdefault("stepped_board", {})
+            sb["cam1_fiducials"] = None
+            sb["cam2_fiducials"] = None
+            sb["cam1_clicked_level"] = None
+            sb["cam2_clicked_level"] = None
+            sb["cam1_pose_levels"] = {}
+            sb["cam2_pose_levels"] = {}
+
+            # Stepped planar derived data
+            sp = cal_data.setdefault("stepped_planar", {})
+            sp["fiducials"] = {}
+            sp["clicked_level"] = {}
+            sp["pose_levels"] = {}
+
+            # Self-calibration config copy (canonical source is the file, not config.yaml)
+            cal_data["self_calibration"] = {}
+
+            logger.info(
+                "Calibration sources changed — reset derived calibration fields "
+                "(polynomial cameras, stepped fiducials/pose levels, self-calibration)"
+            )
+
+    # Detect active calibration method change -> clean up inactive derived data
+    incoming_active = data.get("calibration", {}).get("active")
+    if incoming_active is not None:
+        old_active = cfg.data.get("calibration", {}).get("active")
+        if old_active and incoming_active != old_active:
+            cal_data = data.setdefault("calibration", {})
+            # Clear self-calibration config copy (only relevant to stereo methods)
+            cal_data["self_calibration"] = {}
+            # Clear polynomial cameras dict when switching AWAY from polynomial
+            if old_active == "polynomial":
+                cal_data.setdefault("polynomial", {})["cameras"] = {}
+            logger.info(
+                f"Active calibration method changed {old_active!r} -> {incoming_active!r} "
+                "— cleared derived data"
+            )
 
     # Store old camera_count to detect changes
     old_camera_count = cfg.data["paths"].get("camera_count", 1)

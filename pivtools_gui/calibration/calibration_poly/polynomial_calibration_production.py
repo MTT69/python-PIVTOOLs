@@ -2,7 +2,7 @@
 """
 polynomial_calibration_production.py
 
-Polynomial (DAVIS) Calibration - Standalone Production Script.
+Polynomial Calibration - Standalone Production Script.
 
 Applies polynomial distortion correction and converts to physical units.
 - Reads polynomial coefficients from Calibration.xml or config
@@ -311,7 +311,7 @@ def fit_polynomial_from_points(
     world_points: np.ndarray,
     image_shape: tuple,
 ) -> dict:
-    """Fit a DaVis-compatible 3rd-order polynomial model from calibration points.
+    """Fit a 3rd-order bivariate polynomial model from calibration points.
 
     Parameters
     ----------
@@ -464,7 +464,7 @@ def save_polynomial_to_config(
 
 def evaluate_polynomial_terms(s: np.ndarray, t: np.ndarray, coeffs: np.ndarray) -> np.ndarray:
     """
-    Evaluate DAVIS 3rd-order polynomial:
+    Evaluate 3rd-order bivariate polynomial:
     coeff order =
         [1, s, s^2, s^3, t, t^2, t^3, s*t, s^2*t, s*t^2]
 
@@ -475,7 +475,7 @@ def evaluate_polynomial_terms(s: np.ndarray, t: np.ndarray, coeffs: np.ndarray) 
     t : ndarray
         normalized coordinate t(y')
     coeffs : list or array
-        polynomial coefficients in DAVIS ordering
+        polynomial coefficients in canonical term ordering
 
     Returns
     -------
@@ -514,7 +514,7 @@ def evaluate_polynomial_terms(s: np.ndarray, t: np.ndarray, coeffs: np.ndarray) 
 
 class PolynomialVectorCalibrator:
     """
-    Polynomial vector calibrator for DAVIS-style calibration.
+    Polynomial vector calibrator (3rd-order bivariate model).
 
     Can be initialized either:
     1. With explicit parameters (dx_coeff, dy_coeff, etc.)
@@ -687,7 +687,7 @@ class PolynomialVectorCalibrator:
 
     def calibrate_coordinates(self, x_px: np.ndarray, y_px: np.ndarray) -> tuple:
         """
-        Convert pixel coordinates to physical coordinates (mm) using DAVIS polynomial.
+        Convert pixel coordinates to physical coordinates (mm) using the fitted polynomial.
 
         Parameters
         ----------
@@ -716,7 +716,7 @@ class PolynomialVectorCalibrator:
             logger.warning("No image_height — skipping uncal→raw conversion. Results may be incorrect.")
             x_raw, y_raw = x_px, y_px
 
-        # normalized DAVIS coords (in raw pixel space)
+        # normalized polynomial coords (in raw pixel space)
         s = 2 * (x_raw - self.x_origin) / self.nx
         t = 2 * (y_raw - self.y_origin) / self.ny
 
@@ -748,7 +748,7 @@ class PolynomialVectorCalibrator:
         coords_y_px: np.ndarray
     ) -> tuple:
         """
-        Convert pixel-based velocity vectors to m/s using DAVIS polynomial.
+        Convert pixel-based velocity vectors to m/s using the fitted polynomial.
 
         Parameters
         ----------
@@ -795,7 +795,7 @@ class PolynomialVectorCalibrator:
             x0_raw, y0_raw = coords_x_px, coords_y_px
             x1_raw, y1_raw = x1_uncal, y1_uncal
 
-        # normalized DAVIS coords (in raw pixel space)
+        # normalized polynomial coords (in raw pixel space)
         s0 = 2 * (x0_raw - self.x_origin) / self.nx
         t0 = 2 * (y0_raw - self.y_origin) / self.ny
 

@@ -471,8 +471,8 @@ class ChArUcoCalibrator:
                         figures_dir / f"detection_{frame_idx:03d}.png",
                         title=det_result["name"],
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"ChArUco detection figure failed for frame {frame_idx}: {e}")
 
         logger.info(
             f"Valid: {stats['valid']}, Empty: {stats['empty']}, No detection: {stats['no_detect']}"
@@ -509,14 +509,58 @@ class ChArUcoCalibrator:
 
         if self.model_type == "polynomial":
             # --- POLYNOMIAL MODEL FITTING ---
+            # Polynomial calibration is a 2D bivariate fit and must use ONLY the
+            # datum frame.  Multi-image fitting stacks points from poses at
+            # differing world-Z which the model cannot represent — pinhole is
+            # the right choice for multi-image calibration.
             from pivtools_gui.calibration.calibration_poly.polynomial_calibration_production import (
                 fit_polynomial_from_points, save_polynomial_to_config
             )
 
-            # Stack all detected points into flat arrays
-            all_img_flat = np.vstack([pts.reshape(-1, 2) for pts in all_img_points])
-            all_obj_flat = np.vstack([pts.reshape(-1, 3)[:, :2] for pts in all_obj_points])
-            all_obj_flat *= 1000.0  # meters -> mm
+            # Resolve datum frame from config (global_coordinates_datum_frame),
+            # falling back to the first valid detection.
+            sorted_valid_frames = sorted(valid_indices_map.keys())
+            datum_frame = 1
+            if self._config is not None:
+                try:
+                    datum_frame = int(self._config.global_coordinates_datum_frame)
+                except Exception:
+                    datum_frame = int(
+                        self._config.data.get("calibration", {})
+                        .get("charuco", {})
+                        .get("datum_frame", 1)
+                    )
+
+            if datum_frame not in valid_indices_map:
+                return {
+                    "success": False,
+                    "error": (
+                        f"Polynomial calibration requires the datum frame "
+                        f"(frame {datum_frame}) to be detected, but detection "
+                        f"failed on that frame. Valid frames: {sorted_valid_frames}."
+                    ),
+                }
+
+            datum_list_idx = sorted_valid_frames.index(datum_frame)
+            datum_img_pts = all_img_points[datum_list_idx]
+            datum_obj_pts = all_obj_points[datum_list_idx]
+
+            warnings_out = []
+            if len(sorted_valid_frames) > 1:
+                ignored = len(sorted_valid_frames) - 1
+                msg = (
+                    f"Polynomial calibration uses only the datum frame "
+                    f"(frame {datum_frame}). {ignored} additional detected "
+                    f"frame(s) were ignored — the polynomial model is a 2D fit "
+                    f"and is not designed for multi-image calibration. Use "
+                    f"pinhole for multi-image."
+                )
+                logger.warning(msg)
+                warnings_out.append(msg)
+
+            all_img_flat = datum_img_pts.reshape(-1, 2)
+            all_obj_flat = datum_obj_pts.reshape(-1, 3)[:, :2]
+            all_obj_flat = all_obj_flat * 1000.0  # meters -> mm
 
             try:
                 fit_result = fit_polynomial_from_points(all_img_flat, all_obj_flat, img_size)
@@ -543,13 +587,14 @@ class ChArUcoCalibrator:
                 "coefficients_x": np.array(fit_result["coefficients_x"]),
                 "coefficients_y": np.array(fit_result["coefficients_y"]),
                 "rms_fit_error_px": fit_result["rms_fit_error_px"],
-                "num_images": stats["valid"],
+                "num_images": 1,
                 "image_size": np.array([img_size[0], img_size[1]]),
                 "image_width": img_size[0],
                 "image_height": img_size[1],
                 "timestamp": datetime.now().isoformat(),
                 "dt": self.dt,
                 "dot_spacing_mm": self.square_size * 1000.0,
+                "datum_frame": datum_frame,
                 "board_params": {
                     "squares_h": self.squares_h,
                     "squares_v": self.squares_v,
@@ -569,8 +614,9 @@ class ChArUcoCalibrator:
                 "model_type": "polynomial",
                 "rms_error": float(fit_result["rms_fit_error_px"]),
                 "mm_per_pixel": float(fit_result["mm_per_pixel"]),
-                "num_images_used": stats["valid"],
+                "num_images_used": 1,
                 "model_path": str(model_path),
+                "warnings": warnings_out,
             }
 
         # --- PINHOLE MODEL FITTING (default) ---
@@ -653,8 +699,8 @@ class ChArUcoCalibrator:
                 figures_dir / "model_summary.png",
                 best_image=best_image,
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"ChArUco calibration model figure failed: {e}")
 
         return {
             "success": True,

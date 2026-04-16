@@ -627,21 +627,19 @@ def _pixels_to_world_mm(
 
     R, _ = cv2.Rodrigues(rvec)
     R_inv = R.T
-    t = tvec.flatten()
+    t_world = R_inv @ tvec.flatten()  # (3,) — constant across all points
 
-    world_pts = np.zeros((pts_normalized.shape[0], 2), dtype=np.float64)
+    N = pts_normalized.shape[0]
+    rays = np.empty((N, 3), dtype=np.float64)
+    rays[:, :2] = pts_normalized
+    rays[:, 2] = 1.0
 
-    for i, (xn, yn) in enumerate(pts_normalized):
-        ray = np.array([xn, yn, 1.0])
-        ray_world = R_inv @ ray
-        t_world = R_inv @ t
+    rays_world = rays @ R_inv.T  # (N, 3)
 
-        if abs(ray_world[2]) < 1e-10:
-            world_pts[i] = [np.nan, np.nan]
-            continue
+    denom = rays_world[:, 2]
+    s = np.full(N, np.nan, dtype=np.float64)
+    valid = np.abs(denom) >= 1e-10
+    s[valid] = t_world[2] / denom[valid]
 
-        s = t_world[2] / ray_world[2]
-        P_world = s * ray_world - t_world
-        world_pts[i] = P_world[:2]
-
-    return world_pts
+    world_3d = s[:, None] * rays_world - t_world
+    return world_3d[:, :2]
