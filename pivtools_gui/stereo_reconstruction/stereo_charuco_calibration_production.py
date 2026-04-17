@@ -298,7 +298,10 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
             Shape (N, 3) with all chessboard corners
         """
         board, _ = self.detector
-        return board.getChessboardCorners().astype(np.float32)
+        obj_points = board.getChessboardCorners().astype(np.float32).copy()
+        # Y negated to produce physics-up world frame (OpenCV ChArUco board frame is +Y image-down)
+        obj_points[:, 1] = -obj_points[:, 1]
+        return obj_points
 
     def get_pattern_params(self) -> Dict[str, Any]:
         """Get pattern-specific parameters for saving to output files.

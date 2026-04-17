@@ -211,7 +211,8 @@ class StereoDotboardCalibrator(BaseStereoCalibrator):
         """Create 3D object points from grid indices."""
         obj_points = np.zeros((len(grid_indices), 3), dtype=np.float32)
         obj_points[:, 0] = grid_indices[:, 0] * self.dot_spacing_mm
-        obj_points[:, 1] = grid_indices[:, 1] * self.dot_spacing_mm
+        # Y negated to produce physics-up world frame (BFS default is image-down)
+        obj_points[:, 1] = -grid_indices[:, 1] * self.dot_spacing_mm
         return obj_points
 
     def _match_object_points(
@@ -266,7 +267,8 @@ class StereoDotboardCalibrator(BaseStereoCalibrator):
             idx_1 = pos_to_idx_1[pos]
             idx_2 = pos_to_idx_2[pos]
 
-            obj_pts.append([col * self.dot_spacing_mm, row * self.dot_spacing_mm, 0.0])
+            # Y negated to produce physics-up world frame (BFS default is image-down)
+            obj_pts.append([col * self.dot_spacing_mm, -row * self.dot_spacing_mm, 0.0])
             img_pts_1.append(centers_1[idx_1])
             img_pts_2.append(centers_2[idx_2])
 
