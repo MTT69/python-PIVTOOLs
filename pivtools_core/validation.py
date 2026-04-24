@@ -318,3 +318,132 @@ def log_validation_result(
 
     logger.info("=" * 80)
     logger.info("")
+
+
+def validate_stereo_ensemble_config(config: Config) -> Tuple[bool, List[str], List[str]]:
+    """Validate stereo ensemble CoC configuration before processing.
+
+    Checks stereo-specific prerequisites (calibration, self-calibration)
+    plus shared ensemble window/overlap/type validity using stereo_ensemble
+    config properties.
+
+    Returns:
+        Tuple of (is_valid, errors, warnings)
+    """
+    errors = []
+    warnings = []
+
+    # 1. Stereo calibration must exist
+    if not config.is_stereo_setup:
+        errors.append(
+            "Stereo ensemble requires stereo calibration "
+            f"(active method is '{config.active_calibration_method}', "
+            "expected 'stereo_dotboard' or 'stereo_charuco')"
+        )
+
+    # 2. Self-calibration must be completed
+    if not config.has_self_calibration:
+        errors.append(
+            "Stereo ensemble CoC requires completed self-calibration. "
+            "Run 'pivtools-cli self-calibrate' first."
+        )
+
+    # 3. Camera pair validation
+    cam_a, cam_b = config.stereo_ensemble_camera_pair
+    cam_nums = config.camera_numbers
+    if cam_a not in cam_nums:
+        errors.append(f"Camera {cam_a} from stereo_ensemble camera_pair not in camera_numbers {cam_nums}")
+    if cam_b not in cam_nums:
+        errors.append(f"Camera {cam_b} from stereo_ensemble camera_pair not in camera_numbers {cam_nums}")
+
+    # 4. Window sizes and overlaps (using stereo_ensemble properties)
+    try:
+        window_sizes = config.stereo_ensemble_window_sizes
+    except ValueError as e:
+        errors.append(f"Stereo ensemble window sizes: {e}")
+        return False, errors, warnings
+
+    try:
+        overlaps = config.stereo_ensemble_overlaps
+    except ValueError as e:
+        errors.append(f"Stereo ensemble overlaps: {e}")
+        return False, errors, warnings
+
+    # 5. Overlap range check
+    for i, ovlp in enumerate(overlaps):
+        if ovlp < 0 or ovlp > 95:
+            errors.append(f"Pass {i+1}: overlap {ovlp}% out of range (0-95%)")
+
+    # 6. Window sizes should decrease across passes
+    for i in range(1, len(window_sizes)):
+        prev = window_sizes[i - 1]
+        curr = window_sizes[i]
+        if curr[0] > prev[0] or curr[1] > prev[1]:
+            warnings.append(
+                f"Pass {i+1}: window size {curr} is larger than pass {i} ({prev}). "
+                "Typically window sizes decrease across passes."
+            )
+
+    # 7. Single mode sum_window validation
+    try:
+        ensemble_types = config.stereo_ensemble_type
+    except ValueError as e:
+        errors.append(f"Stereo ensemble type: {e}")
+        return False, errors, warnings
+
+    if 'single' in ensemble_types:
+        try:
+            config.stereo_ensemble_sum_window
+        except ValueError as e:
+            errors.append(f"Stereo ensemble sum window: {e}")
+
+    # 8. Sum fitting window validation
+    if config.stereo_ensemble_sum_fitting_window_enabled:
+        try:
+            config.stereo_ensemble_sum_fitting_window
+        except ValueError as e:
+            errors.append(f"Stereo ensemble sum fitting window: {e}")
+
+    # 9. Fit method validation
+    try:
+        config.stereo_ensemble_fit_method
+    except ValueError as e:
+        errors.append(f"Stereo ensemble fit method: {e}")
+
+    # 10. Resume validation
+    resume = config.stereo_ensemble_resume_from_pass
+    num_passes = config.stereo_ensemble_num_passes
+    if resume != 0:
+        if resume < 1 or resume > num_passes:
+            errors.append(
+                f"resume_from_pass={resume} is out of range. "
+                f"Must be 0 (disabled) or 1-{num_passes}."
+            )
+
+    # 11. Config consistency: stereo_ensemble must agree with ensemble for inner correlator
+    se_section = config.data.get("stereo_ensemble_piv", {})
+    for key in ("window_size", "overlap", "type", "sum_window"):
+        if se_section.get(key) is not None:
+            se_val = getattr(config, f"stereo_ensemble_{key}s" if key == "window_size" else f"stereo_ensemble_{key}" if key != "overlap" else "stereo_ensemble_overlaps")
+            ens_val = getattr(config, f"ensemble_{key}s" if key == "window_size" else f"ensemble_{key}" if key != "overlap" else "ensemble_overlaps")
+            if se_val != ens_val:
+                warnings.append(
+                    f"stereo_ensemble_piv.{key} differs from ensemble_piv.{key}. "
+                    f"The inner correlator uses ensemble_piv values for taper weights "
+                    f"and window grids. Override ensemble_piv to match, or leave "
+                    f"stereo_ensemble_piv.{key} unset to use fallback."
+                )
+
+    # 12. World bounds validation (if specified)
+    wb = config.stereo_ensemble_world_bounds
+    if wb is not None:
+        if len(wb) != 4:
+            errors.append(f"world_bounds must have 4 elements [x_min, x_max, y_min, y_max], got {len(wb)}")
+        elif wb[0] >= wb[1] or wb[2] >= wb[3]:
+            errors.append(
+                f"world_bounds must have x_min < x_max and y_min < y_max, "
+                f"got [{wb[0]}, {wb[1]}, {wb[2]}, {wb[3]}]"
+            )
+
+    is_valid = len(errors) == 0
+    return is_valid, errors, warnings

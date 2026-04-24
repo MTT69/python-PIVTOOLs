@@ -199,3 +199,71 @@ def frac_distance(x):
         Fractional distance in [0, 0.5].
     """
     return np.abs(x - np.round(x))
+
+
+def compute_composed_fractional_displacements(
+    map_x, map_y, win_ctrs_y, win_ctrs_x,
+    pred_dy_2d=None, pred_dx_2d=None,
+):
+    """Compute fractional pixel displacements for composed dewarp+predictor warp.
+
+    For each window centre, computes the raw image coordinate that the
+    composed warp samples at, then extracts the fractional part. This is
+    the fractional displacement that determines P_noise for the single-pass
+    interpolation.
+
+    For pass 0 (no predictor), the fractional part comes from the dewarp map
+    values at integer window centres — P_noise is NOT flat (unlike the old
+    two-pass approach where the dewarp noise was unmodeled).
+
+    Parameters
+    ----------
+    map_x, map_y : ndarray, shape (H_dw, W_dw)
+        Dewarp remap tables (dewarped pixel → raw camera pixel).
+    win_ctrs_y, win_ctrs_x : 1D ndarray
+        Window centres in dewarped pixel coordinates.
+    pred_dy_2d, pred_dx_2d : ndarray, shape (n_win_y, n_win_x), optional
+        Per-window predictor displacements in dewarped pixels. None for pass 0.
+
+    Returns
+    -------
+    frac_disp : ndarray, shape (n_windows, 2)
+        Fractional displacements [f_y, f_x] in [0, 0.5] for each window.
+        Averaged over the symmetric A (+pred/2) and B (-pred/2) warp.
+    """
+    from scipy.ndimage import map_coordinates
+
+    n_win_y = len(win_ctrs_y)
+    n_win_x = len(win_ctrs_x)
+    n_windows = n_win_y * n_win_x
+
+    # Build 2D grid of window centre coordinates
+    ctrs_y_2d, ctrs_x_2d = np.meshgrid(win_ctrs_y, win_ctrs_x, indexing="ij")
+    ctrs_y_flat = ctrs_y_2d.ravel()
+    ctrs_x_flat = ctrs_x_2d.ravel()
+
+    if pred_dy_2d is not None and pred_dx_2d is not None:
+        half_dy = pred_dy_2d.ravel() / 2.0
+        half_dx = pred_dx_2d.ravel() / 2.0
+    else:
+        half_dy = np.zeros(n_windows)
+        half_dx = np.zeros(n_windows)
+
+    frac_disp = np.zeros((n_windows, 2), dtype=np.float64)
+
+    for sign, label in [(-1.0, "A"), (1.0, "B")]:
+        shifted_y = ctrs_y_flat + sign * half_dy
+        shifted_x = ctrs_x_flat + sign * half_dx
+
+        # Bilinear interpolation of dewarp maps at shifted positions
+        coords = np.array([shifted_y, shifted_x])
+        raw_y = map_coordinates(map_y.astype(np.float64), coords, order=1, mode="nearest")
+        raw_x = map_coordinates(map_x.astype(np.float64), coords, order=1, mode="nearest")
+
+        frac_disp[:, 0] += frac_distance(raw_y)
+        frac_disp[:, 1] += frac_distance(raw_x)
+
+    # Average A and B fractional displacements
+    frac_disp /= 2.0
+
+    return frac_disp

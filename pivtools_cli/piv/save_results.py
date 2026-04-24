@@ -1030,3 +1030,184 @@ def _struct_to_ensemble_pass_result(struct) -> PIVEnsemblePassResult:
         win_ctrs_x=get_array('win_ctrs_x'),
         win_ctrs_y=get_array('win_ctrs_y'),
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stereo Ensemble CoC — Save Functions
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def save_stereo_ensemble_result(
+    stereo_result,
+    output_path: Path,
+    filename: str = "stereo_ensemble_result.mat",
+) -> str:
+    """Save stereo ensemble CoC result to .mat file.
+
+    Output is already in physical units (m/s, (m/s)^2, mm) since dewarping
+    IS calibration. Sign conventions on save: negate uy, UV, VW (matching
+    standard ensemble y-down→y-up convention).
+
+    Parameters
+    ----------
+    stereo_result : PIVStereoEnsembleResult
+        Result container with all passes.
+    output_path : Path
+        Output directory.
+    filename : str
+        Output filename.
+
+    Returns
+    -------
+    str
+        Path to saved file.
+    """
+    from pivtools_cli.piv.stereo_ensemble_result import PIVStereoEnsembleResult
+
+    output_path = Path(output_path)
+    output_path.mkdir(parents=True, exist_ok=True)
+    filepath = output_path / filename
+
+    n_passes = stereo_result.num_passes
+    if n_passes == 0:
+        logging.warning("PIVStereoEnsembleResult has no passes. Skipping save.")
+        return str(filepath)
+
+    # Build MATLAB struct array (one element per pass)
+    dtype = [
+        ('ux', object),
+        ('uy', object),
+        ('uz', object),
+        ('UU_stress', object),
+        ('VV_stress', object),
+        ('WW_stress', object),
+        ('UV_stress', object),
+        ('UW_stress', object),
+        ('VW_stress', object),
+        ('Sigma_12_xx', object),
+        ('d1_x', object),
+        ('d1_y', object),
+        ('d2_x', object),
+        ('d2_y', object),
+        ('peakheight', object),
+        ('nan_reason', object),
+        ('b_mask', object),
+        ('stereo_angle', object),
+        ('mm_per_pixel', object),
+        ('window_size', object),
+        ('win_ctrs_x', object),
+        ('win_ctrs_y', object),
+        ('pred_x', object),
+        ('pred_y', object),
+    ]
+
+    result_struct = np.empty((n_passes,), dtype=dtype)
+
+    for i in range(n_passes):
+        pr = stereo_result.get_pass(i)
+
+        # Sign conventions: negate uy, UV_stress, VW_stress on save
+        # (pixel y-down → physical y-up, matching standard ensemble)
+        result_struct['ux'][i] = _convert_to_half_precision(pr.ux, 'ux')
+        result_struct['uy'][i] = _convert_to_half_precision(-pr.uy, 'uy')
+        result_struct['uz'][i] = _convert_to_half_precision(pr.uz, 'uz')
+
+        result_struct['UU_stress'][i] = _convert_to_half_precision(pr.UU_stress, 'UU_stress')
+        result_struct['VV_stress'][i] = _convert_to_half_precision(pr.VV_stress, 'VV_stress')
+        result_struct['WW_stress'][i] = _convert_to_half_precision(pr.WW_stress, 'WW_stress')
+        result_struct['UV_stress'][i] = _convert_to_half_precision(-pr.UV_stress, 'UV_stress')
+        result_struct['UW_stress'][i] = _convert_to_half_precision(pr.UW_stress, 'UW_stress')
+        result_struct['VW_stress'][i] = _convert_to_half_precision(-pr.VW_stress, 'VW_stress')
+
+        result_struct['Sigma_12_xx'][i] = _convert_to_half_precision(pr.Sigma_12_xx, 'Sigma_12_xx')
+
+        result_struct['d1_x'][i] = _convert_to_half_precision(pr.d1_x, 'd1_x')
+        result_struct['d1_y'][i] = _convert_to_half_precision(pr.d1_y, 'd1_y')
+        result_struct['d2_x'][i] = _convert_to_half_precision(pr.d2_x, 'd2_x')
+        result_struct['d2_y'][i] = _convert_to_half_precision(pr.d2_y, 'd2_y')
+
+        result_struct['peakheight'][i] = _convert_to_half_precision(pr.peakheight, 'peakheight')
+        result_struct['nan_reason'][i] = pr.nan_reason.astype(np.int16)
+        result_struct['b_mask'][i] = pr.b_mask.astype(bool)
+
+        result_struct['stereo_angle'][i] = np.float64(pr.stereo_angle)
+        result_struct['mm_per_pixel'][i] = np.float64(pr.mm_per_pixel)
+        result_struct['window_size'][i] = np.array(pr.window_size, dtype=np.int32)
+
+        result_struct['win_ctrs_x'][i] = _convert_to_half_precision(pr.win_ctrs_x, 'win_ctrs_x')
+        result_struct['win_ctrs_y'][i] = _convert_to_half_precision(pr.win_ctrs_y, 'win_ctrs_y')
+
+        pred_x = pr.pred_x if pr.pred_x is not None else np.array([])
+        pred_y = pr.pred_y if pr.pred_y is not None else np.array([])
+        result_struct['pred_x'][i] = _convert_to_half_precision(pred_x, 'pred_x')
+        result_struct['pred_y'][i] = _convert_to_half_precision(-pred_y, 'pred_y')
+
+    scipy.io.savemat(
+        filepath,
+        {"stereo_ensemble_result": result_struct},
+        oned_as="row",
+        do_compression=True,
+    )
+    logging.info(f"Saved stereo ensemble result to {filepath}")
+    return str(filepath)
+
+
+def save_stereo_ensemble_coordinates(
+    output_path: Path,
+    world_bounds: tuple,
+    mm_per_pixel: float,
+    win_ctrs_x_list: list,
+    win_ctrs_y_list: list,
+    num_passes: int,
+    filename: str = "stereo_coordinates.mat",
+) -> str:
+    """Save stereo ensemble coordinates in mm.
+
+    Coordinates are derived directly from world_bounds + mm_per_pixel,
+    since dewarping already maps to physical coordinates.
+
+    Parameters
+    ----------
+    output_path : Path
+        Output directory.
+    world_bounds : tuple
+        (x_min, x_max, y_min, y_max) in mm.
+    mm_per_pixel : float
+        Dewarped pixel scale.
+    win_ctrs_x_list : list of ndarray
+        Window center X indices per pass (dewarped pixel coords).
+    win_ctrs_y_list : list of ndarray
+        Window center Y indices per pass.
+    num_passes : int
+        Number of passes.
+    filename : str
+        Output filename.
+    """
+    output_path = Path(output_path)
+    filepath = output_path / filename
+
+    x_min, x_max, y_min, y_max = world_bounds
+
+    dtype = [('x', object), ('y', object)]
+    coords_struct = np.empty((num_passes,), dtype=dtype)
+
+    for i in range(num_passes):
+        ctrs_x = win_ctrs_x_list[i]
+        ctrs_y = win_ctrs_y_list[i]
+
+        # Convert dewarped pixel indices to physical mm
+        x_mm = x_min + ctrs_x * mm_per_pixel
+        y_mm = y_min + ctrs_y * mm_per_pixel
+
+        x_grid, y_grid = np.meshgrid(x_mm, y_mm, indexing='xy')
+        coords_struct['x'][i] = x_grid.astype(np.float32)
+        coords_struct['y'][i] = y_grid.astype(np.float32)
+
+    scipy.io.savemat(
+        filepath,
+        {"coordinates": coords_struct},
+        oned_as="row",
+        do_compression=True,
+    )
+    logging.info(f"Saved stereo coordinates to {filepath}")
+    return str(filepath)

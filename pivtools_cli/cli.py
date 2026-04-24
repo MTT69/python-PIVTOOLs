@@ -229,6 +229,35 @@ def align_coordinates_command(args):
 # SELF-CALIBRATE COMMAND
 # =============================================================================
 
+# =============================================================================
+# STEREO ENSEMBLE (CoC) COMMAND
+# =============================================================================
+
+
+def stereo_ensemble_command(args):
+    """Run stereo ensemble PIV with Correlation-of-Correlations method."""
+    import os
+
+    if args.active_paths:
+        os.environ['PIV_ACTIVE_PATHS'] = args.active_paths
+    if args.camera_pair:
+        os.environ['PIV_STEREO_CAMERA_PAIR'] = args.camera_pair
+
+    print("=" * 60)
+    print("Stereo Ensemble PIV (Correlation-of-Correlations)")
+    print("=" * 60)
+
+    try:
+        from pivtools_core import stereo_ensemble
+        stereo_ensemble.main()
+    except Exception as e:
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
+        import sys
+        sys.exit(1)
+
+
 def self_calibrate_command(args):
     """Run stereo self-calibration (Wieneke 2005) to correct laser sheet misalignment."""
     import math
@@ -1967,6 +1996,21 @@ def main():
         help="Source path index (e.g., '0')"
     )
     selfcal_parser.set_defaults(func=self_calibrate_command)
+
+    # stereo-ensemble command
+    stereo_ens_parser = subparsers.add_parser(
+        "stereo-ensemble",
+        help="Run stereo ensemble PIV with Correlation-of-Correlations method",
+    )
+    stereo_ens_parser.add_argument(
+        "--active-paths", type=str, default=None,
+        help="Comma-separated path indices to process",
+    )
+    stereo_ens_parser.add_argument(
+        "--camera-pair", type=str, default=None,
+        help="Camera pair, e.g., '1,2'",
+    )
+    stereo_ens_parser.set_defaults(func=stereo_ensemble_command)
 
     args = parser.parse_args()
 

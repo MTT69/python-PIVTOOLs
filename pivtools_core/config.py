@@ -2824,6 +2824,167 @@ video:
             })
         return validated
 
+    # --- Stereo Ensemble PIV (CoC) properties ---
+    # All properties fall back to ensemble_piv equivalents when not explicitly set.
+    # The stereo_ensemble_piv config section is optional; omitting it entirely
+    # means the stereo ensemble pipeline uses all ensemble_piv settings.
+
+    @property
+    def stereo_ensemble_camera_pair(self) -> tuple:
+        """Camera pair for stereo ensemble PIV. Default: first stereo pair or (1, 2)."""
+        cp = self.data.get("stereo_ensemble_piv", {}).get("camera_pair")
+        if cp is not None:
+            return tuple(int(c) for c in cp)
+        if self.stereo_pairs:
+            return self.stereo_pairs[0]
+        return (1, 2)
+
+    @property
+    def stereo_ensemble_window_sizes(self) -> list:
+        """Window sizes for stereo ensemble. Falls back to ensemble_piv."""
+        ws = self.data.get("stereo_ensemble_piv", {}).get("window_size")
+        return ws if ws is not None else self.ensemble_window_sizes
+
+    @property
+    def stereo_ensemble_overlaps(self) -> list:
+        """Overlap percentages for stereo ensemble. Falls back to ensemble_piv."""
+        ov = self.data.get("stereo_ensemble_piv", {}).get("overlap")
+        if ov is not None:
+            if isinstance(ov, (int, float)):
+                ov = [ov]
+            n_passes = len(self.stereo_ensemble_window_sizes)
+            if len(ov) == 1 and n_passes > 1:
+                ov = ov * n_passes
+            if len(ov) != n_passes:
+                raise ValueError(
+                    f"stereo_ensemble overlap list length {len(ov)} does not match "
+                    f"number of passes {n_passes}"
+                )
+            return list(ov)
+        return self.ensemble_overlaps
+
+    @property
+    def stereo_ensemble_type(self) -> list:
+        """Pass types ('std' or 'single') for stereo ensemble. Falls back to ensemble_piv."""
+        t = self.data.get("stereo_ensemble_piv", {}).get("type")
+        return t if t is not None else self.ensemble_type
+
+    @property
+    def stereo_ensemble_sum_window(self):
+        """Sum window [h, w] for single mode. Falls back to ensemble_piv."""
+        sw = self.data.get("stereo_ensemble_piv", {}).get("sum_window")
+        return sw if sw is not None else self.ensemble_sum_window
+
+    @property
+    def stereo_ensemble_fit_method(self) -> str:
+        """Fit method: 'gaussian' or 'kspace'. Falls back to ensemble_piv."""
+        fm = self.data.get("stereo_ensemble_piv", {}).get("fit_method")
+        return fm if fm is not None else self.ensemble_fit_method
+
+    @property
+    def stereo_ensemble_background_subtraction_method(self) -> str:
+        """Background subtraction: 'correlation' or 'image'. Falls back to ensemble_piv."""
+        bm = self.data.get("stereo_ensemble_piv", {}).get("background_subtraction_method")
+        return bm if bm is not None else self.ensemble_background_subtraction_method
+
+    @property
+    def stereo_ensemble_gradient_correction(self) -> bool:
+        """Gradient correction for stresses. Falls back to ensemble_piv."""
+        gc = self.data.get("stereo_ensemble_piv", {}).get("gradient_correction")
+        return gc if gc is not None else self.ensemble_gradient_correction
+
+    @property
+    def stereo_ensemble_predictor_smoothing(self) -> bool:
+        """Predictor smoothing between passes. Falls back to ensemble_piv."""
+        ps = self.data.get("stereo_ensemble_piv", {}).get("predictor_smoothing")
+        return ps if ps is not None else self.ensemble_predictor_smoothing
+
+    @property
+    def stereo_ensemble_image_warp_interpolation(self) -> str:
+        """Image warp interpolation: 'cubic' or 'lanczos'. Falls back to ensemble_piv."""
+        iw = self.data.get("stereo_ensemble_piv", {}).get("image_warp_interpolation")
+        return iw if iw is not None else self.ensemble_image_warp_interpolation
+
+    @property
+    def stereo_ensemble_store_planes(self) -> bool:
+        """Save correlation planes per pass for diagnostics. Falls back to ensemble_piv."""
+        sp = self.data.get("stereo_ensemble_piv", {}).get("store_planes")
+        return sp if sp is not None else self.ensemble_store_planes
+
+    @property
+    def stereo_ensemble_save_diagnostics(self) -> bool:
+        """Save diagnostic images (dewarped first pair). Falls back to ensemble_piv."""
+        sd = self.data.get("stereo_ensemble_piv", {}).get("save_diagnostics")
+        return sd if sd is not None else self.ensemble_save_diagnostics
+
+    @property
+    def stereo_ensemble_world_bounds(self):
+        """World bounds (x_min, x_max, y_min, y_max) in mm, or None for auto-detect."""
+        wb = self.data.get("stereo_ensemble_piv", {}).get("world_bounds")
+        if wb is not None:
+            return tuple(float(v) for v in wb)
+        return None
+
+    @property
+    def stereo_ensemble_resume_from_pass(self) -> int:
+        """1-based pass to resume from. 0 = fresh start. Does NOT fall back to ensemble."""
+        return self.data.get("stereo_ensemble_piv", {}).get("resume_from_pass", 0)
+
+    @property
+    def stereo_ensemble_num_passes(self) -> int:
+        """Number of passes derived from window sizes."""
+        return len(self.stereo_ensemble_window_sizes)
+
+    @property
+    def stereo_ensemble_sum_fitting_window_enabled(self) -> bool:
+        """Whether sum_fitting_window extraction is enabled. Falls back to ensemble_piv."""
+        val = self.data.get("stereo_ensemble_piv", {}).get("sum_fitting_window_enabled")
+        return val if val is not None else self.ensemble_sum_fitting_window_enabled
+
+    @property
+    def stereo_ensemble_sum_fitting_window(self):
+        """Fitting window size [h, w] or None. Falls back to ensemble_piv."""
+        val = self.data.get("stereo_ensemble_piv", {}).get("sum_fitting_window")
+        if val is not None:
+            return val
+        return self.ensemble_sum_fitting_window
+
+    @property
+    def stereo_ensemble_persist_images(self) -> bool:
+        """Persist filtered images in worker RAM. Falls back to ensemble_piv."""
+        val = self.data.get("stereo_ensemble_piv", {}).get("persist_images")
+        return val if val is not None else self.ensemble_persist_images
+
+    @property
+    def stereo_ensemble_fit_offset(self) -> bool:
+        """Fit Gaussian offset term. Falls back to ensemble_piv."""
+        val = self.data.get("stereo_ensemble_piv", {}).get("fit_offset")
+        return val if val is not None else self.ensemble_fit_offset
+
+    @property
+    def stereo_ensemble_mask_center_pixel(self) -> bool:
+        """Mask auto-correlation center pixel. Falls back to ensemble_piv."""
+        val = self.data.get("stereo_ensemble_piv", {}).get("mask_center_pixel")
+        return val if val is not None else self.ensemble_mask_center_pixel
+
+    @property
+    def stereo_ensemble_kspace_soft_weighting(self) -> bool:
+        """K-space anisotropic soft weighting. Falls back to ensemble_piv."""
+        val = self.data.get("stereo_ensemble_piv", {}).get("kspace_soft_weighting")
+        return val if val is not None else self.ensemble_kspace_soft_weighting
+
+    @property
+    def stereo_ensemble_kspace_k_max_cap(self) -> float:
+        """K-space k_max hard cap. Falls back to ensemble_piv."""
+        val = self.data.get("stereo_ensemble_piv", {}).get("kspace_k_max_cap")
+        return val if val is not None else self.ensemble_kspace_k_max_cap
+
+    @property
+    def stereo_ensemble_predictor_interpolation(self) -> str:
+        """Predictor interpolation method for cv2.remap. Falls back to ensemble_piv."""
+        val = self.data.get("stereo_ensemble_piv", {}).get("predictor_interpolation")
+        return val if val is not None else self.ensemble_predictor_interpolation
+
     @property
     def instantaneous_predictor_smoothing(self) -> bool:
         """Enable Gaussian smoothing of the predictor field between passes.

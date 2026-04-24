@@ -550,3 +550,221 @@ EXPORT int fused_symmetric_warp_batch(
     free(pred_idx_x);
     return ERROR_NONE;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/* Bilinear sample from a 2D map with BORDER_REPLICATE (clamp)               */
+/*                                                                             */
+/* Used for dewarp map lookup at sub-pixel dewarped-space coordinates.        */
+/* Maps are smooth (slowly varying), so bilinear is sufficient.               */
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+static inline float bilinear_sample(const float *map, float fy, float fx,
+                                     int H, int W) {
+    float fy_floor = floorf(fy);
+    float fx_floor = floorf(fx);
+    int iy = (int)fy_floor;
+    int ix = (int)fx_floor;
+    float dy = fy - fy_floor;
+    float dx = fx - fx_floor;
+
+    /* BORDER_REPLICATE: clamp to valid range */
+    int iy0 = clampi(iy,     0, H - 1);
+    int iy1 = clampi(iy + 1, 0, H - 1);
+    int ix0 = clampi(ix,     0, W - 1);
+    int ix1 = clampi(ix + 1, 0, W - 1);
+
+    float v00 = map[iy0 * W + ix0];
+    float v01 = map[iy0 * W + ix1];
+    float v10 = map[iy1 * W + ix0];
+    float v11 = map[iy1 * W + ix1];
+
+    return (1.0f - dy) * ((1.0f - dx) * v00 + dx * v01)
+         +         dy  * ((1.0f - dx) * v10 + dx * v11);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/* Fused dewarp + predictor warp in a single interpolation pass               */
+/*                                                                             */
+/* Composes the dewarp remap tables with the predictor displacement field,    */
+/* sampling the RAW camera image exactly once.  Eliminates the double         */
+/* interpolation of the previous cv2.remap + libfusedwarp pipeline.           */
+/*                                                                             */
+/* For each output pixel (i, j) in dewarped space:                            */
+/*   Phase A: Upsample predictor at (i,j) -> (pred_dy, pred_dx)              */
+/*   Phase B: Shifted dewarped coord: (i +/- pred/2, j +/- pred/2)           */
+/*   Phase C: Bilinear lookup of dewarp maps at shifted coord -> (raw_y,x)   */
+/*   Phase D: Bicubic/Lanczos-3 sample of raw image at (raw_y, raw_x)        */
+/*                                                                             */
+/* Pass 0 (zero predictor): shifted = (i,j) = integer, map lookup exact,     */
+/* result identical to cv2.remap with INTER_CUBIC.                            */
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+EXPORT int fused_symmetric_warp_with_dewarp_batch(
+    const float *raw_imgs_a,    /* (N, H_raw, W_raw) raw camera images */
+    const float *raw_imgs_b,    /* (N, H_raw, W_raw) raw camera images */
+    float       *outs_a,        /* (N, H_dw, W_dw) output */
+    float       *outs_b,        /* (N, H_dw, W_dw) output */
+    const float *dw_map_x,      /* (H_dw, W_dw) dewarp: source x (col) in raw */
+    const float *dw_map_y,      /* (H_dw, W_dw) dewarp: source y (row) in raw */
+    const float *pred_dy,       /* (nPY, nPX) if shared, (N, nPY, nPX) if per-image */
+    const float *pred_dx,
+    int N,
+    int H_raw, int W_raw,
+    int H_dw,  int W_dw,
+    int nPY,   int nPX,
+    const float *ctrs_y,        /* nPY window centres in dewarped-space pixel coords */
+    const float *ctrs_x,        /* nPX window centres in dewarped-space pixel coords */
+    int interp_mode,            /* 0=bicubic, 1=Lanczos-3 (for raw image sampling) */
+    int shared_predictor        /* 1=shared (ensemble), 0=per-image (instantaneous) */
+) {
+    float *pred_idx_y, *pred_idx_x;
+
+    /* Input validation */
+    if (N <= 0 || H_raw <= 0 || W_raw <= 0 || H_dw <= 0 || W_dw <= 0) return ERROR_NOMEM;
+    if (nPY <= 0 || nPX <= 0) return ERROR_NOMEM;
+    if (!raw_imgs_a || !raw_imgs_b || !outs_a || !outs_b)   return ERROR_NOMEM;
+    if (!dw_map_x || !dw_map_y)                              return ERROR_NOMEM;
+    if (!pred_dy || !pred_dx || !ctrs_y || !ctrs_x)          return ERROR_NOMEM;
+
+    /* Build 1D LUTs: dewarped pixel coord -> fractional predictor index */
+    pred_idx_y = (float *)malloc((size_t)H_dw * sizeof(float));
+    pred_idx_x = (float *)malloc((size_t)W_dw * sizeof(float));
+    if (!pred_idx_y || !pred_idx_x) {
+        free(pred_idx_y);
+        free(pred_idx_x);
+        return ERROR_NOMEM;
+    }
+    build_pred_index_lut(pred_idx_y, H_dw, ctrs_y, nPY);
+    build_pred_index_lut(pred_idx_x, W_dw, ctrs_x, nPX);
+
+    int pred_stride = shared_predictor ? 0 : nPY * nPX;
+    int total_rows = N * H_dw;
+
+    if (interp_mode == 0) {
+        /* ── Bicubic raw image sampling ──────────────────────────────── */
+        int ti;
+        #pragma omp parallel for schedule(static)
+        for (ti = 0; ti < total_rows; ti++) {
+            int ni = ti / H_dw;
+            int i  = ti % H_dw;
+
+            const float *cur_pred_dy = pred_dy + ni * pred_stride;
+            const float *cur_pred_dx = pred_dx + ni * pred_stride;
+            const float *cur_raw_a = raw_imgs_a + (size_t)ni * H_raw * W_raw;
+            const float *cur_raw_b = raw_imgs_b + (size_t)ni * H_raw * W_raw;
+            float *cur_out_a = outs_a + (size_t)ni * H_dw * W_dw;
+            float *cur_out_b = outs_b + (size_t)ni * H_dw * W_dw;
+
+            int j;
+            float fiy, fiy_floor, pred_frac_dy;
+            int pred_iy_base;
+            float pred_wy[4];
+
+            /* Predictor y-weights: constant for this entire row */
+            fiy = pred_idx_y[i];
+            fiy_floor = floorf(fiy);
+            pred_iy_base = (int)fiy_floor - 1;
+            pred_frac_dy = fiy - fiy_floor;
+            keys_weights_4(pred_frac_dy, pred_wy);
+
+            for (j = 0; j < W_dw; j++) {
+                float fix = pred_idx_x[j];
+                int idx = i * W_dw + j;
+
+                /* Phase A: interpolate predictor */
+                float dense_dy = bicubic_pred_wy(cur_pred_dy, pred_wy, pred_iy_base, fix, nPY, nPX);
+                float dense_dx = bicubic_pred_wy(cur_pred_dx, pred_wy, pred_iy_base, fix, nPY, nPX);
+
+                /* Phase B: shifted dewarped-space coordinates */
+                float half_dy = 0.5f * dense_dy;
+                float half_dx = 0.5f * dense_dx;
+                float dw_a_y = (float)i - half_dy;
+                float dw_a_x = (float)j - half_dx;
+                float dw_b_y = (float)i + half_dy;
+                float dw_b_x = (float)j + half_dx;
+
+                /* Phase C: bilinear dewarp map lookup -> raw coordinates.
+                 * Uses BORDER_REPLICATE on the map (clamps to edge).
+                 * Within ~3px of the dewarped boundary, this produces
+                 * different edge behaviour than the two-pass pipeline.
+                 * PIV windows are placed well inside this margin. */
+                float raw_a_x = bilinear_sample(dw_map_x, dw_a_y, dw_a_x, H_dw, W_dw);
+                float raw_a_y = bilinear_sample(dw_map_y, dw_a_y, dw_a_x, H_dw, W_dw);
+                float raw_b_x = bilinear_sample(dw_map_x, dw_b_y, dw_b_x, H_dw, W_dw);
+                float raw_b_y = bilinear_sample(dw_map_y, dw_b_y, dw_b_x, H_dw, W_dw);
+
+                /* Phase D: bicubic sample of RAW image */
+                cur_out_a[idx] = bicubic_sample(cur_raw_a, raw_a_y, raw_a_x, H_raw, W_raw);
+                cur_out_b[idx] = bicubic_sample(cur_raw_b, raw_b_y, raw_b_x, H_raw, W_raw);
+            }
+        }
+    } else {
+        /* ── Lanczos-3 raw image sampling (LUT-accelerated) ─────────── */
+        float (*lanc_lut)[6] = (float (*)[6])malloc(
+            (size_t)(LANCZOS3_LUT_SIZE + 1) * 6 * sizeof(float));
+        if (!lanc_lut) {
+            free(pred_idx_y); free(pred_idx_x);
+            return ERROR_NOMEM;
+        }
+        build_lanczos3_lut(lanc_lut, LANCZOS3_LUT_SIZE);
+
+        int ti;
+        #pragma omp parallel for schedule(static)
+        for (ti = 0; ti < total_rows; ti++) {
+            int ni = ti / H_dw;
+            int i  = ti % H_dw;
+
+            const float *cur_pred_dy = pred_dy + ni * pred_stride;
+            const float *cur_pred_dx = pred_dx + ni * pred_stride;
+            const float *cur_raw_a = raw_imgs_a + (size_t)ni * H_raw * W_raw;
+            const float *cur_raw_b = raw_imgs_b + (size_t)ni * H_raw * W_raw;
+            float *cur_out_a = outs_a + (size_t)ni * H_dw * W_dw;
+            float *cur_out_b = outs_b + (size_t)ni * H_dw * W_dw;
+
+            int j;
+            float fiy, fiy_floor, pred_frac_dy;
+            int pred_iy_base;
+            float pred_wy[4];
+
+            /* Predictor y-weights: still bicubic (smooth field) */
+            fiy = pred_idx_y[i];
+            fiy_floor = floorf(fiy);
+            pred_iy_base = (int)fiy_floor - 1;
+            pred_frac_dy = fiy - fiy_floor;
+            keys_weights_4(pred_frac_dy, pred_wy);
+
+            for (j = 0; j < W_dw; j++) {
+                float fix = pred_idx_x[j];
+                int idx = i * W_dw + j;
+
+                /* Phase A: bicubic predictor interpolation */
+                float dense_dy = bicubic_pred_wy(cur_pred_dy, pred_wy, pred_iy_base, fix, nPY, nPX);
+                float dense_dx = bicubic_pred_wy(cur_pred_dx, pred_wy, pred_iy_base, fix, nPY, nPX);
+
+                /* Phase B: shifted dewarped-space coordinates */
+                float half_dy = 0.5f * dense_dy;
+                float half_dx = 0.5f * dense_dx;
+                float dw_a_y = (float)i - half_dy;
+                float dw_a_x = (float)j - half_dx;
+                float dw_b_y = (float)i + half_dy;
+                float dw_b_x = (float)j + half_dx;
+
+                /* Phase C: bilinear dewarp map lookup -> raw coordinates */
+                float raw_a_x = bilinear_sample(dw_map_x, dw_a_y, dw_a_x, H_dw, W_dw);
+                float raw_a_y = bilinear_sample(dw_map_y, dw_a_y, dw_a_x, H_dw, W_dw);
+                float raw_b_x = bilinear_sample(dw_map_x, dw_b_y, dw_b_x, H_dw, W_dw);
+                float raw_b_y = bilinear_sample(dw_map_y, dw_b_y, dw_b_x, H_dw, W_dw);
+
+                /* Phase D: Lanczos-3 sample of RAW image (LUT weights) */
+                cur_out_a[idx] = lanczos3_sample(cur_raw_a, raw_a_y, raw_a_x, H_raw, W_raw, lanc_lut);
+                cur_out_b[idx] = lanczos3_sample(cur_raw_b, raw_b_y, raw_b_x, H_raw, W_raw, lanc_lut);
+            }
+        }
+
+        free(lanc_lut);
+    }
+
+    free(pred_idx_y);
+    free(pred_idx_x);
+    return ERROR_NONE;
+}

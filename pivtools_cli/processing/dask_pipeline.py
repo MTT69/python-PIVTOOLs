@@ -701,3 +701,190 @@ def correlate_worker_batches(
     result.update(metadata)
 
     return result
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stereo Ensemble CoC — Worker and Reduction Functions
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def correlate_stereo_worker_batches(
+    batch_indices: list,
+    config: Config,
+    pass_idx: int,
+    predictor_field: Optional[np.ndarray],
+    cache: dict,
+    masks: Optional[List[np.ndarray]],
+    camera_pair: tuple,
+    source_path: str,
+    dewarp_maps_cam1: tuple,
+    dewarp_maps_cam2: tuple,
+    mm_per_pixel: float,
+    stereo_angle: float,
+    pixel_mask: Optional[np.ndarray] = None,
+    output_path: Optional[str] = None,
+    progress_var_name: Optional[str] = None,
+) -> dict:
+    """Per-worker stereo ensemble accumulation.
+
+    Creates StereoEnsembleCorrelatorCPU, loads images for both cameras,
+    loops over assigned batches, returns accumulated result.
+
+    Non-persisted mode only: workers reconstruct image pipelines and load
+    from disk. OS page cache makes re-reads on subsequent passes efficient.
+    """
+    from pivtools_cli.piv.piv_backend.cpu_stereo_ensemble import StereoEnsembleCorrelatorCPU
+    from pivtools_core.image_handling.load_images import load_images
+
+    cam_a, cam_b = camera_pair
+
+    # Reconstruct image pipelines for both cameras
+    images_cam1 = load_images(
+        cam_a, config, source=Path(source_path),
+        batch_size=config.batch_size,
+    )
+    images_cam2 = load_images(
+        cam_b, config, source=Path(source_path),
+        batch_size=config.batch_size,
+    )
+    # NOTE: pixel_mask is in raw camera coordinates but images will be dewarped.
+    # Applying a raw-space mask before dewarping would be geometrically wrong.
+    # Spatial filters are applied in raw space (before dewarping), which is correct
+    # since they operate locally. Masking is handled by the vector mask in dewarped space.
+    images_cam1 = create_filter_pipeline(images_cam1, config, pixel_mask=None)
+    images_cam2 = create_filter_pipeline(images_cam2, config, pixel_mask=None)
+
+    # Create correlator with dewarp maps
+    dewarp_maps = {
+        cam_a: dewarp_maps_cam1,
+        cam_b: dewarp_maps_cam2,
+    }
+    correlator = StereoEnsembleCorrelatorCPU(
+        config,
+        precomputed_cache=cache,
+        vector_masks=masks,
+        active_pass_idx=pass_idx,
+        dewarp_maps=dewarp_maps,
+        mm_per_pixel=mm_per_pixel,
+        stereo_angle=stereo_angle,
+    )
+
+    # Progress reporting
+    progress_var = None
+    if progress_var_name:
+        try:
+            from distributed import Variable, get_client
+            progress_var = Variable(progress_var_name, get_client())
+        except Exception:
+            pass
+
+    warp_1A_total = None
+    warp_1B_total = None
+    warp_2A_total = None
+    warp_2B_total = None
+    n_total = 0
+    metadata = {}
+
+    for i, batch_idx in enumerate(batch_indices):
+        # Load batch for both cameras
+        batch_cam1 = images_cam1.blocks[batch_idx].compute(scheduler='synchronous')
+        batch_cam2 = images_cam2.blocks[batch_idx].compute(scheduler='synchronous')
+
+        # Correlate with stereo accumulation
+        lightweight = correlator.correlate_batch_stereo(
+            batch_cam1, batch_cam2, config,
+            pass_idx=pass_idx,
+            predictor_field=predictor_field,
+            is_first_batch=(batch_idx == 0),
+            clear_buffers=(i == 0),
+            copy_result=False,
+        )
+
+        # Accumulate warp sums (4 total: A/B for each camera)
+        if warp_1A_total is None:
+            warp_1A_total = lightweight["warp_1A_sum"].copy()
+            warp_1B_total = lightweight["warp_1B_sum"].copy()
+            warp_2A_total = lightweight["warp_2A_sum"].copy()
+            warp_2B_total = lightweight["warp_2B_sum"].copy()
+        else:
+            warp_1A_total += lightweight["warp_1A_sum"]
+            warp_1B_total += lightweight["warp_1B_sum"]
+            warp_2A_total += lightweight["warp_2A_sum"]
+            warp_2B_total += lightweight["warp_2B_sum"]
+
+        n_total += lightweight["n_images"]
+
+        for key in ["smoothed_predictor", "vector_mask",
+                     "diag_dw_cam1_A", "diag_dw_cam1_B",
+                     "diag_dw_cam2_A", "diag_dw_cam2_B",
+                     "diag_warped_cam1_A", "diag_warped_cam1_B",
+                     "diag_warped_cam2_A", "diag_warped_cam2_B"]:
+            if metadata.get(key) is None and lightweight.get(key) is not None:
+                metadata[key] = lightweight[key]
+
+        # Concatenate per-frame diagnostic planes across batches
+        for key in ["diag_perframe_ab1", "diag_perframe_ab2", "diag_perframe_coc"]:
+            if key in lightweight and lightweight[key] is not None:
+                if key not in metadata:
+                    metadata[key] = lightweight[key]
+                else:
+                    metadata[key] = np.concatenate([metadata[key], lightweight[key]], axis=0)
+        if "diag_perframe_win_idx" in lightweight:
+            metadata["diag_perframe_win_idx"] = lightweight["diag_perframe_win_idx"]
+
+        del batch_cam1, batch_cam2, lightweight
+
+        if progress_var is not None:
+            try:
+                progress_var.set(i + 1)
+            except Exception:
+                pass
+
+    # Copy accumulated correlation buffers ONCE
+    result = correlator.get_accumulated_correlation_stereo(pass_idx)
+    result["warp_1A_sum"] = warp_1A_total
+    result["warp_1B_sum"] = warp_1B_total
+    result["warp_2A_sum"] = warp_2A_total
+    result["warp_2B_sum"] = warp_2B_total
+    result["n_images"] = n_total
+    result["n_win_x"] = len(correlator.win_ctrs_x[pass_idx])
+    result["n_win_y"] = len(correlator.win_ctrs_y[pass_idx])
+    result.update(metadata)
+
+    return result
+
+
+def reduce_stereo_ensemble_results(r1: dict, r2: dict) -> dict:
+    """Tree reduction for stereo ensemble results.
+
+    Sums 7 correlation arrays + 4 warp sums + n_images.
+    Uses + not += for Dask retry safety.
+    """
+    return {
+        "cam1_AB_sum": r1["cam1_AB_sum"] + r2["cam1_AB_sum"],
+        "cam1_AA_sum": r1["cam1_AA_sum"] + r2["cam1_AA_sum"],
+        "cam1_BB_sum": r1["cam1_BB_sum"] + r2["cam1_BB_sum"],
+        "cam2_AB_sum": r1["cam2_AB_sum"] + r2["cam2_AB_sum"],
+        "cam2_AA_sum": r1["cam2_AA_sum"] + r2["cam2_AA_sum"],
+        "cam2_BB_sum": r1["cam2_BB_sum"] + r2["cam2_BB_sum"],
+        "CoC_sum": r1["CoC_sum"] + r2["CoC_sum"],
+        "warp_1A_sum": r1["warp_1A_sum"] + r2["warp_1A_sum"],
+        "warp_1B_sum": r1["warp_1B_sum"] + r2["warp_1B_sum"],
+        "warp_2A_sum": r1["warp_2A_sum"] + r2["warp_2A_sum"],
+        "warp_2B_sum": r1["warp_2B_sum"] + r2["warp_2B_sum"],
+        "n_images": r1["n_images"] + r2["n_images"],
+        "n_win_x": r1["n_win_x"],
+        "n_win_y": r1["n_win_y"],
+        "smoothed_predictor": r1.get("smoothed_predictor"),
+        "vector_mask": r1.get("vector_mask"),
+        # Preserve first-frame diagnostic images (keep whichever worker has them)
+        **{k: r1.get(k) if r1.get(k) is not None else r2.get(k)
+           for k in ["diag_dw_cam1_A", "diag_dw_cam1_B",
+                      "diag_dw_cam2_A", "diag_dw_cam2_B",
+                      "diag_warped_cam1_A", "diag_warped_cam1_B",
+                      "diag_warped_cam2_A", "diag_warped_cam2_B"]},
+        # Concatenate per-frame diagnostic planes across batches
+        **{k: np.concatenate([r1[k], r2[k]], axis=0) if k in r1 and k in r2 else r1.get(k, r2.get(k))
+           for k in ["diag_perframe_ab1", "diag_perframe_ab2", "diag_perframe_coc"]},
+        "diag_perframe_win_idx": r1.get("diag_perframe_win_idx", r2.get("diag_perframe_win_idx")),
+    }

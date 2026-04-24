@@ -311,6 +311,27 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             ctypes.c_int,                # shared_predictor
         ]
 
+        # Fused dewarp + predictor warp (single interpolation pass for stereo)
+        cls._lib_fw.fused_symmetric_warp_with_dewarp_batch.restype = ctypes.c_int
+        cls._lib_fw.fused_symmetric_warp_with_dewarp_batch.argtypes = [
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # raw_imgs_a (N,H_raw,W_raw)
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # raw_imgs_b
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # outs_a (N,H_dw,W_dw)
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # outs_b
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # dw_map_x (H_dw,W_dw)
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # dw_map_y
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # pred_dy
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # pred_dx
+            ctypes.c_int,                # N
+            ctypes.c_int, ctypes.c_int,  # H_raw, W_raw
+            ctypes.c_int, ctypes.c_int,  # H_dw, W_dw
+            ctypes.c_int, ctypes.c_int,  # nPY, nPX
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # ctrs_y
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # ctrs_x
+            ctypes.c_int,                # interp_mode
+            ctypes.c_int,                # shared_predictor
+        ]
+
         cls._lib_corr.bulkxcorr2d.restype = ctypes.c_ubyte
         cls._lib_corr.bulkxcorr2d.argtypes = [
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),

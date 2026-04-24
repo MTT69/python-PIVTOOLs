@@ -78,6 +78,43 @@ EXPORT int fused_symmetric_warp_batch(
     int shared_predictor       /* 1=shared (ensemble), 0=per-image (instantaneous) */
 );
 
+/*
+ * Fused dewarp + predictor warp: single interpolation pass.
+ *
+ * Composes the dewarp remap tables (dewarped pixel -> raw camera pixel)
+ * with the predictor displacement, sampling each raw camera image exactly
+ * once via bicubic or Lanczos-3.  Eliminates double interpolation.
+ *
+ * Parameters:
+ *   raw_imgs_a/b  - Raw camera images, (N, H_raw, W_raw)
+ *   outs_a/b      - Output dewarped+warped images, (N, H_dw, W_dw), caller-allocated
+ *   dw_map_x/y    - Dewarp remap tables, (H_dw, W_dw), cv2.remap format
+ *   pred_dy/dx    - Coarse predictor in dewarped-space pixels
+ *   H_raw, W_raw  - Raw camera image dimensions
+ *   H_dw, W_dw    - Dewarped output dimensions (= dewarp map dimensions)
+ *   Other params same as fused_symmetric_warp_batch.
+ *
+ * Pass 0 (zero predictor): result identical to cv2.remap(INTER_CUBIC).
+ */
+EXPORT int fused_symmetric_warp_with_dewarp_batch(
+    const float *raw_imgs_a,
+    const float *raw_imgs_b,
+    float       *outs_a,
+    float       *outs_b,
+    const float *dw_map_x,
+    const float *dw_map_y,
+    const float *pred_dy,
+    const float *pred_dx,
+    int N,
+    int H_raw, int W_raw,
+    int H_dw,  int W_dw,
+    int nPY,   int nPX,
+    const float *ctrs_y,
+    const float *ctrs_x,
+    int interp_mode,
+    int shared_predictor
+);
+
 #ifdef __cplusplus
 }
 #endif

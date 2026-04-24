@@ -38,7 +38,7 @@
 
 #define KSPACE_PARAMS 16
 #define JOINT_NPARAMS 5
-#define MAIN_NPARAMS 5
+#define MAIN_NPARAMS 6
 #define JOINT_MAX_ITER 200
 #define MAIN_MAX_ITER 250
 #define XTOL 1e-8
@@ -54,70 +54,16 @@
 #define STATUS_NEG_VAR  5
 
 // ============================================================================
-// Interpolation kernel noise PSD (ported from interpolation_noise_psd.py)
+// Interpolation kernel noise PSD (shared header with kspace_coc_fitting.c)
 // ============================================================================
+#include "interp_noise_psd.h"
 
-static double frac_distance(double x) {
-    double rem = fabs(fmod(x, 1.0));
-    return (rem <= 0.5) ? rem : 1.0 - rem;
-}
-
-// Bicubic kernel (Keys a=-0.75, 4-tap)
-static void bicubic_weights(double f, double w[4]) {
-    double a = -0.75;
-    double f2 = f * f;
-    double f3 = f2 * f;
-    w[0] = a * f3 - 2.0 * a * f2 + a * f;           // w[-1]
-    w[1] = (a + 2.0) * f3 - (a + 3.0) * f2 + 1.0;   // w[0]
-    w[2] = -(a + 2.0) * f3 + (2.0 * a + 3.0) * f2 - a * f; // w[1]
-    w[3] = -a * f3 + a * f2;                          // w[2]
-}
-
-// |H(k, f)|^2 for bicubic kernel
-static double bicubic_mag_sq(double k, double f) {
-    double w[4];
-    bicubic_weights(f, w);
-    double twopik = 2.0 * M_PI * k;
-    // H = w[0]*e^{+i*twopik} + w[1] + w[2]*e^{-i*twopik} + w[3]*e^{-2i*twopik}
-    // Offsets: -1, 0, +1, +2
-    double Hr = w[0] * cos(twopik) + w[1] + w[2] * cos(twopik) + w[3] * cos(2.0 * twopik);
-    double Hi = w[0] * sin(twopik) - w[2] * sin(twopik) - w[3] * sin(2.0 * twopik);
-    return Hr * Hr + Hi * Hi;
-}
-
-// Lanczos-3 single weight
-static double lanczos3_single_weight(double t) {
-    if (fabs(t) < 1e-12) return 1.0;
-    if (fabs(t) >= 3.0) return 0.0;
-    double pit = M_PI * t;
-    return (sin(pit) / pit) * (sin(pit / 3.0) / (pit / 3.0));
-}
-
-// |H(k, f)|^2 for Lanczos-3 kernel
-static double lanczos3_mag_sq(double k, double f) {
-    // 6 taps at offsets [-2, -1, 0, +1, +2, +3]
-    int offsets[6] = {-2, -1, 0, 1, 2, 3};
-    double raw[6], w[6];
-    double sum = 0.0;
-    for (int i = 0; i < 6; i++) {
-        raw[i] = lanczos3_single_weight(f - offsets[i]);
-        sum += raw[i];
-    }
-    if (sum < 1e-12) {
-        // Degenerate: all weight on center
-        return 1.0;
-    }
-    for (int i = 0; i < 6; i++) w[i] = raw[i] / sum;
-
-    double twopik = 2.0 * M_PI * k;
-    double Hr = 0.0, Hi = 0.0;
-    for (int i = 0; i < 6; i++) {
-        double angle = -offsets[i] * twopik;
-        Hr += w[i] * cos(angle);
-        Hi += w[i] * sin(angle);
-    }
-    return Hr * Hr + Hi * Hi;
-}
+// Backward-compat aliases (existing code uses these names)
+#define frac_distance      noise_frac_distance
+#define bicubic_weights    noise_bicubic_weights
+#define bicubic_mag_sq     noise_bicubic_mag_sq
+#define lanczos3_single_weight  noise_lanczos3_single_weight
+#define lanczos3_mag_sq    noise_lanczos3_mag_sq
 
 // ============================================================================
 // FFT helpers: ifftshift / fftshift for 2D
@@ -237,18 +183,23 @@ struct main_fit_data {
     size_t n;           // Number of valid k-points
     const double *K_X;
     const double *K_Y;
-    const double *T_norm_real;
-    const double *T_norm_imag;
+    const double *F_AB_real;   // Raw F_AB complex values (NOT divided by F_ref)
+    const double *F_AB_imag;
+    const double *F_ref;       // Reference spectrum √(|F_AA|·|F_BB|) at valid k-points
     const double *weights;
 };
 
+/* Implicit model: F_AB(k) = F_ref(k) × A × exp(-2π²k²Σ) × exp(-i2πk·μ)
+ * Params: [0]=A, [1]=μx, [2]=μy, [3]=Sxx, [4]=Syy, [5]=Sxy
+ * No division — F_ref is multiplied into the model, not divided out of data. */
 static int main_residual_f(const gsl_vector *x, void *data, gsl_vector *f) {
     struct main_fit_data *d = (struct main_fit_data *)data;
-    double mu_x    = gsl_vector_get(x, 0);
-    double mu_y    = gsl_vector_get(x, 1);
-    double Sxx     = fmax(gsl_vector_get(x, 2), 0.0);
-    double Syy     = fmax(gsl_vector_get(x, 3), 0.0);
-    double Sxy     = gsl_vector_get(x, 4);
+    double A       = gsl_vector_get(x, 0);
+    double mu_x    = gsl_vector_get(x, 1);
+    double mu_y    = gsl_vector_get(x, 2);
+    double Sxx     = fmax(gsl_vector_get(x, 3), 0.0);
+    double Syy     = fmax(gsl_vector_get(x, 4), 0.0);
+    double Sxy     = gsl_vector_get(x, 5);
     double two_pi  = 2.0 * M_PI;
     double two_pi_sq = two_pi * M_PI;
 
@@ -257,27 +208,31 @@ static int main_residual_f(const gsl_vector *x, void *data, gsl_vector *f) {
         double quad = Sxx * kx * kx + 2.0 * Sxy * kx * ky + Syy * ky * ky;
         double decay = exp(-two_pi_sq * quad);
         double phase = -two_pi * (kx * mu_x + ky * mu_y);
-        double model_r = decay * cos(phase);
-        double model_i = decay * sin(phase);
+        double fr = d->F_ref[i];
+        double model_r = fr * A * decay * cos(phase);
+        double model_i = fr * A * decay * sin(phase);
         double w = d->weights[i];
-        gsl_vector_set(f, i,         w * (d->T_norm_real[i] - model_r));
-        gsl_vector_set(f, i + d->n,  w * (d->T_norm_imag[i] - model_i));
+        gsl_vector_set(f, i,         w * (d->F_AB_real[i] - model_r));
+        gsl_vector_set(f, i + d->n,  w * (d->F_AB_imag[i] - model_i));
     }
     return GSL_SUCCESS;
 }
 
+/* Jacobian for implicit model: F_AB = F_ref × A × decay × exp(i·phase)
+ * Params: [0]=A, [1]=μx, [2]=μy, [3]=Sxx, [4]=Syy, [5]=Sxy */
 static int main_residual_df(const gsl_vector *x, void *data, gsl_matrix *J) {
     struct main_fit_data *d = (struct main_fit_data *)data;
-    double mu_x    = gsl_vector_get(x, 0);
-    double mu_y    = gsl_vector_get(x, 1);
-    double Sxx     = fmax(gsl_vector_get(x, 2), 0.0);
-    double Syy     = fmax(gsl_vector_get(x, 3), 0.0);
-    double Sxy     = gsl_vector_get(x, 4);
+    double A       = gsl_vector_get(x, 0);
+    double mu_x    = gsl_vector_get(x, 1);
+    double mu_y    = gsl_vector_get(x, 2);
+    double Sxx     = fmax(gsl_vector_get(x, 3), 0.0);
+    double Syy     = fmax(gsl_vector_get(x, 4), 0.0);
+    double Sxy     = gsl_vector_get(x, 5);
     double two_pi  = 2.0 * M_PI;
     double two_pi_sq = two_pi * M_PI;
 
-    int Sxx_active = (gsl_vector_get(x, 2) >= 0.0);
-    int Syy_active = (gsl_vector_get(x, 3) >= 0.0);
+    int Sxx_active = (gsl_vector_get(x, 3) >= 0.0);
+    int Syy_active = (gsl_vector_get(x, 4) >= 0.0);
 
     gsl_matrix_set_zero(J);
 
@@ -288,33 +243,35 @@ static int main_residual_df(const gsl_vector *x, void *data, gsl_matrix *J) {
         double phase = -two_pi * (kx * mu_x + ky * mu_y);
         double cos_p = cos(phase), sin_p = sin(phase);
         double w = d->weights[i];
+        double fr = d->F_ref[i];
 
+        /* Column 0: dmodel/dA = F_ref × decay × exp(i·phase) */
+        gsl_matrix_set(J, i,         0, -w * fr * decay * cos_p);
+        gsl_matrix_set(J, i + d->n,  0, -w * fr * decay * sin_p);
+
+        /* Columns 1-2: dmodel/dμ (F_ref × A × decay × d[exp(i·phase)]/dμ) */
         double dphase_dmux = -two_pi * kx;
         double dphase_dmuy = -two_pi * ky;
-        double dTr_dmux = decay * (-sin_p * dphase_dmux);
-        double dTi_dmux = decay * ( cos_p * dphase_dmux);
-        double dTr_dmuy = decay * (-sin_p * dphase_dmuy);
-        double dTi_dmuy = decay * ( cos_p * dphase_dmuy);
+        gsl_matrix_set(J, i,         1, -w * fr * A * decay * (-sin_p * dphase_dmux));
+        gsl_matrix_set(J, i + d->n,  1, -w * fr * A * decay * ( cos_p * dphase_dmux));
+        gsl_matrix_set(J, i,         2, -w * fr * A * decay * (-sin_p * dphase_dmuy));
+        gsl_matrix_set(J, i + d->n,  2, -w * fr * A * decay * ( cos_p * dphase_dmuy));
 
-        gsl_matrix_set(J, i,         0, -w * dTr_dmux);
-        gsl_matrix_set(J, i + d->n,  0, -w * dTi_dmux);
-        gsl_matrix_set(J, i,         1, -w * dTr_dmuy);
-        gsl_matrix_set(J, i + d->n,  1, -w * dTi_dmuy);
-
+        /* Columns 3-5: dmodel/dΣ (F_ref × A × ddecay/dΣ × exp(i·phase)) */
         double ddecay_dSxx = decay * (-two_pi_sq * kx * kx);
         double ddecay_dSyy = decay * (-two_pi_sq * ky * ky);
         double ddecay_dSxy = decay * (-two_pi_sq * 2.0 * kx * ky);
 
         if (Sxx_active) {
-            gsl_matrix_set(J, i,         2, -w * ddecay_dSxx * cos_p);
-            gsl_matrix_set(J, i + d->n,  2, -w * ddecay_dSxx * sin_p);
+            gsl_matrix_set(J, i,         3, -w * fr * A * ddecay_dSxx * cos_p);
+            gsl_matrix_set(J, i + d->n,  3, -w * fr * A * ddecay_dSxx * sin_p);
         }
         if (Syy_active) {
-            gsl_matrix_set(J, i,         3, -w * ddecay_dSyy * cos_p);
-            gsl_matrix_set(J, i + d->n,  3, -w * ddecay_dSyy * sin_p);
+            gsl_matrix_set(J, i,         4, -w * fr * A * ddecay_dSyy * cos_p);
+            gsl_matrix_set(J, i + d->n,  4, -w * fr * A * ddecay_dSyy * sin_p);
         }
-        gsl_matrix_set(J, i,         4, -w * ddecay_dSxy * cos_p);
-        gsl_matrix_set(J, i + d->n,  4, -w * ddecay_dSxy * sin_p);
+        gsl_matrix_set(J, i,         5, -w * fr * A * ddecay_dSxy * cos_p);
+        gsl_matrix_set(J, i + d->n,  5, -w * fr * A * ddecay_dSxy * sin_p);
     }
     return GSL_SUCCESS;
 }
@@ -683,8 +640,9 @@ PIV_EXPORT int fit_kspace_batch(
         double *F_ref_norm  = (double *)malloc(n_pixels * sizeof(double));
         double *joint_wts   = (double *)malloc(n_pixels * sizeof(double));
         // For main fit
-        double *T_norm_r    = (double *)malloc(n_pixels * sizeof(double));
-        double *T_norm_i    = (double *)malloc(n_pixels * sizeof(double));
+        double *F_AB_r      = (double *)malloc(n_pixels * sizeof(double));
+        double *F_AB_i      = (double *)malloc(n_pixels * sizeof(double));
+        double *main_F_ref  = (double *)malloc(n_pixels * sizeof(double));
         double *main_K_X    = (double *)malloc(n_pixels * sizeof(double));
         double *main_K_Y    = (double *)malloc(n_pixels * sizeof(double));
         double *main_wts    = (double *)malloc(n_pixels * sizeof(double));
@@ -720,7 +678,7 @@ PIV_EXPORT int fit_kspace_batch(
 
         int alloc_ok = (fft_in && fft_out_AA && fft_out_BB && fft_out_AB && fft_tmp &&
                         fft_in_c && F_ref && P_noise && F_ref_norm && joint_wts &&
-                        T_norm_r && T_norm_i && main_K_X && main_K_Y && main_wts &&
+                        F_AB_r && F_AB_i && main_F_ref && main_K_X && main_K_Y && main_wts &&
                         prof_mag_x && prof_phase_x && prof_ref_x &&
                         prof_mag_y && prof_phase_y && prof_ref_y &&
                         F_ref_abs && F_AB_real && F_AB_imag &&
@@ -991,27 +949,10 @@ PIV_EXPORT int fit_kspace_batch(
                                   mu_x_init, mu_y_init, Sxx_init, Syy_init, 0.0,
                                   amp_A, amp_B, amp_AB, center_x, center_y);
 
-            // ---- Step 7: Full 5-param fit ----
-            // Compute T_norm = (F_AB / F_ref) / T(0) and collect valid k-points
-            double epsilon = fmax(F_dc_clean, 1.0) * 1e-8;
+            // ---- Step 7: Implicit model fit (6-param) ----
+            // Collect F_AB (complex) and F_ref at valid k-points.
+            // NO division — F_ref is multiplied into the model during fitting.
             size_t n_valid = 0;
-
-            // T(0) at DC
-            size_t dc_idx = center_idx_y * corr_w + center_idx_x;
-            double T0_re = F_AB_real[dc_idx] / (F_ref[dc_idx] + epsilon);
-            double T0_im = F_AB_imag[dc_idx] / (F_ref[dc_idx] + epsilon);
-            double T0_mag = sqrt(T0_re * T0_re + T0_im * T0_im);
-
-            if (T0_mag < 1e-6) {
-                out_status[i] = STATUS_NO_CONVERGE;
-                continue;
-            }
-
-            // T0_inv = conj(T0) / |T0|^2 for division
-            double T0_inv_re =  T0_re / (T0_mag * T0_mag);
-            double T0_inv_im = -T0_im / (T0_mag * T0_mag);
-
-            // Collect valid k-points within elliptical mask
             double k_max_x_sq = k_max_x * k_max_x;
             double k_max_y_sq = k_max_y * k_max_y;
 
@@ -1020,19 +961,28 @@ PIV_EXPORT int fit_kspace_batch(
                 if (kx * kx / k_max_x_sq + ky * ky / k_max_y_sq > 1.0)
                     continue;
 
-                // T_measured = F_AB / F_ref
-                double Tm_re = F_AB_real[p] / (F_ref[p] + epsilon);
-                double Tm_im = F_AB_imag[p] / (F_ref[p] + epsilon);
-
-                // T_norm = T_measured * T0_inv (complex multiply)
-                double Tn_re = Tm_re * T0_inv_re - Tm_im * T0_inv_im;
-                double Tn_im = Tm_re * T0_inv_im + Tm_im * T0_inv_re;
-
-                T_norm_r[n_valid] = Tn_re;
-                T_norm_i[n_valid] = Tn_im;
-                main_K_X[n_valid] = kx;
-                main_K_Y[n_valid] = ky;
+                F_AB_r[n_valid]     = F_AB_real[p];
+                F_AB_i[n_valid]     = F_AB_imag[p];
+                main_F_ref[n_valid] = F_ref[p];
+                main_K_X[n_valid]   = kx;
+                main_K_Y[n_valid]   = ky;
                 n_valid++;
+            }
+
+            // Initial guess for A: ratio at the lowest-|k| valid point
+            // (valid points are in pixel order, NOT sorted by |k|)
+            double A_init = 1.0;
+            {
+                double best_k2 = 1e30;
+                for (size_t j = 0; j < n_valid; j++) {
+                    if (main_F_ref[j] < 1e-6) continue;
+                    double k2 = main_K_X[j] * main_K_X[j] + main_K_Y[j] * main_K_Y[j];
+                    if (k2 < best_k2) {
+                        best_k2 = k2;
+                        double fab_mag = sqrt(F_AB_r[j] * F_AB_r[j] + F_AB_i[j] * F_AB_i[j]);
+                        A_init = fab_mag / main_F_ref[j];
+                    }
+                }
             }
 
             if (n_valid < 10) {
@@ -1048,21 +998,11 @@ PIV_EXPORT int fit_kspace_batch(
                     // Find F_ref at this k-point's original index
                     // We need to reconstruct... simpler: store F_ref for valid points
                 }
-                // Recompute: iterate valid k-points again to get F_ref values
-                size_t vi = 0;
-                double *valid_fref = main_wts;  // Reuse temporarily
-                for (size_t p = 0; p < n_pixels; p++) {
-                    double kx = K_X[p], ky = K_Y[p];
-                    if (kx * kx / k_max_x_sq + ky * ky / k_max_y_sq > 1.0)
-                        continue;
-                    valid_fref[vi] = fabs(F_ref[p]);
-                    vi++;
-                }
-
+                // F_ref at valid k-points already stored in main_F_ref
                 double max_w_snr = 0.0;
                 double sqrt_noise = sqrt(noise_power) + 1e-12;
                 for (size_t j = 0; j < n_valid; j++) {
-                    double w_snr = valid_fref[j] / sqrt_noise;
+                    double w_snr = fabs(main_F_ref[j]) / sqrt_noise;
                     if (w_snr > max_w_snr) max_w_snr = w_snr;
                     main_wts[j] = w_snr;
                 }
@@ -1084,13 +1024,14 @@ PIV_EXPORT int fit_kspace_batch(
                     main_wts[j] = 1.0;
             }
 
-            // Set up main fit
+            // Set up main fit (implicit model: F_AB = F_ref × A × Gaussian)
             struct main_fit_data mdata;
             mdata.n = n_valid;
             mdata.K_X = main_K_X;
             mdata.K_Y = main_K_Y;
-            mdata.T_norm_real = T_norm_r;
-            mdata.T_norm_imag = T_norm_i;
+            mdata.F_AB_real = F_AB_r;
+            mdata.F_AB_imag = F_AB_i;
+            mdata.F_ref = main_F_ref;
             mdata.weights = main_wts;
 
             gsl_multifit_nlinear_fdf main_fdf;
@@ -1109,7 +1050,7 @@ PIV_EXPORT int fit_kspace_batch(
                 continue;
             }
 
-            double main_p0[5] = {mu_x_init, mu_y_init, Sxx_init, Syy_init, 0.0};
+            double main_p0[6] = {A_init, mu_x_init, mu_y_init, Sxx_init, Syy_init, 0.0};
             gsl_vector_view main_xv = gsl_vector_view_array(main_p0, MAIN_NPARAMS);
             int main_init_status = gsl_multifit_nlinear_init(&main_xv.vector, &main_fdf, main_work);
 
@@ -1124,11 +1065,12 @@ PIV_EXPORT int fit_kspace_batch(
 
                 if (main_status == GSL_SUCCESS || main_status == GSL_EMAXITER) {
                     gsl_vector *x_result = gsl_multifit_nlinear_position(main_work);
-                    mu_x_fit = gsl_vector_get(x_result, 0);
-                    mu_y_fit = gsl_vector_get(x_result, 1);
-                    Sxx_fit  = gsl_vector_get(x_result, 2);
-                    Syy_fit  = gsl_vector_get(x_result, 3);
-                    Sxy_fit  = gsl_vector_get(x_result, 4);
+                    /* param[0]=A (diagnostic, discarded), [1..5]=μx,μy,Sxx,Syy,Sxy */
+                    mu_x_fit = gsl_vector_get(x_result, 1);
+                    mu_y_fit = gsl_vector_get(x_result, 2);
+                    Sxx_fit  = gsl_vector_get(x_result, 3);
+                    Syy_fit  = gsl_vector_get(x_result, 4);
+                    Sxy_fit  = gsl_vector_get(x_result, 5);
 
                     // Also accept if cost/n_points is small
                     double cost = 0.0;
@@ -1190,8 +1132,9 @@ PIV_EXPORT int fit_kspace_batch(
         free(P_noise);
         free(F_ref_norm);
         free(joint_wts);
-        free(T_norm_r);
-        free(T_norm_i);
+        free(F_AB_r);
+        free(F_AB_i);
+        free(main_F_ref);
         free(main_K_X);
         free(main_K_Y);
         free(main_wts);

@@ -1,32 +1,34 @@
 paths:
   base_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\cavitydebug
+  - /Users/morgan/Downloads/stereo_ensemble/processed
   source_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Cavity Flows Data - 181124_polyamide\90degree_400light_100hz_3000dt_0
+  - /Users/morgan/Downloads/stereo_ensemble
   active_paths:
   - 0
   camera_numbers:
   - 1
-  camera_count: 1
+  - 2
+  camera_count: 2
   camera_subfolders: []
 images:
-  num_images: 101
+  num_images: 50
   image_format:
-  - Camera%d.cine
+  - B%05d_A.tif
+  - B%05d_B.tif
   vector_format:
   - '%05d.mat'
   dtype: float32
-  image_type: cine
+  image_type: standard
   use_camera_subfolders: false
   start_index: 1
-  frame_stride: 1
+  frame_stride: 0
   pair_stride: 1
-  pairing_preset: time_resolved
-  per_loop_frame_pairs: 4000
+  pairing_preset: ab_format
+  per_loop_frame_pairs: 50
   num_loops: 1
-  num_frame_pairs: 4000
+  num_frame_pairs: 50
 batches:
-  size: 20
+  size: 10
 logging:
   file: pypiv.log
   level: INFO
@@ -35,8 +37,8 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 4
-  dask_workers_per_node: 5
+  omp_threads: 10
+  dask_workers_per_node: 1
   dask_memory_limit: 10GB
   dask_max_in_flight_per_worker: 2
   open_dashboard: false
@@ -161,33 +163,18 @@ ensemble_piv:
     - 64
   - - 32
     - 32
-  - - 16
-    - 16
-  - - 8
-    - 16
   overlap:
-  - 50
-  - 50
   - 50
   - 50
   type:
   - std
   - std
-  - single
-  - single
   runs:
+  - 1
   - 2
-  - 3
-  - 4
   store_planes: false
   save_diagnostics: true
-  sum_window:
-  - 32
-  - 32
-  sum_fitting_window_enabled: true
-  sum_fitting_window:
-  - 16
-  - 16
+  sum_fitting_window_enabled: false
   resume_from_pass: 0
   window_type: square
   predictor_boundary_conditions:
@@ -195,12 +182,38 @@ ensemble_piv:
     ux: 0
     uy: 0
     edge: bottom
+stereo_ensemble_piv:
+  camera_pair:
+  - 1
+  - 2
+  window_size:
+  - - 64
+    - 64
+  - - 32
+    - 32
+  overlap:
+  - 50
+  - 50
+  type:
+  - std
+  - std
+  fit_method: kspace
+  background_subtraction_method: correlation
+  gradient_correction: true
+  predictor_smoothing: false
+  image_warp_interpolation: lanczos
+  kspace_k_max_cap: 0.4
+  kspace_soft_weighting: true
+  store_planes: true
+  save_diagnostics: true
+  resume_from_pass: 0
+  sum_fitting_window_enabled: false
 calibration:
   image_format: planar_calibration_plate_%02d.tif
-  num_images: 1
+  num_images: 20
   image_type: standard
   zero_based_indexing: false
-  use_camera_subfolders: false
+  use_camera_subfolders: true
   subfolder: enhanced
   camera_subfolders:
   - cam1
@@ -209,7 +222,7 @@ calibration:
   - camera4
   - camera5
   path_order: camera_first
-  active: polynomial
+  active: stereo_dotboard
   piv_type: ensemble
   scale_factor:
     dt: 0.0057553
@@ -258,40 +271,9 @@ calibration:
         - -0.022412790433100373
         - -0.00015699883036353684
         image_height: 2048.0
-      '1':
-        origin:
-          x: 1024.0
-          y: 1024.0
-        normalisation:
-          nx: 2048.0
-          ny: 2048.0
-        mm_per_pixel: 0.059880239520958084
-        coefficients_x:
-        - 271.97596240130696
-        - -0.399355471806388
-        - 0.8270943979854173
-        - -0.8139854517077841
-        - 0.00018972838254959173
-        - 0.2858029654715386
-        - -0.00015301653144948692
-        - 2.8563475198762068e-05
-        - -0.00015699883048924857
-        - -0.022412790433232094
-        coefficients_y:
-        - 271.97596240130696
-        - 0.0001897283825046392
-        - 0.2858029654715954
-        - -0.0001530165313595393
-        - -0.39935547180643055
-        - 0.8270943979854753
-        - -0.8139854517077056
-        - 2.8563475241106163e-05
-        - -0.022412790433100373
-        - -0.00015699883036353684
-        image_height: 2048.0
     dt: 4.96e-05
   calibration_sources:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\planar_images\calibration_boards
+  - /Users/morgan/Downloads/stereo_ensemble/calibrationimages
   global_coordinates:
     enabled: true
     datum_camera: 1
@@ -304,13 +286,13 @@ calibration:
     invert_ux: false
     overlap_pairs: []
   self_calibration:
-    z_offset: 0.8862484814418804
-    tilt_x: -0.002351031360713836
-    tilt_y: -0.0006818390561802796
+    z_offset: 0.8128942666143874
+    tilt_x: -0.0011937996372236867
+    tilt_y: 0.00033312378328439834
     converged: true
-    n_iterations: 9
-    final_rms_disparity: 2.101528022157098
-    n_images: 120
+    n_iterations: 10
+    final_rms_disparity: 2.4301583551732677
+    n_images: 50
     window_size: 128
     overlap: 50.0
 filters:
