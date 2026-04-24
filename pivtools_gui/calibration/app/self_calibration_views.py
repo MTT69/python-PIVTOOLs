@@ -12,6 +12,7 @@ import base64
 import io
 import math
 import threading
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -28,6 +29,10 @@ from pivtools_gui.calibration.services.self_calibration_service import (
     result_to_dict,
     run_self_cal_job,
     save_self_cal_to_config,
+    load_self_cal_from_file,
+    save_self_cal_to_file,
+    clear_self_cal_file,
+    _self_cal_file_path,
 )
 from pivtools_gui.stereo_reconstruction.self_calibration import estimate_pixel_scale
 
@@ -96,6 +101,15 @@ def dewarp_preview():
         # Load single frame pair
         from pivtools_core.image_handling.load_images import read_pair
         from pivtools_core.image_handling.path_utils import build_piv_camera_path
+
+        # Validate source path exists
+        if source_path_idx >= len(config.source_paths):
+            return jsonify({"error": f"Source path index {source_path_idx} out of range "
+                           f"(have {len(config.source_paths)} source paths configured)"}), 400
+        source_path = config.source_paths[source_path_idx]
+        if not Path(str(source_path)).exists():
+            return jsonify({"error": f"Source path does not exist: {source_path}. "
+                           f"Check Paths > Source in the Setup tab."}), 400
 
         cam1_path = build_piv_camera_path(config, source_path_idx, cam1_num)
         cam2_path = build_piv_camera_path(config, source_path_idx, cam2_num)
@@ -279,16 +293,19 @@ def get_self_cal_job(job_id):
     "/calibrate/self_calibration/status", methods=["GET"]
 )
 def get_self_cal_status():
-    """Return current self-cal state from config."""
+    """Return current self-cal state from config/file."""
     config = get_config()
-    sc = config.self_calibration_config
+    sc = config.self_calibration_config  # single file read
+    z = sc.get("z_offset", 0.0)
+    tx = sc.get("tilt_x", 0.0)
+    ty = sc.get("tilt_y", 0.0)
     return jsonify({
-        "has_self_calibration": config.has_self_calibration,
-        "z_offset": config.self_calibration_z_offset,
-        "tilt_x": config.self_calibration_tilt_x,
-        "tilt_y": config.self_calibration_tilt_y,
-        "tilt_x_deg": math.degrees(config.self_calibration_tilt_x),
-        "tilt_y_deg": math.degrees(config.self_calibration_tilt_y),
+        "has_self_calibration": sc.get("converged", False) and "z_offset" in sc,
+        "z_offset": z,
+        "tilt_x": tx,
+        "tilt_y": ty,
+        "tilt_x_deg": math.degrees(tx),
+        "tilt_y_deg": math.degrees(ty),
         "converged": sc.get("converged", False),
         "n_iterations": sc.get("n_iterations", 0),
         "final_rms_disparity": sc.get("final_rms_disparity", 0.0),
@@ -296,3 +313,80 @@ def get_self_cal_status():
         "window_size": sc.get("window_size", 64),
         "overlap": sc.get("overlap", 50.0),
     })
+
+
+# ============================================================================
+# ROUTE 5: Save Manual Self-Calibration Parameters
+# ============================================================================
+
+@self_calibration_bp.route(
+    "/calibrate/self_calibration/save_manual", methods=["POST"]
+)
+def save_manual_self_cal():
+    """Save manually entered Z-offset and tilts.
+
+    Request JSON:
+        z_offset: float (mm)
+        tilt_x_deg: float (degrees, converted to radians)
+        tilt_y_deg: float (degrees, converted to radians)
+    """
+    try:
+        data = request.get_json(force=True)
+        config = get_config()
+
+        z_offset = float(data.get("z_offset", 0.0))
+        tilt_x = math.radians(float(data.get("tilt_x_deg", 0.0)))
+        tilt_y = math.radians(float(data.get("tilt_y_deg", 0.0)))
+
+        import yaml
+        sc_data = {
+            "z_offset": z_offset,
+            "tilt_x": tilt_x,
+            "tilt_y": tilt_y,
+            "converged": True,
+            "n_iterations": 0,
+            "final_rms_disparity": 0.0,
+            "manual": True,
+        }
+
+        path = _self_cal_file_path(config)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w") as f:
+            yaml.safe_dump(sc_data, f, default_flow_style=False)
+
+        logger.info(
+            f"Saved manual self-cal: z={z_offset:.4f}mm, "
+            f"tilt_x={data.get('tilt_x_deg', 0):.4f} deg, "
+            f"tilt_y={data.get('tilt_y_deg', 0):.4f} deg -> {path}"
+        )
+        return jsonify({"success": True})
+
+    except Exception as e:
+        logger.error(f"Failed to save manual self-cal: {e}")
+        return jsonify({"error": str(e)}), 400
+
+
+# ============================================================================
+# ROUTE 6: Clear Self-Calibration
+# ============================================================================
+
+@self_calibration_bp.route(
+    "/calibrate/self_calibration/clear", methods=["POST"]
+)
+def clear_self_cal():
+    """Delete self-calibration file, resetting to no correction."""
+    try:
+        config = get_config()
+        clear_self_cal_file(config)
+
+        # Also clear from config.yaml if present
+        cal = config.data.get("calibration", {})
+        if "self_calibration" in cal:
+            del cal["self_calibration"]
+            config.save()
+
+        return jsonify({"success": True})
+
+    except Exception as e:
+        logger.error(f"Failed to clear self-cal: {e}")
+        return jsonify({"error": str(e)}), 400

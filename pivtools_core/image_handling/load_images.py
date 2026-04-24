@@ -288,10 +288,10 @@ def load_images(camera: int, config: Config, source: Path = None, batch_size: in
     This eliminates the need for a separate rechunk step, avoiding the
     cross-dependency problem that caused Dask worker underutilization.
 
-    Multi-loop support: When config.num_loops > 1 and image_type is "lavision_set",
-    creates batches per loop and concatenates them. Each batch reads from a single
-    .set file using LOCAL pair indices. The result is a single dask array spanning
-    all loops (e.g., 5 loops x 40 pairs = 200-pair array).
+    Multi-loop support: When config.num_loops > 1, creates batches per loop and
+    concatenates them. Each batch reads from a single source (file or directory)
+    using LOCAL pair indices. Works with all image types (.set, .cine, standard).
+    The result is a single dask array spanning all loops.
 
     Args:
         camera: The camera number.
@@ -313,14 +313,29 @@ def load_images(camera: int, config: Config, source: Path = None, batch_size: in
     image_type = config.image_type
     num_loops = config.num_loops
 
+    # Helper: derive camera_path from a base source directory/file
+    def _camera_path_from_source(base_source: Path) -> Path:
+        if image_type == "lavision_set":
+            return base_source  # .set file IS the camera_path
+        elif image_type == "cine":
+            return base_source  # directory containing Camera%d.cine
+        elif image_type == "lavision_im7":
+            if config.images_use_camera_subfolders:
+                folder = config.get_camera_folder(camera)
+                return base_source / folder if folder else base_source
+            return base_source
+        else:
+            folder = config.get_camera_folder(camera)
+            return base_source / folder if folder else base_source
+
     # Multi-loop: create batches per loop, concatenate
-    if num_loops > 1 and image_type == "lavision_set":
+    if num_loops > 1:
         per_loop = config.per_loop_frame_pairs
         dask_batches = []
 
         for loop_idx in range(num_loops):
             loop_source = config.get_loop_source_path(source, loop_idx)
-            camera_path = loop_source  # For .set, camera_path IS the file
+            camera_path = _camera_path_from_source(loop_source)
 
             num_batches = math.ceil(per_loop / batch_size)
             for batch_idx in range(num_batches):
@@ -346,20 +361,8 @@ def load_images(camera: int, config: Config, source: Path = None, batch_size: in
         )
         return images
 
-    # --- Single-loop logic (unchanged) ---
-    if image_type == "lavision_set":
-        camera_path = source
-    elif image_type == "lavision_im7":
-        if config.images_use_camera_subfolders:
-            folder = config.get_camera_folder(camera)
-            camera_path = source / folder if folder else source
-        else:
-            camera_path = source
-    elif image_type == "cine":
-        camera_path = source
-    else:
-        folder = config.get_camera_folder(camera)
-        camera_path = source / folder if folder else source
+    # --- Single-loop logic ---
+    camera_path = _camera_path_from_source(source)
 
     num_pairs = config.num_frame_pairs
     num_batches = math.ceil(num_pairs / batch_size)

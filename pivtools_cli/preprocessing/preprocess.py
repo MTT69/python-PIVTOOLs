@@ -9,8 +9,7 @@ from pivtools_core.config import Config
 from pivtools_cli.preprocessing.filters import requires_batch
 from pivtools_cli.processing.dask_pipeline import (
     apply_all_filters_slim,
-    get_spatial_filter_specs,
-    get_temporal_filter_specs,
+    get_filter_specs,
 )
 
 
@@ -75,10 +74,9 @@ def apply_filters_to_batch(
     if save_diagnostics and batch_idx == 0:
         filter_stages["00_original"] = batch.copy()
 
-    spatial_specs = get_spatial_filter_specs(config)
-    temporal_specs = get_temporal_filter_specs(config)
+    filter_specs = get_filter_specs(config)
 
-    batch = apply_all_filters_slim(batch, spatial_specs, temporal_specs, pixel_mask=pixel_mask)
+    batch = apply_all_filters_slim(batch, filter_specs=filter_specs, pixel_mask=pixel_mask)
 
     if save_diagnostics and batch_idx == 0 and output_dir is not None:
         filter_stages["final"] = batch.copy()

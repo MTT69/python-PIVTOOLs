@@ -27,7 +27,7 @@ from pivtools_core.image_handling.calibration_loader import (
 from pivtools_core.coordinate_utils import extract_coordinates
 from pivtools_gui.calibration.vector_calibration_production import VectorCalibrator
 from pivtools_gui.calibration.services.job_manager import job_manager
-from pivtools_gui.utils import camera_number, numpy_to_png_base64, numpy_to_base64
+from pivtools_gui.utils import camera_number, numpy_to_png_base64, numpy_to_base64, get_display_contrast_stats
 
 calibration_shared_bp = Blueprint("calibration_shared", __name__)
 
@@ -266,15 +266,15 @@ def calibration_get_frame():
     output_format = request.args.get("format", default="jpeg", type=str).lower()
     quality = request.args.get("quality", default=85, type=int)
 
-    # Check calibration image cache
-    cal_cache_key = (source_path_idx, camera, idx, output_format)
+    # Check calibration image cache — include actual source path so key invalidates on source change
+    cfg = get_config()
+    cal_source = str(cfg.calibration_sources[source_path_idx]) if source_path_idx < len(cfg.calibration_sources) else str(source_path_idx)
+    cal_cache_key = (cal_source, camera, idx, output_format)
     with _cal_cache_lock:
         if cal_cache_key in _cal_image_cache:
             return jsonify(_cal_image_cache[cal_cache_key])
 
     try:
-        cfg = get_config()
-
         # Early bounds validation
         frame_count = get_calibration_frame_count(camera, cfg, source_path_idx)
         if frame_count > 0 and idx > frame_count:
@@ -290,46 +290,20 @@ def calibration_get_frame():
         if img is None:
             return jsonify({"error": "Could not read calibration image"}), 500
 
-        # Calculate statistics (use float32 to halve memory vs float64)
+        # Calculate basic statistics on raw data for display
         img_float = img.astype(np.float32)
-        img_min = float(img_float.min())
-        img_max = float(img_float.max())
-        data_range = img_max - img_min
-
         stats = {
-            "min": img_min,
-            "max": img_max,
+            "min": float(img_float.min()),
+            "max": float(img_float.max()),
             "mean": float(img_float.mean()),
             "dtype": str(img.dtype),
         }
 
-        # Calculate vmin/vmax as percentages (0-100) of the data range
-        # This matches the logic in app.py get_percentile_stats()
-        # For large images (>4MP), subsample for percentile computation
-        total_pixels = img_float.size
-        if total_pixels > 4_000_000:
-            # Stride-sample: take every Nth pixel for fast percentile
-            stride = max(2, int(np.sqrt(total_pixels / 1_000_000)))
-            img_sampled = img_float[::stride, ::stride].ravel()
-        else:
-            img_sampled = img_float.ravel()
+        # Tighter auto-scale window within the sqrt-normalised encoding
+        contrast = get_display_contrast_stats(img)
+        stats["vmin_pct"] = contrast["vmin_pct"]
+        stats["vmax_pct"] = contrast["vmax_pct"]
 
-        p1 = float(np.percentile(img_sampled, 1))
-        p99 = float(np.percentile(img_sampled, 99))
-
-        if data_range > 0:
-            vmin_pct = 100.0 * (p1 - img_min) / data_range
-            vmax_pct = 100.0 * (p99 - img_min) / data_range
-        else:
-            vmin_pct = 0.0
-            vmax_pct = 100.0
-
-        stats["vmin_pct"] = round(vmin_pct, 2)
-        stats["vmax_pct"] = round(vmax_pct, 2)
-
-        # Encode to base64 using shared utility (min-max normalization for
-        # non-uint8, as-is for uint8).  This matches app.py get_frame_pair
-        # so the frontend vmin/vmax contrast controls work correctly.
         b64_image = numpy_to_base64(img, format=output_format, jpeg_quality=quality)
         mime_type = f"image/{output_format}"
 
@@ -531,6 +505,11 @@ def detect_calibration_model_type(base_dir: Path, camera_num: int) -> Optional[s
     charuco_model = calib_base / "charuco_planar" / "model" / "camera_model.mat"
     if charuco_model.exists():
         return "charuco"
+
+    # Check for stepped board model
+    stepped_model = calib_base / "stepped_board" / "model" / "camera_model.mat"
+    if stepped_model.exists():
+        return "stepped_board"
 
     # Check for dotboard model
     dotboard_model = calib_base / "dotboard_planar" / "model" / "dotboard_model.mat"

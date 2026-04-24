@@ -412,7 +412,7 @@ images:
   pair_stride: 1
   pairing_preset: ab_format
 batches:
-  size: 25
+  size: 10
 logging:
   file: pypiv.log
   level: INFO
@@ -424,8 +424,8 @@ processing:
   debug: false
   auto_compute_params: false
   omp_threads: 2
-  dask_workers_per_node: 4
-  dask_memory_limit: 3GB
+  dask_workers_per_node: 1
+  dask_memory_limit: 12GB
   always_batch: true
 outlier_detection:
   enabled: true
@@ -696,9 +696,16 @@ video:
                 return ("B%05d_A.tiff", "B%05d_B.tiff")
 
         if isinstance(raw, str):
-            return (raw,)
+            return (raw,) if raw else ("B%05d_A.tiff", "B%05d_B.tiff")
         elif isinstance(raw, (list, tuple)):
-            return tuple(raw)
+            filtered = tuple(r for r in raw if r)
+            if not filtered:
+                # Empty list/tuple — fall back to defaults
+                if self.time_resolved:
+                    return ("B%05d.tiff",)
+                else:
+                    return ("B%05d_A.tiff", "B%05d_B.tiff")
+            return filtered
         else:
             raise ValueError(f"Invalid image_format type: {type(raw)}")
 
@@ -864,25 +871,26 @@ video:
 
     @property
     def num_loops(self) -> int:
-        """Number of acquisition loops (separate .set files in the same folder).
+        """Number of acquisition loops (separate source files/folders).
 
-        When > 1, multiple .set files are combined into one larger dataset.
-        E.g., loop=0.set, loop=1.set, ..., loop=N.set
+        When > 1, multiple sources are combined into one larger dataset.
+        Works with any image type:
+        - lavision_set: separate .set files (e.g., loop=0.set, loop=1.set)
+        - cine: separate folders each containing .cine files
+          (e.g., experiment_0/, experiment_1/)
+        - standard/im7: separate folders each containing image files
 
-        Only applies to lavision_set image type. For all other image types,
-        returns 1 regardless of what's stored in config (prevents stale
-        num_loops from inflating frame counts after switching image types).
+        The loop pattern is detected from the last number in the
+        source_path name (file or directory).
         """
-        if self.image_type != "lavision_set":
-            return 1
         return self.data.get("images", {}).get("num_loops", 1)
 
     @property
     def per_loop_frame_pairs(self) -> int:
         """Frame pairs within a single loop (original stride calculation).
 
-        This is the number of pairs from one .set file before considering
-        multiple loops. The total across all loops is num_frame_pairs.
+        This is the number of pairs from one source (file or folder) before
+        considering multiple loops. The total across all loops is num_frame_pairs.
         """
         num_images = self.num_images
         fs = self.frame_stride
@@ -920,38 +928,51 @@ video:
         return self.num_loops * self.per_loop_frame_pairs
 
     def get_loop_source_path(self, source_path: Path, loop_idx: int) -> Path:
-        """Get the .set file path for a specific loop index.
+        """Get the source file/directory path for a specific loop index.
 
-        Infers the loop pattern from the source_path filename.
-        E.g., source_path=.../loop=0.set, loop_idx=3 -> .../loop=3.set
+        Infers the loop pattern from the LAST number in the source_path name.
+        Works with both files (.set) and directories (.cine, standard):
+        - source_path=.../loop=0.set, loop_idx=3 -> .../loop=3.set
+        - source_path=.../experiment_0, loop_idx=2 -> .../experiment_2
+        - source_path=.../30deg_250hz_1000dt_0, loop_idx=1 -> .../30deg_250hz_1000dt_1
+
+        Uses the last number to avoid matching numbers embedded in the
+        experiment description (e.g., "30degree" or "250hz").
 
         Args:
-            source_path: Path to the base .set file (loop 0)
+            source_path: Path to the base source (loop 0) — file or directory
             loop_idx: Zero-based loop index
 
         Returns:
-            Path to the .set file for the given loop
+            Path to the source for the given loop
 
         Raises:
-            ValueError: If no number can be detected in the filename
+            ValueError: If no number can be detected in the name
         """
         if self.num_loops <= 1:
             return source_path
 
         source_path = Path(source_path)
-        filename = source_path.name  # e.g., "loop=0.set"
+        name = source_path.name
 
-        # Find the number in the filename pattern
-        match = re.search(r'(\d+)', filename)
-        if not match:
-            raise ValueError(f"Cannot detect loop number in filename: {filename}")
+        # Find the LAST number in the name (avoids matching "30degree", "250hz", etc.)
+        matches = list(re.finditer(r'(\d+)', name))
+        if not matches:
+            raise ValueError(f"Cannot detect loop number in: {name}")
 
+        match = matches[-1]
         base_number = int(match.group(1))
         new_number = base_number + loop_idx
-        new_filename = (
-            filename[:match.start(1)] + str(new_number) + filename[match.end(1):]
-        )
-        return source_path.parent / new_filename
+
+        # Preserve zero-padding width (e.g., "001" stays 3 digits)
+        num_width = match.end(1) - match.start(1)
+        if num_width > 1:
+            new_number_str = str(new_number).zfill(num_width)
+        else:
+            new_number_str = str(new_number)
+
+        new_name = name[:match.start(1)] + new_number_str + name[match.end(1):]
+        return source_path.parent / new_name
 
     def resolve_loop_for_pair(self, global_pair_1based: int) -> tuple:
         """Resolve a global pair number to (loop_idx, local_pair_1based).
@@ -1142,7 +1163,7 @@ video:
         Automatically capped at per_loop_frame_pairs to prevent batches from
         crossing loop boundaries (each batch reads from a single .set file).
         """
-        configured_size = self.data.get("batches", {}).get("size", 25)
+        configured_size = self.data.get("batches", {}).get("size", 10)
         max_size = self.per_loop_frame_pairs
 
         # Cap batch size at per-loop frame pairs (batches must not cross loop boundaries)
@@ -1457,10 +1478,12 @@ video:
         return self.video.get("crf", 15)
 
     @property
-    def video_resolution(self) -> tuple:
-        """Return video resolution as (height, width) tuple."""
+    def video_resolution(self):
+        """Return video resolution as (height, width) tuple, or None for native."""
         res = self.video.get("resolution", "1080p")
         if isinstance(res, str):
+            if res == "native":
+                return None
             if res == "4k":
                 return (2160, 3840)
             return (1080, 1920)
@@ -1470,7 +1493,7 @@ video:
 
     @property
     def video_resolution_str(self) -> str:
-        """Return resolution as string: '1080p' or '4k'."""
+        """Return resolution as string: 'native', '1080p', or '4k'."""
         res = self.video.get("resolution", "1080p")
         if isinstance(res, str):
             return res
@@ -1809,6 +1832,11 @@ video:
         return self.calibration.get("stereo_dotboard", {})
 
     @property
+    def stepped_board_calibration(self):
+        """Return stepped board calibration parameters."""
+        return self.calibration.get("stepped_board", {})
+
+    @property
     def charuco_calibration(self):
         """Return ChArUco board calibration parameters."""
         return self.calibration.get("charuco", {})
@@ -1933,8 +1961,26 @@ video:
     # --- Self-calibration properties ---
     @property
     def self_calibration_config(self) -> dict:
-        """Return self-calibration configuration block."""
-        return self.data.get("calibration", {}).get("self_calibration", {})
+        """Return self-calibration data from the file alongside the stereo model.
+
+        Checks: {base_path}/calibration/stereo_cam{A}_cam{B}/self_calibration.yaml
+        Returns empty dict if no file exists (no fallback to config.yaml —
+        stale values in config.yaml must not leak across datasets).
+        """
+        try:
+            pairs = self.stereo_pairs
+            if pairs and self.base_paths:
+                cam1, cam2 = pairs[0]
+                base = Path(str(self.base_paths[0]))
+                sc_path = base / "calibration" / f"stereo_cam{cam1}_cam{cam2}" / "self_calibration.yaml"
+                if sc_path.exists():
+                    import yaml
+                    with open(sc_path) as f:
+                        data = yaml.safe_load(f) or {}
+                    return data
+        except Exception:
+            pass
+        return {}
 
     @property
     def self_calibration_z_offset(self) -> float:
@@ -2055,6 +2101,8 @@ video:
             return self.stereo_charuco_calibration.get("dt", 1)
         elif active_method == "polynomial":
             return self.polynomial_calibration.get("dt", 1)
+        elif active_method == "stepped_board":
+            return self.stepped_board_calibration.get("dt", 1)
         return 1
 
     @property
@@ -2146,14 +2194,14 @@ video:
         """Return number of Dask workers per node."""
         if self.auto_compute_params:
             return self._get_auto_compute_params()["dask_workers_per_node"]
-        return self.data.get("processing", {}).get("dask_workers_per_node", 2)
+        return self.data.get("processing", {}).get("dask_workers_per_node", 1)
 
     @property
     def dask_memory_limit(self):
         """Return memory limit per Dask worker."""
         if self.auto_compute_params:
             return self._get_auto_compute_params()["dask_memory_limit"]
-        return self.data.get("processing", {}).get("dask_memory_limit", "8GB")
+        return self.data.get("processing", {}).get("dask_memory_limit", "12GB")
 
     @property
     def dask_max_in_flight_per_worker(self):

@@ -11,9 +11,11 @@ Pure Multi-View Dotboard Calibration script.
 Now uses RANSAC-based automatic grid detection (no pattern size required).
 """
 
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 import matplotlib.pyplot as plt
@@ -116,6 +118,11 @@ class MultiViewCalibrator:
     detected from the calibration images.
     """
 
+    # Output subdirectory name under `calibration/Cam{N}/`. Subclasses
+    # override this to land their results in a different folder without
+    # having to touch any of the discovery / save / figure plumbing.
+    output_subdir_name: str = "dotboard_planar"
+
     def __init__(
         self,
         source_dir,
@@ -151,7 +158,7 @@ class MultiViewCalibrator:
         datum_frame : int
             Which calibration image defines the world coordinate origin (1-based, default: 1)
         model_type : str
-            Calibration model type: "pinhole" (OpenCV) or "polynomial" (DaVis-compatible)
+            Calibration model type: "pinhole" (OpenCV) or "polynomial" (3rd-order bivariate)
         pattern_cols, pattern_rows : int, optional
             DEPRECATED: Grid dimensions are now automatically detected
         asymmetric : bool
@@ -170,41 +177,14 @@ class MultiViewCalibrator:
         self._detected_cols: Optional[int] = None
         self._detected_rows: Optional[int] = None
 
-        # Create blob detector
-        self.detector = self._create_blob_detector()
-
         # Setup output structure
         self._setup_directories()
-
-    def _create_blob_detector(self):
-        """Create optimized blob detector for circle grid detection.
-
-        Thresholds are permissive to detect perspective-distorted dots
-        (tilted boards make far-edge dots small and elliptical).  The RANSAC
-        grid fitting step downstream rejects any false-positive blobs, so we
-        can afford a low bar here.
-        """
-        params = cv2.SimpleBlobDetector_Params()
-        params.filterByArea = True
-        params.minArea = 50
-        params.maxArea = 50000
-        # Shape filtering rejects noise blobs on high-res images while
-        # still accepting perspective-distorted dots (relaxed thresholds).
-        params.filterByCircularity = True
-        params.minCircularity = 0.4
-        params.filterByInertia = True
-        params.minInertiaRatio = 0.3
-        params.filterByConvexity = False
-        params.minThreshold = 0
-        params.maxThreshold = 255
-        params.thresholdStep = 5  # Finer steps to catch small/faint blobs
-        return cv2.SimpleBlobDetector_create(params)
 
     def _setup_directories(self):
         """Create output directories with /dotboard_planar structure"""
         for cam_num in range(1, self.camera_count + 1):
             # NEW PATH STRUCTURE: .../CamX/dotboard_planar/
-            cam_base = self.base_dir / "calibration" / f"Cam{cam_num}" / "dotboard_planar"
+            cam_base = self.base_dir / "calibration" / f"Cam{cam_num}" / self.output_subdir_name
             (cam_base / "indices").mkdir(parents=True, exist_ok=True)
             (cam_base / "model").mkdir(parents=True, exist_ok=True)
             (cam_base / "figures").mkdir(parents=True, exist_ok=True)
@@ -260,7 +240,7 @@ class MultiViewCalibrator:
         obj_points[:, 1] = grid_indices[:, 1] * self.dot_spacing_mm
         return obj_points
 
-    def detect_grid(self, img) -> Tuple[bool, Optional[np.ndarray], Optional[Dict[str, Any]]]:
+    def detect_grid(self, img):
         """
         Detect grid points using automatic RANSAC-based detection.
 
@@ -279,24 +259,25 @@ class MultiViewCalibrator:
             Detected dot centers, shape (N, 2)
         grid_data : dict or None
             Detection metadata including grid_indices, n_cols, n_rows
+        info : dict or None
+            Diagnostic info from detect_grid_automatic
         """
         gray = to_grayscale_2d(img)
 
         # Use automatic detection
         success, grid_data, info = detect_grid_automatic(
             gray,
-            self.detector,
             mask=None,
-            grid_spacing_mm=self.dot_spacing_mm
+            grid_spacing_mm=self.dot_spacing_mm,
         )
 
         if success and grid_data is not None:
             # Store detected dimensions
             self._detected_cols = grid_data['n_cols']
             self._detected_rows = grid_data['n_rows']
-            return True, grid_data['centers'], grid_data
+            return True, grid_data['centers'], grid_data, info
 
-        return False, None, None
+        return False, None, None, info
 
     def save_visualization(
         self,
@@ -367,7 +348,7 @@ class MultiViewCalibrator:
 
             # Path setup: calibration_source / camera_folder (via build_calibration_camera_path)
             cam_input_dir = self._get_camera_input_dir(cam_num)
-            cam_output_base = self.base_dir / "calibration" / f"Cam{cam_num}" / "dotboard_planar"
+            cam_output_base = self.base_dir / "calibration" / f"Cam{cam_num}" / self.output_subdir_name
 
             # Find images
             is_container = self._is_container_format()
@@ -409,8 +390,8 @@ class MultiViewCalibrator:
                 if img_shape is None:
                     img_shape = img.shape[:2][::-1]  # (width, height)
 
-                # Use automatic detection (returns centers + grid_data)
-                found, corners, grid_data = self.detect_grid(img)
+                # Use automatic detection (returns centers + grid_data + info)
+                found, corners, grid_data, _info = self.detect_grid(img)
 
                 if found and grid_data is not None:
                     # Create object points dynamically based on detected grid indices
@@ -452,7 +433,8 @@ class MultiViewCalibrator:
             logger.info(f"Calibrating with {processed_count} valid views...")
 
             ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(
-                all_objpoints, all_imgpoints, img_shape, None, None
+                all_objpoints, all_imgpoints, img_shape, None, None,
+                flags=cv2.CALIB_FIX_ASPECT_RATIO,
             )
 
             logger.info(f"Calibration Complete. RMS Error: {ret:.4f} pixels")
@@ -469,6 +451,7 @@ class MultiViewCalibrator:
             for img_idx, data in valid_indices_map.items():
                 detections_struct[f"image_{img_idx}"] = data['centers']
 
+            dt = self._config.data.get("calibration", {}).get("dotboard", {}).get("dt", 1.0) if self._config else 1.0
             model_data = {
                 "camera_matrix": mtx,
                 "dist_coeffs": dist,
@@ -483,6 +466,7 @@ class MultiViewCalibrator:
                 "detected_rows": detected_rows,
                 "dot_spacing_mm": self.dot_spacing_mm,
                 "datum_frame": self.datum_frame,
+                "dt": dt,
                 # Legacy fields (set to detected values for backward compat)
                 "pattern_cols": detected_cols,
                 "pattern_rows": detected_rows,
@@ -560,7 +544,7 @@ class MultiViewCalibrator:
 
         # Path setup: calibration_source / camera_folder (via build_calibration_camera_path)
         cam_input_dir = self._get_camera_input_dir(cam_num)
-        cam_output_base = self.base_dir / "calibration" / f"Cam{cam_num}" / "dotboard_planar"
+        cam_output_base = self.base_dir / "calibration" / f"Cam{cam_num}" / self.output_subdir_name
 
         # Ensure directories exist
         (cam_output_base / "indices").mkdir(parents=True, exist_ok=True)
@@ -619,25 +603,17 @@ class MultiViewCalibrator:
         valid_count = 0
         detected_cols = None
         detected_rows = None
+        best_image = None         # For model summary figure background
+        best_image_npts = 0
 
         logger.info("Scanning images with automatic grid detection...")
 
-        for idx in loop_range:
-            processed_count += 1
-
-            # Report progress (reserve 10% for final calibration)
-            if progress_callback:
-                progress = int(processed_count / total_images * 90) if total_images > 0 else 0
-                progress_callback({
-                    "progress": min(progress, 90),
-                    "processed_images": processed_count,
-                    "valid_images": valid_count,
-                    "total_images": total_images,
-                })
-
+        # --- Worker function for parallel detection ---
+        def _detect_one(idx):
+            """Read and detect grid in a single image. Returns (idx, img, found, corners, grid_data, det_info, img_name)."""
             if not is_container:
                 if idx > len(image_files):
-                    break
+                    return idx, None, False, None, None, None, None
                 img_path = image_files[idx - 1]
                 img_name = Path(img_path).name
             else:
@@ -646,20 +622,59 @@ class MultiViewCalibrator:
 
             img = self._read_image(img_path, cam_num, idx)
             if img is None:
-                if is_container:
-                    break  # End of container frames
+                return idx, None, False, None, None, None, img_name
+
+            found, corners, grid_data, det_info = self.detect_grid(img)
+            return idx, img, found, corners, grid_data, det_info, img_name
+
+        # --- For containers, discover frame count first (sequential) ---
+        if is_container:
+            container_count = 0
+            for probe_idx in loop_range:
+                probe_img = self._read_image(image_files[0], cam_num, probe_idx)
+                if probe_img is None:
+                    break
+                container_count += 1
+                if img_shape is None:
+                    img_shape = probe_img.shape[:2][::-1]
+            total_images = container_count
+            loop_range = range(1, container_count + 1)
+            logger.info(f"Container has {container_count} frames")
+
+        # --- Parallel detection across images ---
+        max_workers = min(os.cpu_count() or 4, len(loop_range), 8)
+        results = {}
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(_detect_one, idx): idx
+                for idx in loop_range
+            }
+            for future in as_completed(futures):
+                idx, img, found, corners, grid_data, det_info, img_name = future.result()
+                results[idx] = (img, found, corners, grid_data, det_info, img_name)
+                processed_count += 1
+                if found and grid_data is not None:
+                    valid_count += 1
+                if progress_callback:
+                    progress = int(processed_count / max(total_images, 1) * 90)
+                    progress_callback({
+                        "progress": min(progress, 90),
+                        "processed_images": processed_count,
+                        "valid_images": valid_count,
+                        "total_images": total_images,
+                    })
+
+        # --- Collect results in frame order ---
+        for idx in sorted(results.keys()):
+            img, found, corners, grid_data, det_info, img_name = results[idx]
+            if img is None:
                 continue
 
             if img_shape is None:
-                img_shape = img.shape[:2][::-1]  # (width, height)
-                if is_container:
-                    total_images = processed_count
-
-            # Use automatic detection
-            found, corners, grid_data = self.detect_grid(img)
+                img_shape = img.shape[:2][::-1]
 
             if found and grid_data is not None:
-                # Create object points dynamically
                 obj_pts = self.make_object_points_dynamic(
                     grid_data['grid_indices'],
                     grid_data['n_cols'],
@@ -674,18 +689,39 @@ class MultiViewCalibrator:
                     'n_cols': grid_data['n_cols'],
                     'n_rows': grid_data['n_rows'],
                 }
-                valid_count += 1
 
-                # Track detected dimensions
                 if detected_cols is None:
                     detected_cols = grid_data['n_cols']
                     detected_rows = grid_data['n_rows']
+                if len(corners) > best_image_npts:
+                    best_image = img.copy()
+                    best_image_npts = len(corners)
 
-                if save_visualizations:
-                    self.save_visualization(img, corners, idx, cam_output_base, img_name, grid_data)
+                try:
+                    from pivtools_gui.calibration.calibration_figures import make_detection_figure
+                    figures_dir = cam_output_base / "figures"
+                    figures_dir.mkdir(parents=True, exist_ok=True)
+                    make_detection_figure(
+                        img, True, grid_data, det_info,
+                        figures_dir / f"detection_{idx:03d}.png",
+                        title=img_name,
+                    )
+                except Exception as e:
+                    logger.debug(f"Detection figure skipped for image {idx}: {e}")
 
                 logger.info(f"  [+] Image {idx}: Grid detected ({grid_data['n_cols']}x{grid_data['n_rows']}, {len(corners)} points)")
             else:
+                try:
+                    from pivtools_gui.calibration.calibration_figures import make_detection_figure
+                    figures_dir = cam_output_base / "figures"
+                    figures_dir.mkdir(parents=True, exist_ok=True)
+                    make_detection_figure(
+                        img, False, None, det_info or {},
+                        figures_dir / f"detection_{idx:03d}.png",
+                        title=img_name,
+                    )
+                except Exception:
+                    pass
                 logger.debug(f"  [-] Image {idx}: Grid not found.")
 
         if valid_count < 1:
@@ -717,13 +753,44 @@ class MultiViewCalibrator:
 
         if self.model_type == "polynomial":
             # --- POLYNOMIAL MODEL FITTING ---
+            # Polynomial calibration is a 2D bivariate fit and must use ONLY the
+            # datum frame.  Multi-image fitting stacks points from poses at
+            # differing world-Z which the model cannot represent — pinhole is
+            # the right choice for multi-image calibration.
             from pivtools_gui.calibration.calibration_poly.polynomial_calibration_production import (
                 fit_polynomial_from_points, save_polynomial_to_config
             )
 
-            # Stack all detected points into flat arrays
-            all_img_flat = np.vstack([pts.reshape(-1, 2) for pts in all_imgpoints])
-            all_obj_flat = np.vstack([pts.reshape(-1, 3)[:, :2] for pts in all_objpoints])
+            sorted_valid_frames = sorted(valid_indices_map.keys())
+            if self.datum_frame not in valid_indices_map:
+                return {
+                    "success": False,
+                    "error": (
+                        f"Polynomial calibration requires the datum frame "
+                        f"(frame {self.datum_frame}) to be detected, but detection "
+                        f"failed on that frame. Valid frames: {sorted_valid_frames}."
+                    ),
+                }
+
+            datum_list_idx = sorted_valid_frames.index(self.datum_frame)
+            datum_img_pts = all_imgpoints[datum_list_idx]
+            datum_obj_pts = all_objpoints[datum_list_idx]
+
+            warnings_out = []
+            if len(sorted_valid_frames) > 1:
+                ignored = len(sorted_valid_frames) - 1
+                msg = (
+                    f"Polynomial calibration uses only the datum frame "
+                    f"(frame {self.datum_frame}). {ignored} additional detected "
+                    f"frame(s) were ignored — the polynomial model is a 2D fit "
+                    f"and is not designed for multi-image calibration. Use "
+                    f"pinhole for multi-image."
+                )
+                logger.warning(msg)
+                warnings_out.append(msg)
+
+            all_img_flat = datum_img_pts.reshape(-1, 2)
+            all_obj_flat = datum_obj_pts.reshape(-1, 3)[:, :2]
             # Object points are already in mm (from dot_spacing_mm)
 
             try:
@@ -749,7 +816,7 @@ class MultiViewCalibrator:
                 "coefficients_x": np.array(fit_result["coefficients_x"]),
                 "coefficients_y": np.array(fit_result["coefficients_y"]),
                 "rms_fit_error_px": fit_result["rms_fit_error_px"],
-                "num_images_used": valid_count,
+                "num_images_used": 1,
                 "image_width": img_shape[0],
                 "image_height": img_shape[1],
                 "image_size": np.array([img_shape[0], img_shape[1]]),
@@ -776,16 +843,30 @@ class MultiViewCalibrator:
                 "model_type": "polynomial",
                 "rms_error": float(fit_result["rms_fit_error_px"]),
                 "mm_per_pixel": float(fit_result["mm_per_pixel"]),
-                "num_images_used": valid_count,
+                "num_images_used": 1,
                 "detected_cols": detected_cols,
                 "detected_rows": detected_rows,
                 "model_path": str(out_file),
+                "warnings": warnings_out,
             }
 
         # --- PINHOLE MODEL FITTING (default) ---
+        # TODO: factory-intrinsics / seed-from-prior workflow.
+        #   Scope: add `seed_model_path` and `freeze_intrinsics` kwargs to
+        #   MultiViewCalibrator.__init__, load K + dist from the prior .mat,
+        #   and pass CALIB_USE_INTRINSIC_GUESS | FIX_FOCAL_LENGTH
+        #   | FIX_PRINCIPAL_POINT | FIX_K1..K3 | ZERO_TANGENT_DIST so only
+        #   extrinsics get solved. ~30 lines here + a conditional branch.
+        #   Keep it CLI-only — factory-intrinsics is a per-project power-user
+        #   decision that belongs in scripts, not the GUI (GUI file pickers
+        #   make it too easy to seed from a stale or wrong-camera .mat and
+        #   silently produce garbage extrinsics). Existing loader:
+        #   camera_model_utils.py::load_pinhole_camera. Defer until a real
+        #   camera with real factory specs motivates the design choices.
         try:
             ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(
-                all_objpoints, all_imgpoints, img_shape, None, None
+                all_objpoints, all_imgpoints, img_shape, None, None,
+                flags=cv2.CALIB_FIX_ASPECT_RATIO,
             )
         except Exception as e:
             return {"success": False, "error": f"OpenCV calibration failed: {e}"}
@@ -797,6 +878,7 @@ class MultiViewCalibrator:
         for img_idx, data in valid_indices_map.items():
             detections_struct[f"image_{img_idx}"] = data['centers']
 
+        dt = self._config.data.get("calibration", {}).get("dotboard", {}).get("dt", 1.0) if self._config else 1.0
         model_data = {
             "camera_matrix": mtx,
             "dist_coeffs": dist,
@@ -813,6 +895,7 @@ class MultiViewCalibrator:
             "detected_rows": detected_rows,
             "dot_spacing_mm": self.dot_spacing_mm,
             "datum_frame": self.datum_frame,
+            "dt": dt,
             # Legacy fields for backward compat
             "pattern_cols": detected_cols,
             "pattern_rows": detected_rows,
@@ -821,6 +904,22 @@ class MultiViewCalibrator:
         out_file = cam_output_base / "model" / "dotboard_model.mat"
         savemat(str(out_file), model_data)
         logger.info(f"Saved model to: {out_file}")
+
+        # Generate calibration model summary figure
+        try:
+            from pivtools_gui.calibration.calibration_figures import make_calibration_model_figure
+            figures_dir = cam_output_base / "figures"
+            figures_dir.mkdir(parents=True, exist_ok=True)
+            make_calibration_model_figure(
+                mtx, dist, rvecs, tvecs, ret,
+                all_imgpoints, all_objpoints,
+                img_shape,
+                figures_dir / "model_summary.png",
+                best_image=best_image,
+            )
+            logger.info(f"Saved model summary figure to: {figures_dir / 'model_summary.png'}")
+        except Exception as e:
+            logger.debug(f"Model summary figure skipped: {e}")
 
         # Final progress
         if progress_callback:

@@ -56,9 +56,10 @@ validation/
 # Profiling benchmark outputs
 profile/*.csv
 profile/*.png
+profile/results/
 
 # Documentation
 docs/
 
-# DNS validation data (keep scripts, exclude data subdirectories)
-dns_validation/*/
+# Paper submission (published separately to SoftwareX + Pure DOI)
+paper_submission/

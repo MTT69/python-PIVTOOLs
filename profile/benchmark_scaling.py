@@ -1090,8 +1090,10 @@ def main():
     if args.resume:
         csv_path = args.resume
     else:
+        results_dir = os.path.join(os.path.dirname(__file__), "results")
+        os.makedirs(results_dir, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        csv_path = os.path.join(os.path.dirname(__file__), f"scaling_{timestamp}.csv")
+        csv_path = os.path.join(results_dir, f"scaling_{timestamp}.csv")
 
     print(f"Source:     {SOURCE_DIR}")
     print(f"CSV:       {csv_path}")

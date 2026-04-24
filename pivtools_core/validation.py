@@ -104,13 +104,13 @@ def validate_config(config: Config) -> Tuple[bool, str, List[str]]:
                     f"Camera {camera_num}: Processing subset - using {config.num_images} of {found} available files"
                 )
 
-        # Supplementary: multi-loop .set validation
-        if image_type == "lavision_set" and config.num_loops > 1:
+        # Supplementary: multi-loop source validation
+        if config.num_loops > 1:
             for loop_idx in range(config.num_loops):
                 loop_path = config.get_loop_source_path(source_path, loop_idx)
                 if not loop_path.exists():
                     errors.append(
-                        f"Camera {camera_num}: Loop {loop_idx} .set file not found: {loop_path}"
+                        f"Camera {camera_num}: Loop {loop_idx} source not found: {loop_path}"
                     )
 
         # Supplementary: indexing mismatch check (standard types only)
@@ -137,6 +137,11 @@ def validate_config(config: Config) -> Tuple[bool, str, List[str]]:
 
     if errors:
         return False, "\n".join(errors), warnings
+
+    # Memory estimation check
+    memory_warning = validate_memory_for_images(config)
+    if memory_warning:
+        warnings.append(memory_warning)
 
     # Ensemble-specific validation (when ensemble processing is enabled)
     if config.data.get("processing", {}).get("ensemble", False):
@@ -235,6 +240,83 @@ def validate_ensemble_config(config: Config) -> Tuple[bool, List[str], List[str]
 
     is_valid = len(errors) == 0
     return is_valid, errors, warnings
+
+
+def estimate_memory_requirement(image_height: int, image_width: int, batch_size: int) -> float:
+    """
+    Estimate minimum memory per worker in GB for PIV processing.
+
+    Uses a 3x multiplier on raw image batch size to account for
+    raw images + filtered copies + warped copies in memory simultaneously.
+
+    Args:
+        image_height: Image height in pixels
+        image_width: Image width in pixels
+        batch_size: Number of image pairs per batch
+
+    Returns:
+        Estimated minimum memory in GB
+    """
+    # 3 × batch_size × 2 images_per_pair × H × W × 4 bytes (float32)
+    bytes_needed = 3 * batch_size * 2 * image_height * image_width * 4
+    return bytes_needed / (1024 ** 3)
+
+
+def parse_memory_limit_gb(memory_limit: str) -> float:
+    """
+    Parse a Dask memory limit string (e.g. '12GB', '512MB') to GB.
+
+    Args:
+        memory_limit: Memory string with unit suffix
+
+    Returns:
+        Memory in GB
+    """
+    import re
+    match = re.match(r'^([\d.]+)\s*(GB|MB)$', memory_limit.strip(), re.IGNORECASE)
+    if not match:
+        return 0.0
+    value = float(match.group(1))
+    unit = match.group(2).upper()
+    if unit == 'MB':
+        return value / 1024
+    return value
+
+
+def validate_memory_for_images(config: Config) -> str:
+    """
+    Check if configured memory per worker is sufficient for the image
+    resolution and batch size.
+
+    Returns:
+        Warning message string, or empty string if memory is sufficient.
+    """
+    try:
+        image_shape = config.image_shape  # (H, W) — reads an actual image
+    except Exception:
+        return ""  # Can't check if we can't read images
+
+    h, w = image_shape
+    batch_size = config.batch_size
+    memory_limit = config.dask_memory_limit
+    megapixels = (h * w) / 1e6
+
+    required_gb = estimate_memory_requirement(h, w, batch_size)
+    configured_gb = parse_memory_limit_gb(memory_limit)
+
+    if configured_gb <= 0:
+        return ""
+
+    if required_gb > configured_gb:
+        return (
+            f"Memory per worker ({memory_limit}) may be insufficient for "
+            f"{megapixels:.1f} MP images with batch size {batch_size}. "
+            f"Estimated minimum: {required_gb:.1f} GB. "
+            f"Reduce batch size or increase memory per worker in Performance Settings "
+            f"to avoid out-of-memory crashes."
+        )
+
+    return ""
 
 
 def validate_batch_size_for_pod(config: Config, batch_size: int) -> Tuple[bool, str]:

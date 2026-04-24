@@ -28,6 +28,12 @@ from pivtools_core.config import get_config
 from pivtools_core.image_handling.load_images import read_image
 from pivtools_core.image_handling.path_utils import build_calibration_camera_path
 
+from pivtools_gui.calibration.grid_detection import (
+    to_grayscale_2d,
+    apply_mask_to_image,
+    detect_grid_automatic,
+)
+
 
 # ==========================================================================
 # CONFIGURATION - Modify these parameters for your test
@@ -92,28 +98,8 @@ def read_calibration_image(img_path, camera=1, img_index=1):
     return img
 
 
-def to_grayscale_2d(img):
-    """Convert image to 2D grayscale."""
-    if img.ndim == 3:
-        if img.shape[0] == 1:
-            return img[0, :, :]
-        elif img.shape[-1] == 1:
-            return img[:, :, 0]
-        elif img.shape[-1] in (3, 4):
-            return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        else:
-            gray = np.squeeze(img)
-            if gray.ndim == 3:
-                return cv2.cvtColor(gray, cv2.COLOR_BGR2GRAY)
-            return gray
-    return img.copy()
 
-
-def apply_mask_to_image(img, mask, fill_value=255):
-    """Apply mask: fill excluded regions (mask=0) with fill_value."""
-    masked_img = img.copy()
-    masked_img[mask == 0] = fill_value
-    return masked_img
+# to_grayscale_2d, apply_mask_to_image, detect_grid_automatic imported from grid_detection.py
 
 
 def detect_raw_blobs(img, detector, mask=None):
@@ -185,259 +171,6 @@ def detect_grid_with_mask(img, pattern_size, detector, mask=None, asymmetric=Fal
             print(f"    -> Failed on {label}")
 
     return False, None, "Failed"
-
-
-def detect_grid_automatic(img, detector, mask=None, grid_spacing_mm=None):
-    """
-    Automatically detect grid from blob positions - NO pattern size needed.
-
-    Uses OpenCV primitives:
-    - SimpleBlobDetector for blob detection
-    - Neighbor analysis to find grid vectors
-    - Direct grid coordinate computation (more robust than kmeans)
-
-    Parameters
-    ----------
-    img : ndarray
-        Input image
-    detector : cv2.SimpleBlobDetector
-        Blob detector
-    mask : ndarray, optional
-        Binary mask (255=keep, 0=exclude)
-    grid_spacing_mm : float, optional
-        Known grid spacing in mm (for calibration output)
-
-    Returns
-    -------
-    success : bool
-    grid_data : dict
-    info : dict
-    """
-    gray = to_grayscale_2d(img)
-    original_gray = gray.copy()
-
-    if mask is not None:
-        gray = apply_mask_to_image(gray, mask, fill_value=255)
-
-    info = {'method': 'automatic_grid_detection_v2'}
-
-    # Step 1: Detect blobs
-    keypoints_orig = detector.detect(gray)
-    keypoints_inv = detector.detect(255 - gray)
-
-    if len(keypoints_inv) > len(keypoints_orig):
-        keypoints = keypoints_inv
-        info['image_mode'] = 'inverted'
-    else:
-        keypoints = keypoints_orig
-        info['image_mode'] = 'original'
-
-    if len(keypoints) < 9:
-        info['error'] = f'Too few blobs detected: {len(keypoints)}'
-        return False, None, info
-
-    centers = np.array([kp.pt for kp in keypoints], dtype=np.float32)
-    info['n_blobs_detected'] = len(centers)
-    print(f"  Detected {len(centers)} blobs")
-
-    # Step 2: Find grid spacing
-    n_points = len(centers)
-
-    # Compute all pairwise distances
-    all_distances = np.zeros((n_points, n_points))
-    for i in range(n_points):
-        all_distances[i] = np.sqrt(np.sum((centers - centers[i]) ** 2, axis=1))
-        all_distances[i, i] = np.inf
-
-    # Find nearest neighbor distance for each point
-    nn_distances = np.min(all_distances, axis=1)
-    spacing_px = np.median(nn_distances)
-    info['spacing_px'] = float(spacing_px)
-    print(f"  Estimated grid spacing: {spacing_px:.1f} pixels")
-
-    # Step 3: Find HORIZONTAL and VERTICAL grid vectors separately
-    # For axis-aligned grids, neighbors should be directly left/right or up/down
-    horizontal_vecs = []  # Neighbors mostly horizontal (|dy| < |dx|)
-    vertical_vecs = []    # Neighbors mostly vertical (|dx| < |dy|)
-
-    angle_tolerance_deg = 20  # Max deviation from axis in degrees
-    angle_tolerance = np.radians(angle_tolerance_deg)
-
-    for i in range(n_points):
-        for j in range(n_points):
-            dist = all_distances[i, j]
-            if i != j and dist < spacing_px * 1.4 and dist > spacing_px * 0.6:
-                vec = centers[j] - centers[i]
-                angle_from_horiz = np.arctan2(abs(vec[1]), abs(vec[0]))
-
-                if angle_from_horiz < angle_tolerance:
-                    # Nearly horizontal
-                    horizontal_vecs.append(vec)
-                elif angle_from_horiz > (np.pi/2 - angle_tolerance):
-                    # Nearly vertical
-                    vertical_vecs.append(vec)
-
-    print(f"  Found {len(horizontal_vecs)} horizontal, {len(vertical_vecs)} vertical neighbor pairs")
-
-    if len(horizontal_vecs) < 10 or len(vertical_vecs) < 10:
-        info['error'] = f'Not enough axis-aligned neighbors found'
-        return False, None, info
-
-    horizontal_vecs = np.array(horizontal_vecs)
-    vertical_vecs = np.array(vertical_vecs)
-
-    # Normalize horizontal vectors to point RIGHT (+x)
-    for i in range(len(horizontal_vecs)):
-        if horizontal_vecs[i, 0] < 0:
-            horizontal_vecs[i] = -horizontal_vecs[i]
-
-    # Normalize vertical vectors to point UP (-y in image pixel coords)
-    for i in range(len(vertical_vecs)):
-        if vertical_vecs[i, 1] > 0:  # In image coords, +y is down
-            vertical_vecs[i] = -vertical_vecs[i]
-
-    # Take median to get robust grid vectors
-    vec1 = np.median(horizontal_vecs, axis=0)  # X direction (right)
-    vec2 = np.median(vertical_vecs, axis=0)    # Y direction (up in Cartesian = -y in image)
-
-    info['grid_vec1'] = vec1.tolist()
-    info['grid_vec2'] = vec2.tolist()
-    print(f"  Grid vector 1 (col): [{vec1[0]:.1f}, {vec1[1]:.1f}]")
-    print(f"  Grid vector 2 (row): [{vec2[0]:.1f}, {vec2[1]:.1f}]")
-
-    # Step 4: Compute grid coordinates for each point
-    # Solve: point = origin + col * vec1 + row * vec2
-    # Use BOTTOM-LEFT point as origin (min x, max y in image pixel coords)
-    # This gives Cartesian: (0,0) at bottom-left, x right, y up
-    origin_idx = np.argmin(centers[:, 0] - centers[:, 1])  # Bottom-left
-    origin = centers[origin_idx]
-
-    print(f"  Origin (bottom-left): ({origin[0]:.1f}, {origin[1]:.1f})")
-
-    # Build transformation matrix: [vec1, vec2] @ [col, row].T = point - origin
-    A = np.column_stack([vec1, vec2])
-    A_inv = np.linalg.inv(A)
-
-    grid_coords_float = []
-    for pt in centers:
-        delta = pt - origin
-        coords = A_inv @ delta  # [col, row]
-        grid_coords_float.append(coords)
-
-    grid_coords_float = np.array(grid_coords_float)
-
-    # Round to nearest integer for grid indices
-    grid_indices = np.round(grid_coords_float).astype(np.int32)
-
-    # Shift so minimum is (0, 0) - ensures top-left of detected grid is (0,0)
-    col_min, row_min = grid_indices[:, 0].min(), grid_indices[:, 1].min()
-    grid_indices[:, 0] -= col_min
-    grid_indices[:, 1] -= row_min
-
-    print(f"  Grid index range: x=[0, {grid_indices[:, 0].max()}], y=[0, {grid_indices[:, 1].max()}]")
-
-    # Step 5: Use RANSAC to robustly fit affine transform and reject outliers
-    # Source points: grid indices (as float)
-    # Destination points: actual pixel coordinates
-    src_pts = grid_indices.astype(np.float32)
-    dst_pts = centers.astype(np.float32)
-
-    # cv2.estimateAffine2D with RANSAC
-    # Returns: transform matrix (2x3), inlier mask
-    ransac_thresh = 0.3 * spacing_px  # Max reprojection error
-    affine_matrix, inliers = cv2.estimateAffine2D(
-        src_pts, dst_pts,
-        method=cv2.RANSAC,
-        ransacReprojThreshold=ransac_thresh,
-        maxIters=2000,
-        confidence=0.99
-    )
-
-    if affine_matrix is None:
-        info['error'] = 'RANSAC failed to fit affine transform'
-        return False, None, info
-
-    inliers = inliers.flatten().astype(bool)
-    n_inliers = np.sum(inliers)
-    n_outliers = len(inliers) - n_inliers
-    print(f"  RANSAC: {n_inliers} inliers, {n_outliers} outliers rejected")
-
-    centers = centers[inliers]
-    grid_indices = grid_indices[inliers]
-
-    # Step 6: Remove duplicate grid positions (keep best fit)
-    from collections import defaultdict
-
-    # Compute residuals for remaining points
-    src_clean = grid_indices.astype(np.float32)
-    predicted = cv2.transform(src_clean.reshape(-1, 1, 2), affine_matrix).reshape(-1, 2)
-    residuals = np.sqrt(np.sum((centers - predicted) ** 2, axis=1))
-
-    pos_to_points = defaultdict(list)
-    for i, gi in enumerate(grid_indices):
-        pos_key = (gi[0], gi[1])
-        pos_to_points[pos_key].append((i, residuals[i]))
-
-    keep_indices = []
-    n_dups = 0
-    for pos_key, point_list in pos_to_points.items():
-        if len(point_list) == 1:
-            keep_indices.append(point_list[0][0])
-        else:
-            best_idx = min(point_list, key=lambda x: x[1])[0]
-            keep_indices.append(best_idx)
-            n_dups += len(point_list) - 1
-
-    if n_dups > 0:
-        print(f"  Removed {n_dups} duplicate grid positions")
-
-    keep_indices = np.array(keep_indices)
-    centers = centers[keep_indices]
-    grid_indices = grid_indices[keep_indices]
-
-    # Recompute dimensions
-    n_cols = grid_indices[:, 0].max() + 1
-    n_rows = grid_indices[:, 1].max() + 1
-    info['n_cols'] = int(n_cols)
-    info['n_rows'] = int(n_rows)
-
-    # Extract rotation angle from affine matrix
-    angle_deg = np.degrees(np.arctan2(affine_matrix[1, 0], affine_matrix[0, 0]))
-    info['angle_deg'] = float(angle_deg)
-    info['affine_matrix'] = affine_matrix.tolist()
-
-    print(f"  Final grid: {n_cols} cols x {n_rows} rows, {len(centers)} points")
-
-    # Step 7: Subpixel refinement on original image
-    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.001)
-    try:
-        centers_refined = cv2.cornerSubPix(
-            original_gray,
-            centers.reshape(-1, 1, 2),
-            (11, 11),
-            (-1, -1),
-            criteria
-        )
-        centers = centers_refined.reshape(-1, 2)
-    except cv2.error:
-        pass  # Keep original if refinement fails
-
-    # Build output
-    grid_data = {
-        'centers': centers,
-        'grid_indices': grid_indices,
-        'n_cols': int(n_cols),
-        'n_rows': int(n_rows),
-        'spacing_px': spacing_px,
-        'angle_deg': angle_deg,
-        'grid_spacing_mm': grid_spacing_mm,
-    }
-
-    info['success'] = True
-    info['n_grid_points'] = len(centers)
-    print(f"  SUCCESS: {n_cols}x{n_rows} grid with {len(centers)} points")
-
-    return True, grid_data, info
 
 
 def create_rectangular_mask(shape, exclude_regions):
@@ -932,7 +665,7 @@ def main():
         print(f"  Grid spacing: {DOT_SPACING_MM} mm")
 
         found, grid_data, auto_info = detect_grid_automatic(
-            img, detector, mask=mask, grid_spacing_mm=DOT_SPACING_MM
+            img, mask=mask, grid_spacing_mm=DOT_SPACING_MM,
         )
 
         if found:

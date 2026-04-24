@@ -43,6 +43,7 @@ def list_supported_formats() -> List[str]:
 
 # Import LaVision readers after functions are defined to avoid circular imports
 from .lavision_reader import read_lavision_pair, read_lavision_ims_pair
+from .set_reader import get_set_entry_count
 
 # Import CINE reader for Phantom high-speed cameras
 from .cine_reader import read_cine_pair

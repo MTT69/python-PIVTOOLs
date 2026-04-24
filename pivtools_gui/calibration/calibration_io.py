@@ -67,6 +67,9 @@ def read_calibration_image_with_fallback(
     When config is available, uses the unified core reader which handles
     all formats consistently. Falls back to direct reading for CLI mode.
 
+    Returns the image in its native dtype (float32/uint16/uint8) to
+    preserve full dynamic range for flat-fielding in grid_detection.py.
+
     Parameters
     ----------
     img_path : str or Path or None
@@ -85,7 +88,7 @@ def read_calibration_image_with_fallback(
     Returns
     -------
     np.ndarray or None
-        Image as uint8 array, or None if reading failed
+        Image as 2D array in native dtype, or None if reading failed
     """
     if config is not None:
         from pivtools_core.image_handling.calibration_loader import (
@@ -97,7 +100,7 @@ def read_calibration_image_with_fallback(
                 camera=camera,
                 config=config,
                 source_path_idx=source_path_idx,
-                normalize_uint8=True,
+                normalize_uint8=False,
             )
             if img is not None and img.ndim == 3:
                 img = img[0]  # Extract single frame if needed
@@ -123,8 +126,8 @@ def read_calibration_image_direct(
 ) -> Optional[np.ndarray]:
     """Direct image reading fallback for CLI mode without config.
 
-    Handles .set, .im7, .cine, and standard image formats with dtype
-    normalization to uint8.
+    Returns the image in its native dtype to preserve full dynamic range
+    for flat-fielding in grid_detection.py.
     """
     from pivtools_core.image_handling.load_images import read_image
 
@@ -150,17 +153,9 @@ def read_calibration_image_direct(
 
         logger.info(f"Read image shape: {img.shape}, dtype: {img.dtype}")
 
-        # Normalize to uint8
+        # Only normalize bool (binary masks) — preserve all other dtypes
         if img.dtype == np.bool_:
             img = img.astype(np.uint8) * 255
-        elif img.dtype in [np.float32, np.float64]:
-            img_min, img_max = img.min(), img.max()
-            if img_max > img_min:
-                img = ((img - img_min) / (img_max - img_min) * 255).astype(np.uint8)
-            else:
-                img = np.zeros_like(img, dtype=np.uint8)
-        elif img.dtype == np.uint16:
-            img = (img / 256).astype(np.uint8)
 
         return img
     except Exception as e:
@@ -204,8 +199,11 @@ def find_calibration_images(
         while True:
             try:
                 filename = file_pattern % i
-            except TypeError:
-                break
+            except TypeError as e:
+                raise ValueError(
+                    f"file_pattern {file_pattern!r} contains '%' but is not a numbered format "
+                    f"(expected e.g. 'calib%05d.tif'): {e}"
+                ) from e
             filepath = cam_input_dir / filename
             if filepath.exists():
                 files.append(filepath)

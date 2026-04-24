@@ -169,7 +169,10 @@ def charuco_calibrate():
                     progress=progress_data.get("progress", 0),
                 )
 
-            result = calibrator.process_camera(camera, progress_callback=progress_callback)
+            result = calibrator.process_camera(
+                camera,
+                progress_callback=progress_callback,
+            )
 
             if result.get("success"):
                 job_manager.complete_job(
@@ -179,6 +182,7 @@ def charuco_calibrate():
                     rms_error=result.get("rms_error"),
                     num_images_used=result.get("num_images_used"),
                     model_path=result.get("model_path"),
+                    warnings=result.get("warnings", []),
                 )
                 logger.info(
                     f"ChArUco calibration completed. "
@@ -308,7 +312,9 @@ def charuco_calibrate_all():
                     ),
                 )
 
-            result = calibrator.process_all_cameras(progress_callback=progress_callback)
+            result = calibrator.process_all_cameras(
+                progress_callback=progress_callback,
+            )
 
             # Update final camera statuses
             camera_progress = {}
@@ -319,6 +325,7 @@ def charuco_calibrate_all():
                     "rms_error": cam_result.get("rms_error"),
                     "num_images_used": cam_result.get("num_images_used"),
                     "error": cam_result.get("error"),
+                    "warnings": cam_result.get("warnings", []),
                 }
 
             job_manager.complete_job(
@@ -720,6 +727,7 @@ def _run_charuco_calibration_job(
                 rms_error=result.get("rms_error"),
                 num_images_used=result.get("num_images_used"),
                 model_path=result.get("model_path"),
+                warnings=result.get("warnings", []),
             )
             logger.info(f"[ChArUco] Job {job_id} completed for Cam{camera}")
         else:

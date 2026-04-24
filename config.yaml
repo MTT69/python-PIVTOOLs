@@ -41,7 +41,7 @@ processing:
   dask_workers_per_node: 1
   dask_memory_limit: 10GB
   dask_max_in_flight_per_worker: 2
-  open_dashboard: false
+  open_dashboard: true
   dask_nanny: false
   post_processing_workers: 16
   always_batch: true
@@ -82,17 +82,17 @@ plots:
 video:
   base_path_idx: 0
   camera: 1
-  data_source: calibrated
-  variable: ux
-  run: 2
+  data_source: stereo
+  variable: mag
+  run: 3
   piv_type: instantaneous
-  cmap: jet
+  cmap: default
   lower: ''
   upper: ''
   fps: 30
   crf: 15
-  resolution: 1080p
-  source_endpoint: regular
+  resolution: 4k
+  source_endpoint: stereo
 statistics:
   enabled_methods:
     mean_peak_height: false
@@ -118,7 +118,7 @@ statistics:
   gamma_radius: 4
   save_figures: true
   type_name: instantaneous
-  source_endpoint: regular
+  source_endpoint: stereo
 instantaneous_piv:
   window_size:
   - - 128
@@ -127,16 +127,12 @@ instantaneous_piv:
     - 64
   - - 32
     - 32
-  - - 16
-    - 16
   overlap:
-  - 50
   - 50
   - 50
   - 50
   runs:
   - 3
-  - 4
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
@@ -218,9 +214,6 @@ calibration:
   camera_subfolders:
   - cam1
   - cam2
-  - camera3
-  - camera4
-  - camera5
   path_order: camera_first
   active: stereo_dotboard
   piv_type: ensemble
@@ -233,6 +226,17 @@ calibration:
     dt: 4.96e-05
     datum_frame: 1
     model_type: polynomial
+  charuco:
+    squares_h: 10
+    squares_v: 9
+    square_size: 0.03
+    marker_ratio: 0.5
+    aruco_dict: DICT_4X4_1000
+    min_corners: 6
+    dt: 1
+    source_path_idx: 0
+    camera: 1
+    model_type: pinhole
   stereo_dotboard:
     dot_spacing_mm: 12.22
     dt: 0.0057553
@@ -240,38 +244,72 @@ calibration:
     datum_frame: 1
   polynomial:
     cameras:
+      2:
+        origin:
+          x: 2656.0
+          y: 2300.0
+        normalisation:
+          nx: 5312.0
+          ny: 4600.0
+        mm_per_pixel: 0.03449634370462891
+        coefficients_x:
+        - 164.1245066783124
+        - 9.700865269483511
+        - 6.059725362819735
+        - -2.4176729938988157
+        - -4.2730163711371825
+        - -1.500122009557201
+        - 0.8953198095830455
+        - 5.116886134281802
+        - -1.4786184101080506
+        - -0.5357096655257576
+        coefficients_y:
+        - 943.213727377397
+        - 4.105690645748987
+        - 3.9009628331464103
+        - 1.633771738163448
+        - 7.843789033316517
+        - 5.737076235252556
+        - -1.6614719377354257
+        - 7.111909801811047
+        - -0.9282276996571058
+        - -0.24714131237621279
+        image_height: 4600.0
       1:
         origin:
-          x: 1024.0
-          y: 1024.0
+          x: 2656.0
+          y: 2300.0
         normalisation:
-          nx: 2048.0
-          ny: 2048.0
-        mm_per_pixel: 0.059880239520958084
+          nx: 5312.0
+          ny: 4600.0
+        mm_per_pixel: 0.03444854349075116
         coefficients_x:
-        - 271.97596240130696
-        - -0.399355471806388
-        - 0.8270943979854173
-        - -0.8139854517077841
-        - 0.00018972838254959173
-        - 0.2858029654715386
-        - -0.00015301653144948692
-        - 2.8563475198762068e-05
-        - -0.00015699883048924857
-        - -0.022412790433232094
+        - 1809.4579858979876
+        - 2.524287558622048
+        - 4.673142222707372
+        - -0.7808222358832553
+        - -1.727597155656286
+        - -0.48917394795790514
+        - 0.9245519306054931
+        - -1.6297819390713295
+        - -0.06366868646933366
+        - -0.5856723747598909
         coefficients_y:
-        - 271.97596240130696
-        - 0.0001897283825046392
-        - 0.2858029654715954
-        - -0.0001530165313595393
-        - -0.39935547180643055
-        - 0.8270943979854753
-        - -0.8139854517077056
-        - 2.8563475241106163e-05
-        - -0.022412790433100373
-        - -0.00015699883036353684
-        image_height: 2048.0
+        - 543.6154566450075
+        - -1.4993330563366571
+        - -0.1524531091982324
+        - 0.29777613517495105
+        - -0.22483385940967593
+        - -1.0714679221167975
+        - -1.0367058318071924
+        - 4.36572919746857
+        - -0.5987209786999628
+        - -0.49351981960362235
+        image_height: 4600.0
     dt: 4.96e-05
+  stereo_charuco:
+    datum_camera: 1
+    datum_frame: 1
   calibration_sources:
   - /Users/morgan/Downloads/stereo_ensemble/calibrationimages
   global_coordinates:
@@ -285,18 +323,60 @@ calibration:
     overlap_points: []
     invert_ux: false
     overlap_pairs: []
-  self_calibration:
-    z_offset: 0.8128942666143874
-    tilt_x: -0.0011937996372236867
-    tilt_y: 0.00033312378328439834
-    converged: true
-    n_iterations: 10
-    final_rms_disparity: 2.4301583551732677
-    n_images: 50
-    window_size: 128
-    overlap: 50.0
-filters:
-- type: time
+  stepped_board:
+    dot_spacing_mm: 15
+    step_height_mm: 3
+    board_thickness_mm: 14.8
+    dt: 5.0e-06
+    camera_pair:
+    - 1
+    - 2
+    stereo_config: transmission
+    datum_frame: 1
+    datum_camera: 1
+    cam1_fiducials:
+      origin:
+      - 3311.537353515625
+      - 751.3444213867188
+      x_axis:
+      - 3904.228515625
+      - 751.1295776367188
+      y_axis:
+      - 3307.075927734375
+      - 542.399658203125
+    cam2_fiducials:
+      origin:
+      - 1985.91259765625
+      - 638.464111328125
+      x_axis:
+      - 1684.95361328125
+      - 638.5454711914062
+      y_axis:
+      - 1990.9290771484375
+      - 435.236572265625
+    cam1_clicked_level: peak
+    cam2_clicked_level: trough
+    cam1_pose_levels:
+      '1': peak
+      '2': peak
+    cam2_pose_levels:
+      '1': trough
+      '2': trough
+    num_calibration_frames: 2
+  self_calibration: {}
+  stepped_planar:
+    dot_spacing_mm: 15
+    dt: 5.0e-06
+    datum_frame: 1
+    model_type: pinhole
+    target_level: peak
+    step_height_mm: 3
+    board_thickness_mm: 14.8
+    num_calibration_frames: 1
+    clicked_level: {}
+    pose_levels: {}
+    fiducials: {}
+filters: []
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat
@@ -317,4 +397,4 @@ transforms:
   cameras:
     1:
       operations: []
-  source_endpoint: regular
+  source_endpoint: stereo
