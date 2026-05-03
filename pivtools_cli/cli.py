@@ -171,6 +171,63 @@ def apply_calibration_command(args):
 
 
 # =============================================================================
+# IMPORT-DAVIS-PINHOLE COMMAND
+# =============================================================================
+
+def import_davis_pinhole_command(args):
+    """Import a DaVis Calibration.xml (PinholeOpenCV) into PIVTOOLs format."""
+    from pivtools_core.config import get_config, reload_config
+    from pivtools_gui.calibration.davis_pinhole.davis_pinhole_import import (
+        save_davis_pinhole_models,
+    )
+
+    config = get_config()
+    dt = args.dt if args.dt is not None else config.dt
+    base_path_idx = args.base_path_idx if args.base_path_idx is not None else 0
+
+    if base_path_idx >= len(config.base_paths):
+        print(f"Error: base_path_idx {base_path_idx} is out of range "
+              f"({len(config.base_paths)} base paths configured)")
+        sys.exit(1)
+
+    base_paths = [config.base_paths[base_path_idx]]
+
+    camera_map = None
+    if args.camera_map:
+        camera_map = {}
+        for pair in args.camera_map.split(","):
+            davis_id, piv_cam = pair.split(":")
+            camera_map[int(davis_id.strip())] = int(piv_cam.strip())
+
+    print("=" * 60)
+    print("Import DaVis PinholeOpenCV Calibration")
+    print("=" * 60)
+    print(f"XML:       {args.xml_path}")
+    print(f"Base path: {base_paths[0]}")
+    print(f"dt:        {dt} s")
+    if camera_map:
+        print(f"Camera map: {camera_map}")
+
+    result = save_davis_pinhole_models(args.xml_path, base_paths, dt, camera_map)
+
+    if result["errors"]:
+        for err in result["errors"]:
+            print(f"ERROR: {err}")
+        sys.exit(1)
+
+    for cam in result["cameras"]:
+        print(f"  Camera {cam['davis_cam_id']} → Cam{cam['pivtools_cam']}: "
+              f"{cam['n_poses']} pose(s) → {cam['model_path']}")
+
+    config.data.setdefault("calibration", {})["active"] = "davis_pinhole"
+    config.save()
+    reload_config()
+    print("\nConfig updated: calibration.active = davis_pinhole")
+    print("Run 'pivtools-cli apply-calibration --method davis_pinhole' to calibrate vectors.")
+    sys.exit(0)
+
+
+# =============================================================================
 # ALIGN-COORDINATES COMMAND
 # =============================================================================
 
@@ -2305,7 +2362,7 @@ def main():
     )
     apply_calibration_parser.add_argument(
         "--method", "-m", default=None,
-        choices=["dotboard", "charuco", "scale_factor", "polynomial", "stepped_board"],
+        choices=["dotboard", "charuco", "scale_factor", "polynomial", "stepped_board", "davis_pinhole"],
         help="Calibration method (default: from config.yaml calibration.active)"
     )
     apply_calibration_parser.add_argument(
@@ -2313,6 +2370,29 @@ def main():
         help="Apply global coordinate alignment after calibration (reads datum/overlap from config.yaml)"
     )
     apply_calibration_parser.set_defaults(func=apply_calibration_command)
+
+    # import-davis-pinhole command
+    import_davis_parser = subparsers.add_parser(
+        "import-davis-pinhole",
+        help="Import DaVis PinholeOpenCV Calibration.xml into PIVTOOLs format"
+    )
+    import_davis_parser.add_argument(
+        "xml_path",
+        help="Path to DaVis Calibration.xml"
+    )
+    import_davis_parser.add_argument(
+        "--dt", type=float, default=None,
+        help="Time step in seconds (default: from config.yaml)"
+    )
+    import_davis_parser.add_argument(
+        "--base-path-idx", type=int, default=None,
+        help="Index of base path to write models into (default: 0)"
+    )
+    import_davis_parser.add_argument(
+        "--camera-map", default=None,
+        help="Camera ID mapping: davis_id:cam_no pairs, e.g. '1:1,2:2,3:3'"
+    )
+    import_davis_parser.set_defaults(func=import_davis_pinhole_command)
 
     # apply-stereo command
     apply_stereo_parser = subparsers.add_parser(

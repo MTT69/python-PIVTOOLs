@@ -522,10 +522,12 @@ class VectorCalibrator:
         self.num_workers = num_workers if num_workers else get_max_workers(999999)
 
         # Validate model type
-        if self.model_type not in ("charuco", "dotboard", "stepped_board", "stepped_planar"):
+        if self.model_type not in (
+            "charuco", "dotboard", "stepped_board", "stepped_planar", "davis_pinhole"
+        ):
             raise ValueError(
                 f"model_type must be 'charuco', 'dotboard', 'stepped_board', "
-                f"or 'stepped_planar', got '{self.model_type}'"
+                f"'stepped_planar', or 'davis_pinhole', got '{self.model_type}'"
             )
 
         # Load calibration model
@@ -574,6 +576,8 @@ class VectorCalibrator:
             # _save_per_camera_model routine, so the file name matches
             # the stepped_board branch above.
             model_path = calib_dir / "stepped_planar" / "model" / "camera_model.mat"
+        elif self.model_type == "davis_pinhole":
+            model_path = calib_dir / "davis_pinhole" / "model" / "camera_model.mat"
         else:  # dotboard
             model_path = calib_dir / "dotboard_planar" / "model" / "dotboard_model.mat"
 

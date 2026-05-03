@@ -176,6 +176,63 @@ def _decode_pixels(raw: bytes, decoder: str, width: int, height: int) -> np.ndar
 
 
 # ---------------------------------------------------------------------------
+# Phantom CINE companion detection and reading
+# ---------------------------------------------------------------------------
+
+def _find_cine_companions(set_dir: Path) -> dict:
+    """Return {camera_num: Path} for Camera*.cine files in set_dir, or {} if none."""
+    result = {}
+    for p in sorted(set_dir.glob("Camera*.cine")):
+        stem = p.stem
+        if stem.startswith("Camera"):
+            try:
+                result[int(stem[len("Camera"):])] = p
+            except ValueError:
+                continue
+    return result
+
+
+def _read_cine_set_pair(
+    cine_map: dict,
+    camera_no: int,
+    im_no: int,
+    time_resolved: bool,
+    im_no_b: Optional[int],
+) -> np.ndarray:
+    """Read a frame pair from a Phantom-CINE-based .set container.
+
+    Pre-paired: A/B frames interleaved within each camera's .cine file.
+        Pair im_no=1 → cine frames 1 and 2; pair im_no=2 → frames 3 and 4.
+
+    Time-resolved: each entry is one frame; im_no and im_no_b select both.
+    """
+    from .cine_reader import read_cine_single
+
+    if camera_no not in cine_map:
+        raise ValueError(
+            f"Camera {camera_no} not found in SET companion directory. "
+            f"Available cameras: {sorted(cine_map.keys())}"
+        )
+
+    cine_path = str(cine_map[camera_no])
+
+    if time_resolved:
+        if im_no_b is None:
+            raise ValueError("im_no_b required for time_resolved mode")
+        frame_a = read_cine_single(cine_path, im_no)
+        frame_b = read_cine_single(cine_path, im_no_b)
+    else:
+        idx_a = 2 * (im_no - 1) + 1
+        frame_a = read_cine_single(cine_path, idx_a)
+        frame_b = read_cine_single(cine_path, idx_a + 1)
+
+    result = np.empty((2, frame_a.shape[0], frame_a.shape[1]), dtype=np.float32)
+    result[0] = frame_a
+    result[1] = frame_b
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Set container parsing
 # ---------------------------------------------------------------------------
 
@@ -311,6 +368,14 @@ def read_set_info(set_path: Union[str, Path]) -> SetInfo:
 
 def get_set_entry_count(set_path: Union[str, Path]) -> int:
     """Get the number of entries (image pairs) in a .set file."""
+    set_path = Path(set_path)
+    set_dir = set_path.with_suffix("")
+    if set_dir.is_dir():
+        cine_map = _find_cine_companions(set_dir)
+        if cine_map:
+            from .cine_reader import get_cine_frame_count
+            total = get_cine_frame_count(str(cine_map[sorted(cine_map)[0]]))
+            return total // 2
     info = _parse_set(set_path)
     return info.n_entries
 
@@ -356,6 +421,17 @@ def read_set_pair(
     np.ndarray
         Array of shape (2, H, W), dtype float32, with intensity scale applied.
     """
+    set_path = Path(set_path)
+
+    # Phantom CINE-based .set: companion dir has Camera{N}.cine files.
+    # Only check when set_info was not pre-provided (set_info is always IMS-based).
+    if set_info is None:
+        set_dir = set_path.with_suffix("")
+        if set_dir.is_dir():
+            cine_map = _find_cine_companions(set_dir)
+            if cine_map:
+                return _read_cine_set_pair(cine_map, camera_no, im_no, time_resolved, im_no_b)
+
     info = set_info if set_info is not None else _parse_set(set_path)
 
     if time_resolved:

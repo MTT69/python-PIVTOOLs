@@ -174,7 +174,7 @@ class Config:
     filters: List[dict]
 
     # --- Calibration properties ---
-    active_calibration_method: str   # "scale_factor" | "dotboard" | "charuco" | "polynomial" | "stereo_*" | "stepped_board" | "stepped_planar"
+    active_calibration_method: str   # "scale_factor" | "dotboard" | "charuco" | "polynomial" | "stereo_*" | "stepped_board" | "stepped_planar" | "davis_pinhole"
     calibration_piv_type: str
     global_coordinates_config: dict          # calibration.global_coordinates section
     global_coordinates_enabled: bool
@@ -1169,7 +1169,8 @@ Triggered on GitHub release or manual dispatch. Builds wheels for {ubuntu, macos
 | `ensemble` | Run ensemble PIV |
 | `detect-planar` / `detect-charuco` | Detect calibration targets. `--model-type pinhole\|polynomial` selects model type. |
 | `detect-stereo-planar` / `detect-stereo-charuco` | Stereo calibration detection |
-| `apply-calibration` / `apply-stereo` | Apply calibration (px → m/s). `--method` accepts `dotboard`, `charuco`, `scale_factor`, `polynomial`. `--align-coordinates` flag auto-applies global alignment. |
+| `import-davis-pinhole <xml_path>` | Import DaVis PinholeOpenCV Calibration.xml → saves `davis_pinhole/model/camera_model.mat` per camera, sets `calibration.active = davis_pinhole`. Options: `--dt`, `--base-path-idx`, `--camera-map 1:1,2:2,3:3`. |
+| `apply-calibration` / `apply-stereo` | Apply calibration (px → m/s). `--method` accepts `dotboard`, `charuco`, `scale_factor`, `polynomial`, `davis_pinhole`. `--align-coordinates` flag auto-applies global alignment. |
 | `align-coordinates` | Apply global coordinate alignment to calibrated vectors (reads datum/overlap from config). `--force` flag overrides idempotency guard. |
 | `self-calibrate` | Run stereo self-calibration (Wieneke 2005). `--camera-pair 1,2`, `--method dotboard\|charuco`, `--n-images 20`, `--window-size 64`. Saves z_offset/tilt_x/tilt_y to `config.calibration.self_calibration`. |
 | `transform` | Geometric transforms (`flip_ud`, `flip_lr`, `rotate_90_cw/ccw`, `rotate_180`, `swap_ux_uy`, `invert_ux_uy`, `invert_ux`, `invert_uy`, `scale_velocity:N`, `scale_coords:N`) |
