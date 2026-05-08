@@ -1519,6 +1519,12 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         image_interp = getattr(self.config, 'ensemble_image_warp_interpolation', 'cubic')
         self._fused_interp_mode = 0 if image_interp == 'cubic' else 1
 
+        # Persist post-remap predictor for diagnostic export (stereo path
+        # needs it; std path uses the local return). Cheap reference, no
+        # copy — the array is owned by this method's stack and won't be
+        # mutated again this pass.
+        self.delta_ab_pred = delta_ab_pred
+
         return delta_ab_pred
 def plot_corr_planes(corr_avg_flat, n_win_y, n_win_x, win_h, win_w, pass_idx):
     """

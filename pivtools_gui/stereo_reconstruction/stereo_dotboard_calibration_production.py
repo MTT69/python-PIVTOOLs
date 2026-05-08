@@ -208,11 +208,32 @@ class StereoDotboardCalibrator(BaseStereoCalibrator):
         self,
         grid_indices: np.ndarray,
     ) -> np.ndarray:
-        """Create 3D object points from grid indices."""
+        """Create 3D object points from BFS grid indices.
+
+        The grid indices produced by ``detect_grid_automatic`` are normalised
+        to ``[0, N-1]`` with ``row=0`` at the image-top (BFS ``v2`` is
+        oriented +y-down, then min-shifted to zero). To get a physics-up
+        world frame with its origin at the bottom row of the detected
+        grid — matching what stepped-board calibration produces via
+        user-clicked fiducials — we flip-and-offset::
+
+            obj_y = (grid_y.max() - grid_y) * dot_spacing_mm
+
+        Top row → ``obj_y = (N-1) * spacing`` (most positive).
+        Bottom row → ``obj_y = 0`` (origin).
+
+        A plain sign flip ``obj_y = -grid_y * spacing`` also gives
+        physics-up direction but leaves the origin at the top of the
+        grid, which in typical experiments places y=0 well above the
+        region of interest and forces the rest of the field into
+        negative values. See commit ``9cd54c5`` for the previous
+        (incorrect for origin) behaviour and the ``figures/debug/``
+        diagnostic for the evidence.
+        """
         obj_points = np.zeros((len(grid_indices), 3), dtype=np.float32)
         obj_points[:, 0] = grid_indices[:, 0] * self.dot_spacing_mm
-        # Y negated to produce physics-up world frame (BFS default is image-down)
-        obj_points[:, 1] = -grid_indices[:, 1] * self.dot_spacing_mm
+        grid_y = grid_indices[:, 1]
+        obj_points[:, 1] = (grid_y.max() - grid_y) * self.dot_spacing_mm
         return obj_points
 
     def _match_object_points(
@@ -262,13 +283,22 @@ class StereoDotboardCalibrator(BaseStereoCalibrator):
         img_pts_1 = []
         img_pts_2 = []
 
+        # Flip-and-offset the row index so obj_y is physics-up with origin
+        # at the bottom-most matched row, matching make_object_points_dynamic
+        # above. We take the max across the COMMON positions (not per-camera
+        # indices) because only the common subset enters cv2.stereoCalibrate.
+        max_row = max(row for _, row in common_positions)
+
         for pos in sorted(common_positions):
             col, row = pos
             idx_1 = pos_to_idx_1[pos]
             idx_2 = pos_to_idx_2[pos]
 
-            # Y negated to produce physics-up world frame (BFS default is image-down)
-            obj_pts.append([col * self.dot_spacing_mm, -row * self.dot_spacing_mm, 0.0])
+            obj_pts.append([
+                col * self.dot_spacing_mm,
+                (max_row - row) * self.dot_spacing_mm,
+                0.0,
+            ])
             img_pts_1.append(centers_1[idx_1])
             img_pts_2.append(centers_2[idx_2])
 

@@ -684,9 +684,23 @@ class VectorCalibrator:
         )
 
         x_mm = world_pts[:, 0].reshape(coords_x.shape)
-        # Negate y: the pinhole model's world y-axis points opposite to the
-        # physical y-up convention because we feed raw pixels (y-down).
-        y_mm = -world_pts[:, 1].reshape(coords_y.shape)
+        # No Y negation here. The calibration paths that feed this method
+        # (planar dotboard, stereo dotboard consumed through stereo
+        # reconstruction, stepped_board, stepped_planar) all produce world
+        # frames that are physics-up at construction time — dotboard via
+        # the flip-and-offset in ``make_object_points_dynamic``, stepped
+        # via fiducial-driven ``row_sign``. A further negation here would
+        # double-flip and give physics-down output.
+        #
+        # FIXME(charuco): planar ChArUco still constructs obj_points in
+        # OpenCV's image-down frame (``board.getChessboardCorners()``).
+        # It USED to rely on the negation that was previously at this
+        # site to get physics-up output. Until ChArUco is converted to
+        # the flip-and-offset convention, its calibrated output will be
+        # physics-DOWN. See the matching FIXME in
+        # ``stereo_charuco_calibration_production.py`` and in the planar
+        # ``charuco_calibration_production.py``.
+        y_mm = world_pts[:, 1].reshape(coords_y.shape)
 
         logger.info("Converted coordinates from pixels to mm (pinhole model)")
 
@@ -748,13 +762,15 @@ class VectorCalibrator:
             z_world=self.z_world, tilt_x=self.tilt_x, tilt_y=self.tilt_y,
         )
 
-        # Compute displacement in mm, convert to m/s
-        # Negate uy: pinhole world y-axis points downward (raw pixel convention),
-        # but physical convention is y-up.  Must match calibrate_coordinates()
-        # which also negates y: y_mm = -world_pts[:, 1].
+        # Compute displacement in mm, convert to m/s. No Y negation —
+        # the calibration model is physics-up at construction (dotboard
+        # via flip-and-offset, stepped via fiducial-driven row_sign), so
+        # ``delta_mm[:, 1]`` already has the correct sign. Must match
+        # calibrate_coordinates() above. See FIXME(charuco) there for
+        # the one path that still needs this negation.
         delta_mm = disp_world - coords_world
         ux_ms = (delta_mm[:, 0] / 1000.0) / self.dt
-        uy_ms = -(delta_mm[:, 1] / 1000.0) / self.dt
+        uy_ms = (delta_mm[:, 1] / 1000.0) / self.dt
 
         ux_ms = ux_ms.reshape(ux_px.shape)
         uy_ms = uy_ms.reshape(uy_px.shape)

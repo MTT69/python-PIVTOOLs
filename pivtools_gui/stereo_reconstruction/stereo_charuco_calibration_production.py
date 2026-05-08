@@ -299,7 +299,21 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
         """
         board, _ = self.detector
         obj_points = board.getChessboardCorners().astype(np.float32).copy()
-        # Y negated to produce physics-up world frame (OpenCV ChArUco board frame is +Y image-down)
+        # FIXME(charuco-origin): this path currently matches ONLY the DIRECTION
+        # of physics-up (OpenCV's ChArUco board frame is +Y image-down; the
+        # plain negation below flips +Y to image-up ≙ physics-up). The ORIGIN
+        # still lands wherever OpenCV places (0, 0) on the board (top-left
+        # corner of the printed pattern), NOT at the bottom of the detected
+        # region — which is the dotboard-vs-stepped bug we fixed for dotboard
+        # (2026-04-24, flip-and-offset convention). To bring ChArUco into
+        # line: replace the sign flip with
+        #
+        #     obj_points[:, 1] = obj_points[:, 1].max() - obj_points[:, 1]
+        #
+        # which keeps physics-up direction and pins the origin to the
+        # bottom-most corner. Left untouched in this patch because the user
+        # reports ChArUco output is acceptable today; revisit when ChArUco is
+        # tested end-to-end against a dataset with a clear wall reference.
         obj_points[:, 1] = -obj_points[:, 1]
         return obj_points
 

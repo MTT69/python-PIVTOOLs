@@ -274,6 +274,8 @@ unsigned char bulkxcorr2d_stereo_coc_accumulate(
     float       *fCorr2AA_Sum,
     float       *fCorr2BB_Sum,
     float       *fCoC_Sum,
+    float       *fCorr1AB_AC_Sum,
+    float       *fCorr2AB_AC_Sum,
     int          diag_window_idx,
     float       *fDiag_AB1,
     float       *fDiag_AB2,
@@ -322,6 +324,7 @@ unsigned char bulkxcorr2d_stereo_coc_accumulate(
                fCorr1AB_Sum, fCorr1AA_Sum, fCorr1BB_Sum, \
                fCorr2AB_Sum, fCorr2AA_Sum, fCorr2BB_Sum, \
                fCoC_Sum, \
+               fCorr1AB_AC_Sum, fCorr2AB_AC_Sum, \
                nPxPerWindow, nWindowsTotal, nImagePixels, numel, numel_fft, \
                out_h, out_w, nPxPerOutput, nPxPerCoC, start_y, start_x, \
                coc_numel, coc_numel_fft, coc_needs_own_plan, coc_plan_size, \
@@ -357,6 +360,9 @@ unsigned char bulkxcorr2d_stereo_coc_accumulate(
         float *fAB1_central = NULL, *fAB2_central = NULL;
         float *fCoC_result  = NULL;
 
+        /* Per-frame autocorr(AB_c) scratch — reuses coc_plan; same size as CoC */
+        float *fAC_AB1_result = NULL, *fAC_AB2_result = NULL;
+
         if (!fRaw1A || !fRaw1B || !fRaw2A || !fRaw2B) {
             uError = ERROR_NOMEM; goto stereo_cleanup;
         }
@@ -388,10 +394,14 @@ unsigned char bulkxcorr2d_stereo_coc_accumulate(
         fAB2_central = (float *)fftwf_malloc(nPxPerOutput * sizeof(float));
         fCoC_result  = (float *)fftwf_malloc(nPxPerCoC * sizeof(float));
 
+        fAC_AB1_result = (float *)fftwf_malloc(nPxPerCoC * sizeof(float));
+        fAC_AB2_result = (float *)fftwf_malloc(nPxPerCoC * sizeof(float));
+
         if (!C_auto1 || !C_auto2 || !C_auto3 || !C_auto4 ||
             !fCorrel1AB || !fCorrel1AA || !fCorrel1BB ||
             !fCorrel2AB || !fCorrel2AA || !fCorrel2BB ||
-            !fAB1_central || !fAB2_central || !fCoC_result) {
+            !fAB1_central || !fAB2_central || !fCoC_result ||
+            !fAC_AB1_result || !fAC_AB2_result) {
             uError = ERROR_NOMEM; goto stereo_cleanup;
         }
 
@@ -416,6 +426,8 @@ unsigned char bulkxcorr2d_stereo_coc_accumulate(
             float *out2AA = &fCorr2AA_Sum[iWindowIdx * nPxPerOutput];
             float *out2BB = &fCorr2BB_Sum[iWindowIdx * nPxPerOutput];
             float *outCoC = &fCoC_Sum[iWindowIdx * nPxPerCoC];
+            float *out1AB_AC = &fCorr1AB_AC_Sum[iWindowIdx * nPxPerCoC];
+            float *out2AB_AC = &fCorr2AB_AC_Sum[iWindowIdx * nPxPerCoC];
 
             for (n = 0; n < N_images; ++n)
             {
@@ -429,6 +441,22 @@ unsigned char bulkxcorr2d_stereo_coc_accumulate(
                 extract_raw_subimage(fIm1B, row_min, col_min, nWindowSize, nImageSize, fRaw1B);
                 extract_raw_subimage(fIm2A, row_min, col_min, nWindowSize, nImageSize, fRaw2A);
                 extract_raw_subimage(fIm2B, row_min, col_min, nWindowSize, nImageSize, fRaw2B);
+
+                /* ─── 1b. Per-window mean subtraction (in-place) ─────────
+                 * Zeros the spatial mean of each sub-image before FFT so
+                 * the AB cross-correlation has no DC pedestal at source.
+                 * Validated via manual_tools/coc_window_experiments.py:
+                 * reduces per-frame CoC DC/peak from 79% to <1% on
+                 * channel-flow data. Required for clean instantaneous CoC. */
+                {
+                    float *raw_arrs[4] = { fRaw1A, fRaw1B, fRaw2A, fRaw2B };
+                    for (int kk = 0; kk < 4; ++kk) {
+                        double sum = 0.0;
+                        for (i = 0; i < numel; ++i) sum += raw_arrs[kk][i];
+                        float mean = (float)(sum / (double)numel);
+                        for (i = 0; i < numel; ++i) raw_arrs[kk][i] -= mean;
+                    }
+                }
 
                 /* ─── 2. AB cross-correlations ──────────────────────────── */
                 compute_AB_xcorr(fRaw1A, fRaw1B,
@@ -489,11 +517,28 @@ unsigned char bulkxcorr2d_stereo_coc_accumulate(
                     xcorr_preplanned(
                         fAB1_central, fAB2_central,
                         fCoC_result, coc_plan);
+
+                    /* Per-frame autocorrelations of AB_c — diagnostic only.
+                     * Identical convention to CoC (no mean subtraction, same
+                     * coc_plan). Per-frame autocorr(AB_c) = G(η, 2S) by
+                     * shift-invariance, so the accumulated sum is a redundant
+                     * estimator of 2·S independent of the AA/BB image
+                     * autocorrelation path. Carries no Σ_cc and no Σ_12
+                     * content — does not break stereo rank deficiency. */
+                    xcorr_preplanned(
+                        fAB1_central, fAB1_central,
+                        fAC_AB1_result, coc_plan);
+
+                    xcorr_preplanned(
+                        fAB2_central, fAB2_central,
+                        fAC_AB2_result, coc_plan);
                 }
 
-                /* ─── 6. Accumulate CoC ─────────────────────────────────── */
+                /* ─── 6. Accumulate CoC + AB autocorrelations ──────────── */
                 for (i = 0; i < nPxPerCoC; ++i) {
-                    outCoC[i] += fCoC_result[i];
+                    outCoC[i]    += fCoC_result[i];
+                    out1AB_AC[i] += fAC_AB1_result[i];
+                    out2AB_AC[i] += fAC_AB2_result[i];
                 }
 
                 /* ─── 7. Diagnostic: store per-frame planes ────────────── */
@@ -529,6 +574,8 @@ unsigned char bulkxcorr2d_stereo_coc_accumulate(
         if (fAB1_central) fftwf_free(fAB1_central);
         if (fAB2_central) fftwf_free(fAB2_central);
         if (fCoC_result)  fftwf_free(fCoC_result);
+        if (fAC_AB1_result) fftwf_free(fAC_AB1_result);
+        if (fAC_AB2_result) fftwf_free(fAC_AB2_result);
 
         #pragma omp critical
         xcorr_destroy_plan(&sCCPlan);

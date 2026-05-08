@@ -798,18 +798,46 @@ PIV_EXPORT int fit_kspace_batch(
             }
 
             // ---- Step 3: Joint noise fit ----
-            double F_dc = F_ref[center_idx_y * corr_w + center_idx_x];
-            if (F_dc < 1e-10) {
+            //
+            // Pre-2026-04-26 this normalised F_ref by its DC bin
+            // (F_ref[centre]). That worked when raw images had non-zero
+            // mean intensity — the DC bin equalled (mu*N)^2, large and
+            // positive, and was a meaningful per-window scale.
+            //
+            // After the per-window mean-subtraction fix in
+            // stereo_coc_accumulate.c (2026-04-26), every per-frame
+            // sub-image is mean-subtracted before the FFT, so the
+            // autocorrelation has zero spatial sum mathematically and
+            // F_ref[k=0] is structurally ~0. Dividing by it amplifies
+            // the spectrum by 1/0 (or by a float32-noise residual)
+            // and breaks Stage 1's calibration. The "LOW_SNR(F_dc)"
+            // gate at the same threshold became a coin-flip rejector
+            // driven purely by FFTW summation order.
+            //
+            // Fix: normalise by the spectrum *peak* instead of the DC
+            // bin. The peak is well-defined post-meansub (it sits at
+            // low-but-nonzero k where the genuine signal lives), is
+            // always positive, and restores F_ref_norm in [0, 1] with
+            // peak = 1 — the range Stage 1's parameter bounds
+            // (A ∈ [0.01, 10], N0 ∈ [0, 1]) are calibrated for.
+            //
+            // The remaining LOW_SNR gate now genuinely tests "is there
+            // any signal in this spectrum at all" — F_max < 1e-30
+            // (~float32 underflow) only fires on a literally-zero
+            // spectrum, which only happens for a fully-empty window.
+            double F_max = 0.0;
+            for (size_t p = 0; p < n_pixels; p++)
+                if (F_ref[p] > F_max) F_max = F_ref[p];
+            if (F_max < 1e-30) {
                 if (diag_count < 3)
-                    fprintf(stderr, "[kspace] win %d: LOW_SNR(F_dc) F_dc=%.4e\n", i, F_dc);
+                    fprintf(stderr, "[kspace] win %d: LOW_SNR(F_max) F_max=%.4e\n", i, F_max);
                 diag_count++;
                 out_status[i] = STATUS_LOW_SNR;
                 continue;
             }
 
-            // Normalise
             for (size_t p = 0; p < n_pixels; p++)
-                F_ref_norm[p] = F_ref[p] / F_dc;
+                F_ref_norm[p] = F_ref[p] / F_max;
 
             // Flat (uniform) weights — joint model (A*Gauss + N0)*P_noise
             // explicitly separates signal from noise at all wavenumbers
@@ -849,10 +877,16 @@ PIV_EXPORT int fit_kspace_batch(
                 if (joint_status == GSL_SUCCESS || joint_status == GSL_EMAXITER) {
                     gsl_vector *x_result = gsl_multifit_nlinear_position(joint_work);
                     double N0_norm = fmax(gsl_vector_get(x_result, 3), 0.0);
-                    N0_abs = N0_norm * F_dc;
+                    // Rescale fitted noise floor back to the absolute spectrum
+                    // (Stage 1 fit on F_ref / F_max → multiply N0 by F_max).
+                    N0_abs = N0_norm * F_max;
 
-                    // Subtract colored noise floor
-                    double epsilon = F_dc * 1e-8;
+                    // Subtract colored noise floor in-place. The clamp epsilon
+                    // is kept proportional to the spectrum's scale (F_max)
+                    // rather than the DC bin (which is ~0 post-meansub) so
+                    // F_clean stays a small positive after subtraction even
+                    // where signal is weak.
+                    double epsilon = F_max * 1e-8;
                     for (size_t p = 0; p < n_pixels; p++) {
                         double noise_floor = N0_abs * P_noise[p];
                         F_ref[p] = fmax(F_ref[p] - noise_floor, epsilon);
@@ -867,8 +901,12 @@ PIV_EXPORT int fit_kspace_batch(
             }
 
             // ---- Step 4: Compute SNR for diagnostics (no gate) ----
-            double F_dc_clean = F_ref[center_idx_y * corr_w + center_idx_x];
-            double dc_power = F_dc_clean * F_dc_clean;
+            // Use the (noise-subtracted) spectrum peak rather than the DC bin
+            // — see Step-3 rationale. SNR is informational only.
+            double F_max_clean = 0.0;
+            for (size_t p = 0; p < n_pixels; p++)
+                if (F_ref[p] > F_max_clean) F_max_clean = F_ref[p];
+            double dc_power = F_max_clean * F_max_clean;
             double noise_power = N0_abs * N0_abs + 1e-12;
             double snr = dc_power / noise_power;
 
@@ -889,13 +927,13 @@ PIV_EXPORT int fit_kspace_batch(
                 prof_ref_x[c] = F_ref_abs[center_idx_y * corr_w + c];
 
             double k_max_x_prof = compute_kmax_from_profile(k_x, prof_ref_x, corr_w,
-                                                             F_dc_clean, 0.01, 0.05, k_max_limit);
+                                                             F_max_clean, 0.01, 0.05, k_max_limit);
             // Profile along y (at k_x=0)
             for (size_t r = 0; r < corr_h; r++)
                 prof_ref_y[r] = F_ref_abs[r * corr_w + center_idx_x];
 
             double k_max_y_prof = compute_kmax_from_profile(k_y, prof_ref_y, corr_h,
-                                                             F_dc_clean, 0.01, 0.05, k_max_limit);
+                                                             F_max_clean, 0.01, 0.05, k_max_limit);
 
             double k_max_init_x = (k_max_x_prof < k_max_limit) ? k_max_x_prof : k_max_limit;
             double k_max_init_y = (k_max_y_prof < k_max_limit) ? k_max_y_prof : k_max_limit;

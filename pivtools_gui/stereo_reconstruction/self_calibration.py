@@ -269,9 +269,15 @@ def compute_dewarp_maps(
     out_w = max(1, int(round((x_max - x_min) / mm_per_pixel)))
     out_h = max(1, int(round((y_max - y_min) / mm_per_pixel)))
 
-    # Build world-coordinate meshgrid
+    # Build world-coordinate meshgrid.
+    # world_y descends with row index so the dewarped image is in
+    # standard image-down convention: row 0 = physical top (y_max),
+    # last row = physical bottom (y_min). This matches every other
+    # array layout in PIVTOOLs (raw camera images, planar PIV outputs)
+    # and lets the standard ensemble save path's image-down → physics-up
+    # negation apply uniformly to stereo CoC outputs.
     world_x = np.linspace(x_min, x_max, out_w, dtype=np.float64)
-    world_y = np.linspace(y_min, y_max, out_h, dtype=np.float64)
+    world_y = np.linspace(y_max, y_min, out_h, dtype=np.float64)
     wx, wy = np.meshgrid(world_x, world_y)
 
     # Z at each point from plane equation
@@ -744,9 +750,13 @@ def run_self_calibration(
     n_win_x = wc.n_win_x
     n_win_y = wc.n_win_y
 
-    # World-coordinate grids for each window center
+    # World-coordinate grids for each window center.
+    # world_y_1d must mirror the dewarp's orientation (row 0 = y_max,
+    # descending) so disparity samples (X, Y, D) stay correctly paired.
+    # Joint flip with compute_dewarp_maps preserves the least-squares
+    # plane fit's recovered (z_offset, tilt_x, tilt_y) bit-identically.
     world_x_1d = np.linspace(x_min, x_max, out_w)
-    world_y_1d = np.linspace(y_min, y_max, out_h)
+    world_y_1d = np.linspace(y_max, y_min, out_h)
     grid_x_px = np.round(win_ctrs_x).astype(int)
     grid_y_px = np.round(win_ctrs_y).astype(int)
     grid_x_mm_1d = world_x_1d[np.clip(grid_x_px, 0, out_w - 1)]

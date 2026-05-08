@@ -1044,9 +1044,27 @@ def save_stereo_ensemble_result(
 ) -> str:
     """Save stereo ensemble CoC result to .mat file.
 
-    Output is already in physical units (m/s, (m/s)^2, mm) since dewarping
-    IS calibration. Sign conventions on save: negate uy, UV, VW (matching
-    standard ensemble y-down→y-up convention).
+    Output is in physical units (m/s, (m/s)^2, mm) since dewarping IS
+    calibration. Convention on disk: **physics-up**, in lockstep with
+    the standard ensemble save path.
+
+    The dewarp lays world_y as ``np.linspace(y_max, y_min, out_h)`` so
+    the dewarped image is image-down (row 0 = physical top, last row =
+    physical bottom). The correlator's +dy therefore means
+    *physically downward* — exactly the same situation as standard
+    ensemble PIV running on a raw camera image. We resolve it the same
+    way: negate ``uy``, ``UV_stress``, ``VW_stress``, ``pred_y`` and
+    ``padded_pred_y`` at save time. UU, VV, WW, UW, ux, uz, Sigma_12_xx
+    are y-even and pass through unchanged.
+
+    A future ``load_stereo_ensemble_result`` must mirror
+    ``load_ensemble_result`` and undo these negations on read.
+
+    History: pre-2026-04-24 the dewarp ran y_min→y_max (physics-up
+    array) and the save skipped negation — locally consistent, but the
+    array layout was upside-down relative to every other PIVTOOLs
+    output. Realigned 2026-04-29 by flipping the dewarp linspace and
+    restoring the standard save-time negations.
 
     Parameters
     ----------
@@ -1099,6 +1117,8 @@ def save_stereo_ensemble_result(
         ('win_ctrs_y', object),
         ('pred_x', object),
         ('pred_y', object),
+        ('padded_pred_x', object),
+        ('padded_pred_y', object),
     ]
 
     result_struct = np.empty((n_passes,), dtype=dtype)
@@ -1106,18 +1126,28 @@ def save_stereo_ensemble_result(
     for i in range(n_passes):
         pr = stereo_result.get_pass(i)
 
-        # Sign conventions: negate uy, UV_stress, VW_stress on save
-        # (pixel y-down → physical y-up, matching standard ensemble)
+        # Sign flips on uy, UV_stress, VW_stress to convert from
+        # image-down dewarp pixel space (+dy = down a row = physically
+        # downward) to physics-up disk convention (+uy = upward). This
+        # matches the standard ensemble save path exactly. UU, VV, WW,
+        # UW are even under a y-flip and pass through unchanged.
+        # UV = u'v' picks up one minus from v' → -v'; VW = v'w' picks
+        # up one minus from v' → -v'. ux, uz, Sigma_12_xx, peakheight
+        # carry no y-component — straight through.
+        uy_physical = -pr.uy if pr.uy is not None else None
+        UV_physical = -pr.UV_stress if pr.UV_stress is not None else None
+        VW_physical = -pr.VW_stress if pr.VW_stress is not None else None
+
         result_struct['ux'][i] = _convert_to_half_precision(pr.ux, 'ux')
-        result_struct['uy'][i] = _convert_to_half_precision(-pr.uy, 'uy')
+        result_struct['uy'][i] = _convert_to_half_precision(uy_physical, 'uy')
         result_struct['uz'][i] = _convert_to_half_precision(pr.uz, 'uz')
 
         result_struct['UU_stress'][i] = _convert_to_half_precision(pr.UU_stress, 'UU_stress')
         result_struct['VV_stress'][i] = _convert_to_half_precision(pr.VV_stress, 'VV_stress')
         result_struct['WW_stress'][i] = _convert_to_half_precision(pr.WW_stress, 'WW_stress')
-        result_struct['UV_stress'][i] = _convert_to_half_precision(-pr.UV_stress, 'UV_stress')
+        result_struct['UV_stress'][i] = _convert_to_half_precision(UV_physical, 'UV_stress')
         result_struct['UW_stress'][i] = _convert_to_half_precision(pr.UW_stress, 'UW_stress')
-        result_struct['VW_stress'][i] = _convert_to_half_precision(-pr.VW_stress, 'VW_stress')
+        result_struct['VW_stress'][i] = _convert_to_half_precision(VW_physical, 'VW_stress')
 
         result_struct['Sigma_12_xx'][i] = _convert_to_half_precision(pr.Sigma_12_xx, 'Sigma_12_xx')
 
@@ -1140,7 +1170,18 @@ def save_stereo_ensemble_result(
         pred_x = pr.pred_x if pr.pred_x is not None else np.array([])
         pred_y = pr.pred_y if pr.pred_y is not None else np.array([])
         result_struct['pred_x'][i] = _convert_to_half_precision(pred_x, 'pred_x')
-        result_struct['pred_y'][i] = _convert_to_half_precision(-pred_y, 'pred_y')
+        # pred_y lives in the same image-down dewarped pixel frame as uy
+        # — negate to write physics-up to disk, matching standard ensemble.
+        result_struct['pred_y'][i] = _convert_to_half_precision(-pred_y if pred_y.size else pred_y, 'pred_y')
+
+        # Padded (pre-remap) predictor on previous pass grid + boundary
+        # padding. Same image-down → physics-up flip as pred_y / uy.
+        padded_pred_x = pr.padded_pred_x if pr.padded_pred_x is not None else np.array([])
+        padded_pred_y = pr.padded_pred_y if pr.padded_pred_y is not None else np.array([])
+        result_struct['padded_pred_x'][i] = _convert_to_half_precision(padded_pred_x, 'padded_pred_x')
+        result_struct['padded_pred_y'][i] = _convert_to_half_precision(
+            -padded_pred_y if padded_pred_y.size else padded_pred_y, 'padded_pred_y'
+        )
 
     scipy.io.savemat(
         filepath,
@@ -1195,9 +1236,13 @@ def save_stereo_ensemble_coordinates(
         ctrs_x = win_ctrs_x_list[i]
         ctrs_y = win_ctrs_y_list[i]
 
-        # Convert dewarped pixel indices to physical mm
+        # Convert dewarped pixel indices to physical mm.
+        # The dewarp lays world_y as np.linspace(y_max, y_min, out_h) so
+        # row 0 = y_max (physical top) and row out_h-1 = y_min (bottom).
+        # ctrs_y is in dewarped pixel units (ascending from row 0), so
+        # the corresponding world Y descends from y_max as ctrs_y grows.
         x_mm = x_min + ctrs_x * mm_per_pixel
-        y_mm = y_min + ctrs_y * mm_per_pixel
+        y_mm = y_max - ctrs_y * mm_per_pixel
 
         x_grid, y_grid = np.meshgrid(x_mm, y_mm, indexing='xy')
         coords_struct['x'][i] = x_grid.astype(np.float32)

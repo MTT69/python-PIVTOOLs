@@ -143,6 +143,13 @@ class StereoEnsembleAccumulator:
         cam2_AA = pass_data["cam2_AA_sum"].reshape(n_windows, n_px_corr) / N
         cam2_BB = pass_data["cam2_BB_sum"].reshape(n_windows, n_px_corr) / N
         coc_avg = pass_data["CoC_sum"].reshape(n_windows, n_px_coc) / N
+        # Per-frame autocorr(AB_c) ensemble averages — diagnostic only.
+        # No background subtraction or normalisation applied; saved as-is
+        # below in Step 5b. Carries no Σ_cc / Σ_12 content (autocorrelation
+        # is shift-invariant in the input, so per-frame d_c cancels and
+        # the ensemble is a redundant 2S estimator).
+        cam1_AB_autocorr = pass_data["cam1_AB_AC_sum"].reshape(n_windows, n_px_coc) / N
+        cam2_AB_autocorr = pass_data["cam2_AB_AC_sum"].reshape(n_windows, n_px_coc) / N
 
         # ── Diagnostic: save raw planes before any bg subtraction ──────
         diag_coc_raw = coc_avg.copy()
@@ -230,25 +237,24 @@ class StereoEnsembleAccumulator:
             win_ctrs_y = correlator._inner.win_ctrs_y[pass_idx]
             win_ctrs_x = correlator._inner.win_ctrs_x[pass_idx]
 
-            # Extract per-window predictor (pass > 0)
-            # The smoothed_predictor is on the PREVIOUS pass grid — remap to
-            # the current pass grid if sizes differ.
-            smoothed_pred = pass_data.get("smoothed_predictor")
-            if smoothed_pred is not None and smoothed_pred.ndim == 3 and smoothed_pred.shape[2] == 2:
-                import cv2
-                prev_ny, prev_nx = smoothed_pred.shape[:2]
+            # Extract per-window predictor for the noise-PSD fractional
+            # displacement (pass > 0). Use the upsampled_predictor view —
+            # it is already on the current pass grid (n_win_y, n_win_x, 2).
+            # The padded smoothed_predictor must NOT be cv2.resized here:
+            # cv2.resize stretches corner-to-corner with no awareness of
+            # the pad zone and contaminates the boundary windows.
+            upsampled = pass_data.get("upsampled_predictor")
+            if upsampled is not None and upsampled.ndim == 3 and upsampled.shape[2] == 2:
                 cur_ny = len(win_ctrs_y)
                 cur_nx = len(win_ctrs_x)
-                if prev_ny == cur_ny and prev_nx == cur_nx:
-                    pred_dy_2d = smoothed_pred[:, :, 0]
-                    pred_dx_2d = smoothed_pred[:, :, 1]
-                else:
-                    pred_dy_2d = cv2.resize(
-                        smoothed_pred[:, :, 0].astype(np.float32),
-                        (cur_nx, cur_ny), interpolation=cv2.INTER_LINEAR)
-                    pred_dx_2d = cv2.resize(
-                        smoothed_pred[:, :, 1].astype(np.float32),
-                        (cur_nx, cur_ny), interpolation=cv2.INTER_LINEAR)
+                if upsampled.shape[:2] != (cur_ny, cur_nx):
+                    raise ValueError(
+                        f"upsampled_predictor shape {upsampled.shape[:2]} does not "
+                        f"match current pass grid ({cur_ny}, {cur_nx}); "
+                        f"the predictor build is out of sync with the accumulator."
+                    )
+                pred_dy_2d = upsampled[:, :, 0]
+                pred_dx_2d = upsampled[:, :, 1]
             else:
                 pred_dy_2d = None
                 pred_dx_2d = None
@@ -321,29 +327,67 @@ class StereoEnsembleAccumulator:
         cam1_fit = _fit_camera(cam1_AA, cam1_BB, cam1_AB, "cam1")
         cam2_fit = _fit_camera(cam2_AA, cam2_BB, cam2_AB, "cam2")
 
-        # ── Step 4b: Fit auto-correlations for particle width S ──────
-        # Geometric mean sqrt(R_AA × R_BB) gives the particle image
-        # auto-correlation shape. Fit as 2D Gaussian to get S (particle spread).
-        S_cam1 = self._fit_autocorr_particle_width(
-            cam1_AA_raw, cam1_BB_raw, corr_h, corr_w, n_windows, mask_flat)
-        S_cam2 = self._fit_autocorr_particle_width(
-            cam2_AA_raw, cam2_BB_raw, corr_h, corr_w, n_windows, mask_flat)
-        # Average both cameras for robustness
-        S_xx = (S_cam1["spread_xx"] + S_cam2["spread_xx"]) / 2.0
-        S_yy = (S_cam1["spread_yy"] + S_cam2["spread_yy"]) / 2.0
-        S_xy = (S_cam1["spread_xy"] + S_cam2["spread_xy"]) / 2.0
-        logger.info(f"  Particle width S: median Sxx={np.median(S_xx):.4f}, "
-                    f"Syy={np.median(S_yy):.4f}")
+        # ── Step 5: Fit CoC k-space transfer function with AC F_ref ──
+        # Σ_diff = Σ_11 + Σ_22 − 2·Σ_12 from log-curvature of
+        # |F[CoC]| / √(|F[cam1_AB_autocorr]|·|F[cam2_AB_autocorr]|).
+        # AC F_ref cancels both particle width AND within-frame variance
+        # so the recovered Σ_diff is the clean displacement covariance.
+        k_max_cap = config.stereo_ensemble_kspace_k_max_cap or 0.35
+        coc_kspace_ac = self._fit_coc_kspace_ac(
+            coc_avg, cam1_AB_autocorr, cam2_AB_autocorr,
+            coc_h, coc_w, n_windows, mask_flat, k_max=k_max_cap,
+        )
+        n_coc_ok = int(np.sum(coc_kspace_ac["status"] == 0))
+        logger.info(f"  CoC k-space AC fit: {n_coc_ok}/{n_windows} windows OK")
 
-        # ── Step 5: Fit CoC directly (spatial domain Gaussian) ────────
-        # The CoC plane IS Gaussian. Fit it directly to get total spread
-        # (particle + turbulence). Particle cancels algebraically in Step 7.
-        # See validation/coc_implicit_model_learnings.md for why we don't
-        # use the implicit F_ref model.
-        coc_spreads = self._fit_coc_spatial_gaussian(
-            coc_avg, coc_h, coc_w, n_windows, mask_flat)
-        n_coc_ok = np.sum(coc_spreads["status"] == 0)
-        logger.info(f"  CoC spatial Gaussian fit: {n_coc_ok}/{n_windows} windows OK")
+        # ── Step 5b: Save per-window correlation planes (gated) ──────────
+        # Honours `stereo_ensemble_piv.store_planes` (falling back to
+        # `ensemble_piv.store_planes` via Config). Mirrors the std-ensemble
+        # idiom in `single_pass_accumulator.py:1170-1224`. Saves the same
+        # planes the fitters consume, plus unnormalised AA/BB for inspecting
+        # the particle auto-correlation directly.
+        if getattr(config, "stereo_ensemble_store_planes", False) and output_path is not None:
+            import scipy.io as _sio
+            from pathlib import Path as _Path
+
+            planes_dir = _Path(output_path)
+            planes_dir.mkdir(parents=True, exist_ok=True)
+            planes_path = planes_dir / f"planes_pass_{pass_idx + 1}.mat"
+            planes_dict = {
+                # Normalised, bg-subtracted ensemble planes — what the
+                # k-space fitter actually sees per camera.
+                "cam1_AB": cam1_AB.reshape(n_win_y, n_win_x, corr_h, corr_w).astype(np.float32),
+                "cam1_AA": cam1_AA.reshape(n_win_y, n_win_x, corr_h, corr_w).astype(np.float32),
+                "cam1_BB": cam1_BB.reshape(n_win_y, n_win_x, corr_h, corr_w).astype(np.float32),
+                "cam2_AB": cam2_AB.reshape(n_win_y, n_win_x, corr_h, corr_w).astype(np.float32),
+                "cam2_AA": cam2_AA.reshape(n_win_y, n_win_x, corr_h, corr_w).astype(np.float32),
+                "cam2_BB": cam2_BB.reshape(n_win_y, n_win_x, corr_h, corr_w).astype(np.float32),
+                # Unnormalised AA / BB (post-bg) — what the particle-width fit
+                # consumes; shows the absolute auto-correlation amplitude.
+                "cam1_AA_raw": cam1_AA_raw.reshape(n_win_y, n_win_x, corr_h, corr_w).astype(np.float32),
+                "cam1_BB_raw": cam1_BB_raw.reshape(n_win_y, n_win_x, corr_h, corr_w).astype(np.float32),
+                "cam2_AA_raw": cam2_AA_raw.reshape(n_win_y, n_win_x, corr_h, corr_w).astype(np.float32),
+                "cam2_BB_raw": cam2_BB_raw.reshape(n_win_y, n_win_x, corr_h, corr_w).astype(np.float32),
+                # CoC ensemble plane after structured-bg subtraction.
+                "coc_avg": coc_avg.reshape(n_win_y, n_win_x, coc_h, coc_w).astype(np.float32),
+                # Diagnostic: ensemble averages of per-frame autocorr(AB_c).
+                # Per-frame autocorr(AB_c) = G(η, 2S) (shift-invariant in d_c),
+                # so each plane's peak sits at the origin with width ~2S and
+                # carries no Σ_cc / Σ_12 content. Useful only as a redundant
+                # consistency check on the particle width S — does NOT enter
+                # the Σ_12 extraction identity.
+                "cam1_AB_autocorr": cam1_AB_autocorr.reshape(n_win_y, n_win_x, coc_h, coc_w).astype(np.float32),
+                "cam2_AB_autocorr": cam2_AB_autocorr.reshape(n_win_y, n_win_x, coc_h, coc_w).astype(np.float32),
+                # Geometry + provenance.
+                "corr_size": np.array(corr_size, dtype=np.int32),
+                "coc_size": np.array(coc_size, dtype=np.int32),
+                "n_win_y": np.int32(n_win_y),
+                "n_win_x": np.int32(n_win_x),
+                "pass_idx": np.int32(pass_idx),
+                "n_images": np.int32(N),
+            }
+            _sio.savemat(str(planes_path), planes_dict, do_compression=True)
+            logger.info(f"  Saved per-window correlation planes → {planes_path.name}")
 
         # ── Step 6: 3D velocity reconstruction (dewarped pixels) ────────
         d1_x = cam1_fit["dx"].reshape(n_win_y, n_win_x)
@@ -351,44 +395,32 @@ class StereoEnsembleAccumulator:
         d2_x = cam2_fit["dx"].reshape(n_win_y, n_win_x)
         d2_y = cam2_fit["dy"].reshape(n_win_y, n_win_x)
 
-        # Add back predictor (same as standard ensemble).
-        # The predictor was remapped from the previous pass grid to the current
-        # pass grid by _get_im_mesh() during correlation. The remapped predictor
-        # is stored at the current pass's window centers — we need to sample it
-        # at those positions. The smoothed_predictor in pass_data is on the
-        # PREVIOUS pass grid and cannot be added directly.
-        # For the first implementation, we use the per-camera displacement fields
-        # which already include the predictor effect (the correlation measures
-        # residual displacement after predictor warping, so total = residual + predictor).
-        # The standard ensemble does: ux_mat += smoothed_pred (on the SAME grid).
-        # For stereo, the predictor is shared but the grids differ between passes.
-        # We reconstruct the predictor on the current grid by remapping.
-        if pass_idx > 0 and "smoothed_predictor" in pass_data and pass_data["smoothed_predictor"] is not None:
-            import cv2
-            smoothed_pred = pass_data["smoothed_predictor"]
-            if smoothed_pred.ndim == 3 and smoothed_pred.shape[2] == 2:
-                # Remap predictor from previous pass grid to current pass grid
-                # using the same interpolation as _get_im_mesh
-                prev_ny, prev_nx = smoothed_pred.shape[:2]
-                cur_ny, cur_nx = n_win_y, n_win_x
-
-                if prev_ny == cur_ny and prev_nx == cur_nx:
-                    # Same grid size — direct add
-                    pred_uy = smoothed_pred[:, :, 0]
-                    pred_ux = smoothed_pred[:, :, 1]
-                else:
-                    # Different grid — bilinear resize
-                    pred_uy = cv2.resize(
-                        smoothed_pred[:, :, 0].astype(np.float32),
-                        (cur_nx, cur_ny),
-                        interpolation=cv2.INTER_LINEAR,
+        # Add back predictor on the current pass grid.
+        #
+        # The stereo correlator publishes two predictor views in pass_data
+        # (see cpu_stereo_ensemble.py:538-539):
+        #   "smoothed_predictor"  = delta_ab_old, the PADDED previous-pass
+        #                            grid (used for the cv2.remap input).
+        #   "upsampled_predictor" = delta_ab_pred, the post-remap predictor
+        #                            already on the CURRENT pass grid.
+        # Use the upsampled view directly. It is the same shape as the
+        # per-camera residuals (n_win_y, n_win_x, 2) and is already aligned
+        # to the current pass's window centres, so no resize is needed.
+        # Resizing the padded smoothed_predictor with cv2.resize stretches
+        # the input corner-to-corner with no awareness of the pad zone,
+        # producing a 2-cell underprediction band on every boundary of
+        # the result.
+        if pass_idx > 0 and pass_data.get("upsampled_predictor") is not None:
+            upsampled = pass_data["upsampled_predictor"]
+            if upsampled.ndim == 3 and upsampled.shape[2] == 2:
+                if upsampled.shape[:2] != (n_win_y, n_win_x):
+                    raise ValueError(
+                        f"upsampled_predictor shape {upsampled.shape[:2]} does not "
+                        f"match current pass grid ({n_win_y}, {n_win_x}); "
+                        f"the predictor build is out of sync with the accumulator."
                     )
-                    pred_ux = cv2.resize(
-                        smoothed_pred[:, :, 1].astype(np.float32),
-                        (cur_nx, cur_ny),
-                        interpolation=cv2.INTER_LINEAR,
-                    )
-
+                pred_uy = upsampled[:, :, 0]
+                pred_ux = upsampled[:, :, 1]
                 d1_x = d1_x + pred_ux
                 d1_y = d1_y + pred_uy
                 d2_x = d2_x + pred_ux
@@ -413,15 +445,20 @@ class StereoEnsembleAccumulator:
 
         # ── Step 7: 6 Reynolds stress extraction ────────────────────────
         #
-        # Σ₁₁, Σ₂₂: particle-free turbulence spreads from per-camera T(k)
-        # spread_C: TOTAL CoC spread (particle + turbulence) from spatial Gaussian fit
-        # S: particle width from auto-correlation fit
+        # Σ₁₁, Σ₂₂: particle-free turbulence spreads from per-camera T(k).
+        # Σ_diff:   Σ₁₁ + Σ₂₂ − 2·Σ₁₂, from k-space CoC fit with AC F_ref.
         #
-        # Algebraic particle cancellation:
-        #   Σ₁₂ = (Σ₁₁ + Σ₂₂ + 2S - spread_C) / 2
+        # Σ_diff is the curvature of log|F[CoC]| − log F_ref_AC over a
+        # |k| ≤ k_max ring. The AC reference geom-means |F[cam1_AB_AC]|
+        # and |F[cam2_AB_AC]|, so it cancels both the particle image
+        # and the within-frame variance — Σ_diff is then the clean
+        # cross-camera displacement covariance.
         #
-        # Proof: spread_C = 2S + Σ₁₁ + Σ₂₂ - 2Σ₁₂ (from theory)
-        #   → (Σ₁₁ + Σ₂₂ + 2S - 2S - Σ₁₁ - Σ₂₂ + 2Σ₁₂) / 2 = Σ₁₂  ✓
+        # Cross-camera covariance:
+        #   Σ₁₂ = (Σ₁₁ + Σ₂₂ − Σ_diff) / 2
+        #
+        # See manual_tools/coc_kspace_vs_gaussian.py:267 (fit) and
+        # wiki/concepts/stereo-coc-extraction.md (algebra).
 
         Sigma_11_xx = cam1_fit["sig_AB_x"].reshape(n_win_y, n_win_x)
         Sigma_11_yy = cam1_fit["sig_AB_y"].reshape(n_win_y, n_win_x)
@@ -430,35 +467,29 @@ class StereoEnsembleAccumulator:
         Sigma_22_yy = cam2_fit["sig_AB_y"].reshape(n_win_y, n_win_x)
         Sigma_22_xy = cam2_fit["sig_AB_xy"].reshape(n_win_y, n_win_x)
 
-        spread_C_xx = coc_spreads["spread_xx"].reshape(n_win_y, n_win_x)
-        spread_C_yy = coc_spreads["spread_yy"].reshape(n_win_y, n_win_x)
-        spread_C_xy = coc_spreads["spread_xy"].reshape(n_win_y, n_win_x)
+        Sigma_diff_xx = coc_kspace_ac["sigma_diff_xx"].reshape(n_win_y, n_win_x)
+        Sigma_diff_yy = coc_kspace_ac["sigma_diff_yy"].reshape(n_win_y, n_win_x)
+        Sigma_diff_xy = coc_kspace_ac["sigma_diff_xy"].reshape(n_win_y, n_win_x)
 
-        S_xx_2d = S_xx.reshape(n_win_y, n_win_x)
-        S_yy_2d = S_yy.reshape(n_win_y, n_win_x)
-        S_xy_2d = S_xy.reshape(n_win_y, n_win_x)
-
-        Sigma_12_xx = (Sigma_11_xx + Sigma_22_xx + 2.0 * S_xx_2d - spread_C_xx) / 2.0
-
-        # For backward compatibility, store the particle-free CoC spread too
-        Sigma_CoC_xx = spread_C_xx - 2.0 * S_xx_2d
-        Sigma_CoC_yy = spread_C_yy - 2.0 * S_yy_2d
-        Sigma_CoC_xy = spread_C_xy - 2.0 * S_xy_2d
+        Sigma_12_xx = (Sigma_11_xx + Sigma_22_xx - Sigma_diff_xx) / 2.0
+        Sigma_12_yy = (Sigma_11_yy + Sigma_22_yy - Sigma_diff_yy) / 2.0
+        Sigma_12_xy = (Sigma_11_xy + Sigma_22_xy - Sigma_diff_xy) / 2.0
 
         # Debug — filter to windows where ALL fits succeeded
-        coc_ok = coc_spreads["status"].reshape(n_win_y, n_win_x) == 0
+        coc_ok = coc_kspace_ac["status"].reshape(n_win_y, n_win_x) == 0
         cam1_ok = cam1_fit["status"].reshape(n_win_y, n_win_x) == 0
         cam2_ok = cam2_fit["status"].reshape(n_win_y, n_win_x) == 0
-        valid_mask = coc_ok & cam1_ok & cam2_ok & np.isfinite(Sigma_11_xx) & np.isfinite(spread_C_xx)
+        valid_mask = (
+            coc_ok & cam1_ok & cam2_ok
+            & np.isfinite(Sigma_11_xx) & np.isfinite(Sigma_diff_xx)
+        )
         if valid_mask.any():
             logger.info(
                 f"  Stress intermediates (median of valid windows):\n"
-                f"    Σ₁₁ (cam1 turb):    {np.median(Sigma_11_xx[valid_mask]):.6f}\n"
-                f"    Σ₂₂ (cam2 turb):    {np.median(Sigma_22_xx[valid_mask]):.6f}\n"
-                f"    S (particle):        {np.median(S_xx_2d[valid_mask]):.6f}\n"
-                f"    spread_C (total):    {np.median(spread_C_xx[valid_mask]):.6f}\n"
-                f"    Σ_CoC (particle-free): {np.median(Sigma_CoC_xx[valid_mask]):.6f}\n"
-                f"    Σ₁₂ = (Σ₁₁+Σ₂₂+2S-C)/2: {np.median(Sigma_12_xx[valid_mask]):.6f}"
+                f"    Σ₁₁ (cam1 turb):              {np.median(Sigma_11_xx[valid_mask]):.6f}\n"
+                f"    Σ₂₂ (cam2 turb):              {np.median(Sigma_22_xx[valid_mask]):.6f}\n"
+                f"    Σ_diff (CoC k-space AC):      {np.median(Sigma_diff_xx[valid_mask]):.6f}\n"
+                f"    Σ₁₂ = (Σ₁₁+Σ₂₂-Σ_diff)/2:     {np.median(Sigma_12_xx[valid_mask]):.6f}"
             )
 
         # Standard observables from T(k) turbulence variances
@@ -512,7 +543,7 @@ class StereoEnsembleAccumulator:
         # Mark failed fits
         cam1_status = cam1_fit["status"].reshape(n_win_y, n_win_x)
         cam2_status = cam2_fit["status"].reshape(n_win_y, n_win_x)
-        coc_status = coc_spreads["status"].reshape(n_win_y, n_win_x)
+        coc_status = coc_kspace_ac["status"].reshape(n_win_y, n_win_x)
         fit_failed = (cam1_status != 0) | (cam2_status != 0) | (coc_status != 0)
         nan_reason[fit_failed & (nan_reason == 0)] = 1  # no converge
 
@@ -535,6 +566,19 @@ class StereoEnsembleAccumulator:
                 uy_ms[vel_outlier] = np.nan
                 uz_ms[vel_outlier] = np.nan
 
+        # Vector-masked windows (out-of-FOV / user-masked) — never infill into
+        # them. The new k-space AC fitter writes NaN at these windows, which
+        # the stress-realizability infilling below would otherwise extrapolate
+        # outwards from valid neighbours, producing saturated values at the
+        # FOV boundary. Convention (per user, 2026-04-30): masked stresses
+        # match masked velocities → 0, not NaN. Revisit when the codebase
+        # moves to NaN-as-mask globally.
+        vector_masked = (
+            self.vector_masks[pass_idx].astype(bool)
+            if self.vector_masks and pass_idx < len(self.vector_masks)
+            else np.zeros((n_win_y, n_win_x), dtype=bool)
+        )
+
         # Infilling
         is_final_pass = (pass_idx == config.stereo_ensemble_num_passes - 1)
         infill_config = (
@@ -545,7 +589,7 @@ class StereoEnsembleAccumulator:
         if infill_config.get("enabled", True):
             from pivtools_cli.piv.piv_backend.infilling import apply_infilling
 
-            nan_mask = ~np.isfinite(ux_ms)
+            nan_mask = ~np.isfinite(ux_ms) & ~vector_masked
             if nan_mask.any():
                 ux_ms, uy_ms = apply_infilling(ux_ms, uy_ms, nan_mask, infill_config)
                 # apply_infilling requires paired fields; pass uz with a copy
@@ -573,21 +617,51 @@ class StereoEnsembleAccumulator:
                     for field in [UU_stress, VV_stress, WW_stress, UV_stress, UW_stress, VW_stress]:
                         field[stress_outlier] = np.nan
 
-                    stress_mask = ~np.isfinite(UU_stress)
+                    stress_mask = ~np.isfinite(UU_stress) & ~vector_masked
                     if stress_mask.any():
                         # Infill in pairs (apply_infilling expects paired fields)
                         UU_stress, VV_stress = apply_infilling(UU_stress, VV_stress, stress_mask, infill_config)
                         WW_stress, UV_stress = apply_infilling(WW_stress, UV_stress, stress_mask, infill_config)
                         UW_stress, VW_stress = apply_infilling(UW_stress, VW_stress, stress_mask, infill_config)
 
-        # ── Step 11: Predictor extraction for next pass ─────────────────
-        # Predictor uses in-plane dewarped pixel displacements (before physical conversion)
+        # Force vector-masked windows to 0 across all velocity + stress fields
+        # — matches the velocity convention (per-camera fitter writes 0 at
+        # skipped windows) and keeps the saved .mat consistent with the
+        # b_mask field. Sigma_12_xx_phys also zeroed (was NaN from the AC
+        # fitter at masked windows).
+        if vector_masked.any():
+            for fld in (ux_ms, uy_ms, uz_ms,
+                        UU_stress, VV_stress, WW_stress,
+                        UV_stress, UW_stress, VW_stress,
+                        Sigma_12_xx_phys):
+                fld[vector_masked] = 0.0
+
+        # ── Step 11: Predictor extraction for save ──────────────────────
+        # Two predictor views are persisted (dewarped pixel units, in-plane):
+        #   pred_x/y         — POST-remap, on this pass's grid. Sourced
+        #                      from pass_data["upsampled_predictor"]
+        #                      (= self._inner.delta_ab_pred). This is the
+        #                      field that warped this pass's images.
+        #   padded_pred_x/y  — PRE-remap, on previous pass's grid +
+        #                      boundary padding. Sourced from
+        #                      pass_data["smoothed_predictor"]
+        #                      (= self._inner.delta_ab_old). The input
+        #                      to the cv2.remap upsampling step.
+        # Channel layout in both arrays: [..., 0] = y-component (uy),
+        # [..., 1] = x-component (ux).
         pred_x = None
         pred_y = None
-        if pass_idx > 0 and "smoothed_predictor" in pass_data and pass_data["smoothed_predictor"] is not None:
-            pred = pass_data["smoothed_predictor"]
-            pred_y = pred[:, :, 0].copy()
-            pred_x = pred[:, :, 1].copy()
+        padded_pred_x = None
+        padded_pred_y = None
+        if pass_idx > 0:
+            upsampled = pass_data.get("upsampled_predictor")
+            if upsampled is not None:
+                pred_y = upsampled[:, :, 0].copy()
+                pred_x = upsampled[:, :, 1].copy()
+            smoothed = pass_data.get("smoothed_predictor")
+            if smoothed is not None:
+                padded_pred_y = smoothed[:, :, 0].copy()
+                padded_pred_x = smoothed[:, :, 1].copy()
 
         # Build mask
         b_mask = np.zeros((n_win_y, n_win_x), dtype=np.float64)
@@ -625,6 +699,8 @@ class StereoEnsembleAccumulator:
             win_ctrs_y=correlator.win_ctrs_y[pass_idx],
             pred_x=pred_x,
             pred_y=pred_y,
+            padded_pred_x=padded_pred_x,
+            padded_pred_y=padded_pred_y,
         )
 
         self.passes_results.append(result)
@@ -642,10 +718,8 @@ class StereoEnsembleAccumulator:
                 coc_avg=coc_avg,
                 # Per-camera fit results
                 cam1_fit=cam1_fit, cam2_fit=cam2_fit,
-                # CoC spread fit (implicit model, particle-free)
-                coc_spreads=coc_spreads,
-                cam1_AB_spread=None,
-                cam2_AB_spread=None,
+                # CoC k-space AC fit (Σ_diff + status + sub-pixel CoC peak)
+                coc_kspace_ac=coc_kspace_ac,
                 # Stress intermediates
                 Sigma_11_xx=Sigma_11_xx, Sigma_22_xx=Sigma_22_xx,
                 Sigma_12_xx=Sigma_12_xx,
@@ -758,174 +832,178 @@ class StereoEnsembleAccumulator:
             bg_BB.reshape(n_windows, n_px_corr),
         )
 
-    @staticmethod
-    def _fit_gaussian_2d(plane_2d, roi_half_size=20):
-        """Fit a 2D Gaussian to a correlation plane using scipy.
+    def _fit_coc_kspace_ac(
+        self,
+        coc_planes: np.ndarray,
+        cam1_AC_planes: np.ndarray,
+        cam2_AC_planes: np.ndarray,
+        coc_h: int,
+        coc_w: int,
+        n_windows: int,
+        mask_flat: np.ndarray,
+        k_max: float = 0.35,
+    ) -> Dict[str, np.ndarray]:
+        """Fit Σ_diff per window from the CoC k-space transfer function with AC F_ref.
+
+        Σ_diff = Σ_11 + Σ_22 − 2·Σ_12 is recovered from the log-quadratic
+        curvature of |F[CoC]| / F_ref, where the AC reference
+
+            F_ref(k) = √(|F[cam1_AB_autocorr]|(k) · |F[cam2_AB_autocorr]|(k))
+
+        cancels both the particle image width and the within-frame variance,
+        leaving Σ_disp uncontaminated. See ``manual_tools/coc_kspace_vs_gaussian.py``
+        (``fit_kspace_quadratic``) and ``manual_tools/coc_vs_ab_autocorr_inspector.py``
+        (``_kspace_sigma_diff_one_window``) for the reference implementation.
 
         Parameters
         ----------
-        plane_2d : ndarray, shape (h, w)
-            The correlation plane (fftshifted, peak near centre).
-        roi_half_size : int
-            Half-size of the ROI around the peak for fitting.
+        coc_planes, cam1_AC_planes, cam2_AC_planes : ndarray, shape (n_windows, coc_h*coc_w)
+            Flat per-window planes. The CoC plane is the ensemble-averaged
+            cross-correlation of AB1 and AB2 (after structured-bg subtraction).
+            The AC planes are ensemble averages of the per-frame autocorrelations
+            of AB1 and AB2 — already centred (peak at the geometric centre).
+        mask_flat : ndarray, shape (n_windows,) of int32
+            1 = skip the window (status forced to 1), 0 = fit.
+        k_max : float
+            Fit ring upper bound in cycles per pixel.
 
         Returns
         -------
-        dict with: mu_x, mu_y, spread_xx, spread_yy, spread_xy, amplitude, status
+        dict
+            ``sigma_diff_xx/yy/xy`` (float64, shape (n_windows,)) — variance
+            tensor entries of the recovered Σ_diff Gaussian, NaN where the
+            fit failed or the window was masked.
+            ``status`` (int32, shape (n_windows,)) — 0 if fit succeeded
+            (positive-definite Σ_diff), 1 otherwise.
+            ``residual_norm`` (float64, shape (n_windows,)) — RMS LSQ
+            residual over the |k| ≤ k_max ring.
+            ``center_x``, ``center_y`` (float64, shape (n_windows,)) —
+            sub-pixel CoC peak offset from the plane centre, computed
+            via argmax + parabolic interpolation. Diagnostic only.
         """
-        from scipy.optimize import least_squares as scipy_ls
+        # ── Batched FFT: ifftshift → fft2 → |·| → fftshift ──────────────
+        # The accumulator holds planes with the correlation peak at the
+        # centre (fftshifted), so we undo the shift before FFT.
+        coc_2d = coc_planes.reshape(n_windows, coc_h, coc_w).astype(np.float64)
+        ac1_2d = cam1_AC_planes.reshape(n_windows, coc_h, coc_w).astype(np.float64)
+        ac2_2d = cam2_AC_planes.reshape(n_windows, coc_h, coc_w).astype(np.float64)
 
-        h, w = plane_2d.shape
-        cy, cx = h // 2, w // 2
+        def _batched_fft_mag(planes: np.ndarray) -> np.ndarray:
+            shifted = np.fft.ifftshift(planes, axes=(-2, -1))
+            F = np.fft.fft2(shifted)
+            return np.fft.fftshift(np.abs(F), axes=(-2, -1))
 
-        # Normalise to avoid numerical issues with large values (O(10^19))
-        plane_max = np.abs(plane_2d).max()
-        if plane_max > 0:
-            plane_2d = plane_2d / plane_max
-        else:
-            return {"mu_x": 0, "mu_y": 0, "spread_xx": 0, "spread_yy": 0,
-                    "spread_xy": 0, "amplitude": 0, "status": 1}
+        F_coc = _batched_fft_mag(coc_2d)
+        F_ac1 = _batched_fft_mag(ac1_2d)
+        F_ac2 = _batched_fft_mag(ac2_2d)
+        F_ref_AC = np.sqrt(F_ac1 * F_ac2)
 
-        # Peak location (sub-pixel via argmax)
-        peak_idx = np.argmax(plane_2d)
-        peak_y, peak_x = divmod(peak_idx, w)
+        eps = 1e-30
+        log_T = np.log(np.maximum(F_coc, eps)) - np.log(np.maximum(F_ref_AC, eps))
 
-        # ROI around peak
-        x0 = max(0, peak_x - roi_half_size)
-        x1 = min(w, peak_x + roi_half_size + 1)
-        y0 = max(0, peak_y - roi_half_size)
-        y1 = min(h, peak_y + roi_half_size + 1)
-        roi = plane_2d[y0:y1, x0:x1].astype(np.float64)
+        # ── k-grid (cycles/pixel, fftshifted) ──────────────────────────
+        ky = np.fft.fftshift(np.fft.fftfreq(coc_h))
+        kx = np.fft.fftshift(np.fft.fftfreq(coc_w))
+        KX, KY = np.meshgrid(kx, ky)
+        K = np.sqrt(KX * KX + KY * KY)
+        valid = (K <= k_max) & np.isfinite(K)
+        n_valid = int(valid.sum())
 
-        # Coordinate grids relative to peak
-        xg = np.arange(x0, x1, dtype=np.float64) - peak_x
-        yg = np.arange(y0, y1, dtype=np.float64) - peak_y
-        X, Y = np.meshgrid(xg, yg)
+        sigma_diff_xx = np.full(n_windows, np.nan, dtype=np.float64)
+        sigma_diff_yy = np.full(n_windows, np.nan, dtype=np.float64)
+        sigma_diff_xy = np.full(n_windows, np.nan, dtype=np.float64)
+        status = np.ones(n_windows, dtype=np.int32)
+        residual_norm = np.full(n_windows, np.inf, dtype=np.float64)
 
-        # Initial guess from weighted moments
-        A_init = float(roi.max() - roi.min())
-        B_init = float(roi.min())
-        wts = np.maximum(roi - B_init, 0)
-        total = wts.sum()
-        if total > 0:
-            mx = float(np.sum(X * wts) / total)
-            my = float(np.sum(Y * wts) / total)
-            vx = max(float(np.sum((X - mx) ** 2 * wts) / total), 0.5)
-            vy = max(float(np.sum((Y - my) ** 2 * wts) / total), 0.5)
-            vxy = float(np.sum((X - mx) * (Y - my) * wts) / total)
-        else:
-            mx, my, vx, vy, vxy = 0.0, 0.0, 4.0, 4.0, 0.0
+        if n_valid >= 8:
+            kx_v = KX[valid].astype(np.float64)
+            ky_v = KY[valid].astype(np.float64)
+            # Design matrix: log T = c + b1·kx² + b2·ky² + b3·kx·ky
+            M = np.column_stack([
+                np.ones_like(kx_v), kx_v * kx_v, ky_v * ky_v, kx_v * ky_v,
+            ])
 
-        p0 = np.array([A_init, B_init, mx, my, vx, vy, vxy])
+            log_T_flat = log_T.reshape(n_windows, coc_h * coc_w)
+            valid_flat = valid.ravel()
+            log_T_v = log_T_flat[:, valid_flat]  # shape (n_windows, n_valid)
+            finite_rows = np.all(np.isfinite(log_T_v), axis=1) & (mask_flat != 1)
 
-        def residuals(params):
-            A, B, px, py, sxx, syy, sxy = params
-            det = sxx * syy - sxy * sxy
-            if sxx <= 0 or syy <= 0 or det <= 0:
-                return np.full(roi.size, 1e10)
-            inv_xx = syy / det
-            inv_yy = sxx / det
-            inv_xy = -sxy / det
-            dx = X - px
-            dy = Y - py
-            mahal = inv_xx * dx * dx + 2 * inv_xy * dx * dy + inv_yy * dy * dy
-            model = A * np.exp(-0.5 * mahal) + B
-            return (model - roi).ravel()
+            inv_2pi2 = 1.0 / (2.0 * np.pi * np.pi)
+            inv_4pi2 = 1.0 / (4.0 * np.pi * np.pi)
 
-        try:
-            result = scipy_ls(
-                residuals, p0,
-                bounds=([0, -np.inf, -roi_half_size, -roi_half_size, 0.1, 0.1, -500],
-                        [np.inf, np.inf, roi_half_size, roi_half_size, 500, 500, 500]),
-                method="trf", max_nfev=1000,
-            )
-            A, B, px, py, sxx, syy, sxy = result.x
-            status = 0 if result.success else 1
-        except Exception:
-            px, py, sxx, syy, sxy, A = 0, 0, 0, 0, 0, 0
-            status = 1
+            if finite_rows.any():
+                # numpy ≥ 2 emits benign divide/invalid warnings from
+                # pinv/matmul internals even on well-conditioned inputs.
+                # Suppress them; failure is caught by the status check.
+                with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+                    pinv = np.linalg.pinv(M)
+                    log_T_v_clean = log_T_v[finite_rows]  # (n_finite, n_valid)
+                    coeffs_clean = pinv @ log_T_v_clean.T  # (4, n_finite)
+                    b1 = coeffs_clean[1]
+                    b2 = coeffs_clean[2]
+                    b3 = coeffs_clean[3]
+                    sxx_clean = -b1 * inv_2pi2
+                    syy_clean = -b2 * inv_2pi2
+                    sxy_clean = -b3 * inv_4pi2
 
-        return {
-            "mu_x": peak_x - cx + px,
-            "mu_y": peak_y - cy + py,
-            "spread_xx": sxx,
-            "spread_yy": syy,
-            "spread_xy": sxy,
-            "amplitude": A * plane_max,
-            "status": status,
-        }
+                    res = M @ coeffs_clean - log_T_v_clean.T
+                    rn_clean = np.linalg.norm(res, axis=0) / np.sqrt(M.shape[0])
 
-    def _fit_coc_spatial_gaussian(self, coc_planes, coc_h, coc_w,
-                                   n_windows, mask_flat, roi_half_size=20):
-        """Fit each CoC plane as a spatial-domain 2D Gaussian.
+                det = sxx_clean * syy_clean - sxy_clean * sxy_clean
+                pd = (sxx_clean > 0) & (syy_clean > 0) & (det > 0)
+                ok_clean = (
+                    pd
+                    & np.isfinite(sxx_clean)
+                    & np.isfinite(syy_clean)
+                    & np.isfinite(sxy_clean)
+                )
 
-        Returns dict with arrays: spread_xx, spread_yy, spread_xy,
-                                  center_x, center_y, status
-        """
-        spread_xx = np.zeros(n_windows, dtype=np.float64)
-        spread_yy = np.zeros(n_windows, dtype=np.float64)
-        spread_xy = np.zeros(n_windows, dtype=np.float64)
+                # Scatter back into per-window arrays.
+                idx = np.where(finite_rows)[0]
+                sigma_diff_xx[idx[ok_clean]] = sxx_clean[ok_clean]
+                sigma_diff_yy[idx[ok_clean]] = syy_clean[ok_clean]
+                sigma_diff_xy[idx[ok_clean]] = sxy_clean[ok_clean]
+                status[idx[ok_clean]] = 0
+                residual_norm[idx] = rn_clean
+
+        # Sub-pixel CoC peak centre (argmax + 1-D parabolic refinement)
+        # — diagnostic only, does not enter the Σ extraction.
         center_x = np.zeros(n_windows, dtype=np.float64)
         center_y = np.zeros(n_windows, dtype=np.float64)
-        status = np.full(n_windows, -1, dtype=np.int32)
-
-        n_ok = 0
+        cx0 = coc_w // 2
+        cy0 = coc_h // 2
+        flat_max = coc_2d.reshape(n_windows, -1).argmax(axis=1)
+        py = (flat_max // coc_w).astype(np.int64)
+        px = (flat_max % coc_w).astype(np.int64)
         for wi in range(n_windows):
-            if mask_flat[wi] == 1:
-                continue
-            plane = coc_planes[wi].reshape(coc_h, coc_w)
-            fit = self._fit_gaussian_2d(plane, roi_half_size)
-            spread_xx[wi] = fit["spread_xx"]
-            spread_yy[wi] = fit["spread_yy"]
-            spread_xy[wi] = fit["spread_xy"]
-            center_x[wi] = fit["mu_x"]
-            center_y[wi] = fit["mu_y"]
-            status[wi] = fit["status"]
-            if fit["status"] == 0:
-                n_ok += 1
+            iy, ix = int(py[wi]), int(px[wi])
+            sub_x = 0.0
+            sub_y = 0.0
+            if 0 < ix < coc_w - 1:
+                a = coc_2d[wi, iy, ix - 1]
+                b = coc_2d[wi, iy, ix]
+                c = coc_2d[wi, iy, ix + 1]
+                denom = a - 2.0 * b + c
+                if abs(denom) > 1e-20:
+                    sub_x = 0.5 * (a - c) / denom
+            if 0 < iy < coc_h - 1:
+                a = coc_2d[wi, iy - 1, ix]
+                b = coc_2d[wi, iy, ix]
+                c = coc_2d[wi, iy + 1, ix]
+                denom = a - 2.0 * b + c
+                if abs(denom) > 1e-20:
+                    sub_y = 0.5 * (a - c) / denom
+            center_x[wi] = (ix - cx0) + sub_x
+            center_y[wi] = (iy - cy0) + sub_y
 
         return {
-            "spread_xx": spread_xx,
-            "spread_yy": spread_yy,
-            "spread_xy": spread_xy,
+            "sigma_diff_xx": sigma_diff_xx,
+            "sigma_diff_yy": sigma_diff_yy,
+            "sigma_diff_xy": sigma_diff_xy,
+            "status": status,
+            "residual_norm": residual_norm,
             "center_x": center_x,
             "center_y": center_y,
-            "status": status,
-        }
-
-    def _fit_autocorr_particle_width(self, R_AA, R_BB, corr_h, corr_w,
-                                      n_windows, mask_flat, roi_half_size=10):
-        """Fit geometric mean of auto-correlations to get particle width S.
-
-        The geometric mean sqrt(R_AA × R_BB) is a clean particle
-        auto-correlation peak at the origin. Fit as 2D Gaussian.
-
-        Returns dict with arrays: spread_xx, spread_yy, spread_xy, status
-        """
-        spread_xx = np.zeros(n_windows, dtype=np.float64)
-        spread_yy = np.zeros(n_windows, dtype=np.float64)
-        spread_xy = np.zeros(n_windows, dtype=np.float64)
-        status = np.full(n_windows, -1, dtype=np.int32)
-
-        for wi in range(n_windows):
-            if mask_flat[wi] == 1:
-                continue
-            aa = R_AA[wi].reshape(corr_h, corr_w).astype(np.float64)
-            bb = R_BB[wi].reshape(corr_h, corr_w).astype(np.float64)
-            # Geometric mean — use abs to handle any small negative values
-            # from bg subtraction near edges
-            geo = np.sqrt(np.maximum(aa, 0) * np.maximum(bb, 0))
-            fit = self._fit_gaussian_2d(geo, roi_half_size)
-            spread_xx[wi] = fit["spread_xx"]
-            spread_yy[wi] = fit["spread_yy"]
-            spread_xy[wi] = fit["spread_xy"]
-            status[wi] = fit["status"]
-
-        return {
-            "spread_xx": spread_xx,
-            "spread_yy": spread_yy,
-            "spread_xy": spread_xy,
-            "status": status,
         }
 
     def _cross_correlate_planes(
@@ -1028,8 +1106,7 @@ class StereoEnsembleAccumulator:
         cam2_AB, cam2_AA, cam2_BB,
         coc_avg,
         cam1_fit, cam2_fit,
-        coc_spreads,
-        cam1_AB_spread, cam2_AB_spread,
+        coc_kspace_ac,
         Sigma_11_xx, Sigma_22_xx, Sigma_12_xx,
         ux_px, uy_px, uz_px,
         corr_size, coc_size,
@@ -1051,9 +1128,10 @@ class StereoEnsembleAccumulator:
           (post bg-subtraction, post-normalization) for a sample grid of windows
         - coc_avg_planes: averaged CoC planes for sample windows
         - cam1_dx/dy, cam2_dx/dy: per-camera displacements (raw, before predictor add-back)
-        - coc_spread_xx/yy/xy: CoC fitted spreads
-        - coc_center_x/y: CoC peak displacement (should be ~0)
-        - coc_status: fit status per window
+        - Sigma_diff_xx/yy/xy: Σ_11+Σ_22−2Σ_12 from k-space AC fit
+        - coc_fit_status: AC fit status per window (0=ok, 1=fail)
+        - coc_residual_norm: AC LSQ residual per window
+        - coc_center_x/y: sub-pixel CoC peak offset from centre (diagnostic)
         - Sigma_11_xx, Sigma_22_xx, Sigma_12_xx: variance fields
         - ux_px, uy_px, uz_px: 3D velocity in dewarped pixels
         - predictor_field: predictor used for this pass (if pass > 0)
@@ -1130,20 +1208,15 @@ class StereoEnsembleAccumulator:
         diag["cam1_fit_status"] = cam1_fit["status"].reshape(n_win_y, n_win_x).astype(np.int32)
         diag["cam2_fit_status"] = cam2_fit["status"].reshape(n_win_y, n_win_x).astype(np.int32)
 
-        # 5. Unnormalized spread fitting diagnostics (all particle-inclusive)
-        diag["coc_spread_xx"] = coc_spreads["spread_xx"].reshape(n_win_y, n_win_x).astype(np.float32)
-        diag["coc_spread_yy"] = coc_spreads["spread_yy"].reshape(n_win_y, n_win_x).astype(np.float32)
-        diag["coc_spread_xy"] = coc_spreads["spread_xy"].reshape(n_win_y, n_win_x).astype(np.float32)
-        diag["coc_center_x"] = coc_spreads["center_x"].reshape(n_win_y, n_win_x).astype(np.float32)
-        diag["coc_center_y"] = coc_spreads["center_y"].reshape(n_win_y, n_win_x).astype(np.float32)
-        diag["coc_fit_status"] = coc_spreads["status"].reshape(n_win_y, n_win_x).astype(np.int32)
-        # Per-camera AB total spreads (only if available — removed in implicit model)
-        if cam1_AB_spread is not None:
-            diag["cam1_AB_total_spread_xx"] = cam1_AB_spread["spread_xx"].reshape(n_win_y, n_win_x).astype(np.float32)
-            diag["cam1_AB_total_spread_yy"] = cam1_AB_spread["spread_yy"].reshape(n_win_y, n_win_x).astype(np.float32)
-        if cam2_AB_spread is not None:
-            diag["cam2_AB_total_spread_xx"] = cam2_AB_spread["spread_xx"].reshape(n_win_y, n_win_x).astype(np.float32)
-            diag["cam2_AB_total_spread_yy"] = cam2_AB_spread["spread_yy"].reshape(n_win_y, n_win_x).astype(np.float32)
+        # 5. CoC k-space AC fit diagnostics: Σ_diff (xx/yy/xy), status, residual,
+        #    sub-pixel CoC peak offset (diagnostic only — not used in extraction).
+        diag["Sigma_diff_xx"] = coc_kspace_ac["sigma_diff_xx"].reshape(n_win_y, n_win_x).astype(np.float32)
+        diag["Sigma_diff_yy"] = coc_kspace_ac["sigma_diff_yy"].reshape(n_win_y, n_win_x).astype(np.float32)
+        diag["Sigma_diff_xy"] = coc_kspace_ac["sigma_diff_xy"].reshape(n_win_y, n_win_x).astype(np.float32)
+        diag["coc_fit_status"] = coc_kspace_ac["status"].reshape(n_win_y, n_win_x).astype(np.int32)
+        diag["coc_residual_norm"] = coc_kspace_ac["residual_norm"].reshape(n_win_y, n_win_x).astype(np.float32)
+        diag["coc_center_x"] = coc_kspace_ac["center_x"].reshape(n_win_y, n_win_x).astype(np.float32)
+        diag["coc_center_y"] = coc_kspace_ac["center_y"].reshape(n_win_y, n_win_x).astype(np.float32)
 
         # 6. Variance fields (dewarped px² units)
         diag["Sigma_11_xx"] = Sigma_11_xx.astype(np.float32)
@@ -1196,6 +1269,19 @@ class StereoEnsembleAccumulator:
                 diag[key] = pass_data[key].astype(np.float32)
         if "diag_perframe_win_idx" in pass_data:
             diag["diag_perframe_win_idx"] = np.int32(pass_data["diag_perframe_win_idx"])
+
+        # Per-frame raw sub-images at the diag window (post-dewarp, post-warp).
+        # Used by `manual_tools/coc_window_experiments.py` to iterate on
+        # CoC pre-processing strategies in pure Python without re-running
+        # the production pipeline.
+        for key in ["diag_perframe_subimg_cam1_A", "diag_perframe_subimg_cam1_B",
+                    "diag_perframe_subimg_cam2_A", "diag_perframe_subimg_cam2_B"]:
+            if key in pass_data and pass_data[key] is not None:
+                diag[key] = pass_data[key].astype(np.float32)
+        for key in ["diag_perframe_subimg_window_size",
+                    "diag_perframe_subimg_topleft"]:
+            if key in pass_data and pass_data[key] is not None:
+                diag[key] = pass_data[key].astype(np.int32)
 
         scipy.io.savemat(str(filepath), diag, do_compression=True)
         logger.info(f"  Saved diagnostics to {filepath}")

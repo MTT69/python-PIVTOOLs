@@ -356,6 +356,24 @@ class ChArUcoCalibrator:
             if obj_pts is None or len(obj_pts) < self.min_corners:
                 return frame_idx, image, None, "no_detect"
 
+            # FIXME(charuco-origin): ``matchImagePoints`` returns obj_pts in
+            # OpenCV's ChArUco board frame (+Y image-down). The planar path
+            # previously relied on ``VectorCalibrator.calibrate_coordinates``
+            # negating Y at output time, which gave physics-up with the
+            # origin at the TOP-LEFT of the printed board. That output-time
+            # negation was removed on 2026-04-24 (dotboard-origin fix) because
+            # dotboard now delivers a physics-up world frame at construction
+            # time via flip-and-offset. Planar ChArUco has NOT yet been
+            # converted — as a result, calibrated ChArUco output today is
+            # physics-DOWN until this construction is updated to match.
+            # The correct change, mirroring the dotboard flip-and-offset:
+            #
+            #     obj_pts = obj_pts.astype(np.float32).copy()
+            #     obj_pts[:, 0, 1] = obj_pts[:, 0, 1].max() - obj_pts[:, 0, 1]
+            #
+            # Intentionally left unchanged in this patch per the user's
+            # request to land dotboard first and validate ChArUco separately.
+
             corners_2d = corners.reshape(-1, 2) if corners is not None else np.array([])
             ids_flat = ids.flatten() if ids is not None else np.array([])
 

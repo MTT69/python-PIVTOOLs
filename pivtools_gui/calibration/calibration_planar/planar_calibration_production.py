@@ -215,29 +215,41 @@ class MultiViewCalibrator:
         n_cols: int,
         n_rows: int,
     ) -> np.ndarray:
-        """
-        Create real-world 3D coordinates (Z=0) for detected grid points.
+        """Create real-world 3D coordinates (Z=0) for detected grid points.
 
-        Unlike the old make_object_points(), this maps each detected point
-        to its world coordinates based on its grid index.
+        Uses the flip-and-offset convention so the stored world frame is
+        physics-up with its origin at the bottom row of the detected
+        grid, matching the stereo dotboard calibrator and the stepped
+        board paths. See ``make_object_points_dynamic`` in
+        ``stereo_dotboard_calibration_production.py`` for the rationale.
+
+        The ``VectorCalibrator`` that consumes this model does NOT apply
+        an output-time Y negation anymore — it used to, paired with a
+        construction-time y-down convention. Both sides were flipped in
+        the same patch so the net physics-up behaviour is preserved
+        while the origin moves to the bottom.
 
         Parameters
         ----------
         grid_indices : np.ndarray
-            Array of (col, row) indices for each detected point, shape (N, 2)
-        n_cols : int
-            Detected number of columns
-        n_rows : int
-            Detected number of rows
+            Array of (col, row) indices for each detected point, shape
+            (N, 2). Indices are already normalised by
+            ``detect_grid_automatic`` so the minimum along each axis is 0.
+        n_cols, n_rows : int
+            Detected grid dimensions (kept for API compatibility; the
+            flip uses the per-call max of ``grid_indices[:, 1]`` so
+            partial detections still place the origin at the bottom of
+            whatever was matched, not at a nominal n_rows-1).
 
         Returns
         -------
         np.ndarray
-            3D object points, shape (N, 3), with Z=0
+            3D object points, shape (N, 3), with Z=0.
         """
         obj_points = np.zeros((len(grid_indices), 3), dtype=np.float32)
         obj_points[:, 0] = grid_indices[:, 0] * self.dot_spacing_mm
-        obj_points[:, 1] = grid_indices[:, 1] * self.dot_spacing_mm
+        grid_y = grid_indices[:, 1]
+        obj_points[:, 1] = (grid_y.max() - grid_y) * self.dot_spacing_mm
         return obj_points
 
     def detect_grid(self, img):

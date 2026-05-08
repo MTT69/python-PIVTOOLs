@@ -4,7 +4,9 @@ Composes EnsembleCorrelatorCPU for shared infrastructure (taper generation,
 padding, predictor handling, libfusedwarp) and adds stereo-specific logic:
 - Dewarping via cv2.remap with precomputed calibration maps
 - Dual-camera C correlation + CoC accumulation via libstereo_coc
-- K-space CoC spread fitting via libkspace_coc
+
+The CoC k-space spread fit (Σ_diff via the AC F_ref path) lives Python-side
+in StereoEnsembleAccumulator._fit_coc_kspace_ac.
 """
 
 from __future__ import annotations
@@ -25,7 +27,6 @@ from pivtools_core.config import Config
 # ctypes convenience
 c_float_p = ctypes.POINTER(ctypes.c_float)
 c_int_p = ctypes.POINTER(ctypes.c_int)
-c_double_p = ctypes.POINTER(ctypes.c_double)
 
 
 class StereoEnsembleCorrelatorCPU:
@@ -41,12 +42,10 @@ class StereoEnsembleCorrelatorCPU:
     Adds stereo-specific:
     - Dewarp maps (precomputed from calibration + self-cal)
     - bulkxcorr2d_stereo_coc_accumulate (dual-camera + CoC in one C call)
-    - fit_kspace_coc_batch (CoC spread fitting)
     """
 
-    # Class-level library caches (loaded once, shared across instances)
+    # Class-level library cache (loaded once, shared across instances)
     _lib_stereo_coc = None
-    _lib_kspace_coc = None
 
     def __init__(
         self,
@@ -85,25 +84,45 @@ class StereoEnsembleCorrelatorCPU:
         self.dewarp_maps = dewarp_maps or {}
         self.mm_per_pixel = mm_per_pixel
         self.stereo_angle = stereo_angle
+
+        # Resolve the dewarped image shape — the inner correlator's window grid
+        # MUST be built against this, not against the raw camera sensor. If not
+        # given explicitly, derive it from the dewarp remap tables (map_x/map_y
+        # have shape = dewarped image shape by construction in
+        # compute_dewarp_maps). Without this override, EnsembleCorrelatorCPU
+        # reads config.image_shape (the raw sensor shape) and creates window
+        # centres that extend past the dewarped image — up to 26% of windows
+        # end up outside the image bounds, producing dead-flat correlations
+        # and LOW_SNR fitter failures. See cpu_ensemble.py:183 for where the
+        # inner correlator reads config.image_shape.
+        if dewarped_image_shape is None and self.dewarp_maps:
+            any_maps = next(iter(self.dewarp_maps.values()))
+            dewarped_image_shape = tuple(any_maps[0].shape)
         self.dewarped_image_shape = dewarped_image_shape
 
         # Create inner ensemble correlator — this gives us taper weights,
         # window centers, padding, predictor handling, and libfusedwarp.
-        # We pass the dewarped image shape so window grids are computed
-        # for the dewarped space (not raw camera space).
+        # Temporarily pin config._detected_image_shape to the dewarped shape so
+        # the inner grid is sized for the dewarped image, then restore. Scoped
+        # exactly to the inner construction — no other config consumer sees it.
         from pivtools_cli.piv.piv_backend.cpu_ensemble import EnsembleCorrelatorCPU
 
-        self._inner = EnsembleCorrelatorCPU(
-            config,
-            precomputed_cache=precomputed_cache,
-            vector_masks=vector_masks,
-            active_pass_idx=active_pass_idx,
-        )
+        _prev_shape = getattr(config, "_detected_image_shape", None)
+        try:
+            if self.dewarped_image_shape is not None:
+                config._detected_image_shape = tuple(self.dewarped_image_shape)
+            self._inner = EnsembleCorrelatorCPU(
+                config,
+                precomputed_cache=precomputed_cache,
+                vector_masks=vector_masks,
+                active_pass_idx=active_pass_idx,
+            )
+        finally:
+            config._detected_image_shape = _prev_shape
 
         # Load stereo-specific C libraries
         self._load_stereo_libraries()
         self.lib_stereo_coc = StereoEnsembleCorrelatorCPU._lib_stereo_coc
-        self.lib_kspace_coc = StereoEnsembleCorrelatorCPU._lib_kspace_coc
         self._setup_stereo_ctypes()
 
         # CoC uses same size as per-camera correlation output (no zero-padding)
@@ -129,7 +148,7 @@ class StereoEnsembleCorrelatorCPU:
 
     @classmethod
     def _load_stereo_libraries(cls):
-        """Load libstereo_coc and libkspace_coc (cached at class level)."""
+        """Load libstereo_coc (cached at class level)."""
         if cls._lib_stereo_coc is not None:
             return
 
@@ -141,22 +160,16 @@ class StereoEnsembleCorrelatorCPU:
             Path.cwd() / "pivtools_cli" / "lib",          # development
         ]
 
-        for lib_name, attr_name in [
-            (f"libstereo_coc{lib_ext}", "_lib_stereo_coc"),
-            (f"libkspace_coc{lib_ext}", "_lib_kspace_coc"),
-        ]:
-            loaded = False
-            for search_dir in search_dirs:
-                lib_path = search_dir / lib_name
-                if lib_path.exists():
-                    setattr(cls, attr_name, ctypes.CDLL(str(lib_path)))
-                    logger.debug(f"Loaded {lib_name} from {lib_path}")
-                    loaded = True
-                    break
-            if not loaded:
-                raise RuntimeError(
-                    f"Could not find {lib_name}. Run 'python setup.py build' first."
-                )
+        lib_name = f"libstereo_coc{lib_ext}"
+        for search_dir in search_dirs:
+            lib_path = search_dir / lib_name
+            if lib_path.exists():
+                cls._lib_stereo_coc = ctypes.CDLL(str(lib_path))
+                logger.debug(f"Loaded {lib_name} from {lib_path}")
+                return
+        raise RuntimeError(
+            f"Could not find {lib_name}. Run 'python setup.py build' first."
+        )
 
     def _setup_stereo_ctypes(self):
         """Configure ctypes bindings for stereo C functions."""
@@ -177,34 +190,12 @@ class StereoEnsembleCorrelatorCPU:
             c_float_p, c_float_p, c_float_p,  # cam1 AB, AA, BB output
             c_float_p, c_float_p, c_float_p,  # cam2 AB, AA, BB output
             c_float_p,             # CoC output
+            c_float_p,             # cam1 autocorr(AB1) accumulated output
+            c_float_p,             # cam2 autocorr(AB2) accumulated output
             ctypes.c_int,          # diag_window_idx (-1 = disabled)
             c_float_p,             # diag AB1 per-frame (or NULL)
             c_float_p,             # diag AB2 per-frame (or NULL)
             c_float_p,             # diag CoC per-frame (or NULL)
-        ]
-
-        # fit_kspace_coc_batch (implicit model + N0 noise floor)
-        self.lib_kspace_coc.fit_kspace_coc_batch.restype = ctypes.c_int
-        self.lib_kspace_coc.fit_kspace_coc_batch.argtypes = [
-            ctypes.c_size_t,       # num_windows
-            ctypes.c_size_t,       # coc_h
-            ctypes.c_size_t,       # coc_w
-            c_float_p,             # R_CoC planes
-            c_float_p,             # R_AA1
-            c_float_p,             # R_BB1
-            c_float_p,             # R_AA2
-            c_float_p,             # R_BB2
-            c_int_p,               # mask
-            ctypes.c_int,          # use_soft_weighting
-            ctypes.c_double,       # k_max_cap
-            ctypes.c_void_p,       # diag_F_coc (nullable double*)
-            ctypes.c_void_p,       # diag_F_ref (nullable double*)
-            c_double_p,            # out_spread_xx
-            c_double_p,            # out_spread_yy
-            c_double_p,            # out_spread_xy
-            c_double_p,            # out_center_x
-            c_double_p,            # out_center_y
-            c_int_p,               # out_status
         ]
 
     def _allocate_stereo_buffers(self, pass_idx: int):
@@ -226,6 +217,9 @@ class StereoEnsembleCorrelatorCPU:
             "cam2_AA": np.zeros(n_windows * n_px_corr, dtype=np.float32),
             "cam2_BB": np.zeros(n_windows * n_px_corr, dtype=np.float32),
             "CoC": np.zeros(n_windows * n_px_coc, dtype=np.float32),
+            # Per-frame autocorr(AB_c) ensemble — diagnostic only, sized to CoC
+            "cam1_AB_AC": np.zeros(n_windows * n_px_coc, dtype=np.float32),
+            "cam2_AB_AC": np.zeros(n_windows * n_px_coc, dtype=np.float32),
         }
 
     def dewarp_batch(
@@ -487,6 +481,8 @@ class StereoEnsembleCorrelatorCPU:
             buffers["cam2_AA"].ctypes.data_as(c_float_p),
             buffers["cam2_BB"].ctypes.data_as(c_float_p),
             buffers["CoC"].ctypes.data_as(c_float_p),
+            buffers["cam1_AB_AC"].ctypes.data_as(c_float_p),
+            buffers["cam2_AB_AC"].ctypes.data_as(c_float_p),
             diag_win_idx,
             diag_ab1.ctypes.data_as(c_float_p),
             diag_ab2.ctypes.data_as(c_float_p),
@@ -497,6 +493,15 @@ class StereoEnsembleCorrelatorCPU:
             logger.warning(f"stereo_coc_accumulate returned error code {error_code}")
 
         # 7. Build result dict
+        # Two predictor fields exposed for diagnostics + save:
+        #   smoothed_predictor : delta_ab_old — pre-remap, on the previous
+        #     pass's grid + boundary padding. Existing stereo accumulator
+        #     logic depends on this shape; do not change semantics.
+        #   upsampled_predictor : delta_ab_pred — post-remap, on this
+        #     pass's grid. This is what the std ensemble saves under
+        #     ``pred_x/y``. Added 2026-04-26 to expose the actual upsample
+        #     output (before this, stereo only persisted the pre-remap
+        #     field, mislabelled as ``pred_x/y``).
         result = {
             "warp_1A_sum": warp_1A,
             "warp_1B_sum": warp_1B,
@@ -506,6 +511,7 @@ class StereoEnsembleCorrelatorCPU:
             "n_win_x": n_win_x,
             "n_win_y": n_win_y,
             "smoothed_predictor": getattr(self._inner, "delta_ab_old", None),
+            "upsampled_predictor": getattr(self._inner, "delta_ab_pred", None),
             "vector_mask": mask if mask.any() else None,
         }
 
@@ -524,6 +530,37 @@ class StereoEnsembleCorrelatorCPU:
         result["diag_perframe_coc"] = diag_coc.reshape(N, corr_h, corr_w)
         result["diag_perframe_win_idx"] = diag_win_idx
 
+        # Per-frame raw sub-images (post-dewarp, post-warp) at the diag window
+        # for offline experimentation in `manual_tools/coc_window_experiments.py`.
+        # These are EXACTLY the inputs the C kernel cross-correlated above.
+        diag_jj_row = diag_win_idx // n_win_x
+        diag_ii_col = diag_win_idx % n_win_x
+        cy_diag = float(win_ctrs_y[diag_jj_row])
+        cx_diag = float(win_ctrs_x[diag_ii_col])
+        ws_h, ws_w = comp_size  # computation window size (h, w)
+        diag_row_min = int(np.floor(cy_diag - (ws_h - 1) / 2.0 + 0.5))
+        diag_col_min = int(np.floor(cx_diag - (ws_w - 1) / 2.0 + 0.5))
+        if (
+            0 <= diag_row_min and diag_row_min + ws_h <= cam1_A.shape[1]
+            and 0 <= diag_col_min and diag_col_min + ws_w <= cam1_A.shape[2]
+        ):
+            r0, r1 = diag_row_min, diag_row_min + ws_h
+            c0, c1 = diag_col_min, diag_col_min + ws_w
+            result["diag_perframe_subimg_cam1_A"] = cam1_A[:, r0:r1, c0:c1].copy()
+            result["diag_perframe_subimg_cam1_B"] = cam1_B[:, r0:r1, c0:c1].copy()
+            result["diag_perframe_subimg_cam2_A"] = cam2_A[:, r0:r1, c0:c1].copy()
+            result["diag_perframe_subimg_cam2_B"] = cam2_B[:, r0:r1, c0:c1].copy()
+            result["diag_perframe_subimg_window_size"] = np.array(comp_size, dtype=np.int32)
+            result["diag_perframe_subimg_topleft"] = np.array(
+                [diag_row_min, diag_col_min], dtype=np.int32)
+        else:
+            logger.warning(
+                f"Diagnostic sub-image extraction OOB: "
+                f"row [{diag_row_min}, {diag_row_min + ws_h}) col "
+                f"[{diag_col_min}, {diag_col_min + ws_w}) vs image "
+                f"shape {cam1_A.shape[1:]}. Skipping sub-image dump."
+            )
+
         if copy_result:
             result.update(self.get_accumulated_correlation_stereo(pass_idx))
 
@@ -540,110 +577,9 @@ class StereoEnsembleCorrelatorCPU:
             "cam2_AA_sum": buffers["cam2_AA"].copy(),
             "cam2_BB_sum": buffers["cam2_BB"].copy(),
             "CoC_sum": buffers["CoC"].copy(),
+            "cam1_AB_AC_sum": buffers["cam1_AB_AC"].copy(),
+            "cam2_AB_AC_sum": buffers["cam2_AB_AC"].copy(),
         }
-
-    def fit_coc_spreads(
-        self,
-        coc_planes: np.ndarray,
-        aa1_planes: np.ndarray,
-        bb1_planes: np.ndarray,
-        aa2_planes: np.ndarray,
-        bb2_planes: np.ndarray,
-        mask: np.ndarray,
-        coc_h: int,
-        coc_w: int,
-        use_soft_weighting: bool = True,
-        k_max_cap: float = 0.35,
-        return_diagnostics: bool = False,
-    ) -> dict:
-        """Fit CoC spreads via implicit model + noise floor in k-space.
-
-        Model: |F(CoC)|(k) = F_ref(k) × A × Gaussian(k) + N0
-
-        F_ref = √(|F(AA₁)|·|F(BB₁)|·|F(AA₂)|·|F(BB₂)|) cancels particle.
-        N0 captures the flat noise floor from finite ensemble averaging.
-        No P_noise — kernel coloring is already in F_ref.
-
-        Parameters
-        ----------
-        coc_planes : flat float32
-            Averaged CoC planes (n_windows * h * w).
-        aa1_planes, bb1_planes : flat float32
-            Camera 1 auto-correlation planes (bg-subtracted, unnormalized).
-        aa2_planes, bb2_planes : flat float32
-            Camera 2 auto-correlation planes.
-        mask : int32 array (n_windows,)
-            1=skip, 0=process.
-        return_diagnostics : bool
-            If True, return per-window |F(CoC)| and F_ref arrays.
-
-        Returns
-        -------
-        dict with particle-free: spread_xx, spread_yy, spread_xy,
-             diagnostic: center_x, center_y, status,
-             optional: diag_F_coc, diag_F_ref (if return_diagnostics=True)
-        """
-        num_windows = len(mask)
-
-        coc_c = np.ascontiguousarray(coc_planes, dtype=np.float32)
-        aa1_c = np.ascontiguousarray(aa1_planes, dtype=np.float32)
-        bb1_c = np.ascontiguousarray(bb1_planes, dtype=np.float32)
-        aa2_c = np.ascontiguousarray(aa2_planes, dtype=np.float32)
-        bb2_c = np.ascontiguousarray(bb2_planes, dtype=np.float32)
-        mask_c = np.ascontiguousarray(mask, dtype=np.int32)
-
-        spread_xx = np.zeros(num_windows, dtype=np.float64)
-        spread_yy = np.zeros(num_windows, dtype=np.float64)
-        spread_xy = np.zeros(num_windows, dtype=np.float64)
-        center_x = np.zeros(num_windows, dtype=np.float64)
-        center_y = np.zeros(num_windows, dtype=np.float64)
-        status = np.zeros(num_windows, dtype=np.int32)
-
-        diag_fcoc_ptr = None
-        diag_fref_ptr = None
-        diag_F_coc = None
-        diag_F_ref = None
-        if return_diagnostics:
-            n_pixels = coc_h * coc_w
-            diag_F_coc = np.zeros((num_windows, n_pixels), dtype=np.float64)
-            diag_F_ref = np.zeros((num_windows, n_pixels), dtype=np.float64)
-            diag_fcoc_ptr = diag_F_coc.ctypes.data
-            diag_fref_ptr = diag_F_ref.ctypes.data
-
-        n_success = self.lib_kspace_coc.fit_kspace_coc_batch(
-            num_windows, coc_h, coc_w,
-            coc_c.ctypes.data_as(c_float_p),
-            aa1_c.ctypes.data_as(c_float_p),
-            bb1_c.ctypes.data_as(c_float_p),
-            aa2_c.ctypes.data_as(c_float_p),
-            bb2_c.ctypes.data_as(c_float_p),
-            mask_c.ctypes.data_as(c_int_p),
-            int(use_soft_weighting),
-            float(k_max_cap),
-            diag_fcoc_ptr,
-            diag_fref_ptr,
-            spread_xx.ctypes.data_as(c_double_p),
-            spread_yy.ctypes.data_as(c_double_p),
-            spread_xy.ctypes.data_as(c_double_p),
-            center_x.ctypes.data_as(c_double_p),
-            center_y.ctypes.data_as(c_double_p),
-            status.ctypes.data_as(c_int_p),
-        )
-
-        logger.debug(f"CoC k-space fitting: {n_success}/{num_windows} windows succeeded")
-
-        result = {
-            "spread_xx": spread_xx,
-            "spread_yy": spread_yy,
-            "spread_xy": spread_xy,
-            "center_x": center_x,
-            "center_y": center_y,
-            "status": status,
-        }
-        if return_diagnostics:
-            result["diag_F_coc"] = diag_F_coc
-            result["diag_F_ref"] = diag_F_ref
-        return result
 
     # Delegate to inner correlator for shared infrastructure
     @property

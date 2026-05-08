@@ -53,9 +53,21 @@ class PIVStereoEnsemblePassResult:
     win_ctrs_x: np.ndarray              # (n_win_x,) or (n_win_y, n_win_x)
     win_ctrs_y: np.ndarray              # (n_win_y,) or (n_win_y, n_win_x)
 
-    # Predictor field (dewarped pixels, for next pass)
-    pred_x: Optional[np.ndarray] = None  # (n_win_y, n_win_x)
-    pred_y: Optional[np.ndarray] = None  # (n_win_y, n_win_x)
+    # Predictor field (dewarped pixels). Two views are saved per pass:
+    #   pred_x/y         — POST-remap, on this pass's window grid
+    #                      (n_win_y, n_win_x). This is the field that
+    #                      actually warped images for this pass.
+    #   padded_pred_x/y  — PRE-remap, on the PREVIOUS pass's window grid
+    #                      plus boundary padding. The input to the
+    #                      cv2.remap upsampling step. Useful for
+    #                      diagnosing upscaling-induced edge artefacts —
+    #                      compare against pred_x/y to see what the
+    #                      remap did at the mask / FOV boundary.
+    # Both are None for pass 0 (no predictor on the first pass).
+    pred_x: Optional[np.ndarray] = None
+    pred_y: Optional[np.ndarray] = None
+    padded_pred_x: Optional[np.ndarray] = None
+    padded_pred_y: Optional[np.ndarray] = None
 
 
 @dataclass

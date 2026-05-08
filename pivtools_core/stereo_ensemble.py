@@ -236,7 +236,8 @@ def run_stereo_ensemble_piv(
     output_path: Path,
     base_path: Path,
     vector_masks: Optional[List] = None,
-    pixel_mask: Optional = None,
+    pixel_mask_a: Optional[np.ndarray] = None,
+    pixel_mask_b: Optional[np.ndarray] = None,
 ) -> str:
     """Run stereo ensemble CoC PIV for one camera pair.
 
@@ -246,8 +247,29 @@ def run_stereo_ensemble_piv(
     3. Apply filters
     4. Multi-pass: scatter → worker accumulation → finalize → predictor
     5. Save calibrated results (dewarping IS calibration)
+
+    Pixel masks
+    -----------
+    `pixel_mask_a` and `pixel_mask_b` are the per-camera raw-pixel masks
+    (1 = masked, 0 = valid) for cam_a and cam_b respectively. When at
+    least one is provided, both cameras' masks are dewarped to world-XY
+    space and OR'd together before windowing. The OR is essential for
+    stereo CoC correctness: a vector position is valid iff *both* cameras
+    have valid signal there. Dewarping with `borderValue=1.0` also
+    applies each camera's FOV envelope automatically, so a missing
+    polygon mask still contributes its FOV constraint.
     """
     cam_a, cam_b = camera_pair
+
+    # SENTINEL: this line proves the cam_a∪cam_b mask-intersection fix is
+    # the version of run_stereo_ensemble_piv currently executing. Grep
+    # the run log for "MASK_INTERSECT_FIX_v1" — its absence means a
+    # stale Python process / stale Dask worker / wrong worktree is in
+    # use and needs restarting.
+    logger.info(
+        "MASK_INTERSECT_FIX_v1: dewarping cam_a and cam_b masks separately, "
+        "OR-combining at the pixel level before vector windowing."
+    )
 
     # ── 1. Load camera models ───────────────────────────────────────────
     from pivtools_gui.calibration.camera_model_utils import load_cameras_from_stereo_model
@@ -303,23 +325,59 @@ def run_stereo_ensemble_piv(
     dw_h, dw_w = maps_cam1[0].shape
     logger.info(f"  Dewarped image size: {dw_h}x{dw_w}")
 
-    # Dewarp pixel masks to world-XY space (if provided)
-    if pixel_mask is not None:
+    # Dewarp pixel masks to world-XY space and intersect.
+    #
+    # The CoC kernel correlates dewarped cam_a against dewarped cam_b
+    # window-for-window, so a vector position is valid iff *both* cameras
+    # have signal at the underlying world point. Dewarping cam_a's mask
+    # alone (the previous behaviour) ignored cam_b's FOV and admitted
+    # vectors where cam_b looked at black FOV-edge pixels — the source of
+    # the ragged-edge / disconnected-protrusion artefacts that surfaced
+    # downstream as fit failures and NaN cascades. See
+    # manual_tools/stereo_mask_diagnostic.py and
+    # manual_tools/stereo_mask_robustifier.py for the validation that
+    # established this as the root cause.
+    if pixel_mask_a is not None or pixel_mask_b is not None:
         import cv2
-        # Dewarp mask: 1=masked. Use INTER_NEAREST to keep binary.
-        # borderValue=1 means outside-FOV is masked.
-        dw_mask = cv2.remap(
-            pixel_mask.astype(np.float32),
-            maps_cam1[0], maps_cam1[1],
-            interpolation=cv2.INTER_NEAREST,
-            borderMode=cv2.BORDER_CONSTANT,
-            borderValue=1.0,
-        )
-        pixel_mask = (dw_mask > 0.5).astype(np.uint8)
-        logger.info(f"  Dewarped pixel mask: {pixel_mask.sum()}/{pixel_mask.size} masked pixels")
 
-        # Recompute vector masks from the dewarped mask
-        # Override image_shape for the dewarped dimensions
+        def _dewarp_mask(mask_raw, maps):
+            # INTER_NEAREST keeps the result binary; borderValue=1 forces
+            # outside-FOV pixels to "masked", so a synthetic all-valid
+            # mask still contributes its camera's FOV envelope.
+            dw = cv2.remap(
+                mask_raw.astype(np.float32),
+                maps[0], maps[1],
+                interpolation=cv2.INTER_NEAREST,
+                borderMode=cv2.BORDER_CONSTANT,
+                borderValue=1.0,
+            )
+            return (dw > 0.5).astype(np.uint8)
+
+        # If a polygon mask is missing for one camera, substitute an
+        # all-valid mask so the camera's FOV still constrains the
+        # intersection via borderValue=1.0.
+        h_a, w_a = cam1.image_size[1], cam1.image_size[0]
+        h_b, w_b = cam2.image_size[1], cam2.image_size[0]
+        mask_a_in = (pixel_mask_a if pixel_mask_a is not None
+                     else np.zeros((h_a, w_a), dtype=np.uint8))
+        mask_b_in = (pixel_mask_b if pixel_mask_b is not None
+                     else np.zeros((h_b, w_b), dtype=np.uint8))
+
+        dw_a = _dewarp_mask(mask_a_in, maps_cam1)
+        dw_b = _dewarp_mask(mask_b_in, maps_cam2)
+        pixel_mask = np.maximum(dw_a, dw_b)  # OR in 1=masked convention
+
+        a_label = "polygon" if pixel_mask_a is not None else "FOV-only"
+        b_label = "polygon" if pixel_mask_b is not None else "FOV-only"
+        logger.info(
+            f"  Dewarped pixel mask intersection: "
+            f"cam_a({a_label})={dw_a.sum()} masked, "
+            f"cam_b({b_label})={dw_b.sum()} masked, "
+            f"intersect={pixel_mask.sum()}/{pixel_mask.size} masked px"
+        )
+
+        # Recompute vector masks from the dewarped intersection.
+        # Override image_shape for the dewarped dimensions.
         orig_shape = getattr(config, '_detected_image_shape', None)
         config._detected_image_shape = (dw_h, dw_w)
         try:
@@ -328,6 +386,8 @@ def run_stereo_ensemble_piv(
             vector_masks = None
         if orig_shape is not None:
             config._detected_image_shape = orig_shape
+    else:
+        pixel_mask = None
 
     # ── 3. Load images for both cameras ─────────────────────────────────
     batch_size = config.batch_size
@@ -339,9 +399,17 @@ def run_stereo_ensemble_piv(
     logger.info(f"  Loaded: {images_cam1.shape}, {num_chunks} chunks")
 
     # ── 4. Scatter immutable data ───────────────────────────────────────
+    # Pin the cache to the dewarped image shape — workers load the scattered
+    # cache verbatim via _load_precomputed_cache, bypassing the per-correlator
+    # shape pin in StereoEnsembleCorrelatorCPU.__init__. Without this the
+    # cache's win_ctrs_x/y are sized to the raw sensor (4347 windows on the
+    # test rig) while finalize_pass's bg planes are sized to the dewarped
+    # image (3038 windows) — broadcast error at the AB-bg subtraction.
+    # See gotchas/stereo-coc-gotchas.md #9 round 2.
     logger.info("Scattering immutable data...")
     scattered = scatter_immutable_data(
-        client, config, vector_masks, pixel_mask, ensemble=True
+        client, config, vector_masks, pixel_mask, ensemble=True,
+        dewarped_image_shape=(dw_h, dw_w),
     )
     scattered_config = client.scatter(config, broadcast=True)
 
@@ -537,14 +605,18 @@ def main():
             logger.info(f"\nProcessing path {path_idx}: {source_path}")
             logger.info(f"  Output: {output_path}")
 
-            # Load raw masks (dewarping happens inside run_stereo_ensemble_piv)
-            pixel_mask_raw = load_mask_for_camera(cam_a, config, path_idx)
+            # Load raw masks for both cameras. The intersection happens
+            # inside run_stereo_ensemble_piv after dewarping, so a vector
+            # position is invalid if *either* camera lacks signal there.
+            pixel_mask_a_raw = load_mask_for_camera(cam_a, config, path_idx)
+            pixel_mask_b_raw = load_mask_for_camera(cam_b, config, path_idx)
 
             run_stereo_ensemble_piv(
                 config, client, camera_pair,
                 source_path, output_path, base_path,
                 vector_masks=None,
-                pixel_mask=pixel_mask_raw,
+                pixel_mask_a=pixel_mask_a_raw,
+                pixel_mask_b=pixel_mask_b_raw,
             )
 
         elapsed = time.time() - start_time

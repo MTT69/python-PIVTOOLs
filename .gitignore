@@ -61,5 +61,8 @@ profile/results/
 # Documentation
 docs/
 
+# Debug figures (per CLAUDE.md figure rule)
+figures/debug/
+
 # Paper submission (published separately to SoftwareX + Pure DOI)
 paper_submission/

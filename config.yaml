@@ -2,31 +2,32 @@ paths:
   base_paths:
   - /Users/morgan/Downloads/stereo_ensemble/processed
   source_paths:
-  - /Users/morgan/Downloads/stereo_ensemble
-  active_paths:
-  - 0
+  - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/4000_images_channel/stereo_images
   camera_numbers:
   - 1
   - 2
   camera_count: 2
-  camera_subfolders: []
+  camera_subfolders:
+  - camera1
+  - camera2
 images:
-  num_images: 50
+  num_images: 298
   image_format:
   - B%05d_A.tif
   - B%05d_B.tif
   vector_format:
   - '%05d.mat'
   dtype: float32
-  image_type: standard
-  use_camera_subfolders: false
   start_index: 1
   frame_stride: 0
   pair_stride: 1
   pairing_preset: ab_format
-  per_loop_frame_pairs: 50
+  image_type: standard
+  use_camera_subfolders: false
   num_loops: 1
-  num_frame_pairs: 50
+  image_shape:
+  - 2240
+  - 2048
 batches:
   size: 10
 logging:
@@ -34,131 +35,85 @@ logging:
   level: INFO
   console: true
 processing:
+  instantaneous: true
+  ensemble: false
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 10
+  omp_threads: 2
   dask_workers_per_node: 1
-  dask_memory_limit: 10GB
-  dask_max_in_flight_per_worker: 2
-  open_dashboard: true
-  dask_nanny: false
-  post_processing_workers: 16
+  dask_memory_limit: 12GB
   always_batch: true
-  instantaneous: true
-  ensemble: false
 outlier_detection:
   enabled: true
   methods:
-  - threshold: 0.25
+  - threshold: 0.3
     type: peak_mag
-  - type: median_2d
-    epsilon: 0.1
-    threshold: 3
+  - epsilon: 0.2
+    threshold: 2
+    type: median_2d
 infilling:
   mid_pass:
-    method: local_median
-    parameters: {}
+    method: biharmonic
+    parameters:
+      ksize: 3
   final_pass:
     enabled: true
     method: biharmonic
-    parameters: {}
+    parameters:
+      ksize: 3
 ensemble_outlier_detection:
   enabled: true
-  methods: []
+  methods:
+  - epsilon: 0.2
+    threshold: 2
+    type: median_2d
 ensemble_infilling:
   mid_pass:
     method: biharmonic
-    parameters: {}
+    parameters:
+      ksize: 3
   final_pass:
     enabled: true
     method: biharmonic
-    parameters: {}
+    parameters:
+      ksize: 3
 plots:
   save_extension: .png
   save_pickle: true
   fontsize: 14
   title_fontsize: 16
-video:
-  base_path_idx: 0
-  camera: 1
-  data_source: stereo
-  variable: mag
-  run: 3
-  piv_type: instantaneous
-  cmap: default
-  lower: ''
-  upper: ''
-  fps: 30
-  crf: 15
-  resolution: 4k
-  source_endpoint: stereo
-statistics:
-  enabled_methods:
-    mean_peak_height: false
-    inst_vorticity: false
-    reynolds_stress: false
-    tke: false
-    inst_fluctuations: false
-    gamma1: false
-    mean_divergence: false
-    divergence: false
-    fluctuating_velocity: false
-    mean_tke: false
-    inst_gamma: false
-    normal_stress: false
-    gamma2: false
-    mean_vorticity: false
-    inst_stresses: false
-    mean_stresses: true
-    vorticity: false
-    inst_divergence: false
-    mean_velocity: true
-    inst_velocity: false
-  gamma_radius: 4
-  save_figures: true
-  type_name: instantaneous
-  source_endpoint: stereo
+videos:
+- endpoint: ''
+  type: instantaneous
+  use_merged: false
+  variable: ux
+  video_length: 100
+statistics_extraction: null
 instantaneous_piv:
   window_size:
   - - 128
-    - 128
+    - 64
   - - 64
     - 64
-  - - 32
-    - 32
   overlap:
   - 50
   - 50
-  - 50
   runs:
-  - 3
+  - 1
+  - 2
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
   peak_finder: gauss3
   secondary_peak: false
   predictor_smoothing: false
-  save_mode: minimal
-  save_compression: false
 ensemble_piv:
-  fit_method: kspace
-  skip_background_subtraction: false
-  gradient_correction: true
-  persist_images: false
-  predictor_smoothing: false
-  image_warp_interpolation: lanczos
-  kspace_k_max_cap: 0.4
-  predictor_interpolation: cubic
-  kspace_snr_threshold: 3.0
-  fit_offset: false
-  mask_center_pixel: true
-  background_subtraction_method: correlation
   window_size:
   - - 64
     - 64
-  - - 32
-    - 32
+  - - 64
+    - 64
   overlap:
   - 50
   - 50
@@ -168,42 +123,19 @@ ensemble_piv:
   runs:
   - 1
   - 2
-  store_planes: false
-  save_diagnostics: true
-  sum_fitting_window_enabled: false
-  resume_from_pass: 0
-  window_type: square
-  predictor_boundary_conditions:
-  - y_position: 0
-    ux: 0
-    uy: 0
-    edge: bottom
-stereo_ensemble_piv:
-  camera_pair:
-  - 1
-  - 2
-  window_size:
-  - - 64
-    - 64
-  - - 32
-    - 32
-  overlap:
-  - 50
-  - 50
-  type:
-  - std
-  - std
-  fit_method: kspace
-  background_subtraction_method: correlation
-  gradient_correction: true
-  predictor_smoothing: false
-  image_warp_interpolation: lanczos
-  kspace_k_max_cap: 0.4
-  kspace_soft_weighting: true
   store_planes: true
   save_diagnostics: true
+  sum_window:
+  - 16
+  - 16
   resume_from_pass: 0
-  sum_fitting_window_enabled: false
+  predictor_smoothing: false
+  sum_fitting_window_enabled: true
+  sum_fitting_window:
+  - 16
+  - 16
+stereo_ensemble_piv:
+  background_subtraction_method: none
 calibration:
   image_format: planar_calibration_plate_%02d.tif
   num_images: 20
@@ -216,17 +148,18 @@ calibration:
   - cam2
   path_order: camera_first
   active: stereo_dotboard
-  piv_type: ensemble
+  piv_type: instantaneous
   scale_factor:
-    dt: 0.0057553
-    px_per_mm: 13.653
+    dt: 1
+    px_per_mm: 1
     source_path_idx: 0
   dotboard:
-    dot_spacing_mm: 10
-    dt: 4.96e-05
-    datum_frame: 1
-    model_type: polynomial
+    camera: 1
+    dot_spacing_mm: 1
+    dt: 1
+    source_path_idx: 0
   charuco:
+    camera: 1
     squares_h: 10
     squares_v: 9
     square_size: 0.03
@@ -235,81 +168,13 @@ calibration:
     min_corners: 6
     dt: 1
     source_path_idx: 0
-    camera: 1
-    model_type: pinhole
   stereo_dotboard:
     dot_spacing_mm: 12.22
     dt: 0.0057553
     datum_camera: 1
     datum_frame: 1
-  polynomial:
-    cameras:
-      2:
-        origin:
-          x: 2656.0
-          y: 2300.0
-        normalisation:
-          nx: 5312.0
-          ny: 4600.0
-        mm_per_pixel: 0.03449634370462891
-        coefficients_x:
-        - 164.1245066783124
-        - 9.700865269483511
-        - 6.059725362819735
-        - -2.4176729938988157
-        - -4.2730163711371825
-        - -1.500122009557201
-        - 0.8953198095830455
-        - 5.116886134281802
-        - -1.4786184101080506
-        - -0.5357096655257576
-        coefficients_y:
-        - 943.213727377397
-        - 4.105690645748987
-        - 3.9009628331464103
-        - 1.633771738163448
-        - 7.843789033316517
-        - 5.737076235252556
-        - -1.6614719377354257
-        - 7.111909801811047
-        - -0.9282276996571058
-        - -0.24714131237621279
-        image_height: 4600.0
-      1:
-        origin:
-          x: 2656.0
-          y: 2300.0
-        normalisation:
-          nx: 5312.0
-          ny: 4600.0
-        mm_per_pixel: 0.03444854349075116
-        coefficients_x:
-        - 1809.4579858979876
-        - 2.524287558622048
-        - 4.673142222707372
-        - -0.7808222358832553
-        - -1.727597155656286
-        - -0.48917394795790514
-        - 0.9245519306054931
-        - -1.6297819390713295
-        - -0.06366868646933366
-        - -0.5856723747598909
-        coefficients_y:
-        - 543.6154566450075
-        - -1.4993330563366571
-        - -0.1524531091982324
-        - 0.29777613517495105
-        - -0.22483385940967593
-        - -1.0714679221167975
-        - -1.0367058318071924
-        - 4.36572919746857
-        - -0.5987209786999628
-        - -0.49351981960362235
-        image_height: 4600.0
-    dt: 4.96e-05
-  stereo_charuco:
-    datum_camera: 1
-    datum_frame: 1
+  active_paths: []
+  cameras: []
   calibration_sources:
   - /Users/morgan/Downloads/stereo_ensemble/calibrationimages
   global_coordinates:
@@ -389,12 +254,60 @@ masking:
     right: 0
 merging:
   type_name: instantaneous
-  base_path_idx: 0
-  cameras: null
+  endpoint: ''
+  max_workers: 8
+  cameras: []
+  active_paths: []
+statistics:
+  active_paths: []
+  cameras: []
+  include_merged: false
+  gamma_radius: 5
+  save_figures: true
+  type_name: instantaneous
+  enabled_methods:
+    mean_divergence: false
+    mean_velocity: true
+    gamma1: false
+    fluctuating_velocity: false
+    inst_velocity: false
+    inst_gamma: false
+    normal_stress: false
+    mean_peak_height: false
+    inst_vorticity: false
+    vorticity: false
+    gamma2: false
+    mean_stresses: true
+    mean_vorticity: false
+    mean_tke: false
+    divergence: false
+    inst_fluctuations: false
+    reynolds_stress: false
+    inst_stresses: false
+    tke: false
+    inst_divergence: false
+  source_endpoint: stereo
 transforms:
   base_path_idx: 0
   type_name: instantaneous
-  cameras:
-    1:
-      operations: []
+  active_paths: []
+  include_merged: false
+  cameras: {}
+  source_endpoint: stereo
+video:
+  base_path_idx: 0
+  camera: 1
+  data_source: calibrated
+  variable: ux
+  run: 1
+  piv_type: instantaneous
+  cmap: default
+  lower: ''
+  upper: ''
+  fps: 30
+  crf: 15
+  resolution: 1080p
+  active_paths: []
+  cameras: []
+  include_merged: false
   source_endpoint: stereo

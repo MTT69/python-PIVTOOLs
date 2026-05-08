@@ -435,6 +435,7 @@ def scatter_immutable_data(
     vector_masks: Optional[List[np.ndarray]] = None,
     pixel_mask: Optional[np.ndarray] = None,
     ensemble: bool = False,
+    dewarped_image_shape: Optional[Tuple[int, int]] = None,
 ) -> Dict[str, Any]:
     """
     Scatter immutable data once to all workers.
@@ -448,15 +449,33 @@ def scatter_immutable_data(
         vector_masks: Pre-computed vector masks per pass
         pixel_mask: Pixel mask for preprocessing
         ensemble: Whether this is ensemble mode
+        dewarped_image_shape: (H, W) of dewarped images for stereo CoC. When
+            provided, ``config._detected_image_shape`` is pinned to this value
+            for the duration of the temp-correlator construction so the cached
+            ``win_ctrs_x/y, H, W`` are sized to the dewarped image rather than
+            the raw sensor. Required by the stereo path because workers load
+            this cache via ``EnsembleCorrelatorCPU._load_precomputed_cache``,
+            which bypasses the per-construction shape pin in
+            ``StereoEnsembleCorrelatorCPU.__init__``. Single-camera ensemble
+            and instantaneous callers pass ``None`` (raw sensor is correct).
 
     Returns:
         Dict with 'cache' and 'masks' keys containing scattered futures
     """
     logger.info("Scattering immutable data to workers...")
 
-    # Create and scatter correlator cache
-    temp_correlator = make_correlator_backend(config, ensemble=ensemble)
-    correlator_cache = temp_correlator.get_cache_data()
+    # Create the temp correlator with config.image_shape pinned to the dewarped
+    # shape when given. The pin is scoped to construction only — restored in
+    # finally so no other config consumer sees the override. Same idiom used
+    # in cpu_stereo_ensemble.py:111-122 for the per-correlator path.
+    _prev_shape = getattr(config, "_detected_image_shape", None)
+    try:
+        if dewarped_image_shape is not None:
+            config._detected_image_shape = tuple(dewarped_image_shape)
+        temp_correlator = make_correlator_backend(config, ensemble=ensemble)
+        correlator_cache = temp_correlator.get_cache_data()
+    finally:
+        config._detected_image_shape = _prev_shape
     scattered_cache = client.scatter(correlator_cache, broadcast=True)
 
     cache_size = sum(
@@ -859,7 +878,7 @@ def correlate_stereo_worker_batches(
 
         n_total += lightweight["n_images"]
 
-        for key in ["smoothed_predictor", "vector_mask",
+        for key in ["smoothed_predictor", "upsampled_predictor", "vector_mask",
                      "diag_dw_cam1_A", "diag_dw_cam1_B",
                      "diag_dw_cam2_A", "diag_dw_cam2_B",
                      "diag_warped_cam1_A", "diag_warped_cam1_B",
@@ -868,14 +887,19 @@ def correlate_stereo_worker_batches(
                 metadata[key] = lightweight[key]
 
         # Concatenate per-frame diagnostic planes across batches
-        for key in ["diag_perframe_ab1", "diag_perframe_ab2", "diag_perframe_coc"]:
+        for key in ["diag_perframe_ab1", "diag_perframe_ab2", "diag_perframe_coc",
+                    "diag_perframe_subimg_cam1_A", "diag_perframe_subimg_cam1_B",
+                    "diag_perframe_subimg_cam2_A", "diag_perframe_subimg_cam2_B"]:
             if key in lightweight and lightweight[key] is not None:
                 if key not in metadata:
                     metadata[key] = lightweight[key]
                 else:
                     metadata[key] = np.concatenate([metadata[key], lightweight[key]], axis=0)
-        if "diag_perframe_win_idx" in lightweight:
-            metadata["diag_perframe_win_idx"] = lightweight["diag_perframe_win_idx"]
+        for key in ["diag_perframe_win_idx",
+                    "diag_perframe_subimg_window_size",
+                    "diag_perframe_subimg_topleft"]:
+            if key in lightweight and lightweight[key] is not None:
+                metadata[key] = lightweight[key]
 
         del batch_cam1, batch_cam2, lightweight
 
@@ -902,8 +926,8 @@ def correlate_stereo_worker_batches(
 def reduce_stereo_ensemble_results(r1: dict, r2: dict) -> dict:
     """Tree reduction for stereo ensemble results.
 
-    Sums 7 correlation arrays + 4 warp sums + n_images.
-    Uses + not += for Dask retry safety.
+    Sums 9 correlation arrays (7 standard + 2 AB-autocorr diagnostic) +
+    4 warp sums + n_images. Uses + not += for Dask retry safety.
     """
     return {
         "cam1_AB_sum": r1["cam1_AB_sum"] + r2["cam1_AB_sum"],
@@ -913,6 +937,8 @@ def reduce_stereo_ensemble_results(r1: dict, r2: dict) -> dict:
         "cam2_AA_sum": r1["cam2_AA_sum"] + r2["cam2_AA_sum"],
         "cam2_BB_sum": r1["cam2_BB_sum"] + r2["cam2_BB_sum"],
         "CoC_sum": r1["CoC_sum"] + r2["CoC_sum"],
+        "cam1_AB_AC_sum": r1["cam1_AB_AC_sum"] + r2["cam1_AB_AC_sum"],
+        "cam2_AB_AC_sum": r1["cam2_AB_AC_sum"] + r2["cam2_AB_AC_sum"],
         "warp_1A_sum": r1["warp_1A_sum"] + r2["warp_1A_sum"],
         "warp_1B_sum": r1["warp_1B_sum"] + r2["warp_1B_sum"],
         "warp_2A_sum": r1["warp_2A_sum"] + r2["warp_2A_sum"],
@@ -921,6 +947,7 @@ def reduce_stereo_ensemble_results(r1: dict, r2: dict) -> dict:
         "n_win_x": r1["n_win_x"],
         "n_win_y": r1["n_win_y"],
         "smoothed_predictor": r1.get("smoothed_predictor"),
+        "upsampled_predictor": r1.get("upsampled_predictor"),
         "vector_mask": r1.get("vector_mask"),
         # Preserve first-frame diagnostic images (keep whichever worker has them)
         **{k: r1.get(k) if r1.get(k) is not None else r2.get(k)
@@ -930,6 +957,14 @@ def reduce_stereo_ensemble_results(r1: dict, r2: dict) -> dict:
                       "diag_warped_cam2_A", "diag_warped_cam2_B"]},
         # Concatenate per-frame diagnostic planes across batches
         **{k: np.concatenate([r1[k], r2[k]], axis=0) if k in r1 and k in r2 else r1.get(k, r2.get(k))
-           for k in ["diag_perframe_ab1", "diag_perframe_ab2", "diag_perframe_coc"]},
+           for k in ["diag_perframe_ab1", "diag_perframe_ab2", "diag_perframe_coc",
+                      "diag_perframe_subimg_cam1_A", "diag_perframe_subimg_cam1_B",
+                      "diag_perframe_subimg_cam2_A", "diag_perframe_subimg_cam2_B"]},
         "diag_perframe_win_idx": r1.get("diag_perframe_win_idx", r2.get("diag_perframe_win_idx")),
+        "diag_perframe_subimg_window_size": r1.get(
+            "diag_perframe_subimg_window_size",
+            r2.get("diag_perframe_subimg_window_size")),
+        "diag_perframe_subimg_topleft": r1.get(
+            "diag_perframe_subimg_topleft",
+            r2.get("diag_perframe_subimg_topleft")),
     }

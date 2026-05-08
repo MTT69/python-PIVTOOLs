@@ -361,11 +361,17 @@ class TestVectorCalibratorIntegration:
             ux_px, uy_px, coords_x_uncal, coords_y_uncal,
         )
 
-        # dt=1, so m/s = mm/1000. True velocity: ux=2mm, uy=1mm → 0.002, 0.001 m/s
-        # calibrate_vectors() negates uy (OpenCV y-down → physical y-up), so
-        # the output uy_ms has the opposite sign from the world Y displacement.
+        # dt=1, so m/s = mm/1000. True velocity: ux=2mm, uy=1mm → 0.002, 0.001 m/s.
+        #
+        # Convention note: calibrate_vectors() no longer negates Y at output
+        # (dotboard-origin fix, 2026-04-24). The output uy_ms is therefore in
+        # whatever world frame the supplied R, t defines. This synthetic
+        # fixture (create_stereo_cameras, look_at_rotation with ``up=-Y``)
+        # uses OpenCV's y-down world convention, so ``UY_TRUE = +1.0`` mm
+        # here is a physics-DOWN move. Expect uy_ms to match the sign of
+        # UY_TRUE directly — no sign flip from calibrate_vectors.
         ux_true_ms = UX_TRUE / 1000.0
-        uy_true_ms = -UY_TRUE / 1000.0  # negated by calibrate_vectors
+        uy_true_ms = UY_TRUE / 1000.0
 
         rel_err_ux = np.abs(ux_ms - ux_true_ms) / np.abs(ux_true_ms)
         rel_err_uy = np.abs(uy_ms - uy_true_ms) / np.abs(uy_true_ms)

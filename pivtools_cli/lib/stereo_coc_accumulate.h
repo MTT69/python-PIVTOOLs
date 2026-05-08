@@ -73,6 +73,13 @@
  * @param fCorr2AA_Sum    Output: cam2 AA accumulated
  * @param fCorr2BB_Sum    Output: cam2 BB accumulated
  * @param fCoC_Sum        Output: CoC accumulated (nWindowsTotal * out_h * out_w)
+ * @param fCorr1AB_AC_Sum Output: cam1 per-frame autocorr(AB1) accumulated
+ *                        (nWindowsTotal * out_h * out_w). Diagnostic only —
+ *                        per-frame autocorr(AB_c) = G(η, 2S) so the ensemble
+ *                        average is a redundant estimator of 2S, independent
+ *                        of the AA/BB image-autocorr path. Carries no
+ *                        Σ_cc and no Σ_12 content.
+ * @param fCorr2AB_AC_Sum Output: cam2 per-frame autocorr(AB2) accumulated
  * @return                Error code (0 = success)
  */
 PIV_EXPORT unsigned char bulkxcorr2d_stereo_coc_accumulate(
@@ -97,6 +104,8 @@ PIV_EXPORT unsigned char bulkxcorr2d_stereo_coc_accumulate(
     float       *fCorr2AA_Sum,
     float       *fCorr2BB_Sum,
     float       *fCoC_Sum,
+    float       *fCorr1AB_AC_Sum,
+    float       *fCorr2AB_AC_Sum,
     int          diag_window_idx,
     float       *fDiag_AB1,
     float       *fDiag_AB2,
