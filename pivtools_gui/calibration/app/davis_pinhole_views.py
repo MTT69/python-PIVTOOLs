@@ -46,7 +46,11 @@ def import_davis_pinhole():
         {int(k): int(v) for k, v in raw_map.items()} if raw_map else None
     )
 
-    result = save_davis_pinhole_models(xml_path, base_paths, dt, camera_map)
+    try:
+        result = save_davis_pinhole_models(xml_path, base_paths, dt, camera_map)
+    except Exception as e:
+        logger.error(f"davis_pinhole import error: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
 
     if result["errors"]:
         return jsonify({"error": "; ".join(result["errors"])}), 500
@@ -100,14 +104,10 @@ def davis_pinhole_calibrate_all():
         try:
             job_manager.update_job(job_id, status="running")
             camera_results = {}
+            n_cams = len(camera_numbers)
 
-            for idx, cam_num in enumerate(camera_numbers):
-                job_manager.update_job(
-                    job_id,
-                    current_camera=cam_num,
-                    processed_cameras=idx,
-                    progress=int(idx / len(camera_numbers) * 100),
-                )
+            for cam_num in camera_numbers:
+                job_manager.update_job(job_id, current_camera=cam_num)
                 try:
                     calibrator = VectorCalibrator(
                         base_dir=base_dir,
@@ -123,6 +123,14 @@ def davis_pinhole_calibrate_all():
                     logger.error(f"Camera {cam_num} failed: {e}")
                     camera_results[cam_num] = {"status": "failed", "error": str(e)}
 
+                done = len(camera_results)
+                job_manager.update_job(
+                    job_id,
+                    processed_cameras=done,
+                    progress=int(done / n_cams * 100),
+                    current_camera=None,
+                )
+
             try:
                 cfg.save_calibration_snapshot(base_dir)
             except Exception as snap_err:
@@ -131,7 +139,7 @@ def davis_pinhole_calibrate_all():
             job_manager.complete_job(
                 job_id,
                 camera_results=camera_results,
-                processed_cameras=len(camera_numbers),
+                processed_cameras=n_cams,
                 current_camera=None,
             )
         except Exception as e:

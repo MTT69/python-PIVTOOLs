@@ -90,6 +90,45 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+_jacobian_cache: dict = {}
+
+
+def _precompute_run_jacobian(
+    coords_flat: np.ndarray,
+    camera_matrix: np.ndarray,
+    dist_coeffs: np.ndarray,
+    rvec: np.ndarray,
+    tvec: np.ndarray,
+    z_world: float,
+    tilt_x: float,
+    tilt_y: float,
+    dt: float,
+) -> dict:
+    """Precompute world coordinates and pixel-to-world Jacobian for a fixed grid.
+
+    Called once per run per worker process; results cached in _jacobian_cache so
+    per-frame calibration reduces to two dot-product operations instead of two
+    full cv2.undistortPoints + ray-plane intersection calls.
+
+    Returns dict with coords_world (N,2), jac_x (N,2), jac_y (N,2), stress_scale (N,).
+    jac_x[i] = d(world_xy)/d(x_raw), jac_y[i] = d(world_xy)/d(y_raw) in mm/pixel.
+    stress_scale[i] = (mm_per_pixel / 1000 / dt)^2 averaged over x and y directions.
+    """
+    dpx = np.float32(1.0)
+    kw = dict(camera_matrix=camera_matrix, dist_coeffs=dist_coeffs,
+              rvec=rvec, tvec=tvec, z_world=z_world, tilt_x=tilt_x, tilt_y=tilt_y)
+    coords_world = _pixels_to_world_mm(coords_flat, **kw)
+    world_dx = _pixels_to_world_mm(coords_flat + np.array([dpx, 0.0], np.float32), **kw)
+    world_dy = _pixels_to_world_mm(coords_flat + np.array([0.0, dpx], np.float32), **kw)
+    jac_x = (world_dx - coords_world).astype(np.float64)   # (N, 2) mm/raw-x-pixel
+    jac_y = (world_dy - coords_world).astype(np.float64)   # (N, 2) mm/raw-y-pixel
+    norm_x = np.linalg.norm(jac_x, axis=1)
+    norm_y = np.linalg.norm(jac_y, axis=1)
+    stress_scale = ((norm_x + norm_y) / 2.0 / 1000.0 / dt) ** 2
+    return {"coords_world": coords_world, "jac_x": jac_x, "jac_y": jac_y,
+            "stress_scale": stress_scale}
+
+
 def _pixels_to_world_mm(
     pts_px: np.ndarray,
     camera_matrix: np.ndarray,
@@ -206,6 +245,7 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
         z_world,
         tilt_x,
         tilt_y,
+        y_negate,
     ) = args
 
     def _uncal_to_raw_local(x_uncal, y_uncal):
@@ -269,24 +309,19 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
             if coords_flat.size == 0 or ux_px.size == 0:
                 return None
 
-            coords_world = _pixels_to_world_mm(
-                coords_flat, camera_matrix, dist_coeffs, rvec, tvec,
-                z_world=z_world, tilt_x=tilt_x, tilt_y=tilt_y,
-            )
-            # Displaced positions: compute in uncal space, then convert to raw
-            disp_x_uncal = coords_x_px + ux_px
-            disp_y_uncal = coords_y_px + uy_px
-            disp_raw_x, disp_raw_y = _uncal_to_raw_local(disp_x_uncal, disp_y_uncal)
-            disp_flat = np.stack(
-                [disp_raw_x.flatten(), disp_raw_y.flatten()], axis=-1
-            ).astype(np.float32)
-            disp_world = _pixels_to_world_mm(
-                disp_flat, camera_matrix, dist_coeffs, rvec, tvec,
-                z_world=z_world, tilt_x=tilt_x, tilt_y=tilt_y,
-            )
-            delta_mm = disp_world - coords_world
+            simple_key = ("simple", coords_flat.shape[0])
+            if simple_key not in _jacobian_cache:
+                _jacobian_cache[simple_key] = _precompute_run_jacobian(
+                    coords_flat, camera_matrix, dist_coeffs, rvec, tvec,
+                    z_world, tilt_x, tilt_y, dt,
+                )
+            pre = _jacobian_cache[simple_key]
+            ux_f = ux_px.flatten().astype(np.float64)
+            uy_f = uy_px.flatten().astype(np.float64)
+            delta_mm = pre["jac_x"] * ux_f[:, None] - pre["jac_y"] * uy_f[:, None]
+            _y_sign = -1 if y_negate else 1
             ux_ms = (delta_mm[:, 0] / 1000.0) / dt
-            uy_ms = -(delta_mm[:, 1] / 1000.0) / dt
+            uy_ms = _y_sign * (delta_mm[:, 1] / 1000.0) / dt
             ux_ms = ux_ms.reshape(ux_px.shape)
             uy_ms = uy_ms.reshape(uy_px.shape)
 
@@ -352,31 +387,28 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
                         piv_result[idx] = (np.array([]), np.array([]), np.array([]))
                     continue
 
-                # Calibrate velocities using pinhole model
-                # Convert uncalibrated coords to raw pixels for the pinhole model
-                raw_x, raw_y = _uncal_to_raw_local(coords_x_px, coords_y_px)
-                coords_flat = np.stack(
-                    [raw_x.flatten(), raw_y.flatten()], axis=-1
-                ).astype(np.float32)
+                # Build or retrieve cached Jacobian for this run's grid.
+                # _jacobian_cache is worker-local (module-level, fresh per ProcessPoolExecutor
+                # session) so run_num is a safe key within one camera's processing run.
+                if run_num not in _jacobian_cache:
+                    raw_x, raw_y = _uncal_to_raw_local(coords_x_px, coords_y_px)
+                    cf = np.stack(
+                        [raw_x.flatten(), raw_y.flatten()], axis=-1
+                    ).astype(np.float32)
+                    _jacobian_cache[run_num] = _precompute_run_jacobian(
+                        cf, camera_matrix, dist_coeffs, rvec, tvec,
+                        z_world, tilt_x, tilt_y, dt,
+                    )
+                pre = _jacobian_cache[run_num]
 
-                coords_world = _pixels_to_world_mm(
-                    coords_flat, camera_matrix, dist_coeffs, rvec, tvec,
-                    z_world=z_world, tilt_x=tilt_x, tilt_y=tilt_y,
-                )
-                # Displaced positions: compute in uncal space, then convert to raw
-                disp_x_uncal = coords_x_px + ux_px
-                disp_y_uncal = coords_y_px + uy_px
-                disp_raw_x, disp_raw_y = _uncal_to_raw_local(disp_x_uncal, disp_y_uncal)
-                disp_flat = np.stack(
-                    [disp_raw_x.flatten(), disp_raw_y.flatten()], axis=-1
-                ).astype(np.float32)
-                disp_world = _pixels_to_world_mm(
-                    disp_flat, camera_matrix, dist_coeffs, rvec, tvec,
-                    z_world=z_world, tilt_x=tilt_x, tilt_y=tilt_y,
-                )
-                delta_mm = disp_world - coords_world
+                # Linear approximation: δx_raw = ux_px (x unchanged in uncal→raw),
+                # δy_raw = -uy_px (y flips sign in uncal→raw).
+                ux_f = ux_px.flatten().astype(np.float64)
+                uy_f = uy_px.flatten().astype(np.float64)
+                delta_mm = pre["jac_x"] * ux_f[:, None] - pre["jac_y"] * uy_f[:, None]
+                _y_sign = -1 if y_negate else 1
                 ux_ms = (delta_mm[:, 0] / 1000.0) / dt
-                uy_ms = -(delta_mm[:, 1] / 1000.0) / dt
+                uy_ms = _y_sign * (delta_mm[:, 1] / 1000.0) / dt
                 ux_ms = ux_ms.reshape(ux_px.shape)
                 uy_ms = uy_ms.reshape(uy_px.shape)
 
@@ -388,23 +420,7 @@ def _process_single_vector_file(args: Tuple) -> Optional[Dict[str, Any]]:
                     VV_stress = getattr(cell, "VV_stress", None)
                     UV_stress = getattr(cell, "UV_stress", None)
 
-                    # Compute stress scale factor for this run's grid
-                    delta_px = 1.0
-                    coords_disp_x = coords_flat + np.array([delta_px, 0.0], dtype=np.float32)
-                    world_disp_x = _pixels_to_world_mm(
-                        coords_disp_x, camera_matrix, dist_coeffs, rvec, tvec,
-                        z_world=z_world, tilt_x=tilt_x, tilt_y=tilt_y,
-                    )
-                    coords_disp_y = coords_flat + np.array([0.0, delta_px], dtype=np.float32)
-                    world_disp_y = _pixels_to_world_mm(
-                        coords_disp_y, camera_matrix, dist_coeffs, rvec, tvec,
-                        z_world=z_world, tilt_x=tilt_x, tilt_y=tilt_y,
-                    )
-                    delta_world_x = np.linalg.norm(world_disp_x - coords_world, axis=1)
-                    delta_world_y = np.linalg.norm(world_disp_y - coords_world, axis=1)
-                    delta_world_avg = (delta_world_x + delta_world_y) / 2.0
-                    velocity_scale = (delta_world_avg / delta_px) / 1000.0 / dt
-                    stress_scale = (velocity_scale ** 2).reshape(coords_x_px.shape)
+                    stress_scale = pre["stress_scale"].reshape(coords_x_px.shape)
 
                     # Calibrate stresses: pixels²/frame² -> m²/s²
                     UU_calib = UU_stress * stress_scale if UU_stress is not None else np.array([])
@@ -538,6 +554,7 @@ class VectorCalibrator:
         self.tvec = self.calibration_model["tvec"]  # First view
         self.dot_spacing_mm = self.calibration_model["dot_spacing_mm"]
         self.image_height = self.calibration_model["image_height"]
+        self.y_negate = self.calibration_model["y_negate"]
 
         # Self-calibration sheet correction parameters
         self.z_world = z_world
@@ -635,6 +652,10 @@ class VectorCalibrator:
             logger.info(f"Using dt from calibration model: {model_data['dt']} seconds")
             self.dt = float(model_data["dt"])
 
+        # y_negate: True for native models (world y-down, negate at output to get y-up).
+        # False for DaVis imports whose Rx≈±π already encodes a y-up world frame.
+        y_negate = bool(int(model_data.get("y_negate", 1)))
+
         return {
             "camera_matrix": camera_matrix,
             "dist_coeffs": dist_coeffs,
@@ -642,6 +663,7 @@ class VectorCalibrator:
             "tvec": tvec,
             "dot_spacing_mm": dot_spacing_mm,
             "image_height": image_height,
+            "y_negate": y_negate,
         }
 
     def _uncal_to_raw(self, x_uncal, y_uncal):
@@ -688,9 +710,11 @@ class VectorCalibrator:
         )
 
         x_mm = world_pts[:, 0].reshape(coords_x.shape)
-        # Negate y: the pinhole model's world y-axis points opposite to the
-        # physical y-up convention because we feed raw pixels (y-down).
-        y_mm = -world_pts[:, 1].reshape(coords_y.shape)
+        # Native models (dotboard/charuco/stepped) store a y-down world frame so
+        # we negate to get physics-up.  DaVis imports (y_negate=False) have Rx≈±π
+        # which already encodes y-up, so no negation is applied.
+        y_sign = -1 if self.y_negate else 1
+        y_mm = y_sign * world_pts[:, 1].reshape(coords_y.shape)
 
         logger.info("Converted coordinates from pixels to mm (pinhole model)")
 
@@ -752,13 +776,10 @@ class VectorCalibrator:
             z_world=self.z_world, tilt_x=self.tilt_x, tilt_y=self.tilt_y,
         )
 
-        # Compute displacement in mm, convert to m/s
-        # Negate uy: pinhole world y-axis points downward (raw pixel convention),
-        # but physical convention is y-up.  Must match calibrate_coordinates()
-        # which also negates y: y_mm = -world_pts[:, 1].
         delta_mm = disp_world - coords_world
+        y_sign = -1 if self.y_negate else 1
         ux_ms = (delta_mm[:, 0] / 1000.0) / self.dt
-        uy_ms = -(delta_mm[:, 1] / 1000.0) / self.dt
+        uy_ms = y_sign * (delta_mm[:, 1] / 1000.0) / self.dt
 
         ux_ms = ux_ms.reshape(ux_px.shape)
         uy_ms = uy_ms.reshape(uy_px.shape)
@@ -1092,6 +1113,7 @@ class VectorCalibrator:
             self.z_world,
             self.tilt_x,
             self.tilt_y,
+            self.y_negate,
         ))
 
         if result and result.get("success"):
@@ -1149,6 +1171,7 @@ class VectorCalibrator:
                     self.z_world,
                     self.tilt_x,
                     self.tilt_y,
+                    self.y_negate,
                 )
             )
 

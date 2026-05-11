@@ -50,6 +50,9 @@ Thumbs.db
 unit-tests/**/test_workspace/
 unit-tests/test_output/
 
+# Personal/local config files (e.g. ashley.local.yaml, merle.local.yaml)
+*.local.yaml
+
 # Validation benchmark results
 validation/
 

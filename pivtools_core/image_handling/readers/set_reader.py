@@ -13,6 +13,7 @@ Supports:
 
 Reference: LaVision DaVis 10.x .set recording format
 """
+import os
 import struct
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -20,6 +21,11 @@ from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
+
+# Module-level metadata caches — avoids re-reading 30+ NAS files per call.
+# Keyed by string path; values are (mtime, data) tuples invalidated on file change.
+_setinfo_cache: dict = {}   # str(set_path) -> (mtime, SetInfo)
+_cine_map_cache: dict = {}  # str(set_dir)  -> (dir_mtime, dict)
 
 
 # ---------------------------------------------------------------------------
@@ -355,6 +361,38 @@ def _apply_scale_inplace(arr: np.ndarray, fi: IMSFrameInfo) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Cached metadata accessors
+# ---------------------------------------------------------------------------
+
+def _get_cached_set_info(set_path: Path) -> "SetInfo":
+    key = str(set_path)
+    try:
+        mtime = os.path.getmtime(set_path)
+    except OSError:
+        return _parse_set(set_path)
+    cached = _setinfo_cache.get(key)
+    if cached is not None and cached[0] == mtime:
+        return cached[1]
+    info = _parse_set(set_path)
+    _setinfo_cache[key] = (mtime, info)
+    return info
+
+
+def _get_cached_cine_companions(set_dir: Path) -> dict:
+    key = str(set_dir)
+    try:
+        mtime = os.path.getmtime(set_dir)
+    except OSError:
+        return _find_cine_companions(set_dir)
+    cached = _cine_map_cache.get(key)
+    if cached is not None and cached[0] == mtime:
+        return cached[1]
+    cine_map = _find_cine_companions(set_dir)
+    _cine_map_cache[key] = (mtime, cine_map)
+    return cine_map
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -363,7 +401,7 @@ def read_set_info(set_path: Union[str, Path]) -> SetInfo:
 
     Useful for getting entry count, dimensions, frame count.
     """
-    return _parse_set(set_path)
+    return _get_cached_set_info(Path(set_path))
 
 
 def get_set_entry_count(set_path: Union[str, Path]) -> int:
@@ -371,12 +409,12 @@ def get_set_entry_count(set_path: Union[str, Path]) -> int:
     set_path = Path(set_path)
     set_dir = set_path.with_suffix("")
     if set_dir.is_dir():
-        cine_map = _find_cine_companions(set_dir)
+        cine_map = _get_cached_cine_companions(set_dir)
         if cine_map:
             from .cine_reader import get_cine_frame_count
             total = get_cine_frame_count(str(cine_map[sorted(cine_map)[0]]))
             return total // 2
-    info = _parse_set(set_path)
+    info = _get_cached_set_info(set_path)
     return info.n_entries
 
 
@@ -428,11 +466,11 @@ def read_set_pair(
     if set_info is None:
         set_dir = set_path.with_suffix("")
         if set_dir.is_dir():
-            cine_map = _find_cine_companions(set_dir)
+            cine_map = _get_cached_cine_companions(set_dir)
             if cine_map:
                 return _read_cine_set_pair(cine_map, camera_no, im_no, time_resolved, im_no_b)
 
-    info = set_info if set_info is not None else _parse_set(set_path)
+    info = set_info if set_info is not None else _get_cached_set_info(set_path)
 
     if time_resolved:
         if im_no_b is None:
@@ -518,7 +556,7 @@ def read_set_frame(
     np.ndarray
         Image (H, W) float32 with intensity scale applied.
     """
-    info = set_info if set_info is not None else _parse_set(set_path)
+    info = set_info if set_info is not None else _get_cached_set_info(Path(set_path))
 
     if frame_idx < 0 or frame_idx >= len(info.frames):
         raise ValueError(
