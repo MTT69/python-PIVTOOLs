@@ -1,35 +1,33 @@
 paths:
   base_paths:
-  - E:\test
+  - C:\test7
   source_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\stereo_images
-  active_paths:
-  - 0
+  - \\nas00019\ak1u24\May2025_ExperimentalCampaign\PIV\y220_aoan04_aoafn16_1\loop=0.set
   camera_numbers:
   - 1
   - 2
-  camera_count: 2
-  camera_subfolders:
-  - camera1
-  - camera2
+  - 3
+  - 4
+  - 5
+  camera_count: 5
+  camera_subfolders: []
 images:
+  num_images: 2
   image_format:
-  - B%05d_A.tif
-  - B%05d_B.tif
+  - data.set
   vector_format:
   - '%05d.mat'
   dtype: float32
-  image_type: standard
-  use_camera_subfolders: false
   start_index: 1
   frame_stride: 0
   pair_stride: 1
-  pairing_preset: ab_format
-  num_loops: 1
-  num_images: 50
+  pairing_preset: pre_paired
+  image_type: lavision_set
+  use_camera_subfolders: false
+  num_loops: 2
   image_shape:
-  - 2240
-  - 2048
+  - 3528
+  - 5312
 batches:
   size: 10
 logging:
@@ -37,91 +35,61 @@ logging:
   level: INFO
   console: true
 processing:
+  instantaneous: true
+  ensemble: false
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 4
-  dask_workers_per_node: 5
-  dask_memory_limit: 10GB
-  dask_max_in_flight_per_worker: 2
-  open_dashboard: true
-  dask_nanny: false
-  post_processing_workers: 16
+  omp_threads: 2
+  dask_workers_per_node: 1
+  dask_memory_limit: 12GB
   always_batch: true
-  instantaneous: true
-  ensemble: false
 outlier_detection:
   enabled: true
   methods:
-  - threshold: 0.25
+  - threshold: 0.3
     type: peak_mag
-  - type: median_2d
-    epsilon: 0.1
-    threshold: 3
+  - epsilon: 0.2
+    threshold: 2
+    type: median_2d
 infilling:
   mid_pass:
-    method: local_median
-    parameters: {}
+    method: biharmonic
+    parameters:
+      ksize: 3
   final_pass:
     enabled: true
     method: biharmonic
-    parameters: {}
+    parameters:
+      ksize: 3
 ensemble_outlier_detection:
   enabled: true
-  methods: []
+  methods:
+  - epsilon: 0.2
+    threshold: 2
+    type: median_2d
 ensemble_infilling:
   mid_pass:
     method: biharmonic
-    parameters: {}
+    parameters:
+      ksize: 3
   final_pass:
     enabled: true
     method: biharmonic
-    parameters: {}
+    parameters:
+      ksize: 3
 plots:
   save_extension: .png
   save_pickle: true
   fontsize: 14
   title_fontsize: 16
-video:
-  base_path_idx: 0
-  camera: 1
-  data_source: stereo
-  variable: mag
-  run: 3
-  piv_type: instantaneous
-  cmap: default
-  lower: ''
-  upper: ''
-  fps: 30
-  crf: 15
-  resolution: 4k
-  source_endpoint: stereo
-statistics:
-  enabled_methods:
-    mean_peak_height: false
-    inst_vorticity: false
-    reynolds_stress: false
-    tke: false
-    inst_fluctuations: false
-    gamma1: false
-    mean_divergence: false
-    divergence: false
-    fluctuating_velocity: false
-    mean_tke: false
-    inst_gamma: false
-    normal_stress: false
-    gamma2: false
-    mean_vorticity: false
-    inst_stresses: false
-    mean_stresses: true
-    vorticity: false
-    inst_divergence: false
-    mean_velocity: true
-    inst_velocity: false
-  gamma_radius: 4
-  save_figures: true
-  type_name: instantaneous
-  source_endpoint: stereo
+videos:
+- endpoint: ''
+  type: instantaneous
+  use_merged: false
+  variable: ux
+  video_length: 100
+statistics_extraction: null
 instantaneous_piv:
   window_size:
   - - 128
@@ -142,83 +110,53 @@ instantaneous_piv:
   peak_finder: gauss3
   secondary_peak: false
   predictor_smoothing: false
-  save_mode: minimal
-  save_compression: false
 ensemble_piv:
-  fit_method: kspace
-  skip_background_subtraction: false
-  gradient_correction: true
-  persist_images: false
-  predictor_smoothing: false
-  image_warp_interpolation: lanczos
-  kspace_k_max_cap: 0.4
-  predictor_interpolation: cubic
-  kspace_snr_threshold: 3.0
-  fit_offset: false
-  mask_center_pixel: true
-  background_subtraction_method: correlation
   window_size:
+  - - 128
+    - 128
   - - 64
     - 64
-  - - 32
-    - 32
   - - 16
     - 16
-  - - 8
-    - 16
   overlap:
-  - 50
   - 50
   - 50
   - 50
   type:
   - std
   - std
-  - single
-  - single
+  - std
   runs:
-  - 2
   - 3
-  - 4
   store_planes: false
-  save_diagnostics: true
+  save_diagnostics: false
   sum_window:
-  - 32
-  - 32
-  sum_fitting_window_enabled: true
-  sum_fitting_window:
   - 16
   - 16
   resume_from_pass: 0
-  window_type: square
-  predictor_boundary_conditions:
-  - y_position: 0
-    ux: 0
-    uy: 0
-    edge: bottom
+  predictor_smoothing: false
 calibration:
-  image_format: planar_calibration_plate_%02d.tif
-  num_images: 20
+  image_format: calib_%02d.tif
+  num_images: 1
   image_type: standard
   zero_based_indexing: false
-  use_camera_subfolders: true
-  subfolder: enhanced
-  camera_subfolders:
-  - cam1
-  - cam2
+  use_camera_subfolders: false
+  subfolder: ''
+  camera_subfolders: []
   path_order: camera_first
-  active: stereo_dotboard
+  active: davis_pinhole
   piv_type: instantaneous
   scale_factor:
-    dt: 0.0057553
-    px_per_mm: 13.653
+    dt: 1
+    px_per_mm: 1
     source_path_idx: 0
   dotboard:
-    dot_spacing_mm: 10
-    dt: 4.96e-05
-    datum_frame: 1
-    model_type: polynomial
+    camera: 1
+    dot_spacing_mm: 1
+    dt: 1
+    source_path_idx: 0
   charuco:
+    camera: 1
     squares_h: 10
     squares_v: 9
     square_size: 0.03
@@ -227,153 +165,28 @@ calibration:
     min_corners: 6
     dt: 1
     source_path_idx: 0
-    camera: 1
-    model_type: pinhole
   stereo_dotboard:
-    dot_spacing_mm: 12.22
-    dt: 0.0057553
-    datum_camera: 1
-    datum_frame: 1
-  polynomial:
-    cameras:
-      2:
-        origin:
-          x: 2656.0
-          y: 2300.0
-        normalisation:
-          nx: 5312.0
-          ny: 4600.0
-        mm_per_pixel: 0.03449634370462891
-        coefficients_x:
-        - 164.1245066783124
-        - 9.700865269483511
-        - 6.059725362819735
-        - -2.4176729938988157
-        - -4.2730163711371825
-        - -1.500122009557201
-        - 0.8953198095830455
-        - 5.116886134281802
-        - -1.4786184101080506
-        - -0.5357096655257576
-        coefficients_y:
-        - 943.213727377397
-        - 4.105690645748987
-        - 3.9009628331464103
-        - 1.633771738163448
-        - 7.843789033316517
-        - 5.737076235252556
-        - -1.6614719377354257
-        - 7.111909801811047
-        - -0.9282276996571058
-        - -0.24714131237621279
-        image_height: 4600.0
-      1:
-        origin:
-          x: 2656.0
-          y: 2300.0
-        normalisation:
-          nx: 5312.0
-          ny: 4600.0
-        mm_per_pixel: 0.03444854349075116
-        coefficients_x:
-        - 1809.4579858979876
-        - 2.524287558622048
-        - 4.673142222707372
-        - -0.7808222358832553
-        - -1.727597155656286
-        - -0.48917394795790514
-        - 0.9245519306054931
-        - -1.6297819390713295
-        - -0.06366868646933366
-        - -0.5856723747598909
-        coefficients_y:
-        - 543.6154566450075
-        - -1.4993330563366571
-        - -0.1524531091982324
-        - 0.29777613517495105
-        - -0.22483385940967593
-        - -1.0714679221167975
-        - -1.0367058318071924
-        - 4.36572919746857
-        - -0.5987209786999628
-        - -0.49351981960362235
-        image_height: 4600.0
-    dt: 4.96e-05
-  stereo_charuco:
-    datum_camera: 1
-    datum_frame: 1
-  calibration_sources:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\stereo_images\calibrationimages
-  global_coordinates:
-    enabled: true
-    datum_camera: 1
-    datum_pixel: null
-    datum_physical:
-    - 0
-    - 10
-    datum_frame: 1
-    overlap_points: []
-    invert_ux: false
-    overlap_pairs: []
-  stepped_board:
-    dot_spacing_mm: 15
-    step_height_mm: 3
-    board_thickness_mm: 14.8
-    dt: 5.0e-06
     camera_pair:
     - 1
     - 2
-    stereo_config: transmission
-    datum_frame: 1
-    datum_camera: 1
-    cam1_fiducials:
-      origin:
-      - 3311.537353515625
-      - 751.3444213867188
-      x_axis:
-      - 3904.228515625
-      - 751.1295776367188
-      y_axis:
-      - 3307.075927734375
-      - 542.399658203125
-    cam2_fiducials:
-      origin:
-      - 1985.91259765625
-      - 638.464111328125
-      x_axis:
-      - 1684.95361328125
-      - 638.5454711914062
-      y_axis:
-      - 1990.9290771484375
-      - 435.236572265625
-    cam1_clicked_level: peak
-    cam2_clicked_level: trough
-    cam1_pose_levels:
-      '1': peak
-      '2': peak
-    cam2_pose_levels:
-      '1': trough
-      '2': trough
-    num_calibration_frames: 2
-  self_calibration: {}
-  stepped_planar:
-    dot_spacing_mm: 15
-    dt: 5.0e-06
-    datum_frame: 1
-    model_type: pinhole
-    target_level: peak
-    step_height_mm: 3
-    board_thickness_mm: 14.8
-    num_calibration_frames: 1
-    clicked_level: {}
-    pose_levels: {}
-    fiducials: {}
-filters: []
+    stereo_model_type: dotboard
+    pattern_cols: 10
+    pattern_rows: 10
+    dot_spacing_mm: 1
+    dt: 1
+  active_paths: []
+  cameras: []
+  davis_pinhole:
+    xml_path: \\nas00019\ak1u24\May2025_ExperimentalCampaign\PIV\Properties\Calibration\Calibration.xml
+    dt: 5.0e-05
+    base_path_idx: 0
+filters:
+- type: time
 masking:
-  enabled: true
+  enabled: false
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
-  mode: file
+  mode: rectangular
   rectangular:
     top: 0
     bottom: 0
@@ -381,12 +194,51 @@ masking:
     right: 0
 merging:
   type_name: instantaneous
-  base_path_idx: 0
-  cameras: null
+  endpoint: ''
+  max_workers: 8
+  cameras: []
+  active_paths: []
+statistics:
+  active_paths: []
+  cameras: []
+  include_merged: false
+  gamma_radius: 5
+  save_figures: true
+  type_name: instantaneous
+  enabled_methods:
+    mean_velocity: true
+    reynolds_stress: true
+    normal_stress: true
+    mean_tke: true
+    mean_vorticity: true
+    mean_divergence: true
+    inst_velocity: true
+    inst_fluctuations: true
+    inst_vorticity: true
+    inst_divergence: true
+    inst_gamma: true
+  source_endpoint: merged
 transforms:
   base_path_idx: 0
   type_name: instantaneous
-  cameras:
-    1:
-      operations: []
-  source_endpoint: stereo
+  active_paths: []
+  include_merged: false
+  cameras: {}
+  source_endpoint: merged
+video:
+  base_path_idx: 0
+  camera: 1
+  data_source: calibrated
+  variable: ux
+  run: 1
+  piv_type: instantaneous
+  cmap: default
+  lower: ''
+  upper: ''
+  fps: 30
+  crf: 15
+  resolution: 1080p
+  active_paths: []
+  cameras: []
+  include_merged: false
+  source_endpoint: merged
