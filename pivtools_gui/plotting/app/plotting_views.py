@@ -122,6 +122,7 @@ def plot_vector():
             custom_title=params["custom_title"],
             length_units=length_units,
             variable_units=variable_units,
+            is_uncalibrated=params["use_uncalibrated"],
         )
         meta = build_response_meta(effective_run, raw_var, W, H, extra)
         return jsonify({"success": True, "image": b64_img, "meta": meta})
@@ -158,6 +159,7 @@ def plot_stats():
             xlim=params["xlim"],
             ylim=params["ylim"],
             custom_title=params["custom_title"],
+            is_uncalibrated=params["use_uncalibrated"],
         )
         meta = build_response_meta(params["run"], params["var"], W, H, extra)
         return jsonify({"success": True, "image": b64_img, "meta": meta})
@@ -219,6 +221,7 @@ def plot_ensemble():
                 coords = coords_mat["coordinates"]
                 cx, cy = extract_coordinates(coords, effective_run)
 
+        # Plot as stored — the renderer orients the y-axis to the array's row order.
         settings = make_scalar_settings(
             get_config(),
             variable=raw_var,
@@ -955,6 +958,7 @@ def get_uncalibrated_image():
             xlim=params["xlim"],
             ylim=params["ylim"],
             custom_title=params["custom_title"],
+            is_uncalibrated=True,
         )
         meta = build_response_meta(effective_run, params["var"], W, H, extra)
         return jsonify({"success": True, "image": b64_img, "meta": meta})
@@ -1091,6 +1095,8 @@ def get_vector_at_position():
         except Exception as e:
             logger.debug(f"Coordinates load failed: {e}")
 
+        # The plot draws array row 0 at the top; mirror that here for the cursor->coordinate
+        # mapping. Reported values stay raw (no reflection, no negation).
         xlim = params.get("xlim")
         ylim = params.get("ylim")
 
@@ -1112,7 +1118,12 @@ def get_vector_at_position():
                 vis_y_min, vis_y_max = full_y_min, full_y_max
 
             target_x = vis_x_min + x_percent * (vis_x_max - vis_x_min)
-            target_y = vis_y_max - y_percent * (vis_y_max - vis_y_min)
+            # Top of the plot is array row 0 (data as given): if y increases down the rows,
+            # the top is the smallest y; otherwise it is the largest.
+            if float(cy_arr[-1, 0]) > float(cy_arr[0, 0]):
+                target_y = vis_y_min + y_percent * (vis_y_max - vis_y_min)
+            else:
+                target_y = vis_y_max - y_percent * (vis_y_max - vis_y_min)
 
             dist = np.sqrt((cx_arr - target_x) ** 2 + (cy_arr - target_y) ** 2)
             min_idx = np.unravel_index(np.nanargmin(dist), dist.shape)
@@ -1122,7 +1133,7 @@ def get_vector_at_position():
             xp = max(0.0, min(1.0, x_percent))
             yp = max(0.0, min(1.0, y_percent))
             j = int(round(xp * (W - 1)))
-            i = int(round((1.0 - yp) * (H - 1)))
+            i = int(round(yp * (H - 1)))  # array row 0 at the top
             i, j = max(0, min(H - 1, i)), max(0, min(W - 1, j))
 
             x_coords = np.asarray(getattr(pr, "x", None))
@@ -1133,8 +1144,9 @@ def get_vector_at_position():
             else:
                 coord_x = float(j)
             if y_coords is not None and y_coords.shape == var_arr.shape:
-                y_min, y_max = float(np.nanmin(y_coords)), float(np.nanmax(y_coords))
-                coord_y = y_max - yp * (y_max - y_min)
+                # top of the plot is array row 0 (data as given)
+                y_top, y_bot = float(y_coords[0, 0]), float(y_coords[-1, 0])
+                coord_y = y_top + yp * (y_bot - y_top)
             else:
                 coord_y = float(i)
 
@@ -1143,6 +1155,9 @@ def get_vector_at_position():
         ux_val = float(ux_arr[i, j]) if ux_arr is not None and ux_arr.shape == var_arr.shape else None
         uy_val = float(uy_arr[i, j]) if uy_arr is not None and uy_arr.shape == var_arr.shape else None
         value_val = float(var_arr[i, j])
+
+        # Values are reported exactly as stored (raw, no sign flip) — the plot conveys
+        # orientation via its axis direction, not by negating the data.
 
         return jsonify({
             "success": True,
@@ -1204,6 +1219,8 @@ def get_stats_value_at_position():
         except Exception as e:
             logger.debug(f"Coordinates load failed: {e}")
 
+        # The plot draws array row 0 at the top; mirror that here for the cursor->coordinate
+        # mapping. Reported values stay raw (no reflection, no negation).
         xlim = params.get("xlim")
         ylim = params.get("ylim")
 
@@ -1225,7 +1242,12 @@ def get_stats_value_at_position():
                 vis_y_min, vis_y_max = full_y_min, full_y_max
 
             target_x = vis_x_min + x_percent * (vis_x_max - vis_x_min)
-            target_y = vis_y_max - y_percent * (vis_y_max - vis_y_min)
+            # Top of the plot is array row 0 (data as given): if y increases down the rows,
+            # the top is the smallest y; otherwise it is the largest.
+            if float(cy_arr[-1, 0]) > float(cy_arr[0, 0]):
+                target_y = vis_y_min + y_percent * (vis_y_max - vis_y_min)
+            else:
+                target_y = vis_y_max - y_percent * (vis_y_max - vis_y_min)
 
             dist = np.sqrt((cx_arr - target_x) ** 2 + (cy_arr - target_y) ** 2)
             min_idx = np.unravel_index(np.nanargmin(dist), dist.shape)
@@ -1235,7 +1257,7 @@ def get_stats_value_at_position():
             xp = max(0.0, min(1.0, x_percent))
             yp = max(0.0, min(1.0, y_percent))
             j = int(round(xp * (W - 1)))
-            i = int(round((1.0 - yp) * (H - 1)))
+            i = int(round(yp * (H - 1)))  # array row 0 at the top
             i, j = max(0, min(H - 1, i)), max(0, min(W - 1, j))
 
             x_arr = np.asarray(getattr(pr, "x", None))
@@ -1246,8 +1268,9 @@ def get_stats_value_at_position():
             else:
                 coord_x = float(j)
             if y_arr is not None and y_arr.shape == var_arr.shape:
-                y_min, y_max = float(np.nanmin(y_arr)), float(np.nanmax(y_arr))
-                coord_y = y_max - yp * (y_max - y_min)
+                # top of the plot is array row 0 (data as given)
+                y_top, y_bot = float(y_arr[0, 0]), float(y_arr[-1, 0])
+                coord_y = y_top + yp * (y_bot - y_top)
             else:
                 coord_y = float(i)
 
@@ -1256,6 +1279,9 @@ def get_stats_value_at_position():
         ux_val = float(ux_arr[i, j]) if ux_arr is not None and ux_arr.shape == var_arr.shape else None
         uy_val = float(uy_arr[i, j]) if uy_arr is not None and uy_arr.shape == var_arr.shape else None
         val = float(var_arr[i, j])
+
+        # Values are reported exactly as stored (raw, no sign flip) — orientation is
+        # conveyed by the plot's axis direction, not by negating the data.
 
         return jsonify({
             "success": True,

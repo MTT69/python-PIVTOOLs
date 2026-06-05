@@ -126,19 +126,16 @@ def save_coordinates_from_config_distributed(
     dtype = [('x', object), ('y', object)]
     coords_struct = np.empty((num_passes,), dtype=dtype)
 
-    # Get image height from correlator for coordinate conversion
-    H = correlator.H
-
     for i in range(num_passes):
         if i in runs_to_save:
             x_centers = win_ctrs_x_list[i]
             y_centers = win_ctrs_y_list[i]
 
-            # Convert pixel coords to physical coords (y=0 at bottom, increasing upward)
-            # win_ctrs_y is in ascending pixel order [low_pixel_y, ..., high_pixel_y]
-            # physical_y = (H-1) - pixel_y converts to descending physical [high_phys, ..., low_phys]
-            # This already matches MATLAB convention: row 1 = highest y, row end = lowest y
-            y_physical = (H - 1) - y_centers
+            # Save coords in y-down image convention (matches the compute pipeline):
+            # win_ctrs_y is ascending pixel order [low_pixel_y, ..., high_pixel_y], i.e.
+            # row 0 = top of image. No flip applied — the saved coordinate y is the raw
+            # pixel center (ascending down the rows). Display layer flips to physical y-up.
+            y_physical = y_centers
 
             # Create meshgrid (MATLAB-style 1-based coords)
             x_grid, y_grid = np.meshgrid(x_centers + 1, y_physical + 1, indexing='xy')
@@ -267,9 +264,6 @@ def save_ensemble_coordinates_from_config_distributed(
     dtype = [('x', object), ('y', object)]
     coords_struct = np.empty((num_passes,), dtype=dtype)
 
-    # Get image height from correlator for coordinate conversion
-    H = correlator.H
-
     for i in range(num_passes):
         if i in runs_to_save:
             # Use cached window centers from correlator (handles single mode).
@@ -278,11 +272,11 @@ def save_ensemble_coordinates_from_config_distributed(
             x_centers = win_ctrs_x_list[i]
             y_centers = win_ctrs_y_list[i]
 
-            # Convert pixel coords to physical coords (y=0 at bottom, increasing upward)
-            # win_ctrs_y is in ascending pixel order [low_pixel_y, ..., high_pixel_y]
-            # physical_y = (H-1) - pixel_y converts to descending physical [high_phys, ..., low_phys]
-            # This already matches MATLAB convention: row 1 = highest y, row end = lowest y
-            y_physical = (H - 1) - y_centers
+            # Save coords in y-down image convention (matches the compute pipeline):
+            # win_ctrs_y is ascending pixel order [low_pixel_y, ..., high_pixel_y], i.e.
+            # row 0 = top of image. No flip applied — the saved coordinate y is the raw
+            # pixel center (ascending down the rows). Display layer flips to physical y-up.
+            y_physical = y_centers
 
             # Create meshgrid (MATLAB-style 1-based coords)
             x_grid, y_grid = np.meshgrid(x_centers + 1, y_physical + 1, indexing='xy')
@@ -442,22 +436,20 @@ def _create_ensemble_struct_all_passes(
             continue  # Skip filling for non-selected passes
         pass_result = ensemble_result.passes[global_pass_idx]
 
-        # Velocity fields - no row reversal needed since win_ctrs_y is now ascending
-        # pixel→physical conversion already produces correct row order for MATLAB
-        # Negate uy because +uy in image coords means downward, but we want +uy = upward
+        # Velocity fields - saved raw in y-down image convention (+uy = downward).
+        # No row reversal, no sign flip. Display layer negates uy for physical y-up view.
         ux_physical = pass_result.ux_mat
-        uy_physical = -pass_result.uy_mat if pass_result.uy_mat is not None else None
+        uy_physical = pass_result.uy_mat
 
         if ux_physical is not None:
             ensemble_struct['ux'][local_idx] = _convert_to_half_precision(ux_physical, 'ux')
         if uy_physical is not None:
             ensemble_struct['uy'][local_idx] = _convert_to_half_precision(uy_physical, 'uy')
 
-        # Stress tensors - no row reversal needed
-        # UV_stress is negated because V is negated (UV = u'v' -> u'(-v') = -u'v')
+        # Stress tensors - saved raw in y-down image convention (V not negated, so UV not flipped)
         UU_uncorrected = pass_result.UU_stress
         VV_uncorrected = pass_result.VV_stress
-        UV_uncorrected = -pass_result.UV_stress if pass_result.UV_stress is not None else None
+        UV_uncorrected = pass_result.UV_stress
 
         # Initialize correction terms as None (will be populated if gradient correction is applied)
         UU_window_corr = None
@@ -594,17 +586,17 @@ def _create_ensemble_struct_all_passes(
         if pass_result.b_mask is not None:
             ensemble_struct['b_mask'][local_idx] = pass_result.b_mask.astype(bool)
 
-        # Predictor fields - no row reversal needed, negate y component for physical coords
+        # Predictor fields - saved raw in y-down image convention (pred_y not negated)
         if pass_result.pred_x is not None:
             ensemble_struct['pred_x'][local_idx] = _convert_to_half_precision(pass_result.pred_x, 'pred_x')
         if pass_result.pred_y is not None:
-            ensemble_struct['pred_y'][local_idx] = _convert_to_half_precision(-pass_result.pred_y, 'pred_y')
+            ensemble_struct['pred_y'][local_idx] = _convert_to_half_precision(pass_result.pred_y, 'pred_y')
 
         # Padded predictor fields (on previous pass grid + boundary padding)
         if pass_result.padded_pred_x is not None:
             ensemble_struct['padded_pred_x'][local_idx] = _convert_to_half_precision(pass_result.padded_pred_x, 'padded_pred_x')
         if pass_result.padded_pred_y is not None:
-            ensemble_struct['padded_pred_y'][local_idx] = _convert_to_half_precision(-pass_result.padded_pred_y, 'padded_pred_y')
+            ensemble_struct['padded_pred_y'][local_idx] = _convert_to_half_precision(pass_result.padded_pred_y, 'padded_pred_y')
 
     return ensemble_struct
 
@@ -694,13 +686,12 @@ def _create_piv_struct_all_passes(
             continue  # Skip filling for non-selected passes
         pass_result = piv_result.passes[global_pass_idx]
 
-        # No row reversal needed since win_ctrs_y is now ascending
-        # pixel→physical conversion already produces correct row order for MATLAB
-        # Negate uy because +uy in image coords means downward, but we want +uy = upward
+        # Saved raw in y-down image convention (+uy = downward). No row reversal, no sign
+        # flip. Display layer negates uy for the physical y-up view.
         if pass_result.ux_mat is not None:
             piv_struct['ux'][local_idx] = _convert_to_half_precision(pass_result.ux_mat, 'ux')
         if pass_result.uy_mat is not None:
-            piv_struct['uy'][local_idx] = _convert_to_half_precision(-pass_result.uy_mat, 'uy')
+            piv_struct['uy'][local_idx] = _convert_to_half_precision(pass_result.uy_mat, 'uy')
 
         # Use b_mask from pass_result (no row reversal needed)
         if pass_result.b_mask is not None:
@@ -729,12 +720,10 @@ def _create_piv_struct_all_passes(
         if pass_result.n_windows is not None:
             piv_struct['n_windows'][local_idx] = pass_result.n_windows
         # predictor_field shape is (n_win_y, n_win_x, 2) where dim 2 is [uy, ux]
-        # Same grid as ux/uy — the actual predictor correction added to correlation displacement
-        # Negate uy component (index 0) for physical coords
+        # Same grid as ux/uy — the actual predictor correction added to correlation displacement.
+        # Saved raw in y-down image convention (uy component not negated).
         if pass_result.predictor_field is not None:
-            pred = pass_result.predictor_field.copy()
-            pred[..., 0] = -pred[..., 0]  # Negate uy component
-            piv_struct['predictor_field'][local_idx] = _convert_to_half_precision(pred, 'predictor_field')
+            piv_struct['predictor_field'][local_idx] = _convert_to_half_precision(pass_result.predictor_field, 'predictor_field')
         if pass_result.window_size is not None:
             piv_struct['window_size'][local_idx] = pass_result.window_size
     
@@ -910,11 +899,8 @@ def load_ensemble_result(
 
     Notes
     -----
-    Sign conventions are reversed during load to match save conventions:
-    - uy was negated on save -> negate back on load
-    - UV_stress was negated on save -> negate back on load
-    - pred_y was negated on save -> negate back on load
-    - padded_pred_y was negated on save -> negate back on load
+    Data is stored raw in y-down image convention (matching the compute pipeline),
+    so uy / UV_stress / pred_y / padded_pred_y are loaded without any sign reversal.
     """
     mat = scipy.io.loadmat(str(file_path), struct_as_record=False, squeeze_me=True)
 
@@ -951,7 +937,8 @@ def _struct_to_ensemble_pass_result(struct) -> PIVEnsemblePassResult:
     """
     Convert MATLAB struct to PIVEnsemblePassResult.
 
-    Reverses sign conventions applied during save.
+    Data is stored raw in y-down image convention (matching the compute pipeline),
+    so no sign reversal is applied on load.
     """
     def get_array(name: str) -> Optional[np.ndarray]:
         """Safely get attribute and convert to numpy array."""
@@ -966,30 +953,22 @@ def _struct_to_ensemble_pass_result(struct) -> PIVEnsemblePassResult:
             arr = arr.astype(np.float32)
         return arr
 
-    # Core velocity fields - uy was negated on save
+    # Core velocity fields - saved raw in y-down image convention (no negation to reverse)
     ux = get_array('ux')
     uy = get_array('uy')
-    if uy is not None:
-        uy = -uy  # Reverse negation from save
 
-    # Stress tensors - UV_stress was negated on save
+    # Stress tensors - saved raw in y-down image convention (no negation to reverse)
     UU_stress = get_array('UU_stress')
     VV_stress = get_array('VV_stress')
     UV_stress = get_array('UV_stress')
-    if UV_stress is not None:
-        UV_stress = -UV_stress  # Reverse negation from save
 
-    # Predictor fields - pred_y was negated on save
+    # Predictor fields - saved raw in y-down image convention (no negation to reverse)
     pred_x = get_array('pred_x')
     pred_y = get_array('pred_y')
-    if pred_y is not None:
-        pred_y = -pred_y  # Reverse negation from save
 
-    # Padded predictor fields - padded_pred_y was negated on save
+    # Padded predictor fields - saved raw in y-down image convention (no negation to reverse)
     padded_pred_x = get_array('padded_pred_x')
     padded_pred_y = get_array('padded_pred_y')
-    if padded_pred_y is not None:
-        padded_pred_y = -padded_pred_y  # Reverse negation from save
 
     # Window size (tuple)
     window_size_val = getattr(struct, 'window_size', None)

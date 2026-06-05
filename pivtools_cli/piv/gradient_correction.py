@@ -26,9 +26,11 @@ K-space fitting note:
     L²/12 ≈ 85 px² vs typical σ_A ≈ 2-5 px² (particle term is ~3-6% of total).
 
 Sign convention notes:
-- This module operates on data in physical coordinates (as saved to .mat files)
-- Y decreases with row index (image convention), so dy is negative
-- numpy.gradient correctly handles negative spacing
+- This module operates on data in y-down image convention (as saved to .mat files):
+  +uy is downward and pixel/physical y increases with row index, so dy is positive.
+- The corrected stresses are independent of the dy sign: UU/VV corrections use squared
+  gradients, and the UV cross-term flips sign consistently with the (un-negated) raw
+  UV_stress. dy is kept positive only to honestly reflect the image convention.
 """
 import logging
 from typing import Optional, Tuple
@@ -74,7 +76,8 @@ def compute_gradient_corrections(
     dx : float
         Grid spacing in x (positive)
     dy : float
-        Grid spacing in y (SIGNED - negative if Y decreases with row index)
+        Grid spacing in y (SIGNED). Positive in the y-down image convention
+        (y increases with row index). Corrected stresses are independent of its sign.
     window_size : Tuple[int, int]
         Particle window dimensions (L_y, L_x) in pixels
 
@@ -173,21 +176,21 @@ def apply_gradient_correction_to_pass(
     """
     Apply gradient correction to a single pass result.
 
-    This function operates on data that has ALREADY been converted to physical
-    coordinates (uy negated, UV_stress negated).
+    This function operates on data in y-down image convention (uy and UV_stress
+    saved raw, not negated) — the same convention used by the compute pipeline.
 
     Parameters
     ----------
     ux : np.ndarray
-        X-velocity field (physical coords)
+        X-velocity field (image coords)
     uy : np.ndarray
-        Y-velocity field (physical coords, already negated)
+        Y-velocity field (image coords, +uy downward, not negated)
     UU_stress : np.ndarray
         Raw UU Reynolds stress
     VV_stress : np.ndarray
         Raw VV Reynolds stress
     UV_stress : np.ndarray
-        Raw UV Reynolds stress (physical coords, already negated)
+        Raw UV Reynolds stress (image coords, not negated)
     sig_A_x : np.ndarray or None
         Particle image VARIANCE in x (σ_A_x²) from autocorrelation fit.
         This is already a variance value - use directly without squaring.
@@ -241,17 +244,15 @@ def apply_gradient_correction_to_pass(
     else:
         dx = 1.0
 
-    # Y spacing in physical coordinates
-    # Physical Y = (H-1) - pixel_y, so if pixel_y increases, physical_y decreases
-    # For consecutive rows: dy_physical = -dy_pixel (assuming pixel Y increases with row)
+    # Y spacing in y-down image convention: y increases with row index, so dy is positive.
+    # (The corrected stresses do not depend on this sign — see module docstring — but we
+    # keep it positive to honestly reflect the stored convention.)
     if len(win_ctrs_y) > 1:
-        dy_pixel = float(win_ctrs_y[1] - win_ctrs_y[0])
-        # Physical Y decreases as pixel Y increases, so negate
-        dy = -dy_pixel
+        dy = float(win_ctrs_y[1] - win_ctrs_y[0])
     else:
-        dy = -1.0
+        dy = 1.0
 
-    logging.debug(f"Gradient correction: dx={dx:.2f}, dy={dy:.2f}, window_size={window_size} (physical coords)")
+    logging.debug(f"Gradient correction: dx={dx:.2f}, dy={dy:.2f}, window_size={window_size} (image coords)")
 
     # Apply correction
     (UU_corrected, VV_corrected, UV_corrected,

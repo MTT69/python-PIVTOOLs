@@ -19,7 +19,6 @@ from flask_cors import CORS
 from flask_compress import Compress
 from loguru import logger
 import os
-from pivtools_gui.calibration.app.views import calibration_bp
 from pivtools_core.config import get_config, reload_config, Config
 from pivtools_core.image_handling.load_images import create_piv_frame_reader, read_pair, load_mask_for_camera
 from pivtools_core.image_handling.path_utils import build_piv_camera_path, validate_images_generic
@@ -72,7 +71,11 @@ api_bp = Blueprint('api', __name__, url_prefix='/backend')
 app.register_blueprint(vector_plot_bp, url_prefix='/backend/plot')
 app.register_blueprint(transform_bp, url_prefix='/backend/plot')
 app.register_blueprint(masking_bp, url_prefix='/backend')
-app.register_blueprint(calibration_bp, url_prefix='/backend')
+# Legacy calibration v1 blueprint deactivated 2026-06-05 — superseded by calibration2.
+# The pivtools_gui.calibration package remains on disk (still imports job_manager for
+# video_maker and global_coordinate_alignment for PIV runs); only its GUI routes are off.
+from pivtools_gui.calibration2.app import calibration2_bp
+app.register_blueprint(calibration2_bp, url_prefix='/backend')
 app.register_blueprint(video_maker_bp, url_prefix='/backend/video')
 # app.register_blueprint(stereo_bp, url_prefix='/backend')
 app.register_blueprint(statistics_bp, url_prefix='/backend')

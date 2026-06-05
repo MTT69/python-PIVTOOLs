@@ -1,17 +1,14 @@
 paths:
   base_paths:
-  - E:\test
+  - /Volumes/STORAGE/calibration_check/planar/PIV
   source_paths:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\stereo_images
+  - /Volumes/STORAGE/calibration_check/planar/source_piv/cam1
   active_paths:
   - 0
   camera_numbers:
   - 1
-  - 2
-  camera_count: 2
-  camera_subfolders:
-  - camera1
-  - camera2
+  camera_count: 1
+  camera_subfolders: []
 images:
   image_format:
   - B%05d_A.tif
@@ -26,12 +23,12 @@ images:
   pair_stride: 1
   pairing_preset: ab_format
   num_loops: 1
-  num_images: 50
+  num_images: 1
   image_shape:
-  - 2240
+  - 2048
   - 2048
 batches:
-  size: 10
+  size: 1
 logging:
   file: pypiv.log
   level: INFO
@@ -40,11 +37,11 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 4
-  dask_workers_per_node: 5
-  dask_memory_limit: 10GB
+  omp_threads: 5
+  dask_workers_per_node: 1
+  dask_memory_limit: 12GB
   dask_max_in_flight_per_worker: 2
-  open_dashboard: true
+  open_dashboard: false
   dask_nanny: false
   post_processing_workers: 16
   always_batch: true
@@ -95,7 +92,7 @@ video:
   fps: 30
   crf: 15
   resolution: 4k
-  source_endpoint: stereo
+  source_endpoint: regular
 statistics:
   enabled_methods:
     mean_peak_height: false
@@ -121,7 +118,7 @@ statistics:
   gamma_radius: 4
   save_figures: true
   type_name: instantaneous
-  source_endpoint: stereo
+  source_endpoint: regular
 instantaneous_piv:
   window_size:
   - - 128
@@ -135,6 +132,7 @@ instantaneous_piv:
   - 50
   - 50
   runs:
+  - 2
   - 3
   time_resolved: false
   window_type: gaussian
@@ -142,7 +140,7 @@ instantaneous_piv:
   peak_finder: gauss3
   secondary_peak: false
   predictor_smoothing: false
-  save_mode: minimal
+  save_mode: full
   save_compression: false
 ensemble_piv:
   fit_method: kspace
@@ -197,11 +195,11 @@ ensemble_piv:
     uy: 0
     edge: bottom
 calibration:
-  image_format: planar_calibration_plate_%02d.tif
-  num_images: 20
+  image_format: calib%05d.tif
+  num_images: 10
   image_type: standard
   zero_based_indexing: false
-  use_camera_subfolders: true
+  use_camera_subfolders: false
   subfolder: enhanced
   camera_subfolders:
   - cam1
@@ -303,11 +301,13 @@ calibration:
     datum_camera: 1
     datum_frame: 1
   calibration_sources:
-  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\#current_processing\4000_images_channel\stereo_images\calibrationimages
+  - /Volumes/STORAGE/calibration_check/planar/source_calib/Cam1
   global_coordinates:
     enabled: true
     datum_camera: 1
-    datum_pixel: null
+    datum_pixel:
+    - 262.2168509862043
+    - 1788.70185839699
     datum_physical:
     - 0
     - 10
@@ -326,28 +326,10 @@ calibration:
     stereo_config: transmission
     datum_frame: 1
     datum_camera: 1
-    cam1_fiducials:
-      origin:
-      - 3311.537353515625
-      - 751.3444213867188
-      x_axis:
-      - 3904.228515625
-      - 751.1295776367188
-      y_axis:
-      - 3307.075927734375
-      - 542.399658203125
-    cam2_fiducials:
-      origin:
-      - 1985.91259765625
-      - 638.464111328125
-      x_axis:
-      - 1684.95361328125
-      - 638.5454711914062
-      y_axis:
-      - 1990.9290771484375
-      - 435.236572265625
-    cam1_clicked_level: peak
-    cam2_clicked_level: trough
+    cam1_fiducials: null
+    cam2_fiducials: null
+    cam1_clicked_level: null
+    cam2_clicked_level: null
     cam1_pose_levels:
       '1': peak
       '2': peak
@@ -389,4 +371,33 @@ transforms:
   cameras:
     1:
       operations: []
-  source_endpoint: stereo
+  source_endpoint: regular
+calibration2:
+  active: dotboard
+  dt: 1
+  datum_frame: 1
+  dotboard:
+    dot_spacing_mm: 14
+    world_frame:
+      origin:
+      - 259
+      - 1789.0635986328125
+      x_axis:
+      - 450
+      - 1789
+      y_axis:
+      - 259
+      - 1598
+      origin_mm:
+      - 10
+      - 10
+  camera_pair:
+  - 1
+  - 2
+  charuco:
+    squares_h: 10
+    squares_v: 9
+    square_size: 0.03
+    marker_ratio: 0.5
+    aruco_dict: DICT_4X4_1000
+    min_corners: 6

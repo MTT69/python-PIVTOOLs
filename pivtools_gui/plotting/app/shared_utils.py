@@ -430,6 +430,9 @@ def load_and_plot_data(
         coords = mat["coordinates"]
         cx, cy = extract_coordinates(coords, effective_run)
 
+    # Plot the data exactly as stored — no coordinate reflection, no sign negation.
+    # The renderer orients the y-axis to the array's row order (row 0 at top), so the
+    # stored coordinates alone decide whether 0 is at the top (y-down) or bottom (y-up).
     settings = make_scalar_settings(
         get_config(),
         variable=var,

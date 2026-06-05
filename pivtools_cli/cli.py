@@ -2538,6 +2538,10 @@ def main():
     )
     selfcal_parser.set_defaults(func=self_calibrate_command)
 
+    # calibration2 (unified pinhole calibration) subcommands
+    from pivtools_cli.calibration2_cli import register_calibration2_subparsers
+    register_calibration2_subparsers(subparsers)
+
     args = parser.parse_args()
 
     if not args.command:

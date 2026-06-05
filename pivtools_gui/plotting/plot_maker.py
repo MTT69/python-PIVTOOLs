@@ -203,7 +203,10 @@ def plot_scalar_field(variable, mask, settings): # efe
     # and matplotlib falls back to default limits. This is essential for
     # stereo data where coordinates are in world space (mm).
     ax.set_xlim(np.nanmin(X), np.nanmax(X))
-    ax.set_ylim(np.nanmin(Y), np.nanmax(Y))
+    # Orient the y-axis to the data's own row order: array row 0 at the TOP, last row at the
+    # bottom. The stored coordinates decide the labels (uncalibrated y-down -> 0 at top;
+    # calibrated y-up -> 0 at bottom). No detection, no per-source branch — just plot as given.
+    ax.set_ylim(float(Y[-1, 0]), float(Y[0, 0]))
 
     sm = ScalarMappable(norm=norm, cmap=cmap)
     sm.set_array([])  # required for some Matplotlib versions

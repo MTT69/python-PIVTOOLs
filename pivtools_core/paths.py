@@ -1,5 +1,17 @@
+import re
 from pathlib import Path
 from typing import Optional, Tuple, Union
+
+
+def vector_glob_from_format(vector_format: str) -> str:
+    """Glob matching PIV vector files from a printf ``vector_format``.
+
+    ``"%05d.mat" -> "*.mat"``, ``"B%05d.mat" -> "B*.mat"``. The hardcoded ``"B*.mat"``
+    default missed the standard ``"%05d.mat"`` naming, so callers must derive the glob
+    from config rather than guessing. Non-vector ``.mat`` files (``coordinates.mat``,
+    ``mask.mat``) are filtered downstream, so a bare ``"*.mat"`` is safe.
+    """
+    return re.sub(r"%[0-9]*d", "*", str(vector_format))
 
 
 def get_data_paths(

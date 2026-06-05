@@ -26,6 +26,17 @@ def format_to_glob(fmt: str) -> str:
     return re.sub(r'%\d*d', '*', fmt)
 
 
+def _glob_images(directory: Path, pattern: str) -> List[Path]:
+    """glob() a directory, excluding dotfiles.
+
+    macOS writes AppleDouble sidecar files ("._foo.tif") next to real images on
+    FAT/exFAT/network volumes. These sort before the real files (".") and would
+    otherwise poison pattern suggestion (yielding "._foo%05d.tif") and file counts.
+    Any leading-dot name (hidden file or AppleDouble sidecar) is excluded.
+    """
+    return [f for f in directory.glob(pattern) if not f.name.startswith(".")]
+
+
 def build_calibration_camera_path(
     config: "Config",
     source_path_idx: int = 0,
@@ -419,10 +430,10 @@ def validate_images_generic(
         if camera_path.exists() and camera_path.is_dir():
             all_images = []
             if image_type == "lavision_im7":
-                all_images = list(camera_path.glob("*.im7"))
+                all_images = _glob_images(camera_path, "*.im7")
             else:
                 for ext in ["*.tif", "*.tiff", "*.png", "*.jpg", "*.jpeg"]:
-                    all_images.extend(camera_path.glob(ext))
+                    all_images.extend(_glob_images(camera_path, ext))
             if all_images:
                 all_image_names = [f.name for f in sorted(all_images)]
                 result["sample_files"] = all_image_names[:5]
@@ -446,7 +457,7 @@ def validate_images_generic(
             # Try to find .set files in parent directory and suggest
             parent_dir = set_file.parent
             if parent_dir.exists():
-                set_files = list(parent_dir.glob("*.set"))
+                set_files = _glob_images(parent_dir, "*.set")
                 if set_files:
                     result["suggested_pattern"] = str(set_files[0])
                     result["sample_files"] = [f.name for f in set_files[:5]]
@@ -497,7 +508,7 @@ def validate_images_generic(
         if not cine_file.exists():
             result["error"] = f"CINE file not found: {cine_file}"
             # Try to find .cine files and suggest
-            cine_files = list(camera_path.glob("*.cine"))
+            cine_files = _glob_images(camera_path, "*.cine")
             if cine_files:
                 result["suggested_pattern"] = cine_files[0].name
                 result["sample_files"] = [f.name for f in cine_files[:5]]
@@ -525,7 +536,7 @@ def validate_images_generic(
     elif image_type == "lavision_im7":
         # Count .im7 files in directory
         pattern = format_to_glob(image_format)
-        matching_files = sorted(camera_path.glob(pattern))
+        matching_files = sorted(_glob_images(camera_path, pattern))
 
         if not matching_files:
             try:
@@ -538,7 +549,7 @@ def validate_images_generic(
             result["error"] = error_msg
 
             # Try to find .im7 files and suggest
-            im7_files = list(camera_path.glob("*.im7"))
+            im7_files = _glob_images(camera_path, "*.im7")
             if im7_files:
                 suggested = _suggest_pattern(im7_files[0].name, "im7")
                 result["suggested_pattern"] = suggested
@@ -569,7 +580,7 @@ def validate_images_generic(
     else:
         # Standard formats
         pattern = format_to_glob(image_format)
-        matching_files = sorted(camera_path.glob(pattern))
+        matching_files = sorted(_glob_images(camera_path, pattern))
 
         if not matching_files:
             try:
@@ -584,7 +595,7 @@ def validate_images_generic(
             # Try to find image files and suggest pattern
             all_images = []
             for ext in ["*.tif", "*.tiff", "*.png", "*.jpg", "*.jpeg"]:
-                all_images.extend(camera_path.glob(ext))
+                all_images.extend(_glob_images(camera_path, ext))
 
             if all_images:
                 all_image_names = [f.name for f in sorted(all_images)]
@@ -837,10 +848,10 @@ def validate_single_pattern(
         if camera_path.exists() and camera_path.is_dir():
             all_images = []
             if image_type == "lavision_im7":
-                all_images = list(camera_path.glob("*.im7"))
+                all_images = _glob_images(camera_path, "*.im7")
             else:
                 for ext in ["*.tif", "*.tiff", "*.png", "*.jpg", "*.jpeg"]:
-                    all_images.extend(camera_path.glob(ext))
+                    all_images.extend(_glob_images(camera_path, ext))
             if all_images:
                 all_image_names = [f.name for f in sorted(all_images)]
                 result["sample_files"] = all_image_names[:5]
@@ -872,7 +883,7 @@ def validate_single_pattern(
 
     # Convert pattern to glob pattern
     glob_pattern = format_to_glob(pattern)
-    matching_files = sorted(camera_path.glob(glob_pattern))
+    matching_files = sorted(_glob_images(camera_path, glob_pattern))
 
     # Calculate the first expected filename
     start_idx = 0 if zero_based_indexing else 1
@@ -888,10 +899,10 @@ def validate_single_pattern(
     # Find all image files (for suggestions)
     all_images = []
     if image_type == "lavision_im7":
-        all_images = list(camera_path.glob("*.im7"))
+        all_images = _glob_images(camera_path, "*.im7")
     else:
         for ext in ["*.tif", "*.tiff", "*.png", "*.jpg", "*.jpeg"]:
-            all_images.extend(camera_path.glob(ext))
+            all_images.extend(_glob_images(camera_path, ext))
     all_image_names = [f.name for f in sorted(all_images)] if all_images else []
 
     if not matching_files:

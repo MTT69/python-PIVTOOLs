@@ -430,7 +430,7 @@ def _select_variable_from_arrs(
 
 
 def _compute_global_limits_from_files(
-    files: List[Path], var: str, settings: PlotSettings, run_index: int = 0
+    files: List[Path], var: str, settings: PlotSettings, run_index: int = 0,
 ) -> Tuple[float, float, bool, float, float]:
     """Compute limits using parallel processing for efficiency."""
     if settings.lower_limit is not None and settings.upper_limit is not None:
@@ -692,11 +692,15 @@ def make_video_from_scalar(
     settings: Optional[PlotSettings] = None,
     cancel_event=None,
     run_index: int = 0,
+    data_source: str = "calibrated",
 ) -> dict:
     """
     Optimized video generation with batching and vectorization.
     Validates inputs, handles errors gracefully, and optimizes memory usage.
     run_index: int, default 0 - specifies which run (0-based index) to extract from multi-run .mat files (e.g., 4D arrays with shape (R, N, H, W)).
+    data_source: str, default "calibrated" - data source type. Fields are rendered exactly
+        as stored, with no sign negation. Orientation is image-native (array row 0 maps to the
+        top of the frame), matching the y-down/y-up convention of the plotting pages.
     """
     t0 = time.time()
     folder = Path(folder)
@@ -1136,6 +1140,7 @@ class VideoMaker:
                 settings=settings,
                 cancel_event=cancel_event,
                 run_index=run - 1,  # Convert to 0-based
+                data_source=data_source,
             )
 
             # Verify video is ready
