@@ -1555,20 +1555,6 @@ video:
     # All calibration settings are now unified under the 'calibration' block
 
     @property
-    def calibration2(self) -> dict:
-        """The unified calibration config block (pinhole-based calibration package).
-
-        Single accessor so the CLI and GUI read one source. Returns the raw block (empty
-        dict if absent); per-key defaults live with their consumers (CLI argparse, the
-        board registry) and are mirrored in the default-config template.
-
-        Reads the merged ``calibration`` block (the legacy ``calibration2`` block was
-        folded in during the v1 retirement). The property keeps its name until the
-        package rename (R4); callers are repointed then.
-        """
-        return dict(self.data.get("calibration", {}) or {})
-
-    @property
     def calibration_image_format(self) -> str:
         """Return calibration image filename pattern.
 

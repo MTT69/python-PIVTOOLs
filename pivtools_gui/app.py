@@ -71,12 +71,12 @@ api_bp = Blueprint('api', __name__, url_prefix='/backend')
 app.register_blueprint(vector_plot_bp, url_prefix='/backend/plot')
 app.register_blueprint(transform_bp, url_prefix='/backend/plot')
 app.register_blueprint(masking_bp, url_prefix='/backend')
-# Calibration is calibration2 (the legacy v1 `calibration` package was retired — its
-# shared leaves relocated to pivtools_gui/services, calibration2/detection, and
+# Calibration is calibration (the legacy v1 `calibration` package was retired — its
+# shared leaves relocated to pivtools_gui/services, calibration/detection, and
 # stereo_reconstruction).
-from pivtools_gui.calibration2.app import calibration2_bp, calibration2_stepped_bp
-app.register_blueprint(calibration2_bp, url_prefix='/backend')
-app.register_blueprint(calibration2_stepped_bp, url_prefix='/backend')
+from pivtools_gui.calibration.app import calibration_bp, calibration_stepped_bp
+app.register_blueprint(calibration_bp, url_prefix='/backend')
+app.register_blueprint(calibration_stepped_bp, url_prefix='/backend')
 app.register_blueprint(video_maker_bp, url_prefix='/backend/video')
 # app.register_blueprint(stereo_bp, url_prefix='/backend')
 app.register_blueprint(statistics_bp, url_prefix='/backend')

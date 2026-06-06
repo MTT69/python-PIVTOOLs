@@ -1024,9 +1024,9 @@ def main():
     )
     video_parser.set_defaults(func=video_command)
 
-    # calibration2 (unified pinhole calibration) subcommands
-    from pivtools_cli.calibration2_cli import register_calibration2_subparsers
-    register_calibration2_subparsers(subparsers)
+    # calibration (unified pinhole calibration) subcommands
+    from pivtools_cli.calibration_cli import register_calibration_subparsers
+    register_calibration_subparsers(subparsers)
 
     args = parser.parse_args()
 
