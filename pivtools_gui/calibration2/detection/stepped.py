@@ -29,7 +29,7 @@ from typing import Optional
 import numpy as np
 from scipy.spatial import cKDTree
 
-from pivtools_gui.calibration.grid_detection import detect_dotboard_blobs, to_grayscale_2d
+from .grid_detection import detect_dotboard_blobs, to_grayscale_2d
 
 from .base import DetectionResult
 from .stepped_levels import (

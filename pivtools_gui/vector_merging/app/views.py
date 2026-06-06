@@ -18,7 +18,7 @@ from loguru import logger
 from pivtools_core.config import get_config
 from pivtools_core.paths import get_data_paths
 
-from ...calibration.services.job_manager import job_manager
+from ...services.job_manager import job_manager
 from ...utils import camera_number
 from ..vector_merger import VectorMerger
 

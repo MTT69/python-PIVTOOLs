@@ -18,7 +18,7 @@ from loguru import logger
 from pivtools_core.config import Config, get_config, reload_config
 from pivtools_core.image_handling.calibration_loader import get_calibration_frame_count
 
-from pivtools_gui.calibration.calibration_io import (
+from .calibration_io import (
     ARUCO_DICT_MAP,
     create_charuco_detector,
 )

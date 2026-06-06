@@ -14,7 +14,7 @@ from flask import Blueprint, jsonify, request
 from loguru import logger
 
 from pivtools_core.config import get_config
-from pivtools_gui.calibration.services.job_manager import job_manager
+from pivtools_gui.services.job_manager import job_manager
 from pivtools_gui.transforms import (
     VALID_TRANSFORMATIONS,
     VectorTransformProcessor,

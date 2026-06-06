@@ -19,7 +19,7 @@ from loguru import logger
 from pivtools_core.config import Config, get_config, reload_config
 from pivtools_core.image_handling.calibration_loader import get_calibration_frame_count
 
-from pivtools_gui.calibration.grid_detection import (
+from pivtools_gui.calibration2.detection.grid_detection import (
     to_grayscale_2d,
     detect_grid_automatic,
 )

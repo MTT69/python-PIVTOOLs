@@ -32,7 +32,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from pivtools_core.config import get_config, reload_config
 from pivtools_core.paths import get_data_paths
 from pivtools_core.vector_loading import load_coords_from_directory, read_mat_contents
-from pivtools_gui.calibration.vector_calibration_production import _pixels_to_world_mm
+from .pixel_world import _pixels_to_world_mm
 from pivtools_gui.utils.worker_pool import worker_initializer, get_max_workers
 
 # ===================== CONFIGURATION VARIABLES =====================

@@ -10,7 +10,7 @@ from scipy.io import loadmat
 
 from pivtools_core.config import get_config
 from pivtools_core.paths import get_data_paths
-from pivtools_gui.calibration.services.job_manager import job_manager
+from pivtools_gui.services.job_manager import job_manager
 from pivtools_gui.video_maker.video_maker import (
     VideoMaker,
     find_all_valid_runs_from_file,

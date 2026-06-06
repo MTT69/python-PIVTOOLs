@@ -46,7 +46,7 @@ from pivtools_core.image_handling.calibration_loader import (
     read_calibration_image,
     validate_calibration_images,
 )
-from pivtools_gui.calibration.services.job_manager import job_manager
+from pivtools_gui.services.job_manager import job_manager
 from pivtools_gui.utils import (
     camera_number,
     get_display_contrast_stats,

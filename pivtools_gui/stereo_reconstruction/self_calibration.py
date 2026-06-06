@@ -198,7 +198,7 @@ def estimate_disparity_sensitivity(
         of the disparity.  For horizontal stereo this is ~[1, 0]; for
         transmission it may be ~[0, -1] or any direction.
     """
-    from pivtools_gui.calibration.global_coordinate_alignment import (
+    from .global_coordinate_alignment import (
         _pixels_to_world_mm,
     )
 

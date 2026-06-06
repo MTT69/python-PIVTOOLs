@@ -1,8 +1,8 @@
 """calibration2.detection.dotboard — dot-grid detector behind the unified interface.
 
 Wraps the production BFS + homography detector
-(``pivtools_gui.calibration.grid_detection.detect_grid_automatic``), which is the
-hard-won perspective-robust dot finder (180/180 on tilted boards). We reuse it
+(``grid_detection.detect_grid_automatic``, a sibling module in this package), which is
+the hard-won perspective-robust dot finder (180/180 on tilted boards). We reuse it
 verbatim and only repackage its output into a ``DetectionResult``.
 
 Note on indexing: the BFS grid indices are internally consistent *per detection*
@@ -21,7 +21,7 @@ from typing import Optional
 import cv2
 import numpy as np
 
-from pivtools_gui.calibration.grid_detection import detect_grid_automatic
+from .grid_detection import detect_grid_automatic
 
 from .base import DetectionResult
 

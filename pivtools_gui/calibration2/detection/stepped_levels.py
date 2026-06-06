@@ -31,7 +31,7 @@ import numpy as np
 from loguru import logger
 from scipy.spatial import cKDTree
 
-from pivtools_gui.calibration.grid_detection import (
+from .grid_detection import (
     _bfs_grid_walk_dict,
     _filter_connected_dict,
     _find_grid_directions,

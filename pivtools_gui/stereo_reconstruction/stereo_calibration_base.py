@@ -24,7 +24,7 @@ from scipy.io import savemat
 from pivtools_core.config import Config, get_config
 from pivtools_core.image_handling.calibration_loader import read_calibration_image
 
-from pivtools_gui.calibration.calibration_io import (
+from .calibration_io import (
     is_container_format,
     find_calibration_images,
 )
@@ -727,14 +727,14 @@ class BaseStereoCalibrator(ABC):
                 figures_dir.mkdir(parents=True, exist_ok=True)
 
                 if info1 is not None and isinstance(grid_data_1, dict):
-                    from pivtools_gui.calibration.calibration_figures import make_detection_figure
+                    from .calibration_figures import make_detection_figure
                     make_detection_figure(
                         img1, found1, grid_data_1, info1,
                         figures_dir / f"detection_cam{cam1_val}_{frame_idx:03d}.png",
                         title=f"Cam{cam1_val} {filename}",
                     )
                 if info2 is not None and isinstance(grid_data_2, dict):
-                    from pivtools_gui.calibration.calibration_figures import make_detection_figure
+                    from .calibration_figures import make_detection_figure
                     make_detection_figure(
                         img2, found2, grid_data_2, info2,
                         figures_dir / f"detection_cam{cam2_val}_{frame_idx:03d}.png",
@@ -742,7 +742,7 @@ class BaseStereoCalibrator(ABC):
                     )
 
                 if info1 is not None and 'board_params' in info1:
-                    from pivtools_gui.calibration.calibration_figures import make_charuco_detection_figure
+                    from .calibration_figures import make_charuco_detection_figure
                     make_charuco_detection_figure(
                         img1, grid1,
                         grid_data_1 if isinstance(grid_data_1, np.ndarray) else None,
@@ -751,7 +751,7 @@ class BaseStereoCalibrator(ABC):
                         title=f"Cam{cam1_val} {filename}",
                     )
                 if info2 is not None and 'board_params' in info2:
-                    from pivtools_gui.calibration.calibration_figures import make_charuco_detection_figure
+                    from .calibration_figures import make_charuco_detection_figure
                     make_charuco_detection_figure(
                         img2, grid2,
                         grid_data_2 if isinstance(grid_data_2, np.ndarray) else None,

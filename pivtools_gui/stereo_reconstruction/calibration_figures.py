@@ -122,7 +122,7 @@ def make_detection_figure(
         Title prefix for the figure.
     """
     try:
-        from pivtools_gui.calibration.grid_detection import to_grayscale_2d
+        from pivtools_gui.calibration2.detection.grid_detection import to_grayscale_2d
 
         fig = plt.figure(figsize=(20, 7))
         status = (f'SUCCESS: {grid_data["n_cols"]}x{grid_data["n_rows"]} ({len(grid_data["centers"])} pts)'

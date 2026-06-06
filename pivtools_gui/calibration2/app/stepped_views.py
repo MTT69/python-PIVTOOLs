@@ -39,7 +39,7 @@ from flask import Blueprint, jsonify, request
 
 from pivtools_core.config import get_config
 from pivtools_core.image_handling.calibration_loader import read_calibration_image
-from pivtools_gui.calibration.services.job_manager import job_manager
+from pivtools_gui.services.job_manager import job_manager
 from pivtools_gui.calibration2 import record as rec
 from pivtools_gui.calibration2 import world_frame as WF
 from pivtools_gui.calibration2.camera_model import DistortionModel
