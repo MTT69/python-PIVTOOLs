@@ -2098,7 +2098,7 @@ video:
         """Return time difference between frames.
 
         The merged calibration block carries ``dt`` at the top level (this is what the
-        calibration2 apply path reads via ``resolve_dt``). Prefer it; fall back to the
+        calibration apply path reads via ``resolve_dt``). Prefer it; fall back to the
         legacy per-method ``dt`` for old configs.
         """
         top_level = self.calibration.get("dt")
