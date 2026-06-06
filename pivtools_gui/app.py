@@ -71,9 +71,9 @@ api_bp = Blueprint('api', __name__, url_prefix='/backend')
 app.register_blueprint(vector_plot_bp, url_prefix='/backend/plot')
 app.register_blueprint(transform_bp, url_prefix='/backend/plot')
 app.register_blueprint(masking_bp, url_prefix='/backend')
-# Legacy calibration v1 blueprint deactivated 2026-06-05 — superseded by calibration2.
-# The pivtools_gui.calibration package remains on disk (still imports job_manager for
-# video_maker and global_coordinate_alignment for PIV runs); only its GUI routes are off.
+# Calibration is calibration2 (the legacy v1 `calibration` package was retired — its
+# shared leaves relocated to pivtools_gui/services, calibration2/detection, and
+# stereo_reconstruction).
 from pivtools_gui.calibration2.app import calibration2_bp, calibration2_stepped_bp
 app.register_blueprint(calibration2_bp, url_prefix='/backend')
 app.register_blueprint(calibration2_stepped_bp, url_prefix='/backend')

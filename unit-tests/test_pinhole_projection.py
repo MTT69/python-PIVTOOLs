@@ -22,7 +22,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from pivtools_gui.calibration.vector_calibration_production import _pixels_to_world_mm
+from pivtools_gui.stereo_reconstruction.pixel_world import _pixels_to_world_mm
 
 # ---------------------------------------------------------------------------
 # Helpers
