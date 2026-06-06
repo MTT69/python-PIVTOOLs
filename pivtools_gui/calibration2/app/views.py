@@ -40,7 +40,7 @@ import numpy as np
 from flask import Blueprint, jsonify, request, Response
 
 from pivtools_core.config import get_config
-from pivtools_core.paths import get_data_paths, vector_glob_from_format
+from pivtools_core.paths import vector_glob_from_format
 from pivtools_core.image_handling.calibration_loader import (
     get_calibration_frame_count,
     read_calibration_image,
@@ -56,9 +56,15 @@ from pivtools_gui.calibration2 import apply as c2apply
 from pivtools_gui.calibration2 import global_coords as gc2
 from pivtools_gui.calibration2 import record as rec
 from pivtools_gui.calibration2 import runio as c2runio
+from pivtools_gui.calibration2 import self_cal as c2sc
 from pivtools_gui.calibration2 import world_frame as WF
-from pivtools_gui.calibration2.camera_model import DistortionModel
-from pivtools_gui.calibration2.pipeline import Calibrator
+from pivtools_gui.calibration2.camera_model import (
+    DistortionModel,
+    Polynomial3DModel,
+    PolynomialModel,
+    ScaleFactorModel,
+)
+from pivtools_gui.calibration2.pipeline import Calibrator, build_scale_factor_record
 from pivtools_gui.calibration2.stereo_model import StereoCalibrator
 from pivtools_cli import calibration2_cli as c2
 
@@ -190,6 +196,58 @@ def _intrinsics(cm) -> dict:
         "rms": float(cm.rms),
         "image_width": int(cm.image_size[0]), "image_height": int(cm.image_size[1]),
     }
+
+
+def _polynomial_summary(pm: PolynomialModel) -> dict:
+    """Polynomial coefficients of a PolynomialModel, shaped for the GUI results card."""
+    return {
+        "model_type": "polynomial",
+        "coeffs_x": [float(c) for c in pm.coeffs_x],
+        "coeffs_y": [float(c) for c in pm.coeffs_y],
+        "x0": float(pm.x0), "sx": float(pm.sx),
+        "y0": float(pm.y0), "sy": float(pm.sy),
+        "rms_x_mm": float(pm.rms_x_mm), "rms_y_mm": float(pm.rms_y_mm),
+        "image_width": int(pm.image_size[0]), "image_height": int(pm.image_size[1]),
+    }
+
+
+def _polynomial3d_summary(pm: Polynomial3DModel) -> dict:
+    """Single-view 3D polynomial summary (world->image cubic), shaped for the card."""
+    return {
+        "model_type": "polynomial3d",
+        "rms": float(pm.rms_px),
+        "plane_rms": [float(v) for v in pm.plane_rms_px],
+        "coeffs_u": [float(c) for c in pm.coeffs_u],
+        "coeffs_v": [float(c) for c in pm.coeffs_v],
+        "x0": float(pm.x0), "sx": float(pm.sx),
+        "y0": float(pm.y0), "sy": float(pm.sy),
+        "z0": float(pm.z0), "sz": float(pm.sz),
+        "image_width": int(pm.image_size[0]), "image_height": int(pm.image_size[1]),
+    }
+
+
+def _scale_factor_summary(sf: ScaleFactorModel, dt: float, frame_idx=None) -> dict:
+    """Scale-factor params shaped for the GUI results card + restore-on-load.
+
+    ``frame_idx`` (the 1-based frame the origin was picked on), when known, lets the GUI
+    restore the origin/axis overlay on that same frame rather than always frame 1.
+    """
+    px_per_mm = (1.0 / sf.mm_per_pixel) if sf.mm_per_pixel else float("nan")
+    out = {
+        "model_type": "scale_factor",
+        "origin_px": [float(sf.origin_px[0]), float(sf.origin_px[1])],
+        "mm_per_pixel": float(sf.mm_per_pixel),
+        "px_per_mm": float(px_per_mm),
+        "dt": float(dt),
+        "col_sign": int(sf.col_sign), "row_sign": int(sf.row_sign),
+        "swap_axes": int(sf.swap_axes),
+        "x_dir": "right" if sf.col_sign >= 0 else "left",
+        "y_dir": "up" if sf.row_sign < 0 else "down",
+        "image_width": int(sf.image_size[0]), "image_height": int(sf.image_size[1]),
+    }
+    if frame_idx is not None:
+        out["frame_idx"] = int(frame_idx)
+    return out
 
 
 def _figures_dir(get: Callable[[str], Any]) -> Path:
@@ -414,6 +472,7 @@ def generate_model():
     source_idx = _source_idx(data.get)
     image_format, image_type = data.get("image_format"), data.get("image_type")
     stereo = bool(data.get("stereo", False))
+    model_type = str(data.get("model_type", "pinhole"))  # polynomial is planar (mono) only
     make_figs = not bool(data.get("no_figures", False))
     spacing = c2._spacing_mm(board, params)
     datum_frame = _datum_frame(data.get)
@@ -461,26 +520,82 @@ def generate_model():
             imgs = _load_views(camera, frame_total, source_idx, image_format, image_type)
             model_dir = rec.mono_model_dir_for_source(source, camera, board)
             fig_dir = (model_dir.parent / "figures") if make_figs else None
-            calr = Calibrator(detector=detector, board_type=board, distortion_model=_MODEL)
+            calr = Calibrator(detector=detector, board_type=board,
+                              model_type=model_type, distortion_model=_MODEL)
             record = calr.run_mono(
                 imgs, camera=camera, clicks=_clicks_from(data.get("clicks")),
                 origin_mm=_origin_mm_from(data.get("clicks")),
                 datum_index=datum_index, spacing_mm=spacing, figure_dir=fig_dir)
             path = rec.save_mono(record, model_dir)
             cm = record.camera_model
-            return jsonify({
+            resp = {
                 "success": True, "stereo": False, "model_path": str(path),
-                "camera": camera, "rms": cm.rms,
-                "fx": float(cm.K[0, 0]), "fy": float(cm.K[1, 1]),
-                "cx": float(cm.K[0, 2]), "cy": float(cm.K[1, 2]),
-                "camera_matrix": cm.K.tolist(), "dist_coeffs": cm.dist.tolist(),
-                "image_width": int(cm.image_size[0]), "image_height": int(cm.image_size[1]),
+                "camera": camera,
                 "num_images_used": len(record.per_view_rms),
                 "per_view_rms": list(record.per_view_rms),
                 "figures": _list_figures(fig_dir),
-            })
+            }
+            if isinstance(cm, PolynomialModel):
+                resp.update(_polynomial_summary(cm))
+            else:
+                resp.update({
+                    "model_type": "pinhole", "rms": cm.rms,
+                    "fx": float(cm.K[0, 0]), "fy": float(cm.K[1, 1]),
+                    "cx": float(cm.K[0, 2]), "cy": float(cm.K[1, 2]),
+                    "camera_matrix": cm.K.tolist(), "dist_coeffs": cm.dist.tolist(),
+                    "image_width": int(cm.image_size[0]), "image_height": int(cm.image_size[1]),
+                })
+            return jsonify(resp)
     except Exception as exc:  # surface failures to the GUI (full traceback to the server log)
         logger.exception("generate_model failed")
+        return jsonify({"success": False, "error": str(exc)}), 200
+
+
+@calibration2_bp.route("/calibration2/scale_factor/generate", methods=["POST"])
+def scale_factor_generate():
+    """Build + save a scale-factor mono model from picked origin/axes + px/mm + dt.
+
+    No detection, no fit — a direct uniform pixel->mm map. One frame is loaded only to
+    stamp the image size and draw the proof figure.
+    """
+    data = request.get_json() or {}
+    source_idx = _source_idx(data.get)
+    camera = int(data.get("camera", _cfg().get("camera", 1)))
+    make_figs = not bool(data.get("no_figures", False))
+    try:
+        px_per_mm = float(data["px_per_mm"])
+        origin_px = data["origin_px"]
+        if origin_px is None or len(origin_px) != 2:
+            raise ValueError("origin_px must be [x, y] pixels — click the origin first")
+        dt = float(data.get("dt", _cfg().get("scale_factor", {}).get("dt", 1.0)))
+        x_dir = str(data.get("x_dir", "right"))
+        y_dir = str(data.get("y_dir", "up"))
+        swap = bool(data.get("swap_axes", False))
+        frame_idx = int(data.get("frame_idx", 1))
+        image = _load_one(camera, frame_idx, source_idx,
+                          data.get("image_format"), data.get("image_type"))
+        h, w = np.asarray(image).shape[:2]
+        record = build_scale_factor_record(
+            camera=camera, origin_px=origin_px, px_per_mm=px_per_mm,
+            image_size=(int(w), int(h)), dt=dt, x_dir=x_dir, y_dir=y_dir, swap_axes=swap,
+            frame_idx=frame_idx)
+        source = _source_path(source_idx)
+        model_dir = rec.mono_model_dir_for_source(source, camera, "scale_factor")
+        path = rec.save_mono(record, model_dir)
+        fig_dir = model_dir.parent / "figures"
+        if make_figs:
+            from pivtools_gui.calibration2 import figures as c2figs
+            sf = record.camera_model
+            c2figs.write_scale_factor_figure(
+                fig_dir, image=image, origin_px=sf.origin_px,
+                col_sign=sf.col_sign, row_sign=sf.row_sign, swap_axes=bool(sf.swap_axes),
+                mm_per_pixel=sf.mm_per_pixel, dt=dt)
+        resp = {"success": True, "stereo": False, "model_path": str(path), "camera": camera}
+        resp.update(_scale_factor_summary(record.camera_model, dt, frame_idx=frame_idx))
+        resp["figures"] = _list_figures(fig_dir) if make_figs else []
+        return jsonify(resp)
+    except Exception as exc:
+        logger.exception("scale_factor_generate failed")
         return jsonify({"success": False, "error": str(exc)}), 200
 
 
@@ -501,23 +616,39 @@ def load_model():
             r = rec.load_stereo(mdir)
         except FileNotFoundError:
             return jsonify({"exists": False}), 200
-        return jsonify({
+        common = {
             "exists": True, "stereo": True, "cam1": cam1, "cam2": cam2,
             "model_path": str(mdir / "stereo_model.mat"),
-            "rms_cam1": r.model1.rms, "rms_cam2": r.model2.rms,
             "per_view_rms1": list(r.per_view_rms1), "per_view_rms2": list(r.per_view_rms2),
-            "intrinsics1": _intrinsics(r.model1),
-            "intrinsics2": _intrinsics(r.model2),
             "num_pairs_used": len(r.per_view_rms1),
-            "distortion_model": r.model1.distortion_model.value,
             "world_frame_mode": r.world_frame.mode,
             "world_frame": _world_frame_payload(r.world_frame),
             "image_width": int(r.model1.image_size[0]), "image_height": int(r.model1.image_size[1]),
             "spacing_mm": _meta_float(r.board_meta, "spacing_mm"),
             "n_views": _meta_int(r.board_meta, "n_views"),
-            "stereo_angle_deg": float(np.degrees(np.arccos(np.clip((np.trace(r.R_stereo) - 1) / 2, -1, 1)))),
-            "baseline_mm": float(np.linalg.norm(r.T_stereo)),
-        })
+        }
+        if isinstance(r.model1, Polynomial3DModel):
+            # A polynomial pair has no extrinsic pose -> no baseline/angle (DaVis poly).
+            common.update({
+                "model_type": "polynomial3d",
+                "rms_cam1": float(r.model1.rms_px), "rms_cam2": float(r.model2.rms_px),
+                "plane_rms_cam1": [float(v) for v in r.model1.plane_rms_px],
+                "plane_rms_cam2": [float(v) for v in r.model2.plane_rms_px],
+                "stereo_config": r.board_meta.get("stereo_config"),
+                "stereo_angle_deg": None, "baseline_mm": None,
+            })
+        else:
+            common.update({
+                "model_type": "pinhole",
+                "rms_cam1": r.model1.rms, "rms_cam2": r.model2.rms,
+                "intrinsics1": _intrinsics(r.model1),
+                "intrinsics2": _intrinsics(r.model2),
+                "distortion_model": r.model1.distortion_model.value,
+                "stereo_angle_deg": float(np.degrees(np.arccos(
+                    np.clip((np.trace(r.R_stereo) - 1) / 2, -1, 1)))),
+                "baseline_mm": float(np.linalg.norm(r.T_stereo)),
+            })
+        return jsonify(common)
     camera = int(request.args.get("camera", 1))
     mdir = rec.mono_model_dir_for_source(source, camera, board)
     try:
@@ -525,22 +656,34 @@ def load_model():
     except FileNotFoundError:
         return jsonify({"exists": False}), 200
     cm = r.camera_model
-    return jsonify({
+    summary = {
         "exists": True, "stereo": False, "camera": camera,
         "model_path": str(mdir / "model.mat"),
-        "rms": cm.rms,
-        "fx": float(cm.K[0, 0]), "fy": float(cm.K[1, 1]),
-        "cx": float(cm.K[0, 2]), "cy": float(cm.K[1, 2]),
-        "camera_matrix": cm.K.tolist(), "dist_coeffs": cm.dist.tolist(),
         "num_images_used": len(r.per_view_rms),
         "per_view_rms": list(r.per_view_rms),
-        "distortion_model": cm.distortion_model.value,
         "world_frame_mode": r.world_frame.mode,
         "world_frame": _world_frame_payload(r.world_frame),
-        "image_width": int(cm.image_size[0]), "image_height": int(cm.image_size[1]),
         "spacing_mm": _meta_float(r.board_meta, "spacing_mm"),
         "n_views": _meta_int(r.board_meta, "n_views"),
-    })
+    }
+    if isinstance(cm, ScaleFactorModel):
+        summary.update(_scale_factor_summary(
+            cm, _meta_float(r.board_meta, "dt") or 1.0,
+            frame_idx=_meta_int(r.board_meta, "frame_idx")))
+    elif isinstance(cm, Polynomial3DModel):
+        summary.update(_polynomial3d_summary(cm))
+    elif isinstance(cm, PolynomialModel):
+        summary.update(_polynomial_summary(cm))
+    else:
+        summary.update({
+            "model_type": "pinhole", "rms": cm.rms,
+            "fx": float(cm.K[0, 0]), "fy": float(cm.K[1, 1]),
+            "cx": float(cm.K[0, 2]), "cy": float(cm.K[1, 2]),
+            "camera_matrix": cm.K.tolist(), "dist_coeffs": cm.dist.tolist(),
+            "distortion_model": cm.distortion_model.value,
+            "image_width": int(cm.image_size[0]), "image_height": int(cm.image_size[1]),
+        })
+    return jsonify(summary)
 
 
 # ---------------------------------------------------------------------------
@@ -613,15 +756,18 @@ def get_figure():
 # Global coordinates — planar N-camera stitching
 # ---------------------------------------------------------------------------
 
-@calibration2_bp.route("/calibration2/global/compute", methods=["POST"])
-def global_compute():
-    """Compute per-camera world shifts from a datum + overlap pairs (planar datum chain).
+class _GlobalChainError(Exception):
+    """User-facing failure while resolving the global datum chain."""
 
-    Pure compute: datum + pairs are owned by the frontend config and passed in the
-    request; nothing is persisted here. Each camera's saved mono model is loaded to
-    back-project the clicked pixels to physical mm.
+
+def _global_chain(data):
+    """Shared setup for /global/compute and /global/save.
+
+    Returns ``(dirs, records, shifts, datum_physical)`` — the per-camera model dirs +
+    loaded records, the computed per-camera (shift_x, shift_y) mm, and the datum
+    physical point. Raises ``_GlobalChainError`` (with a user-facing message) on a
+    missing datum, a missing model, or a broken chain.
     """
-    data = request.get_json() or {}
     cfg = _cfg()
     board = data.get("board") or cfg.get("active", "charuco")
     datum_camera = int(data.get("datum_camera", 1))
@@ -632,7 +778,7 @@ def global_compute():
     tx = float(data.get("tilt_x", cfg.get("tilt_x", 0.0)))
     ty = float(data.get("tilt_y", cfg.get("tilt_y", 0.0)))
     if not datum_pixel:
-        return jsonify({"error": "datum_pixel not set — click a point on the datum camera"}), 200
+        raise _GlobalChainError("datum_pixel not set — click a point on the datum camera")
 
     cams = {datum_camera}
     for p in overlap_pairs:
@@ -640,21 +786,59 @@ def global_compute():
         cams.add(int(p["camera_b"]))
     try:
         source = _source_path(_source_idx(data.get))
-        records = {cam: rec.load_mono(rec.mono_model_dir_for_source(source, cam, board)) for cam in cams}
+        dirs = {cam: rec.mono_model_dir_for_source(source, cam, board) for cam in cams}
+        records = {cam: rec.load_mono(d) for cam, d in dirs.items()}
     except (FileNotFoundError, ValueError, IndexError) as exc:
-        return jsonify({"error": f"missing mono model — calibrate each camera first ({exc})"}), 200
-
+        raise _GlobalChainError(f"missing mono model — calibrate each camera first ({exc})")
     try:
         shifts = gc2.compute_camera_shifts(
             records, datum_camera, datum_pixel, datum_physical, overlap_pairs, z, tx, ty)
     except (ValueError, KeyError) as exc:
-        return jsonify({"error": str(exc)}), 200
+        raise _GlobalChainError(str(exc))
+    return dirs, records, shifts, datum_physical
 
+
+def _shifts_payload(shifts, datum_physical, **extra):
     # Stringify camera keys (Flask jsonify mixes int/str keys badly).
-    return jsonify({
+    return {
         "camera_shifts": {str(c): [float(s[0]), float(s[1])] for c, s in shifts.items()},
         "datum_physical": [float(datum_physical[0]), float(datum_physical[1])],
-    })
+        **extra,
+    }
+
+
+@calibration2_bp.route("/calibration2/global/compute", methods=["POST"])
+def global_compute():
+    """Per-camera world shifts from a datum + overlap pairs — preview only, persists nothing."""
+    try:
+        _dirs, _records, shifts, datum_physical = _global_chain(request.get_json() or {})
+    except _GlobalChainError as exc:
+        return jsonify({"error": str(exc)}), 200
+    return jsonify(_shifts_payload(shifts, datum_physical))
+
+
+@calibration2_bp.route("/calibration2/global/save", methods=["POST"])
+def global_save():
+    """Compute the datum-chain shifts and BAKE them into each camera's model.
+
+    Same body as ``/global/compute``, but persistent: each reachable camera's
+    ``world_offset_mm`` is written into its ``model.mat`` so the apply step reads it
+    and emits coordinates in the shared rig frame. Regenerating a camera's model
+    clears its offset (fresh world frame), so re-save the global frame after any
+    recalibration. Cameras not reached by the chain are left untouched.
+    """
+    try:
+        dirs, records, shifts, datum_physical = _global_chain(request.get_json() or {})
+    except _GlobalChainError as exc:
+        return jsonify({"error": str(exc)}), 200
+
+    for cam, (sx, sy) in shifts.items():
+        r = records[cam]
+        r.world_frame.world_offset_mm = np.array([float(sx), float(sy)], dtype=np.float64)
+        rec.save_mono(r, dirs[cam])
+
+    return jsonify(_shifts_payload(
+        shifts, datum_physical, success=True, cameras_saved=sorted(int(c) for c in shifts)))
 
 
 # ---------------------------------------------------------------------------
@@ -662,53 +846,28 @@ def global_compute():
 # ---------------------------------------------------------------------------
 
 def _apply_units(data, full_cfg, source, board, stereo, type_name):
-    """Resolve every (base_path x camera/pair) apply unit, deriving I/O dirs from config.
+    """Resolve apply units for a Flask request — thin wrapper over ``runio.plan_apply_units``.
 
-    The model is loaded from the shared calibration ``source``; the PIV data comes from
-    each selected base path. ``active_paths`` indexes ``config.base_paths`` (default: all
-    configured base paths). Explicit ``uncalibrated_dir``/``calibrated_dir`` (single unit)
-    still override the derivation for ad-hoc runs. Each unit carries a loaded model record
-    so a missing model fails loudly here, before the job thread starts.
+    Translates the request body into the shared planner's args: an explicit
+    ``uncalibrated_dir``/``calibrated_dir`` (mono) or ``uncalibrated_dir_cam1/2`` (stereo)
+    forces a single ad-hoc unit; otherwise units are derived from config across
+    ``active_paths`` x cameras. The planner does the config derivation + per-unit model load
+    (so the CLI's ``--all-paths`` apply uses the identical logic).
     """
     get = data.get
-    nfp = full_cfg.num_frame_pairs
-    base_paths = full_cfg.base_paths
-    active = get("active_paths")
-    base_indices = [int(i) for i in active] if active else list(range(len(base_paths)))
-
-    units = []
+    explicit = None
     if stereo:
-        pair = get("camera_pair") or _cfg().get("camera_pair", [1, 2])
-        cam1, cam2 = int(pair[0]), int(pair[1])
-        record = rec.load_stereo(rec.stereo_model_dir_for_source(source, cam1, cam2))
         if get("calibrated_dir") and get("uncalibrated_dir_cam1"):
-            return [dict(stereo=True, record=record,
-                         uncal1=Path(data["uncalibrated_dir_cam1"]),
-                         uncal2=Path(data["uncalibrated_dir_cam2"]),
-                         out=Path(data["calibrated_dir"]), label="manual")]
-        for bi in base_indices:
-            base = base_paths[bi]
-            uncal1 = get_data_paths(base, nfp, cam1, type_name, use_uncalibrated=True)["data_dir"]
-            uncal2 = get_data_paths(base, nfp, cam2, type_name, use_uncalibrated=True)["data_dir"]
-            out = get_data_paths(base, nfp, cam1, type_name, use_stereo=True,
-                                 stereo_camera_pair=(cam1, cam2))["data_dir"]
-            units.append(dict(stereo=True, record=record, uncal1=uncal1, uncal2=uncal2,
-                              out=out, label=f"{base.name}/Cam{cam1}_Cam{cam2}"))
-    else:
-        if get("calibrated_dir") and get("uncalibrated_dir"):
-            camera = int(get("camera") or full_cfg.camera_numbers[0])
-            record = rec.load_mono(rec.mono_model_dir_for_source(source, camera, board))
-            return [dict(stereo=False, record=record, uncal=Path(data["uncalibrated_dir"]),
-                         out=Path(data["calibrated_dir"]), label="manual")]
-        for bi in base_indices:
-            base = base_paths[bi]
-            for cam in full_cfg.camera_numbers:
-                record = rec.load_mono(rec.mono_model_dir_for_source(source, cam, board))
-                uncal = get_data_paths(base, nfp, cam, type_name, use_uncalibrated=True)["data_dir"]
-                out = get_data_paths(base, nfp, cam, type_name)["data_dir"]
-                units.append(dict(stereo=False, record=record, uncal=uncal, out=out,
-                                  label=f"{base.name}/Cam{cam}"))
-    return units
+            explicit = {"uncal1": data["uncalibrated_dir_cam1"],
+                        "uncal2": data["uncalibrated_dir_cam2"],
+                        "out": data["calibrated_dir"]}
+    elif get("calibrated_dir") and get("uncalibrated_dir"):
+        explicit = {"uncal": data["uncalibrated_dir"], "out": data["calibrated_dir"]}
+    return c2runio.plan_apply_units(
+        full_cfg, source, board, stereo, type_name,
+        active_paths=get("active_paths"),
+        camera_pair=(get("camera_pair") or _cfg().get("camera_pair", [1, 2])),
+        camera=get("camera"), explicit=explicit)
 
 
 @calibration2_bp.route("/calibration2/apply", methods=["POST"])
@@ -724,7 +883,6 @@ def apply_model():
     cfg = _cfg()
     board = data.get("board") or cfg.get("active", "charuco")
     stereo = bool(data.get("stereo", False))
-    dt = float(data.get("dt", cfg.get("dt", 1.0)))
     z = float(data.get("z_world", cfg.get("z_world", 0.0)))
     tx = float(data.get("tilt_x", cfg.get("tilt_x", 0.0)))
     ty = float(data.get("tilt_y", cfg.get("tilt_y", 0.0)))
@@ -742,8 +900,34 @@ def apply_model():
     except KeyError as exc:
         return jsonify({"success": False, "error": f"missing directory field {exc}"}), 200
 
+    # Stereo: default the laser-sheet (z_world, tilt) from the saved self-calibration
+    # block unless the request explicitly overrides it. So once self-cal is stored, 3C
+    # reconstruction sits on the true sheet automatically.
+    if stereo and units:
+        sc = getattr(units[0]["record"], "self_cal", {}) or {}
+        if "z_world" not in data and "z_offset" in sc:
+            z = float(sc.get("z_offset", 0.0))
+        if "tilt_x" not in data and "tilt_x" in sc:
+            tx = float(sc.get("tilt_x", 0.0))
+        if "tilt_y" not in data and "tilt_y" in sc:
+            ty = float(sc.get("tilt_y", 0.0))
+
     if not units:
         return jsonify({"success": False, "error": "no datasets selected — configure base paths first"}), 200
+
+    # dt is resolved PER UNIT: request override > model-stamped (scale-factor records
+    # carry it in board_meta) > config. Resolving per unit (not once from units[0]) means
+    # a multi-camera rig whose cameras carry different stamped dt calibrates each camera
+    # with ITS OWN dt instead of camera 1's. Velocity has no safe default, so an
+    # unresolved dt fails loudly here, before the job thread starts.
+    explicit_dt = data.get("dt")
+    config_dt = cfg.get("dt")
+    try:
+        for u in units:
+            model_dt = (getattr(u["record"], "board_meta", None) or {}).get("dt")
+            u["dt"] = c2runio.resolve_dt(explicit_dt, model_dt, config_dt)
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 200
 
     n_units = len(units)
     out_dirs = [str(u["out"]) for u in units]
@@ -760,11 +944,11 @@ def apply_model():
 
                 if u["stereo"]:
                     written = c2runio.reconstruct_stereo_run(
-                        u["record"], u["uncal1"], u["uncal2"], u["out"], dt, None, z, tx, ty,
+                        u["record"], u["uncal1"], u["uncal2"], u["out"], u["dt"], None, z, tx, ty,
                         progress_cb=cb, vector_glob=vector_glob)
                 else:
                     written = c2runio.calibrate_mono_run(
-                        u["record"], u["uncal"], u["out"], dt, z, tx, ty,
+                        u["record"], u["uncal"], u["out"], u["dt"], z, tx, ty,
                         progress_cb=cb, vector_glob=vector_glob)
                 total_written += len(written)
                 job_manager.update_job(job_id, processed=i + 1, total=n_units)
@@ -784,3 +968,230 @@ def apply_status(job_id):
     if data is None:
         return jsonify({"error": "job not found"}), 404
     return jsonify(data)
+
+
+# ---------------------------------------------------------------------------
+# Stereo self-calibration (Wieneke disparity minimisation)
+#
+# A post-model step: it loads the saved stereo model + recorded PIV particle frames
+# from a base_path dataset, recovers the laser sheet (z_offset, tilt_x, tilt_y), and
+# writes the result INTO the stereo record (so apply picks it up automatically) plus
+# the six diagnostic figures into the calibration source folder.
+# ---------------------------------------------------------------------------
+
+import base64 as _base64  # noqa: E402
+
+
+def _stereo_locators(get: Callable[[str], Any]):
+    """(source, cam1, cam2, model_dir, self_cal_figdir) from request locators."""
+    cfg = _cfg()
+    source = _source_path(_source_idx(get))
+    pair = get("camera_pair") or cfg.get("camera_pair", [1, 2])
+    if isinstance(pair, str):
+        pair = [int(x) for x in pair.split(",")]
+    cam1, cam2 = int(pair[0]), int(pair[1])
+    model_dir = rec.stereo_model_dir_for_source(source, cam1, cam2)
+    figdir = model_dir.parent / "figures" / "self_cal"
+    return source, cam1, cam2, model_dir, figdir
+
+
+def _self_cal_payload(record) -> dict:
+    """The saved self_cal block, shaped for the GUI (radians + degrees)."""
+    import math as _m
+    sc = record.self_cal or {}
+    if not sc:
+        return {"has_self_calibration": False}
+    return {
+        "has_self_calibration": True,
+        "z_offset": float(sc.get("z_offset", 0.0)),
+        "tilt_x": float(sc.get("tilt_x", 0.0)),
+        "tilt_y": float(sc.get("tilt_y", 0.0)),
+        "tilt_x_deg": _m.degrees(float(sc.get("tilt_x", 0.0))),
+        "tilt_y_deg": _m.degrees(float(sc.get("tilt_y", 0.0))),
+        "converged": bool(int(sc.get("converged", 0))),
+        "final_rms_disparity": float(sc.get("final_rms_disparity", 0.0)),
+        "n_iterations": int(sc.get("n_iterations", 0)),
+        "n_images": int(sc.get("n_images", 0)),
+        "window_size": int(sc.get("window_size", 0)),
+        "overlap": float(sc.get("overlap", 0.0)),
+        "source": str(sc.get("source", "auto")),
+    }
+
+
+def _b64_png(img: np.ndarray) -> str:
+    """Base64-encode an already-prepared uint8 image (no re-normalisation)."""
+    a = np.asarray(img)
+    if a.ndim == 3:  # overlay is RGB; cv2 wants BGR so the browser decodes RGB
+        a = cv2.cvtColor(a, cv2.COLOR_RGB2BGR)
+    ok, buf = cv2.imencode(".png", a)
+    return _base64.b64encode(buf.tobytes()).decode("ascii") if ok else ""
+
+
+@calibration2_bp.route("/calibration2/self_cal/result", methods=["GET"])
+def self_cal_result():
+    """Current self-calibration block + saved figure list (restore on model load)."""
+    try:
+        _, _, _, model_dir, figdir = _stereo_locators(request.args.get)
+        record = rec.load_stereo(model_dir)
+    except (FileNotFoundError, ValueError, IndexError):
+        return jsonify({"exists": False, "has_self_calibration": False}), 200
+    payload = _self_cal_payload(record)
+    payload["exists"] = True
+    payload["figures"] = _list_figures(figdir)
+    return jsonify(payload)
+
+
+@calibration2_bp.route("/calibration2/self_cal/preview", methods=["POST"])
+def self_cal_preview():
+    """Red-cyan dewarp overlay of one particle frame pair (before/after correction)."""
+    data = request.get_json() or {}
+    full_cfg = get_config()
+    try:
+        _, cam1, cam2, model_dir, _ = _stereo_locators(data.get)
+        record = rec.load_stereo(model_dir)
+    except (FileNotFoundError, ValueError, IndexError) as exc:
+        return jsonify({"error": f"no stereo model — generate it first ({exc})"}), 200
+
+    base_idx = int(data.get("base_path_idx", 0))
+    frame_idx = int(data.get("frame_idx", 1))
+    sub = str(data.get("sub_frame", "A"))
+    show_corrected = bool(data.get("show_corrected", False))
+    z = float(data.get("z_offset", record.sc_z_offset)) if show_corrected else 0.0
+    tx = float(data.get("tilt_x", record.sc_tilt_x)) if show_corrected else 0.0
+    ty = float(data.get("tilt_y", record.sc_tilt_y)) if show_corrected else 0.0
+
+    try:
+        from pivtools_gui.calibration2 import figures as c2figs
+        from pivtools_gui.stereo_reconstruction.self_calibration import estimate_pixel_scale
+        img1, img2 = c2sc.load_one_pair(full_cfg, base_idx, cam1, cam2, frame_idx, sub)
+        cam1_ph = c2sc.pinhole_from_model(record.model1)
+        cam2_ph = c2sc.pinhole_from_model(record.model2)
+        bounds = c2sc.stereo_world_bounds(record.model1, record.model2)
+        mmpp = estimate_pixel_scale(cam1_ph, cam2_ph, bounds)
+        overlay, r, c = c2figs.render_dewarp_overlay(
+            cam1_ph, cam2_ph, img1, img2, bounds, mmpp, z, tx, ty)
+    except Exception as exc:
+        logger.exception("self-cal preview failed")
+        return jsonify({"error": f"preview failed: {exc}"}), 200
+
+    return jsonify({
+        "overlay": _b64_png(overlay),
+        "cam1_image": _b64_png(r),
+        "cam2_image": _b64_png(c),
+        "total_frames": int(full_cfg.num_frame_pairs),
+        "world_bounds": [float(b) for b in bounds],
+        "mm_per_pixel": float(mmpp),
+    })
+
+
+@calibration2_bp.route("/calibration2/self_cal/run", methods=["POST"])
+def self_cal_run():
+    """Run iterative self-calibration as a background job; write the result into the record."""
+    data = request.get_json() or {}
+    full_cfg = get_config()
+    try:
+        _, cam1, cam2, model_dir, figdir = _stereo_locators(data.get)
+        record = rec.load_stereo(model_dir)
+    except (FileNotFoundError, ValueError, IndexError) as exc:
+        return jsonify({"success": False, "error": f"no stereo model — generate it first ({exc})"}), 200
+
+    base_idx = int(data.get("base_path_idx", 0))
+    n_images = int(data.get("n_images", 20))
+    window_size = int(data.get("window_size", 64))
+    overlap = float(data.get("overlap", 50.0))
+    apply_filters = bool(data.get("apply_filters", True))
+
+    job_id = job_manager.create_job("calibration2_self_cal", out_dir=str(figdir))
+
+    def _run():
+        import math as _m
+        try:
+            job_manager.update_job(job_id, status="running", progress=10, stage="loading_images")
+            imgs1, imgs2 = c2sc.load_particle_pairs(
+                full_cfg, base_idx, cam1, cam2, n_images, apply_filters)
+            job_manager.update_job(job_id, progress=25, stage="self_calibrating")
+            result = c2sc.run(record, imgs1, imgs2, window_size=window_size,
+                              overlap=overlap, figure_dir=figdir)
+            record.self_cal = c2sc.result_to_block(
+                result, n_images=len(imgs1), window_size=window_size, overlap=overlap)
+            rec.save_stereo(record, model_dir)
+            history = [
+                dict(iteration=h.iteration, rms_disparity=float(h.rms_disparity),
+                     delta_z=float(h.delta_z), delta_tilt_x=float(h.delta_tilt_x),
+                     delta_tilt_y=float(h.delta_tilt_y), cumulative_z=float(h.cumulative_z),
+                     cumulative_tilt_x=float(h.cumulative_tilt_x),
+                     cumulative_tilt_y=float(h.cumulative_tilt_y))
+                for h in result.history
+            ]
+            job_manager.complete_job(
+                job_id,
+                converged=bool(result.converged), n_iterations=int(result.n_iterations),
+                z_offset=float(result.z_offset), tilt_x=float(result.tilt_x),
+                tilt_y=float(result.tilt_y), tilt_x_deg=_m.degrees(result.tilt_x),
+                tilt_y_deg=_m.degrees(result.tilt_y),
+                final_rms_disparity=float(result.final_rms_disparity),
+                history=history, figures=_list_figures(figdir))
+        except Exception as exc:
+            logger.exception("self-cal job %s failed", job_id)
+            job_manager.fail_job(job_id, str(exc))
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"success": True, "job_id": job_id})
+
+
+@calibration2_bp.route("/calibration2/self_cal/status/<job_id>", methods=["GET"])
+def self_cal_status(job_id):
+    """Poll a self-calibration job (convergence history + figure list on completion)."""
+    data = job_manager.get_job_with_timing(job_id)
+    if data is None:
+        return jsonify({"error": "job not found"}), 404
+    return jsonify(data)
+
+
+@calibration2_bp.route("/calibration2/self_cal/save_manual", methods=["POST"])
+def self_cal_save_manual():
+    """Persist an operator-entered sheet correction (degrees in) into the record."""
+    import math as _m
+    data = request.get_json() or {}
+    try:
+        _, _, _, model_dir, _ = _stereo_locators(data.get)
+        record = rec.load_stereo(model_dir)
+    except (FileNotFoundError, ValueError, IndexError) as exc:
+        return jsonify({"success": False, "error": f"no stereo model — generate it first ({exc})"}), 200
+    z = float(data.get("z_offset", 0.0))
+    tx = _m.radians(float(data.get("tilt_x_deg", 0.0)))
+    ty = _m.radians(float(data.get("tilt_y_deg", 0.0)))
+    record.self_cal = c2sc.manual_block(z, tx, ty)
+    rec.save_stereo(record, model_dir)
+    return jsonify({"success": True, **_self_cal_payload(record)})
+
+
+@calibration2_bp.route("/calibration2/self_cal/clear", methods=["POST"])
+def self_cal_clear():
+    """Clear the saved self-calibration so 3C reconstruction returns to the datum plane."""
+    data = request.get_json() or {}
+    try:
+        _, _, _, model_dir, _ = _stereo_locators(data.get)
+        record = rec.load_stereo(model_dir)
+    except (FileNotFoundError, ValueError, IndexError) as exc:
+        return jsonify({"success": False, "error": f"no stereo model ({exc})"}), 200
+    record.self_cal = {}
+    rec.save_stereo(record, model_dir)
+    return jsonify({"success": True, "has_self_calibration": False})
+
+
+@calibration2_bp.route("/calibration2/self_cal/figure", methods=["GET"])
+def self_cal_figure():
+    """Serve one self-cal diagnostic PNG from the model's figures/self_cal folder."""
+    name = request.args.get("name", "")
+    if not name or Path(name).name != name:
+        return jsonify({"error": "invalid figure name"}), 400
+    try:
+        _, _, _, _, figdir = _stereo_locators(request.args.get)
+    except (ValueError, IndexError):
+        return jsonify({"error": "source not configured"}), 404
+    figdir_r = Path(figdir).resolve()
+    path = (figdir_r / name).resolve()
+    if path.parent != figdir_r or not path.is_file():
+        return jsonify({"error": "figure not found"}), 404
+    return Response(path.read_bytes(), mimetype="image/png")

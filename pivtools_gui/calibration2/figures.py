@@ -15,6 +15,7 @@ import v1. Public entry points are the two orchestrators ``write_mono_figures`` 
 
 from __future__ import annotations
 
+import math
 import traceback
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional, Sequence
@@ -540,6 +541,169 @@ def write_mono_figures(figure_dir, *, images, detections, used, K, dist, rvecs, 
                                figd / "boards_3d.png", datum_pos=datum_pos)
 
 
+def write_stepped_figures(figure_dir, *, images, used_detections, used_pose_indices,
+                          pose_obj_views, pose_img_views, rvecs, tvecs, per_view, rms,
+                          cam, wf, spacing, datum_index, datum_detection, prefix="") -> None:
+    """All single-camera proof figures for a STEPPED (dual-level) fit.
+
+    The generic ``write_mono_figures`` reprojects ``detection.board_local_points`` (a
+    board-canonical neutral frame); a stepped fit instead runs on assembled, oriented,
+    absolute-Z object points (``pose_obj_views``) whose ``rvecs``/``tvecs`` only match
+    THOSE points. So the reprojection + boards-3D figures must use the fitted views,
+    not the raw detections — that is the only reason this exists separately. The
+    detection-overlay + world-frame figures still take the raw datum detection (they
+    draw on the image, not the fit).
+
+    ``used_pose_indices`` / ``used_detections`` / ``pose_obj_views`` / ``pose_img_views``
+    / ``rvecs`` / ``tvecs`` / ``per_view`` are all position-aligned (datum first). Each
+    sub-figure swallows its own errors, so a figure failure never aborts the fit.
+    """
+    figd = Path(figure_dir)
+    figd.mkdir(parents=True, exist_ok=True)
+    datum_pos = used_pose_indices.index(datum_index) if datum_index in used_pose_indices else 0
+
+    if images is not None:
+        for pose_idx, det in zip(used_pose_indices, used_detections):
+            write_detection_figure(images[pose_idx], det, figd / f"{prefix}detection_{pose_idx:02d}.png",
+                                   title=f"{prefix}pose {pose_idx}")
+        write_world_frame_figure(images[datum_index], datum_detection, wf, spacing,
+                                 figd / f"{prefix}world_frame.png", title=f"{prefix}world frame")
+    write_reprojection_figure(pose_obj_views, pose_img_views, K=cam.K, dist=cam.dist,
+                              rvecs=rvecs, tvecs=tvecs, per_view=per_view, rms=rms,
+                              output_path=figd / f"{prefix}reprojection.png",
+                              pose_indices=used_pose_indices, title=f"{prefix}reprojection")
+    write_distortion_map_figure(cam.K, cam.dist, cam.image_size, figd / f"{prefix}distortion_map.png",
+                                title=f"{prefix}distortion")
+    if not prefix:
+        write_boards_planes_3d(cam, pose_obj_views, rvecs, tvecs, used_pose_indices,
+                               figd / "boards_3d.png", datum_pos=datum_pos)
+
+
+def write_polynomial_figures(figure_dir, *, image, detection: "DetectionResult",
+                             world_pts, model, wf: "WorldFrame", spacing,
+                             prefix="") -> None:
+    """Single-plane polynomial proof figures: detection, world frame, and the fit.
+
+    The fit figure plots, in the resolved world frame, the detected dots' target
+    world-mm positions, the polynomial's evaluation at the same pixels, the residual
+    quiver, and a residual scatter with the per-axis RMS — the least-squares analogue
+    of the pinhole reprojection figure.
+    """
+    figd = Path(figure_dir)
+    figd.mkdir(parents=True, exist_ok=True)
+    write_detection_figure(image, detection, figd / f"{prefix}detection_datum.png",
+                           title=f"{prefix}datum")
+    write_world_frame_figure(image, detection, wf, spacing,
+                             figd / f"{prefix}world_frame.png", title=f"{prefix}world frame")
+    write_polynomial_fit_figure(detection, world_pts, model,
+                                figd / f"{prefix}polynomial_fit.png", title=f"{prefix}polynomial fit")
+
+
+def write_polynomial_fit_figure(detection: "DetectionResult", world_pts, model,
+                                output_path, title=None) -> None:
+    """World-mm target vs polynomial evaluation: positions + quiver + residual scatter."""
+    try:
+        target = np.asarray(world_pts, np.float64).reshape(-1, 3)[:, :2]
+        px = np.asarray(detection.image_points, np.float64).reshape(-1, 2)
+        evald = model.back_project_to_plane(px)[:, :2]
+        resid = evald - target
+        rms_x = float(model.rms_x_mm)
+        rms_y = float(model.rms_y_mm)
+        rms = float(np.sqrt(np.mean(np.sum(resid ** 2, axis=1)))) if len(resid) else 0.0
+
+        fig = plt.figure(figsize=(15, 6))
+        fig.suptitle(
+            f"{title or 'Polynomial fit'} — {len(target)} dots, "
+            f"RMS_x={rms_x:.4f} mm, RMS_y={rms_y:.4f} mm", fontsize=13)
+        gs = GridSpec(1, 2, figure=fig, wspace=0.25, width_ratios=[1.1, 1.0])
+
+        # Left: world positions + residual quiver (exaggerated so structure is visible).
+        ax = fig.add_subplot(gs[0, 0])
+        ax.scatter(target[:, 0], target[:, 1], s=14, facecolors="none",
+                   edgecolors="steelblue", linewidths=0.7, label="grid target")
+        span = float(max(np.ptp(target[:, 0]), np.ptp(target[:, 1]), 1.0))
+        rmax = float(np.max(np.hypot(resid[:, 0], resid[:, 1]))) if len(resid) else 0.0
+        scale = (0.08 * span / rmax) if rmax > 1e-12 else 1.0
+        ax.quiver(target[:, 0], target[:, 1], resid[:, 0] * scale, resid[:, 1] * scale,
+                  angles="xy", scale_units="xy", scale=1.0, color="crimson", width=0.004)
+        ax.set_aspect("equal", adjustable="datalim")
+        ax.set_xlabel("X (mm)"); ax.set_ylabel("Y (mm)")
+        ax.set_title(f"world frame — residual quiver (x{scale:.0f})", fontsize=10)
+        ax.legend(fontsize=8, loc="best")
+
+        # Right: residual (dx,dy) scatter with RMS circle.
+        ax2 = fig.add_subplot(gs[0, 1])
+        ax2.scatter(resid[:, 0], resid[:, 1], s=8, alpha=0.6, color="crimson")
+        ax2.add_patch(plt.Circle((0, 0), rms, fill=False, color="red", ls="--", lw=1.5,
+                                 label=f"RMS={rms:.4f} mm"))
+        mr = max(float(np.abs(resid).max()) * 1.15, rms * 1.3) if len(resid) else 1e-3
+        ax2.set_xlim(-mr, mr); ax2.set_ylim(-mr, mr); ax2.set_aspect("equal")
+        ax2.axhline(0, color="gray", lw=0.5); ax2.axvline(0, color="gray", lw=0.5)
+        ax2.set_xlabel("residual X (mm)"); ax2.set_ylabel("residual Y (mm)")
+        ax2.set_title("fit residuals", fontsize=10)
+        ax2.legend(fontsize=8, loc="best")
+        _save(fig, output_path)
+    except Exception:
+        logger.warning(f"polynomial fit figure failed: {traceback.format_exc()}")
+
+
+def write_scale_factor_figure(
+    figure_dir,
+    *,
+    image: np.ndarray,
+    origin_px,
+    col_sign: int,
+    row_sign: int,
+    swap_axes: bool,
+    mm_per_pixel: float,
+    dt: float,
+    prefix: str = "",
+) -> None:
+    """Proof figure for a scale-factor model: frame + origin + +X/+Y arrows + scale.
+
+    The arrows point along the chosen world axes in PIXEL space, so the user can
+    eyeball that the origin and directions match what they picked. ``col_sign`` is
+    the +X sign, ``row_sign`` the +Y sign, ``swap_axes`` selects which pixel delta
+    feeds X — the same convention the model uses.
+    """
+    try:
+        gray = _to_uint8_gray(image)
+        h, w = gray.shape[:2]
+        ox, oy = float(origin_px[0]), float(origin_px[1])
+        # Pixel-space direction of each world axis (see ScaleFactorModel algebra).
+        if not swap_axes:
+            x_dir = (col_sign, 0)   # +X along the column axis
+            y_dir = (0, row_sign)   # +Y along the row axis
+        else:
+            x_dir = (0, col_sign)   # +X along the row axis
+            y_dir = (row_sign, 0)   # +Y along the column axis
+        length = 0.12 * max(w, h)
+        px_per_mm = (1.0 / mm_per_pixel) if mm_per_pixel else float("nan")
+
+        fig, ax = plt.subplots(figsize=(10, 8))
+        ax.imshow(gray, cmap="gray", origin="upper")
+        ax.plot(ox, oy, "+", color="yellow", markersize=18, markeredgewidth=2.5)
+        ax.annotate("", xy=(ox + x_dir[0] * length, oy + x_dir[1] * length),
+                    xytext=(ox, oy),
+                    arrowprops=dict(arrowstyle="-|>", color="red", lw=2.5))
+        ax.annotate("", xy=(ox + y_dir[0] * length, oy + y_dir[1] * length),
+                    xytext=(ox, oy),
+                    arrowprops=dict(arrowstyle="-|>", color="deepskyblue", lw=2.5))
+        ax.text(ox + x_dir[0] * length, oy + x_dir[1] * length, "  +X",
+                color="red", fontsize=12, fontweight="bold", va="center")
+        ax.text(ox + y_dir[0] * length, oy + y_dir[1] * length, "  +Y",
+                color="deepskyblue", fontsize=12, fontweight="bold", va="center")
+        ax.set_title(
+            f"Scale-factor frame — origin ({ox:.1f}, {oy:.1f}) px, "
+            f"{px_per_mm:.4f} px/mm ({mm_per_pixel:.5f} mm/px), dt={dt:g} s",
+            fontsize=11)
+        ax.set_xlabel("pixel x (image-down)"); ax.set_ylabel("pixel y (image-down)")
+        ax.set_xlim(0, w); ax.set_ylim(h, 0)
+        _save(fig, Path(figure_dir) / f"{prefix}scale_factor.png")
+    except Exception:
+        logger.warning(f"scale-factor figure failed: {traceback.format_exc()}")
+
+
 def write_stereo_figures(figure_dir, *, model1, model2, R_stereo, T_stereo, img1, img2,
                          datum_board_world, spacing) -> None:
     """Stereo-only proof figures: cameras relative to the datum board + the dewarp anaglyph."""
@@ -548,3 +712,554 @@ def write_stereo_figures(figure_dir, *, model1, model2, R_stereo, T_stereo, img1
     write_cameras_3d(model1, model2, datum_board_world, R_stereo, T_stereo, figd / "cameras_3d.png")
     write_dewarp_overlay(model1, model2, img1, img2, datum_board_world, spacing,
                          figd / "dewarp_overlay.png")
+
+
+# ---------------------------------------------------------------------------
+# Self-calibration diagnostics (red-cyan dewarp overlay + the 6 figures)
+#
+# Ported verbatim in content from the v1
+# ``calibration/services/self_calibration_service.py`` (only the output path and
+# the cam-label parameters changed). They take already-bridged ``PinholeCamera``
+# objects (from ``self_cal.pinhole_from_model``) so figures.py does not import
+# ``self_cal`` (which would be a cycle); the dewarp primitives come from the
+# algorithm core, imported lazily.
+# ---------------------------------------------------------------------------
+
+def _percentile_u8(img: np.ndarray) -> np.ndarray:
+    """Percentile contrast-stretch a sparse-particle dewarp to uint8 (out-of-bounds = 0)."""
+    pos = img[img > 0]
+    if pos.size == 0:
+        return np.zeros(img.shape, dtype=np.uint8)
+    lo = float(np.percentile(pos, 1))
+    hi = float(np.percentile(pos, 99.5))
+    if hi - lo < 1e-6:
+        hi = lo + 1.0
+    return np.clip((img - lo) / (hi - lo) * 255, 0, 255).astype(np.uint8)
+
+
+def render_dewarp_overlay(cam1, cam2, img1, img2, world_bounds, mm_per_pixel,
+                          z_offset: float = 0.0, tilt_x: float = 0.0, tilt_y: float = 0.0):
+    """Dewarp both cameras onto the (z, tilt) plane and overlay cam1=red, cam2=cyan.
+
+    ``cam1``/``cam2`` are ``PinholeCamera`` objects. Returns
+    ``(overlay_rgb_u8, cam1_u8, cam2_u8)`` for the live preview route. Where the
+    sheet plane is correct the channels register (grey); residual disparity shows as
+    red/cyan fringing.
+    """
+    from pivtools_gui.stereo_reconstruction.self_calibration import (
+        compute_dewarp_maps, dewarp_image,
+    )
+
+    m1x, m1y = compute_dewarp_maps(cam1, world_bounds, mm_per_pixel,
+                                   z_offset=z_offset, tilt_x=tilt_x, tilt_y=tilt_y)
+    m2x, m2y = compute_dewarp_maps(cam2, world_bounds, mm_per_pixel,
+                                   z_offset=z_offset, tilt_x=tilt_x, tilt_y=tilt_y)
+    r = _percentile_u8(dewarp_image(img1, m1x, m1y))
+    c = _percentile_u8(dewarp_image(img2, m2x, m2y))
+    overlay = np.stack([r, c, c], axis=-1)
+    return overlay, r, c
+
+
+def write_self_cal_figures(
+    result,
+    cam1,
+    cam2,
+    images_cam1,
+    images_cam2,
+    *,
+    world_bounds,
+    mm_per_pixel,
+    figure_dir,
+    cam1_num: int = 1,
+    cam2_num: int = 2,
+) -> Path:
+    """Write the six self-calibration diagnostic PNGs + ``correlation_planes.mat``.
+
+    ``cam1``/``cam2`` are ``PinholeCamera`` objects. Figures land in ``figure_dir``
+    (inside the calibration source folder), so the existing figure-serving endpoints
+    surface them and they travel with the dataset. Each figure swallows its own
+    exception so a single failure never aborts the rest.
+    """
+    from pivtools_gui.stereo_reconstruction.self_calibration import (
+        compute_dewarp_maps, dewarp_image,
+    )
+
+    out_dir = Path(figure_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    hist = result.history
+    if not hist:
+        logger.warning("self-cal: no iteration history — skipping figures")
+        return out_dir
+
+    # ----- fig1: convergence history -----
+    iters = [h.iteration for h in hist]
+    rms_vals = [h.rms_disparity for h in hist]
+    z_vals = [h.cumulative_z for h in hist]
+    tx_vals = [math.degrees(h.cumulative_tilt_x) for h in hist]
+    ty_vals = [math.degrees(h.cumulative_tilt_y) for h in hist]
+
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    fig.suptitle(
+        f"Self-Calibration Convergence — cam{cam1_num} vs cam{cam2_num}",
+        fontsize=14, fontweight="bold",
+    )
+    axes[0, 0].semilogy(iters, rms_vals, "bo-", lw=2, ms=8)
+    axes[0, 0].set_xlabel("Iteration")
+    axes[0, 0].set_ylabel("RMS disparity (px)")
+    axes[0, 0].set_title("RMS Disparity Convergence")
+    axes[0, 0].grid(True, alpha=0.3)
+
+    axes[0, 1].plot(iters, z_vals, "rs-", lw=2, ms=8)
+    axes[0, 1].set_xlabel("Iteration")
+    axes[0, 1].set_ylabel("Z offset (mm)")
+    axes[0, 1].set_title(f"Z Recovery (final: {result.z_offset:.3f} mm)")
+    axes[0, 1].grid(True, alpha=0.3)
+
+    axes[1, 0].plot(iters, tx_vals, "g^-", lw=2, ms=8, label="Tilt X")
+    axes[1, 0].plot(iters, ty_vals, "mD-", lw=2, ms=8, label="Tilt Y")
+    axes[1, 0].set_xlabel("Iteration")
+    axes[1, 0].set_ylabel("Tilt (deg)")
+    axes[1, 0].set_title("Tilt Recovery")
+    axes[1, 0].legend()
+    axes[1, 0].grid(True, alpha=0.3)
+
+    axes[1, 1].axis("off")
+    rows = [
+        ["Parameter", "Value"],
+        ["Z offset", f"{result.z_offset:.4f} mm"],
+        ["Tilt X", f"{math.degrees(result.tilt_x):.4f} deg"],
+        ["Tilt Y", f"{math.degrees(result.tilt_y):.4f} deg"],
+        ["Final RMS", f"{result.final_rms_disparity:.4f} px"],
+        ["Iterations", f"{result.n_iterations}"],
+        ["Converged", f"{result.converged}"],
+        ["Initial RMS", f"{hist[0].rms_disparity:.2f} px"],
+        ["Reduction", f"{hist[0].rms_disparity / max(result.final_rms_disparity, 0.001):.1f}x"],
+    ]
+    table = axes[1, 1].table(
+        cellText=rows, loc="center", cellLoc="center", colWidths=[0.45, 0.45],
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(11)
+    table.scale(1.0, 1.6)
+    for j in range(2):
+        table[0, j].set_text_props(fontweight="bold")
+        table[0, j].set_facecolor("#d0d0d0")
+
+    fig.tight_layout()
+    fig.savefig(str(out_dir / "fig1_convergence.png"), dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+    # ----- fig2 + fig3: disparity field before/after + histograms -----
+    dx_b, dy_b = result.dx_before, result.dy_before
+    dx_a, dy_a = result.dx_after, result.dy_after
+
+    if dx_b is not None and dx_a is not None:
+        mag_b = np.sqrt(
+            np.where(np.isfinite(dx_b), dx_b, 0) ** 2
+            + np.where(np.isfinite(dy_b), dy_b, 0) ** 2
+        )
+        mag_a = np.sqrt(
+            np.where(np.isfinite(dx_a), dx_a, 0) ** 2
+            + np.where(np.isfinite(dy_a), dy_a, 0) ** 2
+        )
+        vmax = float(np.nanpercentile(mag_b, 95)) if mag_b.size else 1.0
+        rms_b = float(np.sqrt(np.nanmean(dx_b ** 2 + dy_b ** 2)))
+        rms_a = float(np.sqrt(np.nanmean(dx_a ** 2 + dy_a ** 2)))
+
+        fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+        fig.suptitle(
+            "Disparity Fields: Before vs After Correction",
+            fontsize=14, fontweight="bold",
+        )
+        for row, (dx, dy, mag, rms, lbl) in enumerate([
+            (dx_b, dy_b, mag_b, rms_b, "BEFORE"),
+            (dx_a, dy_a, mag_a, rms_a, "AFTER"),
+        ]):
+            im = axes[row, 0].imshow(dx, cmap="RdBu_r", vmin=-vmax, vmax=vmax)
+            axes[row, 0].set_title(f"dx {lbl}\nmean={np.nanmean(dx):.2f} px")
+            plt.colorbar(im, ax=axes[row, 0], shrink=0.8)
+            im = axes[row, 1].imshow(dy, cmap="RdBu_r", vmin=-vmax, vmax=vmax)
+            axes[row, 1].set_title(f"dy {lbl}\nmean={np.nanmean(dy):.2f} px")
+            plt.colorbar(im, ax=axes[row, 1], shrink=0.8)
+            im = axes[row, 2].imshow(mag, cmap="hot", vmin=0, vmax=vmax)
+            axes[row, 2].set_title(f"|d| {lbl}\nRMS={rms:.2f} px")
+            plt.colorbar(im, ax=axes[row, 2], shrink=0.8)
+        for ax in axes.flat:
+            ax.set_xlabel("Window X")
+            ax.set_ylabel("Window Y")
+        fig.tight_layout()
+        fig.savefig(
+            str(out_dir / "fig2_disparity_before_after.png"),
+            dpi=150, bbox_inches="tight",
+        )
+        plt.close(fig)
+
+        # Mean/std of finite values — what self-cal minimises (mean → 0) and the
+        # irreducible noise floor (std).
+        dx_b_mean = float(np.nanmean(dx_b)); dx_b_std = float(np.nanstd(dx_b))
+        dx_a_mean = float(np.nanmean(dx_a)); dx_a_std = float(np.nanstd(dx_a))
+        dy_b_mean = float(np.nanmean(dy_b)); dy_b_std = float(np.nanstd(dy_b))
+        dy_a_mean = float(np.nanmean(dy_a)); dy_a_std = float(np.nanstd(dy_a))
+
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+        fig.suptitle(
+            "Disparity Distributions: Before vs After\n"
+            "(vertical lines mark mean — self-cal's minimisation target)",
+            fontsize=13, fontweight="bold",
+        )
+        bins = np.linspace(-vmax * 1.5, vmax * 1.5, 60)
+        ax1.hist(
+            dx_b[np.isfinite(dx_b)].ravel(), bins=bins, alpha=0.6, color="red",
+            label=f"Before (μ={dx_b_mean:+.3f}, σ={dx_b_std:.2f})",
+        )
+        ax1.hist(
+            dx_a[np.isfinite(dx_a)].ravel(), bins=bins, alpha=0.6, color="green",
+            label=f"After (μ={dx_a_mean:+.3f}, σ={dx_a_std:.2f})",
+        )
+        ax1.axvline(dx_b_mean, color="darkred", lw=2, ls="--")
+        ax1.axvline(dx_a_mean, color="darkgreen", lw=2, ls="--")
+        ax1.set_xlabel("dx disparity (px)")
+        ax1.set_ylabel("Count")
+        ax1.set_title("dx Disparity")
+        ax1.legend(fontsize=9)
+        ax1.axvline(0, color="k", ls="-", alpha=0.3)
+
+        ax2.hist(
+            dy_b[np.isfinite(dy_b)].ravel(), bins=bins, alpha=0.6, color="red",
+            label=f"Before (μ={dy_b_mean:+.3f}, σ={dy_b_std:.2f})",
+        )
+        ax2.hist(
+            dy_a[np.isfinite(dy_a)].ravel(), bins=bins, alpha=0.6, color="green",
+            label=f"After (μ={dy_a_mean:+.3f}, σ={dy_a_std:.2f})",
+        )
+        ax2.axvline(dy_b_mean, color="darkred", lw=2, ls="--")
+        ax2.axvline(dy_a_mean, color="darkgreen", lw=2, ls="--")
+        ax2.set_xlabel("dy disparity (px)")
+        ax2.set_ylabel("Count")
+        ax2.set_title("dy Disparity")
+        ax2.legend(fontsize=9)
+        ax2.axvline(0, color="k", ls="-", alpha=0.3)
+        fig.tight_layout()
+        fig.savefig(
+            str(out_dir / "fig3_disparity_histograms.png"),
+            dpi=150, bbox_inches="tight",
+        )
+        plt.close(fig)
+
+    # ----- fig4: dewarped red/cyan overlay before/after -----
+    if images_cam1 and images_cam2:
+        img1 = images_cam1[0]
+        img2 = images_cam2[0]
+        m1b = compute_dewarp_maps(cam1, world_bounds, mm_per_pixel)
+        m2b = compute_dewarp_maps(cam2, world_bounds, mm_per_pixel)
+        dw1b = dewarp_image(img1, m1b[0], m1b[1])
+        dw2b = dewarp_image(img2, m2b[0], m2b[1])
+        m1a = compute_dewarp_maps(
+            cam1, world_bounds, mm_per_pixel,
+            result.z_offset, result.tilt_x, result.tilt_y,
+        )
+        m2a = compute_dewarp_maps(
+            cam2, world_bounds, mm_per_pixel,
+            result.z_offset, result.tilt_x, result.tilt_y,
+        )
+        dw1a = dewarp_image(img1, m1a[0], m1a[1])
+        dw2a = dewarp_image(img2, m2a[0], m2a[1])
+
+        def _rc(d1, d2):
+            r = _percentile_u8(d1); c = _percentile_u8(d2)
+            return np.stack([r, c, c], axis=-1)
+
+        ov_before = _rc(dw1b, dw2b)
+        ov_after = _rc(dw1a, dw2a)
+
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
+        fig.suptitle(
+            "Dewarped Particle Overlay: Before vs After Self-Cal",
+            fontsize=13, fontweight="bold",
+        )
+        x_min, x_max, y_min, y_max = world_bounds
+        extent = [x_min, x_max, y_min, y_max]
+        ax1.imshow(ov_before, extent=extent, origin="lower", aspect="equal")
+        ax1.set_title("BEFORE (Z=0, no tilt)")
+        ax1.set_xlabel("X (mm)"); ax1.set_ylabel("Y (mm)")
+        ax2.imshow(ov_after, extent=extent, origin="lower", aspect="equal")
+        ax2.set_title(
+            f"AFTER (Z={result.z_offset:.2f} mm, "
+            f"tX={math.degrees(result.tilt_x):.2f}°)"
+        )
+        ax2.set_xlabel("X (mm)")
+        fig.tight_layout()
+        fig.savefig(
+            str(out_dir / "fig4_overlay_before_after.png"),
+            dpi=150, bbox_inches="tight",
+        )
+        plt.close(fig)
+
+        # ----- fig5: BEFORE vs AFTER correlation planes at 6 world positions -----
+        # Pulls correlation planes directly from the C-library output stored in the
+        # result (corr_first_iter = iter 1 = before; corr_last_iter = final = after).
+        # No Python recomputation — the planes shown are pixel-exact what self-cal
+        # optimised on. Each probe snaps to the nearest C-library window centre.
+        try:
+            if (
+                result.corr_first_iter is None
+                or result.corr_last_iter is None
+                or result.win_ctrs_x is None
+                or result.win_ctrs_y is None
+                or result.window_size_used is None
+            ):
+                raise RuntimeError("correlation planes missing from SelfCalibrationResult")
+
+            corr_before = result.corr_first_iter
+            corr_after = result.corr_last_iter
+            win_ctrs_x = np.asarray(result.win_ctrs_x, dtype=np.float32)
+            win_ctrs_y = np.asarray(result.win_ctrs_y, dtype=np.float32)
+            ws_full = int(result.window_size_used)
+
+            crop = min(64, ws_full)
+            c0 = (ws_full - crop) // 2
+            c1 = c0 + crop
+
+            x_min, x_max, y_min, y_max = world_bounds
+            mx = (x_max - x_min) * 0.15
+            my = (y_max - y_min) * 0.15
+            xs_probe = np.linspace(x_min + mx, x_max - mx, 3)
+            ys_probe = np.linspace(y_min + my, y_max - my, 2)
+
+            img1_a = dewarp_image(images_cam1[0], m1a[0], m1a[1])
+            img2_a = dewarp_image(images_cam2[0], m2a[0], m2a[1])
+            out_h, out_w = img1_a.shape
+
+            W_thumb = 64
+            half_thumb = W_thumb // 2
+
+            def _stretch(im, lo_pct=2.0, hi_pct=99.5):
+                lo = float(np.percentile(im, lo_pct))
+                hi = float(np.percentile(im, hi_pct))
+                if hi - lo < 1e-6:
+                    hi = lo + 1.0
+                return np.clip((im - lo) / (hi - lo), 0, 1)
+
+            n_iters = len(result.history)
+            crop_label = f" (display crop: {crop}×{crop})" if crop < ws_full else ""
+
+            fig, axes = plt.subplots(2, 15, figsize=(32, 7))
+            fig.suptitle(
+                f"Correlation planes BEFORE vs AFTER self-cal — "
+                f"cam{cam1_num} vs cam{cam2_num} (z={result.z_offset:.4f} mm, "
+                f"tx={math.degrees(result.tilt_x):+.4f}°, "
+                f"ty={math.degrees(result.tilt_y):+.4f}°)\n"
+                f"per position: cam{cam1_num} f0 | cam{cam2_num} f0 | "
+                f"R/G overlay | corr BEFORE (iter 1) | "
+                f"corr AFTER (iter {n_iters}) — "
+                f"C library window: {ws_full}×{ws_full}{crop_label}",
+                fontsize=11, fontweight="bold",
+            )
+
+            for row, y_t in enumerate(ys_probe[::-1]):
+                for col, x_t in enumerate(xs_probe):
+                    base_col = col * 5
+
+                    probe_px_x = (x_t - x_min) / mm_per_pixel
+                    probe_px_y = (y_t - y_min) / mm_per_pixel
+                    ix = int(np.argmin(np.abs(win_ctrs_x - probe_px_x)))
+                    iy = int(np.argmin(np.abs(win_ctrs_y - probe_px_y)))
+                    snap_px_x = float(win_ctrs_x[ix])
+                    snap_px_y = float(win_ctrs_y[iy])
+                    snap_mm_x = x_min + snap_px_x * mm_per_pixel
+                    snap_mm_y = y_min + snap_px_y * mm_per_pixel
+
+                    cx_p = int(round(snap_px_x))
+                    cy_p = int(round(snap_px_y))
+                    x0 = cx_p - half_thumb
+                    x1 = cx_p + half_thumb
+                    y0 = cy_p - half_thumb
+                    y1 = cy_p + half_thumb
+                    if x0 < 0 or y0 < 0 or x1 > out_w or y1 > out_h:
+                        for k in range(5):
+                            axes[row, base_col + k].axis("off")
+                        continue
+
+                    s1 = _stretch(img1_a[y0:y1, x0:x1])
+                    s2 = _stretch(img2_a[y0:y1, x0:x1])
+                    axes[row, base_col + 0].imshow(
+                        s1, origin="lower", cmap="inferno", vmin=0, vmax=1,
+                    )
+                    axes[row, base_col + 0].set_title(
+                        f"({snap_mm_x:+.0f},{snap_mm_y:+.0f}) c{cam1_num} f0",
+                        fontsize=9,
+                    )
+                    axes[row, base_col + 1].imshow(
+                        s2, origin="lower", cmap="inferno", vmin=0, vmax=1,
+                    )
+                    axes[row, base_col + 1].set_title(f"c{cam2_num} f0", fontsize=9)
+                    rgb = np.zeros((W_thumb, W_thumb, 3), dtype=np.float32)
+                    rgb[..., 0] = s1
+                    rgb[..., 1] = s2
+                    axes[row, base_col + 2].imshow(rgb, origin="lower")
+                    axes[row, base_col + 2].set_title(
+                        f"R=c{cam1_num}, G=c{cam2_num}", fontsize=9,
+                    )
+
+                    plane_before = corr_before[iy, ix, c0:c1, c0:c1]
+                    plane_after = corr_after[iy, ix, c0:c1, c0:c1]
+                    vmax_b = float(np.max(plane_before))
+                    vmax_a = float(np.max(plane_after))
+
+                    axes[row, base_col + 3].imshow(
+                        plane_before, origin="lower", cmap="viridis",
+                        vmin=float(np.min(plane_before)), vmax=vmax_b,
+                    )
+                    axes[row, base_col + 3].set_title(
+                        f"BEFORE iter 1\npeak={vmax_b:.3g}", fontsize=8,
+                    )
+                    axes[row, base_col + 4].imshow(
+                        plane_after, origin="lower", cmap="viridis",
+                        vmin=float(np.min(plane_after)), vmax=vmax_a,
+                    )
+                    axes[row, base_col + 4].set_title(
+                        f"AFTER iter {n_iters}\npeak={vmax_a:.3g}", fontsize=8,
+                    )
+
+                    for k in range(5):
+                        axes[row, base_col + k].set_xticks([])
+                        axes[row, base_col + k].set_yticks([])
+
+            fig.tight_layout()
+            fig.savefig(
+                str(out_dir / "fig5_correlation_probes.png"),
+                dpi=150, bbox_inches="tight",
+            )
+            plt.close(fig)
+        except Exception as e:
+            logger.warning(f"self-cal fig5_correlation_probes failed: {e}")
+
+    # ----- fig6: forward-model decomposition -----
+    # Forward-predict the iter-1 BEFORE disparity field from iter-1's recovered
+    # (delta_z, delta_tilt_x, delta_tilt_y) using the SAME linear model that
+    # fit_disparity_plane inverts. Residual = observed − predicted = noise floor.
+    if (
+        result.dx_before is not None
+        and result.dy_before is not None
+        and result.grid_x_mm is not None
+        and result.grid_y_mm is not None
+        and result.disp_px_per_mm is not None
+        and result.disp_direction is not None
+        and result.history
+    ):
+        try:
+            dx_o = result.dx_before
+            dy_o = result.dy_before
+            Xm = result.grid_x_mm
+            Ym = result.grid_y_mm
+            dpm = float(result.disp_px_per_mm)
+            ddir = np.asarray(result.disp_direction, dtype=np.float64)
+
+            h1 = result.history[0]
+            z_i1 = float(h1.cumulative_z)
+            tx_i1 = float(h1.cumulative_tilt_x)
+            ty_i1 = float(h1.cumulative_tilt_y)
+
+            disp_mag_pred = dpm * (z_i1 + math.tan(ty_i1) * Xm + math.tan(tx_i1) * Ym)
+            dx_pred = disp_mag_pred * ddir[0]
+            dy_pred = disp_mag_pred * ddir[1]
+            dx_res = dx_o - dx_pred
+            dy_res = dy_o - dy_pred
+
+            finite_obs = dy_o[np.isfinite(dy_o)]
+            v = float(np.nanpercentile(np.abs(finite_obs), 98)) if finite_obs.size else 1.0
+            if v < 0.1:
+                v = 0.1
+
+            def _stats(a):
+                finite = a[np.isfinite(a)]
+                if finite.size == 0:
+                    return 0.0, 0.0
+                return float(np.mean(finite)), float(np.std(finite))
+
+            dy_o_m, dy_o_s = _stats(dy_o)
+            dy_p_m, dy_p_s = _stats(dy_pred)
+            dy_r_m, dy_r_s = _stats(dy_res)
+            dx_o_m, dx_o_s = _stats(dx_o)
+            dx_p_m, dx_p_s = _stats(dx_pred)
+            dx_r_m, dx_r_s = _stats(dx_res)
+
+            fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+            fig.suptitle(
+                "Forward-Model Decomposition — "
+                f"cam{cam1_num} vs cam{cam2_num}\n"
+                f"Iter-1 fit: dz={z_i1:+.4f} mm, "
+                f"dtx={math.degrees(tx_i1):+.4f}°, "
+                f"dty={math.degrees(ty_i1):+.4f}° | "
+                f"sensitivity={dpm:.2f} px/mm, "
+                f"direction=({ddir[0]:+.3f}, {ddir[1]:+.3f}) | "
+                f"Final converged: z={result.z_offset:+.4f} mm, "
+                f"tx={math.degrees(result.tilt_x):+.4f}°, "
+                f"ty={math.degrees(result.tilt_y):+.4f}°\n"
+                "PREDICTED is the linear fit through iter-1 OBSERVED, "
+                "so RESIDUAL = observation - fit = noise floor.",
+                fontsize=11, fontweight="bold",
+            )
+
+            panels = [
+                ("dy OBSERVED (iter 1)", dy_o, dy_o_m, dy_o_s),
+                ("dy PREDICTED from (z,tx,ty)", dy_pred, dy_p_m, dy_p_s),
+                ("dy RESIDUAL = obs − pred", dy_res, dy_r_m, dy_r_s),
+            ]
+            for i, (title, fld, mean_v, std_v) in enumerate(panels):
+                im = axes[0, i].imshow(fld, cmap="RdBu_r", vmin=-v, vmax=v, origin="lower")
+                axes[0, i].set_title(f"{title}\nμ={mean_v:+.3f} px, σ={std_v:.2f} px", fontsize=11)
+                axes[0, i].set_xlabel("Window X")
+                axes[0, i].set_ylabel("Window Y")
+                plt.colorbar(im, ax=axes[0, i], shrink=0.8)
+
+            panels_x = [
+                ("dx OBSERVED (iter 1)", dx_o, dx_o_m, dx_o_s),
+                ("dx PREDICTED", dx_pred, dx_p_m, dx_p_s),
+                ("dx RESIDUAL", dx_res, dx_r_m, dx_r_s),
+            ]
+            for i, (title, fld, mean_v, std_v) in enumerate(panels_x):
+                im = axes[1, i].imshow(fld, cmap="RdBu_r", vmin=-v, vmax=v, origin="lower")
+                axes[1, i].set_title(f"{title}\nμ={mean_v:+.3f} px, σ={std_v:.2f} px", fontsize=11)
+                axes[1, i].set_xlabel("Window X")
+                axes[1, i].set_ylabel("Window Y")
+                plt.colorbar(im, ax=axes[1, i], shrink=0.8)
+
+            fig.tight_layout()
+            fig.savefig(str(out_dir / "fig6_forward_model.png"), dpi=150, bbox_inches="tight")
+            plt.close(fig)
+        except Exception as e:
+            logger.warning(f"self-cal fig6_forward_model failed: {e}")
+
+    # ----- correlation_planes.mat (first + last iteration C-correlator output) -----
+    try:
+        from scipy.io import savemat
+        if result.corr_first_iter is not None and result.corr_last_iter is not None:
+            mat_data = {
+                "corr_first_iter": result.corr_first_iter.astype(np.float32),
+                "corr_last_iter": result.corr_last_iter.astype(np.float32),
+                "win_ctrs_x": np.asarray(result.win_ctrs_x, dtype=np.float32),
+                "win_ctrs_y": np.asarray(result.win_ctrs_y, dtype=np.float32),
+                "n_win_x": np.int32(result.n_win_x or 0),
+                "n_win_y": np.int32(result.n_win_y or 0),
+                "window_size": np.int32(result.window_size_used or 0),
+                "mm_per_pixel": np.float64(result.mm_per_pixel or 0.0),
+                "world_bounds": np.asarray(world_bounds, dtype=np.float64),
+                "z_offset_final": np.float64(result.z_offset),
+                "tilt_x_final": np.float64(result.tilt_x),
+                "tilt_y_final": np.float64(result.tilt_y),
+                "n_iterations": np.int32(result.n_iterations),
+            }
+            if result.grid_x_mm is not None:
+                mat_data["grid_x_mm"] = np.asarray(result.grid_x_mm, dtype=np.float32)
+            if result.grid_y_mm is not None:
+                mat_data["grid_y_mm"] = np.asarray(result.grid_y_mm, dtype=np.float32)
+            savemat(str(out_dir / "correlation_planes.mat"), mat_data, do_compression=True)
+        else:
+            logger.warning("self-cal: no correlation planes captured — skipping .mat")
+    except Exception as e:
+        logger.warning(f"self-cal: failed to save correlation_planes.mat: {e}")
+
+    logger.info(f"self-cal: saved figures to {out_dir}")
+    return out_dir

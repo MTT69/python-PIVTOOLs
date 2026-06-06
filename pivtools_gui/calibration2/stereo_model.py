@@ -46,16 +46,29 @@ def compose_stereo(
     return R_stereo, T_stereo.reshape(3, 1)
 
 
-def camera_z_sign(model1: CameraModel, model2: CameraModel) -> float:
+def camera_z_sign(model1, model2) -> float:
     """Convention sign for the out-of-plane axis: +Z (and +w) points TOWARD the cameras.
 
     The world frame's +Z = +X x +Y from the clicked axes; its physical direction is
     not otherwise pinned (and a reflected/synthetic projection can recover it either
-    way). We define +w as toward the cameras and enforce it from the recovered
-    geometry: camera centre C = -R^T t; if the cameras lie on the -Z side of the
-    measurement plane the reconstructed w is negated so +w is toward the cameras.
+    way). We define +w as toward the cameras and enforce it.
+
+    Pinhole: from the recovered geometry -- camera centre C = -R^T t; if the cameras
+    lie on the -Z side of the measurement plane the reconstructed w is negated.
+
+    Polynomial (``Polynomial3DModel``): there is no camera centre, so the sign is the
+    convention stored at fit time (``world_z_toward_camera``) -- for the stepped board
+    the dotted peak face (Z=0) is nearer the camera than the trough (Z=-step), so +Z
+    is toward the cameras (+1). Both models carry the same shared-frame convention.
+
     Returns +1 (no change) or -1 (negate w). Leaves the in-plane u,v untouched.
     """
+    if hasattr(model1, "world_z_toward_camera") or hasattr(model2, "world_z_toward_camera"):
+        s1 = getattr(model1, "world_z_toward_camera", None)
+        s2 = getattr(model2, "world_z_toward_camera", None)
+        signs = [s for s in (s1, s2) if s is not None]
+        # Average the carried convention; agreement is expected in the shared frame.
+        return 1.0 if float(np.mean(signs)) >= 0.0 else -1.0
     c1 = (-model1.R.T @ model1.t).ravel()
     c2 = (-model2.R.T @ model2.t).ravel()
     return 1.0 if (c1[2] + c2[2]) >= 0.0 else -1.0

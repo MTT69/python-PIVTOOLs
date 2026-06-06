@@ -17,10 +17,90 @@ from typing import Callable, Dict, List, Optional, Tuple
 import numpy as np
 import scipy.io
 
+from pivtools_core.paths import get_data_paths
+
 from . import frames
-from .apply import calibrate_coordinates, calibrate_displacements
+from . import record as rec
+from .apply import calibrate_coordinates, calibrate_displacements, calibrate_stress_tensor
 from .camera_model import CameraModel
 from .record import MonoRecord, StereoRecord
+
+# Ensemble PIV stores its result under this name + struct (vs per-frame "piv_result").
+ENSEMBLE_FILE = "ensemble_result.mat"
+
+
+def resolve_dt(explicit_dt, model_dt, config_dt) -> float:
+    """Resolve the time-between-frames with NO silent default: explicit > model > config.
+
+    Velocity scales linearly with dt, so a wrong dt silently corrupts every vector by a
+    constant factor. There is therefore no safe default — if none of the three sources
+    supplies dt, this raises instead of falling back to 1.0. ``model_dt`` is the value
+    stamped into the model (scale-factor records carry it in ``board_meta``); pass None
+    for models that do not stamp it (boards, stereo).
+    """
+    for cand in (explicit_dt, model_dt, config_dt):
+        if cand is not None:
+            return float(cand)
+    raise ValueError(
+        "dt could not be resolved — not given explicitly, not stamped in the model, "
+        "and not in config; velocity has no safe default, so set dt")
+
+
+def plan_apply_units(full_cfg, source, board, stereo, type_name,
+                     active_paths=None, camera_pair=None, camera=None, explicit=None):
+    """Resolve every (base_path x camera/pair) apply unit, deriving I/O dirs from config.
+
+    Shared by the Flask apply route and the CLI's ``--all-paths`` apply, so both drive the
+    same dataset-planning logic. Pure (no Flask / job-manager / threading): it reads config,
+    loads the model record per unit, and returns a list of unit dicts:
+
+        mono:   {"stereo": False, "record": MonoRecord,   "uncal": Path,  "out": Path, "label": str}
+        stereo: {"stereo": True,  "record": StereoRecord, "uncal1": Path, "uncal2": Path,
+                 "out": Path, "label": str}
+
+    ``active_paths`` are indices into ``full_cfg.base_paths`` (None/empty -> all configured).
+    ``camera_pair`` is ``(cam1, cam2)`` for stereo (defaults ``[1, 2]``). ``camera`` is the mono
+    camera for an explicit single-unit run (defaults ``full_cfg.camera_numbers[0]``). ``explicit``
+    forces ONE ad-hoc unit, bypassing config derivation — ``{"uncal", "out"}`` (mono) or
+    ``{"uncal1", "uncal2", "out"}`` (stereo). A missing model fails loudly here (``load_*`` raises),
+    before any job thread starts.
+    """
+    base_paths = full_cfg.base_paths
+    nfp = full_cfg.num_frame_pairs
+    base_indices = [int(i) for i in active_paths] if active_paths else list(range(len(base_paths)))
+
+    units = []
+    if stereo:
+        pair = camera_pair or [1, 2]
+        cam1, cam2 = int(pair[0]), int(pair[1])
+        record = rec.load_stereo(rec.stereo_model_dir_for_source(source, cam1, cam2))
+        if explicit:
+            return [dict(stereo=True, record=record,
+                         uncal1=Path(explicit["uncal1"]), uncal2=Path(explicit["uncal2"]),
+                         out=Path(explicit["out"]), label="manual")]
+        for bi in base_indices:
+            base = base_paths[bi]
+            uncal1 = get_data_paths(base, nfp, cam1, type_name, use_uncalibrated=True)["data_dir"]
+            uncal2 = get_data_paths(base, nfp, cam2, type_name, use_uncalibrated=True)["data_dir"]
+            out = get_data_paths(base, nfp, cam1, type_name, use_stereo=True,
+                                 stereo_camera_pair=(cam1, cam2))["data_dir"]
+            units.append(dict(stereo=True, record=record, uncal1=uncal1, uncal2=uncal2,
+                              out=out, label=f"{base.name}/Cam{cam1}_Cam{cam2}"))
+    else:
+        if explicit:
+            cam = int(camera) if camera is not None else int(full_cfg.camera_numbers[0])
+            record = rec.load_mono(rec.mono_model_dir_for_source(source, cam, board))
+            return [dict(stereo=False, record=record, uncal=Path(explicit["uncal"]),
+                         out=Path(explicit["out"]), label="manual")]
+        for bi in base_indices:
+            base = base_paths[bi]
+            for cam in full_cfg.camera_numbers:
+                record = rec.load_mono(rec.mono_model_dir_for_source(source, cam, board))
+                uncal = get_data_paths(base, nfp, cam, type_name, use_uncalibrated=True)["data_dir"]
+                out = get_data_paths(base, nfp, cam, type_name)["data_dir"]
+                units.append(dict(stereo=False, record=record, uncal=uncal, out=out,
+                                  label=f"{base.name}/Cam{cam}"))
+    return units
 
 
 # .mat files in a PIV output dir that are NOT per-frame vector files. A vector glob
@@ -87,6 +167,79 @@ def read_vectors(bmat_path: Path) -> Dict[int, Tuple[np.ndarray, np.ndarray, Opt
     return out
 
 
+def _stress_suffixes(names) -> List[str]:
+    """Suffixes for which a full UU/VV/UV triple exists (e.g. '_stress', '_correction').
+
+    Every such triple is a Reynolds-stress-like 2x2 tensor in pixels^2/frame^2, so each
+    is calibrated by the same Jacobian transform to stay mutually consistent in m^2/s^2.
+    """
+    names = set(names or ())
+    out = []
+    for nm in sorted(names):
+        if nm.startswith("UU"):
+            suf = nm[2:]
+            if ("VV" + suf) in names and ("UV" + suf) in names:
+                out.append(suf)
+    return out
+
+
+def calibrate_ensemble_file(
+    in_path: Path, out_path: Path, model: CameraModel,
+    coords_px: Dict[int, Tuple[np.ndarray, np.ndarray]], dt: float,
+    z_world: float = 0.0, tilt_x: float = 0.0, tilt_y: float = 0.0,
+) -> None:
+    """Calibrate an ``ensemble_result.mat``: mean velocity + every Reynolds-stress triple.
+
+    ``ux/uy`` (mean displacement px/frame) -> m/s via the model; each UU/VV/UV triple
+    (px^2/frame^2) -> m^2/s^2 via the tensor transform ``J R J^T / (dt^2 1e6)``. All
+    other fields (counts, window centres, masks) pass through untouched. The world
+    offset is NOT applied here — it is a position translation; velocity and stress are
+    offset-invariant (coordinates carry it, written separately).
+    """
+    # squeeze_me is deliberately omitted: the struct stays a mutable structured array so
+    # `er[field][i] = ...` writes through the reshape(-1) view and persists on savemat.
+    mat = scipy.io.loadmat(str(in_path))
+    er = mat["ensemble_result"].reshape(-1)   # view; (n_passes,)
+    names = er.dtype.names
+    suffixes = _stress_suffixes(names)
+    has_vel = ("ux" in names) and ("uy" in names)
+    for i in range(er.shape[0]):
+        if i not in coords_px:
+            continue
+        xpx, ypx = coords_px[i]
+        coords = np.stack([xpx, ypx], axis=-1)
+        if has_vel:
+            ux = _as2d(er["ux"][i]); uy = _as2d(er["uy"][i])
+            if ux.size:
+                # A shape mismatch means the ensemble grid does not correspond to
+                # coordinates.mat — calibrating it would emit plausible-but-wrong m/s.
+                # Fail loudly rather than write the raw px field through uncalibrated.
+                if ux.shape != xpx.shape:
+                    raise ValueError(
+                        f"ensemble pass {i}: ux shape {ux.shape} != coords {xpx.shape}; "
+                        f"the ensemble grid does not match coordinates.mat — cannot calibrate")
+                u, v = calibrate_displacements(
+                    model, coords, np.stack([ux, uy], axis=-1), dt, z_world, tilt_x, tilt_y)
+                er["ux"][i] = u
+                er["uy"][i] = v
+        for suf in suffixes:
+            uu = _as2d(er["UU" + suf][i])
+            if not uu.size:
+                continue
+            if uu.shape != xpx.shape:
+                raise ValueError(
+                    f"ensemble pass {i}: UU{suf} shape {uu.shape} != coords {xpx.shape}; "
+                    f"the stress grid does not match coordinates.mat — cannot calibrate")
+            vv = _as2d(er["VV" + suf][i])
+            uv = _as2d(er["UV" + suf][i])
+            cu, cv, cuv = calibrate_stress_tensor(
+                model, coords, uu, vv, uv, dt, z_world, tilt_x, tilt_y)
+            er["UU" + suf][i] = cu
+            er["VV" + suf][i] = cv
+            er["UV" + suf][i] = cuv
+    scipy.io.savemat(str(out_path), {"ensemble_result": er}, oned_as="row", do_compression=True)
+
+
 def _coords_struct(per_pass: Dict[int, Tuple[np.ndarray, np.ndarray]], n_passes: int) -> np.ndarray:
     st = np.empty((n_passes,), dtype=[("x", object), ("y", object)])
     empty = np.array([], dtype=np.float64)
@@ -134,6 +287,9 @@ def calibrate_mono_run(
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     model = record.camera_model
+    # Per-camera placement into the shared multi-camera rig frame (None == this camera
+    # is its own frame). Added to coordinates only; velocities are offset-invariant.
+    offset_mm = getattr(record.world_frame, "world_offset_mm", None)
 
     coords_px = read_coordinates(uncal_dir / "coordinates.mat")
     n_passes = (max(coords_px) + 1) if coords_px else 1
@@ -142,7 +298,7 @@ def calibrate_mono_run(
     cal_coords: Dict[int, Tuple[np.ndarray, np.ndarray]] = {}
     for i, (xpx, ypx) in coords_px.items():
         stacked = np.stack([xpx, ypx], axis=-1)
-        world = calibrate_coordinates(model, stacked, z_world, tilt_x, tilt_y)
+        world = calibrate_coordinates(model, stacked, z_world, tilt_x, tilt_y, offset_mm=offset_mm)
         cal_coords[i] = (world[..., 0], world[..., 1])
     scipy.io.savemat(
         str(out_dir / "coordinates.mat"),
@@ -154,6 +310,14 @@ def calibrate_mono_run(
     bmats = _vector_files(uncal_dir, vector_glob)
     total = len(bmats)
     for k, bmat in enumerate(bmats):
+        out_b = out_dir / bmat.name
+        if bmat.name == ENSEMBLE_FILE:
+            # Ensemble: mean velocity + Reynolds-stress tensors (different struct/fields).
+            calibrate_ensemble_file(bmat, out_b, model, coords_px, dt, z_world, tilt_x, tilt_y)
+            written.append(str(out_b))
+            if progress_cb:
+                progress_cb(k + 1, total)
+            continue
         vecs = read_vectors(bmat)
         cal_vecs: Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]] = {}
         for i, (ux, uy, b) in vecs.items():
@@ -164,7 +328,6 @@ def calibrate_mono_run(
             disp_stack = np.stack([ux, uy], axis=-1)
             u, v = calibrate_displacements(model, coords_stack, disp_stack, dt, z_world, tilt_x, tilt_y)
             cal_vecs[i] = (u, v, b)
-        out_b = out_dir / bmat.name
         scipy.io.savemat(
             str(out_b),
             {"piv_result": _vectors_struct(cal_vecs, n_passes)},

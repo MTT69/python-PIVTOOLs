@@ -559,6 +559,44 @@ calibration:
     pattern_rows: 10
     dot_spacing_mm: 1
     dt: 1
+calibration2:
+  # Unified pinhole-based calibration (calibration2 package). The values below are
+  # RIG-SPECIFIC placeholders — set them to match your hardware. The model is saved
+  # beside the calibration images in `source`; apply derives PIV I/O dirs from base_paths.
+  active: charuco              # charuco | dotboard | scale_factor (stereo: chosen per command)
+  source: ''                  # calibration image dir; '' -> calibration.calibration_sources[source_idx]
+  source_idx: 0
+  image_format: calib%05d.png
+  n_views: 10
+  start_index: 1
+  datum_index: 0
+  distortion_model: standard  # standard | rational | tilted
+  fix_aspect_ratio: true
+  use_release_object: false
+  world_frame: default        # 'default' or path to a clicks JSON {origin,x_axis,y_axis}
+  camera: 1
+  camera_pair:
+  - 1
+  - 2
+  dt: 1                       # seconds between frames — RIG-SPECIFIC, no safe default
+  z_world: 0.0               # light-sheet plane Z (mm) and tilt (rad), applied at apply time
+  tilt_x: 0.0
+  tilt_y: 0.0
+  charuco:
+    squares_h: 10
+    squares_v: 7
+    square_size: 0.03
+    marker_ratio: 0.5
+    aruco_dict: DICT_4X4_1000
+    min_corners: 6
+    model_type: pinhole       # pinhole | polynomial (polynomial is planar-only)
+  dotboard:
+    dot_spacing_mm: 15.0      # RIG-SPECIFIC
+    k_neighbors: 9
+    model_type: pinhole
+  scale_factor:
+    px_per_mm: 1              # RIG-SPECIFIC
+    dt: 1
 filters: []
 masking:
   enabled: false
@@ -1545,6 +1583,16 @@ video:
     # All calibration settings are now unified under the 'calibration' block
 
     @property
+    def calibration2(self) -> dict:
+        """The unified calibration2 config block (pinhole-based calibration package).
+
+        Single accessor so the CLI and GUI read one source. Returns the raw block (empty
+        dict if absent); per-key defaults live with their consumers (CLI argparse, the
+        board registry) and are mirrored in the default-config template.
+        """
+        return dict(self.data.get("calibration2", {}) or {})
+
+    @property
     def calibration_image_format(self) -> str:
         """Return calibration image filename pattern.
 
@@ -1952,11 +2000,6 @@ video:
             }
             for op in old_points
         ]
-
-    @property
-    def global_coordinates_invert_ux(self) -> bool:
-        """Return True if ux should be negated for the global coordinate system."""
-        return self.global_coordinates_config.get("invert_ux", False)
 
     # --- Self-calibration properties ---
     @property
