@@ -709,13 +709,49 @@ ensemble_piv:
   persist_images: false
   window_type: square
 calibration:
-  image_format: calib_%02d.tif
-  num_images: 1
+  # Single unified calibration block (pinhole-based). RIG-SPECIFIC placeholders below.
+  # --- Image sourcing (consumed by the calibration image loaders) ---
+  calibration_sources: []
+  image_format: calib%05d.png
   image_type: standard
   zero_based_indexing: false
   use_camera_subfolders: false
-  calibration_sources: []
   camera_subfolders: []
+  piv_type: instantaneous
+  # --- Calibration math ---
+  active: charuco             # charuco | dotboard | scale_factor (stereo chosen per command)
+  source: ''                 # calibration image dir; '' -> calibration_sources[source_idx]
+  source_idx: 0
+  n_views: 10
+  start_index: 1
+  datum_index: 0
+  distortion_model: standard # standard | rational | tilted
+  fix_aspect_ratio: true
+  use_release_object: false
+  world_frame: default       # 'default' or path to a clicks JSON {origin,x_axis,y_axis}
+  camera: 1
+  camera_pair:
+  - 1
+  - 2
+  dt: 1                      # seconds between frames — RIG-SPECIFIC, no safe default
+  z_world: 0.0              # light-sheet plane Z (mm) + tilt (rad), applied at apply time
+  tilt_x: 0.0
+  tilt_y: 0.0
+  charuco:
+    squares_h: 10
+    squares_v: 7
+    square_size: 0.03
+    marker_ratio: 0.5
+    aruco_dict: DICT_4X4_1000
+    min_corners: 6
+    model_type: pinhole      # pinhole | polynomial (polynomial is planar-only)
+  dotboard:
+    dot_spacing_mm: 15.0
+    k_neighbors: 9
+    model_type: pinhole
+  scale_factor:
+    px_per_mm: 1
+    dt: 1
   global_coordinates:
     enabled: false
     datum_camera: 1
@@ -723,66 +759,6 @@ calibration:
     datum_physical: [0.0, 0.0]
     datum_frame: 1
     overlap_pairs: []
-    invert_ux: false
-  active: scale_factor
-  piv_type: instantaneous
-  scale_factor:
-    dt: 1
-    px_per_mm: 1
-    source_path_idx: 0
-  dotboard:
-    camera: 1
-    dot_spacing_mm: 1
-    dt: 1
-    model_type: pinhole
-    source_path_idx: 0
-  charuco:
-    camera: 1
-    squares_h: 10
-    squares_v: 9
-    square_size: 0.03
-    marker_ratio: 0.5
-    aruco_dict: DICT_4X4_1000
-    min_corners: 6
-    dt: 1
-    model_type: pinhole
-    source_path_idx: 0
-  stereo_dotboard:
-    camera_pair:
-    - 1
-    - 2
-    pattern_cols: 10
-    pattern_rows: 10
-    dot_spacing_mm: 1
-    dt: 1
-    stereo_model_type: dotboard
-  polynomial:
-    xml_path: ''
-    use_xml: true
-    dt: 1
-    source_path_idx: 0
-  stereo_charuco:
-    camera_pair:
-    - 1
-    - 2
-    squares_h: 10
-    squares_v: 9
-    square_size: 0.03
-    marker_ratio: 0.5
-    aruco_dict: DICT_4X4_1000
-    min_corners: 6
-    dt: 1
-  stepped_board:
-    dot_spacing_mm: 15.0
-    step_height_mm: 3.0
-    board_thickness_mm: 14.8
-    dt: 1.0
-    camera_pair:
-    - 1
-    - 2
-    stereo_config: transmission
-    datum_camera: 1
-    datum_frame: 1
 filters: []
 masking:
   enabled: false

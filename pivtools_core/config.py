@@ -519,67 +519,32 @@ ensemble_piv:
   resume_from_pass: 0
   predictor_smoothing: false
 calibration:
-  image_format: calib_%02d.tif
-  num_images: 1
+  # Single unified calibration block (pinhole-based). RIG-SPECIFIC placeholders below.
+  # --- Image sourcing (consumed by the calibration image loaders) ---
+  calibration_sources: []
+  image_format: calib%05d.png
   image_type: standard
   zero_based_indexing: false
   use_camera_subfolders: false
-  subfolder: ''
   camera_subfolders: []
-  path_order: camera_first
-  active: scale_factor
   piv_type: instantaneous
-  active_paths: []
-  cameras: []
-  scale_factor:
-    dt: 1
-    px_per_mm: 1
-    source_path_idx: 0
-  dotboard:
-    camera: 1
-    dot_spacing_mm: 1
-    dt: 1
-    source_path_idx: 0
-  charuco:
-    camera: 1
-    squares_h: 10
-    squares_v: 9
-    square_size: 0.03
-    marker_ratio: 0.5
-    aruco_dict: DICT_4X4_1000
-    min_corners: 6
-    dt: 1
-    source_path_idx: 0
-  stereo_dotboard:
-    camera_pair:
-    - 1
-    - 2
-    stereo_model_type: dotboard
-    pattern_cols: 10
-    pattern_rows: 10
-    dot_spacing_mm: 1
-    dt: 1
-calibration2:
-  # Unified pinhole-based calibration (calibration2 package). The values below are
-  # RIG-SPECIFIC placeholders — set them to match your hardware. The model is saved
-  # beside the calibration images in `source`; apply derives PIV I/O dirs from base_paths.
-  active: charuco              # charuco | dotboard | scale_factor (stereo: chosen per command)
-  source: ''                  # calibration image dir; '' -> calibration.calibration_sources[source_idx]
+  # --- Calibration math ---
+  active: charuco             # charuco | dotboard | scale_factor (stereo chosen per command)
+  source: ''                 # calibration image dir; '' -> calibration_sources[source_idx]
   source_idx: 0
-  image_format: calib%05d.png
   n_views: 10
   start_index: 1
   datum_index: 0
-  distortion_model: standard  # standard | rational | tilted
+  distortion_model: standard # standard | rational | tilted
   fix_aspect_ratio: true
   use_release_object: false
-  world_frame: default        # 'default' or path to a clicks JSON {origin,x_axis,y_axis}
+  world_frame: default       # 'default' or path to a clicks JSON {origin,x_axis,y_axis}
   camera: 1
   camera_pair:
   - 1
   - 2
-  dt: 1                       # seconds between frames — RIG-SPECIFIC, no safe default
-  z_world: 0.0               # light-sheet plane Z (mm) and tilt (rad), applied at apply time
+  dt: 1                      # seconds between frames — RIG-SPECIFIC, no safe default
+  z_world: 0.0              # light-sheet plane Z (mm) + tilt (rad), applied at apply time
   tilt_x: 0.0
   tilt_y: 0.0
   charuco:
@@ -589,14 +554,21 @@ calibration2:
     marker_ratio: 0.5
     aruco_dict: DICT_4X4_1000
     min_corners: 6
-    model_type: pinhole       # pinhole | polynomial (polynomial is planar-only)
+    model_type: pinhole      # pinhole | polynomial (polynomial is planar-only)
   dotboard:
-    dot_spacing_mm: 15.0      # RIG-SPECIFIC
+    dot_spacing_mm: 15.0
     k_neighbors: 9
     model_type: pinhole
   scale_factor:
-    px_per_mm: 1              # RIG-SPECIFIC
+    px_per_mm: 1
     dt: 1
+  global_coordinates:
+    enabled: false
+    datum_camera: 1
+    datum_pixel: null
+    datum_physical: [0.0, 0.0]
+    datum_frame: 1
+    overlap_pairs: []
 filters: []
 masking:
   enabled: false
@@ -1584,13 +1556,17 @@ video:
 
     @property
     def calibration2(self) -> dict:
-        """The unified calibration2 config block (pinhole-based calibration package).
+        """The unified calibration config block (pinhole-based calibration package).
 
         Single accessor so the CLI and GUI read one source. Returns the raw block (empty
         dict if absent); per-key defaults live with their consumers (CLI argparse, the
         board registry) and are mirrored in the default-config template.
+
+        Reads the merged ``calibration`` block (the legacy ``calibration2`` block was
+        folded in during the v1 retirement). The property keeps its name until the
+        package rename (R4); callers are repointed then.
         """
-        return dict(self.data.get("calibration2", {}) or {})
+        return dict(self.data.get("calibration", {}) or {})
 
     @property
     def calibration_image_format(self) -> str:
@@ -1615,9 +1591,13 @@ video:
 
     @property
     def calibration_image_count(self) -> int:
-        """Return number of calibration images expected."""
+        """Return number of calibration images/views expected.
+
+        Reads the unified ``n_views`` key (falls back to the legacy ``num_images`` for
+        old configs).
+        """
         calib_block = self.data.get("calibration", {}) or {}
-        return calib_block.get("num_images", 1)
+        return calib_block.get("n_views", calib_block.get("num_images", 1))
 
     @property
     def calibration_image_type(self) -> str:
@@ -2129,8 +2109,16 @@ video:
 
     @property
     def dt(self):
-        """Return time difference between frames."""
-        # Check active calibration method
+        """Return time difference between frames.
+
+        The merged calibration block carries ``dt`` at the top level (this is what the
+        calibration2 apply path reads via ``resolve_dt``). Prefer it; fall back to the
+        legacy per-method ``dt`` for old configs.
+        """
+        top_level = self.calibration.get("dt")
+        if top_level is not None:
+            return top_level
+        # Legacy: dt lived inside the active method's sub-block.
         active_method = self.active_calibration_method
         if active_method == "stereo_dotboard":
             return self.stereo_dotboard_calibration.get("dt", 1)
