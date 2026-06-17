@@ -26,6 +26,24 @@ def format_to_glob(fmt: str) -> str:
     return re.sub(r'%\d*d', '*', fmt)
 
 
+def infer_image_type(image_format: str) -> str:
+    """Infer the image type from a format string's extension.
+
+    Standalone twin of ``Config._detect_image_type`` for callers that hold a format
+    string but not a ``Config`` (e.g. the calibration CLI, which takes ``--source`` /
+    ``--image-format`` directly). Returns one of ``standard``, ``cine``,
+    ``lavision_set``, ``lavision_im7``.
+    """
+    fmt = (image_format or "").lower()
+    if ".cine" in fmt:
+        return "cine"
+    if ".set" in fmt:
+        return "lavision_set"
+    if ".im7" in fmt or ".ims" in fmt:
+        return "lavision_im7"
+    return "standard"
+
+
 def _glob_images(directory: Path, pattern: str) -> List[Path]:
     """glob() a directory, excluding dotfiles.
 

@@ -946,7 +946,9 @@ def run_self_calibration(
         and abs(last.delta_tilt_y) < math.radians(0.01)
     )
 
-    # Also check if RMS improved significantly from initial
+    # RMS improvement is reported for diagnostics but does NOT count as
+    # convergence: "halved the RMS while corrections still moving" means the
+    # plane fit has not stabilised, and calling that converged hides it.
     initial_rms = history[0].rms_disparity if history else float("inf")
     rms_improved = final_rms < initial_rms * 0.5  # at least 2x improvement
 
@@ -967,7 +969,7 @@ def run_self_calibration(
         )
 
     return SelfCalibrationResult(
-        converged=final_converged or rms_improved,
+        converged=final_converged,
         n_iterations=len(history),
         z_offset=cumulative_z,
         tilt_x=cumulative_tilt_x,

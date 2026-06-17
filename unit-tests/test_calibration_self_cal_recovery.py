@@ -139,13 +139,16 @@ def test_tilt_recovered(recovery):
     assert abs(result.tilt_y - TRUE_TILT_Y) < 0.001, result.tilt_y
 
 
-def test_result_block_roundtrips_into_record(tmp_path, recovery):
-    """The recovered block writes into the stereo record and reloads with the sheet."""
+def test_recovered_sheet_bakes_into_record(tmp_path, recovery):
+    """The recovered sheet bakes into the extrinsics and the block reloads as baked."""
     record, result, *_ = recovery
-    record.self_cal = SC.result_to_block(
+    SC.rebake_record(record, result.z_offset, result.tilt_x, result.tilt_y)
+    record.self_cal = SC.baked_block(
         result, n_images=N_IMAGE_PAIRS, window_size=WINDOW_SIZE, overlap=OVERLAP,
     )
     out = REC.load_stereo(REC.save_stereo(record, tmp_path))
-    assert abs(out.sc_z_offset - TRUE_Z_OFFSET) < 0.05
-    assert abs(out.sc_tilt_x - TRUE_TILT_X) < 0.001
-    assert str(out.self_cal["source"]) == "auto"
+    # applied sheet zeroed (it lives in the poses); recovered sheet in fitted_*
+    assert (out.sc_z_offset, out.sc_tilt_x, out.sc_tilt_y) == (0.0, 0.0, 0.0)
+    assert abs(float(out.self_cal["fitted_z_offset"]) - TRUE_Z_OFFSET) < 0.05
+    assert abs(float(out.self_cal["fitted_tilt_x"]) - TRUE_TILT_X) < 0.001
+    assert int(out.self_cal["baked"]) == 1

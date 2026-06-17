@@ -102,13 +102,53 @@ def test_back_projection_round_trip_flat_sheet(model, world, z_sheet):
 
 
 def test_back_projection_round_trip_tilted_sheet(model, world):
-    tilt_x = np.deg2rad(2.5)
+    # Sheet contract (shared with the pinhole path):
+    #   Z = z_world + X*tan(tilt_y) + Y*tan(tilt_x)
+    tilt_x, tilt_y = np.deg2rad(2.5), np.deg2rad(-1.2)
     xy = world[::17, :2]
-    z_true = np.tan(tilt_x) * xy[:, 0]
+    z_true = np.tan(tilt_y) * xy[:, 0] + np.tan(tilt_x) * xy[:, 1]
     wp = np.column_stack([xy, z_true])
     px = model.project(wp)
-    bp = model.back_project_to_plane(px, z_world=0.0, tilt_x=tilt_x)
+    bp = model.back_project_to_plane(px, z_world=0.0, tilt_x=tilt_x, tilt_y=tilt_y)
     np.testing.assert_allclose(bp[:, :2], xy, atol=1e-5)
+
+
+def test_tilt_convention_matches_pinhole_contract(model):
+    """Identical (z_world, tilt_x, tilt_y) must mean the SAME sheet through the
+    polynomial3d model as through the pinhole model (the A1 tilt-axis contract).
+
+    Both back-projections must land on Z = z_world + X*tan(tilt_y) + Y*tan(tilt_x);
+    a swapped coupling in either model puts its points on the transposed plane.
+    """
+    import cv2
+
+    from pivtools_gui.calibration.camera_model import CameraModel, DistortionModel
+
+    z0, tilt_x, tilt_y = 1.5, np.deg2rad(3.0), np.deg2rad(-2.0)
+
+    def plane_residual(world_pts):
+        return world_pts[:, 2] - (
+            z0
+            + world_pts[:, 0] * np.tan(tilt_y)
+            + world_pts[:, 1] * np.tan(tilt_x)
+        )
+
+    # Polynomial3d: back-project a pixel grid spanning the fitted FOV.
+    px_grid = np.column_stack([
+        np.linspace(900, 1150, 9),
+        np.linspace(900, 1150, 9)[::-1],
+    ])
+    bp_poly = model.back_project_to_plane(px_grid, z_world=z0, tilt_x=tilt_x, tilt_y=tilt_y)
+    np.testing.assert_allclose(plane_residual(bp_poly), 0.0, atol=1e-6)
+
+    # Pinhole: a synthetic camera looking at the board from +Z.
+    K = np.array([[2000.0, 0, 1024], [0, 2000.0, 1024], [0, 0, 1]])
+    R, _ = cv2.Rodrigues(np.array([np.pi, 0.02, 0.0]))  # board-facing flip
+    t = -R @ np.array([[5.0], [-10.0], [800.0]])        # camera centre at (5,-10,800)
+    cam = CameraModel(K=K, dist=np.zeros(4), R=R, t=t, image_size=(2048, 2048),
+                      distortion_model=DistortionModel.STANDARD, rms=0.0)
+    bp_pin = cam.back_project_to_plane(px_grid, z_world=z0, tilt_x=tilt_x, tilt_y=tilt_y)
+    np.testing.assert_allclose(plane_residual(bp_pin), 0.0, atol=1e-6)
 
 
 def test_mono_record_round_trips(model, world, tmp_path):

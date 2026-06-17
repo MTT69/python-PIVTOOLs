@@ -30,6 +30,11 @@ class DetectionResult:
         Globally consistent across cameras/views — used for stereo correspondence.
     board_to_pixel : (3,3) homography board-grid -> pixel, or None.
     spacing_mm : nominal feature spacing in mm.
+    synthetic_mask : (N,) bool or None. True where the point was NOT measured
+        directly from a blob centroid but synthesised by the detector (template-
+        matching rescue of a missed dot, or model infill of a droplet-biased dot).
+        Synthetic points still enter the fit unchanged — the mask exists so figures
+        and diagnostics can show them honestly.
     diagnostics : free-form detector diagnostics.
     """
 
@@ -41,6 +46,7 @@ class DetectionResult:
     point_ids: Optional[np.ndarray] = None
     board_to_pixel: Optional[np.ndarray] = None
     spacing_mm: Optional[float] = None
+    synthetic_mask: Optional[np.ndarray] = None
     diagnostics: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -52,6 +58,8 @@ class DetectionResult:
             self.grid_indices = np.asarray(self.grid_indices).reshape(-1, 2)
         if self.point_ids is not None:
             self.point_ids = np.asarray(self.point_ids).reshape(-1)
+        if self.synthetic_mask is not None:
+            self.synthetic_mask = np.asarray(self.synthetic_mask, dtype=bool).reshape(-1)
 
     @property
     def n(self) -> int:

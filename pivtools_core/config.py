@@ -1907,6 +1907,9 @@ video:
         else:
             raise ValueError(f"Unknown calibration method: {method}")
 
+    # Joint multi-camera clicked coords (datum + anchors) live in the sidecar inputs.mat next to
+    # the model, not in config — see calibration.inputs_store. No global_grid_config property.
+
     # --- Global coordinate alignment properties ---
 
     @property

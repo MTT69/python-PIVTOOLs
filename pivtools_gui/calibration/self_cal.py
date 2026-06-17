@@ -205,44 +205,6 @@ def load_particle_pairs(
     return images_cam1, images_cam2
 
 
-def load_one_pair(
-    config,
-    base_path_idx: int,
-    cam1: int,
-    cam2: int,
-    frame_idx: int = 1,
-    sub_frame: str = "A",
-    apply_filters: bool = False,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Load a single frame pair (one camera each) for the live dewarp preview.
-
-    ``frame_idx`` is 1-based; ``sub_frame`` picks A (frame 0) or B (frame 1) of the
-    pair. Filtering defaults off for the preview (it is a raw-registration visual; the
-    temporal filters need a stack and only matter for the correlation in ``run``).
-    """
-    from pivtools_core.image_handling.load_images import read_pair
-    from pivtools_core.image_handling.path_utils import build_piv_camera_path
-
-    cam1_path = build_piv_camera_path(config, base_path_idx, cam1)
-    cam2_path = build_piv_camera_path(config, base_path_idx, cam2)
-    p1 = _to_pair_gray(read_pair(int(frame_idx), cam1_path, cam1, config)).astype(np.float32)
-    p2 = _to_pair_gray(read_pair(int(frame_idx), cam2_path, cam2, config)).astype(np.float32)
-    sub = 1 if str(sub_frame).upper() == "B" else 0
-    img1, img2 = p1[sub], p2[sub]
-
-    if apply_filters:
-        from pivtools_cli.processing.dask_pipeline import (
-            apply_all_filters_slim,
-            get_filter_specs,
-        )
-
-        specs = get_filter_specs(config)
-        if specs:
-            img1 = apply_all_filters_slim(img1[None, None], filter_specs=specs)[0, 0]
-            img2 = apply_all_filters_slim(img2[None, None], filter_specs=specs)[0, 0]
-    return img1, img2
-
-
 # ---------------------------------------------------------------------------
 # Run + record-block packing
 # ---------------------------------------------------------------------------
@@ -312,7 +274,42 @@ def run(
     return result
 
 
-def result_to_block(
+def rebake_record(
+    record: StereoRecord, z_offset: float, tilt_x: float, tilt_y: float
+) -> None:
+    """Bake a recovered sheet correction into both cameras' extrinsics, in place.
+
+    Redefines the world frame so the sheet ``Z = z_offset + X*tan(tilt_y) +
+    Y*tan(tilt_x)`` becomes the new Z=0 plane (the DaVis convention): for each camera
+    ``R' = R @ R_corr``, ``t' = R @ t_corr + t`` from
+    ``self_cal_frame.plane_to_world_correction``. The cross-camera pose is invariant,
+    but ``R_stereo``/``T_stereo`` are recomputed so the stored values stay exactly
+    consistent with the rebaked poses.
+
+    Pinhole only: the rebake is a pose redefinition and is undefined for the direct
+    image->world polynomial map, so a polynomial record raises rather than silently
+    skipping.
+    """
+    import dataclasses
+
+    from .self_cal_frame import plane_to_world_correction, rebake_pose
+    from .stereo_model import compose_stereo
+
+    for label, model in (("model1", record.model1), ("model2", record.model2)):
+        if not (hasattr(model, "R") and hasattr(model, "t")):
+            raise ValueError(
+                f"self-cal rebake requires pinhole models; {label} is "
+                f"{type(model).__name__} (no extrinsics to rebake)")
+
+    R_corr, t_corr = plane_to_world_correction(z_offset, tilt_x, tilt_y)
+    R1, t1 = rebake_pose(record.model1.R, record.model1.t, R_corr, t_corr)
+    R2, t2 = rebake_pose(record.model2.R, record.model2.t, R_corr, t_corr)
+    record.model1 = dataclasses.replace(record.model1, R=R1, t=t1)
+    record.model2 = dataclasses.replace(record.model2, R=R2, t=t2)
+    record.R_stereo, record.T_stereo = compose_stereo(record.model1, record.model2)
+
+
+def baked_block(
     result: SelfCalibrationResult,
     *,
     n_images: int,
@@ -320,15 +317,23 @@ def result_to_block(
     overlap: float,
     source: str = "auto",
 ) -> dict:
-    """Pack a ``SelfCalibrationResult`` into a ``StereoRecord.self_cal`` dict.
+    """Provenance ``self_cal`` block for a correction baked into the extrinsics.
 
-    Scalars + one string only, so it round-trips through ``record._meta_to_dict`` /
-    ``_meta_from`` unchanged.
+    The applied correction (``z_offset``/``tilt_x``/``tilt_y``) is zero — it now lives
+    in the rebaked poses, so reconstruction consumers (``record.sc_*``,
+    ``reconstruct_3c_field``) apply nothing further. The recovered sheet is preserved
+    under ``fitted_*`` and ``baked=1`` marks the record as carrying the correction in
+    its extrinsics. Scalars + one string only, so it round-trips through
+    ``record._meta_to_dict`` / ``_meta_from`` unchanged.
     """
     return {
-        "z_offset": float(result.z_offset),
-        "tilt_x": float(result.tilt_x),
-        "tilt_y": float(result.tilt_y),
+        "z_offset": 0.0,
+        "tilt_x": 0.0,
+        "tilt_y": 0.0,
+        "baked": 1,
+        "fitted_z_offset": float(result.z_offset),
+        "fitted_tilt_x": float(result.tilt_x),
+        "fitted_tilt_y": float(result.tilt_y),
         "converged": int(bool(result.converged)),
         "final_rms_disparity": float(result.final_rms_disparity),
         "n_iterations": int(result.n_iterations),
@@ -336,20 +341,4 @@ def result_to_block(
         "window_size": int(window_size),
         "overlap": float(overlap),
         "source": source,
-    }
-
-
-def manual_block(z_offset: float, tilt_x: float, tilt_y: float) -> dict:
-    """A ``self_cal`` block for an operator-entered (no-images) sheet correction."""
-    return {
-        "z_offset": float(z_offset),
-        "tilt_x": float(tilt_x),
-        "tilt_y": float(tilt_y),
-        "converged": 1,
-        "final_rms_disparity": 0.0,
-        "n_iterations": 0,
-        "n_images": 0,
-        "window_size": 0,
-        "overlap": 0.0,
-        "source": "manual",
     }

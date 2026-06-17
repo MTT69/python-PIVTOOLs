@@ -232,6 +232,41 @@ def test_dotboard_stereo_recovery(stereo_render):
     assert float(np.linalg.norm(rec.T_stereo)) == pytest.approx(50.0, abs=1.5)
 
 
+def test_stereo_origin_mm_reaches_cam2(stereo_render):
+    """A non-zero origin_mm must shift BOTH cameras' world frames together (A2).
+
+    Before the fix, cam2's independently-clicked frame dropped cam1's origin_mm,
+    so the composed stereo pose shifted by exactly that offset. The relative pose
+    is invariant under a world re-origin, so the two runs must agree.
+    """
+    imgs1, imgs2, p1, p2 = stereo_render["dotboard"]
+    cam = stereo_render["cam"]
+
+    def clicks_for(pose):
+        rvec, tvec = pose
+        objs = np.array([[0, 0, 0], [0.015, 0, 0], [0, 0.015, 0]], float)
+        pr, _ = cv2.projectPoints(objs, rvec, tvec, cam, np.zeros(5))
+        pr = pr.reshape(-1, 2)
+        return {"origin": pr[0], "x_axis": pr[1], "y_axis": pr[2]}
+
+    def run(origin_mm):
+        det = DotboardDetector(DotboardParams(DOT_SPACING_MM))
+        return StereoCalibrator(det, "dotboard").run_stereo(
+            imgs1, imgs2, 1, 2,
+            clicks=clicks_for(p1[0]), clicks2=clicks_for(p2[0]),
+            spacing_mm=DOT_SPACING_MM, origin_mm=origin_mm)
+
+    base = run(None)
+    shifted = run((50.0, -20.0))
+    np.testing.assert_allclose(shifted.R_stereo, base.R_stereo, atol=1e-6)
+    np.testing.assert_allclose(shifted.T_stereo, base.T_stereo, atol=1e-3)
+    # The shift itself must be real: world points move by +d, so with pixels
+    # fixed the pose compensates with t' = t - R @ d.
+    d_world = np.array([[50.0], [-20.0], [0.0]])
+    expected_t1 = base.model1.t - base.model1.R @ d_world
+    np.testing.assert_allclose(shifted.model1.t, expected_t1, atol=1e-2)
+
+
 # ---------------------------------------------------------------------------
 # 3C reconstruction + apply file IO
 # ---------------------------------------------------------------------------

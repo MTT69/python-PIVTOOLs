@@ -67,6 +67,12 @@ class DotboardDetector:
             )
             board_to_pixel = H
 
+        # Scalar diagnostics live in `info` (n_rescued, n_infilled,
+        # ransac_n_rejected, edge_fraction, warning, ...); grid_data scalars
+        # (n_cols, spacing_px, ...) overlay them where both exist.
+        diagnostics = {k: v for k, v in info.items() if np.isscalar(v)}
+        diagnostics.update({k: v for k, v in grid.items() if np.isscalar(v)})
+
         return DetectionResult(
             success=True,
             board_type=self.board_type,
@@ -76,5 +82,6 @@ class DotboardDetector:
             point_ids=None,
             board_to_pixel=board_to_pixel,
             spacing_mm=sp,
-            diagnostics={k: v for k, v in grid.items() if np.isscalar(v)},
+            synthetic_mask=grid.get("synthetic_mask"),
+            diagnostics=diagnostics,
         )

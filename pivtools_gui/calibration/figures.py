@@ -18,16 +18,14 @@ from __future__ import annotations
 import math
 import traceback
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional, Sequence
+from typing import TYPE_CHECKING, List, Sequence
 
 import cv2
-import numpy as np
-
 import matplotlib
+import numpy as np
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
-
 from matplotlib.gridspec import GridSpec  # noqa: E402
 
 try:  # loguru is the project logger; fall back to stdlib if unavailable
@@ -40,17 +38,29 @@ except Exception:  # pragma: no cover
 from scipy.spatial import cKDTree  # noqa: E402
 
 if TYPE_CHECKING:  # annotations only — avoids a runtime import cycle
-    from .camera_model import CameraModel
+    from .camera_model import CameraModel, PolynomialModel
     from .detection.base import DetectionResult
     from .record import WorldFrame
 
-# Camera colours, shared by the per-camera figures and the stereo 3D scene.
-CAM_COLORS = ("#1f77b4", "#d62728", "#2ca02c", "#9467bd")
+# Camera colours, shared by the per-camera figures and the stereo / joint 3D scenes.
+# (>=8 so a joint rig with many cameras is not silently truncated by ``_camera_records``,
+# which zips models against this tuple.)
+CAM_COLORS = (
+    "#1f77b4",
+    "#d62728",
+    "#2ca02c",
+    "#9467bd",
+    "#ff7f0e",
+    "#17becf",
+    "#8c564b",
+    "#e377c2",
+)
 
 
 # ---------------------------------------------------------------------------
 # Small helpers
 # ---------------------------------------------------------------------------
+
 
 def _save(fig, output_path, dpi: int = 150) -> None:
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
@@ -66,15 +76,21 @@ def _to_uint8_gray(img: np.ndarray) -> np.ndarray:
             img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         else:
             img = np.squeeze(img)
-    if img.dtype in (np.float32, np.float64):
+    if img.dtype in (np.float32, np.float64, np.uint16):
+        # Min-max stretch for float AND uint16: a fixed /256 on uint16 crushes
+        # 12-bit-range data (0..4095 -> 0..15, near-black figures).
         lo, hi = float(img.min()), float(img.max())
-        img = ((img - lo) / (hi - lo) * 255).astype(np.uint8) if hi > lo else np.zeros_like(img, np.uint8)
-    elif img.dtype == np.uint16:
-        img = (img / 256).astype(np.uint8)
+        img = (
+            ((img.astype(np.float64) - lo) / (hi - lo) * 255).astype(np.uint8)
+            if hi > lo
+            else np.zeros_like(img, np.uint8)
+        )
     return img
 
 
-def _draw_grid_network(ax, centers, grid_indices, color="limegreen", lw=0.6, alpha=0.7) -> None:
+def _draw_grid_network(
+    ax, centers, grid_indices, color="limegreen", lw=0.6, alpha=0.7
+) -> None:
     """Lines between grid-neighbouring points (col/row +1) on a mpl axis."""
     idx = {(int(g[0]), int(g[1])): i for i, g in enumerate(grid_indices)}
     for i, g in enumerate(grid_indices):
@@ -82,8 +98,13 @@ def _draw_grid_network(ax, centers, grid_indices, color="limegreen", lw=0.6, alp
         for dc, dr in ((1, 0), (0, 1)):
             j = idx.get((c + dc, r + dr))
             if j is not None:
-                ax.plot([centers[i, 0], centers[j, 0]], [centers[i, 1], centers[j, 1]],
-                        color=color, linewidth=lw, alpha=alpha)
+                ax.plot(
+                    [centers[i, 0], centers[j, 0]],
+                    [centers[i, 1], centers[j, 1]],
+                    color=color,
+                    linewidth=lw,
+                    alpha=alpha,
+                )
 
 
 def _dot_at_grid(grid_indices: np.ndarray, image_points: np.ndarray, col, row):
@@ -91,23 +112,50 @@ def _dot_at_grid(grid_indices: np.ndarray, image_points: np.ndarray, col, row):
     gi = np.asarray(grid_indices, np.float64).reshape(-1, 2)
     d = np.abs(gi[:, 0] - col) + np.abs(gi[:, 1] - row)
     k = int(np.argmin(d))
-    return None if d[k] > 0.5 else np.asarray(image_points, np.float64).reshape(-1, 2)[k]
+    return (
+        None if d[k] > 0.5 else np.asarray(image_points, np.float64).reshape(-1, 2)[k]
+    )
 
 
 # ---------------------------------------------------------------------------
 # 1. Detection overlay (per view)
 # ---------------------------------------------------------------------------
 
-def write_detection_figure(image, detection: "DetectionResult", output_path, title=None) -> None:
+
+def write_detection_figure(
+    image, detection: "DetectionResult", output_path, title=None
+) -> None:
     """Detected features + grid-index labels on the image, plus the grid network."""
     try:
         gray = _to_uint8_gray(image)
         pts = np.asarray(detection.image_points, np.float64).reshape(-1, 2)
-        gi = None if detection.grid_indices is None else np.asarray(detection.grid_indices).reshape(-1, 2)
-        ids = None if detection.point_ids is None else np.asarray(detection.point_ids).reshape(-1)
-        n = len(pts)
+        gi = (
+            None
+            if detection.grid_indices is None
+            else np.asarray(detection.grid_indices).reshape(-1, 2)
+        )
+        ids = (
+            None
+            if detection.point_ids is None
+            else np.asarray(detection.point_ids).reshape(-1)
+        )
         h, w = gray.shape[:2]
         scale = max(1, w // 1400)
+
+        # Show only genuinely-detected, accepted dots. Synthetic (rescued/infilled) points are
+        # dropped from the FIGURE (they are still stored in the record/sidecar); RANSAC-rejected
+        # points are already absent from the detection result. dotboard-only — charuco has no mask.
+        synth = detection.synthetic_mask
+        if synth is not None:
+            synth = np.asarray(synth, dtype=bool).reshape(-1)
+            if len(synth) == len(pts) and synth.any():
+                keep = ~synth
+                pts = pts[keep]
+                if gi is not None:
+                    gi = gi[keep]
+                if ids is not None:
+                    ids = ids[keep]
+        n = len(pts)
 
         if gi is not None and n:
             ncols = int(gi[:, 0].max() - gi[:, 0].min() + 1)
@@ -117,35 +165,66 @@ def write_detection_figure(image, detection: "DetectionResult", output_path, tit
             grid_txt = "no grid"
         status = f"{n} features, {grid_txt}" if detection.success else "FAILED"
 
+        # Only the detector warning is surfaced. The synthetic / RANSAC-rejected counts are kept in
+        # the record/sidecar diagnostics but intentionally NOT drawn here (the figure shows the
+        # genuine accepted dots, nothing else).
+        diag = detection.diagnostics or {}
+        extras = []
+        if diag.get("warning"):
+            extras.append(str(diag["warning"]))
+        subtitle = ("\n" + " | ".join(extras)) if extras else ""
+
         fig = plt.figure(figsize=(18, 8))
-        fig.suptitle(f"{title or 'Detection'} — {status}", fontsize=13,
-                     color="darkgreen" if detection.success else "darkred")
+        fig.suptitle(
+            f"{title or 'Detection'} — {status}{subtitle}",
+            fontsize=13,
+            color="darkgreen" if detection.success else "darkred",
+        )
         gs = GridSpec(1, 2, figure=fig, wspace=0.08)
 
         ax1 = fig.add_subplot(gs[0, 0])
         ax1.imshow(gray[::scale, ::scale], cmap="gray")
-        ax1.scatter(pts[:, 0] / scale, pts[:, 1] / scale, s=10, facecolors="none",
-                    edgecolors="lime", linewidths=0.6)
+        ax1.scatter(
+            pts[:, 0] / scale,
+            pts[:, 1] / scale,
+            s=10,
+            facecolors="none",
+            edgecolors="lime",
+            linewidths=0.6,
+        )
         if gi is not None:
             label_all = n <= 130
             for k in range(n):
                 if label_all or (int(gi[k, 0]) % 2 == 0 and int(gi[k, 1]) % 2 == 0):
-                    ax1.text(pts[k, 0] / scale + 3, pts[k, 1] / scale - 3,
-                             f"{int(gi[k, 0])},{int(gi[k, 1])}", color="yellow", fontsize=5)
+                    ax1.text(
+                        pts[k, 0] / scale + 3,
+                        pts[k, 1] / scale - 3,
+                        f"{int(gi[k, 0])},{int(gi[k, 1])}",
+                        color="yellow",
+                        fontsize=5,
+                    )
         ax1.set_title("Features + grid indices (col,row)", fontsize=10)
-        ax1.set_xticks([]); ax1.set_yticks([])
+        ax1.set_xticks([])
+        ax1.set_yticks([])
 
         ax2 = fig.add_subplot(gs[0, 1])
         if gi is not None and n:
             _draw_grid_network(ax2, pts, gi)
         if detection.board_type == "charuco" and ids is not None and n:
-            ax2.scatter(pts[:, 0], pts[:, 1], c=plt.cm.hsv(ids / max(int(ids.max()), 1)),
-                        s=16, zorder=5)
+            ax2.scatter(
+                pts[:, 0],
+                pts[:, 1],
+                c=plt.cm.hsv(ids / max(int(ids.max()), 1)),
+                s=16,
+                zorder=5,
+            )
         elif n:
             ax2.scatter(pts[:, 0], pts[:, 1], c="limegreen", s=12, zorder=5)
-        ax2.invert_yaxis(); ax2.set_aspect("equal", adjustable="datalim")
+        ax2.invert_yaxis()
+        ax2.set_aspect("equal", adjustable="datalim")
         ax2.set_title("Grid network", fontsize=10)
-        ax2.set_xlabel("x (px)"); ax2.set_ylabel("y (px, image-down)")
+        ax2.set_xlabel("x (px)")
+        ax2.set_ylabel("y (px, image-down)")
         _save(fig, output_path)
     except Exception:
         logger.warning(f"detection figure failed: {traceback.format_exc()}")
@@ -155,8 +234,15 @@ def write_detection_figure(image, detection: "DetectionResult", output_path, tit
 # 2. World-frame pick (datum view)
 # ---------------------------------------------------------------------------
 
-def write_world_frame_figure(image, detection: "DetectionResult", wf: "WorldFrame",
-                             spacing, output_path, title=None) -> None:
+
+def write_world_frame_figure(
+    image,
+    detection: "DetectionResult",
+    wf: "WorldFrame",
+    spacing,
+    output_path,
+    title=None,
+) -> None:
     """Datum view: snapped origin ● + +X/+Y arrows to the neighbour dots.
 
     For ``clicks`` mode the raw clicks are drawn faint and the snapped dots get the
@@ -172,20 +258,70 @@ def write_world_frame_figure(image, detection: "DetectionResult", wf: "WorldFram
 
         fig, ax = plt.subplots(figsize=(12, 10))
         ax.imshow(gray[::scale, ::scale], cmap="gray")
-        ax.scatter(pts[:, 0] / scale, pts[:, 1] / scale, s=6, facecolors="none",
-                   edgecolors="deepskyblue", linewidths=0.4, alpha=0.6)
+        ax.scatter(
+            pts[:, 0] / scale,
+            pts[:, 1] / scale,
+            s=6,
+            facecolors="none",
+            edgecolors="deepskyblue",
+            linewidths=0.4,
+            alpha=0.6,
+        )
 
         def arrows(o, xa, ya):
-            ax.annotate("", xy=xa / scale, xytext=o / scale,
-                        arrowprops=dict(arrowstyle="-|>", color="yellow", lw=2.4))
-            ax.annotate("", xy=ya / scale, xytext=o / scale,
-                        arrowprops=dict(arrowstyle="-|>", color="magenta", lw=2.4))
-            ax.scatter([o[0] / scale], [o[1] / scale], s=180, facecolors="none",
-                       edgecolors="lime", linewidths=2.4, zorder=10)
-            ax.scatter([o[0] / scale], [o[1] / scale], s=45, color="lime", marker="+", zorder=11)
-            ax.text(o[0] / scale + 7, o[1] / scale - 7, "O", color="lime", fontsize=13, fontweight="bold")
-            ax.text(xa[0] / scale + 7, xa[1] / scale - 7, "+X", color="yellow", fontsize=13, fontweight="bold")
-            ax.text(ya[0] / scale + 7, ya[1] / scale - 7, "+Y", color="magenta", fontsize=13, fontweight="bold")
+            ax.annotate(
+                "",
+                xy=xa / scale,
+                xytext=o / scale,
+                arrowprops=dict(arrowstyle="-|>", color="yellow", lw=2.4),
+            )
+            ax.annotate(
+                "",
+                xy=ya / scale,
+                xytext=o / scale,
+                arrowprops=dict(arrowstyle="-|>", color="magenta", lw=2.4),
+            )
+            ax.scatter(
+                [o[0] / scale],
+                [o[1] / scale],
+                s=180,
+                facecolors="none",
+                edgecolors="lime",
+                linewidths=2.4,
+                zorder=10,
+            )
+            ax.scatter(
+                [o[0] / scale],
+                [o[1] / scale],
+                s=45,
+                color="lime",
+                marker="+",
+                zorder=11,
+            )
+            ax.text(
+                o[0] / scale + 7,
+                o[1] / scale - 7,
+                "O",
+                color="lime",
+                fontsize=13,
+                fontweight="bold",
+            )
+            ax.text(
+                xa[0] / scale + 7,
+                xa[1] / scale - 7,
+                "+X",
+                color="yellow",
+                fontsize=13,
+                fontweight="bold",
+            )
+            ax.text(
+                ya[0] / scale + 7,
+                ya[1] / scale - 7,
+                "+Y",
+                color="magenta",
+                fontsize=13,
+                fontweight="bold",
+            )
 
         sub = f"{wf.mode} frame"
         if wf.mode == "clicks" and wf.origin_px is not None:
@@ -196,13 +332,19 @@ def write_world_frame_figure(image, detection: "DetectionResult", wf: "WorldFram
                 return pts[int(i)]
 
             o, xa, ya = snap(wf.origin_px), snap(wf.x_axis_px), snap(wf.y_axis_px)
-            for c, col in ((wf.origin_px, "white"), (wf.x_axis_px, "yellow"), (wf.y_axis_px, "magenta")):
+            for c, col in (
+                (wf.origin_px, "white"),
+                (wf.x_axis_px, "yellow"),
+                (wf.y_axis_px, "magenta"),
+            ):
                 c = np.asarray(c, np.float64).reshape(2)
                 ax.plot(c[0] / scale, c[1] / scale, "x", color=col, ms=7, alpha=0.45)
             arrows(o, xa, ya)
             if wf.origin_grid is not None:
-                sub = (f"clicks — origin dot grid (col,row)=("
-                       f"{int(wf.origin_grid[0])},{int(wf.origin_grid[1])}), spacing={float(spacing):g} mm")
+                sub = (
+                    f"clicks — origin dot grid (col,row)=("
+                    f"{int(wf.origin_grid[0])},{int(wf.origin_grid[1])}), spacing={float(spacing):g} mm"
+                )
         elif wf.origin_grid is not None:
             og = np.asarray(wf.origin_grid, np.float64).reshape(2)
             # +X / +Y grid steps under the resolved frame.
@@ -214,14 +356,31 @@ def write_world_frame_figure(image, detection: "DetectionResult", wf: "WorldFram
             if o is not None and xa is not None and ya is not None:
                 arrows(o, xa, ya)
             elif o is not None:
-                ax.scatter([o[0] / scale], [o[1] / scale], s=180, facecolors="none",
-                           edgecolors="lime", linewidths=2.4, zorder=10)
-                ax.text(o[0] / scale + 7, o[1] / scale - 7, "O", color="lime", fontsize=13, fontweight="bold")
-            sub = (f"{wf.mode} — origin dot grid (col,row)=({int(og[0])},{int(og[1])}), "
-                   f"spacing={float(spacing):g} mm")
+                ax.scatter(
+                    [o[0] / scale],
+                    [o[1] / scale],
+                    s=180,
+                    facecolors="none",
+                    edgecolors="lime",
+                    linewidths=2.4,
+                    zorder=10,
+                )
+                ax.text(
+                    o[0] / scale + 7,
+                    o[1] / scale - 7,
+                    "O",
+                    color="lime",
+                    fontsize=13,
+                    fontweight="bold",
+                )
+            sub = (
+                f"{wf.mode} — origin dot grid (col,row)=({int(og[0])},{int(og[1])}), "
+                f"spacing={float(spacing):g} mm"
+            )
 
         ax.set_title(f"{title or 'World frame'}\n{sub}", fontsize=11)
-        ax.set_xticks([]); ax.set_yticks([])
+        ax.set_xticks([])
+        ax.set_yticks([])
         _save(fig, output_path)
     except Exception:
         logger.warning(f"world-frame figure failed: {traceback.format_exc()}")
@@ -231,14 +390,29 @@ def write_world_frame_figure(image, detection: "DetectionResult", wf: "WorldFram
 # 3. Reprojection residuals + per-view RMS
 # ---------------------------------------------------------------------------
 
-def write_reprojection_figure(object_points, image_points, K, dist, rvecs, tvecs,
-                              per_view, rms, output_path, pose_indices=None, title=None) -> None:
+
+def write_reprojection_figure(
+    object_points,
+    image_points,
+    K,
+    dist,
+    rvecs,
+    tvecs,
+    per_view,
+    rms,
+    output_path,
+    pose_indices=None,
+    title=None,
+) -> None:
     """(dx,dy) residual scatter coloured by view + RMS circle, and a per-view RMS bar chart."""
     try:
         n_views = len(object_points)
         colors = plt.cm.tab10(np.linspace(0, 1, max(n_views, 1)))
         fig = plt.figure(figsize=(15, 6))
-        fig.suptitle(f"{title or 'Reprojection'} — {n_views} views, overall RMS={rms:.4f} px", fontsize=13)
+        fig.suptitle(
+            f"{title or 'Reprojection'} — {n_views} views, overall RMS={rms:.4f} px",
+            fontsize=13,
+        )
         gs = GridSpec(1, 2, figure=fig, wspace=0.25, width_ratios=[1.1, 1.0])
 
         ax = fig.add_subplot(gs[0, 0])
@@ -247,26 +421,53 @@ def write_reprojection_figure(object_points, image_points, K, dist, rvecs, tvecs
             proj, _ = cv2.projectPoints(
                 np.asarray(object_points[i], np.float64).reshape(-1, 1, 3),
                 np.asarray(rvecs[i], np.float64).reshape(3),
-                np.asarray(tvecs[i], np.float64).reshape(3), K, dist)
-            res = (np.asarray(image_points[i], np.float64).reshape(-1, 1, 2) - proj).reshape(-1, 2)
+                np.asarray(tvecs[i], np.float64).reshape(3),
+                K,
+                dist,
+            )
+            res = (
+                np.asarray(image_points[i], np.float64).reshape(-1, 1, 2) - proj
+            ).reshape(-1, 2)
             all_r.append(res)
             ax.scatter(res[:, 0], res[:, 1], s=4, alpha=0.5, color=colors[i])
         allr = np.vstack(all_r) if all_r else np.zeros((0, 2))
-        ax.add_patch(plt.Circle((0, 0), rms, fill=False, color="red", ls="--", lw=1.5,
-                                label=f"RMS={rms:.3f} px"))
-        mr = max(float(np.abs(allr).max()) * 1.15, rms * 1.3) if len(allr) else max(rms * 1.3, 1e-3)
-        ax.set_xlim(-mr, mr); ax.set_ylim(-mr, mr); ax.set_aspect("equal")
-        ax.axhline(0, color="gray", lw=0.5); ax.axvline(0, color="gray", lw=0.5)
-        ax.set_xlabel("residual x (px)"); ax.set_ylabel("residual y (px)")
+        ax.add_patch(
+            plt.Circle(
+                (0, 0),
+                rms,
+                fill=False,
+                color="red",
+                ls="--",
+                lw=1.5,
+                label=f"RMS={rms:.3f} px",
+            )
+        )
+        mr = (
+            max(float(np.abs(allr).max()) * 1.15, rms * 1.3)
+            if len(allr)
+            else max(rms * 1.3, 1e-3)
+        )
+        ax.set_xlim(-mr, mr)
+        ax.set_ylim(-mr, mr)
+        ax.set_aspect("equal")
+        ax.axhline(0, color="gray", lw=0.5)
+        ax.axvline(0, color="gray", lw=0.5)
+        ax.set_xlabel("residual x (px)")
+        ax.set_ylabel("residual y (px)")
         ax.set_title(f"Reprojection residuals ({len(allr)} pts)", fontsize=10)
         ax.legend(fontsize=8)
 
         ax2 = fig.add_subplot(gs[0, 1])
-        labels = [str(p) for p in (pose_indices if pose_indices is not None else range(n_views))]
+        labels = [
+            str(p)
+            for p in (pose_indices if pose_indices is not None else range(n_views))
+        ]
         ax2.bar(labels, per_view, color=colors[: len(per_view)])
         ax2.axhline(rms, color="red", ls="--", lw=1, label=f"overall {rms:.3f}")
-        ax2.set_xlabel("view (pose index)"); ax2.set_ylabel("RMS (px)")
-        ax2.set_title("Per-view RMS", fontsize=10); ax2.legend(fontsize=8)
+        ax2.set_xlabel("view (pose index)")
+        ax2.set_ylabel("RMS (px)")
+        ax2.set_title("Per-view RMS", fontsize=10)
+        ax2.legend(fontsize=8)
         _save(fig, output_path)
     except Exception:
         logger.warning(f"reprojection figure failed: {traceback.format_exc()}")
@@ -275,6 +476,7 @@ def write_reprojection_figure(object_points, image_points, K, dist, rvecs, tvecs
 # ---------------------------------------------------------------------------
 # 4. Distortion map
 # ---------------------------------------------------------------------------
+
 
 def write_distortion_map_figure(K, dist, image_size, output_path, title=None) -> None:
     """Sensor heatmap + quiver of the distortion displacement (distorted -> ideal)."""
@@ -285,7 +487,11 @@ def write_distortion_map_figure(K, dist, image_size, output_path, title=None) ->
         gx = np.linspace(0, w - 1, 25)
         gy = np.linspace(0, h - 1, 25)
         GX, GY = np.meshgrid(gx, gy)
-        grid = np.column_stack([GX.ravel(), GY.ravel()]).astype(np.float32).reshape(-1, 1, 2)
+        grid = (
+            np.column_stack([GX.ravel(), GY.ravel()])
+            .astype(np.float32)
+            .reshape(-1, 1, 2)
+        )
         und = cv2.undistortPoints(grid, K, dist, P=new_cam).reshape(-1, 2)
         orig = grid.reshape(-1, 2)
         disp = und - orig
@@ -293,14 +499,30 @@ def write_distortion_map_figure(K, dist, image_size, output_path, title=None) ->
 
         fig, ax = plt.subplots(figsize=(10, 9))
         sc = ax.scatter(orig[:, 0], orig[:, 1], c=mag, cmap="viridis", s=40)
-        ax.quiver(orig[:, 0], orig[:, 1], disp[:, 0], disp[:, 1], angles="xy",
-                  scale_units="xy", scale=1, color="white", width=0.002, alpha=0.7)
+        ax.quiver(
+            orig[:, 0],
+            orig[:, 1],
+            disp[:, 0],
+            disp[:, 1],
+            angles="xy",
+            scale_units="xy",
+            scale=1,
+            color="white",
+            width=0.002,
+            alpha=0.7,
+        )
         fig.colorbar(sc, ax=ax, label="displacement (px)")
-        ax.set_xlim(0, w); ax.set_ylim(h, 0); ax.set_aspect("equal")
-        ax.set_xlabel("x (px)"); ax.set_ylabel("y (px, image-down)")
+        ax.set_xlim(0, w)
+        ax.set_ylim(h, 0)
+        ax.set_aspect("equal")
+        ax.set_xlabel("x (px)")
+        ax.set_ylabel("y (px, image-down)")
         kf = np.asarray(dist, np.float64).reshape(-1)
-        ax.set_title(f"{title or 'Distortion map'} — k1={kf[0]:.4g} k2={kf[1]:.4g} "
-                     f"p1={kf[2]:.4g} p2={kf[3]:.4g}", fontsize=11)
+        ax.set_title(
+            f"{title or 'Distortion map'} — k1={kf[0]:.4g} k2={kf[1]:.4g} "
+            f"p1={kf[2]:.4g} p2={kf[3]:.4g}",
+            fontsize=11,
+        )
         _save(fig, output_path)
     except Exception:
         logger.warning(f"distortion-map figure failed: {traceback.format_exc()}")
@@ -310,12 +532,18 @@ def write_distortion_map_figure(K, dist, image_size, output_path, title=None) ->
 # 3D scene helpers
 # ---------------------------------------------------------------------------
 
+
 def _frustum_faces(apex, fwd, right, up):
     """mpl Poly3DCollection faces for a pyramidal camera frustum."""
     base = apex + fwd
     c = [base + right + up, base - right + up, base - right - up, base + right - up]
-    return [[apex, c[0], c[1]], [apex, c[1], c[2]], [apex, c[2], c[3]], [apex, c[3], c[0]],
-            [c[0], c[1], c[2], c[3]]]
+    return [
+        [apex, c[0], c[1]],
+        [apex, c[1], c[2]],
+        [apex, c[2], c[3]],
+        [apex, c[3], c[0]],
+        [c[0], c[1], c[2], c[3]],
+    ]
 
 
 def _board_corners_cam(R, t, board_local):
@@ -331,8 +559,17 @@ def _board_corners_cam(R, t, board_local):
 # 6. Boards in physical space — all poses as stacked planes (DaVis-style), planar
 # ---------------------------------------------------------------------------
 
-def write_boards_planes_3d(cam: "CameraModel", board_local_points: Sequence[np.ndarray],
-                           rvecs, tvecs, pose_indices, output_path, datum_pos=0, title=None) -> None:
+
+def write_boards_planes_3d(
+    cam: "CameraModel",
+    board_local_points: Sequence[np.ndarray],
+    rvecs,
+    tvecs,
+    pose_indices,
+    output_path,
+    datum_pos=0,
+    title=None,
+) -> None:
     """Every detected board pose drawn as a tilted plane in the camera frame.
 
     DaVis-style: the planes stack in physical space around the camera, the datum pose
@@ -353,12 +590,16 @@ def write_boards_planes_3d(cam: "CameraModel", board_local_points: Sequence[np.n
         fig = plt.figure(figsize=(12, 10))
         ax = fig.add_subplot(111, projection="3d")
         for k, c in enumerate(planes):
-            datum = (k == datum_pos)
-            ax.add_collection3d(Poly3DCollection(
-                [c], alpha=0.6 if datum else 0.15,
-                facecolor="#ff7f0e" if datum else "#4a78b0",
-                edgecolor="#c25e00" if datum else "#3b6ea5",
-                linewidths=2.2 if datum else 0.7))
+            datum = k == datum_pos
+            ax.add_collection3d(
+                Poly3DCollection(
+                    [c],
+                    alpha=0.6 if datum else 0.15,
+                    facecolor="#ff7f0e" if datum else "#4a78b0",
+                    edgecolor="#c25e00" if datum else "#3b6ea5",
+                    linewidths=2.2 if datum else 0.7,
+                )
+            )
         ax.plot([], [], color="#ff7f0e", lw=3, label="datum plane")
         ax.plot([], [], color="#3b6ea5", lw=1.5, label="other poses")
 
@@ -367,15 +608,33 @@ def write_boards_planes_3d(cam: "CameraModel", board_local_points: Sequence[np.n
         dist_mm = float(np.linalg.norm(ctr))
         span = float(np.max(allc.max(0) - allc.min(0))) or 1.0
         tip = ctr - (ctr / (dist_mm + 1e-9)) * 0.35 * span
-        ax.plot([ctr[0], tip[0]], [ctr[1], tip[1]], [ctr[2], tip[2]], color="crimson", lw=1.5)
-        ax.text(tip[0], tip[1], tip[2], f"→ camera (~{dist_mm:.0f} mm)", color="crimson", fontsize=10)
+        ax.plot(
+            [ctr[0], tip[0]],
+            [ctr[1], tip[1]],
+            [ctr[2], tip[2]],
+            color="crimson",
+            lw=1.5,
+        )
+        ax.text(
+            tip[0],
+            tip[1],
+            tip[2],
+            f"→ camera (~{dist_mm:.0f} mm)",
+            color="crimson",
+            fontsize=10,
+        )
 
         ax.set_xlim(allc[:, 0].min(), allc[:, 0].max())
         ax.set_ylim(allc[:, 1].min(), allc[:, 1].max())
         ax.set_zlim(allc[:, 2].min(), allc[:, 2].max())
-        ax.set_xlabel("X cam (mm)"); ax.set_ylabel("Y cam (mm)"); ax.set_zlabel("Z cam (mm)")
-        ax.set_title(title or f"Boards in physical space — {len(planes)} poses (datum highlighted)",
-                     fontsize=12)
+        ax.set_xlabel("X cam (mm)")
+        ax.set_ylabel("Y cam (mm)")
+        ax.set_zlabel("Z cam (mm)")
+        ax.set_title(
+            title
+            or f"Boards in physical space — {len(planes)} poses (datum highlighted)",
+            fontsize=12,
+        )
         ax.legend(fontsize=9, loc="upper left")
         ax.view_init(elev=18, azim=-60)
         _save(fig, output_path, dpi=150)
@@ -386,6 +645,7 @@ def write_boards_planes_3d(cam: "CameraModel", board_local_points: Sequence[np.n
 # ---------------------------------------------------------------------------
 # 7. Cameras relative to the board (stereo) — datum plane only, PNG
 # ---------------------------------------------------------------------------
+
 
 def _camera_records(models, labels, board_world):
     """Camera world centres + board-pointing optical axes (handles SIG reflection)."""
@@ -398,23 +658,41 @@ def _camera_records(models, labels, board_world):
         direction = centroid - pos
         nrm = float(np.linalg.norm(direction))
         axis = direction / nrm if nrm > 1e-9 else np.array([0.0, 0.0, 1.0])
-        recs.append({"label": lab, "color": col, "pos": pos, "axis": axis,
-                     "right": (R.T @ np.array([1.0, 0, 0])).ravel(),
-                     "up": (R.T @ np.array([0, -1.0, 0])).ravel()})
+        recs.append(
+            {
+                "label": lab,
+                "color": col,
+                "pos": pos,
+                "axis": axis,
+                "right": (R.T @ np.array([1.0, 0, 0])).ravel(),
+                "up": (R.T @ np.array([0, -1.0, 0])).ravel(),
+            }
+        )
     return recs
 
 
-def write_cameras_3d(model1: "CameraModel", model2: "CameraModel", board_world,
-                     R_stereo, T_stereo, output_path) -> None:
+def write_cameras_3d(
+    model1: "CameraModel",
+    model2: "CameraModel",
+    board_world,
+    R_stereo,
+    T_stereo,
+    output_path,
+) -> None:
     """World origin triad + datum board plane + both camera frusta/axes (PNG)."""
     try:
         from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
         bw = np.asarray(board_world, np.float64).reshape(-1, 3)
         recs = _camera_records([model1, model2], ["Cam1", "Cam2"], bw)
-        baseline = float(np.linalg.norm(recs[0]["pos"] - recs[1]["pos"]))
-        ang = float(np.degrees(np.arccos(np.clip(
-            (np.trace(np.asarray(R_stereo, np.float64)) - 1) / 2, -1, 1))))
+        float(np.linalg.norm(recs[0]["pos"] - recs[1]["pos"]))
+        ang = float(
+            np.degrees(
+                np.arccos(
+                    np.clip((np.trace(np.asarray(R_stereo, np.float64)) - 1) / 2, -1, 1)
+                )
+            )
+        )
         Tn = float(np.linalg.norm(np.asarray(T_stereo, np.float64)))
 
         scene = np.vstack([bw] + [r["pos"].reshape(1, 3) for r in recs])
@@ -428,96 +706,665 @@ def write_cameras_3d(model1: "CameraModel", model2: "CameraModel", board_world,
         x0, x1 = bw[:, 0].min(), bw[:, 0].max()
         y0, y1 = bw[:, 1].min(), bw[:, 1].max()
         z0 = float(bw[:, 2].mean())
-        ax.add_collection3d(Poly3DCollection(
-            [np.array([[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0]])],
-            alpha=0.45, facecolor="#ff7f0e", edgecolor="#c25e00", linewidths=1.5))
-        ax.scatter(bw[:, 0], bw[:, 1], bw[:, 2], c="#c25e00", s=8, alpha=0.7, label="datum board")
+        ax.add_collection3d(
+            Poly3DCollection(
+                [np.array([[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0]])],
+                alpha=0.45,
+                facecolor="#ff7f0e",
+                edgecolor="#c25e00",
+                linewidths=1.5,
+            )
+        )
+        ax.scatter(
+            bw[:, 0],
+            bw[:, 1],
+            bw[:, 2],
+            c="#c25e00",
+            s=8,
+            alpha=0.7,
+            label="datum board",
+        )
         for col, vec in (("r", [1, 0, 0]), ("g", [0, 1, 0]), ("b", [0, 0, 1])):
             v = np.array(vec, float) * 0.15 * span
             ax.plot([0, v[0]], [0, v[1]], [0, v[2]], color=col, lw=2)
         for r in recs:
-            ax.add_collection3d(Poly3DCollection(
-                _frustum_faces(r["pos"], r["axis"] * fr, r["right"] * fr * 0.7, r["up"] * fr * 0.5),
-                alpha=0.35, facecolor=r["color"], edgecolor=r["color"]))
+            ax.add_collection3d(
+                Poly3DCollection(
+                    _frustum_faces(
+                        r["pos"],
+                        r["axis"] * fr,
+                        r["right"] * fr * 0.7,
+                        r["up"] * fr * 0.5,
+                    ),
+                    alpha=0.35,
+                    facecolor=r["color"],
+                    edgecolor=r["color"],
+                )
+            )
             end = r["pos"] + r["axis"] * axis_len
-            ax.plot([r["pos"][0], end[0]], [r["pos"][1], end[1]], [r["pos"][2], end[2]],
-                    color=r["color"], lw=1.5, alpha=0.7)
-            ax.text(r["pos"][0], r["pos"][1], r["pos"][2] + fr * 1.5, r["label"],
-                    color=r["color"], fontsize=11, fontweight="bold", ha="center")
-        ax.set_xlabel("X (mm)"); ax.set_ylabel("Y (mm)"); ax.set_zlabel("Z (mm)")
-        ax.set_title(f"Cameras relative to board — baseline |T|={Tn:.1f} mm, "
-                     f"stereo angle={ang:.2f} deg", fontsize=12)
+            ax.plot(
+                [r["pos"][0], end[0]],
+                [r["pos"][1], end[1]],
+                [r["pos"][2], end[2]],
+                color=r["color"],
+                lw=1.5,
+                alpha=0.7,
+            )
+            ax.text(
+                r["pos"][0],
+                r["pos"][1],
+                r["pos"][2] + fr * 1.5,
+                r["label"],
+                color=r["color"],
+                fontsize=11,
+                fontweight="bold",
+                ha="center",
+            )
+        ax.set_xlabel("X (mm)")
+        ax.set_ylabel("Y (mm)")
+        ax.set_zlabel("Z (mm)")
+        ax.set_title(
+            f"Cameras relative to board — baseline |T|={Tn:.1f} mm, "
+            f"stereo angle={ang:.2f} deg",
+            fontsize=12,
+        )
         ax.legend(fontsize=9, loc="upper left")
         _save(fig, output_path, dpi=150)
     except Exception:
         logger.warning(f"cameras-3d figure failed: {traceback.format_exc()}")
 
 
+def write_cameras_planes_3d(
+    models_by_cam, board_world, output_path, labels=None
+) -> None:
+    """All cameras' frusta + optical axes around the shared released board (N-camera, PNG).
+
+    The joint analogue of ``write_cameras_3d`` (which is 2-camera). Built on the same
+    ``_camera_records`` list-loop + ``_frustum_faces``; the board is drawn once as a
+    translucent world-frame plane. Shows the rig geometry — every camera pointing at the
+    one released board — which is request "orientation of the boards in space" for a joint solve.
+    """
+    try:
+        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+        cams = list(models_by_cam.keys())
+        labels = labels or {c: f"Cam{c}" for c in cams}
+        bw = np.asarray(board_world, np.float64).reshape(-1, 3)
+        recs = _camera_records(
+            [models_by_cam[c] for c in cams], [labels[c] for c in cams], bw
+        )
+        scene = np.vstack([bw] + [r["pos"].reshape(1, 3) for r in recs])
+        span = float(np.max(scene.max(0) - scene.min(0))) or 1.0
+        fr = 0.05 * span
+        axis_len = 0.25 * span
+
+        fig = plt.figure(figsize=(13, 10))
+        ax = fig.add_subplot(111, projection="3d")
+        x0, x1 = bw[:, 0].min(), bw[:, 0].max()
+        y0, y1 = bw[:, 1].min(), bw[:, 1].max()
+        z0 = float(bw[:, 2].mean())
+        ax.add_collection3d(
+            Poly3DCollection(
+                [np.array([[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0]])],
+                alpha=0.4,
+                facecolor="#ff7f0e",
+                edgecolor="#c25e00",
+                linewidths=1.5,
+            )
+        )
+        ax.scatter(
+            bw[:, 0],
+            bw[:, 1],
+            bw[:, 2],
+            c="#c25e00",
+            s=8,
+            alpha=0.6,
+            label="released board",
+        )
+        for col, vec in (("r", [1, 0, 0]), ("g", [0, 1, 0]), ("b", [0, 0, 1])):
+            v = np.array(vec, float) * 0.15 * span
+            ax.plot([0, v[0]], [0, v[1]], [0, v[2]], color=col, lw=2)
+        for r in recs:
+            ax.add_collection3d(
+                Poly3DCollection(
+                    _frustum_faces(
+                        r["pos"],
+                        r["axis"] * fr,
+                        r["right"] * fr * 0.7,
+                        r["up"] * fr * 0.5,
+                    ),
+                    alpha=0.35,
+                    facecolor=r["color"],
+                    edgecolor=r["color"],
+                )
+            )
+            end = r["pos"] + r["axis"] * axis_len
+            ax.plot(
+                [r["pos"][0], end[0]],
+                [r["pos"][1], end[1]],
+                [r["pos"][2], end[2]],
+                color=r["color"],
+                lw=1.5,
+                alpha=0.7,
+            )
+            ax.text(
+                r["pos"][0],
+                r["pos"][1],
+                r["pos"][2] + fr * 1.5,
+                r["label"],
+                color=r["color"],
+                fontsize=11,
+                fontweight="bold",
+                ha="center",
+            )
+        ax.set_xlabel("X (mm)")
+        ax.set_ylabel("Y (mm)")
+        ax.set_zlabel("Z (mm)")
+        ax.set_title(f"Cameras relative to board — {len(cams)} cameras", fontsize=12)
+        ax.legend(fontsize=9, loc="upper left")
+        _save(fig, output_path, dpi=150)
+    except Exception:
+        logger.warning(f"cameras-planes-3d figure failed: {traceback.format_exc()}")
+
+
 # ---------------------------------------------------------------------------
-# 8. Dewarp red-cyan anaglyph (stereo agreement in world space)
+# 8. Dewarp through the model onto the world plane (agreement proof)
+#
+# The image is pushed BACKWARDS through the calibrated model (intrinsics + distortion
+# + board pose) onto the world Z=0 plane: a correct model rectifies the board to a
+# regular mm lattice. One camera -> a single dewarped board; two -> a red/cyan
+# anaglyph (sharp = the models agree); many -> a per-camera panel each plus a
+# back-projected-dot scatter (markers coincide = agreement). NOT the detection overlay.
 # ---------------------------------------------------------------------------
 
-def write_dewarp_overlay(model1: "CameraModel", model2: "CameraModel", img1, img2,
-                         board_world, spacing, output_path, title=None, mm_per_px=0.1) -> None:
+
+def _world_extent(board_world, pad: float = 5.0):
+    """(x_min, x_max, y_min, y_max) of the board's XY extent, padded by ``pad`` mm."""
+    bw = np.asarray(board_world, np.float64).reshape(-1, 3)
+    return (
+        float(bw[:, 0].min()) - pad,
+        float(bw[:, 0].max()) + pad,
+        float(bw[:, 1].min()) - pad,
+        float(bw[:, 1].max()) + pad,
+    )
+
+
+# Absolute OOM backstop on the dewarp raster (only binds for pathologically large
+# sensors); the normal ceiling is the source frame's own pixel count — see below.
+_DEWARP_ABS_MAX_PIXELS = 40_000_000
+# projectPoints is evaluated on at most this many cells; the smooth world->pixel map is
+# then bilinear-resized to the full raster, so a fine dewarp stays cheap to build.
+_DEWARP_MAP_MAX_PIXELS = 1_000_000
+
+
+def _mm_per_source_pixel(model: "CameraModel", x_min, x_max, y_min, y_max) -> float:
+    """Approx. world-plane mm spanned by one source pixel at the board.
+
+    Projects the four world-plane corners of the dewarp extent through the model and
+    divides the world diagonal by the mean image-space diagonal. Sampling the dewarp at
+    this resolution matches the source pixel pitch — coarser blurs away the agreement
+    (red/cyan) signal the figure exists to show; finer only wastes memory.
+    """
+    corners = np.array(
+        [
+            [x_min, y_min, 0.0],
+            [x_max, y_min, 0.0],
+            [x_max, y_max, 0.0],
+            [x_min, y_max, 0.0],
+        ],
+        np.float64,
+    )
+    px, _ = cv2.projectPoints(
+        corners,
+        model.rvec,
+        np.asarray(model.t, np.float64).reshape(3),
+        np.asarray(model.K, np.float64),
+        np.asarray(model.dist, np.float64),
+    )
+    px = px.reshape(-1, 2)
+    world_diag = math.hypot(x_max - x_min, y_max - y_min)
+    px_diag = 0.5 * (
+        float(np.linalg.norm(px[2] - px[0])) + float(np.linalg.norm(px[3] - px[1]))
+    )
+    return 0.1 if px_diag < 1e-6 else world_diag / px_diag
+
+
+def _resolve_mm_per_px(
+    model: "CameraModel", x_min, x_max, y_min, y_max, mm_per_px: float | None
+) -> float:
+    """Final dewarp resolution: an explicit value as-is, else magnification-matched.
+
+    None -> the source pixel pitch at the board (`_mm_per_source_pixel`), clamped to
+    [1e-3, 1.0] mm/px and coarsened only if the raster would exceed the source frame's own
+    pixel count (you never need a dewarp finer than the image it came from) or the absolute
+    OOM backstop. Resolving once and passing the concrete value lets the 2-camera overlay
+    sample both cameras onto an identical raster (required for the red/cyan stack).
+    """
+    if mm_per_px is not None:
+        return float(mm_per_px)
+    est = float(
+        np.clip(_mm_per_source_pixel(model, x_min, x_max, y_min, y_max), 1e-3, 1.0)
+    )
+    span_x, span_y = x_max - x_min, y_max - y_min
+    w, h = model.image_size
+    ceiling = min(int(w) * int(h), _DEWARP_ABS_MAX_PIXELS)
+    if (span_x / est) * (span_y / est) > ceiling:
+        est = math.sqrt(span_x * span_y / ceiling)
+    return est
+
+
+def _dewarp_image_to_world(
+    model: "CameraModel",
+    img,
+    x_min,
+    x_max,
+    y_min,
+    y_max,
+    mm_per_px: float | None = None,
+) -> np.ndarray:
+    """Remap one image to the world Z=0 plane over [x_min,x_max]x[y_min,y_max] (uint8).
+
+    ``mm_per_px`` is the output raster resolution; None matches it to the actual
+    magnification (see ``_resolve_mm_per_px``) instead of a fixed 0.1 mm/px that
+    under-samples high-magnification rigs and blurs the agreement signal.
+    """
+    mm_per_px = _resolve_mm_per_px(model, x_min, x_max, y_min, y_max, mm_per_px)
+    nx = max(int((x_max - x_min) / mm_per_px), 32)
+    ny = max(int((y_max - y_min) / mm_per_px), 32)
+    g = _to_uint8_gray(img).astype(np.float64)
+    # Build the world->pixel map on a coarse grid (the projective+distortion field is
+    # smooth) and bilinear-resize it to the full output raster. projectPoints cost stays
+    # bounded by _DEWARP_MAP_MAX_PIXELS while the dewarp keeps its fine, magnification-
+    # matched resolution (remap still samples the full-res source, so dots stay sharp).
+    scale = min(1.0, math.sqrt(_DEWARP_MAP_MAX_PIXELS / float(nx * ny)))
+    cnx, cny = max(int(nx * scale), 2), max(int(ny * scale), 2)
+    Xc, Yc = np.meshgrid(np.linspace(x_min, x_max, cnx), np.linspace(y_min, y_max, cny))
+    world = np.column_stack([Xc.ravel(), Yc.ravel(), np.zeros(Xc.size)]).astype(
+        np.float64
+    )
+    proj, _ = cv2.projectPoints(
+        world,
+        model.rvec,
+        np.asarray(model.t, np.float64).reshape(3),
+        np.asarray(model.K, np.float64),
+        np.asarray(model.dist, np.float64),
+    )
+    proj = proj.reshape(-1, 2)
+    mxc = proj[:, 0].reshape(cny, cnx).astype(np.float32)
+    myc = proj[:, 1].reshape(cny, cnx).astype(np.float32)
+    mx = cv2.resize(mxc, (nx, ny), interpolation=cv2.INTER_LINEAR)
+    my = cv2.resize(myc, (nx, ny), interpolation=cv2.INTER_LINEAR)
+    dw = cv2.remap(
+        g, mx, my, cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=0
+    )
+    valid = (mx >= 0) & (mx < g.shape[1]) & (my >= 0) & (my < g.shape[0])
+    dw[~valid] = 0
+    lo, hi = float(dw.min()), float(dw.max())
+    out = (
+        ((dw - lo) / (hi - lo) * 255).astype(np.uint8)
+        if hi > lo
+        else np.zeros_like(dw, np.uint8)
+    )
+    out[~valid] = 0
+    return out
+
+
+def _dewarp_axes(ax, board_world, spacing, x_min, x_max, y_min, y_max) -> None:
+    """Shared world-plane styling: origin cross, mm gridlines, board-dot squares."""
+    bw = np.asarray(board_world, np.float64).reshape(-1, 3)
+    ax.axhline(0, color="lime", lw=1, alpha=0.6)
+    ax.axvline(0, color="lime", lw=1, alpha=0.6)
+    ax.scatter(0, 0, s=250, c="lime", marker="+", linewidths=3, zorder=20)
+    sp = float(spacing)
+    ax.set_xticks(np.arange(np.ceil(x_min / sp) * sp, x_max, sp))
+    ax.set_yticks(np.arange(np.ceil(y_min / sp) * sp, y_max, sp))
+    ax.grid(True, color="white", alpha=0.15, lw=0.5)
+    ax.scatter(
+        bw[:, 0],
+        bw[:, 1],
+        s=22,
+        facecolors="none",
+        edgecolors="white",
+        linewidths=0.6,
+        marker="s",
+        alpha=0.7,
+        label="board dots",
+    )
+    ax.set_xlabel("X world (mm)")
+    ax.set_ylabel("Y world (mm)")
+
+
+def write_dewarp_overlay(
+    model1: "CameraModel",
+    model2: "CameraModel",
+    img1,
+    img2,
+    board_world,
+    spacing,
+    output_path,
+    title=None,
+    mm_per_px=None,
+) -> None:
     """Remap both images to the world Z=0 plane, overlay as red(cam1)/cyan(cam2)."""
     try:
-        bw = np.asarray(board_world, np.float64).reshape(-1, 3)
-        x_min, x_max = float(bw[:, 0].min()) - 5, float(bw[:, 0].max()) + 5
-        y_min, y_max = float(bw[:, 1].min()) - 5, float(bw[:, 1].max()) + 5
-        nx = max(int((x_max - x_min) / mm_per_px), 32)
-        ny = max(int((y_max - y_min) / mm_per_px), 32)
-        X, Y = np.meshgrid(np.linspace(x_min, x_max, nx), np.linspace(y_min, y_max, ny))
-        world = np.column_stack([X.ravel(), Y.ravel(), np.zeros(X.size)]).astype(np.float64)
-
-        def dewarp(model, img):
-            g = _to_uint8_gray(img).astype(np.float64)
-            proj, _ = cv2.projectPoints(world, model.rvec, np.asarray(model.t, np.float64).reshape(3),
-                                        np.asarray(model.K, np.float64), np.asarray(model.dist, np.float64))
-            proj = proj.reshape(-1, 2)
-            mx = proj[:, 0].reshape(X.shape).astype(np.float32)
-            my = proj[:, 1].reshape(X.shape).astype(np.float32)
-            dw = cv2.remap(g, mx, my, cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
-            valid = (mx >= 0) & (mx < g.shape[1]) & (my >= 0) & (my < g.shape[0])
-            dw[~valid] = 0
-            lo, hi = float(dw.min()), float(dw.max())
-            out = ((dw - lo) / (hi - lo) * 255).astype(np.uint8) if hi > lo else np.zeros_like(dw, np.uint8)
-            out[~valid] = 0
-            return out
-
-        r = dewarp(model1, img1)
-        c = dewarp(model2, img2)
+        x_min, x_max, y_min, y_max = _world_extent(board_world)
+        # Resolve once so both cameras dewarp onto the same raster (the red/cyan stack
+        # below requires identical shapes).
+        res = _resolve_mm_per_px(model1, x_min, x_max, y_min, y_max, mm_per_px)
+        r = _dewarp_image_to_world(model1, img1, x_min, x_max, y_min, y_max, res)
+        c = _dewarp_image_to_world(model2, img2, x_min, x_max, y_min, y_max, res)
         overlay = np.stack([r, c, c], axis=-1)
-
         fig, ax = plt.subplots(figsize=(15, 12))
         ax.imshow(overlay, extent=[x_min, x_max, y_min, y_max], origin="lower")
-        ax.axhline(0, color="lime", lw=1, alpha=0.6); ax.axvline(0, color="lime", lw=1, alpha=0.6)
-        ax.scatter(0, 0, s=250, c="lime", marker="+", linewidths=3, zorder=20)
-        sp = float(spacing)
-        ax.set_xticks(np.arange(np.ceil(x_min / sp) * sp, x_max, sp))
-        ax.set_yticks(np.arange(np.ceil(y_min / sp) * sp, y_max, sp))
-        ax.grid(True, color="white", alpha=0.15, lw=0.5)
-        ax.scatter(bw[:, 0], bw[:, 1], s=22, facecolors="none", edgecolors="white",
-                   linewidths=0.6, marker="s", alpha=0.7, label="board dots")
-        ax.set_xlabel("X world (mm)"); ax.set_ylabel("Y world (mm)")
-        ax.set_title(title or "Dewarp overlay (Cam1=red, Cam2=cyan; sharp = agreement)", fontsize=12)
+        _dewarp_axes(ax, board_world, spacing, x_min, x_max, y_min, y_max)
+        ax.set_title(
+            title or "Dewarp overlay (Cam1=red, Cam2=cyan; sharp = agreement)",
+            fontsize=12,
+        )
         ax.legend(fontsize=8, loc="upper right")
         _save(fig, output_path, dpi=160)
     except Exception:
         logger.warning(f"dewarp overlay figure failed: {traceback.format_exc()}")
 
 
+def write_dewarp_single(
+    model: "CameraModel",
+    img,
+    board_world,
+    spacing,
+    output_path,
+    title=None,
+    mm_per_px=None,
+) -> None:
+    """Remap one image to the world Z=0 plane; a correct model rectifies the board to a regular grid."""
+    try:
+        x_min, x_max, y_min, y_max = _world_extent(board_world)
+        dw = _dewarp_image_to_world(model, img, x_min, x_max, y_min, y_max, mm_per_px)
+        fig, ax = plt.subplots(figsize=(14, 11))
+        ax.imshow(dw, extent=[x_min, x_max, y_min, y_max], origin="lower", cmap="gray")
+        _dewarp_axes(ax, board_world, spacing, x_min, x_max, y_min, y_max)
+        ax.set_title(
+            title
+            or "Dewarped board (model -> world plane; dots on the grid = good model)",
+            fontsize=12,
+        )
+        ax.legend(fontsize=8, loc="upper right")
+        _save(fig, output_path, dpi=160)
+    except Exception:
+        logger.warning(f"dewarp single figure failed: {traceback.format_exc()}")
+
+
+def _backproject_to_world_plane(model: "CameraModel", pixels) -> np.ndarray:
+    """Detected pixels -> world XY on the Z=0 plane through ``model`` (undistort + ray/plane).
+
+    Same world-ray convention as ``joint._pixel_rays_world``: direction = R^T d_cam, origin =
+    -R^T t; the ray is intersected with Z=0 so each camera's detection lands in world mm.
+    """
+    K = np.asarray(model.K, np.float64)
+    dist = np.asarray(model.dist, np.float64)
+    R = np.asarray(model.R, np.float64)
+    t = np.asarray(model.t, np.float64).reshape(3)
+    und = cv2.undistortPoints(
+        np.asarray(pixels, np.float64).reshape(-1, 1, 2), K, dist
+    ).reshape(-1, 2)
+    cam = np.column_stack([und, np.ones(len(und))])  # normalised camera rays
+    o = -R.T @ t  # camera centre in world
+    d = cam @ R  # ray directions in world
+    d /= np.linalg.norm(d, axis=1, keepdims=True) + 1e-12
+    s = -o[2] / np.where(np.abs(d[:, 2]) < 1e-6, np.nan, d[:, 2])  # intersect Z=0
+    world = o[None, :2] + s[:, None] * d[:, :2]
+    # A ray nearly parallel to the board plane has no well-defined intersection; drop it (NaN)
+    # rather than placing it near the camera centre. matplotlib omits NaN points from the scatter.
+    return world
+
+
+def write_dewarp_dots(
+    models_by_cam,
+    detect_pixels_by_cam,
+    board_world,
+    spacing,
+    output_path,
+    labels=None,
+    title=None,
+) -> None:
+    """Each camera's detected dots back-projected to the world plane (coincident markers = agree)."""
+    try:
+        bw = np.asarray(board_world, np.float64).reshape(-1, 3)
+        cams = list(models_by_cam.keys())
+        labels = labels or {c: f"Cam{c}" for c in cams}
+        fig, ax = plt.subplots(figsize=(13, 11))
+        ax.scatter(
+            bw[:, 0],
+            bw[:, 1],
+            s=60,
+            facecolors="none",
+            edgecolors="0.6",
+            linewidths=0.8,
+            marker="s",
+            label="released board",
+        )
+        for i, c in enumerate(cams):
+            px = detect_pixels_by_cam.get(c)
+            if px is None or not len(px):
+                continue
+            w = _backproject_to_world_plane(models_by_cam[c], px)
+            ax.scatter(
+                w[:, 0],
+                w[:, 1],
+                s=18,
+                color=CAM_COLORS[i % len(CAM_COLORS)],
+                alpha=0.7,
+                label=labels[c],
+            )
+        ax.axhline(0, color="gray", lw=0.6)
+        ax.axvline(0, color="gray", lw=0.6)
+        ax.set_aspect("equal", adjustable="datalim")
+        ax.set_xlabel("X world (mm)")
+        ax.set_ylabel("Y world (mm)")
+        ax.set_title(
+            title
+            or "Detected dots dewarped to world (markers coincide = models agree)",
+            fontsize=12,
+        )
+        ax.legend(fontsize=8, loc="upper right")
+        _save(fig, output_path, dpi=150)
+    except Exception:
+        logger.warning(f"dewarp dots figure failed: {traceback.format_exc()}")
+
+
+# ---------------------------------------------------------------------------
+# Polynomial dewarp — visualization-only inverse of the pixel->world cubic
+# ---------------------------------------------------------------------------
+# A planar PolynomialModel only maps pixel->world (``back_project_to_plane``); the pinhole dewarp
+# above needs the opposite (world->pixel, via cv2.projectPoints with R,t,K,dist) which the
+# polynomial has no parameters for. To rectify the image we invert the cubic NUMERICALLY, for the
+# figure only: sample a coarse pixel lattice, push it through the polynomial to world mm, then
+# interpolate the pixel coordinates back onto the regular world raster. No calibration-math change.
+
+
+def _dewarp_image_to_world_poly(
+    model: "PolynomialModel",
+    img,
+    x_min,
+    x_max,
+    y_min,
+    y_max,
+    mm_per_px: float | None = None,
+) -> np.ndarray:
+    """Remap one image to the world Z=0 plane through a planar polynomial (uint8).
+
+    The world->pixel map is built by scattered inversion of ``back_project_to_plane`` (the
+    polynomial is not analytically invertible). World-raster cells outside the sampled hull come
+    back NaN from ``griddata`` and are masked to the (black) border.
+    """
+    from scipy.interpolate import griddata
+
+    w, h = int(model.image_size[0]), int(model.image_size[1])
+    span_x, span_y = float(x_max - x_min), float(y_max - y_min)
+
+    # Coarse source-pixel lattice -> world mm (the map is smooth, so ~220x220 samples suffice).
+    # The same lattice gives the true average magnification (world diagonal / image diagonal) used
+    # to size the output raster — a geometric measure, not the sensor area-to-pixel-count ratio.
+    npx = 220
+    Px, Py = np.meshgrid(np.linspace(0, w - 1, npx), np.linspace(0, h - 1, npx))
+    src = np.column_stack([Px.ravel(), Py.ravel()])
+    world = model.back_project_to_plane(src)[:, :2]
+
+    if mm_per_px is None:
+        world_diag = math.hypot(
+            float(world[:, 0].max() - world[:, 0].min()),
+            float(world[:, 1].max() - world[:, 1].min()),
+        )
+        img_diag = math.hypot(w - 1, h - 1)
+        mm_per_px = float(np.clip(world_diag / img_diag if img_diag else 0.1, 1e-3, 1.0))
+        ceiling = min(w * h, _DEWARP_ABS_MAX_PIXELS)
+        if (span_x / mm_per_px) * (span_y / mm_per_px) > ceiling:
+            mm_per_px = math.sqrt(span_x * span_y / ceiling)
+    nx = max(int(span_x / mm_per_px), 32)
+    ny = max(int(span_y / mm_per_px), 32)
+
+    Xc, Yc = np.meshgrid(np.linspace(x_min, x_max, nx), np.linspace(y_min, y_max, ny))
+    target = np.column_stack([Xc.ravel(), Yc.ravel()])
+    mx = griddata(world, src[:, 0], target, method="linear").reshape(ny, nx)
+    my = griddata(world, src[:, 1], target, method="linear").reshape(ny, nx)
+
+    g = _to_uint8_gray(img).astype(np.float64)
+    valid = np.isfinite(mx) & np.isfinite(my)
+    mxs = np.where(valid, mx, -1.0).astype(np.float32)
+    mys = np.where(valid, my, -1.0).astype(np.float32)
+    dw = cv2.remap(
+        g, mxs, mys, cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=0
+    )
+    inb = valid & (mx >= 0) & (mx < g.shape[1]) & (my >= 0) & (my < g.shape[0])
+    if inb.any():
+        lo, hi = float(dw[inb].min()), float(dw[inb].max())
+    else:
+        lo, hi = 0.0, 0.0
+    out = (
+        ((dw - lo) / (hi - lo) * 255).astype(np.uint8)
+        if hi > lo
+        else np.zeros_like(dw, np.uint8)
+    )
+    out[~inb] = 0
+    return out
+
+
+def write_dewarp_single_poly(
+    model: "PolynomialModel",
+    img,
+    board_world,
+    spacing,
+    output_path,
+    title=None,
+    mm_per_px=None,
+) -> None:
+    """Remap one image to the world plane through a planar polynomial; a correct fit rectifies the
+    board to a regular grid (the polynomial analogue of ``write_dewarp_single``)."""
+    try:
+        x_min, x_max, y_min, y_max = _world_extent(board_world)
+        dw = _dewarp_image_to_world_poly(model, img, x_min, x_max, y_min, y_max, mm_per_px)
+        fig, ax = plt.subplots(figsize=(14, 11))
+        ax.imshow(dw, extent=[x_min, x_max, y_min, y_max], origin="lower", cmap="gray")
+        _dewarp_axes(ax, board_world, spacing, x_min, x_max, y_min, y_max)
+        ax.set_title(
+            title
+            or "Dewarped board (polynomial -> world plane; dots on the grid = good fit)",
+            fontsize=12,
+        )
+        ax.legend(fontsize=8, loc="upper right")
+        _save(fig, output_path, dpi=160)
+    except Exception:
+        logger.warning(f"dewarp single (poly) figure failed: {traceback.format_exc()}")
+
+
+def write_dewarp_dots_poly(
+    models_by_cam,
+    detect_pixels_by_cam,
+    board_world,
+    spacing,
+    output_path,
+    labels=None,
+    title=None,
+) -> None:
+    """Each camera's detected dots back-projected to the world plane via its polynomial (coincident
+    markers = cameras agree). The polynomial maps pixel->world directly — no ray/plane cast."""
+    try:
+        bw = np.asarray(board_world, np.float64).reshape(-1, 3)
+        cams = list(models_by_cam.keys())
+        labels = labels or {c: f"Cam{c}" for c in cams}
+        fig, ax = plt.subplots(figsize=(13, 11))
+        ax.scatter(
+            bw[:, 0],
+            bw[:, 1],
+            s=60,
+            facecolors="none",
+            edgecolors="0.6",
+            linewidths=0.8,
+            marker="s",
+            label="grid target",
+        )
+        for i, c in enumerate(cams):
+            px = detect_pixels_by_cam.get(c)
+            if px is None or not len(px):
+                continue
+            w = models_by_cam[c].back_project_to_plane(np.asarray(px, np.float64))[:, :2]
+            ax.scatter(
+                w[:, 0],
+                w[:, 1],
+                s=18,
+                color=CAM_COLORS[i % len(CAM_COLORS)],
+                alpha=0.7,
+                label=labels[c],
+            )
+        ax.axhline(0, color="gray", lw=0.6)
+        ax.axvline(0, color="gray", lw=0.6)
+        ax.set_aspect("equal", adjustable="datalim")
+        ax.set_xlabel("X world (mm)")
+        ax.set_ylabel("Y world (mm)")
+        ax.set_title(
+            title
+            or "Detected dots back-projected to world (coincident = cameras agree)",
+            fontsize=12,
+        )
+        ax.legend(fontsize=8, loc="upper right")
+        _save(fig, output_path, dpi=150)
+    except Exception:
+        logger.warning(f"dewarp dots (poly) figure failed: {traceback.format_exc()}")
+
+
 # ---------------------------------------------------------------------------
 # Orchestrators — called by the pipeline at fit time
 # ---------------------------------------------------------------------------
 
-def write_mono_figures(figure_dir, *, images, detections, used, K, dist, rvecs, tvecs,
-                       per_view, rms, cam, wf, spacing, board_type, datum_index,
-                       board_meta=None, prefix="") -> None:
+
+def write_mono_figures(
+    figure_dir,
+    *,
+    images,
+    detections,
+    used,
+    K,
+    dist,
+    rvecs,
+    tvecs,
+    per_view,
+    rms,
+    cam,
+    wf,
+    spacing,
+    board_type,
+    datum_index,
+    board_meta=None,
+    prefix="",
+    world_pts=None,
+) -> None:
     """All single-camera proof figures. ``used`` = list of (pose_index, DetectionResult).
 
-    The boards-in-physical-space planes figure is drawn only for a true mono run
-    (``prefix`` empty); stereo per-camera calls skip it (the stereo run gets one
-    cameras-relative-to-board figure instead).
+    The boards-in-physical-space planes figure and the dewarped-board figure are drawn only
+    for a true mono run (``prefix`` empty); stereo per-camera calls skip them (the stereo run
+    gets one cameras-relative-to-board figure + the red/cyan anaglyph instead). ``world_pts``
+    are the datum view's detected dots in world mm (the same correspondence passed to
+    ``fit_pose``); when given, the dewarp remaps the datum image onto that world plane.
     """
     figd = Path(figure_dir)
     figd.mkdir(parents=True, exist_ok=True)
@@ -527,23 +1374,80 @@ def write_mono_figures(figure_dir, *, images, detections, used, K, dist, rvecs, 
     datum_pos = pose_indices.index(datum_index) if datum_index in pose_indices else 0
 
     for i, d in used:
-        write_detection_figure(images[i], d, figd / f"{prefix}detection_{i:02d}.png",
-                               title=f"{prefix}pose {i}")
-    write_world_frame_figure(images[datum_index], detections[datum_index], wf, spacing,
-                             figd / f"{prefix}world_frame.png", title=f"{prefix}world frame")
-    write_reprojection_figure(objs, imgs, K, dist, rvecs, tvecs, per_view, rms,
-                              figd / f"{prefix}reprojection.png", pose_indices=pose_indices,
-                              title=f"{prefix}reprojection")
-    write_distortion_map_figure(K, dist, cam.image_size, figd / f"{prefix}distortion_map.png",
-                                title=f"{prefix}distortion")
+        write_detection_figure(
+            images[i],
+            d,
+            figd / f"{prefix}detection_{i:02d}.png",
+            title=f"{prefix}pose {i}",
+        )
+    write_world_frame_figure(
+        images[datum_index],
+        detections[datum_index],
+        wf,
+        spacing,
+        figd / f"{prefix}world_frame.png",
+        title=f"{prefix}world frame",
+    )
+    write_reprojection_figure(
+        objs,
+        imgs,
+        K,
+        dist,
+        rvecs,
+        tvecs,
+        per_view,
+        rms,
+        figd / f"{prefix}reprojection.png",
+        pose_indices=pose_indices,
+        title=f"{prefix}reprojection",
+    )
+    write_distortion_map_figure(
+        K,
+        dist,
+        cam.image_size,
+        figd / f"{prefix}distortion_map.png",
+        title=f"{prefix}distortion",
+    )
     if not prefix:
-        write_boards_planes_3d(cam, objs, rvecs, tvecs, pose_indices,
-                               figd / "boards_3d.png", datum_pos=datum_pos)
+        write_boards_planes_3d(
+            cam,
+            objs,
+            rvecs,
+            tvecs,
+            pose_indices,
+            figd / "boards_3d.png",
+            datum_pos=datum_pos,
+        )
+        if world_pts is not None and images is not None:
+            write_dewarp_single(
+                cam,
+                images[datum_index],
+                world_pts,
+                spacing,
+                figd / "dewarp.png",
+                title="dewarped board",
+            )
 
 
-def write_stepped_figures(figure_dir, *, images, used_detections, used_pose_indices,
-                          pose_obj_views, pose_img_views, rvecs, tvecs, per_view, rms,
-                          cam, wf, spacing, datum_index, datum_detection, prefix="") -> None:
+def write_stepped_figures(
+    figure_dir,
+    *,
+    images,
+    used_detections,
+    used_pose_indices,
+    pose_obj_views,
+    pose_img_views,
+    rvecs,
+    tvecs,
+    per_view,
+    rms,
+    cam,
+    wf,
+    spacing,
+    datum_index,
+    datum_detection,
+    prefix="",
+) -> None:
     """All single-camera proof figures for a STEPPED (dual-level) fit.
 
     The generic ``write_mono_figures`` reprojects ``detection.board_local_points`` (a
@@ -560,28 +1464,69 @@ def write_stepped_figures(figure_dir, *, images, used_detections, used_pose_indi
     """
     figd = Path(figure_dir)
     figd.mkdir(parents=True, exist_ok=True)
-    datum_pos = used_pose_indices.index(datum_index) if datum_index in used_pose_indices else 0
+    datum_pos = (
+        used_pose_indices.index(datum_index) if datum_index in used_pose_indices else 0
+    )
 
     if images is not None:
         for pose_idx, det in zip(used_pose_indices, used_detections):
-            write_detection_figure(images[pose_idx], det, figd / f"{prefix}detection_{pose_idx:02d}.png",
-                                   title=f"{prefix}pose {pose_idx}")
-        write_world_frame_figure(images[datum_index], datum_detection, wf, spacing,
-                                 figd / f"{prefix}world_frame.png", title=f"{prefix}world frame")
-    write_reprojection_figure(pose_obj_views, pose_img_views, K=cam.K, dist=cam.dist,
-                              rvecs=rvecs, tvecs=tvecs, per_view=per_view, rms=rms,
-                              output_path=figd / f"{prefix}reprojection.png",
-                              pose_indices=used_pose_indices, title=f"{prefix}reprojection")
-    write_distortion_map_figure(cam.K, cam.dist, cam.image_size, figd / f"{prefix}distortion_map.png",
-                                title=f"{prefix}distortion")
+            write_detection_figure(
+                images[pose_idx],
+                det,
+                figd / f"{prefix}detection_{pose_idx:02d}.png",
+                title=f"{prefix}pose {pose_idx}",
+            )
+        write_world_frame_figure(
+            images[datum_index],
+            datum_detection,
+            wf,
+            spacing,
+            figd / f"{prefix}world_frame.png",
+            title=f"{prefix}world frame",
+        )
+    write_reprojection_figure(
+        pose_obj_views,
+        pose_img_views,
+        K=cam.K,
+        dist=cam.dist,
+        rvecs=rvecs,
+        tvecs=tvecs,
+        per_view=per_view,
+        rms=rms,
+        output_path=figd / f"{prefix}reprojection.png",
+        pose_indices=used_pose_indices,
+        title=f"{prefix}reprojection",
+    )
+    write_distortion_map_figure(
+        cam.K,
+        cam.dist,
+        cam.image_size,
+        figd / f"{prefix}distortion_map.png",
+        title=f"{prefix}distortion",
+    )
     if not prefix:
-        write_boards_planes_3d(cam, pose_obj_views, rvecs, tvecs, used_pose_indices,
-                               figd / "boards_3d.png", datum_pos=datum_pos)
+        write_boards_planes_3d(
+            cam,
+            pose_obj_views,
+            rvecs,
+            tvecs,
+            used_pose_indices,
+            figd / "boards_3d.png",
+            datum_pos=datum_pos,
+        )
 
 
-def write_polynomial_figures(figure_dir, *, image, detection: "DetectionResult",
-                             world_pts, model, wf: "WorldFrame", spacing,
-                             prefix="") -> None:
+def write_polynomial_figures(
+    figure_dir,
+    *,
+    image,
+    detection: "DetectionResult",
+    world_pts,
+    model,
+    wf: "WorldFrame",
+    spacing,
+    prefix="",
+) -> None:
     """Single-plane polynomial proof figures: detection, world frame, and the fit.
 
     The fit figure plots, in the resolved world frame, the detected dots' target
@@ -591,16 +1536,38 @@ def write_polynomial_figures(figure_dir, *, image, detection: "DetectionResult",
     """
     figd = Path(figure_dir)
     figd.mkdir(parents=True, exist_ok=True)
-    write_detection_figure(image, detection, figd / f"{prefix}detection_datum.png",
-                           title=f"{prefix}datum")
-    write_world_frame_figure(image, detection, wf, spacing,
-                             figd / f"{prefix}world_frame.png", title=f"{prefix}world frame")
-    write_polynomial_fit_figure(detection, world_pts, model,
-                                figd / f"{prefix}polynomial_fit.png", title=f"{prefix}polynomial fit")
+    write_detection_figure(
+        image, detection, figd / f"{prefix}detection_datum.png", title=f"{prefix}datum"
+    )
+    write_world_frame_figure(
+        image,
+        detection,
+        wf,
+        spacing,
+        figd / f"{prefix}world_frame.png",
+        title=f"{prefix}world frame",
+    )
+    write_polynomial_fit_figure(
+        detection,
+        world_pts,
+        model,
+        figd / f"{prefix}polynomial_fit.png",
+        title=f"{prefix}polynomial fit",
+    )
+    # Dewarped board (one board for a single-camera fit), matching the pinhole mono dewarp.
+    write_dewarp_single_poly(
+        model,
+        image,
+        world_pts,
+        spacing,
+        figd / f"{prefix}dewarp.png",
+        title=f"{prefix}dewarped board",
+    )
 
 
-def write_polynomial_fit_figure(detection: "DetectionResult", world_pts, model,
-                                output_path, title=None) -> None:
+def write_polynomial_fit_figure(
+    detection: "DetectionResult", world_pts, model, output_path, title=None
+) -> None:
     """World-mm target vs polynomial evaluation: positions + quiver + residual scatter."""
     try:
         target = np.asarray(world_pts, np.float64).reshape(-1, 3)[:, :2]
@@ -609,37 +1576,69 @@ def write_polynomial_fit_figure(detection: "DetectionResult", world_pts, model,
         resid = evald - target
         rms_x = float(model.rms_x_mm)
         rms_y = float(model.rms_y_mm)
-        rms = float(np.sqrt(np.mean(np.sum(resid ** 2, axis=1)))) if len(resid) else 0.0
+        rms = float(np.sqrt(np.mean(np.sum(resid**2, axis=1)))) if len(resid) else 0.0
 
         fig = plt.figure(figsize=(15, 6))
         fig.suptitle(
             f"{title or 'Polynomial fit'} — {len(target)} dots, "
-            f"RMS_x={rms_x:.4f} mm, RMS_y={rms_y:.4f} mm", fontsize=13)
+            f"RMS_x={rms_x:.4f} mm, RMS_y={rms_y:.4f} mm",
+            fontsize=13,
+        )
         gs = GridSpec(1, 2, figure=fig, wspace=0.25, width_ratios=[1.1, 1.0])
 
         # Left: world positions + residual quiver (exaggerated so structure is visible).
         ax = fig.add_subplot(gs[0, 0])
-        ax.scatter(target[:, 0], target[:, 1], s=14, facecolors="none",
-                   edgecolors="steelblue", linewidths=0.7, label="grid target")
+        ax.scatter(
+            target[:, 0],
+            target[:, 1],
+            s=14,
+            facecolors="none",
+            edgecolors="steelblue",
+            linewidths=0.7,
+            label="grid target",
+        )
         span = float(max(np.ptp(target[:, 0]), np.ptp(target[:, 1]), 1.0))
         rmax = float(np.max(np.hypot(resid[:, 0], resid[:, 1]))) if len(resid) else 0.0
         scale = (0.08 * span / rmax) if rmax > 1e-12 else 1.0
-        ax.quiver(target[:, 0], target[:, 1], resid[:, 0] * scale, resid[:, 1] * scale,
-                  angles="xy", scale_units="xy", scale=1.0, color="crimson", width=0.004)
+        ax.quiver(
+            target[:, 0],
+            target[:, 1],
+            resid[:, 0] * scale,
+            resid[:, 1] * scale,
+            angles="xy",
+            scale_units="xy",
+            scale=1.0,
+            color="crimson",
+            width=0.004,
+        )
         ax.set_aspect("equal", adjustable="datalim")
-        ax.set_xlabel("X (mm)"); ax.set_ylabel("Y (mm)")
+        ax.set_xlabel("X (mm)")
+        ax.set_ylabel("Y (mm)")
         ax.set_title(f"world frame — residual quiver (x{scale:.0f})", fontsize=10)
         ax.legend(fontsize=8, loc="best")
 
         # Right: residual (dx,dy) scatter with RMS circle.
         ax2 = fig.add_subplot(gs[0, 1])
         ax2.scatter(resid[:, 0], resid[:, 1], s=8, alpha=0.6, color="crimson")
-        ax2.add_patch(plt.Circle((0, 0), rms, fill=False, color="red", ls="--", lw=1.5,
-                                 label=f"RMS={rms:.4f} mm"))
+        ax2.add_patch(
+            plt.Circle(
+                (0, 0),
+                rms,
+                fill=False,
+                color="red",
+                ls="--",
+                lw=1.5,
+                label=f"RMS={rms:.4f} mm",
+            )
+        )
         mr = max(float(np.abs(resid).max()) * 1.15, rms * 1.3) if len(resid) else 1e-3
-        ax2.set_xlim(-mr, mr); ax2.set_ylim(-mr, mr); ax2.set_aspect("equal")
-        ax2.axhline(0, color="gray", lw=0.5); ax2.axvline(0, color="gray", lw=0.5)
-        ax2.set_xlabel("residual X (mm)"); ax2.set_ylabel("residual Y (mm)")
+        ax2.set_xlim(-mr, mr)
+        ax2.set_ylim(-mr, mr)
+        ax2.set_aspect("equal")
+        ax2.axhline(0, color="gray", lw=0.5)
+        ax2.axvline(0, color="gray", lw=0.5)
+        ax2.set_xlabel("residual X (mm)")
+        ax2.set_ylabel("residual Y (mm)")
         ax2.set_title("fit residuals", fontsize=10)
         ax2.legend(fontsize=8, loc="best")
         _save(fig, output_path)
@@ -672,46 +1671,325 @@ def write_scale_factor_figure(
         ox, oy = float(origin_px[0]), float(origin_px[1])
         # Pixel-space direction of each world axis (see ScaleFactorModel algebra).
         if not swap_axes:
-            x_dir = (col_sign, 0)   # +X along the column axis
-            y_dir = (0, row_sign)   # +Y along the row axis
+            x_dir = (col_sign, 0)  # +X along the column axis
+            y_dir = (0, row_sign)  # +Y along the row axis
         else:
-            x_dir = (0, col_sign)   # +X along the row axis
-            y_dir = (row_sign, 0)   # +Y along the column axis
+            x_dir = (0, col_sign)  # +X along the row axis
+            y_dir = (row_sign, 0)  # +Y along the column axis
         length = 0.12 * max(w, h)
         px_per_mm = (1.0 / mm_per_pixel) if mm_per_pixel else float("nan")
 
         fig, ax = plt.subplots(figsize=(10, 8))
         ax.imshow(gray, cmap="gray", origin="upper")
         ax.plot(ox, oy, "+", color="yellow", markersize=18, markeredgewidth=2.5)
-        ax.annotate("", xy=(ox + x_dir[0] * length, oy + x_dir[1] * length),
-                    xytext=(ox, oy),
-                    arrowprops=dict(arrowstyle="-|>", color="red", lw=2.5))
-        ax.annotate("", xy=(ox + y_dir[0] * length, oy + y_dir[1] * length),
-                    xytext=(ox, oy),
-                    arrowprops=dict(arrowstyle="-|>", color="deepskyblue", lw=2.5))
-        ax.text(ox + x_dir[0] * length, oy + x_dir[1] * length, "  +X",
-                color="red", fontsize=12, fontweight="bold", va="center")
-        ax.text(ox + y_dir[0] * length, oy + y_dir[1] * length, "  +Y",
-                color="deepskyblue", fontsize=12, fontweight="bold", va="center")
+        ax.annotate(
+            "",
+            xy=(ox + x_dir[0] * length, oy + x_dir[1] * length),
+            xytext=(ox, oy),
+            arrowprops=dict(arrowstyle="-|>", color="red", lw=2.5),
+        )
+        ax.annotate(
+            "",
+            xy=(ox + y_dir[0] * length, oy + y_dir[1] * length),
+            xytext=(ox, oy),
+            arrowprops=dict(arrowstyle="-|>", color="deepskyblue", lw=2.5),
+        )
+        ax.text(
+            ox + x_dir[0] * length,
+            oy + x_dir[1] * length,
+            "  +X",
+            color="red",
+            fontsize=12,
+            fontweight="bold",
+            va="center",
+        )
+        ax.text(
+            ox + y_dir[0] * length,
+            oy + y_dir[1] * length,
+            "  +Y",
+            color="deepskyblue",
+            fontsize=12,
+            fontweight="bold",
+            va="center",
+        )
         ax.set_title(
             f"Scale-factor frame — origin ({ox:.1f}, {oy:.1f}) px, "
             f"{px_per_mm:.4f} px/mm ({mm_per_pixel:.5f} mm/px), dt={dt:g} s",
-            fontsize=11)
-        ax.set_xlabel("pixel x (image-down)"); ax.set_ylabel("pixel y (image-down)")
-        ax.set_xlim(0, w); ax.set_ylim(h, 0)
+            fontsize=11,
+        )
+        ax.set_xlabel("pixel x (image-down)")
+        ax.set_ylabel("pixel y (image-down)")
+        ax.set_xlim(0, w)
+        ax.set_ylim(h, 0)
         _save(fig, Path(figure_dir) / f"{prefix}scale_factor.png")
     except Exception:
         logger.warning(f"scale-factor figure failed: {traceback.format_exc()}")
 
 
-def write_stereo_figures(figure_dir, *, model1, model2, R_stereo, T_stereo, img1, img2,
-                         datum_board_world, spacing) -> None:
+def write_stereo_figures(
+    figure_dir,
+    *,
+    model1,
+    model2,
+    R_stereo,
+    T_stereo,
+    img1,
+    img2,
+    datum_board_world,
+    spacing,
+) -> None:
     """Stereo-only proof figures: cameras relative to the datum board + the dewarp anaglyph."""
     figd = Path(figure_dir)
     figd.mkdir(parents=True, exist_ok=True)
-    write_cameras_3d(model1, model2, datum_board_world, R_stereo, T_stereo, figd / "cameras_3d.png")
-    write_dewarp_overlay(model1, model2, img1, img2, datum_board_world, spacing,
-                         figd / "dewarp_overlay.png")
+    write_cameras_3d(
+        model1, model2, datum_board_world, R_stereo, T_stereo, figd / "cameras_3d.png"
+    )
+    write_dewarp_overlay(
+        model1,
+        model2,
+        img1,
+        img2,
+        datum_board_world,
+        spacing,
+        figd / "dewarp_overlay.png",
+    )
+
+
+def write_joint_figures(
+    figure_dir,
+    *,
+    result,
+    detections_by_cam,
+    global_index,
+    spacing,
+    board_type,
+    datum_view,
+    image_loader=None,
+) -> None:
+    """All multi-camera joint proof figures, written beside the joint record.
+
+    The joint analogue of ``write_mono_figures``, drawn from the in-memory ``JointResult`` (the saved
+    record does not keep per-view poses). Per camera: a detection overlay per view and one
+    reprojection figure (world board points pushed through each view's pose). Once: the N-camera
+    cameras-relative-to-board scene (``boards_3d.png``) and the dewarp agreement proof — a single
+    dewarped board for 1 camera, a red/cyan anaglyph for 2, per-camera dewarped panels + a
+    back-projected-dot scatter for >2.
+
+    ``global_index[(cam,view)]`` rows correspond one-for-one with that detection's image points;
+    ``result.board[(gx,gy)]`` gives the released world point. ``image_loader(cam, view) -> ndarray``
+    supplies raw images for the image-based figures (detection overlays + dewarp); when it is None
+    those are skipped and only the geometry figures (reprojection, 3D scene) are written. Every
+    sub-figure swallows its own errors, so a figure failure never aborts the calibration.
+    """
+    figd = Path(figure_dir)
+    figd.mkdir(parents=True, exist_ok=True)
+    cams = list(result.cameras)
+    board_world = np.array(list(result.board.values()), dtype=np.float64).reshape(-1, 3)
+
+    # Per-camera reprojection (world board points through each view's pose) + detection overlays.
+    for cam in cams:
+        model = result.models[cam]
+        views = sorted(v for (c, v) in result.view_poses if c == cam)
+        objs, imgs, rvecs, tvecs, per_view, used_views = [], [], [], [], [], []
+        for v in views:
+            key = (cam, v)
+            det = detections_by_cam[cam][v]
+            gi = global_index.get(key)
+            if gi is None or not det.success:
+                continue
+            gi = np.asarray(gi, np.int64).reshape(-1, 2)
+            ipts = np.asarray(det.image_points, np.float64).reshape(-1, 2)
+            keep = [
+                i for i, g in enumerate(gi) if (int(g[0]), int(g[1])) in result.board
+            ]
+            if not keep:
+                continue
+            world = np.array(
+                [result.board[(int(gi[i, 0]), int(gi[i, 1]))] for i in keep], np.float64
+            )
+            ipts = ipts[keep]
+            R, t = result.view_poses[key]
+            rv, _ = cv2.Rodrigues(np.asarray(R, np.float64))
+            tv = np.asarray(t, np.float64).reshape(3)
+            proj, _ = cv2.projectPoints(
+                world.reshape(-1, 1, 3), rv.reshape(3), tv, model.K, model.dist
+            )
+            res = ipts - proj.reshape(-1, 2)
+            objs.append(world)
+            imgs.append(ipts)
+            rvecs.append(rv.reshape(3))
+            tvecs.append(tv)
+            per_view.append(float(np.sqrt(np.mean(np.sum(res**2, axis=1)))))
+            used_views.append(v)
+            if image_loader is not None:
+                img = image_loader(cam, v)
+                if img is not None:
+                    write_detection_figure(
+                        img,
+                        det,
+                        figd / f"detection_cam{cam}_{v:02d}.png",
+                        title=f"cam{cam} view {v}",
+                    )
+        if objs:
+            write_reprojection_figure(
+                objs,
+                imgs,
+                model.K,
+                model.dist,
+                rvecs,
+                tvecs,
+                per_view,
+                float(result.per_camera_rms.get(cam, float("nan"))),
+                figd / f"reprojection_cam{cam}.png",
+                pose_indices=used_views,
+                title=f"cam{cam} reprojection",
+            )
+
+    # Orientation of the rig in space: every camera around the one shared board.
+    write_cameras_planes_3d(
+        {c: result.models[c] for c in cams}, board_world, figd / "boards_3d.png"
+    )
+
+    # Dewarp agreement proof (image-based; needs the datum-view images).
+    if image_loader is not None:
+        datum_imgs = {c: image_loader(c, datum_view) for c in cams}
+        if len(cams) == 1:
+            c = cams[0]
+            if datum_imgs[c] is not None:
+                write_dewarp_single(
+                    result.models[c],
+                    datum_imgs[c],
+                    board_world,
+                    spacing,
+                    figd / "dewarp.png",
+                    title=f"Cam{c} dewarped board",
+                )
+        elif len(cams) == 2:
+            a, b = cams
+            if datum_imgs[a] is not None and datum_imgs[b] is not None:
+                write_dewarp_overlay(
+                    result.models[a],
+                    result.models[b],
+                    datum_imgs[a],
+                    datum_imgs[b],
+                    board_world,
+                    spacing,
+                    figd / "dewarp_overlay.png",
+                    title=f"Dewarp overlay (Cam{a}=red, Cam{b}=cyan; sharp = agreement)",
+                )
+        else:
+            for c in cams:
+                if datum_imgs[c] is not None:
+                    write_dewarp_single(
+                        result.models[c],
+                        datum_imgs[c],
+                        board_world,
+                        spacing,
+                        figd / f"dewarp_cam{c}.png",
+                        title=f"Cam{c} dewarped board",
+                    )
+
+    # For >2 cameras, the shared world-frame agreement scatter (no raw image needed). Only the
+    # dots the solver actually used (global index present in the released board) are plotted —
+    # the same filter the reprojection loop applies — so the figure shows the solved dots, not
+    # any stray detections.
+    if len(cams) >= 3:
+        detect_px = {}
+        for c in cams:
+            dets = detections_by_cam[c]
+            gi = global_index.get((c, datum_view))
+            if gi is None or datum_view >= len(dets) or not dets[datum_view].success:
+                continue
+            gi = np.asarray(gi, np.int64).reshape(-1, 2)
+            ipts = np.asarray(dets[datum_view].image_points, np.float64).reshape(-1, 2)
+            keep = [
+                i for i, g in enumerate(gi) if (int(g[0]), int(g[1])) in result.board
+            ]
+            if keep:
+                detect_px[c] = ipts[keep]
+        if len(detect_px) >= 2:
+            write_dewarp_dots(
+                {c: result.models[c] for c in cams},
+                detect_px,
+                board_world,
+                spacing,
+                figd / "dewarp_dots.png",
+            )
+
+
+def write_joint_polynomial_figures(
+    figure_dir,
+    *,
+    models_by_cam,
+    detections_by_cam,
+    global_index,
+    spacing,
+    origin_mm,
+    datum_view,
+    image_loader=None,
+) -> None:
+    """All joint per-camera polynomial proof figures, written beside the per-camera records.
+
+    The polynomial analogue of ``write_joint_figures``. Each camera fitted a single-plane cubic on
+    its ``datum_view`` detection with world targets from the SHARED global index
+    (``gi*spacing + origin`` — identical to ``run_joint_polynomial``), so all cameras already live in
+    one world frame. Per camera: detection overlay, the polynomial-fit residual (the reprojection
+    analogue), and the dewarped board. For >=2 cameras, one shared back-projected-dots agreement
+    scatter. ``image_loader(cam, view) -> ndarray`` supplies raw images for the image-based figures
+    (detection + dewarp); None skips those. Every sub-figure swallows its own errors, so a figure
+    failure never aborts the calibration.
+    """
+    figd = Path(figure_dir)
+    figd.mkdir(parents=True, exist_ok=True)
+    ox, oy = float(origin_mm[0]), float(origin_mm[1])
+    cams = sorted(models_by_cam)
+    detect_px: dict = {}
+    world_all = []
+    for cam in cams:
+        gi = global_index.get((int(cam), int(datum_view)))
+        dets = detections_by_cam.get(cam) or []
+        if gi is None or datum_view >= len(dets) or not dets[datum_view].success:
+            continue
+        det = dets[datum_view]
+        gi = np.asarray(gi, np.float64).reshape(-1, 2)
+        ipts = np.asarray(det.image_points, np.float64).reshape(-1, 2)
+        if len(gi) != len(ipts):
+            continue
+        world = np.column_stack(
+            [gi[:, 0] * spacing + ox, gi[:, 1] * spacing + oy, np.zeros(len(gi))]
+        )
+        world_all.append(world)
+        detect_px[cam] = ipts
+        model = models_by_cam[cam]
+        write_polynomial_fit_figure(
+            det,
+            world,
+            model,
+            figd / f"polynomial_fit_cam{cam}.png",
+            title=f"cam{cam} polynomial fit",
+        )
+        if image_loader is not None:
+            img = image_loader(cam, datum_view)
+            if img is not None:
+                write_detection_figure(
+                    img,
+                    det,
+                    figd / f"detection_cam{cam}_{datum_view:02d}.png",
+                    title=f"cam{cam} datum",
+                )
+                write_dewarp_single_poly(
+                    model,
+                    img,
+                    world,
+                    spacing,
+                    figd / f"dewarp_cam{cam}.png",
+                    title=f"Cam{cam} dewarped board",
+                )
+    if len(detect_px) >= 2 and world_all:
+        board_world = np.unique(np.round(np.vstack(world_all), 3), axis=0)
+        write_dewarp_dots_poly(
+            models_by_cam, detect_px, board_world, spacing, figd / "dewarp_dots.png"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -725,6 +2003,7 @@ def write_stereo_figures(figure_dir, *, model1, model2, R_stereo, T_stereo, img1
 # algorithm core, imported lazily.
 # ---------------------------------------------------------------------------
 
+
 def _percentile_u8(img: np.ndarray) -> np.ndarray:
     """Percentile contrast-stretch a sparse-particle dewarp to uint8 (out-of-bounds = 0)."""
     pos = img[img > 0]
@@ -735,29 +2014,6 @@ def _percentile_u8(img: np.ndarray) -> np.ndarray:
     if hi - lo < 1e-6:
         hi = lo + 1.0
     return np.clip((img - lo) / (hi - lo) * 255, 0, 255).astype(np.uint8)
-
-
-def render_dewarp_overlay(cam1, cam2, img1, img2, world_bounds, mm_per_pixel,
-                          z_offset: float = 0.0, tilt_x: float = 0.0, tilt_y: float = 0.0):
-    """Dewarp both cameras onto the (z, tilt) plane and overlay cam1=red, cam2=cyan.
-
-    ``cam1``/``cam2`` are ``PinholeCamera`` objects. Returns
-    ``(overlay_rgb_u8, cam1_u8, cam2_u8)`` for the live preview route. Where the
-    sheet plane is correct the channels register (grey); residual disparity shows as
-    red/cyan fringing.
-    """
-    from pivtools_gui.stereo_reconstruction.self_calibration import (
-        compute_dewarp_maps, dewarp_image,
-    )
-
-    m1x, m1y = compute_dewarp_maps(cam1, world_bounds, mm_per_pixel,
-                                   z_offset=z_offset, tilt_x=tilt_x, tilt_y=tilt_y)
-    m2x, m2y = compute_dewarp_maps(cam2, world_bounds, mm_per_pixel,
-                                   z_offset=z_offset, tilt_x=tilt_x, tilt_y=tilt_y)
-    r = _percentile_u8(dewarp_image(img1, m1x, m1y))
-    c = _percentile_u8(dewarp_image(img2, m2x, m2y))
-    overlay = np.stack([r, c, c], axis=-1)
-    return overlay, r, c
 
 
 def write_self_cal_figures(
@@ -781,7 +2037,8 @@ def write_self_cal_figures(
     exception so a single failure never aborts the rest.
     """
     from pivtools_gui.stereo_reconstruction.self_calibration import (
-        compute_dewarp_maps, dewarp_image,
+        compute_dewarp_maps,
+        dewarp_image,
     )
 
     out_dir = Path(figure_dir)
@@ -802,7 +2059,8 @@ def write_self_cal_figures(
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
     fig.suptitle(
         f"Self-Calibration Convergence — cam{cam1_num} vs cam{cam2_num}",
-        fontsize=14, fontweight="bold",
+        fontsize=14,
+        fontweight="bold",
     )
     axes[0, 0].semilogy(iters, rms_vals, "bo-", lw=2, ms=8)
     axes[0, 0].set_xlabel("Iteration")
@@ -834,10 +2092,16 @@ def write_self_cal_figures(
         ["Iterations", f"{result.n_iterations}"],
         ["Converged", f"{result.converged}"],
         ["Initial RMS", f"{hist[0].rms_disparity:.2f} px"],
-        ["Reduction", f"{hist[0].rms_disparity / max(result.final_rms_disparity, 0.001):.1f}x"],
+        [
+            "Reduction",
+            f"{hist[0].rms_disparity / max(result.final_rms_disparity, 0.001):.1f}x",
+        ],
     ]
     table = axes[1, 1].table(
-        cellText=rows, loc="center", cellLoc="center", colWidths=[0.45, 0.45],
+        cellText=rows,
+        loc="center",
+        cellLoc="center",
+        colWidths=[0.45, 0.45],
     )
     table.auto_set_font_size(False)
     table.set_fontsize(11)
@@ -864,18 +2128,21 @@ def write_self_cal_figures(
             + np.where(np.isfinite(dy_a), dy_a, 0) ** 2
         )
         vmax = float(np.nanpercentile(mag_b, 95)) if mag_b.size else 1.0
-        rms_b = float(np.sqrt(np.nanmean(dx_b ** 2 + dy_b ** 2)))
-        rms_a = float(np.sqrt(np.nanmean(dx_a ** 2 + dy_a ** 2)))
+        rms_b = float(np.sqrt(np.nanmean(dx_b**2 + dy_b**2)))
+        rms_a = float(np.sqrt(np.nanmean(dx_a**2 + dy_a**2)))
 
         fig, axes = plt.subplots(2, 3, figsize=(18, 10))
         fig.suptitle(
             "Disparity Fields: Before vs After Correction",
-            fontsize=14, fontweight="bold",
+            fontsize=14,
+            fontweight="bold",
         )
-        for row, (dx, dy, mag, rms, lbl) in enumerate([
-            (dx_b, dy_b, mag_b, rms_b, "BEFORE"),
-            (dx_a, dy_a, mag_a, rms_a, "AFTER"),
-        ]):
+        for row, (dx, dy, mag, rms, lbl) in enumerate(
+            [
+                (dx_b, dy_b, mag_b, rms_b, "BEFORE"),
+                (dx_a, dy_a, mag_a, rms_a, "AFTER"),
+            ]
+        ):
             im = axes[row, 0].imshow(dx, cmap="RdBu_r", vmin=-vmax, vmax=vmax)
             axes[row, 0].set_title(f"dx {lbl}\nmean={np.nanmean(dx):.2f} px")
             plt.colorbar(im, ax=axes[row, 0], shrink=0.8)
@@ -891,30 +2158,42 @@ def write_self_cal_figures(
         fig.tight_layout()
         fig.savefig(
             str(out_dir / "fig2_disparity_before_after.png"),
-            dpi=150, bbox_inches="tight",
+            dpi=150,
+            bbox_inches="tight",
         )
         plt.close(fig)
 
         # Mean/std of finite values — what self-cal minimises (mean → 0) and the
         # irreducible noise floor (std).
-        dx_b_mean = float(np.nanmean(dx_b)); dx_b_std = float(np.nanstd(dx_b))
-        dx_a_mean = float(np.nanmean(dx_a)); dx_a_std = float(np.nanstd(dx_a))
-        dy_b_mean = float(np.nanmean(dy_b)); dy_b_std = float(np.nanstd(dy_b))
-        dy_a_mean = float(np.nanmean(dy_a)); dy_a_std = float(np.nanstd(dy_a))
+        dx_b_mean = float(np.nanmean(dx_b))
+        dx_b_std = float(np.nanstd(dx_b))
+        dx_a_mean = float(np.nanmean(dx_a))
+        dx_a_std = float(np.nanstd(dx_a))
+        dy_b_mean = float(np.nanmean(dy_b))
+        dy_b_std = float(np.nanstd(dy_b))
+        dy_a_mean = float(np.nanmean(dy_a))
+        dy_a_std = float(np.nanstd(dy_a))
 
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
         fig.suptitle(
             "Disparity Distributions: Before vs After\n"
             "(vertical lines mark mean — self-cal's minimisation target)",
-            fontsize=13, fontweight="bold",
+            fontsize=13,
+            fontweight="bold",
         )
         bins = np.linspace(-vmax * 1.5, vmax * 1.5, 60)
         ax1.hist(
-            dx_b[np.isfinite(dx_b)].ravel(), bins=bins, alpha=0.6, color="red",
+            dx_b[np.isfinite(dx_b)].ravel(),
+            bins=bins,
+            alpha=0.6,
+            color="red",
             label=f"Before (μ={dx_b_mean:+.3f}, σ={dx_b_std:.2f})",
         )
         ax1.hist(
-            dx_a[np.isfinite(dx_a)].ravel(), bins=bins, alpha=0.6, color="green",
+            dx_a[np.isfinite(dx_a)].ravel(),
+            bins=bins,
+            alpha=0.6,
+            color="green",
             label=f"After (μ={dx_a_mean:+.3f}, σ={dx_a_std:.2f})",
         )
         ax1.axvline(dx_b_mean, color="darkred", lw=2, ls="--")
@@ -926,11 +2205,17 @@ def write_self_cal_figures(
         ax1.axvline(0, color="k", ls="-", alpha=0.3)
 
         ax2.hist(
-            dy_b[np.isfinite(dy_b)].ravel(), bins=bins, alpha=0.6, color="red",
+            dy_b[np.isfinite(dy_b)].ravel(),
+            bins=bins,
+            alpha=0.6,
+            color="red",
             label=f"Before (μ={dy_b_mean:+.3f}, σ={dy_b_std:.2f})",
         )
         ax2.hist(
-            dy_a[np.isfinite(dy_a)].ravel(), bins=bins, alpha=0.6, color="green",
+            dy_a[np.isfinite(dy_a)].ravel(),
+            bins=bins,
+            alpha=0.6,
+            color="green",
             label=f"After (μ={dy_a_mean:+.3f}, σ={dy_a_std:.2f})",
         )
         ax2.axvline(dy_b_mean, color="darkred", lw=2, ls="--")
@@ -943,7 +2228,8 @@ def write_self_cal_figures(
         fig.tight_layout()
         fig.savefig(
             str(out_dir / "fig3_disparity_histograms.png"),
-            dpi=150, bbox_inches="tight",
+            dpi=150,
+            bbox_inches="tight",
         )
         plt.close(fig)
 
@@ -956,18 +2242,27 @@ def write_self_cal_figures(
         dw1b = dewarp_image(img1, m1b[0], m1b[1])
         dw2b = dewarp_image(img2, m2b[0], m2b[1])
         m1a = compute_dewarp_maps(
-            cam1, world_bounds, mm_per_pixel,
-            result.z_offset, result.tilt_x, result.tilt_y,
+            cam1,
+            world_bounds,
+            mm_per_pixel,
+            result.z_offset,
+            result.tilt_x,
+            result.tilt_y,
         )
         m2a = compute_dewarp_maps(
-            cam2, world_bounds, mm_per_pixel,
-            result.z_offset, result.tilt_x, result.tilt_y,
+            cam2,
+            world_bounds,
+            mm_per_pixel,
+            result.z_offset,
+            result.tilt_x,
+            result.tilt_y,
         )
         dw1a = dewarp_image(img1, m1a[0], m1a[1])
         dw2a = dewarp_image(img2, m2a[0], m2a[1])
 
         def _rc(d1, d2):
-            r = _percentile_u8(d1); c = _percentile_u8(d2)
+            r = _percentile_u8(d1)
+            c = _percentile_u8(d2)
             return np.stack([r, c, c], axis=-1)
 
         ov_before = _rc(dw1b, dw2b)
@@ -976,13 +2271,15 @@ def write_self_cal_figures(
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
         fig.suptitle(
             "Dewarped Particle Overlay: Before vs After Self-Cal",
-            fontsize=13, fontweight="bold",
+            fontsize=13,
+            fontweight="bold",
         )
         x_min, x_max, y_min, y_max = world_bounds
         extent = [x_min, x_max, y_min, y_max]
         ax1.imshow(ov_before, extent=extent, origin="lower", aspect="equal")
         ax1.set_title("BEFORE (Z=0, no tilt)")
-        ax1.set_xlabel("X (mm)"); ax1.set_ylabel("Y (mm)")
+        ax1.set_xlabel("X (mm)")
+        ax1.set_ylabel("Y (mm)")
         ax2.imshow(ov_after, extent=extent, origin="lower", aspect="equal")
         ax2.set_title(
             f"AFTER (Z={result.z_offset:.2f} mm, "
@@ -992,7 +2289,8 @@ def write_self_cal_figures(
         fig.tight_layout()
         fig.savefig(
             str(out_dir / "fig4_overlay_before_after.png"),
-            dpi=150, bbox_inches="tight",
+            dpi=150,
+            bbox_inches="tight",
         )
         plt.close(fig)
 
@@ -1009,7 +2307,9 @@ def write_self_cal_figures(
                 or result.win_ctrs_y is None
                 or result.window_size_used is None
             ):
-                raise RuntimeError("correlation planes missing from SelfCalibrationResult")
+                raise RuntimeError(
+                    "correlation planes missing from SelfCalibrationResult"
+                )
 
             corr_before = result.corr_first_iter
             corr_after = result.corr_last_iter
@@ -1054,7 +2354,8 @@ def write_self_cal_figures(
                 f"R/G overlay | corr BEFORE (iter 1) | "
                 f"corr AFTER (iter {n_iters}) — "
                 f"C library window: {ws_full}×{ws_full}{crop_label}",
-                fontsize=11, fontweight="bold",
+                fontsize=11,
+                fontweight="bold",
             )
 
             for row, y_t in enumerate(ys_probe[::-1]):
@@ -1084,14 +2385,22 @@ def write_self_cal_figures(
                     s1 = _stretch(img1_a[y0:y1, x0:x1])
                     s2 = _stretch(img2_a[y0:y1, x0:x1])
                     axes[row, base_col + 0].imshow(
-                        s1, origin="lower", cmap="inferno", vmin=0, vmax=1,
+                        s1,
+                        origin="lower",
+                        cmap="inferno",
+                        vmin=0,
+                        vmax=1,
                     )
                     axes[row, base_col + 0].set_title(
                         f"({snap_mm_x:+.0f},{snap_mm_y:+.0f}) c{cam1_num} f0",
                         fontsize=9,
                     )
                     axes[row, base_col + 1].imshow(
-                        s2, origin="lower", cmap="inferno", vmin=0, vmax=1,
+                        s2,
+                        origin="lower",
+                        cmap="inferno",
+                        vmin=0,
+                        vmax=1,
                     )
                     axes[row, base_col + 1].set_title(f"c{cam2_num} f0", fontsize=9)
                     rgb = np.zeros((W_thumb, W_thumb, 3), dtype=np.float32)
@@ -1099,7 +2408,8 @@ def write_self_cal_figures(
                     rgb[..., 1] = s2
                     axes[row, base_col + 2].imshow(rgb, origin="lower")
                     axes[row, base_col + 2].set_title(
-                        f"R=c{cam1_num}, G=c{cam2_num}", fontsize=9,
+                        f"R=c{cam1_num}, G=c{cam2_num}",
+                        fontsize=9,
                     )
 
                     plane_before = corr_before[iy, ix, c0:c1, c0:c1]
@@ -1108,18 +2418,26 @@ def write_self_cal_figures(
                     vmax_a = float(np.max(plane_after))
 
                     axes[row, base_col + 3].imshow(
-                        plane_before, origin="lower", cmap="viridis",
-                        vmin=float(np.min(plane_before)), vmax=vmax_b,
+                        plane_before,
+                        origin="lower",
+                        cmap="viridis",
+                        vmin=float(np.min(plane_before)),
+                        vmax=vmax_b,
                     )
                     axes[row, base_col + 3].set_title(
-                        f"BEFORE iter 1\npeak={vmax_b:.3g}", fontsize=8,
+                        f"BEFORE iter 1\npeak={vmax_b:.3g}",
+                        fontsize=8,
                     )
                     axes[row, base_col + 4].imshow(
-                        plane_after, origin="lower", cmap="viridis",
-                        vmin=float(np.min(plane_after)), vmax=vmax_a,
+                        plane_after,
+                        origin="lower",
+                        cmap="viridis",
+                        vmin=float(np.min(plane_after)),
+                        vmax=vmax_a,
                     )
                     axes[row, base_col + 4].set_title(
-                        f"AFTER iter {n_iters}\npeak={vmax_a:.3g}", fontsize=8,
+                        f"AFTER iter {n_iters}\npeak={vmax_a:.3g}",
+                        fontsize=8,
                     )
 
                     for k in range(5):
@@ -1129,7 +2447,8 @@ def write_self_cal_figures(
             fig.tight_layout()
             fig.savefig(
                 str(out_dir / "fig5_correlation_probes.png"),
-                dpi=150, bbox_inches="tight",
+                dpi=150,
+                bbox_inches="tight",
             )
             plt.close(fig)
         except Exception as e:
@@ -1168,7 +2487,11 @@ def write_self_cal_figures(
             dy_res = dy_o - dy_pred
 
             finite_obs = dy_o[np.isfinite(dy_o)]
-            v = float(np.nanpercentile(np.abs(finite_obs), 98)) if finite_obs.size else 1.0
+            v = (
+                float(np.nanpercentile(np.abs(finite_obs), 98))
+                if finite_obs.size
+                else 1.0
+            )
             if v < 0.1:
                 v = 0.1
 
@@ -1199,7 +2522,8 @@ def write_self_cal_figures(
                 f"ty={math.degrees(result.tilt_y):+.4f}°\n"
                 "PREDICTED is the linear fit through iter-1 OBSERVED, "
                 "so RESIDUAL = observation - fit = noise floor.",
-                fontsize=11, fontweight="bold",
+                fontsize=11,
+                fontweight="bold",
             )
 
             panels = [
@@ -1208,8 +2532,12 @@ def write_self_cal_figures(
                 ("dy RESIDUAL = obs − pred", dy_res, dy_r_m, dy_r_s),
             ]
             for i, (title, fld, mean_v, std_v) in enumerate(panels):
-                im = axes[0, i].imshow(fld, cmap="RdBu_r", vmin=-v, vmax=v, origin="lower")
-                axes[0, i].set_title(f"{title}\nμ={mean_v:+.3f} px, σ={std_v:.2f} px", fontsize=11)
+                im = axes[0, i].imshow(
+                    fld, cmap="RdBu_r", vmin=-v, vmax=v, origin="lower"
+                )
+                axes[0, i].set_title(
+                    f"{title}\nμ={mean_v:+.3f} px, σ={std_v:.2f} px", fontsize=11
+                )
                 axes[0, i].set_xlabel("Window X")
                 axes[0, i].set_ylabel("Window Y")
                 plt.colorbar(im, ax=axes[0, i], shrink=0.8)
@@ -1220,14 +2548,20 @@ def write_self_cal_figures(
                 ("dx RESIDUAL", dx_res, dx_r_m, dx_r_s),
             ]
             for i, (title, fld, mean_v, std_v) in enumerate(panels_x):
-                im = axes[1, i].imshow(fld, cmap="RdBu_r", vmin=-v, vmax=v, origin="lower")
-                axes[1, i].set_title(f"{title}\nμ={mean_v:+.3f} px, σ={std_v:.2f} px", fontsize=11)
+                im = axes[1, i].imshow(
+                    fld, cmap="RdBu_r", vmin=-v, vmax=v, origin="lower"
+                )
+                axes[1, i].set_title(
+                    f"{title}\nμ={mean_v:+.3f} px, σ={std_v:.2f} px", fontsize=11
+                )
                 axes[1, i].set_xlabel("Window X")
                 axes[1, i].set_ylabel("Window Y")
                 plt.colorbar(im, ax=axes[1, i], shrink=0.8)
 
             fig.tight_layout()
-            fig.savefig(str(out_dir / "fig6_forward_model.png"), dpi=150, bbox_inches="tight")
+            fig.savefig(
+                str(out_dir / "fig6_forward_model.png"), dpi=150, bbox_inches="tight"
+            )
             plt.close(fig)
         except Exception as e:
             logger.warning(f"self-cal fig6_forward_model failed: {e}")
@@ -1235,6 +2569,7 @@ def write_self_cal_figures(
     # ----- correlation_planes.mat (first + last iteration C-correlator output) -----
     try:
         from scipy.io import savemat
+
         if result.corr_first_iter is not None and result.corr_last_iter is not None:
             mat_data = {
                 "corr_first_iter": result.corr_first_iter.astype(np.float32),
@@ -1255,7 +2590,9 @@ def write_self_cal_figures(
                 mat_data["grid_x_mm"] = np.asarray(result.grid_x_mm, dtype=np.float32)
             if result.grid_y_mm is not None:
                 mat_data["grid_y_mm"] = np.asarray(result.grid_y_mm, dtype=np.float32)
-            savemat(str(out_dir / "correlation_planes.mat"), mat_data, do_compression=True)
+            savemat(
+                str(out_dir / "correlation_planes.mat"), mat_data, do_compression=True
+            )
         else:
             logger.warning("self-cal: no correlation planes captured — skipping .mat")
     except Exception as e:

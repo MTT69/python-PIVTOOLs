@@ -1,18 +1,19 @@
 paths:
   base_paths:
-  - /Volumes/STORAGE/calibration_check/planar/PIV
+  - /Volumes/STORAGE/bailey_tiff
   source_paths:
-  - /Volumes/STORAGE/calibration_check/planar/source_piv/cam1
+  - /Volumes/STORAGE/bailey/bailey_tiff
   active_paths:
   - 0
   camera_numbers:
   - 1
-  camera_count: 1
+  - 2
+  camera_count: 2
   camera_subfolders: []
 images:
   image_format:
-  - B%05d_A.tif
-  - B%05d_B.tif
+  - B%05d_A.tiff
+  - B%05d_B.tiff
   vector_format:
   - '%05d.mat'
   dtype: float32
@@ -23,12 +24,12 @@ images:
   pair_stride: 1
   pairing_preset: ab_format
   num_loops: 1
-  num_images: 1
+  num_images: 10
   image_shape:
-  - 2048
-  - 2048
+  - 4600
+  - 5312
 batches:
-  size: 1
+  size: 10
 logging:
   file: pypiv.log
   level: INFO
@@ -45,8 +46,8 @@ processing:
   dask_nanny: false
   post_processing_workers: 16
   always_batch: true
-  instantaneous: true
-  ensemble: false
+  instantaneous: false
+  ensemble: true
 outlier_detection:
   enabled: true
   methods:
@@ -142,6 +143,7 @@ instantaneous_piv:
   predictor_smoothing: false
   save_mode: full
   save_compression: false
+  image_warp_interpolation: lanczos
 ensemble_piv:
   fit_method: kspace
   skip_background_subtraction: false
@@ -195,24 +197,24 @@ ensemble_piv:
     uy: 0
     edge: bottom
 calibration:
-  image_format: calib%05d.tif
+  image_format: B%05d.im7
   num_images: 10
-  image_type: standard
+  image_type: lavision_im7
   zero_based_indexing: false
-  use_camera_subfolders: false
+  use_camera_subfolders: true
   subfolder: enhanced
   camera_subfolders:
-  - cam1
-  - cam2
+  - camera1
+  - camera2
   path_order: camera_first
-  active: stereo_dotboard
+  active: dotboard
   piv_type: instantaneous
   scale_factor:
     dt: 0.0057553
     px_per_mm: 13.653
     source_path_idx: 0
   dotboard:
-    dot_spacing_mm: 10
+    dot_spacing_mm: 21.2
     dt: 4.96e-05
     datum_frame: 1
     model_type: polynomial
@@ -301,13 +303,11 @@ calibration:
     datum_camera: 1
     datum_frame: 1
   calibration_sources:
-  - /Volumes/STORAGE/calibration_check/planar/source_calib/Cam1
+  - /Volumes/STORAGE/calibration_check/bailey_calibration_poly/Calibration
   global_coordinates:
     enabled: true
     datum_camera: 1
-    datum_pixel:
-    - 262.2168509862043
-    - 1788.70185839699
+    datum_pixel: null
     datum_physical:
     - 0
     - 10
@@ -350,7 +350,14 @@ calibration:
     clicked_level: {}
     pose_levels: {}
     fiducials: {}
-filters: []
+  n_views: 6
+  dt: 0.004
+  datum_frame: 1
+  camera_pair:
+  - 1
+  - 2
+filters:
+- type: time
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat

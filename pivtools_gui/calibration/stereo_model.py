@@ -30,7 +30,7 @@ from scipy.interpolate import RegularGridInterpolator
 
 from .camera_model import CameraModel, DistortionModel, fit_intrinsics, fit_pose
 from .detection.base import BoardDetector
-from .pipeline import Calibrator
+from .pipeline import Calibrator, view_diagnostics_summary
 from .record import StereoRecord, WorldFrame
 from .world_frame import apply_world_frame, resolve_world_frame, resolve_world_frame_from_grid
 
@@ -138,7 +138,7 @@ class StereoCalibrator:
         objs2 = [d.board_local_points for _, d in used2]
         imgs2 = [d.image_points for _, d in used2]
         h, w = np.asarray(images2[datum_index]).shape[:2]
-        K2, dist2, rv2, tv2, rms2, pv2 = fit_intrinsics(
+        K2, dist2, rv2, tv2, rms2, pv2, _rel2 = fit_intrinsics(
             objs2, imgs2, (int(w), int(h)),
             distortion_model=self.distortion_model,
             fix_aspect_ratio=self.fix_aspect_ratio, fix_k3=self.fix_k3,
@@ -149,10 +149,14 @@ class StereoCalibrator:
             # Independent frame on cam2 by dot grid indices (headless / CLI).
             wf2 = resolve_world_frame_from_grid(
                 frame_grid2["origin"], frame_grid2["x_axis"], frame_grid2["y_axis"])
+            # cam2's resolver carries no mm offset; inherit cam1's origin_mm so both
+            # cameras share ONE world frame (else the composed pose shifts by it).
+            wf2.origin_mm = wf.origin_mm
             world2 = apply_world_frame(datum2.grid_indices, sp, wf2)
         elif clicks2 is not None:
             # Independent frame on cam2 (dotboard / transmission / two-plate).
             wf2 = resolve_world_frame(datum2.grid_indices, datum2.image_points, clicks2)
+            wf2.origin_mm = wf.origin_mm
             world2 = apply_world_frame(datum2.grid_indices, sp, wf2)
         else:
             # ChArUco: inherit cam1's frame via globally-consistent corner ids.
@@ -167,6 +171,11 @@ class StereoCalibrator:
         meta = dict(board_meta or {})
         meta.setdefault("spacing_mm", float(sp))
         meta["z_sign_toward_cameras"] = camera_z_sign(rec1.camera_model, model2)
+        # cam1's summary was built inside run_mono; cam2's detections are local.
+        meta["view_diagnostics"] = {
+            "cam1": rec1.board_meta.get("view_diagnostics", {}),
+            "cam2": view_diagnostics_summary(det2),
+        }
 
         if figure_dir is not None:
             # cam2's own proof figures + the stereo-only geometry/dewarp pair. Drawn

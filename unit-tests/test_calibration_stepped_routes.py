@@ -59,7 +59,8 @@ class _FakeConfig:
             "camera": 1,
             "camera_pair": [1, 2],
             "source_idx": 0,
-            "stepped": {"dot_spacing_mm": SPACING_MM, "step_height_mm": STEP_MM},
+            "stepped": {"dot_spacing_mm": SPACING_MM, "step_height_mm": STEP_MM,
+                        "board_thickness_mm": 14.8},
         }
         self._source = source
 

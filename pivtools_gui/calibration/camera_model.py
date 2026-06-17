@@ -270,29 +270,32 @@ class Polynomial3DModel:
     ) -> np.ndarray:
         """Image-down pixels (N,2) -> world (X,Y,Z) mm on the sheet, by 2D Newton.
 
-        Inverts the forward cubic at the sheet ``z = z_world + tan(tilt_x)*X +
-        tan(tilt_y)*Y``. Each Newton step solves the in-plane 2x2 system (the Z column
-        of the Jacobian is folded into d/dX, d/dY via the tilt chain rule). Iterates
-        from the board centre; converges in a few steps over the fitted FOV. Like the
-        2D ``PolynomialModel`` it extrapolates silently (never NaN) outside the fit
-        region -- unlike the pinhole ray-plane intersection.
+        Inverts the forward cubic at the sheet ``Z = z_world + X*tan(tilt_y) +
+        Y*tan(tilt_x)`` -- the same plane equation as the pinhole
+        ``back_project_to_plane``, so a stored self-cal correction means the same
+        sheet through either model. Each Newton step solves the in-plane 2x2 system
+        (the Z column of the Jacobian is folded into d/dX, d/dY via the tilt chain
+        rule). Iterates from the board centre; converges in a few steps over the
+        fitted FOV. Like the 2D ``PolynomialModel`` it extrapolates silently (never
+        NaN) outside the fit region -- unlike the pinhole ray-plane intersection.
         """
         pts = np.asarray(pts_px, dtype=np.float64).reshape(-1, 2)
         if pts.size == 0:
             return np.empty((0, 3), dtype=np.float64)
-        tan_x, tan_y = math.tan(tilt_x), math.tan(tilt_y)
+        tan_tx, tan_ty = math.tan(tilt_x), math.tan(tilt_y)
         # Start at the board centre (the normalisation origin in X, Y).
         x = np.full(len(pts), self.x0, dtype=np.float64)
         y = np.full(len(pts), self.y0, dtype=np.float64)
         with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
             for _ in range(POLY3D_NEWTON_ITERS):
-                z = z_world + tan_x * x + tan_y * y
+                z = z_world + tan_ty * x + tan_tx * y
                 wp = np.column_stack([x, y, z])
                 res = self.project(wp) - pts            # (N,2)
                 jac = self.jacobian(wp)                 # (N,2,3)
-                # In-plane derivatives with the sheet-tilt chain rule.
-                d_dx = jac[:, :, 0] + jac[:, :, 2] * tan_x   # (N,2) d(u,v)/dX
-                d_dy = jac[:, :, 1] + jac[:, :, 2] * tan_y   # (N,2) d(u,v)/dY
+                # In-plane derivatives with the sheet-tilt chain rule
+                # (dZ/dX = tan(tilt_y), dZ/dY = tan(tilt_x) -- pinhole contract).
+                d_dx = jac[:, :, 0] + jac[:, :, 2] * tan_ty   # (N,2) d(u,v)/dX
+                d_dy = jac[:, :, 1] + jac[:, :, 2] * tan_tx   # (N,2) d(u,v)/dY
                 det = d_dx[:, 0] * d_dy[:, 1] - d_dy[:, 0] * d_dx[:, 1]
                 det = np.where(np.abs(det) < 1e-12, np.nan, det)
                 # Cramer's rule for M @ [dx, dy] = -res.
@@ -302,7 +305,7 @@ class Polynomial3DModel:
                 y = y + np.nan_to_num(dy)
                 if np.nanmax(np.abs(res)) < POLY3D_NEWTON_TOL_PX:
                     break
-        z = z_world + tan_x * x + tan_y * y
+        z = z_world + tan_ty * x + tan_tx * y
         return np.column_stack([x, y, z])
 
 
@@ -613,6 +616,30 @@ def reprojection_rms(
     return float(np.sqrt(np.mean(np.sum((proj - img) ** 2, axis=1))))
 
 
+def _release_gauge_index(object_points_one_view: np.ndarray) -> int:
+    """Fixed reference-point index for ``cv2.calibrateCameraRO``, guaranteed in [1, N-2].
+
+    OpenCV's object-point release pins one board point as the gauge and requires its index
+    to be interior (not the first or last). We choose the point farthest from the line
+    through the first and last board points, so the gauge is non-collinear and
+    well-conditioned. (The historical bug used ``N-1`` — out of OpenCV's valid range — which
+    silently fell back to plain ``calibrateCamera`` with no release at all.)
+    """
+    obj = np.asarray(object_points_one_view, dtype=np.float64).reshape(-1, 3)
+    n = len(obj)
+    if n < 3:
+        raise ValueError(f"object-point release needs >= 3 board points, got {n}")
+    p0, pe = obj[0, :2], obj[-1, :2]
+    line = pe - p0
+    norm = float(np.linalg.norm(line))
+    if norm < 1e-9:
+        return n // 2
+    line = line / norm
+    perp = np.abs((obj[:, :2] - p0) @ np.array([-line[1], line[0]]))
+    perp[0] = perp[-1] = -1.0  # forbid the endpoints (OpenCV needs an interior index)
+    return int(np.argmax(perp))
+
+
 def fit_intrinsics(
     object_points: Sequence[np.ndarray],
     image_points: Sequence[np.ndarray],
@@ -631,12 +658,14 @@ def fit_intrinsics(
     image_size : (width, height)
     distortion_model, fix_aspect_ratio, fix_k3 : fit policy (defaults = DaVis)
     use_release_object : if True and >=3 views, use ``cv2.calibrateCameraRO``
-        (Strobl-Hirzinger release-object, better for planar dot grids)
+        (Strobl-Hirzinger release-object, better for planar dot grids). Requires every view
+        to share IDENTICAL object points (OpenCV's constraint); the caller guarantees that.
 
     Returns
     -------
-    (K, dist, rvecs, tvecs, rms, per_view_rms_list)
+    (K, dist, rvecs, tvecs, rms, per_view_rms_list, released_object_points)
         ``rms`` is the overall reprojection RMS in px (DaVis FitError analogue).
+        ``released_object_points`` is the (M,3) refined board when release ran, else ``None``.
     """
     objp = [np.asarray(o, dtype=np.float32).reshape(-1, 3) for o in object_points]
     imgp = [np.asarray(i, dtype=np.float32).reshape(-1, 2) for i in image_points]
@@ -652,13 +681,24 @@ def fit_intrinsics(
     flags = distortion_flags(distortion_model, fix_aspect_ratio, fix_k3)
     image_size = (int(image_size[0]), int(image_size[1]))
 
+    released = None
     if use_release_object and len(objp) >= 3:
-        # Fix the last object point of the (planar) board as the reference.
-        i_fixed = objp[0].shape[0] - 1
-        rms, K, dist, rvecs, tvecs, _new_obj = cv2.calibrateCameraRO(
+        # cv2.calibrateCameraRO requires IDENTICAL object points in every view. Guard with a
+        # clear error rather than letting OpenCV throw a cryptic one when a caller passes
+        # per-view subsets (partial dotboard / ChArUco). The joint solve passes the shared
+        # common-core board, which satisfies this.
+        if any(o.shape != objp[0].shape or not np.allclose(o, objp[0]) for o in objp[1:]):
+            raise ValueError(
+                "fit_intrinsics(use_release_object=True) requires identical object points in "
+                "every view (cv2.calibrateCameraRO constraint); pass the shared common-core "
+                "board (e.g. from the global grid), not per-view subsets"
+            )
+        i_fixed = _release_gauge_index(objp[0])
+        rms, K, dist, rvecs, tvecs, new_obj = cv2.calibrateCameraRO(
             objp, imgp, image_size, i_fixed, K0, dist0,
             flags=flags, criteria=CRITERIA,
         )
+        released = np.asarray(new_obj, dtype=np.float64).reshape(-1, 3)
     else:
         rms, K, dist, rvecs, tvecs = cv2.calibrateCamera(
             objp, imgp, image_size, K0, dist0,
@@ -669,7 +709,7 @@ def fit_intrinsics(
     rvecs = [np.asarray(r, dtype=np.float64).reshape(3) for r in rvecs]
     tvecs = [np.asarray(t, dtype=np.float64).reshape(3) for t in tvecs]
     pv = per_view_rms(objp, imgp, K, dist, rvecs, tvecs)
-    return K, dist, rvecs, tvecs, float(rms), pv
+    return K, dist, rvecs, tvecs, float(rms), pv, released
 
 
 def fit_pose(

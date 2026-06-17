@@ -66,9 +66,22 @@ class _FakeConfig:
             "start_index": 1,
             "datum_index": 0,
             "distortion_model": "standard",
-            "cam_subfolders": {1: "cam1", 2: "cam2"},
-            "stepped": {"dot_spacing_mm": SPACING_MM, "step_height_mm": STEP_MM},
+            "use_camera_subfolders": True,
+            "camera_subfolders": ["cam1", "cam2"],
+            "stepped": {"dot_spacing_mm": SPACING_MM, "step_height_mm": STEP_MM,
+                        "board_thickness_mm": 14.8},
         }
+
+    def get_calibration_camera_folder(self, camera_num: int) -> str:
+        """Faithful double of Config.get_calibration_camera_folder for the standard-image
+        path: gate on use_camera_subfolders, then the camera_subfolders list (index = cam-1).
+        """
+        c = self.calibration
+        if not c.get("use_camera_subfolders", False):
+            return ""
+        subs = c.get("camera_subfolders", [])
+        idx = camera_num - 1
+        return subs[idx] if 0 <= idx < len(subs) and subs[idx] else ""
 
 
 def _write_views(images, out_dir):
@@ -118,7 +131,6 @@ def test_mono_pinhole_cli_writes_reloadable_model(mono_scene, tmp_path, monkeypa
     spec = tmp_path / "spec.json"
     spec.write_text(json.dumps(
         {"fiducials": fiducials, "clicked_level": "peak", "pose_levels": pose_levels}))
-    cfg["cam_subfolders"] = {1: "cam1"}
 
     path = cli.detect_stepped_mono_command(
         _mono_args(tmp_path, stepped_spec=str(spec), model_type="pinhole"))
@@ -135,7 +147,6 @@ def test_mono_polynomial3d_cli_single_view(mono_scene, tmp_path, monkeypatch):
     _write_views(images[:1], tmp_path / "cam1")
     monkeypatch.setattr(cli, "get_config", lambda: _FakeConfig())
     cfg = _FakeConfig().calibration
-    cfg["cam_subfolders"] = {1: "cam1"}
     monkeypatch.setattr(cli, "_cfg2", lambda c: cfg)
 
     spec = tmp_path / "spec.json"
@@ -155,7 +166,6 @@ def test_mono_cli_requires_spec(mono_scene, tmp_path, monkeypatch):
     images, _, _ = mono_scene
     _write_views(images[:1], tmp_path / "cam1")
     cfg = _FakeConfig().calibration
-    cfg["cam_subfolders"] = {1: "cam1"}
     monkeypatch.setattr(cli, "get_config", lambda: _FakeConfig())
     monkeypatch.setattr(cli, "_cfg2", lambda c: cfg)
     with pytest.raises(SystemExit, match="stepped-spec"):

@@ -511,8 +511,12 @@ def _bfs_grid_walk_dict(
                 if cos_angle <= cos_30:
                     continue
 
-                # 3. Reciprocity: reverse lookup must point back to us
-                expected_reverse = centers[cand_idx] - (actual_vector * sign)
+                # 3. Reciprocity: stepping BACK from the candidate by the ideal
+                # lattice vector must land nearest to the current blob. (Stepping
+                # back by actual_vector is a tautology -- it reconstructs curr_pos
+                # exactly -- so the ideal step is what makes this a real check:
+                # an off-lattice decoy fails it, a lattice neighbour passes.)
+                expected_reverse = centers[cand_idx] - (step_vector * sign)
                 _, reverse_idx = tree.query(expected_reverse, k=1)
                 if reverse_idx != curr_idx:
                     continue
@@ -796,8 +800,9 @@ def detect_grid_automatic(
     -------
     success : bool
     grid_data : dict or None
-        Contains: ``centers``, ``grid_indices``, ``n_cols``, ``n_rows``,
-        ``spacing_px``, ``angle_deg``, ``grid_spacing_mm``.
+        Contains: ``centers``, ``grid_indices``, ``synthetic_mask`` (bool per
+        point: True = rescued/infilled, not a measured blob centroid),
+        ``n_cols``, ``n_rows``, ``spacing_px``, ``angle_deg``, ``grid_spacing_mm``.
     info : dict
         Detection metadata and diagnostics.
     """
@@ -900,13 +905,11 @@ def detect_grid_automatic(
     validated_grid, rescued_centers, rescued_nodes = _rescue_missing_dots(
         validated_grid, centers, flat_field, spacing_px,
     )
-    info['n_rescued'] = len(rescued_nodes)
 
     # Step 4: Grid smoothness enforcement — detect droplet-biased dots, infill from model
     validated_grid, rescued_centers, infilled_nodes = _refine_grid_outliers(
         validated_grid, rescued_centers,
     )
-    info['n_infilled'] = len(infilled_nodes)
 
     # Step 5: Prune orphaned points
     validated_grid = _filter_connected_dict(validated_grid)
@@ -921,6 +924,20 @@ def detect_grid_automatic(
     )
     grid_indices = np.array(grid_keys_final, dtype=np.int32)
 
+    # Provenance masks: rescued (template-matched) and infilled (model-predicted)
+    # points, named in the pre-normalization key frame — the same frame as
+    # grid_keys_final (the index shift below rewrites the ndarray, not the dict
+    # keys). A node rescued in Step 3 and then infilled in Step 4 ends up in both
+    # lists; infill is its final state, so it counts as infilled only. The two
+    # masks are therefore disjoint, and the counts stay self-consistent
+    # (n_rescued + n_infilled == n_synthetic) after the prune/island filters
+    # below trim them in lockstep with the points.
+    infilled_set = set(infilled_nodes)
+    rescued_set = set(rescued_nodes) - infilled_set
+    rescued_mask = np.array([k in rescued_set for k in grid_keys_final], dtype=bool)
+    infilled_mask = np.array([k in infilled_set for k in grid_keys_final], dtype=bool)
+    synthetic_mask = rescued_mask | infilled_mask
+
     # Normalize so minimum index is (0, 0)
     if len(grid_indices) > 0:
         grid_indices[:, 0] -= grid_indices[:, 0].min()
@@ -932,6 +949,9 @@ def detect_grid_automatic(
         if n_comp > 1:
             n_island = int(np.sum(~comp_mask))
             final_centers = final_centers[comp_mask]
+            rescued_mask = rescued_mask[comp_mask]
+            infilled_mask = infilled_mask[comp_mask]
+            synthetic_mask = synthetic_mask[comp_mask]
             grid_indices = grid_indices[comp_mask]
             grid_indices[:, 0] -= grid_indices[:, 0].min()
             grid_indices[:, 1] -= grid_indices[:, 1].min()
@@ -979,9 +999,30 @@ def detect_grid_automatic(
         info['warning'] = f'Possible partial board: {edge_fraction:.0%} of points near image edge'
         logger.warning(info['warning'])
 
+    # The provenance masks are filtered in lockstep with the points (Step 9). A
+    # future edit that trims one array but forgets a mask desyncs the figure and
+    # the persisted diagnostics silently — fail loudly instead. A raise (not an
+    # assert) so the guard survives `python -O`.
+    n_final = len(final_centers)
+    if not (
+        len(grid_indices) == n_final
+        and len(rescued_mask) == n_final
+        and len(infilled_mask) == n_final
+        and len(synthetic_mask) == n_final
+    ):
+        raise RuntimeError("synthetic/provenance mask desynced from final grid points")
+
+    # Counts are survivors-in-the-final-grid, not operations attempted: a
+    # rescued/infilled dot pruned as an orphan or island above is gone from both
+    # the mask and these numbers, so the figure and the persisted diagnostics agree.
+    info['n_rescued'] = int(np.count_nonzero(rescued_mask))
+    info['n_infilled'] = int(np.count_nonzero(infilled_mask))
+    info['n_synthetic'] = int(np.count_nonzero(synthetic_mask))
+
     grid_data = {
         'centers': final_centers,
         'grid_indices': grid_indices,
+        'synthetic_mask': synthetic_mask,
         'n_cols': n_cols,
         'n_rows': n_rows,
         'spacing_px': spacing_px,

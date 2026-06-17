@@ -1778,7 +1778,12 @@ def check_output_exists():
             details[path_key][cam_key] = {"instantaneous": False, "ensemble": False}
 
             for type_name in types_to_check:
-                data_paths = get_data_paths(base, cfg.num_frame_pairs, cam_num, type_name)
+                # PIV writes to the uncalibrated tree (see instantaneous.py /
+                # ensemble.py, which pass use_uncalibrated=True), so the
+                # existence check must look there too — not at calibrated_piv/.
+                data_paths = get_data_paths(
+                    base, cfg.num_frame_pairs, cam_num, type_name, use_uncalibrated=True
+                )
                 data_dir = data_paths["data_dir"]
                 logger.info(f"[check_output_exists] {type_name} dir: {data_dir}, exists: {data_dir.exists()}")
                 if data_dir.exists():
@@ -1818,7 +1823,15 @@ def clear_output():
         for cam_num in camera_numbers:
             for type_name in types_to_clear:
                 try:
-                    paths = get_data_paths(base, cfg.num_frame_pairs, cam_num, type_name)
+                    # Clear the uncalibrated tree that the PIV run writes to,
+                    # matching check_output_exists and the progress counter.
+                    paths = get_data_paths(
+                        base,
+                        cfg.num_frame_pairs,
+                        cam_num,
+                        type_name,
+                        use_uncalibrated=True,
+                    )
                     data_dir = paths["data_dir"]
                     if data_dir.exists():
                         shutil.rmtree(data_dir)

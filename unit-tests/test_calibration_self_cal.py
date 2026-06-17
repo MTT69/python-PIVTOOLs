@@ -95,21 +95,28 @@ def _stereo_record(self_cal=None) -> REC.StereoRecord:
     )
 
 
-def test_self_cal_block_roundtrips(tmp_path):
-    """A self_cal block survives save_stereo -> load_stereo with values intact."""
-    block = SC.result_to_block(
+def test_baked_block_roundtrips(tmp_path):
+    """A baked self_cal block survives save_stereo -> load_stereo.
+
+    The applied sheet is zero (it lives in the extrinsics); the recovered sheet is in
+    fitted_* and baked=1 marks the record.
+    """
+    block = SC.baked_block(
         _FakeResult(z=3.5, tx=0.012, ty=-0.008, conv=True, rms=0.07, n=4),
         n_images=20, window_size=64, overlap=50.0,
     )
     rec = _stereo_record(self_cal=block)
     path = REC.save_stereo(rec, tmp_path)
     out = REC.load_stereo(path)
-    assert out.sc_z_offset == pytest.approx(3.5)
-    assert out.sc_tilt_x == pytest.approx(0.012)
-    assert out.sc_tilt_y == pytest.approx(-0.008)
+    # applied sheet zeroed -> reconstruction applies nothing further
+    assert (out.sc_z_offset, out.sc_tilt_x, out.sc_tilt_y) == (0.0, 0.0, 0.0)
+    # fitted provenance preserved
+    assert float(out.self_cal["fitted_z_offset"]) == pytest.approx(3.5)
+    assert float(out.self_cal["fitted_tilt_x"]) == pytest.approx(0.012)
+    assert float(out.self_cal["fitted_tilt_y"]) == pytest.approx(-0.008)
+    assert int(out.self_cal["baked"]) == 1
     assert int(out.self_cal["converged"]) == 1
     assert float(out.self_cal["final_rms_disparity"]) == pytest.approx(0.07)
-    assert str(out.self_cal["source"]) == "auto"
 
 
 def test_absent_self_cal_defaults_to_zero(tmp_path):
@@ -120,10 +127,72 @@ def test_absent_self_cal_defaults_to_zero(tmp_path):
     assert (out.sc_z_offset, out.sc_tilt_x, out.sc_tilt_y) == (0.0, 0.0, 0.0)
 
 
-def test_manual_block_marks_source():
-    block = SC.manual_block(z_offset=2.0, tilt_x=0.0, tilt_y=0.01)
-    assert block["source"] == "manual"
-    assert block["z_offset"] == 2.0 and block["tilt_y"] == 0.01
+# ---------------------------------------------------------------------------
+# Rebake: world-frame redefinition baked into the extrinsics (plan item 17)
+# ---------------------------------------------------------------------------
+
+def test_rebake_record_invariant_and_updates_stereo():
+    """rebake_record changes both poses but keeps (R_stereo, T_stereo) invariant.
+
+    The stored R_stereo/T_stereo are recomputed so they stay consistent with the
+    rebaked models.
+    """
+    from pivtools_gui.calibration.stereo_model import compose_stereo
+
+    rec = _stereo_record()
+    Rs0, Ts0 = compose_stereo(rec.model1, rec.model2)
+    R1_before = rec.model1.R.copy()
+
+    SC.rebake_record(rec, 3.0, 0.011, -0.006)
+
+    assert not np.allclose(rec.model1.R, R1_before)        # poses moved
+    Rs1, Ts1 = compose_stereo(rec.model1, rec.model2)
+    assert np.allclose(Rs0, Rs1, atol=1e-12)               # cross-camera pose invariant
+    assert np.allclose(Ts0, Ts1, atol=1e-9)
+    assert np.allclose(rec.R_stereo, Rs1, atol=1e-12)      # stored values updated
+    assert np.allclose(rec.T_stereo, Ts1, atol=1e-9)
+
+
+def test_rebake_record_rejects_polynomial():
+    """A model without extrinsics raises rather than silently skipping the rebake."""
+    import types
+
+    rec = _stereo_record()
+    rec.model1 = types.SimpleNamespace()  # no R/t
+    with pytest.raises(ValueError, match="requires pinhole"):
+        SC.rebake_record(rec, 1.0, 0.0, 0.0)
+
+
+def test_baked_record_reconstruction_equivalence():
+    """Reconstruction on the rebaked record (Z=0) equals the original with the sheet.
+
+    Back-projected world coords differ only by the frame redefinition: mapping the
+    rebaked grid through g_corr reproduces the original on-sheet grid.
+    """
+    from pivtools_gui.calibration.self_cal_frame import plane_to_world_correction
+
+    z, tx, ty = 4.0, 0.015, -0.01
+    H = W = 6
+    gx, gy = np.meshgrid(np.linspace(450, 1150, W), np.linspace(350, 850, H))
+    coords1 = np.stack([gx, gy], axis=-1)
+    zero = np.zeros((H, W))
+    coords2 = coords1.copy()
+
+    old = _stereo_record()
+    wx_o, wy_o, wz_o, *_ = reconstruct_3c_field(
+        old.model1, old.model2, coords1, zero, zero, coords2, zero, zero,
+        dt=1.0, z_world=z, tilt_x=tx, tilt_y=ty)
+
+    new = _stereo_record()
+    SC.rebake_record(new, z, tx, ty)
+    wx_n, wy_n, wz_n, *_ = reconstruct_3c_field(
+        new.model1, new.model2, coords1, zero, zero, coords2, zero, zero, dt=1.0)
+
+    R_corr, t_corr = plane_to_world_correction(z, tx, ty)
+    world_new = np.stack([wx_n.ravel(), wy_n.ravel(), wz_n.ravel()], axis=1)
+    world_old = np.stack([wx_o.ravel(), wy_o.ravel(), wz_o.ravel()], axis=1)
+    mapped = (R_corr @ world_new.T).T + t_corr
+    assert np.allclose(mapped, world_old, atol=1e-6)
 
 
 # ---------------------------------------------------------------------------
@@ -160,7 +229,7 @@ def test_reconstruct_honours_stored_sheet():
 
 
 # ---------------------------------------------------------------------------
-# Minimal SelfCalibrationResult stand-in for result_to_block
+# Minimal SelfCalibrationResult stand-in for baked_block
 # ---------------------------------------------------------------------------
 
 class _FakeResult:

@@ -23,7 +23,59 @@ from .camera_model import (
 )
 from .detection.base import BoardDetector, DetectionResult
 from .record import MonoRecord, WorldFrame
-from .world_frame import resolve_world_frame, resolve_world_frame_from_grid, apply_world_frame
+from .world_frame import (
+    apply_world_frame,
+    resolve_world_frame,
+    resolve_world_frame_from_grid,
+)
+
+
+def view_diagnostics_summary(
+    detections: Sequence[DetectionResult],
+) -> Dict[str, object]:
+    """Per-view detection diagnostics as mat-safe parallel arrays.
+
+    One entry per view, index-aligned with the input image list. Counts default
+    to 0 for detectors that don't report them (e.g. ChArUco has no rescue path).
+    Warnings are joined into one string keyed by view index; the key is omitted
+    when no view warned. Stored under ``board_meta["view_diagnostics"]`` so the
+    record carries the same honesty data the detection figures show.
+    """
+    diags = [d.diagnostics or {} for d in detections]
+    out: Dict[str, object] = {
+        "view_index": np.arange(len(detections), dtype=np.int64),
+        "success": np.array([int(d.success) for d in detections], dtype=np.int64),
+        "n_points": np.array([d.n for d in detections], dtype=np.int64),
+        "n_synthetic": np.array(
+            [
+                (
+                    0
+                    if d.synthetic_mask is None
+                    else int(np.count_nonzero(d.synthetic_mask))
+                )
+                for d in detections
+            ],
+            dtype=np.int64,
+        ),
+        "n_rescued": np.array(
+            [int(g.get("n_rescued", 0) or 0) for g in diags], dtype=np.int64
+        ),
+        "n_infilled": np.array(
+            [int(g.get("n_infilled", 0) or 0) for g in diags], dtype=np.int64
+        ),
+        "ransac_n_rejected": np.array(
+            [int(g.get("ransac_n_rejected", 0) or 0) for g in diags], dtype=np.int64
+        ),
+        "edge_fraction": np.array(
+            [float(g.get("edge_fraction", 0.0) or 0.0) for g in diags], dtype=np.float64
+        ),
+    }
+    warnings = [
+        f"view {i}: {g['warning']}" for i, g in enumerate(diags) if g.get("warning")
+    ]
+    if warnings:
+        out["warnings"] = "; ".join(warnings)
+    return out
 
 
 @dataclass
@@ -32,7 +84,7 @@ class Calibrator:
 
     detector: BoardDetector
     board_type: str
-    model_type: str = "pinhole"   # "pinhole" (3D) or "polynomial" (single-plane)
+    model_type: str = "pinhole"  # "pinhole" (3D) or "polynomial" (single-plane)
     distortion_model: DistortionModel = DistortionModel.STANDARD
     fix_aspect_ratio: bool = True
     fix_k3: bool = True
@@ -72,7 +124,8 @@ class Calibrator:
         # world-mm targets (clicked origin / +X / +Y / origin_mm) on the datum view.
         if frame_grid is not None:
             wf = resolve_world_frame_from_grid(
-                frame_grid["origin"], frame_grid["x_axis"], frame_grid["y_axis"])
+                frame_grid["origin"], frame_grid["x_axis"], frame_grid["y_axis"]
+            )
         else:
             wf = resolve_world_frame(datum.grid_indices, datum.image_points, clicks)
         if origin_mm is not None:
@@ -81,6 +134,7 @@ class Calibrator:
 
         meta = dict(board_meta or {})
         meta.setdefault("spacing_mm", float(sp))
+        meta["view_diagnostics"] = view_diagnostics_summary(detections)
 
         if self.model_type == "polynomial":
             # Single-plane fit: only the datum view, no intrinsics/pose. The world
@@ -90,9 +144,15 @@ class Calibrator:
             per_view = [float(np.hypot(model.rms_x_mm, model.rms_y_mm))]
             if figure_dir is not None:
                 from . import figures
+
                 figures.write_polynomial_figures(
-                    figure_dir, image=images[datum_index], detection=datum,
-                    world_pts=world_pts, model=model, wf=wf, spacing=sp,
+                    figure_dir,
+                    image=images[datum_index],
+                    detection=datum,
+                    world_pts=world_pts,
+                    model=model,
+                    wf=wf,
+                    spacing=sp,
                     prefix=figure_prefix,
                 )
             return MonoRecord(
@@ -114,8 +174,10 @@ class Calibrator:
         objs = [d.board_local_points for _, d in used]
         imgs = [d.image_points for _, d in used]
 
-        K, dist, rvecs, tvecs, rms, per_view = fit_intrinsics(
-            objs, imgs, image_size,
+        K, dist, rvecs, tvecs, rms, per_view, _released = fit_intrinsics(
+            objs,
+            imgs,
+            image_size,
             distortion_model=self.distortion_model,
             fix_aspect_ratio=self.fix_aspect_ratio,
             fix_k3=self.fix_k3,
@@ -125,8 +187,13 @@ class Calibrator:
         R, t = fit_pose(world_pts, datum.image_points, K, dist, planar=True)
 
         cam = CameraModel(
-            K=K, dist=dist, R=R, t=t, image_size=image_size,
-            distortion_model=self.distortion_model, rms=rms,
+            K=K,
+            dist=dist,
+            R=R,
+            t=t,
+            image_size=image_size,
+            distortion_model=self.distortion_model,
+            rms=rms,
         )
         meta.setdefault("n_views", len(used))
 
@@ -134,11 +201,26 @@ class Calibrator:
             # Drawn while detections + per-view poses are live; never persisted to the
             # record. Each figure swallows its own errors, so this cannot abort the fit.
             from . import figures
+
             figures.write_mono_figures(
-                figure_dir, images=images, detections=detections, used=used,
-                K=K, dist=dist, rvecs=rvecs, tvecs=tvecs, per_view=per_view, rms=rms,
-                cam=cam, wf=wf, spacing=sp, board_type=self.board_type,
-                datum_index=datum_index, board_meta=meta, prefix=figure_prefix,
+                figure_dir,
+                images=images,
+                detections=detections,
+                used=used,
+                K=K,
+                dist=dist,
+                rvecs=rvecs,
+                tvecs=tvecs,
+                per_view=per_view,
+                rms=rms,
+                cam=cam,
+                wf=wf,
+                spacing=sp,
+                board_type=self.board_type,
+                datum_index=datum_index,
+                board_meta=meta,
+                prefix=figure_prefix,
+                world_pts=world_pts,
             )
 
         return MonoRecord(

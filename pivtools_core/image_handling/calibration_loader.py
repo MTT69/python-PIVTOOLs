@@ -102,30 +102,65 @@ def read_calibration_image(
     # Build calibration path using shared utility
     camera_path = build_calibration_camera_path(config, source_path_idx, camera)
 
-    # Resolve file path based on image type
-    file_path = resolve_file_path(
+    return read_calibration_frame_at(
         camera_path=camera_path,
         camera=camera,
         frame_idx=idx,
-        format_pattern=fmt,
+        image_format=fmt,
         image_type=cal_image_type,
         zero_based_indexing=config.calibration_zero_based_indexing,
+        use_camera_subfolders=config.calibration_use_camera_subfolders,
+        normalize_uint8=normalize_uint8,
     )
 
-    # For IM7 with camera subfolders, each file is single-camera - don't pass camera_no
-    if cal_image_type == "lavision_im7" and config.calibration_use_camera_subfolders:
+
+def read_calibration_frame_at(
+    camera_path: Path,
+    camera: int,
+    frame_idx: int,
+    image_format: str,
+    image_type: str,
+    *,
+    zero_based_indexing: bool = False,
+    use_camera_subfolders: bool = False,
+    normalize_uint8: bool = True,
+) -> np.ndarray:
+    """Read one calibration frame from an ALREADY-RESOLVED camera path/container.
+
+    The format-dispatch half of :func:`read_calibration_image`, factored out so callers
+    that resolve the camera directory themselves can share it. The GUI/config path goes
+    through ``read_calibration_image`` (resolves ``camera_path`` from ``config`` +
+    ``source_path_idx``); the calibration CLI calls this directly with its
+    ``--source``-derived directory, so both read the same formats (standard tif/png,
+    LaVision ``.im7``/``.set``, Phantom ``.cine``) through one code path.
+
+    Parameters mirror :func:`read_calibration_image` except ``camera_path`` is supplied
+    directly (a directory for per-file formats, or the container file for ``.set``).
+    """
+    # Resolve file path based on image type.
+    file_path = resolve_file_path(
+        camera_path=camera_path,
+        camera=camera,
+        frame_idx=frame_idx,
+        format_pattern=image_format,
+        image_type=image_type,
+        zero_based_indexing=zero_based_indexing,
+    )
+
+    # For IM7 with camera subfolders, each file is single-camera - don't pass camera_no.
+    if image_type == "lavision_im7" and use_camera_subfolders:
         from .load_images import read_image
         img = read_image(str(file_path))
         if img.ndim == 3:
             img = img[0]  # Extract single frame
         return _normalize_to_uint8(img) if normalize_uint8 else img
 
-    # Use the unified core reader (passes camera_no for multi-camera containers)
+    # Unified core reader (passes camera_no for multi-camera containers).
     img = read_single_frame(
         file_path=file_path,
         camera=camera,
-        frame_idx=idx,
-        image_type=cal_image_type,
+        frame_idx=frame_idx,
+        image_type=image_type,
         time_resolved=True,  # Calibration always reads single frames
     )
 

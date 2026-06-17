@@ -28,6 +28,11 @@ BUFFER_FORMAT_WORD = -4
 PACK_UNCOMPRESSED = 0
 PACK_ZLIB = 2
 PACK_FIXED_12BIT = 3
+# DaVis 10/11 lossless compression: one LZ4 *block* (not framed) over the whole
+# pixel buffer, prefixed by an int64 little-endian compressed-size. Layout was
+# reverse-engineered and verified bit-exact against LaVision's own lvpyio on
+# merle + andre-x25 calibration frames (2026-06-12, see the calibration PRD).
+PACK_LZ4 = 20
 
 # Extended header record types (int32)
 IEH_END = 0
@@ -168,6 +173,109 @@ def _read_pixels_uncompressed(
         )
     pixels = np.frombuffer(raw, dtype=dt)
     return pixels.reshape(n_frames, header.size_z, header.size_y, header.size_x)
+
+
+try:  # optional C accelerator; the pure-python path below is correct without it
+    import lz4.block as _lz4_block_mod
+except ImportError:
+    _lz4_block_mod = None
+
+
+def _lz4_block_decompress(src: bytes, expected_size: int) -> bytes:
+    """Decompress one raw LZ4 *block* (no frame header, no checksums).
+
+    Uses the ``lz4`` package when installed; otherwise a pure-python decoder
+    (~30 MB/s — fine for frame-at-a-time calibration reads). Raises if the
+    output size does not match ``expected_size`` exactly: a truncated or
+    misread buffer must fail visibly, never produce a short image.
+    """
+    if _lz4_block_mod is not None:
+        out = _lz4_block_mod.decompress(src, uncompressed_size=expected_size)
+        if len(out) != expected_size:
+            raise IOError(
+                f"LZ4 pixel buffer decompressed to {len(out)} bytes, "
+                f"expected {expected_size}"
+            )
+        return out
+
+    out = bytearray()
+    i, n = 0, len(src)
+    while i < n:
+        token = src[i]
+        i += 1
+        lit = token >> 4
+        if lit == 15:
+            while True:
+                b = src[i]
+                i += 1
+                lit += b
+                if b != 255:
+                    break
+        out += src[i:i + lit]
+        i += lit
+        if i >= n:
+            break  # final sequence carries literals only
+        off = src[i] | (src[i + 1] << 8)
+        i += 2
+        mlen = (token & 0xF) + 4
+        if (token & 0xF) == 15:
+            while True:
+                b = src[i]
+                i += 1
+                mlen += b
+                if b != 255:
+                    break
+        start = len(out) - off
+        if off == 0 or start < 0:
+            raise IOError(f"corrupt LZ4 stream: match offset {off} at {len(out)}")
+        if off >= mlen:
+            out += out[start:start + mlen]
+        else:
+            # Overlapping match: LZ4 semantics require byte-serial copy.
+            for _ in range(mlen):
+                out.append(out[start])
+                start += 1
+        if len(out) > expected_size:
+            raise IOError(
+                f"corrupt LZ4 stream: output exceeds expected {expected_size} bytes"
+            )
+    if len(out) != expected_size:
+        raise IOError(
+            f"LZ4 pixel buffer decompressed to {len(out)} bytes, "
+            f"expected {expected_size}"
+        )
+    return bytes(out)
+
+
+def _read_pixels_lz4(f, header: IM7Header, frame_range: tuple = None) -> np.ndarray:
+    """Read LZ4-packed pixel data (pack_type=20).
+
+    The file stores ONE int64 compressed-size then one LZ4 block covering the
+    whole multi-frame pixel buffer, so the full buffer is decompressed and the
+    requested frames sliced out. Leaves ``f`` positioned at the attribute
+    records (the byte after the compressed block).
+    """
+    dt = _pixel_dtype(header)
+    frame_pixels = header.size_x * header.size_y * header.size_z
+    total_bytes = frame_pixels * dt.itemsize * header.size_f
+
+    comp_size = struct.unpack("<q", f.read(8))[0]
+    if comp_size <= 0:
+        raise IOError(f"invalid LZ4 compressed size: {comp_size}")
+    comp = f.read(comp_size)
+    if len(comp) != comp_size:
+        raise IOError(
+            f"Expected {comp_size} bytes of LZ4 data, got {len(comp)}. "
+            f"File may be truncated."
+        )
+    out = _lz4_block_decompress(comp, total_bytes)
+    pixels = np.frombuffer(out, dtype=dt).reshape(
+        header.size_f, header.size_z, header.size_y, header.size_x)
+
+    if frame_range is None:
+        return pixels
+    start, end = frame_range
+    return pixels[start:end]
 
 
 def _skip_zlib_rows(f, n_rows: int) -> None:
@@ -417,10 +525,13 @@ def _read_im7_internal(
             pixels = _read_pixels_zlib(f, header, frame_range)
         elif header.pack_type == PACK_FIXED_12BIT:
             pixels = _read_pixels_fixed12(f, header, frame_range)
+        elif header.pack_type == PACK_LZ4:
+            pixels = _read_pixels_lz4(f, header, frame_range)
         else:
             raise ValueError(
                 f"Unsupported pack_type: {header.pack_type}. "
-                f"Expected 0 (uncompressed), 2 (zlib), or 3 (fixed 12-bit)."
+                f"Expected 0 (uncompressed), 2 (zlib), 3 (fixed 12-bit), "
+                f"or 20 (LZ4)."
             )
 
         scales = _read_attributes(f)
@@ -583,6 +694,15 @@ def read_im7_camera(
                 result[i] = frame[0] if header.size_z == 1 else frame.reshape(
                     header.size_y, header.size_x)
                 del frame, raw, words, w0, w1, w2, p0, p1, p2, p3
+
+        elif header.pack_type == PACK_LZ4:
+            # One LZ4 block covers the whole buffer; decompress once, slice.
+            frames = _read_pixels_lz4(f, header, (start, end))
+            for i in range(n_frames):
+                frame = frames[i]
+                result[i] = frame[0] if header.size_z == 1 else frame.reshape(
+                    header.size_y, header.size_x)
+            del frames
         else:
             raise ValueError(f"Unsupported pack_type: {header.pack_type}")
 

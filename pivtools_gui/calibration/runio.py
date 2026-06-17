@@ -47,7 +47,8 @@ def resolve_dt(explicit_dt, model_dt, config_dt) -> float:
 
 
 def plan_apply_units(full_cfg, source, board, stereo, type_name,
-                     active_paths=None, camera_pair=None, camera=None, explicit=None):
+                     active_paths=None, camera_pair=None, camera=None, explicit=None,
+                     model_type=None):
     """Resolve every (base_path x camera/pair) apply unit, deriving I/O dirs from config.
 
     Shared by the Flask apply route and the CLI's ``--all-paths`` apply, so both drive the
@@ -62,8 +63,9 @@ def plan_apply_units(full_cfg, source, board, stereo, type_name,
     ``camera_pair`` is ``(cam1, cam2)`` for stereo (defaults ``[1, 2]``). ``camera`` is the mono
     camera for an explicit single-unit run (defaults ``full_cfg.camera_numbers[0]``). ``explicit``
     forces ONE ad-hoc unit, bypassing config derivation — ``{"uncal", "out"}`` (mono) or
-    ``{"uncal1", "uncal2", "out"}`` (stereo). A missing model fails loudly here (``load_*`` raises),
-    before any job thread starts.
+    ``{"uncal1", "uncal2", "out"}`` (stereo). ``model_type`` picks the record when several
+    types coexist in the model dir (None -> the single one present, ambiguity raises).
+    A missing model fails loudly here (``load_*`` raises), before any job thread starts.
     """
     base_paths = full_cfg.base_paths
     nfp = full_cfg.num_frame_pairs
@@ -73,7 +75,8 @@ def plan_apply_units(full_cfg, source, board, stereo, type_name,
     if stereo:
         pair = camera_pair or [1, 2]
         cam1, cam2 = int(pair[0]), int(pair[1])
-        record = rec.load_stereo(rec.stereo_model_dir_for_source(source, cam1, cam2))
+        record = rec.load_stereo(rec.stereo_model_dir_for_source(source, cam1, cam2),
+                                 model_type=model_type)
         if explicit:
             return [dict(stereo=True, record=record,
                          uncal1=Path(explicit["uncal1"]), uncal2=Path(explicit["uncal2"]),
@@ -89,13 +92,15 @@ def plan_apply_units(full_cfg, source, board, stereo, type_name,
     else:
         if explicit:
             cam = int(camera) if camera is not None else int(full_cfg.camera_numbers[0])
-            record = rec.load_mono(rec.mono_model_dir_for_source(source, cam, board))
+            record = rec.mono_record_for_camera(rec.mono_model_dir_for_source(source, cam, board),
+                                                cam, model_type=model_type)
             return [dict(stereo=False, record=record, uncal=Path(explicit["uncal"]),
                          out=Path(explicit["out"]), label="manual")]
         for bi in base_indices:
             base = base_paths[bi]
             for cam in full_cfg.camera_numbers:
-                record = rec.load_mono(rec.mono_model_dir_for_source(source, cam, board))
+                record = rec.mono_record_for_camera(
+                    rec.mono_model_dir_for_source(source, cam, board), cam, model_type=model_type)
                 uncal = get_data_paths(base, nfp, cam, type_name, use_uncalibrated=True)["data_dir"]
                 out = get_data_paths(base, nfp, cam, type_name)["data_dir"]
                 units.append(dict(stereo=False, record=record, uncal=uncal, out=out,
