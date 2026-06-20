@@ -46,6 +46,7 @@ from pivtools_core.image_handling.calibration_loader import (
     read_calibration_image,
     validate_calibration_images,
 )
+from pivtools_core.image_handling.path_utils import infer_image_type
 from pivtools_core.paths import vector_glob_from_format
 from pivtools_gui.calibration import apply as c2apply
 from pivtools_gui.calibration import global_coords as gc2
@@ -161,8 +162,16 @@ def _load_one(
     source_idx: int,
     image_format: Optional[str],
     image_type: Optional[str],
+    normalize_uint8: bool = True,
 ) -> np.ndarray:
-    """Load one calibration frame (any format) via the app-wide reader."""
+    """Load one calibration frame (any format) via the app-wide reader.
+
+    ``normalize_uint8`` defaults True because detection (OpenCV) needs an 8-bit
+    array. Display endpoints that drive the auto-contrast slider must pass
+    ``normalize_uint8=False`` so the native bit depth reaches
+    ``get_display_contrast_stats`` — collapsing a 12/16-bit frame to uint8 first
+    makes that function short-circuit to a dead [0, 100] window.
+    """
     return read_calibration_image(
         int(frame),
         int(camera),
@@ -170,6 +179,7 @@ def _load_one(
         int(source_idx),
         image_format=image_format,
         image_type=image_type,
+        normalize_uint8=normalize_uint8,
     )
 
 
@@ -251,9 +261,7 @@ def _figure_rank(name: str) -> int:
         return 3
     if n.startswith("boards_3d"):
         return 4
-    if n.startswith("distortion_map"):
-        return 5
-    return 6
+    return 5
 
 
 def _list_figures(fig_dir) -> List[str]:
@@ -280,6 +288,43 @@ def _world_frame_payload(wf) -> dict:
         "x_axis": lst(wf.x_axis_px),
         "y_axis": lst(wf.y_axis_px),
         "origin_mm": lst(wf.origin_mm) or [0.0, 0.0],
+    }
+
+
+def _geometry_payload(board_meta) -> Optional[dict]:
+    """The stamped board geometry (``board_meta['geometry']``) coerced to JSON-native scalars —
+    Flask jsonify rejects numpy types, and the .mat round-trip can return size-1 numpy scalars.
+    None for records saved before geometry stamping, so the GUI falls back to its panel defaults."""
+    g = board_meta.get("geometry") if isinstance(board_meta, dict) else None
+    if not isinstance(g, dict):
+        return None
+    return {
+        k: (v if isinstance(v, str) else (v.item() if hasattr(v, "item") else v))
+        for k, v in g.items()
+    }
+
+
+def _inputs_world_frame(model_dir) -> Optional[dict]:
+    """World-frame picks recovered from the model dir's ``inputs.mat`` (the clicks survive a
+    model delete), shaped like ``_world_frame_payload`` so the GUI restores origin/+X/+Y and a
+    deleted model can be re-solved without re-clicking. None when no usable clicks are stored."""
+    try:
+        side = try_load_inputs(model_dir)
+    except Exception:
+        return None
+    c = side.coords if side else None
+    if not isinstance(c, dict) or not c.get("origin"):
+        return None
+
+    def lst(v):
+        return [float(x) for x in v] if v else None
+
+    return {
+        "mode": "clicks",
+        "origin": lst(c.get("origin")),
+        "x_axis": lst(c.get("x_axis")),
+        "y_axis": lst(c.get("y_axis")),
+        "origin_mm": lst(c.get("origin_mm")) or [0.0, 0.0],
     }
 
 
@@ -541,12 +586,16 @@ def frame_json():
             400,
         )
     try:
+        # Display path: keep native bit depth so get_display_contrast_stats and
+        # numpy_to_base64 see the real dynamic range (sqrt + percentile window),
+        # matching the PIV viewer. Detection routes still load uint8 for OpenCV.
         img = _load_one(
             camera,
             idx,
             source_idx,
             request.args.get("image_format"),
             request.args.get("image_type"),
+            normalize_uint8=False,
         )
     except (FileNotFoundError, ValueError, IndexError) as exc:
         return jsonify({"error": str(exc), "frame_count": frame_count}), 404
@@ -633,6 +682,57 @@ def detect_frame():
     )
 
 
+@calibration_bp.route("/calibration/detect_views", methods=["POST"])
+def detect_views():
+    """Detect every calibration view for one camera in a single round-trip.
+
+    Backs the "Detect Dots" button for pinhole models, where the overlay should show
+    the full set of views the bundle fit will use. Frames that fail to load or detect
+    are skipped (a board is legitimately absent from some views) — not an error.
+    Like ``detect_frame`` this is overlay-only and does NOT touch the datum cache used
+    by ``snap_fiducial``.
+    """
+    data = request.get_json() or {}
+    cfg, board, params, detector = _resolve_board(data.get, data.get("board_params"))
+    camera = int(data.get("camera", cfg.get("camera", 1)))
+    source_idx = _source_idx(data.get)
+    frame_total = int(data.get("frame_total", 1))
+    image_format = data.get("image_format")
+    image_type = data.get("image_type")
+    try:
+        frame_count = get_calibration_frame_count(camera, get_config(), source_idx)
+    except Exception:
+        frame_count = 0
+    frames: dict[str, dict] = {}
+    width = height = 0
+    for frame in range(1, frame_total + 1):
+        try:
+            img = _load_one(camera, frame, source_idx, image_format, image_type)
+        except (FileNotFoundError, ValueError, IndexError):
+            continue
+        det = detector.detect(img)
+        h, w = np.asarray(img).shape[:2]
+        width, height = int(w), int(h)
+        if det.success:
+            frames[str(frame)] = {
+                "image_points": det.image_points.tolist(),
+                "grid_indices": det.grid_indices.tolist(),
+                "n_points": det.n,
+            }
+    return jsonify(
+        {
+            "success": True,
+            "camera": camera,
+            "board": board,
+            "frames": frames,
+            "n_detected": len(frames),
+            "frame_count": frame_count,
+            "width": width,
+            "height": height,
+        }
+    )
+
+
 @calibration_bp.route("/calibration/snap_fiducial", methods=["POST"])
 def snap_fiducial():
     """Snap a click to the nearest detected dot; return its pixel + grid index."""
@@ -697,22 +797,72 @@ def generate_model():
             imgs2 = _load_views(cam2, frame_total, source_idx, image_format, image_type)
             model_dir = rec.stereo_model_dir_for_source(source, cam1, cam2)
             fig_dir = (model_dir.parent / "figures") if make_figs else None
+            # Detection sidecar/cache (parity with the joint path): reuse stored detections
+            # when the request params still match (det_key), else detect fresh. Persisted
+            # below so a re-run skips detection and the detections survive a model delete.
+            det_key = joint_det_key(
+                board,
+                frame_total,
+                image_format,
+                infer_image_type(image_format),
+                [cam1, cam2],
+                params,
+            )
+            force_redetect = bool(data.get("force_redetect", False))
+            side = None if force_redetect else try_load_inputs(model_dir)
+            cache_hit = (
+                side is not None
+                and side.det_key == det_key
+                and bool(side.detections)
+                and cam1 in side.detections
+                and cam2 in side.detections
+            )
+            if cache_hit:
+                det1, det2 = side.detections[cam1], side.detections[cam2]
+            else:
+                det1 = [detector.detect(im) for im in imgs1]
+                det2 = [detector.detect(im) for im in imgs2]
+            # World-frame picks: the live request, else the cam1 clicks stored in the sidecar
+            # (so a deleted-model re-solve rebuilds the shared frame without re-clicking).
+            clicks_payload = data.get("clicks") or (side.coords if side else None)
             sc = StereoCalibrator(
-                detector=detector, board_type=board, distortion_model=_MODEL
+                detector=detector, board_type=board, distortion_model=_MODEL,
+                fix_k2=bool(data.get("fix_k2", False)),
             )
             record = sc.run_stereo(
                 imgs1,
                 imgs2,
                 cam1=cam1,
                 cam2=cam2,
-                clicks=_clicks_from(data.get("clicks")),
+                clicks=_clicks_from(clicks_payload),
                 clicks2=_clicks_from(data.get("clicks2")),
-                origin_mm=_origin_mm_from(data.get("clicks")),
+                origin_mm=_origin_mm_from(clicks_payload),
                 datum_index=datum_index,
                 spacing_mm=spacing,
                 figure_dir=fig_dir,
+                det1=det1,
+                det2=det2,
             )
             path = rec.save_stereo(record, model_dir)
+            save_inputs(
+                model_dir,
+                path_type="stereo",
+                board_type=board,
+                detections={cam1: list(det1), cam2: list(det2)},
+                image_size_by_cam={
+                    cam1: (
+                        int(record.model1.image_size[0]),
+                        int(record.model1.image_size[1]),
+                    ),
+                    cam2: (
+                        int(record.model2.image_size[0]),
+                        int(record.model2.image_size[1]),
+                    ),
+                },
+                det_key=det_key,
+                board_params=rec.geometry_meta(board, params),
+                coords=clicks_payload,
+            )
             ang = float(
                 np.degrees(
                     np.arccos(np.clip((np.trace(record.R_stereo) - 1) / 2, -1, 1))
@@ -729,15 +879,33 @@ def generate_model():
                     "per_view_rms2": list(record.per_view_rms2),
                     "intrinsics1": _intrinsics(record.model1),
                     "intrinsics2": _intrinsics(record.model2),
-                    "num_pairs_used": len(record.per_view_rms1),
+                    "num_pairs_used": record.board_meta.get(
+                        "n_stereo_views", len(record.per_view_rms1)
+                    ),
                     "stereo_angle_deg": ang,
                     "baseline_mm": float(np.linalg.norm(record.T_stereo)),
+                    "stereo_rms_px": _finite_or_none(
+                        record.board_meta.get("stereo_rms_px")
+                    ),
+                    "method": record.board_meta.get("stereo_method", "stereoCalibrate"),
+                    "detections_cached": bool(cache_hit),
                     "figures": _list_figures(fig_dir),
                 }
             )
         else:
             camera = int(data.get("camera", cfg.get("camera", 1)))
-            frame_total = _frame_total(data.get, camera, source_idx)
+            model_dir = rec.mono_model_dir_for_source(source, camera, board)
+            # Detection sidecar (parity with stereo/joint): reuse stored detections + clicks when
+            # the request params still match (det_key), so a model can be regenerated without
+            # re-detecting or re-clicking — and, with figures off, without the images on disk.
+            force_redetect = bool(data.get("force_redetect", False))
+            side = None if force_redetect else try_load_inputs(model_dir)
+            cached = (side.detections or {}).get(camera) if side else None
+            # View count from the request/config, falling back to the sidecar's cached count so a
+            # re-solve still resolves when the images (and thus the auto-count) are gone.
+            frame_total = _frame_total(data.get, camera, source_idx) or (
+                len(cached) if cached else 0
+            )
             if not (0 <= datum_index < frame_total):
                 return (
                     jsonify(
@@ -748,27 +916,61 @@ def generate_model():
                     ),
                     200,
                 )
-            imgs = _load_views(
-                camera, frame_total, source_idx, image_format, image_type
+            det_key = joint_det_key(
+                board,
+                frame_total,
+                image_format,
+                infer_image_type(image_format),
+                [camera],
+                params,
             )
-            model_dir = rec.mono_model_dir_for_source(source, camera, board)
-            fig_dir = (model_dir.parent / "figures") if make_figs else None
+            cached_size = None
+            cache_hit = side is not None and side.det_key == det_key and bool(cached)
+            if cache_hit:
+                cached_size = side.image_size_by_cam.get(camera)
+            # World-frame picks: the live request, else the stored coords (re-solve w/o re-click).
+            clicks_payload = data.get("clicks") or (side.coords if side else None)
+            # Load images only to detect or to draw figures; a cached re-solve with figures off
+            # touches no image files. (A cached hit lacking a stored size also needs an image.)
+            need_images = make_figs or not cache_hit or cached_size is None
+            imgs = (
+                _load_views(camera, frame_total, source_idx, image_format, image_type)
+                if need_images
+                else []
+            )
+            # Figures need the images; if they could not be loaded (a re-solve from the sidecar
+            # after the images were removed), skip them rather than fail the solve.
+            fig_dir = (model_dir.parent / "figures") if (make_figs and imgs) else None
             calr = Calibrator(
                 detector=detector,
                 board_type=board,
                 model_type=model_type,
                 distortion_model=_MODEL,
             )
+            dets = list(cached) if cache_hit else [detector.detect(im) for im in imgs]
             record = calr.run_mono(
                 imgs,
                 camera=camera,
-                clicks=_clicks_from(data.get("clicks")),
-                origin_mm=_origin_mm_from(data.get("clicks")),
+                clicks=_clicks_from(clicks_payload),
+                origin_mm=_origin_mm_from(clicks_payload),
                 datum_index=datum_index,
                 spacing_mm=spacing,
+                image_size=cached_size,
                 figure_dir=fig_dir,
+                detections=dets,
             )
             path = rec.save_mono(record, model_dir)
+            isz = record.camera_model.image_size
+            save_inputs(
+                model_dir,
+                path_type="mono",
+                board_type=board,
+                detections={camera: list(dets)},
+                image_size_by_cam={camera: (int(isz[0]), int(isz[1]))},
+                det_key=det_key,
+                board_params=rec.geometry_meta(board, params),
+                coords=clicks_payload,
+            )
             cm = record.camera_model
             resp = {
                 "success": True,
@@ -777,6 +979,7 @@ def generate_model():
                 "camera": camera,
                 "num_images_used": len(record.per_view_rms),
                 "per_view_rms": list(record.per_view_rms),
+                "detections_cached": bool(cache_hit),
                 "figures": _list_figures(fig_dir),
             }
             if isinstance(cm, PolynomialModel):
@@ -895,7 +1098,12 @@ def load_model():
             )
             r = rec.load_stereo(mpath)
         except FileNotFoundError:
-            return jsonify({"exists": False}), 200
+            return (
+                jsonify(
+                    {"exists": False, "world_frame": _inputs_world_frame(mdir)}
+                ),
+                200,
+            )
         except ValueError as exc:  # several types saved, none requested
             return jsonify({"exists": False, "error": str(exc)}), 200
         common = {
@@ -906,13 +1114,16 @@ def load_model():
             "model_path": str(mpath),
             "per_view_rms1": list(r.per_view_rms1),
             "per_view_rms2": list(r.per_view_rms2),
-            "num_pairs_used": len(r.per_view_rms1),
+            "num_pairs_used": r.board_meta.get(
+                "n_stereo_views", len(r.per_view_rms1)
+            ),
             "world_frame_mode": r.world_frame.mode,
             "world_frame": _world_frame_payload(r.world_frame),
             "image_width": int(r.model1.image_size[0]),
             "image_height": int(r.model1.image_size[1]),
             "spacing_mm": _meta_float(r.board_meta, "spacing_mm"),
             "n_views": _meta_int(r.board_meta, "n_views"),
+            "geometry": _geometry_payload(r.board_meta),
         }
         if isinstance(r.model1, Polynomial3DModel):
             # A polynomial pair has no extrinsic pose -> no baseline/angle (DaVis poly).
@@ -937,12 +1148,25 @@ def load_model():
                     "intrinsics1": _intrinsics(r.model1),
                     "intrinsics2": _intrinsics(r.model2),
                     "distortion_model": r.model1.distortion_model.value,
-                    "stereo_angle_deg": float(
-                        np.degrees(
-                            np.arccos(np.clip((np.trace(r.R_stereo) - 1) / 2, -1, 1))
+                    # The PIV-meaningful angle is the optical-axis angle, computed and
+                    # stored at fit time (board_meta["relative_angle_deg"]). The R_stereo
+                    # rotation angle below is a DIFFERENT quantity (it conflates the axis
+                    # change with camera roll, e.g. ~178deg in transmission) — keep it only
+                    # as a fallback for legacy models saved before the angle was persisted.
+                    "stereo_angle_deg": (
+                        float(r.board_meta["relative_angle_deg"])
+                        if r.board_meta.get("relative_angle_deg") is not None
+                        else float(
+                            np.degrees(
+                                np.arccos(np.clip((np.trace(r.R_stereo) - 1) / 2, -1, 1))
+                            )
                         )
                     ),
                     "baseline_mm": float(np.linalg.norm(r.T_stereo)),
+                    "stereo_rms_px": _finite_or_none(
+                        r.board_meta.get("stereo_rms_px")
+                    ),
+                    "method": r.board_meta.get("stereo_method"),
                 }
             )
         return jsonify(common)
@@ -952,7 +1176,7 @@ def load_model():
         mpath = rec.resolve_mono_path(mdir, _model_type_arg(request.args.get, board))
         r = rec.load_mono(mpath)
     except FileNotFoundError:
-        return jsonify({"exists": False}), 200
+        return jsonify({"exists": False, "world_frame": _inputs_world_frame(mdir)}), 200
     except ValueError as exc:  # several types saved, none requested
         return jsonify({"exists": False, "error": str(exc)}), 200
     cm = r.camera_model
@@ -967,6 +1191,7 @@ def load_model():
         "world_frame": _world_frame_payload(r.world_frame),
         "spacing_mm": _meta_float(r.board_meta, "spacing_mm"),
         "n_views": _meta_int(r.board_meta, "n_views"),
+        "geometry": _geometry_payload(r.board_meta),
     }
     if isinstance(cm, ScaleFactorModel):
         summary.update(
@@ -1249,6 +1474,18 @@ def apply_model():
     z = float(data.get("z_world", cfg.get("z_world", 0.0)))
     tx = float(data.get("tilt_x", cfg.get("tilt_x", 0.0)))
     ty = float(data.get("tilt_y", cfg.get("tilt_y", 0.0)))
+    # Stereo cam2 resample kernel (validated up front, before the worker starts).
+    interpolator = data.get("interpolator") or cfg.get("interpolator", "lanczos")
+    if interpolator not in ("linear", "cubic", "lanczos"):
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": f"interpolator must be linear|cubic|lanczos, got {interpolator!r}",
+                }
+            ),
+            200,
+        )
     # Derive the per-frame vector glob from the PIV vector_format (e.g. "%05d.mat" ->
     # "*.mat"); the old hardcoded "B*.mat" matched nothing under the default naming, so
     # apply wrote coordinates.mat but no calibrated vectors.
@@ -1346,6 +1583,7 @@ def apply_model():
                         ty,
                         progress_cb=cb,
                         vector_glob=vector_glob,
+                        interpolator=interpolator,
                     )
                 else:
                     written = c2runio.calibrate_mono_run(
@@ -1500,7 +1738,9 @@ def _joint_detect(
         tuple(sorted(int(c) for c in cameras)),
         repr(params),
     )
-    det_key = joint_det_key(board, n_views, image_format, image_type, cameras, params)
+    det_key = joint_det_key(
+        board, n_views, image_format, infer_image_type(image_format), cameras, params
+    )
     if not refresh:
         with _joint_detect_lock:
             hit = _joint_detect_cache.get(key)
@@ -1568,6 +1808,7 @@ def _joint_detect(
                 detections=detections,
                 image_size_by_cam=image_size_by_cam,
                 det_key=det_key,
+                board_params=rec.geometry_meta(board, params),
             )
         except (OSError, ValueError):
             pass
@@ -1894,6 +2135,7 @@ def joint_generate():
                 n_views=n_views,
                 figure_dir=figure_dir,
                 image_loader=image_loader,
+                board_params=params,
             )
             job_manager.complete_job(
                 job_id,
@@ -1950,6 +2192,7 @@ def joint_model():
             or _joint_int_list(cfg.get("camera_numbers"))
         )
         out = {}
+        geom = None
         for cam in cameras:
             try:
                 mono = rec.load_mono(
@@ -1957,6 +2200,8 @@ def joint_model():
                 )
             except (FileNotFoundError, ValueError):
                 continue
+            if geom is None:
+                geom = _geometry_payload(mono.board_meta)
             # Full coefficient summary (coeffs_x/y, normalisation, mm RMS) so the results card can
             # show the actual fitted polynomial, mirroring the pinhole per-camera parameters.
             out[str(cam)] = _polynomial_summary(mono.camera_model)
@@ -1969,6 +2214,7 @@ def joint_model():
                 "board": board,
                 "cameras": [int(c) for c in out],
                 "per_camera": out,
+                "geometry": geom,
             }
         )
 
@@ -2040,6 +2286,7 @@ def joint_model():
             },
             "per_camera": per_camera,
             "baselines_mm": baselines_mm,
+            "geometry": _geometry_payload(meta),
         }
     )
 
@@ -2083,20 +2330,22 @@ def _self_cal_payload(record) -> dict:
     z = float(sc.get("fitted_z_offset", sc.get("z_offset", 0.0)))
     tx = float(sc.get("fitted_tilt_x", sc.get("tilt_x", 0.0)))
     ty = float(sc.get("fitted_tilt_y", sc.get("tilt_y", 0.0)))
+    # Non-finite floats (a diverged self-cal) would make jsonify emit bare NaN/Infinity —
+    # invalid JSON that the frontend poll silently rejects (a hang). Send null instead.
     return {
         "has_self_calibration": True,
         "baked": bool(int(sc.get("baked", 0))),
-        "z_offset": z,
-        "tilt_x": tx,
-        "tilt_y": ty,
-        "tilt_x_deg": _m.degrees(tx),
-        "tilt_y_deg": _m.degrees(ty),
+        "z_offset": _finite_or_none(z),
+        "tilt_x": _finite_or_none(tx),
+        "tilt_y": _finite_or_none(ty),
+        "tilt_x_deg": _finite_or_none(_m.degrees(tx)),
+        "tilt_y_deg": _finite_or_none(_m.degrees(ty)),
         "converged": bool(int(sc.get("converged", 0))),
-        "final_rms_disparity": float(sc.get("final_rms_disparity", 0.0)),
+        "final_rms_disparity": _finite_or_none(sc.get("final_rms_disparity", 0.0)),
         "n_iterations": int(sc.get("n_iterations", 0)),
         "n_images": int(sc.get("n_images", 0)),
         "window_size": int(sc.get("window_size", 0)),
-        "overlap": float(sc.get("overlap", 0.0)),
+        "overlap": _finite_or_none(sc.get("overlap", 0.0)),
         "source": str(sc.get("source", "auto")),
     }
 
@@ -2140,6 +2389,25 @@ def self_cal_run():
             200,
         )
 
+    # Self-cal nudges the rigid pose, so it needs pinhole extrinsics. A polynomial pair
+    # has no R/t to rebake; reject it here, before the expensive correlation loop, rather
+    # than failing late inside rebake_record.
+    if not (hasattr(record.model1, "R") and hasattr(record.model1, "t")):
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": (
+                        "self-calibration needs a pinhole stereo model (it corrects the "
+                        f"extrinsics); this model is {type(record.model1).__name__} with "
+                        "no pose to rebake — regenerate as pinhole, or skip self-cal for "
+                        "the polynomial fit"
+                    ),
+                }
+            ),
+            200,
+        )
+
     base_idx = int(data.get("base_path_idx", 0))
     n_images = int(data.get("n_images", 20))
     window_size = int(data.get("window_size", 64))
@@ -2172,16 +2440,18 @@ def self_cal_run():
                 result, n_images=len(imgs1), window_size=window_size, overlap=overlap
             )
             rec.save_stereo(record, model_dir)
+            # Guard every float against NaN/Inf (a diverged fit) so the jsonify'd status
+            # payload stays valid JSON and the poll never hangs — null surfaces instead.
             history = [
                 dict(
                     iteration=h.iteration,
-                    rms_disparity=float(h.rms_disparity),
-                    delta_z=float(h.delta_z),
-                    delta_tilt_x=float(h.delta_tilt_x),
-                    delta_tilt_y=float(h.delta_tilt_y),
-                    cumulative_z=float(h.cumulative_z),
-                    cumulative_tilt_x=float(h.cumulative_tilt_x),
-                    cumulative_tilt_y=float(h.cumulative_tilt_y),
+                    rms_disparity=_finite_or_none(h.rms_disparity),
+                    delta_z=_finite_or_none(h.delta_z),
+                    delta_tilt_x=_finite_or_none(h.delta_tilt_x),
+                    delta_tilt_y=_finite_or_none(h.delta_tilt_y),
+                    cumulative_z=_finite_or_none(h.cumulative_z),
+                    cumulative_tilt_x=_finite_or_none(h.cumulative_tilt_x),
+                    cumulative_tilt_y=_finite_or_none(h.cumulative_tilt_y),
                 )
                 for h in result.history
             ]
@@ -2189,12 +2459,12 @@ def self_cal_run():
                 job_id,
                 converged=bool(result.converged),
                 n_iterations=int(result.n_iterations),
-                z_offset=float(result.z_offset),
-                tilt_x=float(result.tilt_x),
-                tilt_y=float(result.tilt_y),
-                tilt_x_deg=_m.degrees(result.tilt_x),
-                tilt_y_deg=_m.degrees(result.tilt_y),
-                final_rms_disparity=float(result.final_rms_disparity),
+                z_offset=_finite_or_none(result.z_offset),
+                tilt_x=_finite_or_none(result.tilt_x),
+                tilt_y=_finite_or_none(result.tilt_y),
+                tilt_x_deg=_finite_or_none(_m.degrees(result.tilt_x)),
+                tilt_y_deg=_finite_or_none(_m.degrees(result.tilt_y)),
+                final_rms_disparity=_finite_or_none(result.final_rms_disparity),
                 history=history,
                 figures=_list_figures(figdir),
             )

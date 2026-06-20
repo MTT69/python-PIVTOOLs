@@ -81,6 +81,11 @@ AGREE_MARGIN = 0.25
 # and cannot separate the candidates, so we raise rather than guess.
 EXTEND_FLOOR = 0.15
 EXTEND_MARGIN = 0.30
+# Fallback footprint-match gate (grid-index units): when two folds extend the SAME direction the
+# cosine test above ties, but a confirmed candidate's stored vector still reproduces its OWN
+# centroid exactly while the fold lands ≥1 column off. The nearest candidate must beat the runner-up
+# by this many grid units, else the choice is a genuine tie and we raise.
+EXTEND_VEC_MARGIN = 0.5
 
 
 @dataclass
@@ -311,13 +316,19 @@ def _orientations_satisfying(local_anchors: list, global_anchors: list) -> list:
 def _pick_by_extend(
     scored: list, anchor_global: Sequence[float], extend_hint: Sequence[float]
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """Pick the candidate whose grid extends along ``extend_hint`` (a global-index direction).
+    """Pick the candidate the user confirmed, given ``extend_hint`` — the global-index vector from
+    the anchored dot to a candidate's centroid (see ``first_view_orientation_candidates``).
 
-    Mirror-image candidates place their centroids on opposite sides of the anchored dot, so the
-    one whose centroid-from-anchor vector aligns with the hint wins by a wide margin. A near tie
-    (the hint lies along the ambiguous axis, so it cannot separate them) raises rather than
-    guesses — same discipline as the prior path. ``scored`` is the list of
-    (orientation, gidx, H, rms) that already passed the homography gate.
+    Two readings of the hint, tried in order:
+      1. DIRECTION. Mirror folds across a clean axis put their centroids on opposite sides of the
+         anchor, so a coarse ``±X``/``±Y`` hint separates them by the sign of the cosine. This is
+         the original, forgiving reading — a hand-given rig direction need not match the footprint.
+      2. NEAREST FOOTPRINT. When both candidates extend the SAME way (e.g. a seam that folds along
+         one column while both halves still run −Y), their directions coincide and step 1 ties. The
+         confirmed candidate's stored vector still reproduces its own centroid exactly, while the
+         fold lands a column off, so the full-vector distance separates them where direction cannot.
+    A hint that separates the candidates under neither reading points along the genuinely ambiguous
+    axis, so we raise rather than guess. ``scored`` is the (orientation, gidx, H, rms) survivors.
     """
     h = np.asarray(extend_hint, dtype=np.float64).reshape(2)
     nh = float(np.linalg.norm(h))
@@ -325,25 +336,52 @@ def _pick_by_extend(
         raise ValueError(
             "global_grid: rig arrangement hint is a zero vector — give a direction"
         )
-    h = h / nh
     ag = np.asarray(anchor_global, dtype=np.float64).reshape(2)
-    ranked = []
-    for _orient, gidx, H, rms in scored:
-        v = gidx.astype(np.float64).mean(axis=0) - ag
-        nv = float(np.linalg.norm(v))
-        align = float(np.dot(v / nv, h)) if nv > 1e-9 else -np.inf
-        ranked.append((align, rms, gidx, H))
-    ranked.sort(key=lambda s: (-s[0], s[1]))
-    best = ranked[0][0]
-    runner = ranked[1][0] if len(ranked) > 1 else -np.inf
-    if best < EXTEND_FLOOR or (best - runner) < EXTEND_MARGIN:
-        raise ValueError(
-            f"global_grid: the rig arrangement hint does not clearly pick an orientation "
-            f"(best alignment {best:.2f}, runner-up {runner:.2f}) — the hint points along the "
-            f"ambiguous axis; click >= 2 overlap dots spanning distinct rows AND columns instead"
-        )
-    _, _, gidx, H = ranked[0]
-    return gidx, H
+    # Each candidate's centroid-from-anchor vector, in global-index space (the same quantity
+    # first_view_orientation_candidates stored as the candidate's `extend`).
+    cands = [
+        (gidx.astype(np.float64).mean(axis=0) - ag, gidx, H, rms)
+        for _orient, gidx, H, rms in scored
+    ]
+
+    # 1. Direction: align each candidate's extent with the hint direction (cosine).
+    hd = h / nh
+    by_dir = sorted(
+        (
+            (
+                float(np.dot(v / max(float(np.linalg.norm(v)), 1e-9), hd)),
+                rms,
+                gidx,
+                H,
+            )
+            for v, gidx, H, rms in cands
+        ),
+        key=lambda s: (-s[0], s[1]),
+    )
+    best = by_dir[0][0]
+    runner = by_dir[1][0] if len(by_dir) > 1 else -np.inf
+    if best >= EXTEND_FLOOR and (best - runner) >= EXTEND_MARGIN:
+        return by_dir[0][2], by_dir[0][3]
+
+    # 2. Nearest footprint: the confirmed vector reproduces one candidate's centroid offset exactly.
+    by_vec = sorted(
+        (
+            (float(np.linalg.norm(v - h)), rms, gidx, H)
+            for v, gidx, H, rms in cands
+        ),
+        key=lambda s: (s[0], s[1]),
+    )
+    nearest = by_vec[0][0]
+    next_nearest = by_vec[1][0] if len(by_vec) > 1 else np.inf
+    if (next_nearest - nearest) >= EXTEND_VEC_MARGIN:
+        return by_vec[0][2], by_vec[0][3]
+
+    raise ValueError(
+        f"global_grid: the rig arrangement hint does not clearly pick an orientation "
+        f"(direction margin {best - runner:.2f}, footprint margin "
+        f"{next_nearest - nearest:.2f} grid units) — the hint points along the ambiguous "
+        f"axis; click >= 2 overlap dots spanning distinct rows AND columns instead"
+    )
 
 
 def _resolve_view(

@@ -195,8 +195,21 @@ def plot_scalar_field(variable, mask, settings): # efe
                 cmap = mpl.colors.LinearSegmentedColormap.from_list("bwr_upper", colors)
                 norm = Normalize(vmin=vmin, vmax=vmax)
 
-    # Use ax.contourf (object-oriented)
-    im = ax.contourf(X, Y, masked_var, levels=settings.levels, cmap=cmap, norm=norm)
+    # Use ax.contourf (object-oriented).
+    # When levels is an int, pin the contour boundaries to the chosen [vmin, vmax]
+    # range. Otherwise contourf places them across the raw data range, so outliers
+    # spread the bands and the in-range flow gets only a few levels (visible banding).
+    # An explicit level array keeps the full colour resolution inside the display
+    # window. extend="both" then paints out-of-window data with the colormap end
+    # colours (saturation) rather than leaving it unfilled — matching the clamp the
+    # image viewers apply. A caller-supplied level list is respected as-is.
+    if isinstance(settings.levels, int) and vmax > vmin:
+        levels = np.linspace(vmin, vmax, settings.levels)
+        im = ax.contourf(
+            X, Y, masked_var, levels=levels, cmap=cmap, norm=norm, extend="both"
+        )
+    else:
+        im = ax.contourf(X, Y, masked_var, levels=settings.levels, cmap=cmap, norm=norm)
 
     # Force axis limits to match coordinate data extent.
     # Matplotlib's contourf doesn't update ax.dataLim, so autoscaling fails

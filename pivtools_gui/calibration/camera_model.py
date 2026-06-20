@@ -13,8 +13,8 @@ view, then fix intrinsics and solve the measurement pose). RMS reported in pixel
 
 Lineage: the ray-plane back-projection generalises
 ``global_coordinate_alignment._pixels_to_world_mm`` (Z=0) to an arbitrary tilted
-sheet plane; the projection Jacobian mirrors
-``stereo_reconstruction_production._compute_projection_jacobian``.
+sheet plane; the projection Jacobian is six vectorised ``projectPoints`` calls
+(±delta on X, Y, Z).
 """
 
 from __future__ import annotations
@@ -555,16 +555,22 @@ def distortion_flags(
     model: DistortionModel,
     fix_aspect_ratio: bool = True,
     fix_k3: bool = True,
+    fix_k2: bool = False,
 ) -> int:
     """Build the OpenCV calibration flag bitmask for a distortion model.
 
     Defaults reproduce DaVis: ``CALIB_FIX_ASPECT_RATIO`` (fx==fy) and, for the
     STANDARD model, ``CALIB_FIX_K3`` (4-coefficient k1,k2,p1,p2). Principal point
     is left free (DaVis solved it off-centre). Tangential p1,p2 stay free.
+
+    ``fix_k2`` additionally pins the r⁴ radial term (``CALIB_FIX_K2``); with <3 views
+    k2 is unconstrained and runs away, so the caller sets this for few-view fits.
     """
     flags = 0
     if fix_aspect_ratio:
         flags |= cv2.CALIB_FIX_ASPECT_RATIO
+    if fix_k2:
+        flags |= cv2.CALIB_FIX_K2
     if model == DistortionModel.STANDARD and fix_k3:
         flags |= cv2.CALIB_FIX_K3
     elif model == DistortionModel.RATIONAL:
@@ -647,6 +653,7 @@ def fit_intrinsics(
     distortion_model: DistortionModel = DistortionModel.STANDARD,
     fix_aspect_ratio: bool = True,
     fix_k3: bool = True,
+    fix_k2: bool = False,
     use_release_object: bool = False,
 ):
     """Stage-1 bundled intrinsic fit across all views (DaVis-matching).
@@ -657,6 +664,7 @@ def fit_intrinsics(
     image_points : list of (M,2) arrays, image-down pixels, one per view
     image_size : (width, height)
     distortion_model, fix_aspect_ratio, fix_k3 : fit policy (defaults = DaVis)
+    fix_k2 : pin the r⁴ radial term at 0 (for few-view fits where k2 is unconstrained)
     use_release_object : if True and >=3 views, use ``cv2.calibrateCameraRO``
         (Strobl-Hirzinger release-object, better for planar dot grids). Requires every view
         to share IDENTICAL object points (OpenCV's constraint); the caller guarantees that.
@@ -678,7 +686,7 @@ def fit_intrinsics(
     # the view homographies (robust), rather than starting LM from a guessed focal.
     K0 = _initial_camera_matrix(image_size)
     dist0 = np.zeros(5, dtype=np.float64)
-    flags = distortion_flags(distortion_model, fix_aspect_ratio, fix_k3)
+    flags = distortion_flags(distortion_model, fix_aspect_ratio, fix_k3, fix_k2)
     image_size = (int(image_size[0]), int(image_size[1]))
 
     released = None
@@ -807,8 +815,7 @@ def projection_jacobian(
 ) -> np.ndarray:
     """Numerical d(pixel)/d(world) Jacobian, shape (N,2,3), via central differences.
 
-    Mirrors ``stereo_reconstruction_production._compute_projection_jacobian``: six
-    vectorised ``projectPoints`` calls (±delta on X, Y, Z).
+    Six vectorised ``projectPoints`` calls (±delta on X, Y, Z).
     """
     wp = np.asarray(world_pts, dtype=np.float64).reshape(-1, 3)
     n = wp.shape[0]

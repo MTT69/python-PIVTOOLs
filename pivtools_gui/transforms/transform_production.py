@@ -145,7 +145,6 @@ class TransformProcessor:
         self,
         camera: int,
         progress_callback: Optional[Callable[[Dict], None]] = None,
-        max_workers: int = 8,
     ) -> Dict:
         """
         Apply transformations to a single camera's data.
@@ -162,8 +161,6 @@ class TransformProcessor:
             Camera number (1-based)
         progress_callback : callable, optional
             Progress callback function
-        max_workers : int
-            Maximum parallel workers
 
         Returns
         -------
@@ -281,7 +278,6 @@ class TransformProcessor:
     def process_all_cameras(
         self,
         progress_callback: Optional[Callable[[Dict], None]] = None,
-        max_workers: int = 8,
     ) -> Dict:
         """Process all cameras with configured transforms."""
         results = {}
@@ -290,7 +286,7 @@ class TransformProcessor:
         for idx, camera in enumerate(self.camera_transforms.keys()):
             logger.info(f"Processing camera {camera} ({idx + 1}/{total_cameras})")
 
-            result = self.process_camera(camera, None, max_workers)
+            result = self.process_camera(camera, None)
             results[camera] = result
 
             if progress_callback:

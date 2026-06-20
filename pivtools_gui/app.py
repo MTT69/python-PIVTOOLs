@@ -1237,6 +1237,24 @@ def update_config():
     data = request.get_json() or {}
     cfg = get_config()
 
+    # Guard: never persist a vector_format lacking a printf integer specifier.
+    # An empty/specifier-less value (e.g. ['']) makes every `vector_format % i`
+    # raise "not all arguments converted" deep in polling endpoints. A concurrent
+    # frontend save with stale state has wiped this key before; drop it here so no
+    # client/path can corrupt it, and surface the drop in the log.
+    import re
+
+    incoming_imgs = data.get("images")
+    if isinstance(incoming_imgs, dict) and "vector_format" in incoming_imgs:
+        vf = incoming_imgs["vector_format"]
+        vf_first = vf[0] if isinstance(vf, (list, tuple)) and vf else vf
+        if not (isinstance(vf_first, str) and re.search(r"%[0-9]*d", vf_first)):
+            logger.warning(
+                "Dropping invalid vector_format from config update "
+                f"(value={vf!r}); preserving existing {cfg.vector_format!r}"
+            )
+            del incoming_imgs["vector_format"]
+
     # Check if paths or image format are changing (these affect cache validity)
     paths_changing = "paths" in data and (
         "source_paths" in data.get("paths", {}) or
@@ -1320,51 +1338,9 @@ def update_config():
                 "overlap_pairs": [],
             }
             logger.info("Calibration sources changed — reset pixel-dependent global coordinate fields")
-
-            # Reset derived calibration results that depend on calibration images
-            cal_data = data.setdefault("calibration", {})
-
-            # Polynomial coefficients (fitted from detection points on old images)
-            cal_data.setdefault("polynomial", {})["cameras"] = {}
-
-            # Stepped board derived data (fiducials, clicked levels, pose labels)
-            sb = cal_data.setdefault("stepped_board", {})
-            sb["cam1_fiducials"] = None
-            sb["cam2_fiducials"] = None
-            sb["cam1_clicked_level"] = None
-            sb["cam2_clicked_level"] = None
-            sb["cam1_pose_levels"] = {}
-            sb["cam2_pose_levels"] = {}
-
-            # Stepped planar derived data
-            sp = cal_data.setdefault("stepped_planar", {})
-            sp["fiducials"] = {}
-            sp["clicked_level"] = {}
-            sp["pose_levels"] = {}
-
-            # Self-calibration config copy (canonical source is the file, not config.yaml)
-            cal_data["self_calibration"] = {}
-
-            logger.info(
-                "Calibration sources changed — reset derived calibration fields "
-                "(polynomial cameras, stepped fiducials/pose levels, self-calibration)"
-            )
-
-    # Detect active calibration method change -> clean up inactive derived data
-    incoming_active = data.get("calibration", {}).get("active")
-    if incoming_active is not None:
-        old_active = cfg.data.get("calibration", {}).get("active")
-        if old_active and incoming_active != old_active:
-            cal_data = data.setdefault("calibration", {})
-            # Clear self-calibration config copy (only relevant to stereo methods)
-            cal_data["self_calibration"] = {}
-            # Clear polynomial cameras dict when switching AWAY from polynomial
-            if old_active == "polynomial":
-                cal_data.setdefault("polynomial", {})["cameras"] = {}
-            logger.info(
-                f"Active calibration method changed {old_active!r} -> {incoming_active!r} "
-                "— cleared derived data"
-            )
+            # Per-model clicks (fiducials/clicked_level/pose_levels) are NOT stored in config —
+            # they live in the per-model sidecar inputs.mat, which is keyed by source, so a source
+            # change naturally selects the right sidecar. Nothing to reset here.
 
     # Store old camera_count to detect changes
     old_camera_count = cfg.data["paths"].get("camera_count", 1)
@@ -1373,26 +1349,6 @@ def update_config():
     camera_numbers_provided = "camera_numbers" in data.get("paths", {})
 
     recursive_update(cfg.data, data)
-
-    # Normalize camera keys in calibration.polynomial.cameras to integers
-    # (JSON keys are always strings, but we want integer keys in YAML)
-    poly_cameras = cfg.data.get("calibration", {}).get("polynomial", {}).get("cameras")
-    if poly_cameras and isinstance(poly_cameras, dict):
-        normalized = {}
-        for k, v in poly_cameras.items():
-            try:
-                int_key = int(k)
-                # If both string and int versions exist, prefer the one being updated
-                # (string key is the one just sent from frontend)
-                if int_key in normalized and isinstance(k, str):
-                    # String key is new data, overwrite
-                    normalized[int_key] = v
-                elif int_key not in normalized:
-                    normalized[int_key] = v
-            except (ValueError, TypeError):
-                # Keep non-numeric keys as-is (shouldn't happen)
-                normalized[k] = v
-        cfg.data["calibration"]["polynomial"]["cameras"] = normalized
 
     # Normalize camera keys in transforms.cameras to integers
     transforms_cameras = cfg.data.get("transforms", {}).get("cameras")

@@ -299,6 +299,9 @@ def _stack_velocity_components(pr, ux: np.ndarray, uy: np.ndarray) -> np.ndarray
         Stacked array of shape (3, H, W) for 2D or (4, H, W) for stereo.
         Components: [ux, uy, b_mask] or [ux, uy, uz, b_mask]
     """
+    # b_mask is required — every writer (per-camera PIV and stereo reconstruction) emits it.
+    # A result missing it is stale: fail loudly here (AttributeError) so it gets re-run,
+    # rather than faking an all-valid mask. See CLAUDE.md "Forward-looking only".
     b_mask = (
         np.asarray(pr.b_mask).astype(ux.dtype, copy=False)
         if ux.size > 0

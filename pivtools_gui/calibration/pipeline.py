@@ -22,7 +22,7 @@ from .camera_model import (
     fit_pose,
 )
 from .detection.base import BoardDetector, DetectionResult
-from .record import MonoRecord, WorldFrame
+from .record import MonoRecord, WorldFrame, geometry_meta
 from .world_frame import (
     apply_world_frame,
     resolve_world_frame,
@@ -88,6 +88,7 @@ class Calibrator:
     distortion_model: DistortionModel = DistortionModel.STANDARD
     fix_aspect_ratio: bool = True
     fix_k3: bool = True
+    fix_k2: bool = False  # pin r⁴ radial term — set for few-view (<3) fits
     use_release_object: bool = False
 
     def detect_views(self, images: Sequence[np.ndarray]) -> List[DetectionResult]:
@@ -106,8 +107,14 @@ class Calibrator:
         figure_prefix: str = "",
         frame_grid: Optional[Dict[str, object]] = None,
         origin_mm: Optional[Tuple[float, float]] = None,
+        detections: Optional[Sequence[DetectionResult]] = None,
     ) -> MonoRecord:
-        detections = self.detect_views(images)
+        # ``detections`` lets a caller reuse a detection pass it already ran (e.g. the
+        # stereo driver, which needs both cameras' detections for correspondence) instead
+        # of re-detecting. Default ``None`` preserves the detect-internally behaviour.
+        detections = (
+            self.detect_views(images) if detections is None else list(detections)
+        )
         ok = [d.success for d in detections]
         if not ok[datum_index]:
             raise RuntimeError(
@@ -134,6 +141,15 @@ class Calibrator:
 
         meta = dict(board_meta or {})
         meta.setdefault("spacing_mm", float(sp))
+        # Stamp the board geometry that produced this model so the record is self-describing
+        # (the GUI/CLI read it back instead of config). detector.params carries the live params;
+        # a detector without one (e.g. a test double) simply contributes no geometry block.
+        det_params = getattr(self.detector, "params", None)
+        if det_params is not None:
+            meta.setdefault(
+                "geometry",
+                geometry_meta(self.board_type, det_params, model_type=self.model_type),
+            )
         meta["view_diagnostics"] = view_diagnostics_summary(detections)
 
         if self.model_type == "polynomial":
@@ -181,6 +197,7 @@ class Calibrator:
             distortion_model=self.distortion_model,
             fix_aspect_ratio=self.fix_aspect_ratio,
             fix_k3=self.fix_k3,
+            fix_k2=self.fix_k2,
             use_release_object=self.use_release_object,
         )
 

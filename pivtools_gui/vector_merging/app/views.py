@@ -122,10 +122,10 @@ def merge_one_frame():
         # Save the result
         merger.save_frame_result(frame_idx, merged_runs, total_runs)
 
-        # Save coordinates
-        coords_file = merger.output_dir / "coordinates.mat"
-        if not coords_file.exists():
-            merger.save_coordinates(merged_runs, total_runs)
+        # Save coordinates — always overwrite, since the camera set or vector
+        # type may have changed since a previous single-frame run (stale
+        # coordinates.mat would otherwise silently mismatch the merged grid).
+        merger.save_coordinates(merged_runs, total_runs)
 
         return jsonify({
             "status": "success",

@@ -161,37 +161,19 @@ class SteppedDetector:
             board_local = ref_local
             level_labels = ref_label
 
-        # Per-level breakdown for the GUI overlay + click-to-label (stable A/B).
-        def _level_block(letter: str):
-            blk = (
-                ref if ref["source_level"] == letter
-                else (other if other is not None and other["source_level"] == letter else None)
-            )
-            if blk is None:
-                return {"centers": [], "grid_indices": [], "n_points": 0}
-            c = np.asarray(blk["centers"], dtype=np.float64).reshape(-1, 2)
-            g = np.asarray(blk["grid_indices"], dtype=np.int64).reshape(-1, 2)
-            return {
-                "centers": c.tolist(),
-                "grid_indices": g.tolist(),
-                "n_points": int(len(c)),
-            }
+        # The two physical planes as raw per-level grid dicts (centers + grid_indices +
+        # H + vec1/vec2). The calibrator anchors the datum to the fiducial clicks via the
+        # per-level homographies and re-stitches every non-datum pose against the datum's
+        # orientation, so this is a first-class fit input on the DetectionResult (it is
+        # persisted to the sidecar) — NOT diagnostics. 'a'/'b' track the stable A/B labels
+        # the stitched ``source_level`` flag carries (level_a is source_level 'A').
+        level_data = {"a": level_a, "b": level_b}
 
         diagnostics = {
-            "level_a": _level_block("A"),
-            "level_b": _level_block("B"),
             "level_labels": level_labels.tolist(),
             "stitch": dict(meta),
             "image_mode": blob_info.get("image_mode"),
             "n_blobs_detected": blob_info.get("n_blobs_detected"),
-            # Raw per-level grid dicts (centers + grid_indices + H + vec1/vec2) and
-            # the blob_info, kept for the stepped calibrator: it re-stitches every
-            # non-datum pose against the datum's orientation (chirality consistency)
-            # and anchors the datum to the fiducial clicks via the homographies.
-            # The leading underscore marks these as internal / non-serialisable —
-            # the GUI route layer strips `_`-prefixed diagnostics keys.
-            "_level_a_full": level_a,
-            "_level_b_full": level_b,
             "_blob_info": blob_info,
         }
 
@@ -204,6 +186,7 @@ class SteppedDetector:
             point_ids=None,
             board_to_pixel=None,
             spacing_mm=sp,
+            level_data=level_data,
             diagnostics=diagnostics,
         )
 

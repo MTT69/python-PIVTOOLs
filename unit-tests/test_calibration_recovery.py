@@ -23,7 +23,7 @@ from pivtools_gui.calibration.detection.charuco import CharucoBoardDetector, Cha
 from pivtools_gui.calibration.detection.dotboard import DotboardDetector, DotboardParams
 from pivtools_gui.calibration.pipeline import Calibrator
 from pivtools_gui.calibration.stereo_model import (
-    StereoCalibrator, reconstruct_3c_at_points, camera_z_sign,
+    StereoCalibrator, reconstruct_3c_at_points,
 )
 from pivtools_gui.calibration.camera_model import (
     CameraModel, DistortionModel, fit_intrinsics, fit_pose,
@@ -283,15 +283,11 @@ def test_3c_reconstruction(stereo_render):
     m1, m2 = rec.model1, rec.model2
     d1px = m1.project(wp + vel) - m1.project(wp)
     d2px = m2.project(wp + vel) - m2.project(wp)
-    # Raw solve recovers the prescribed field exactly (the 4x3 Jacobian math).
-    vr_raw = reconstruct_3c_at_points(m1, m2, wp, d1px, d2px, z_toward_cameras=False)
-    assert np.nanmax(np.abs(vr_raw - vel)) < 0.02
-    # The toward-cameras convention (default) only flips w by the camera-side sign;
-    # u, v are untouched.
+    # The right-hand-rule solve recovers the prescribed field exactly: W = u_z in the
+    # same right-handed world frame as the coordinates (the 4x3 Jacobian math), no flip.
+    # There is no toward-cameras opt-in — W and world_z always share one frame.
     vr = reconstruct_3c_at_points(m1, m2, wp, d1px, d2px)
-    zs = camera_z_sign(m1, m2)
-    assert np.allclose(vr[:, :2], vr_raw[:, :2])
-    assert np.allclose(vr[:, 2], zs * vr_raw[:, 2])
+    assert np.nanmax(np.abs(vr - vel)) < 0.02
 
 
 def test_apply_mono_fileio(tmp_path):
@@ -335,3 +331,59 @@ def test_record_save_load_roundtrip(tmp_path):
     assert r2.world_frame.swap_axes and r2.world_frame.col_sign == -1
     assert np.allclose(r2.world_frame.origin_grid, [2.0, 3.0])
     assert r2.board_meta["spacing_mm"] == pytest.approx(30.0)
+
+
+def test_stereo_correspondence_matches_and_empties():
+    """The cross-camera matcher pairs shared world points and yields nothing when the
+    two cameras share none (the fail-loud signal run_stereo raises on for a non-same-side
+    pair)."""
+    from pivtools_gui.calibration.stereo_model import _stereo_correspondence
+    from pivtools_gui.calibration.world_frame import resolve_world_frame_from_grid
+    from pivtools_gui.calibration.detection.base import DetectionResult
+
+    wf = resolve_world_frame_from_grid([0, 0], [1, 0], [0, 1])
+
+    def det(grid):
+        gi = np.asarray(grid, dtype=np.int64)
+        return DetectionResult(
+            success=True,
+            board_type="dotboard",
+            image_points=gi.astype(np.float64) * 10.0,
+            board_local_points=np.column_stack(
+                [gi.astype(np.float64), np.zeros(len(gi))]
+            ),
+            grid_indices=gi,
+            point_ids=None,
+            board_to_pixel=None,
+            spacing_mm=1.0,
+            synthetic_mask=None,
+            diagnostics={},
+        )
+
+    shared = [[c, r] for r in range(3) for c in range(3)]  # 9 shared dots (> MIN_SHARED_POINTS)
+    obj, i1, i2 = _stereo_correspondence([det(shared)], [det(shared)], wf, wf, 1.0)
+    assert len(obj) == 1 and obj[0].shape == (9, 3)
+    assert i1[0].shape == (9, 2) and i2[0].shape == (9, 2)
+
+    # cam2 sees a board shifted far away -> no shared world coordinates -> empty.
+    disjoint = [[c + 100, r + 100] for r in range(3) for c in range(3)]
+    obj2, _, _ = _stereo_correspondence([det(shared)], [det(disjoint)], wf, wf, 1.0)
+    assert obj2 == []
+
+
+def test_stereo_figures_render(stereo_render, tmp_path):
+    """run_stereo with figure_dir completes and writes the cam2 + stereo proof figures
+    using the stereoCalibrate-derived cam2 pose (the figure block is unguarded), and
+    stamps the new stereo_rms_px / stereo_method meta."""
+    imgs1, imgs2 = stereo_render["charuco"]
+    det = CharucoBoardDetector(CHARUCO)
+    figd = tmp_path / "figures"
+    rec = StereoCalibrator(det, "charuco").run_stereo(
+        imgs1, imgs2, 1, 2, clicks=None, spacing_mm=CHARUCO.square_size_mm,
+        figure_dir=figd,
+    )
+    assert rec.board_meta["stereo_method"] == "stereoCalibrate"
+    assert np.isfinite(rec.board_meta["stereo_rms_px"])
+    pngs = [p.name for p in figd.glob("*.png")]
+    assert any(n.startswith("cam2_") for n in pngs)
+    assert any(("cameras_3d" in n) or ("dewarp_overlay" in n) for n in pngs)

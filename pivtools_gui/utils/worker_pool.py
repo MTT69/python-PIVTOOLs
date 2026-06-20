@@ -37,33 +37,37 @@ def worker_initializer():
         pass
 
 
-def get_max_workers(n_items, config=None):
-    """Determine the number of ProcessPoolExecutor workers.
+def get_max_workers(n_items=None, config=None):
+    """Determine the number of ProcessPoolExecutor workers from the
+    ``processing.post_processing_workers`` config knob.
 
     Parameters
     ----------
-    n_items : int
-        Number of work items (files, frames). Workers are capped at this value
-        since more workers than items is wasteful.
+    n_items : int, optional
+        Number of work items (files, frames). When given, workers are capped at
+        this value since more workers than items is wasteful. ``None`` applies no
+        item cap (a long-lived pool reused across many items).
     config : Config, optional
-        PIVTOOLs Config object. If provided, reads
-        ``config.data["processing"]["post_processing_workers"]``.
+        PIVTOOLs Config object. Fetched via ``get_config()`` (a cached singleton)
+        when not supplied, so the knob is honoured without every call site having
+        to thread a config through.
 
     Returns
     -------
     int
         Number of workers, at least 1.
     """
-    # Read from config if available
-    cap = None
-    if config is not None:
-        try:
-            cap = config.data.get("processing", {}).get("post_processing_workers")
-        except (AttributeError, TypeError):
-            pass
+    if config is None:
+        # Lazy import avoids any pivtools_core <-> pivtools_gui import cycle.
+        # Always called in the parent process before the pool is built, so the
+        # singleton lookup is safe here.
+        from pivtools_core.config import get_config
 
-    # Fall back to min(cpu_count, 16)
-    if cap is None:
-        cap = min(os.cpu_count() or 4, 16)
+        config = get_config()
 
-    return max(1, min(cap, n_items))
+    # Property resolves the knob to an int, falling back to min(cpu_count, 16).
+    cap = config.post_processing_workers
+    if n_items is not None:
+        cap = min(cap, n_items)
+
+    return max(1, cap)

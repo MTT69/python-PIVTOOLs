@@ -50,6 +50,9 @@ Thumbs.db
 unit-tests/**/test_workspace/
 unit-tests/test_output/
 
+# Debug / generated figures (regenerate via --make-figures, never commit)
+figures/
+
 # Validation benchmark results
 validation/
 

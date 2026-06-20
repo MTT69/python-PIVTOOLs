@@ -35,7 +35,16 @@ class DetectionResult:
         matching rescue of a missed dot, or model infill of a droplet-biased dot).
         Synthetic points still enter the fit unchanged — the mask exists so figures
         and diagnostics can show them honestly.
-    diagnostics : free-form detector diagnostics.
+    level_data : stepped-board solve input, or None for single-grid boards. The two
+        physical planes of a stepped target, ``{'a': {...}, 'b': {...}}`` (either may
+        be None when only one level was found), each a raw per-level grid dict with
+        ``centers`` (M,2), ``grid_indices`` (M,2), ``H`` (3,3 grid->pixel homography),
+        ``vec1``/``vec2`` (the BFS basis vectors) and scalar counts. The stepped
+        calibrator anchors the datum world frame and re-stitches non-datum poses from
+        these per-level homographies and bases — they are a first-class fit input, NOT
+        diagnostics, so they are persisted to the sidecar like ``board_to_pixel``.
+    diagnostics : free-form detector diagnostics. Debug metadata only — never a solve
+        input; stripped before storage and before reaching the frontend.
     """
 
     success: bool
@@ -47,6 +56,7 @@ class DetectionResult:
     board_to_pixel: Optional[np.ndarray] = None
     spacing_mm: Optional[float] = None
     synthetic_mask: Optional[np.ndarray] = None
+    level_data: Optional[Dict[str, Any]] = None
     diagnostics: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:

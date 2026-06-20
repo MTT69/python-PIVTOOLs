@@ -385,7 +385,6 @@ class VectorTransformProcessor:
         source_frame: int,
         source_camera: int,
         progress_callback: Optional[Callable[[Dict], None]] = None,
-        max_workers: int = 8,
         cameras: Optional[List[int]] = None,
     ) -> Dict:
         """
@@ -404,7 +403,6 @@ class VectorTransformProcessor:
                 - processed_cameras: int
                 - total_cameras: int
                 - current_camera: int
-            max_workers: Maximum parallel workers for processing
 
         Returns:
             Dict with keys:
@@ -658,12 +656,6 @@ if __name__ == "__main__":
         help="Transform merged data",
     )
     parser.add_argument(
-        "--max-workers",
-        type=int,
-        default=8,
-        help="Maximum parallel workers",
-    )
-    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Verbose output",
@@ -708,7 +700,6 @@ if __name__ == "__main__":
         source_frame=1,
         source_camera=args.camera or 1,
         progress_callback=cli_progress_callback,
-        max_workers=args.max_workers,
     )
 
     print()  # New line after progress

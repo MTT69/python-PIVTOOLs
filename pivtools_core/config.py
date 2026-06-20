@@ -547,6 +547,7 @@ calibration:
   z_world: 0.0              # light-sheet plane Z (mm) + tilt (rad), applied at apply time
   tilt_x: 0.0
   tilt_y: 0.0
+  interpolator: lanczos     # stereo cam2 resample kernel: linear | cubic | lanczos
   charuco:
     squares_h: 10
     squares_v: 7
@@ -583,7 +584,6 @@ masking:
 merging:
   type_name: instantaneous
   endpoint: ''
-  max_workers: 8
   cameras: []
   active_paths: []
 statistics:
@@ -1199,11 +1199,23 @@ video:
 
     @property
     def vector_format(self):
-        # Returns a single format string like "B%05d.mat"
-        vf = self.data["images"].get("vector_format", ["B%05d.mat"])
-        if isinstance(vf, (list, tuple)):
-            return vf[0]
-        return vf
+        # Returns a single format string like "%05d.mat".
+        # Guard the read side: a stored value lacking a printf integer specifier
+        # (e.g. ['']) makes every `vector_format % i` raise "not all arguments
+        # converted". A concurrent GUI save with stale state has corrupted this
+        # key before, so a YAML already on disk may hold ['']. Fall back to the
+        # default rather than crash, but log so the corruption stays visible.
+        # Default matches the CLI template and frontend fallback (gotcha #1).
+        default = "%05d.mat"
+        vf = self.data["images"].get("vector_format", [default])
+        first = vf[0] if isinstance(vf, (list, tuple)) and vf else vf
+        if isinstance(first, str) and re.search(r"%[0-9]*d", first):
+            return first
+        logging.getLogger(__name__).warning(
+            "Invalid vector_format %r in config (no printf integer specifier); "
+            "falling back to %r", vf, default
+        )
+        return default
 
     @property
     def statistics_extraction(self):
@@ -1841,14 +1853,23 @@ video:
         return self.calibration.get("stereo", {})
 
     @property
+    def calibration_interpolator(self) -> str:
+        """Cam2 resample kernel for stereo 3C reconstruction: linear | cubic | lanczos.
+
+        Default 'lanczos'. 'linear' is the legacy bilinear path (rings); 'cubic'/'lanczos'
+        use cv2.remap to remove the grid-locked variance ringing. Validated on access.
+        """
+        method = self.calibration.get("interpolator", "lanczos")
+        if method not in ("linear", "cubic", "lanczos"):
+            raise ValueError(
+                f"calibration.interpolator must be linear|cubic|lanczos, got {method!r}"
+            )
+        return method
+
+    @property
     def stereo_dotboard_calibration(self):
         """Return stereo dotboard calibration parameters."""
         return self.calibration.get("stereo_dotboard", {})
-
-    @property
-    def stepped_board_calibration(self):
-        """Return stepped board calibration parameters."""
-        return self.calibration.get("stepped_board", {})
 
     @property
     def charuco_calibration(self):
@@ -1859,28 +1880,6 @@ video:
     def polynomial_calibration(self):
         """Return polynomial calibration parameters."""
         return self.calibration.get("polynomial", {})
-
-    def get_polynomial_camera_params(self, camera_num: int) -> dict:
-        """Get polynomial parameters for a specific camera.
-
-        Parameters
-        ----------
-        camera_num : int
-            Camera number (1-based)
-
-        Returns
-        -------
-        dict
-            Camera-specific polynomial parameters including:
-            - origin: {x, y} - pixel origin for normalization
-            - normalisation: {nx, ny} - normalization factors
-            - mm_per_pixel: float - scale factor
-            - coefficients_x: list[float] - 10 polynomial coefficients for X
-            - coefficients_y: list[float] - 10 polynomial coefficients for Y
-        """
-        cameras = self.polynomial_calibration.get("cameras", {})
-        # Try both string and int keys for compatibility
-        return cameras.get(str(camera_num), cameras.get(camera_num, {}))
 
     @property
     def stereo_charuco_calibration(self):
@@ -2121,8 +2120,6 @@ video:
             return self.stereo_charuco_calibration.get("dt", 1)
         elif active_method == "polynomial":
             return self.polynomial_calibration.get("dt", 1)
-        elif active_method == "stepped_board":
-            return self.stepped_board_calibration.get("dt", 1)
         return 1
 
     @property

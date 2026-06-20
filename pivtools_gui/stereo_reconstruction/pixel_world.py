@@ -1,7 +1,7 @@
 """stereo_reconstruction.pixel_world — pixel→world-mm ray-plane projection.
 
 ``_pixels_to_world_mm`` is the full plane-aware projection (supports ``z_world`` /
-``tilt_x`` / ``tilt_y``) that ``stereo_reconstruction_production`` uses. It was relocated
+``tilt_x`` / ``tilt_y``) for stereo back-projection. It was relocated
 here verbatim from the legacy ``calibration/vector_calibration_production.py`` during the
 v1 retirement so stereo_reconstruction no longer depends on the v1 ``calibration`` package.
 The math is unchanged (no silent algorithm change) — note this is the FULL version, not

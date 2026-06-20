@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -86,6 +86,7 @@ def run_joint_from_spec(
     n_views: Optional[int] = None,
     figure_dir: Optional[Path] = None,
     image_loader: Optional[Callable[[int, int], Optional[np.ndarray]]] = None,
+    board_params: Optional[Any] = None,
 ) -> JointDriverResult:
     """Resolve the global grid, run the joint/polynomial solve, save, and report.
 
@@ -131,6 +132,14 @@ def run_joint_from_spec(
 
     global_index = resolve_global_grid(detections_by_cam, spec, spacing_mm=spacing_mm)
 
+    # Board geometry stamped into every record so the joint model is self-describing (the
+    # GUI/CLI read it back instead of config). None when the caller passed no params.
+    geo = (
+        rec.geometry_meta(board, board_params, model_type=model_type)
+        if board_params is not None
+        else None
+    )
+
     if model_type == "polynomial":
         # board_release and datum_camera are pinhole-only (the polynomial map has no released
         # board and no datum-camera pose — only datum_view matters); they are intentionally not
@@ -166,6 +175,7 @@ def run_joint_from_spec(
                     "n_views": 1,
                     "joint": 1,
                     "datum_view": datum_view,
+                    **({"geometry": geo} if geo else {}),
                 },
             )
             paths.append(
@@ -244,6 +254,7 @@ def run_joint_from_spec(
                 result.cross_camera_board_agreement_mm
             ),
             "spacing_mm": result.spacing_mm,
+            **({"geometry": geo} if geo else {}),
         },
     )
     path = rec.save_joint(record, rec.joint_model_dir_for_source(source, board))

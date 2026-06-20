@@ -10,8 +10,6 @@ StereoDotboardCalibrator
     Stereo calibration using circle grid (dotboard) detection
 StereoCharucoCalibrator
     Stereo calibration using ChArUco board detection
-StereoReconstructor
-    3D velocity reconstruction from stereo PIV data
 PinholeCamera
     Pinhole camera model for self-calibration
 SelfCalibrationResult
@@ -30,7 +28,6 @@ estimate_pixel_scale
 from .stereo_calibration_base import BaseStereoCalibrator
 from .stereo_dotboard_calibration_production import StereoDotboardCalibrator
 from .stereo_charuco_calibration_production import StereoCharucoCalibrator
-from .stereo_reconstruction_production import StereoReconstructor
 from .self_calibration import (
     PinholeCamera,
     SelfCalibrationResult,
@@ -43,7 +40,6 @@ __all__ = [
     "BaseStereoCalibrator",
     "StereoDotboardCalibrator",
     "StereoCharucoCalibrator",
-    "StereoReconstructor",
     "PinholeCamera",
     "SelfCalibrationResult",
     "run_self_calibration",

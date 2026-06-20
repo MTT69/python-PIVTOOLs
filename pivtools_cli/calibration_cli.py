@@ -67,10 +67,6 @@ from pivtools_gui.calibration.inputs_store import (
 )
 from pivtools_gui.calibration.joint_driver import run_joint_from_spec
 from pivtools_gui.calibration.pipeline import Calibrator, build_scale_factor_record
-from pivtools_gui.calibration.stepped_calibrate import (
-    calibrate_stepped_mono,
-    calibrate_stepped_stereo,
-)
 from pivtools_gui.calibration.stereo_model import StereoCalibrator
 
 logger = logging.getLogger(__name__)
@@ -255,14 +251,38 @@ def _model_rms_str(cm) -> str:
     return f"RMS={cm.rms:.4f}px fx={cm.K[0, 0]:.1f}"
 
 
-def _board_params(cfg: dict, board: str, overrides: Optional[dict] = None):
-    """Build board params from the ``calibration.<board>`` config block.
+def _geometry_to_config(geo: Optional[dict]) -> dict:
+    """Map a sidecar geometry dict (``record.geometry_meta`` shape) to the config-block key
+    shape the ``params_from`` builders consume. Only ``square_size_m`` needs renaming (the
+    config key is ``square_size``, also metres); ``board_type``/``model_type`` are provenance,
+    not builder inputs, so they are dropped."""
+    out = dict(geo or {})
+    if "square_size_m" in out:
+        out["square_size"] = out.pop("square_size_m")
+    # Provenance-only keys, not board-geometry builder inputs — drop so they can never be
+    # mistaken for a current-run value if a params_from builder later grows such a field.
+    for k in ("board_type", "model_type", "datum_frame", "datum_camera"):
+        out.pop(k, None)
+    return out
 
-    A GUI request may pass ``overrides`` (e.g. squares/spacing typed in the panel);
-    these take precedence per-call but are NOT persisted, so detection stays a pure
-    function of its inputs and the shared config is never silently mutated.
+
+def _board_params(
+    cfg: dict,
+    board: str,
+    overrides: Optional[dict] = None,
+    sidecar: Optional[dict] = None,
+):
+    """Build board params for a calibration run, source order ``overrides`` > ``sidecar`` > config.
+
+    ``overrides`` are per-call values (the GUI panel / CLI ``--dot-spacing-mm`` args) and win;
+    they are NOT persisted, so detection stays a pure function of its inputs. ``sidecar`` is the
+    geometry recovered from an existing model's sidecar (``record.geometry_meta`` shape) so a
+    re-run reads the geometry that produced the model rather than config. The
+    ``calibration.<board>`` config block is the last-resort fallback. None layers are skipped.
     """
     merged = dict(cfg.get(board, {}) or {})
+    if sidecar:
+        merged.update({k: v for k, v in _geometry_to_config(sidecar).items() if v is not None})
     if overrides:
         merged.update({k: v for k, v in overrides.items() if v is not None})
     return _board_spec(board).params_from(merged)
@@ -315,20 +335,6 @@ def _read_json_maybe(spec):
 def _parse_fiducials(d: dict) -> Dict[str, List[float]]:
     """Pull the {origin, x_axis, y_axis} image-down pixel clicks from a spec dict."""
     return {k: [float(d[k][0]), float(d[k][1])] for k in ("origin", "x_axis", "y_axis")}
-
-
-def _parse_stepped_cam(d: dict):
-    """One camera's stepped inputs: (fiducials, clicked_level, pose_levels).
-
-    These are the interactive picks the GUI gathers (origin/+X/+Y snap, the datum-face
-    selector, and the per-pose click-to-label). Headless they arrive as data — one entry
-    per loaded pose in ``pose_levels`` (the level-A label of that pose), the datum's entry
-    cross-checked against the fiducial-derived label by the calibrator.
-    """
-    fiducials = _parse_fiducials(d["fiducials"])
-    clicked_level = str(d["clicked_level"])
-    pose_levels = [str(x) for x in d["pose_levels"]]
-    return fiducials, clicked_level, pose_levels
 
 
 def _cam_dir(config, source: Path, camera: int) -> Path:
@@ -540,7 +546,7 @@ def detect_mono_command(args):
         None if getattr(args, "no_figures", False) else model_dir.parent / "figures"
     )
 
-    params = _board_params(cfg, board)
+    params = _board_params(cfg, board, overrides=_geometry_overrides(args))
     detector = _build_detector(board, params)
     images = _load_views(
         _cam_dir(config, source, camera),
@@ -549,6 +555,21 @@ def detect_mono_command(args):
         start_index,
         camera=camera,
         **_loader_kwargs(cfg, image_format),
+    )
+
+    # Detection sidecar (parity with the GUI): reuse stored detections when the params match,
+    # else detect fresh and persist — so a sidecar written here is reused by the GUI and
+    # vice-versa, and a re-run skips re-detection.
+    det_key = joint_det_key(
+        board, n_views, image_format, infer_image_type(image_format), [camera], params
+    )
+    side = None if getattr(args, "force", False) else try_load_inputs(model_dir)
+    cached = (side.detections or {}).get(camera) if side else None
+    cache_hit = side is not None and side.det_key == det_key and bool(cached)
+    dets = list(cached) if cache_hit else [detector.detect(im) for im in images]
+    clicks_payload = clicks or (side.coords if side else None)
+    origin_mm = (
+        clicks_payload.get("origin_mm") if isinstance(clicks_payload, dict) else None
     )
 
     calr = Calibrator(
@@ -562,13 +583,26 @@ def detect_mono_command(args):
     record = calr.run_mono(
         images,
         camera=camera,
-        clicks=clicks,
+        clicks=clicks_payload,
         datum_index=datum_index,
         spacing_mm=_spacing_mm(board, params),
         figure_dir=fig_dir,
         frame_grid=frame_grid,
+        origin_mm=origin_mm,
+        detections=dets,
     )
     path = rec.save_mono(record, model_dir)
+    isz = record.camera_model.image_size
+    save_inputs(
+        model_dir,
+        path_type="mono",
+        board_type=board,
+        detections={camera: list(dets)},
+        image_size_by_cam={camera: (int(isz[0]), int(isz[1]))},
+        det_key=det_key,
+        board_params=rec.geometry_meta(board, params),
+        coords=clicks_payload,
+    )
     figmsg = f" figures->{fig_dir}" if fig_dir else ""
     print(
         f"[calibration] {board} cam{camera} {_model_rms_str(record.camera_model)} "
@@ -592,7 +626,9 @@ def detect_stereo_command(args):
     datum_index = _resolve_datum_index(cfg)
     dm = DistortionModel(args.distortion or cfg.get("distortion_model", "standard"))
     fix_aspect = bool(cfg.get("fix_aspect_ratio", True))
-    use_ro = bool(cfg.get("use_release_object", False))
+    # Flat same-side stereo defaults to release-object intrinsics (DaVis-style); the GUI
+    # route uses the StereoCalibrator default. An explicit config value still overrides.
+    use_ro = bool(cfg.get("use_release_object", True))
     clicks = _load_clicks(args.world_frame or cfg.get("world_frame", "default"))
     clicks2 = (
         _load_clicks(cfg.get("world_frame_cam2", "default"))
@@ -622,7 +658,7 @@ def detect_stereo_command(args):
         None if getattr(args, "no_figures", False) else model_dir.parent / "figures"
     )
 
-    params = _board_params(cfg, board)
+    params = _board_params(cfg, board, overrides=_geometry_overrides(args))
     detector = _build_detector(board, params)
     imgs1 = _load_views(
         _cam_dir(config, source, cam1),
@@ -641,6 +677,26 @@ def detect_stereo_command(args):
         **_loader_kwargs(cfg, image_format),
     )
 
+    # Detection sidecar (parity with the GUI): reuse stored detections when params match,
+    # else detect fresh and persist.
+    det_key = joint_det_key(
+        board, n_views, image_format, infer_image_type(image_format), [cam1, cam2], params
+    )
+    side = None if getattr(args, "force", False) else try_load_inputs(model_dir)
+    cache_hit = (
+        side is not None
+        and side.det_key == det_key
+        and bool(side.detections)
+        and cam1 in side.detections
+        and cam2 in side.detections
+    )
+    if cache_hit:
+        det1, det2 = side.detections[cam1], side.detections[cam2]
+    else:
+        det1 = [detector.detect(im) for im in imgs1]
+        det2 = [detector.detect(im) for im in imgs2]
+    clicks_payload = clicks or (side.coords if side else None)
+
     sc = StereoCalibrator(
         detector=detector,
         board_type=board,
@@ -653,15 +709,30 @@ def detect_stereo_command(args):
         imgs2,
         cam1=cam1,
         cam2=cam2,
-        clicks=clicks,
+        clicks=clicks_payload,
         clicks2=clicks2,
         datum_index=datum_index,
         spacing_mm=_spacing_mm(board, params),
         figure_dir=fig_dir,
         frame_grid=frame_grid,
         frame_grid2=frame_grid2,
+        det1=det1,
+        det2=det2,
     )
     path = rec.save_stereo(record, model_dir)
+    save_inputs(
+        model_dir,
+        path_type="stereo",
+        board_type=board,
+        detections={cam1: list(det1), cam2: list(det2)},
+        image_size_by_cam={
+            cam1: (int(record.model1.image_size[0]), int(record.model1.image_size[1])),
+            cam2: (int(record.model2.image_size[0]), int(record.model2.image_size[1])),
+        },
+        det_key=det_key,
+        board_params=rec.geometry_meta(board, params),
+        coords=clicks_payload,
+    )
     ang = np.degrees(np.arccos(np.clip((np.trace(record.R_stereo) - 1) / 2, -1, 1)))
     print(
         f"[calibration] stereo {board} cam{cam1}-cam{cam2} "
@@ -829,7 +900,15 @@ def detect_joint_command(args) -> "Path | List[Path]":
             raise SystemExit(
                 "detect-joint: the pinhole joint solve requires fix_aspect_ratio: true (fx==fy)"
             )
-    params = _board_params(cfg, board)
+    # Geometry source order: CLI args > the source's existing sidecar (the GUI wizard wrote it
+    # next to the clicks this command already reads) > config. So a config without geometry still
+    # solves a previously-set-up joint rig.
+    params = _board_params(
+        cfg,
+        board,
+        overrides=_geometry_overrides(args),
+        sidecar=(side.board_params if side else None),
+    )
     spacing = _spacing_mm(board, params)
 
     # Detect every view of every camera; tag each detection with the known spacing and record
@@ -890,8 +969,9 @@ def detect_joint_command(args) -> "Path | List[Path]":
             detections=detections,
             image_size_by_cam=image_size_by_cam,
             det_key=joint_det_key(
-                board, n_views, image_format, cfg.get("image_type"), cameras, params
+                board, n_views, image_format, infer_image_type(image_format), cameras, params
             ),
+            board_params=rec.geometry_meta(board, params),
         )
     except (OSError, ValueError):
         pass
@@ -927,6 +1007,7 @@ def detect_joint_command(args) -> "Path | List[Path]":
         distortion_model=dm,
         fix_aspect_ratio=fix_aspect,
         n_views=n_views,
+        board_params=params,
     )
 
     if res.model_type == "polynomial":
@@ -943,206 +1024,6 @@ def detect_joint_command(args) -> "Path | List[Path]":
     print(
         f"[calibration] joint {board} cams={res.cameras} rms={res.rms_px:.4f}px "
         f"({rms_str}) release={board_release} converged={res.converged} -> {path}"
-    )
-    return path
-
-
-def _stepped_spec_source(args, scfg: dict, key_attr: str = "stepped_spec"):
-    """Resolve the stepped spec input: ``--stepped-spec PATH`` > inline config block.
-
-    The stepped board cannot route through the on-demand single-detector path the other
-    boards use (its fit needs per-pose levels + fiducial clicks), so the headless inputs
-    arrive either as a JSON file or inline under ``calibration.stepped``. Raises loudly
-    when neither is present — never guesses fiducials.
-    """
-    spec = getattr(args, key_attr, None)
-    if spec:
-        return _read_json_maybe(spec)
-    if scfg.get("fiducials") and scfg.get("clicked_level") and scfg.get("pose_levels"):
-        return scfg
-    return None
-
-
-def detect_stepped_mono_command(args):
-    config = get_config()
-    cfg = _cfg2(config)
-    board = "stepped"
-    source = _source(cfg, args.source)
-    camera = int(args.camera if args.camera is not None else cfg.get("camera", 1))
-    image_format = args.image_format or cfg.get("image_format", "calib%05d.png")
-    start_index = int(cfg.get("start_index", 1))
-    datum_index = _resolve_datum_index(cfg)
-    dm = DistortionModel(args.distortion or cfg.get("distortion_model", "standard"))
-    scfg = dict(cfg.get("stepped", {}) or {})
-    model_type = args.model_type or scfg.get("model_type", "pinhole")
-
-    model_dir = rec.mono_model_dir_for_source(source, camera, board)
-    existing_path = _existing_mono_path(
-        model_dir, model_type, getattr(args, "force", False)
-    )
-    if existing_path is not None:
-        existing = rec.load_mono(existing_path)
-        print(
-            f"[calibration] stepped cam{camera} reusing existing model "
-            f"({_model_rms_str(existing.camera_model)}) -> {existing_path} "
-            f"(--force to recompute)"
-        )
-        return existing_path
-
-    spec = _stepped_spec_source(args, scfg)
-    if spec is None:
-        raise SystemExit(
-            "detect-stepped: provide --stepped-spec PATH (JSON with fiducials, "
-            "clicked_level, pose_levels) or set those under calibration.stepped"
-        )
-    fiducials, clicked_level, pose_levels = _parse_stepped_cam(spec)
-    # n_views follows the spec's pose count unless explicitly overridden — the spec is
-    # the source of truth for how many poses were labelled.
-    n_views = int(args.n_views) if args.n_views else len(pose_levels)
-
-    params = _board_params(cfg, board)  # SteppedParams
-    detector = _build_detector(board, params)
-    images = _load_views(
-        _cam_dir(config, source, camera),
-        image_format,
-        n_views,
-        start_index,
-        camera=camera,
-        **_loader_kwargs(cfg, image_format),
-    )
-    h, w = np.asarray(images[datum_index]).shape[:2]
-    image_size = (int(w), int(h))
-    detections = [detector.detect(im) for im in images]
-
-    fig_dir = (
-        None if getattr(args, "no_figures", False) else model_dir.parent / "figures"
-    )
-    record = calibrate_stepped_mono(
-        detections=detections,
-        fiducials=fiducials,
-        clicked_level=clicked_level,
-        pose_levels=pose_levels,
-        board=params.board(),
-        image_size=image_size,
-        camera=camera,
-        datum_index=datum_index,
-        distortion_model=dm,
-        model_type=model_type,
-        images=images,
-        figure_dir=fig_dir,
-    )
-    path = rec.save_mono(record, model_dir)
-    figmsg = f" figures->{fig_dir}" if fig_dir else ""
-    print(
-        f"[calibration] stepped cam{camera} [{model_type}] "
-        f"{_model_rms_str(record.camera_model)} -> {path}{figmsg}"
-    )
-    return path
-
-
-def detect_stepped_stereo_command(args):
-    config = get_config()
-    cfg = _cfg2(config)
-    board = "stepped"
-    source = _source(cfg, args.source)
-    pair = args.camera_pair or cfg.get("camera_pair", [1, 2])
-    if isinstance(pair, str):
-        pair = [int(x) for x in pair.split(",")]
-    cam1, cam2 = int(pair[0]), int(pair[1])
-    image_format = args.image_format or cfg.get("image_format", "calib%05d.png")
-    start_index = int(cfg.get("start_index", 1))
-    datum_index = _resolve_datum_index(cfg)
-    dm = DistortionModel(args.distortion or cfg.get("distortion_model", "standard"))
-    scfg = dict(cfg.get("stepped", {}) or {})
-    model_type = args.model_type or scfg.get("model_type", "pinhole")
-
-    model_dir = rec.stereo_model_dir_for_source(source, cam1, cam2)
-    reuse = _reusable_stereo(
-        model_dir, board, model_type, getattr(args, "force", False)
-    )
-    if reuse is not None:
-        path, existing = reuse
-        print(
-            f"[calibration] stepped stereo cam{cam1}-cam{cam2} reusing existing model "
-            f"(cam{cam1} {_model_rms_str(existing.model1)}; "
-            f"cam{cam2} {_model_rms_str(existing.model2)}) -> "
-            f"{path} (--force to recompute)"
-        )
-        return path
-
-    spec = _stepped_spec_source(args, scfg)
-    if spec is None or "cam1" not in spec or "cam2" not in spec:
-        raise SystemExit(
-            "detect-stepped-stereo: provide --stepped-spec PATH (JSON with cam1/cam2 "
-            "blocks, each {fiducials, clicked_level, pose_levels}, optional stereo_config)"
-        )
-    fid1, lvl1, poses1 = _parse_stepped_cam(spec["cam1"])
-    fid2, lvl2, poses2 = _parse_stepped_cam(spec["cam2"])
-    stereo_config = str(spec.get("stereo_config", "auto"))
-    n_views = int(args.n_views) if args.n_views else len(poses1)
-
-    params = _board_params(cfg, board)
-    detector = _build_detector(board, params)
-    imgs1 = _load_views(
-        _cam_dir(config, source, cam1),
-        image_format,
-        n_views,
-        start_index,
-        camera=cam1,
-        **_loader_kwargs(cfg, image_format),
-    )
-    imgs2 = _load_views(
-        _cam_dir(config, source, cam2),
-        image_format,
-        n_views,
-        start_index,
-        camera=cam2,
-        **_loader_kwargs(cfg, image_format),
-    )
-    sz1 = tuple(int(v) for v in np.asarray(imgs1[datum_index]).shape[:2][::-1])
-    sz2 = tuple(int(v) for v in np.asarray(imgs2[datum_index]).shape[:2][::-1])
-    det1 = [detector.detect(im) for im in imgs1]
-    det2 = [detector.detect(im) for im in imgs2]
-
-    fig_dir = (
-        None if getattr(args, "no_figures", False) else model_dir.parent / "figures"
-    )
-    record = calibrate_stepped_stereo(
-        detections1=det1,
-        detections2=det2,
-        fiducials1=fid1,
-        fiducials2=fid2,
-        clicked_level1=lvl1,
-        clicked_level2=lvl2,
-        pose_levels1=poses1,
-        pose_levels2=poses2,
-        board=params.board(),
-        image_size1=sz1,
-        image_size2=sz2,
-        cam1=cam1,
-        cam2=cam2,
-        datum_index=datum_index,
-        stereo_config=stereo_config,
-        distortion_model=dm,
-        model_type=model_type,
-        images1=imgs1,
-        images2=imgs2,
-        figure_dir=fig_dir,
-    )
-    path = rec.save_stereo(record, model_dir)
-    meta = record.board_meta
-    if model_type == "polynomial3d":
-        geo = f"config={meta.get('stereo_config')} baseline/angle n/a (polynomial)"
-    else:
-        geo = (
-            f"config={meta.get('stereo_config')} "
-            f"stereo_angle={meta.get('relative_angle_deg', float('nan')):.3f}deg "
-            f"|T|={meta.get('baseline_mm', float('nan')):.2f}mm"
-        )
-    print(
-        f"[calibration] stepped stereo cam{cam1}-cam{cam2} [{model_type}] "
-        f"cam{cam1} {_model_rms_str(record.model1)}; "
-        f"cam{cam2} {_model_rms_str(record.model2)} {geo} -> {path}"
     )
     return path
 
@@ -1249,6 +1130,8 @@ def apply_stereo_command(args):
     tx = float(cfg["tilt_x"]) if "tilt_x" in cfg else rec0.sc_tilt_x
     ty = float(cfg["tilt_y"]) if "tilt_y" in cfg else rec0.sc_tilt_y
     vector_glob = vector_glob_from_format(config.vector_format)
+    # --interpolator > config (validated via the property); flag is argparse-constrained.
+    interpolator = args.interpolator or config.calibration_interpolator
     total = 0
     for u in units:
         dt = runio.resolve_dt(args.dt, None, cfg.get("dt"))
@@ -1263,6 +1146,7 @@ def apply_stereo_command(args):
             tx,
             ty,
             vector_glob=vector_glob,
+            interpolator=interpolator,
         )
         total += len(written)
         print(
@@ -1445,11 +1329,38 @@ def global_frame_command(args):
 # ---------------------------------------------------------------------------
 
 
+def _add_geometry_args(p):
+    """ChArUco geometry overrides (all default None -> only override when given). These let a
+    headless-from-scratch ChArUco run supply geometry without a config block; the GUI passes the
+    same values per-request. ``--square-size`` is in metres (ChArUco native unit), matching config.
+    (CLI detection is ChArUco-only; dotboard/stepped geometry args went with those paths.)"""
+    p.add_argument("--squares-h", type=int, default=None)
+    p.add_argument("--squares-v", type=int, default=None)
+    p.add_argument("--square-size", type=float, default=None, help="metres")
+    p.add_argument("--marker-ratio", type=float, default=None)
+    p.add_argument("--aruco-dict", default=None)
+    p.add_argument("--min-corners", type=int, default=None)
+
+
+def _geometry_overrides(args) -> dict:
+    """Non-None ChArUco geometry args as a config-key-shaped override dict for ``_board_params``."""
+    m = {
+        "squares_h": getattr(args, "squares_h", None),
+        "squares_v": getattr(args, "squares_v", None),
+        "square_size": getattr(args, "square_size", None),
+        "marker_ratio": getattr(args, "marker_ratio", None),
+        "aruco_dict": getattr(args, "aruco_dict", None),
+        "min_corners": getattr(args, "min_corners", None),
+    }
+    return {k: v for k, v in m.items() if v is not None}
+
+
 def _add_common(p):
     p.add_argument(
         "--source", default=None, help="calibration source dir (model saved here)"
     )
-    p.add_argument("--board", default=None, choices=["charuco", "dotboard"])
+    _add_geometry_args(p)
+    p.add_argument("--board", default="charuco", choices=["charuco"])
     p.add_argument("--image-format", default=None)
     p.add_argument("--n-views", type=int, default=None)
     p.add_argument(
@@ -1477,20 +1388,19 @@ def _add_common(p):
 
 
 def register_calibration_subparsers(subparsers):
-    p = subparsers.add_parser("detect-planar", help="calibration: detect mono dotboard")
-    _add_common(p)
-    p.add_argument("--camera", type=int, default=None)
-    p.set_defaults(func=detect_mono_command, board="dotboard")
-
+    # CLI detection is ChArUco-only: ChArUco needs no interactive datum/anchor clicks, so it
+    # solves headless. Dotboard and stepped calibration require the GUI (world-frame / fiducial /
+    # level picking) and are intentionally not exposed here. The CLI can still APPLY any saved
+    # model (apply / apply-stereo) regardless of how it was calibrated.
     p = subparsers.add_parser("detect-charuco", help="calibration: detect mono charuco")
     _add_common(p)
     p.add_argument("--camera", type=int, default=None)
     p.set_defaults(func=detect_mono_command, board="charuco")
 
-    p = subparsers.add_parser("detect-stereo", help="calibration: detect stereo pair")
+    p = subparsers.add_parser("detect-stereo", help="calibration: detect stereo charuco pair")
     _add_common(p)
     p.add_argument("--camera-pair", default=None, help="'1,2'")
-    p.set_defaults(func=detect_stereo_command)
+    p.set_defaults(func=detect_stereo_command, board="charuco")
 
     p = subparsers.add_parser(
         "detect-joint",
@@ -1499,7 +1409,7 @@ def register_calibration_subparsers(subparsers):
     p.add_argument(
         "--source", default=None, help="calibration source dir (model saved here)"
     )
-    p.add_argument("--board", default=None, choices=["charuco", "dotboard"])
+    p.add_argument("--board", default="charuco", choices=["charuco"])
     p.add_argument(
         "--cameras",
         default=None,
@@ -1526,88 +1436,9 @@ def register_calibration_subparsers(subparsers):
         choices=["full3d", "z_only", "none"],
         help="released-board DOF for pinhole (default full3d, matches DaVis)",
     )
+    _add_geometry_args(p)
     p.set_defaults(func=detect_joint_command)
 
-    # Stepped (dual-level) board — its own commands because the fit needs per-pose level
-    # labels + fiducial clicks (the GUI gathers these interactively; headless they come
-    # from --stepped-spec JSON or calibration.stepped). model_type adds polynomial3d.
-    p = subparsers.add_parser("detect-stepped", help="calibration: detect stepped mono")
-    p.add_argument(
-        "--source", default=None, help="calibration source dir (model saved here)"
-    )
-    p.add_argument("--camera", type=int, default=None)
-    p.add_argument("--image-format", default=None)
-    p.add_argument(
-        "--n-views",
-        type=int,
-        default=None,
-        help="poses to load (default: the spec's pose_levels count)",
-    )
-    p.add_argument(
-        "--distortion", default=None, choices=["standard", "rational", "tilted"]
-    )
-    p.add_argument(
-        "--model-type",
-        default=None,
-        choices=["pinhole", "polynomial3d"],
-        help="pinhole (multi-pose) or polynomial3d (single datum view, 3D cubic)",
-    )
-    p.add_argument(
-        "--stepped-spec",
-        default=None,
-        help="JSON with {fiducials:{origin,x_axis,y_axis}, clicked_level, pose_levels}",
-    )
-    p.add_argument(
-        "--no-figures",
-        action="store_true",
-        help="skip the archival proof figures saved beside the model",
-    )
-    p.add_argument(
-        "--force",
-        action="store_true",
-        help="recompute even if a model already exists in the source folder",
-    )
-    p.set_defaults(func=detect_stepped_mono_command)
-
-    p = subparsers.add_parser(
-        "detect-stepped-stereo", help="calibration: detect stepped stereo pair"
-    )
-    p.add_argument(
-        "--source", default=None, help="calibration source dir (model saved here)"
-    )
-    p.add_argument("--camera-pair", default=None, help="'1,2'")
-    p.add_argument("--image-format", default=None)
-    p.add_argument(
-        "--n-views",
-        type=int,
-        default=None,
-        help="poses to load (default: the cam1 spec's pose_levels count)",
-    )
-    p.add_argument(
-        "--distortion", default=None, choices=["standard", "rational", "tilted"]
-    )
-    p.add_argument(
-        "--model-type",
-        default=None,
-        choices=["pinhole", "polynomial3d"],
-        help="pinhole (rig R/t) or polynomial3d (reconstruction-only, no rig geometry)",
-    )
-    p.add_argument(
-        "--stepped-spec",
-        default=None,
-        help="JSON with cam1/cam2 blocks {fiducials, clicked_level, pose_levels} + stereo_config",
-    )
-    p.add_argument(
-        "--no-figures",
-        action="store_true",
-        help="skip the archival proof figures saved beside the model",
-    )
-    p.add_argument(
-        "--force",
-        action="store_true",
-        help="recompute even if a model already exists in the source folder",
-    )
-    p.set_defaults(func=detect_stepped_stereo_command)
 
     p = subparsers.add_parser(
         "apply-calibration", help="calibration: apply mono model to vectors"
@@ -1647,6 +1478,12 @@ def register_calibration_subparsers(subparsers):
     p.add_argument("--board", default=None, choices=["charuco", "dotboard", "stepped"])
     p.add_argument("--camera-pair", default=None, help="'1,2'")
     p.add_argument("--dt", type=float, default=None)
+    p.add_argument(
+        "--interpolator",
+        default=None,
+        choices=["cubic", "lanczos"],
+        help="stereo cam2 resample kernel (default: lanczos / config)",
+    )
     p.add_argument("--calibrated-dir", default=None)
     p.add_argument(
         "--all-paths",

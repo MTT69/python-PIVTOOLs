@@ -44,6 +44,11 @@ from pivtools_gui.calibration import record as rec
 from pivtools_gui.calibration import world_frame as WF
 from pivtools_gui.calibration.camera_model import DistortionModel
 from pivtools_gui.calibration.detection.base import DetectionResult
+from pivtools_gui.calibration.inputs_store import (
+    joint_det_key,
+    save_inputs,
+    try_load_inputs,
+)
 from pivtools_gui.calibration.stepped_calibrate import (
     calibrate_stepped_mono,
     calibrate_stepped_stereo,
@@ -120,22 +125,77 @@ def _strip_internal(diag: dict) -> dict:
     return {k: v for k, v in (diag or {}).items() if not k.startswith("_")}
 
 
+def _overlay_block(lv: Optional[dict]) -> Optional[dict]:
+    """Slim per-level overlay ``{centers, grid_indices, n_points}`` for the GUI dot mesh,
+    derived from a raw per-level grid dict (``DetectionResult.level_data['a'|'b']``).
+
+    The fit input is the single source — the overlay is a JSON-safe projection of it, so a
+    sidecar-restored detection draws the same mesh as a freshly-detected one."""
+    if not isinstance(lv, dict):
+        return None
+    centers = np.asarray(lv.get("centers", []), dtype=np.float64).reshape(-1, 2)
+    gi = np.asarray(lv.get("grid_indices", []), dtype=np.int64).reshape(-1, 2)
+    return {"centers": centers.tolist(), "grid_indices": gi.tolist(), "n_points": int(len(centers))}
+
+
+def _overlay_blocks(det: DetectionResult) -> Tuple[Optional[dict], Optional[dict]]:
+    """``(level_a, level_b)`` overlay blocks for a detection (None when no level_data)."""
+    ld = det.level_data or {}
+    return _overlay_block(ld.get("a")), _overlay_block(ld.get("b"))
+
+
 def _detection_payload(det: Optional[DetectionResult], image_size: Tuple[int, int]) -> dict:
     """One pose's JSON-safe detection: points + per-level breakdown for the overlay."""
     if det is None or not det.success:
         return {"ok": False, "image_size": list(image_size)}
     diag = _strip_internal(det.diagnostics)
+    level_a, level_b = _overlay_blocks(det)
     return {
         "ok": True,
         "n_points": det.n,
         "image_size": list(image_size),
         "image_points": det.image_points.tolist(),
         "grid_indices": (None if det.grid_indices is None else det.grid_indices.tolist()),
-        "level_a": diag.get("level_a"),
-        "level_b": diag.get("level_b"),
+        "level_a": level_a,
+        "level_b": level_b,
         "level_labels": diag.get("level_labels"),
         "stitch": diag.get("stitch"),
     }
+
+
+def _summarize_sequence(entry: dict, per_frame_status: Optional[dict] = None):
+    """Per-camera pose summaries + the datum detection payload, for the overlay.
+
+    Shared by ``detect_sequence`` (live detection) and ``restore_sequence`` (rehydrated
+    from the sidecar) so both return the identical shape the GUI consumes. ``entry`` is a
+    sequence-cache entry (or a sidecar-rebuilt one); ``per_frame_status`` supplies the
+    per-pose failure text for live detections (absent on a sidecar restore -> "failed").
+    Returns ``(poses, datum_detection)``.
+    """
+    per_frame_status = per_frame_status or {}
+    frame_indices = entry["frame_indices"]
+    datum_frame_idx = entry["datum_frame_idx"]
+    detections = entry["detections"]
+    image_size = entry["image_size"]
+    datum_pos = frame_indices.index(datum_frame_idx)
+    poses: Dict[str, list] = {}
+    datum_detection: Dict[str, dict] = {}
+    for camera in entry["cameras"]:
+        size = image_size.get(camera, (0, 0))
+        cam_poses = []
+        for fi, det in zip(frame_indices, detections[camera]):
+            s = {"frame_idx": fi, "is_datum": fi == datum_frame_idx, "ok": det is not None}
+            if det is not None:
+                la, lb = _overlay_blocks(det)
+                s["n_level_a"] = (la or {}).get("n_points", 0)
+                s["n_level_b"] = (lb or {}).get("n_points", 0)
+                s["n_points"] = det.n
+            else:
+                s["error"] = per_frame_status.get(f"{camera}:{fi}", "failed")
+            cam_poses.append(s)
+        poses[str(camera)] = cam_poses
+        datum_detection[str(camera)] = _detection_payload(detections[camera][datum_pos], size)
+    return poses, datum_detection
 
 
 def _load_one(camera: int, frame: int, source_idx: int,
@@ -143,6 +203,176 @@ def _load_one(camera: int, frame: int, source_idx: int,
     return read_calibration_image(
         int(frame), int(camera), get_config(), int(source_idx),
         image_format=image_format, image_type=image_type)
+
+
+# ---------------------------------------------------------------------------
+# Sidecar persistence — mirror the flat/joint inputs.mat so a stepped model can be
+# regenerated from disk (detections + clicks) without re-detecting or re-clicking.
+# The in-memory _sequence_cache stays the fast in-session layer; this is the durable
+# store keyed by det_key, with the interactive spec stashed in coords.
+# ---------------------------------------------------------------------------
+
+def _sidecar_model_dir(source, cameras: List[int]) -> Path:
+    """Model dir whose ``inputs.mat`` carries this sequence (stereo pair vs mono)."""
+    if len(cameras) >= 2:
+        return rec.stereo_model_dir_for_source(source, cameras[0], cameras[1])
+    return rec.mono_model_dir_for_source(source, cameras[0], "stepped")
+
+
+def _stepped_det_key(cameras, frame_indices, datum_frame_idx,
+                     image_format, image_type, params) -> str:
+    """det_key for a stepped sequence: folds the frame window + datum into the key so a
+    different selection invalidates the cached detections (board geometry rides in
+    ``params`` via its repr)."""
+    sig = (tuple(int(f) for f in frame_indices), int(datum_frame_idx), params)
+    return joint_det_key(
+        "stepped", len(frame_indices), image_format, image_type, cameras, sig)
+
+
+def _failed_det() -> DetectionResult:
+    """success=False placeholder so a failed pose keeps its positional slot in the
+    sidecar; mapped back to ``None`` on load."""
+    return DetectionResult(
+        success=False, board_type="stepped",
+        image_points=np.empty((0, 2)), board_local_points=np.empty((0, 3)))
+
+
+def _dets_for_sidecar(cache_dets: dict) -> Dict[int, list]:
+    """Cache detections (``None`` for failed poses) -> save-safe (``None`` -> placeholder)."""
+    return {int(c): [d if d is not None else _failed_det() for d in lst]
+            for c, lst in cache_dets.items()}
+
+
+def _dets_from_sidecar(side_dets: dict) -> Dict[int, list]:
+    """Loaded sidecar detections -> cache shape (failed placeholder -> ``None``)."""
+    return {int(c): [d if (d is not None and d.success) else None for d in lst]
+            for c, lst in side_dets.items()}
+
+
+def _save_sequence_sidecar(source, entry: dict) -> None:
+    """Persist a detected sequence's detections + descriptor + det_key + geometry,
+    merging into any existing ``coords`` so a prior generate's clicks are preserved."""
+    cameras = entry["cameras"]
+    model_dir = _sidecar_model_dir(source, cameras)
+    det_key = _stepped_det_key(
+        cameras, entry["frame_indices"], entry["datum_frame_idx"],
+        entry["image_format"], entry["image_type"], entry["params"])
+    prev = try_load_inputs(model_dir)
+    coords = dict(prev.coords) if (prev and prev.coords) else {}
+    coords["sequence"] = {
+        "frame_indices": [int(f) for f in entry["frame_indices"]],
+        "datum_frame_idx": int(entry["datum_frame_idx"]),
+        "cameras": [int(c) for c in cameras],
+        "source_idx": int(entry["source_idx"]),
+        "image_format": entry["image_format"],
+        "image_type": entry["image_type"],
+    }
+    save_inputs(
+        model_dir, path_type="stepped", board_type="stepped",
+        detections=_dets_for_sidecar(entry["detections"]),
+        image_size_by_cam={int(c): tuple(entry["image_size"].get(c, (0, 0)))
+                           for c in cameras},
+        det_key=det_key, board_params=rec.geometry_meta("stepped", entry["params"]),
+        coords=coords)
+
+
+def _entry_from_sidecar(data: dict, cfg: dict, cameras: List[int]):
+    """Rebuild a sequence ``entry`` from a model dir's sidecar (no live sequence).
+
+    Returns ``(entry, model_dir, side, None)`` or ``(None, None, None, error)``.
+    Images are left ``None`` (the sidecar stores no pixels); call ``_reread_images``
+    when figures are needed.
+    """
+    try:
+        source = get_config().get_calibration_source(_source_idx(data))
+    except (ValueError, IndexError) as exc:
+        return None, None, None, (
+            jsonify({"error": f"calibration source not configured ({exc})"}), 400)
+    model_dir = _sidecar_model_dir(source, cameras)
+    side = try_load_inputs(model_dir)
+    if side is None or not side.detections:
+        return None, None, None, (jsonify({
+            "error": ("no saved detections for this camera set — run detect_sequence "
+                      "first")}), 410)
+    seq = (side.coords or {}).get("sequence") or {}
+    frame_indices = [int(f) for f in seq.get("frame_indices", [])]
+    if not frame_indices:
+        return None, None, None, (jsonify({
+            "error": ("saved inputs are missing the sequence descriptor; "
+                      "re-run detect_sequence")}), 410)
+    datum_frame_idx = int(seq.get("datum_frame_idx", frame_indices[0]))
+    if datum_frame_idx not in frame_indices:
+        # A truncated / desynced sidecar — guard here so callers get a clean error rather
+        # than an unhandled ValueError from frame_indices.index(datum_frame_idx) downstream.
+        return None, None, None, (jsonify({
+            "error": ("saved datum_frame_idx is not in the saved frame window; "
+                      "re-run detect_sequence")}), 410)
+    params = c2._board_params(cfg, "stepped", data.get("board_params"),
+                              sidecar=side.board_params)
+    dets = _dets_from_sidecar(side.detections)
+    entry = {
+        "cameras": [int(c) for c in cameras],
+        "frame_indices": frame_indices,
+        "datum_frame_idx": datum_frame_idx,
+        "source_idx": int(seq.get("source_idx", _source_idx(data))),
+        "params": params,
+        "image_format": seq.get("image_format"),
+        "image_type": seq.get("image_type"),
+        "detections": {int(c): dets.get(int(c), []) for c in cameras},
+        "images": {int(c): [None] * len(frame_indices) for c in cameras},
+        "image_size": {int(k): tuple(v) for k, v in side.image_size_by_cam.items()},
+        "created_at": time.time(),
+    }
+    return entry, model_dir, side, None
+
+
+def _reread_images(entry: dict) -> None:
+    """Fill ``entry['images']`` from the source (a sidecar restore stores no pixels)."""
+    for camera in entry["cameras"]:
+        imgs: List[Optional[np.ndarray]] = []
+        for fi in entry["frame_indices"]:
+            try:
+                imgs.append(_load_one(camera, fi, entry["source_idx"],
+                                      entry["image_format"], entry["image_type"]))
+            except Exception as exc:
+                logger.warning("stepped figure image reload cam%s frame%s failed: %s",
+                               camera, fi, exc)
+                imgs.append(None)
+        entry["images"][camera] = imgs
+
+
+def _images_missing(entry: dict) -> bool:
+    """True if any camera's frame image is absent (None / non-2-D).
+
+    Figures need pixels. Both the sidecar restore and ``restore_sequence`` cache image-free
+    entries (``images=[None]*N``); only a freshly-detected sequence carries them. Gating the
+    figure-image reload on this — not on *how* the entry was sourced (the old ``restored``
+    flag missed the ``restore_sequence`` cache) — covers every path.
+    """
+    imgs = entry.get("images") or {}
+    n = len(entry["frame_indices"])
+    for c in entry["cameras"]:
+        seq = imgs.get(int(c), [])
+        if len(seq) != n or any(im is None or np.asarray(im).ndim < 2 for im in seq):
+            return True
+    return False
+
+
+def _spec_to_coords(specs: dict, use_cams: List[int], stereo: bool, data: dict) -> dict:
+    """The per-camera clicks block to persist in the sidecar ``coords`` (re-loadable)."""
+    cams: Dict[str, dict] = {}
+    for c in use_cams:
+        fid, lvl, pl = specs[c]
+        cams[str(c)] = {
+            "fiducials": {k: [float(fid[k][0]), float(fid[k][1])]
+                          for k in ("origin", "x_axis", "y_axis")},
+            "clicked_level": str(lvl),
+            "pose_levels": {str(k): str(v) for k, v in pl.items()},
+        }
+    out: Dict[str, object] = {"cameras": cams}
+    if stereo:
+        out["stereo_config"] = str(data.get("stereo_config", "auto"))
+    return out
 
 
 # ===========================================================================
@@ -221,42 +451,34 @@ def detect_sequence():
                         progress=int(done / max(total, 1) * 90),
                         stage=f"cam{camera}_frame{frame}")
 
+            cache_entry = {
+                "cameras": cameras,
+                "frame_indices": frame_indices,
+                "datum_frame_idx": datum_frame_idx,
+                "source_idx": source_idx,
+                "params": params,
+                "image_format": image_format,
+                "image_type": image_type,
+                "detections": detections,
+                "images": images,
+                "image_size": image_size,
+                "created_at": time.time(),
+            }
             with _sequence_lock:
-                _sequence_cache[sequence_id] = {
-                    "cameras": cameras,
-                    "frame_indices": frame_indices,
-                    "datum_frame_idx": datum_frame_idx,
-                    "source_idx": source_idx,
-                    "params": params,
-                    "image_format": image_format,
-                    "image_type": image_type,
-                    "detections": detections,
-                    "images": images,
-                    "image_size": image_size,
-                    "created_at": time.time(),
-                }
+                _sequence_cache[sequence_id] = cache_entry
+
+            # Persist to the model dir's inputs.mat so the model can be regenerated from
+            # disk (detections + clicks) without re-detecting. Best-effort: a failure is
+            # logged, never fatal — the in-memory cache still serves this session.
+            try:
+                src = get_config().get_calibration_source(int(source_idx))
+                _save_sequence_sidecar(src, cache_entry)
+            except Exception as exc:
+                logger.warning(
+                    "stepped detect: sidecar save failed (non-fatal): %s", exc)
 
             # Per-camera, per-pose JSON-safe summary + the datum detection for the overlay.
-            poses: Dict[str, list] = {}
-            datum_detection: Dict[str, dict] = {}
-            datum_pos = frame_indices.index(datum_frame_idx)
-            for camera in cameras:
-                size = image_size.get(camera, (0, 0))
-                cam_poses = []
-                for fi, det in zip(frame_indices, detections[camera]):
-                    s = {"frame_idx": fi, "is_datum": fi == datum_frame_idx,
-                         "ok": det is not None}
-                    if det is not None:
-                        diag = _strip_internal(det.diagnostics)
-                        s["n_level_a"] = (diag.get("level_a") or {}).get("n_points", 0)
-                        s["n_level_b"] = (diag.get("level_b") or {}).get("n_points", 0)
-                        s["n_points"] = det.n
-                    else:
-                        s["error"] = per_frame_status.get(f"{camera}:{fi}", "failed")
-                    cam_poses.append(s)
-                poses[str(camera)] = cam_poses
-                datum_detection[str(camera)] = _detection_payload(
-                    detections[camera][datum_pos], size)
+            poses, datum_detection = _summarize_sequence(cache_entry, per_frame_status)
 
             job_manager.complete_job(
                 job_id, sequence_id=sequence_id, cameras=cameras,
@@ -280,6 +502,114 @@ def detect_sequence_status(job_id: str):
     if data is None:
         return jsonify({"error": "job not found"}), 404
     return jsonify(data)
+
+
+@calibration_stepped_bp.route("/calibration/stepped/inputs", methods=["GET"])
+def stepped_inputs():
+    """Whether a persisted detection sidecar exists for this source + camera set, and
+    its descriptor + saved clicks. Lets the GUI hydrate the operator's clicks and offer
+    a regenerate without re-detecting. Returns ``{"exists": False}`` when none.
+
+    Query: ``source_path_idx``, and ``camera_pair`` (stereo) or ``camera`` (mono).
+    """
+    pair = request.args.get("camera_pair")
+    if pair:
+        cameras = [int(x) for x in pair.split(",")]
+    else:
+        cameras = [int(request.args.get("camera", 1))]
+    try:
+        source = get_config().get_calibration_source(_source_idx(request.args))
+    except (ValueError, IndexError):
+        return jsonify({"exists": False})
+    side = try_load_inputs(_sidecar_model_dir(source, cameras))
+    if side is None or not side.detections:
+        return jsonify({"exists": False})
+    coords = side.coords or {}
+    return jsonify({
+        "exists": True,
+        "det_key": side.det_key,
+        "sequence": coords.get("sequence") or {},
+        "cameras": coords.get("cameras") or {},
+        "stereo_config": coords.get("stereo_config"),
+        "n_detected": {str(c): len(v) for c, v in side.detections.items()},
+    })
+
+
+@calibration_stepped_bp.route("/calibration/stepped/inputs/save", methods=["POST"])
+def stepped_inputs_save():
+    """Persist the operator's clicks (fiducials / clicked_level / pose_levels) to the model
+    dir's ``inputs.mat`` as they are picked — so reopening restores them without a full
+    regenerate (config no longer holds clicks). Merges into the existing sidecar via
+    ``save_inputs`` (detections + sequence descriptor preserved). No-op until a sequence is
+    detected (clicks are made against the datum pose, so a sidecar normally already exists).
+
+    Body: ``source_path_idx``, ``camera_pair`` (stereo) or ``camera`` (mono), and
+    ``cameras`` = ``{"<cam>": {fiducials, clicked_level, pose_levels}}`` plus ``stereo_config``.
+    """
+    data = request.get_json() or {}
+    pair = data.get("camera_pair")
+    if pair:
+        cameras = [int(x) for x in (pair.split(",") if isinstance(pair, str) else pair)]
+    else:
+        cameras = [int(data.get("camera", 1))]
+    try:
+        source = get_config().get_calibration_source(_source_idx(data))
+    except (ValueError, IndexError):
+        return jsonify({"saved": False})
+    model_dir = _sidecar_model_dir(source, cameras)
+    side = try_load_inputs(model_dir)
+    if side is None or not side.detections:
+        return jsonify({"saved": False})  # nothing detected yet — no sidecar to attach to
+    coords = dict(side.coords or {})
+    cams_in = data.get("cameras") or {}
+    cams_out = dict(coords.get("cameras") or {})
+    for cam in cameras:
+        c = cams_in.get(str(cam))
+        if isinstance(c, dict):
+            cams_out[str(cam)] = c  # stored verbatim; restore handles partial/null picks
+    coords["cameras"] = cams_out
+    if data.get("stereo_config"):
+        coords["stereo_config"] = str(data["stereo_config"])
+    save_inputs(model_dir, path_type="stepped", board_type="stepped", coords=coords)
+    return jsonify({"saved": True})
+
+
+@calibration_stepped_bp.route("/calibration/stepped/restore_sequence", methods=["GET"])
+def restore_sequence():
+    """Rehydrate a saved sequence from the model dir's ``inputs.mat`` into the in-memory
+    cache, so the GUI re-shows the detection overlay + peak/trough + fiducials on auto-load
+    without re-detecting. Registers a fresh ``sequence_id`` (the cache is per-session) and
+    returns the same ``poses`` / ``datum_detection`` shape as ``detect_sequence`` plus the
+    saved per-camera clicks. Image-free: detections come straight from the sidecar.
+
+    Query: ``source_path_idx``, and ``camera_pair`` (stereo) or ``camera`` (mono).
+    Returns ``{"exists": False}`` when there is no usable sidecar (the normal first-use
+    state).
+    """
+    pair = request.args.get("camera_pair")
+    if pair:
+        cameras = [int(x) for x in pair.split(",")]
+    else:
+        cameras = [int(request.args.get("camera", 1))]
+    entry, _model_dir, side, err = _entry_from_sidecar(request.args, _cfg(), cameras)
+    if err is not None:
+        return jsonify({"exists": False})
+    sequence_id = uuid.uuid4().hex
+    with _sequence_lock:
+        _sequence_cache[sequence_id] = entry
+    poses, datum_detection = _summarize_sequence(entry)
+    coords = side.coords or {}
+    return jsonify({
+        "exists": True,
+        "sequence_id": sequence_id,
+        "cameras": [int(c) for c in entry["cameras"]],
+        "frame_indices": [int(f) for f in entry["frame_indices"]],
+        "datum_frame_idx": int(entry["datum_frame_idx"]),
+        "poses": poses,
+        "datum_detection": datum_detection,
+        "clicks": coords.get("cameras") or {},
+        "stereo_config": coords.get("stereo_config"),
+    })
 
 
 # ===========================================================================
@@ -342,9 +672,9 @@ def identify_pose_level():
     idx = WF._snap(det.image_points, (cx, cy))
     sx, sy = float(det.image_points[idx, 0]), float(det.image_points[idx, 1])
 
-    diag = _strip_internal(det.diagnostics)
-    a_centers = (diag.get("level_a") or {}).get("centers") or []
-    b_centers = (diag.get("level_b") or {}).get("centers") or []
+    la, lb = _overlay_blocks(det)
+    a_centers = (la or {}).get("centers") or []
+    b_centers = (lb or {}).get("centers") or []
 
     def _min_d2(centers):
         if not centers:
@@ -394,15 +724,23 @@ def snap_fiducial():
 # ROUTE 4: generate model (mono or stereo) — background job
 # ===========================================================================
 
-def _camera_spec(data: dict, camera: int) -> dict:
+def _camera_spec(data: dict, camera: int, sidecar_coords: Optional[dict] = None) -> dict:
     """Pull a camera's {fiducials, clicked_level, pose_levels} from the request.
 
-    Accepts either a per-camera ``cameras`` map (``{"<cam>": {...}}``) or, for the
-    mono case, the spec at the top level.
+    Accepts either a per-camera ``cameras`` map (``{"<cam>": {...}}``) or, for the mono
+    case, the spec at the top level. When the request carries no spec for this camera
+    (e.g. a regenerate-from-sidecar with an otherwise-empty body), falls back to the
+    clicks persisted in the sidecar ``coords``.
     """
     by_cam = data.get("cameras")
     if isinstance(by_cam, dict) and str(camera) in by_cam:
         return by_cam[str(camera)]
+    if any(data.get(k) for k in ("fiducials", "clicked_level", "pose_levels")):
+        return data
+    if sidecar_coords:
+        saved = (sidecar_coords.get("cameras") or {}).get(str(camera))
+        if saved:
+            return saved
     return data
 
 
@@ -434,6 +772,32 @@ def _validate_spec(spec: dict, frame_indices: List[int], camera: int):
     return (fiducials, clicked_level, pose_levels), None
 
 
+def _warn_missing_datum_image(
+    entry: dict, datum_index: int, camera: int, imgs: list
+) -> None:
+    """Loudly attribute a missing datum frame (the cause of the dewarp-figure failure).
+
+    The stepped fit reads ``image_size`` from ``entry`` and never touches the pixels, so a
+    frame that ``_reread_images`` left as ``None`` (sidecar restore + a per-frame load
+    failure) only surfaces deep in the figure writer. Name the cam/frame/source here so the
+    loader failure is attributable; the figure writer still degrades gracefully.
+    """
+    img = imgs[datum_index] if 0 <= datum_index < len(imgs) else None
+    if img is not None and np.asarray(img).ndim >= 2 and np.asarray(img).size > 0:
+        return
+    frame = entry["frame_indices"][datum_index]
+    logger.warning(
+        "stepped stereo: cam%s datum frame %s image missing (shape=%s) — dewarp figure "
+        "will show a placeholder. source_idx=%s format=%s; check the earlier image-reload "
+        "warning for the load failure.",
+        camera,
+        frame,
+        None if img is None else np.asarray(img).shape,
+        entry.get("source_idx"),
+        entry.get("image_format"),
+    )
+
+
 def _aligned(entry: dict, camera: int, pose_levels: dict):
     """(detections_list, images_list, pose_levels_list) aligned to frame order."""
     frame_indices = entry["frame_indices"]
@@ -447,61 +811,108 @@ def _aligned(entry: dict, camera: int, pose_levels: dict):
 def generate_model():
     """Run the stepped fit (mono or stereo) from a detected sequence, save + figures.
 
-    Request JSON: ``sequence_id``, ``stereo`` (bool), ``no_figures`` (bool), and a
-    per-camera spec — ``cameras: {"<cam>": {fiducials, clicked_level, pose_levels}}``
-    (or the spec at the top level for mono). Stereo also takes ``stereo_config``
-    ('auto'|'same_side'|'transmission'). Returns ``{job_id}``; poll for the result.
+    Request JSON: ``sequence_id`` (optional — omit to regenerate from the saved
+    sidecar), ``stereo`` (bool), ``no_figures`` (bool), and a per-camera spec —
+    ``cameras: {"<cam>": {fiducials, clicked_level, pose_levels}}`` (or top-level for
+    mono); the spec falls back to the sidecar clicks when the body omits it. Stereo
+    also takes ``stereo_config`` ('auto'|'same_side'|'transmission') and an optional
+    ``assumed_poses`` map ``{"<cam>": [frame_idx, ...]}`` of poses whose level was
+    assumed (datum) rather than user-verified. Returns ``{job_id}``; poll for the result.
     """
     data = request.get_json() or {}
-    sequence_id = data.get("sequence_id")
-    if not sequence_id:
-        return jsonify({"error": "sequence_id is required"}), 400
-    entry, err = _lookup(sequence_id)
-    if err is not None:
-        return err
-
     cfg = _cfg()
+    stereo = bool(data.get("stereo", False))
+    model_type = str(data.get("model_type", "pinhole"))
+    if model_type not in ("pinhole", "polynomial3d"):
+        return jsonify({"error": f"model_type must be 'pinhole' or 'polynomial3d', "
+                                 f"got {model_type!r}"}), 400
+    cameras_req = _resolve_cameras(data, cfg)
+
+    # Resolve the detected sequence: the live in-session cache first, else the persisted
+    # sidecar (a regenerate after restart / cache expiry / a fresh session with no clicks).
+    sequence_id = data.get("sequence_id")
+    entry = None
+    model_dir = None
+    side = None
+    if sequence_id:
+        entry, err = _lookup(sequence_id)
+        if err is not None:
+            entry = None  # expired/missing -> fall through to the sidecar
+    if entry is None:
+        entry, model_dir, side, err = _entry_from_sidecar(data, cfg, cameras_req)
+        if err is not None:
+            return err
+
     cameras = entry["cameras"]
     frame_indices = entry["frame_indices"]
     datum_index = frame_indices.index(entry["datum_frame_idx"])
     board = entry["params"].board()
     make_figs = not bool(data.get("no_figures", False))
-    stereo = bool(data.get("stereo", False))
     if stereo and len(cameras) < 2:
         return jsonify({"error": "stereo requested but the sequence has one camera"}), 400
-    model_type = str(data.get("model_type", "pinhole"))
-    if model_type not in ("pinhole", "polynomial3d"):
-        return jsonify({"error": f"model_type must be 'pinhole' or 'polynomial3d', "
-                                 f"got {model_type!r}"}), 400
-
-    # Validate every camera's spec up front (fail fast, before the job thread).
-    specs: Dict[int, tuple] = {}
     use_cams = cameras[:2] if stereo else cameras[:1]
-    for camera in use_cams:
-        parsed, verr = _validate_spec(_camera_spec(data, camera), frame_indices, camera)
-        if verr is not None:
-            return verr
-        specs[camera] = parsed
 
     try:
         source = get_config().get_calibration_source(int(entry["source_idx"]))
     except (ValueError, IndexError) as exc:
         return jsonify({"error": f"calibration source not configured ({exc})"}), 400
+    if model_dir is None:
+        model_dir = _sidecar_model_dir(source, use_cams)
+    if side is None:
+        side = try_load_inputs(model_dir)
+    sidecar_coords = side.coords if (side and side.coords) else None
+
+    # Validate every camera's spec up front (request first, sidecar clicks as fallback).
+    specs: Dict[int, tuple] = {}
+    for camera in use_cams:
+        parsed, verr = _validate_spec(
+            _camera_spec(data, camera, sidecar_coords), frame_indices, camera)
+        if verr is not None:
+            return verr
+        specs[camera] = parsed
+
+    # Persist the clicks + descriptor so a later session regenerates from the file alone.
+    try:
+        coords = dict(sidecar_coords) if sidecar_coords else {}
+        coords.update(_spec_to_coords(specs, use_cams, stereo, data))
+        save_inputs(model_dir, path_type="stepped", board_type="stepped", coords=coords)
+    except Exception as exc:
+        logger.warning("stepped generate: sidecar coords save failed (non-fatal): %s", exc)
+
+    # Figures need pixels. Both the sidecar restore AND restore_sequence cache image-free
+    # entries (images=[None]*N); only a freshly-detected sequence carries them. Gate the
+    # reload on whether images are actually missing — not on how the entry was sourced — so
+    # every restore path is covered.
+    if make_figs and _images_missing(entry):
+        _reread_images(entry)
+
+    # Poses whose level was assumed (datum) rather than user-verified, recorded for
+    # honesty in the saved model (the GUI gates + warns; here we only stamp what it
+    # reports). Cam-prefixed keys keep them MATLAB-identifier-safe (gotcha #5).
+    assumed_raw = data.get("assumed_poses") or {}
+    assumed_poses = {
+        f"cam{c}": [int(f) for f in (assumed_raw.get(str(c)) or assumed_raw.get(c) or [])]
+        for c in use_cams
+    }
 
     job_id = job_manager.create_job(
         "calibration_stepped_generate_model", stereo=stereo, stage="starting")
 
     def _run():
+        from .views import _intrinsics  # local: views imports this module first
+
         try:
             job_manager.update_job(job_id, status="running", stage="fitting", progress=10)
+            fig_dir = (model_dir.parent / "figures") if make_figs else None
             if stereo:
                 cam1, cam2 = use_cams[0], use_cams[1]
                 fid1, lvl1, pl1 = specs[cam1]
                 fid2, lvl2, pl2 = specs[cam2]
                 d1, i1, levels1 = _aligned(entry, cam1, pl1)
                 d2, i2, levels2 = _aligned(entry, cam2, pl2)
-                model_dir = rec.stereo_model_dir_for_source(source, cam1, cam2)
-                fig_dir = (model_dir.parent / "figures") if make_figs else None
+                if fig_dir is not None:
+                    _warn_missing_datum_image(entry, datum_index, cam1, i1)
+                    _warn_missing_datum_image(entry, datum_index, cam2, i2)
                 record = calibrate_stepped_stereo(
                     detections1=d1, detections2=d2, fiducials1=fid1, fiducials2=fid2,
                     clicked_level1=lvl1, clicked_level2=lvl2,
@@ -510,32 +921,41 @@ def generate_model():
                     image_size2=entry["image_size"][cam2],
                     cam1=cam1, cam2=cam2, datum_index=datum_index,
                     stereo_config=str(data.get("stereo_config", "auto")),
-                    model_type=model_type,
+                    model_type=model_type, fix_k2=bool(data.get("fix_k2", False)),
                     distortion_model=_MODEL, images1=i1, images2=i2, figure_dir=fig_dir)
+                record.board_meta["assumed_poses"] = assumed_poses
                 path = rec.save_stereo(record, model_dir)
-                job_manager.complete_job(
-                    job_id, stereo=True, model_type=model_type, model_path=str(path),
+                done = dict(
+                    stereo=True, model_type=model_type, model_path=str(path),
                     rms_cam1=_model_rms(record.model1), rms_cam2=_model_rms(record.model2),
                     per_view_rms1=list(record.per_view_rms1),
                     per_view_rms2=list(record.per_view_rms2),
                     plane_rms_cam1=_plane_rms(record.model1),
                     plane_rms_cam2=_plane_rms(record.model2),
-                    num_pairs_used=len(record.per_view_rms1),
+                    num_pairs_used=record.board_meta.get(
+                        "n_stereo_views", len(record.per_view_rms1)),
                     stereo_config=record.board_meta.get("stereo_config"),
                     baseline_mm=record.board_meta.get("baseline_mm"),
                     relative_angle_deg=record.board_meta.get("relative_angle_deg"),
+                    method=record.board_meta.get("stereo_method"),
+                    assumed_poses=assumed_poses,
                     figures=_list_figures(fig_dir))
+                if model_type == "pinhole":
+                    # Per-camera intrinsics so the card fills without a second fetch.
+                    # Compose has no joint reprojection RMS -> no stereo_rms_px reported.
+                    done["intrinsics1"] = _intrinsics(record.model1)
+                    done["intrinsics2"] = _intrinsics(record.model2)
+                job_manager.complete_job(job_id, **done)
             else:
                 camera = use_cams[0]
                 fid, lvl, pl = specs[camera]
                 d, i, levels = _aligned(entry, camera, pl)
-                model_dir = rec.mono_model_dir_for_source(source, camera, "stepped")
-                fig_dir = (model_dir.parent / "figures") if make_figs else None
                 record = calibrate_stepped_mono(
                     detections=d, fiducials=fid, clicked_level=lvl, pose_levels=levels,
                     board=board, image_size=entry["image_size"][camera],
                     camera=camera, datum_index=datum_index, distortion_model=_MODEL,
                     model_type=model_type, images=i, figure_dir=fig_dir)
+                record.board_meta["assumed_poses"] = assumed_poses
                 path = rec.save_mono(record, model_dir)
                 cm = record.camera_model
                 done = dict(
@@ -545,6 +965,7 @@ def generate_model():
                     per_view_rms=list(record.per_view_rms),
                     plane_rms=_plane_rms(cm),
                     clicked_level=record.board_meta.get("clicked_level"),
+                    assumed_poses=assumed_poses,
                     figures=_list_figures(fig_dir))
                 if model_type == "pinhole":
                     # Intrinsics are pinhole-only; a polynomial has no K.

@@ -356,6 +356,7 @@ def reconstruct_stereo_run(
     tilt_y: float = 0.0,
     progress_cb: Optional[Callable[[int, int], None]] = None,
     vector_glob: str = "B*.mat",
+    interpolator: str = "lanczos",
 ) -> List[str]:
     """3C reconstruction over a run: cam1 + cam2 uncalibrated -> stereo (U,V,W) m/s.
 
@@ -390,11 +391,12 @@ def reconstruct_stereo_run(
         v2 = read_vectors(bmats2[name])
         if p not in v1 or p not in v2:
             continue
-        ux1, uy1, _ = v1[p]
-        ux2, uy2, _ = v2[p]
-        wx, wy, wz, U, V, Wc = reconstruct_3c_field(
+        ux1, uy1, b1 = v1[p]
+        ux2, uy2, b2 = v2[p]
+        wx, wy, wz, U, V, Wc, bmask = reconstruct_3c_field(
             record.model1, record.model2, c1, ux1, uy1, c2, ux2, uy2,
-            dt, z_world, tilt_x, tilt_y,
+            dt, z_world, tilt_x, tilt_y, interpolator=interpolator,
+            bmask1=b1, bmask2=b2,
         )
         n_passes = p + 1
         # The reconstructed world grid (wx, wy) is frame-invariant — write coordinates
@@ -404,13 +406,17 @@ def reconstruct_stereo_run(
             scipy.io.savemat(str(out_dir / "coordinates.mat"),
                              {"coordinates": cs}, oned_as="row", do_compression=True)
             coords_written = True
-        st = np.empty((n_passes,), dtype=[("ux", object), ("uy", object), ("uz", object)])
+        st = np.empty(
+            (n_passes,),
+            dtype=[("ux", object), ("uy", object), ("uz", object), ("b_mask", object)],
+        )
         empty = np.array([], dtype=np.float64)
         for i in range(n_passes):
             if i == p:
                 st["ux"][i], st["uy"][i], st["uz"][i] = U, V, Wc
+                st["b_mask"][i] = bmask
             else:
-                st["ux"][i] = st["uy"][i] = st["uz"][i] = empty
+                st["ux"][i] = st["uy"][i] = st["uz"][i] = st["b_mask"][i] = empty
         out_b = out_dir / name
         scipy.io.savemat(str(out_b), {"piv_result": st}, oned_as="row", do_compression=True)
         written.append(str(out_b))

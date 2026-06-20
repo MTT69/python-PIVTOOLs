@@ -104,7 +104,7 @@ def _level_a_label(detection, proj, gt_z):
     """
     from scipy.spatial import cKDTree
 
-    a_full = detection.diagnostics["_level_a_full"]
+    a_full = detection.level_data["a"]
     centers = np.asarray(a_full["centers"], dtype=np.float64)
     idx = cKDTree(proj).query(centers)[1]
     return "peak" if np.median(gt_z[idx]) > -STEP_MM / 2.0 else "trough"
@@ -182,6 +182,50 @@ def test_stepped_mono_recovers_intrinsics_and_frame(stepped_mono_scene, request)
         _make_figure(K_true, images, detections, record, fiducials)
 
 
+def test_stepped_mono_single_view_pinhole(stepped_mono_scene, request):
+    """A single stepped view calibrates a pinhole on its own. The board's two Z-levels
+    make one view non-coplanar (the 3D-calibration-object case DaVis' un-bundled
+    PinholeOpenCV uses), so the <3-pose branch recovers K + pose without the multi-view
+    Zhang init. Focal + frame are recovered; higher-order distortion is less constrained
+    than a multi-view fit (hence >=3 views remain preferable)."""
+    K_true, _images, detections, fiducials, pose_levels = stepped_mono_scene
+    board = SteppedBoardSpec(dot_spacing_mm=SPACING_MM, step_height_mm=STEP_MM)
+
+    # Only the datum pose -> exercises fit_pinhole_single_view (no >=3 RuntimeError).
+    record = calibrate_stepped_mono(
+        detections=detections[:1],
+        fiducials=fiducials,
+        clicked_level="peak",
+        pose_levels=pose_levels[:1],
+        board=board,
+        image_size=(W, H),
+        camera=1,
+        datum_index=0,
+    )
+
+    cam = record.camera_model
+    assert isinstance(cam, CameraModel)
+    assert int(record.board_meta["n_views"]) == 1
+
+    # Focal recovered from one view (noise-free synthetic). Looser than the multi-view
+    # bound — a single view constrains the focal less, but it is well within usable range.
+    fx_true = float(K_true[0, 0])
+    assert abs(float(cam.K[0, 0]) - fx_true) / fx_true < 0.05, (
+        f"single-view fx {cam.K[0, 0]:.1f} vs true {fx_true:.1f}"
+    )
+    # Self-consistent sub-pixel fit on noise-free renders.
+    assert cam.rms < 1.0, f"single-view RMS too high: {cam.rms:.3f}px"
+
+    # World frame still anchored to the datum clicks: origin back-projects to (0,0,0).
+    origin_world = cam.back_project_to_plane(
+        np.array([fiducials["origin"]]), z_world=0.0
+    )[0]
+    assert np.linalg.norm(origin_world) < SPACING_MM / 8.0, f"origin world {origin_world}"
+
+    if request.config.getoption("--make-figures", default=False):
+        _make_figure(K_true, _images, detections, record, fiducials, slug="single-view")
+
+
 def test_stepped_mono_round_trips_through_record(stepped_mono_scene, tmp_path):
     _K, _imgs, detections, fiducials, pose_levels = stepped_mono_scene
     board = SteppedBoardSpec(dot_spacing_mm=SPACING_MM, step_height_mm=STEP_MM)
@@ -216,7 +260,7 @@ def test_stepped_mono_rejects_label_conflict(stepped_mono_scene):
         )
 
 
-def _make_figure(K_true, images, detections, record, fiducials):
+def _make_figure(K_true, images, detections, record, fiducials, slug="stepped-mono-fit"):
     import matplotlib
 
     matplotlib.use("Agg")
@@ -261,5 +305,5 @@ def _make_figure(K_true, images, detections, record, fiducials):
     ax[2].set_title("fitted model")
 
     fig.tight_layout()
-    fig.savefig(_figpath("stepped-mono-fit"), dpi=110)
+    fig.savefig(_figpath(slug), dpi=110)
     plt.close(fig)

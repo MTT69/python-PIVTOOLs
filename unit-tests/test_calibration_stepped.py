@@ -100,8 +100,8 @@ def test_stepped_detector_separates_and_stitches(stepped_render, request):
     # filtering in grid assembly (normal, and harmless for calibration), so the
     # yield bar is "most dots", not "every dot" — the geometry checks below are the
     # real correctness test.
-    na = res.diagnostics["level_a"]["n_points"]
-    nb = res.diagnostics["level_b"]["n_points"]
+    na = len(res.level_data["a"]["centers"])
+    nb = len(res.level_data["b"]["centers"])
     assert na >= 0.75 * (PEAK_COLS * PEAK_ROWS), f"level A short: {na}"
     assert nb >= 0.75 * (TROUGH_COLS * TROUGH_ROWS), f"level B short: {nb}"
     assert res.n >= 0.78 * (PEAK_COLS * PEAK_ROWS + TROUGH_COLS * TROUGH_ROWS), (

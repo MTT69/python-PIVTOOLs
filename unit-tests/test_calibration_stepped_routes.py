@@ -254,3 +254,117 @@ def test_expired_sequence_returns_410(client):
     r = client.get("/calibration/stepped/sequence_pose_detection",
                    query_string={"sequence_id": "deadbeef", "camera": 1, "frame_idx": 1})
     assert r.status_code == 410 and "not found" in r.get_json()["error"]
+
+
+# ---------------------------------------------------------------------------
+# 5. Restore the overlay from the sidecar after the in-memory cache is gone
+# ---------------------------------------------------------------------------
+
+def test_restore_sequence_rehydrates_from_sidecar(client, scene):
+    """detect + generate persists detections + clicks to inputs.mat; after the in-memory
+    cache is dropped (reload), restore_sequence rebuilds a live sequence from the sidecar so
+    the GUI can re-show the overlay + fiducials + peak/trough without re-detecting."""
+    sid, _ = _detect(client, [1, 2])
+    gen = client.post("/calibration/stepped/generate_model", json={
+        "sequence_id": sid, "stereo": True, "stereo_config": "auto",
+        "cameras": {"1": _spec(scene, 1), "2": _spec(scene, 2)}})
+    done = _wait(client, f"/calibration/stepped/generate_model/status/{gen.get_json()['job_id']}")
+    assert done["status"] == "completed", done
+
+    # Simulate a reload / new session: the in-memory cache is gone, only the sidecar remains.
+    sv._sequence_cache.clear()
+
+    r = client.get("/calibration/stepped/restore_sequence",
+                   query_string={"camera_pair": "1,2", "source_path_idx": 0})
+    body = r.get_json()
+    assert r.status_code == 200 and body["exists"], body
+    assert body["sequence_id"] and body["sequence_id"] != sid  # fresh, live id
+
+    # Detection overlay restored for both cameras — incl. the per-level dot centres + grid
+    # indices the GUI draws (these survive the sidecar round-trip, not just the `ok` flag).
+    assert set(body["poses"]) == {"1", "2"}
+    assert len(body["poses"]["1"]) == len(FRAMES)
+    datum1 = body["datum_detection"]["1"]
+    assert datum1["ok"] and body["datum_detection"]["2"]["ok"]
+    assert datum1["level_a"] and datum1["level_a"]["centers"], "level_a centers missing"
+    assert datum1["level_b"] and datum1["level_b"]["centers"], "level_b centers missing"
+    assert datum1["level_a"]["grid_indices"], "level_a grid_indices missing"
+
+    # Operator clicks restored: fiducials + datum face + per-pose peak/trough labels.
+    assert set(body["clicks"]) == {"1", "2"}
+    assert body["clicks"]["1"]["clicked_level"] == "peak"
+    assert set(body["clicks"]["1"]["fiducials"]) == {"origin", "x_axis", "y_axis"}
+    assert body["clicks"]["1"]["pose_levels"]
+
+    # The restored sequence is live in the cache: per-pose detection works with the new id.
+    pd = client.get("/calibration/stepped/sequence_pose_detection",
+                    query_string={"sequence_id": body["sequence_id"], "camera": 1, "frame_idx": 1})
+    assert pd.status_code == 200 and pd.get_json()["ok"]
+
+
+def test_generate_after_reload_from_sidecar(client, scene):
+    """The whole regression: detect + generate, drop the in-memory cache (reopen the tab),
+    restore from the sidecar, then GENERATE AGAIN against the restored sequence. This fails
+    if the fit's per-level grids (centers + grid_indices + H + vec1/vec2) don't survive the
+    sidecar round-trip — the "datum pose has no detected grid level" bug. The earlier restore
+    test only checks the overlay; this one re-solves."""
+    sid, _ = _detect(client, [1, 2])
+    first = client.post("/calibration/stepped/generate_model", json={
+        "sequence_id": sid, "stereo": True, "stereo_config": "auto",
+        "cameras": {"1": _spec(scene, 1), "2": _spec(scene, 2)}})
+    done = _wait(client, f"/calibration/stepped/generate_model/status/{first.get_json()['job_id']}")
+    assert done["status"] == "completed", done
+
+    sv._sequence_cache.clear()  # reopen: in-memory cache gone, only the sidecar remains
+
+    body = client.get("/calibration/stepped/restore_sequence",
+                      query_string={"camera_pair": "1,2", "source_path_idx": 0}).get_json()
+    assert body["exists"], body
+    restored_sid = body["sequence_id"]
+
+    # Re-solve from the sidecar-restored sequence — this is what was raising RuntimeError.
+    again = client.post("/calibration/stepped/generate_model", json={
+        "sequence_id": restored_sid, "stereo": True, "stereo_config": "auto",
+        "cameras": {"1": _spec(scene, 1), "2": _spec(scene, 2)}})
+    done2 = _wait(client, f"/calibration/stepped/generate_model/status/{again.get_json()['job_id']}")
+    assert done2["status"] == "completed", done2
+    assert done2["rms_cam1"] < 1.0 and done2["rms_cam2"] < 1.0
+    assert done2["num_pairs_used"] == len(FRAMES)
+
+
+def test_restore_sequence_absent_returns_exists_false(client):
+    """No sidecar for this source -> the normal first-use state, not an error."""
+    r = client.get("/calibration/stepped/restore_sequence",
+                   query_string={"camera_pair": "1,2", "source_path_idx": 0})
+    assert r.status_code == 200 and r.get_json() == {"exists": False}
+
+
+def test_inputs_save_persists_clicks_without_generate(client, scene):
+    """Clicks persist to the sidecar via inputs/save as they are picked (no generate, no
+    config) — restore then brings them back. This is the per-pick persistence that replaces
+    the old config write."""
+    _detect(client, [1, 2])
+    r = client.post("/calibration/stepped/inputs/save", json={
+        "camera_pair": "1,2", "source_path_idx": 0, "stereo_config": "auto",
+        "cameras": {"1": _spec(scene, 1), "2": _spec(scene, 2)},
+    })
+    assert r.status_code == 200 and r.get_json()["saved"], r.get_json()
+
+    sv._sequence_cache.clear()  # simulate reload (in-memory cache gone, sidecar remains)
+
+    body = client.get("/calibration/stepped/restore_sequence",
+                      query_string={"camera_pair": "1,2", "source_path_idx": 0}).get_json()
+    assert body["exists"] and set(body["clicks"]) == {"1", "2"}
+    assert body["clicks"]["1"]["fiducials"]["origin"]
+    assert body["clicks"]["1"]["clicked_level"] == "peak"
+    assert body["clicks"]["1"]["pose_levels"]
+    assert body["stereo_config"] == "auto"
+
+
+def test_inputs_save_noop_without_detection(client, scene):
+    """No detected sequence -> nothing to attach clicks to -> saved:false (not an error)."""
+    r = client.post("/calibration/stepped/inputs/save", json={
+        "camera_pair": "1,2", "source_path_idx": 0,
+        "cameras": {"1": _spec(scene, 1)},
+    })
+    assert r.status_code == 200 and r.get_json() == {"saved": False}

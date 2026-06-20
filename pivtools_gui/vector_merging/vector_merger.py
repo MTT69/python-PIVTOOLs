@@ -82,12 +82,19 @@ def apply_cli_settings_to_config():
     return reload_config()
 
 
-def _convert_to_half_precision(arr: np.ndarray) -> np.ndarray:
-    """Convert float arrays to half precision (float16) for space saving."""
+def _convert_to_single_precision(arr: np.ndarray) -> np.ndarray:
+    """Downcast float arrays to float32 for space saving.
+
+    float32, not float16: float16 ULP exceeds the grid spacing for large world
+    coordinates (near 2000 mm the ULP is 2 mm, collapsing adjacent grid points to
+    the same value). The upstream coordinate writer
+    (``save_coordinates_from_config_distributed``) keeps float32 for exactly this
+    reason; the merged coordinates must match.
+    """
     if arr is None or arr.size == 0:
         return arr
     if arr.dtype.kind == "f":
-        return arr.astype(np.float16)
+        return arr.astype(np.float32)
     return arr
 
 
@@ -1192,16 +1199,17 @@ class VectorMerger:
                 x_coords = merged_runs[run_num]["x"]
                 y_coords = merged_runs[run_num]["y"]
 
-                # Convert to half precision for space saving
-                x_coords = _convert_to_half_precision(x_coords)
-                y_coords = _convert_to_half_precision(y_coords)
+                # Downcast to float32 for space saving (NOT float16 — float16
+                # quantises large world coordinates below the grid spacing)
+                x_coords = _convert_to_single_precision(x_coords)
+                y_coords = _convert_to_single_precision(y_coords)
 
                 coordinates[run_idx]["x"] = x_coords
                 coordinates[run_idx]["y"] = y_coords
             else:
                 # Empty run
-                coordinates[run_idx]["x"] = np.array([], dtype=np.float16)
-                coordinates[run_idx]["y"] = np.array([], dtype=np.float16)
+                coordinates[run_idx]["x"] = np.array([], dtype=np.float32)
+                coordinates[run_idx]["y"] = np.array([], dtype=np.float32)
 
         scipy.io.savemat(
             str(coords_file), {"coordinates": coordinates}, do_compression=True
@@ -1212,10 +1220,12 @@ class VectorMerger:
     def merge_all_frames(
         self,
         progress_callback: Optional[Callable[[dict], None]] = None,
-        max_workers: int = 8,
     ) -> dict:
         """
         Process all frames with multiprocessing support.
+
+        Worker count is resolved from the ``processing.post_processing_workers``
+        config knob via ``get_max_workers``.
 
         Args:
             progress_callback: Optional callback receiving dict with:
@@ -1223,12 +1233,13 @@ class VectorMerger:
                 - processed_frames: int
                 - total_frames: int
                 - message: str
-            max_workers: Maximum number of parallel workers (default: 8)
 
         Returns:
             dict with:
                 - success: bool
-                - processed_count: int
+                - processed_count: int (frames that produced merged output)
+                - failed_count: int (frames that errored or produced no output)
+                - failed_frames: list (frame indices that failed)
                 - output_dir: str
                 - valid_runs: list
                 - error: str (if failed)
@@ -1319,8 +1330,12 @@ class VectorMerger:
             for frame_idx in frame_indices
         ]
 
-        # Process frames in parallel
+        # Process frames in parallel.
+        # completed_count drives progress (every future, success or fail);
+        # processed_count is frames that actually produced merged output.
+        completed_count = 0
         processed_count = 0
+        failed_frames = []
         last_merged_runs = None
 
         if progress_callback:
@@ -1340,43 +1355,76 @@ class VectorMerger:
 
                 for future in as_completed(futures):
                     frame_idx, success, merged_runs = future.result()
-                    processed_count += 1
+                    completed_count += 1
 
                     if success and merged_runs:
+                        processed_count += 1
                         last_merged_runs = merged_runs
+                    else:
+                        failed_frames.append(frame_idx)
 
-                    # Update progress
+                    # Update progress (driven by completed count so it still
+                    # reaches 100% when some frames fail)
                     if progress_callback:
                         progress = int(
-                            (processed_count / num_files_to_process) * 90
+                            (completed_count / num_files_to_process) * 90
                         ) + 5
                         progress_callback({
                             "progress": min(progress, 95),
-                            "processed_frames": processed_count,
+                            "processed_frames": completed_count,
                             "total_frames": num_files_to_process,
-                            "message": f"Merged {processed_count}/{num_files_to_process} files",
+                            "message": f"Merged {processed_count}/{completed_count} files",
                         })
 
-                    if processed_count % 10 == 0:
+                    if completed_count % 10 == 0:
                         logger.info(
-                            f"Merged {processed_count}/{num_files_to_process} files"
+                            f"Merged {processed_count}/{completed_count} files "
+                            f"(of {num_files_to_process})"
                         )
 
             # Save coordinates
             if last_merged_runs:
                 self.save_coordinates(last_merged_runs, total_runs)
 
+            # Surface failures — a frame that errored or produced no output is
+            # logged and reported, never silently counted as merged.
+            if failed_frames:
+                shown = failed_frames[:20]
+                suffix = " ..." if len(failed_frames) > 20 else ""
+                logger.warning(
+                    f"{len(failed_frames)} of {num_files_to_process} frame(s) "
+                    f"produced no merged output: {shown}{suffix}"
+                )
+
+            # No frame merged at all → a failure, not a success with 0 files.
+            if processed_count == 0:
+                return {
+                    "success": False,
+                    "error": (
+                        f"No frames merged successfully "
+                        f"({len(failed_frames)}/{num_files_to_process} failed)"
+                    ),
+                    "processed_count": 0,
+                    "failed_count": len(failed_frames),
+                    "failed_frames": failed_frames,
+                }
+
             if progress_callback:
+                message = f"Complete: merged {processed_count}/{num_files_to_process} files"
+                if failed_frames:
+                    message += f" ({len(failed_frames)} failed)"
                 progress_callback({
                     "progress": 100,
-                    "processed_frames": processed_count,
+                    "processed_frames": completed_count,
                     "total_frames": num_files_to_process,
-                    "message": f"Complete: merged {processed_count} files",
+                    "message": message,
                 })
 
             return {
                 "success": True,
                 "processed_count": processed_count,
+                "failed_count": len(failed_frames),
+                "failed_frames": failed_frames,
                 "output_dir": str(self.output_dir),
                 "valid_runs": valid_runs,
             }
@@ -1386,6 +1434,9 @@ class VectorMerger:
             return {
                 "success": False,
                 "error": str(e),
+                "processed_count": processed_count,
+                "failed_count": len(failed_frames),
+                "failed_frames": failed_frames,
             }
 
     def run(self) -> dict:

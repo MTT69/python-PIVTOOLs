@@ -594,3 +594,27 @@ def test_extend_hint_along_ambiguous_axis_still_raises():
     }  # along the shared column — does not break the tie
     with pytest.raises(ValueError, match="does not clearly pick|ambiguous"):
         resolve_global_grid(detections, spec, spacing_mm=SPACING)
+
+
+def test_pick_by_extend_separates_same_direction_folds():
+    """Two folds that extend the SAME way (both −Y) but sit a column apart: the cosine test ties
+    (the bug where clicking the overlay confirm did nothing), yet the confirmed candidate's exact
+    footprint vector still picks it via the nearest-footprint fallback. Direct at the picker level
+    because such a geometry is awkward to build through the full dataset helper."""
+    from pivtools_gui.calibration.global_grid import _pick_by_extend
+
+    ag = np.array([10.0, 5.0])
+    # Two candidates whose centroids sit a column apart but both ~6 rows below the anchor (−Y).
+    gidx_a = np.array([[10.5, -1.0]])  # centroid − anchor = (0.5, −6.0)
+    gidx_b = np.array([[11.5, -1.0]])  # centroid − anchor = (1.5, −6.0)
+    scored = [(None, gidx_a, "Ha", 0.1), (None, gidx_b, "Hb", 0.1)]
+
+    # The normalised directions of (0.5,−6) and (1.5,−6) are nearly identical, so the old cosine-
+    # only picker raised here. The fallback matches the stored footprint vector exactly.
+    gidx, H = _pick_by_extend(scored, ag, (0.5, -6.0))
+    assert H == "Ha"
+    np.testing.assert_array_equal(gidx, gidx_a)
+
+    gidx, H = _pick_by_extend(scored, ag, (1.5, -6.0))
+    assert H == "Hb"
+    np.testing.assert_array_equal(gidx, gidx_b)

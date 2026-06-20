@@ -62,6 +62,10 @@ class InputsRecord:
     coords: Optional[Dict[str, Any]] = None
     detections: Optional[Dict[int, List[DetectionResult]]] = None
     image_size_by_cam: Dict[int, Tuple[int, int]] = field(default_factory=dict)
+    # Board geometry (the ``record.geometry_meta`` dict) that produced the detections, so a model
+    # can be regenerated — and the GUI/CLI can read geometry — without re-typing it into config.
+    # None when the writer did not supply it (e.g. a legacy sidecar).
+    board_params: Optional[Dict[str, Any]] = None
     # Identifies the parameters (n_views, format, board params, ...) that produced the stored
     # detections, so a caller can tell whether they still match the current request before
     # reusing them instead of re-detecting. Empty when detections were not param-keyed.
@@ -113,14 +117,18 @@ def _dumps(obj: Any) -> str:
 # into a failed view's diagnostics) cannot bloat the sidecar — see _diagnostics_for_storage.
 _MAX_DIAG_LIST = 64
 
+# Array fields of a raw per-level grid dict that must come back as ndarrays for the fit.
+_LEVEL_ARRAY_FIELDS = ("centers", "grid_indices", "H", "vec1", "vec2")
+
 
 def _diagnostics_for_storage(diag: Dict[str, Any]) -> Dict[str, Any]:
-    """Keep only small scalar diagnostics; drop arrays / large lists / nested structures.
+    """Keep small scalar diagnostics; drop bulky arrays / images / nested dicts.
 
     Diagnostics are debug metadata, NOT a solve input — the resolvers and solve never read them.
     A detector can park a whole image in here (a failed view's ``flat_field``), which JSON would
     inflate to tens of MB; this keeps the useful scalars (counts, angles, the error string) and
-    drops the bulk so the sidecar stays small.
+    drops the bulk so the sidecar stays small. Genuine fit inputs (e.g. the stepped per-level
+    grids) live on first-class ``DetectionResult`` fields, not here.
     """
     out: Dict[str, Any] = {}
     for k, v in (diag or {}).items():
@@ -134,6 +142,34 @@ def _diagnostics_for_storage(diag: Dict[str, Any]) -> Dict[str, Any]:
             out[k] = list(v)
         # else (ndarray, long list, nested dict, image): dropped — not needed to re-solve
     return out
+
+
+def _rehydrate_level(lv: Any) -> Optional[Dict[str, Any]]:
+    """One loaded per-level grid dict -> arrays restored to ndarray (or None)."""
+    if not isinstance(lv, dict):
+        return None
+    out = dict(lv)
+    if "centers" in out:
+        out["centers"] = np.asarray(out["centers"], dtype=np.float64).reshape(-1, 2)
+    if "grid_indices" in out:
+        out["grid_indices"] = np.asarray(out["grid_indices"], dtype=np.int64).reshape(-1, 2)
+    if out.get("H") is not None:
+        out["H"] = np.asarray(out["H"], dtype=np.float64).reshape(3, 3)
+    for k in ("vec1", "vec2"):
+        if out.get(k) is not None:
+            out[k] = np.asarray(out[k], dtype=np.float64).reshape(-1)
+    return out
+
+
+def _level_data_from(json_str: str) -> Optional[Dict[str, Any]]:
+    """Inverse of ``_dumps(level_data)`` — rehydrate the two per-level grids to ndarrays."""
+    try:
+        ld = json.loads(json_str or "null")
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(ld, dict):
+        return None
+    return {"a": _rehydrate_level(ld.get("a")), "b": _rehydrate_level(ld.get("b"))}
 
 
 def _str_field(v: Any) -> str:
@@ -169,6 +205,7 @@ def _detection_to_dict(camera: int, view: int, d: DetectionResult) -> Dict[str, 
         "board_to_pixel": _empty_if_none(d.board_to_pixel),
         "spacing_mm": float(d.spacing_mm) if d.spacing_mm is not None else float("nan"),
         "synthetic_mask": _empty_if_none(d.synthetic_mask),
+        "level_data_json": _dumps(d.level_data),
         "diagnostics_json": _dumps(_diagnostics_for_storage(d.diagnostics)),
     }
 
@@ -200,6 +237,7 @@ def _detection_from(obj) -> Tuple[int, int, DetectionResult]:
         diag = json.loads(_str_field(getattr(obj, "diagnostics_json", "")) or "{}")
     except (ValueError, TypeError):
         diag = {}
+    level_data = _level_data_from(_str_field(getattr(obj, "level_data_json", "")))
 
     d = DetectionResult(
         success=bool(int(_scalar(getattr(obj, "success", 0)))),
@@ -211,6 +249,7 @@ def _detection_from(obj) -> Tuple[int, int, DetectionResult]:
         board_to_pixel=b2p,
         spacing_mm=spacing,
         synthetic_mask=sm,
+        level_data=level_data,
         diagnostics=diag,
     )
     return int(_scalar(obj.camera)), int(_scalar(obj.view)), d
@@ -232,6 +271,12 @@ def load_inputs(model_dir) -> InputsRecord:
         coords = json.loads(coords_json)
     except (ValueError, TypeError):
         coords = None
+
+    board_params_json = _str_field(mat.get("board_params_json")) or "null"
+    try:
+        board_params = json.loads(board_params_json)
+    except (ValueError, TypeError):
+        board_params = None
 
     detections: Optional[Dict[int, List[DetectionResult]]] = None
     det_count = int(_scalar(mat.get("det_count", 0))) if "det_count" in mat else 0
@@ -259,6 +304,7 @@ def load_inputs(model_dir) -> InputsRecord:
         detections=detections,
         image_size_by_cam=image_size,
         det_key=_str_field(mat.get("det_key")),
+        board_params=board_params,
     )
 
 
@@ -285,6 +331,7 @@ def save_inputs(
     detections: Any = _UNSET,
     image_size_by_cam: Any = _UNSET,
     det_key: Any = _UNSET,
+    board_params: Any = _UNSET,
 ) -> Path:
     """Write the sidecar, MERGING with any existing file.
 
@@ -303,6 +350,7 @@ def save_inputs(
             detections=detections,
             image_size_by_cam=image_size_by_cam,
             det_key=det_key,
+            board_params=board_params,
         )
 
 
@@ -315,6 +363,7 @@ def _save_inputs_locked(
     detections: Any,
     image_size_by_cam: Any,
     det_key: Any,
+    board_params: Any,
 ) -> Path:
     prev = try_load_inputs(model_dir)
 
@@ -325,12 +374,16 @@ def _save_inputs_locked(
     else:
         fin_sizes = prev.image_size_by_cam if prev else {}
     fin_key = det_key if det_key is not _UNSET else (prev.det_key if prev else "")
+    fin_params = (
+        board_params if board_params is not _UNSET else (prev.board_params if prev else None)
+    )
 
     data: Dict[str, Any] = {
         "schema_version": int(SCHEMA_VERSION),
         "path_type": str(path_type),
         "board_type": str(board_type),
         "coords_json": _dumps(fin_coords),  # None -> "null"
+        "board_params_json": _dumps(fin_params),  # None -> "null"
         "det_key": str(fin_key or ""),
     }
 

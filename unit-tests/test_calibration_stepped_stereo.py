@@ -147,7 +147,7 @@ def _level_a_label(detection, proj, gt_z):
     Stands in for the GUI per-pose click-to-label step (the parity-based A/B split is
     per-pose arbitrary — see the S2 mono test).
     """
-    a_full = detection.diagnostics["_level_a_full"]
+    a_full = detection.level_data["a"]
     centers = np.asarray(a_full["centers"], dtype=np.float64)
     idx = cKDTree(proj).query(centers)[1]
     return "peak" if np.median(gt_z[idx]) > -STEP_MM / 2.0 else "trough"
@@ -284,6 +284,11 @@ def test_stepped_stereo_same_side_recovery(same_side_scene, request):
     assert rec.board_meta["stereo_config"] == "same_side"
     assert rec.board_type == "stepped"
 
+    # Parity board_meta (Phase 4): compose method + view count + per-camera diagnostics.
+    assert rec.board_meta["stereo_method"] == "compose"
+    assert rec.board_meta["n_stereo_views"] >= 1
+    assert set(rec.board_meta["view_diagnostics"]) == {"cam1", "cam2"}
+
     # Both cameras fit sub-pixel on noise-free renders.
     assert rec.model1.rms < 1.0 and rec.model2.rms < 1.0, (rec.model1.rms, rec.model2.rms)
     assert max(rec.per_view_rms1) < 1.0 and max(rec.per_view_rms2) < 1.0
@@ -300,7 +305,7 @@ def test_stepped_stereo_same_side_recovery(same_side_scene, request):
     m1, m2 = rec.model1, rec.model2
     d1 = m1.project(wp + vel) - m1.project(wp)
     d2 = m2.project(wp + vel) - m2.project(wp)
-    vr = reconstruct_3c_at_points(m1, m2, wp, d1, d2, z_toward_cameras=False)
+    vr = reconstruct_3c_at_points(m1, m2, wp, d1, d2)
     assert np.nanmax(np.abs(vr - vel)) < 0.02, f"3C recon err {np.nanmax(np.abs(vr - vel)):.4f}"
 
     if request.config.getoption("--make-figures", default=False):

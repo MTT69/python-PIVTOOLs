@@ -406,6 +406,48 @@ def _meta_from(obj) -> Dict[str, Any]:
     return out
 
 
+def geometry_meta(
+    board: str,
+    params: Any,
+    *,
+    model_type: Optional[str] = None,
+    datum_frame: Optional[int] = None,
+    datum_camera: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Board geometry + datum, for stamping into ``board_meta["geometry"]``.
+
+    Makes a saved model self-describing: the geometry that produced it travels with the
+    record, so neither config nor the GUI panel is needed to interpret a model. Duck-typed
+    on ``params`` (DotboardParams / CharucoParams / SteppedParams) to avoid importing the
+    detection layer into the storage layer. Every key is a valid MATLAB identifier (no
+    leading ``_`` or digit) so ``_meta_to_dict`` round-trips it as a nested struct.
+    """
+    g: Dict[str, Any] = {"board_type": str(board)}
+    if board == "dotboard":
+        g["dot_spacing_mm"] = float(params.dot_spacing_mm)
+        g["k_neighbors"] = int(getattr(params, "k_neighbors", 9))
+    elif board == "charuco":
+        g["squares_h"] = int(params.squares_h)
+        g["squares_v"] = int(params.squares_v)
+        g["square_size_m"] = float(params.square_size_m)
+        g["marker_ratio"] = float(params.marker_ratio)
+        g["aruco_dict"] = str(params.aruco_dict)
+        g["min_corners"] = int(params.min_corners)
+    elif board == "stepped":
+        g["dot_spacing_mm"] = float(params.dot_spacing_mm)
+        g["step_height_mm"] = float(params.step_height_mm)
+        g["board_thickness_mm"] = float(params.board_thickness_mm)
+        if getattr(params, "level_offset_mm", None) is not None:
+            g["level_offset_mm"] = float(params.level_offset_mm)
+    if model_type is not None:
+        g["model_type"] = str(model_type)
+    if datum_frame is not None:
+        g["datum_frame"] = int(datum_frame)
+    if datum_camera is not None:
+        g["datum_camera"] = int(datum_camera)
+    return g
+
+
 # ---------------------------------------------------------------------------
 # Save / load
 # ---------------------------------------------------------------------------

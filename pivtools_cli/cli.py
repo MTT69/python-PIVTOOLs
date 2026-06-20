@@ -737,6 +737,7 @@ calibration:
   z_world: 0.0              # light-sheet plane Z (mm) + tilt (rad), applied at apply time
   tilt_x: 0.0
   tilt_y: 0.0
+  interpolator: lanczos     # stereo cam2 resample kernel: linear | cubic | lanczos
   charuco:
     squares_h: 10
     squares_v: 7
@@ -749,6 +750,7 @@ calibration:
     dot_spacing_mm: 15.0
     k_neighbors: 9
     model_type: pinhole
+    fix_k2: true             # fix r⁴ radial term for few-view (<3 frame) stereo fits
   scale_factor:
     px_per_mm: 1
     dt: 1

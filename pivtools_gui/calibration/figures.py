@@ -68,9 +68,24 @@ def _save(fig, output_path, dpi: int = 150) -> None:
     plt.close(fig)
 
 
+def _is_2d_image(img) -> bool:
+    """True if ``img`` is a usable 2-D (gray) or 3-D (colour) image array.
+
+    Guards the dewarp/detection writers against ``None`` / 0-D / 1-D arrays — a missing
+    datum frame reaches the figure layer as ``np.asarray(None)`` (0-D), and a bare
+    ``g.shape[1]`` then throws an opaque ``IndexError`` instead of a clear message.
+    """
+    if img is None:
+        return False
+    arr = np.asarray(img)
+    return arr.ndim >= 2 and arr.size > 0
+
+
 def _to_uint8_gray(img: np.ndarray) -> np.ndarray:
     """Image -> uint8 grayscale for display (handles BGR, float, uint16)."""
     img = np.asarray(img)
+    if img.ndim < 2 or img.size == 0:
+        raise ValueError(f"image is not 2-D: shape={img.shape}")
     if img.ndim == 3:
         if img.shape[-1] in (3, 4):
             img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -117,15 +132,66 @@ def _dot_at_grid(grid_indices: np.ndarray, image_points: np.ndarray, col, row):
     )
 
 
+# GUI overlay convention (StereoSteppedCalibration.tsx): peak face red, trough face blue.
+_STEPPED_PEAK_COLOR = (1.0, 120 / 255, 120 / 255)   # GUI rgba(255,120,120)
+_STEPPED_TROUGH_COLOR = (80 / 255, 140 / 255, 1.0)  # GUI rgba(80,140,255)
+
+
+def _draw_stepped_grid_networks(ax, level_data, level_a_face) -> bool:
+    """Draw one grid network per stepped face (peak=red, trough=blue), like the GUI.
+
+    A stepped board carries two interleaved grids; a single network across both bridges
+    peak<->trough dots with spurious diagonals (the artefact this fixes). Each level's own
+    ``centers`` + ``grid_indices`` give a clean within-face network. ``level_a_face``
+    ('peak'|'trough') labels which face level 'a' is for this pose (from ``pose_levels``);
+    None defaults to 'peak' (matching the GUI's no-pose-level default). Returns False when
+    there is no usable two-level data so the caller falls back to the single network.
+    """
+    if not level_data:
+        return False
+    a_is_peak = level_a_face != "trough"
+    colors = {"a": _STEPPED_PEAK_COLOR, "b": _STEPPED_TROUGH_COLOR}
+    faces = {"a": "peak", "b": "trough"}
+    if not a_is_peak:  # level 'a' is the trough face -> swap, so peak stays red
+        colors = {"a": _STEPPED_TROUGH_COLOR, "b": _STEPPED_PEAK_COLOR}
+        faces = {"a": "trough", "b": "peak"}
+    drew = False
+    for key in ("a", "b"):
+        lv = level_data.get(key)
+        if not lv:
+            continue
+        centers, gidx = lv.get("centers"), lv.get("grid_indices")
+        if centers is None or gidx is None:
+            continue
+        c = np.asarray(centers, np.float64).reshape(-1, 2)
+        g = np.asarray(gidx).reshape(-1, 2)
+        if len(c) == 0 or len(c) != len(g):
+            continue
+        _draw_grid_network(ax, c, g, color=colors[key])
+        ax.scatter(
+            c[:, 0], c[:, 1], color=[colors[key]], s=12, zorder=5,
+            label=f"{faces[key]} ({len(c)})",
+        )
+        drew = True
+    if drew:
+        ax.legend(fontsize=8, loc="upper right")
+    return drew
+
+
 # ---------------------------------------------------------------------------
 # 1. Detection overlay (per view)
 # ---------------------------------------------------------------------------
 
 
 def write_detection_figure(
-    image, detection: "DetectionResult", output_path, title=None
+    image, detection: "DetectionResult", output_path, title=None, level_a_face=None
 ) -> None:
-    """Detected features + grid-index labels on the image, plus the grid network."""
+    """Detected features + grid-index labels on the image, plus the grid network.
+
+    ``level_a_face`` ('peak'|'trough'|None): for a stepped board, the face of level 'a'
+    in this pose, so the grid network is drawn as two separate per-face networks
+    (peak=red, trough=blue) instead of one network bridging both faces.
+    """
     try:
         gray = _to_uint8_gray(image)
         pts = np.asarray(detection.image_points, np.float64).reshape(-1, 2)
@@ -208,18 +274,25 @@ def write_detection_figure(
         ax1.set_yticks([])
 
         ax2 = fig.add_subplot(gs[0, 1])
-        if gi is not None and n:
-            _draw_grid_network(ax2, pts, gi)
-        if detection.board_type == "charuco" and ids is not None and n:
-            ax2.scatter(
-                pts[:, 0],
-                pts[:, 1],
-                c=plt.cm.hsv(ids / max(int(ids.max()), 1)),
-                s=16,
-                zorder=5,
-            )
-        elif n:
-            ax2.scatter(pts[:, 0], pts[:, 1], c="limegreen", s=12, zorder=5)
+        # Stepped board -> two per-face networks (peak=red, trough=blue); else one network.
+        drew_stepped = (
+            _draw_stepped_grid_networks(ax2, detection.level_data, level_a_face)
+            if n
+            else False
+        )
+        if not drew_stepped:
+            if gi is not None and n:
+                _draw_grid_network(ax2, pts, gi)
+            if detection.board_type == "charuco" and ids is not None and n:
+                ax2.scatter(
+                    pts[:, 0],
+                    pts[:, 1],
+                    c=plt.cm.hsv(ids / max(int(ids.max()), 1)),
+                    s=16,
+                    zorder=5,
+                )
+            elif n:
+                ax2.scatter(pts[:, 0], pts[:, 1], c="limegreen", s=12, zorder=5)
         ax2.invert_yaxis()
         ax2.set_aspect("equal", adjustable="datalim")
         ax2.set_title("Grid network", fontsize=10)
@@ -392,140 +465,34 @@ def write_world_frame_figure(
 
 
 def write_reprojection_figure(
-    object_points,
-    image_points,
-    K,
-    dist,
-    rvecs,
-    tvecs,
     per_view,
     rms,
     output_path,
     pose_indices=None,
     title=None,
 ) -> None:
-    """(dx,dy) residual scatter coloured by view + RMS circle, and a per-view RMS bar chart."""
+    """Per-view RMS reprojection-error bar chart with the overall RMS line."""
     try:
-        n_views = len(object_points)
+        n_views = len(per_view)
         colors = plt.cm.tab10(np.linspace(0, 1, max(n_views, 1)))
-        fig = plt.figure(figsize=(15, 6))
+        fig, ax = plt.subplots(figsize=(8, 6))
         fig.suptitle(
             f"{title or 'Reprojection'} — {n_views} views, overall RMS={rms:.4f} px",
             fontsize=13,
         )
-        gs = GridSpec(1, 2, figure=fig, wspace=0.25, width_ratios=[1.1, 1.0])
-
-        ax = fig.add_subplot(gs[0, 0])
-        all_r: List[np.ndarray] = []
-        for i in range(n_views):
-            proj, _ = cv2.projectPoints(
-                np.asarray(object_points[i], np.float64).reshape(-1, 1, 3),
-                np.asarray(rvecs[i], np.float64).reshape(3),
-                np.asarray(tvecs[i], np.float64).reshape(3),
-                K,
-                dist,
-            )
-            res = (
-                np.asarray(image_points[i], np.float64).reshape(-1, 1, 2) - proj
-            ).reshape(-1, 2)
-            all_r.append(res)
-            ax.scatter(res[:, 0], res[:, 1], s=4, alpha=0.5, color=colors[i])
-        allr = np.vstack(all_r) if all_r else np.zeros((0, 2))
-        ax.add_patch(
-            plt.Circle(
-                (0, 0),
-                rms,
-                fill=False,
-                color="red",
-                ls="--",
-                lw=1.5,
-                label=f"RMS={rms:.3f} px",
-            )
-        )
-        mr = (
-            max(float(np.abs(allr).max()) * 1.15, rms * 1.3)
-            if len(allr)
-            else max(rms * 1.3, 1e-3)
-        )
-        ax.set_xlim(-mr, mr)
-        ax.set_ylim(-mr, mr)
-        ax.set_aspect("equal")
-        ax.axhline(0, color="gray", lw=0.5)
-        ax.axvline(0, color="gray", lw=0.5)
-        ax.set_xlabel("residual x (px)")
-        ax.set_ylabel("residual y (px)")
-        ax.set_title(f"Reprojection residuals ({len(allr)} pts)", fontsize=10)
-        ax.legend(fontsize=8)
-
-        ax2 = fig.add_subplot(gs[0, 1])
         labels = [
             str(p)
             for p in (pose_indices if pose_indices is not None else range(n_views))
         ]
-        ax2.bar(labels, per_view, color=colors[: len(per_view)])
-        ax2.axhline(rms, color="red", ls="--", lw=1, label=f"overall {rms:.3f}")
-        ax2.set_xlabel("view (pose index)")
-        ax2.set_ylabel("RMS (px)")
-        ax2.set_title("Per-view RMS", fontsize=10)
-        ax2.legend(fontsize=8)
+        ax.bar(labels, per_view, color=colors[: len(per_view)])
+        ax.axhline(rms, color="red", ls="--", lw=1, label=f"overall {rms:.3f}")
+        ax.set_xlabel("view (pose index)")
+        ax.set_ylabel("RMS (px)")
+        ax.set_title("Per-view RMS", fontsize=10)
+        ax.legend(fontsize=8)
         _save(fig, output_path)
     except Exception:
         logger.warning(f"reprojection figure failed: {traceback.format_exc()}")
-
-
-# ---------------------------------------------------------------------------
-# 4. Distortion map
-# ---------------------------------------------------------------------------
-
-
-def write_distortion_map_figure(K, dist, image_size, output_path, title=None) -> None:
-    """Sensor heatmap + quiver of the distortion displacement (distorted -> ideal)."""
-    try:
-        w, h = int(image_size[0]), int(image_size[1])
-        K = np.asarray(K, np.float64)
-        new_cam, _ = cv2.getOptimalNewCameraMatrix(K, dist, (w, h), 1, (w, h))
-        gx = np.linspace(0, w - 1, 25)
-        gy = np.linspace(0, h - 1, 25)
-        GX, GY = np.meshgrid(gx, gy)
-        grid = (
-            np.column_stack([GX.ravel(), GY.ravel()])
-            .astype(np.float32)
-            .reshape(-1, 1, 2)
-        )
-        und = cv2.undistortPoints(grid, K, dist, P=new_cam).reshape(-1, 2)
-        orig = grid.reshape(-1, 2)
-        disp = und - orig
-        mag = np.linalg.norm(disp, axis=1)
-
-        fig, ax = plt.subplots(figsize=(10, 9))
-        sc = ax.scatter(orig[:, 0], orig[:, 1], c=mag, cmap="viridis", s=40)
-        ax.quiver(
-            orig[:, 0],
-            orig[:, 1],
-            disp[:, 0],
-            disp[:, 1],
-            angles="xy",
-            scale_units="xy",
-            scale=1,
-            color="white",
-            width=0.002,
-            alpha=0.7,
-        )
-        fig.colorbar(sc, ax=ax, label="displacement (px)")
-        ax.set_xlim(0, w)
-        ax.set_ylim(h, 0)
-        ax.set_aspect("equal")
-        ax.set_xlabel("x (px)")
-        ax.set_ylabel("y (px, image-down)")
-        kf = np.asarray(dist, np.float64).reshape(-1)
-        ax.set_title(
-            f"{title or 'Distortion map'} — k1={kf[0]:.4g} k2={kf[1]:.4g} "
-            f"p1={kf[2]:.4g} p2={kf[3]:.4g}",
-            fontsize=11,
-        )
-        _save(fig, output_path)
-    except Exception:
-        logger.warning(f"distortion-map figure failed: {traceback.format_exc()}")
 
 
 # ---------------------------------------------------------------------------
@@ -1051,8 +1018,31 @@ def write_dewarp_overlay(
         # Resolve once so both cameras dewarp onto the same raster (the red/cyan stack
         # below requires identical shapes).
         res = _resolve_mm_per_px(model1, x_min, x_max, y_min, y_max, mm_per_px)
-        r = _dewarp_image_to_world(model1, img1, x_min, x_max, y_min, y_max, res)
-        c = _dewarp_image_to_world(model2, img2, x_min, x_max, y_min, y_max, res)
+        # A missing datum frame reaches here as None/0-D; dewarp what is available and
+        # leave the other channel black rather than crashing the whole figure.
+        if not _is_2d_image(img1):
+            s1 = None if img1 is None else np.asarray(img1).shape
+            logger.warning(f"dewarp overlay: cam1 image unavailable (shape={s1})")
+        if not _is_2d_image(img2):
+            s2 = None if img2 is None else np.asarray(img2).shape
+            logger.warning(f"dewarp overlay: cam2 image unavailable (shape={s2})")
+        r = (
+            _dewarp_image_to_world(model1, img1, x_min, x_max, y_min, y_max, res)
+            if _is_2d_image(img1)
+            else None
+        )
+        c = (
+            _dewarp_image_to_world(model2, img2, x_min, x_max, y_min, y_max, res)
+            if _is_2d_image(img2)
+            else None
+        )
+        shape = (r if r is not None else c)
+        if shape is None:
+            raise ValueError("both cam images unavailable")
+        if r is None:
+            r = np.zeros_like(shape)
+        if c is None:
+            c = np.zeros_like(shape)
         overlay = np.stack([r, c, c], axis=-1)
         fig, ax = plt.subplots(figsize=(15, 12))
         ax.imshow(overlay, extent=[x_min, x_max, y_min, y_max], origin="lower")
@@ -1065,6 +1055,74 @@ def write_dewarp_overlay(
         _save(fig, output_path, dpi=160)
     except Exception:
         logger.warning(f"dewarp overlay figure failed: {traceback.format_exc()}")
+
+
+def _dewarp_panel(
+    ax, model, img, board_world, spacing, x_min, x_max, y_min, y_max, cam_num, mm_per_px
+) -> None:
+    """One side-by-side panel: a camera's image dewarped onto the world (mm) plane.
+
+    Draws a labelled placeholder instead of crashing when the datum image is missing
+    (``None`` / 0-D), so the other camera's panel still renders.
+    """
+    if not _is_2d_image(img):
+        shp = None if img is None else np.asarray(img).shape
+        logger.warning(f"dewarp pair: cam{cam_num} image unavailable (shape={shp})")
+        ax.text(
+            0.5,
+            0.5,
+            f"Cam{cam_num}: image unavailable",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+            fontsize=12,
+            color="red",
+        )
+        ax.set_xlabel("X world (mm)")
+        ax.set_title(f"Cam{cam_num} dewarped → world (mm)", fontsize=11)
+        return
+    dw = _dewarp_image_to_world(model, img, x_min, x_max, y_min, y_max, mm_per_px)
+    ax.imshow(dw, extent=[x_min, x_max, y_min, y_max], origin="lower", cmap="gray")
+    _dewarp_axes(ax, board_world, spacing, x_min, x_max, y_min, y_max)
+    ax.set_title(f"Cam{cam_num} dewarped → world (mm)", fontsize=11)
+
+
+def write_dewarp_pair(
+    model1: "CameraModel",
+    model2: "CameraModel",
+    img1,
+    img2,
+    board_world,
+    spacing,
+    output_path,
+    cam1_num: int = 1,
+    cam2_num: int = 2,
+    title=None,
+    mm_per_px=None,
+) -> None:
+    """Side-by-side: each camera's board image dewarped onto the world (mm) plane.
+
+    A correct model rectifies the board to a regular mm grid (dots land on the
+    ``_dewarp_axes`` gridlines); a side-by-side pair lets each camera be judged
+    independently. Each panel resolves its own resolution (separate axes, so the rasters
+    need not match — unlike the red/cyan overlay).
+    """
+    try:
+        x_min, x_max, y_min, y_max = _world_extent(board_world)
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 9))
+        if title:
+            fig.suptitle(title, fontsize=13)
+        _dewarp_panel(
+            ax1, model1, img1, board_world, spacing,
+            x_min, x_max, y_min, y_max, cam1_num, mm_per_px,
+        )
+        _dewarp_panel(
+            ax2, model2, img2, board_world, spacing,
+            x_min, x_max, y_min, y_max, cam2_num, mm_per_px,
+        )
+        _save(fig, output_path, dpi=160)
+    except Exception:
+        logger.warning(f"dewarp pair figure failed: {traceback.format_exc()}")
 
 
 def write_dewarp_single(
@@ -1389,24 +1447,11 @@ def write_mono_figures(
         title=f"{prefix}world frame",
     )
     write_reprojection_figure(
-        objs,
-        imgs,
-        K,
-        dist,
-        rvecs,
-        tvecs,
         per_view,
         rms,
         figd / f"{prefix}reprojection.png",
         pose_indices=pose_indices,
         title=f"{prefix}reprojection",
-    )
-    write_distortion_map_figure(
-        K,
-        dist,
-        cam.image_size,
-        figd / f"{prefix}distortion_map.png",
-        title=f"{prefix}distortion",
     )
     if not prefix:
         write_boards_planes_3d(
@@ -1446,6 +1491,7 @@ def write_stepped_figures(
     spacing,
     datum_index,
     datum_detection,
+    pose_levels=None,
     prefix="",
 ) -> None:
     """All single-camera proof figures for a STEPPED (dual-level) fit.
@@ -1470,11 +1516,19 @@ def write_stepped_figures(
 
     if images is not None:
         for pose_idx, det in zip(used_pose_indices, used_detections):
+            # pose_levels labels level 'a's face per pose (position-aligned to the original
+            # detections); pass it so the network is split peak(red)/trough(blue).
+            level_a_face = (
+                pose_levels[pose_idx]
+                if pose_levels is not None and 0 <= pose_idx < len(pose_levels)
+                else None
+            )
             write_detection_figure(
                 images[pose_idx],
                 det,
                 figd / f"{prefix}detection_{pose_idx:02d}.png",
                 title=f"{prefix}pose {pose_idx}",
+                level_a_face=level_a_face,
             )
         write_world_frame_figure(
             images[datum_index],
@@ -1485,24 +1539,11 @@ def write_stepped_figures(
             title=f"{prefix}world frame",
         )
     write_reprojection_figure(
-        pose_obj_views,
-        pose_img_views,
-        K=cam.K,
-        dist=cam.dist,
-        rvecs=rvecs,
-        tvecs=tvecs,
         per_view=per_view,
         rms=rms,
         output_path=figd / f"{prefix}reprojection.png",
         pose_indices=used_pose_indices,
         title=f"{prefix}reprojection",
-    )
-    write_distortion_map_figure(
-        cam.K,
-        cam.dist,
-        cam.image_size,
-        figd / f"{prefix}distortion_map.png",
-        title=f"{prefix}distortion",
     )
     if not prefix:
         write_boards_planes_3d(
@@ -1737,21 +1778,25 @@ def write_stereo_figures(
     img2,
     datum_board_world,
     spacing,
+    cam1_num: int = 1,
+    cam2_num: int = 2,
 ) -> None:
-    """Stereo-only proof figures: cameras relative to the datum board + the dewarp anaglyph."""
+    """Stereo-only proof figures: cameras vs the datum board + side-by-side dewarped boards."""
     figd = Path(figure_dir)
     figd.mkdir(parents=True, exist_ok=True)
     write_cameras_3d(
         model1, model2, datum_board_world, R_stereo, T_stereo, figd / "cameras_3d.png"
     )
-    write_dewarp_overlay(
+    write_dewarp_pair(
         model1,
         model2,
         img1,
         img2,
         datum_board_world,
         spacing,
-        figd / "dewarp_overlay.png",
+        figd / "dewarp_pair.png",
+        cam1_num=cam1_num,
+        cam2_num=cam2_num,
     )
 
 
@@ -1832,12 +1877,6 @@ def write_joint_figures(
                     )
         if objs:
             write_reprojection_figure(
-                objs,
-                imgs,
-                model.K,
-                model.dist,
-                rvecs,
-                tvecs,
                 per_view,
                 float(result.per_camera_rms.get(cam, float("nan"))),
                 figd / f"reprojection_cam{cam}.png",
@@ -1933,11 +1972,12 @@ def write_joint_polynomial_figures(
     The polynomial analogue of ``write_joint_figures``. Each camera fitted a single-plane cubic on
     its ``datum_view`` detection with world targets from the SHARED global index
     (``gi*spacing + origin`` — identical to ``run_joint_polynomial``), so all cameras already live in
-    one world frame. Per camera: detection overlay, the polynomial-fit residual (the reprojection
-    analogue), and the dewarped board. For >=2 cameras, one shared back-projected-dots agreement
-    scatter. ``image_loader(cam, view) -> ndarray`` supplies raw images for the image-based figures
-    (detection + dewarp); None skips those. Every sub-figure swallows its own errors, so a figure
-    failure never aborts the calibration.
+    one world frame. Per camera: detection overlay and the polynomial-fit residual (the reprojection
+    analogue). For >=2 cameras the single dewarp proof is one shared back-projected-dots agreement
+    scatter (both cameras overlaid in one world frame); a lone camera instead gets its own dewarped
+    board, since there is no second camera to scatter against. ``image_loader(cam, view) -> ndarray``
+    supplies raw images for the image-based figures (detection + dewarp); None skips those. Every
+    sub-figure swallows its own errors, so a figure failure never aborts the calibration.
     """
     figd = Path(figure_dir)
     figd.mkdir(parents=True, exist_ok=True)
@@ -1977,15 +2017,27 @@ def write_joint_polynomial_figures(
                     figd / f"detection_cam{cam}_{datum_view:02d}.png",
                     title=f"cam{cam} datum",
                 )
-                write_dewarp_single_poly(
-                    model,
-                    img,
-                    world,
-                    spacing,
-                    figd / f"dewarp_cam{cam}.png",
-                    title=f"Cam{cam} dewarped board",
-                )
+                # A lone camera has no agreement scatter, so it still gets its own dewarped-board
+                # proof. For >=2 cameras the shared back-projected-dots figure below is the single
+                # unification proof (both cameras overlaid in one world frame); the redundant
+                # per-camera dewarp panels are intentionally not drawn.
+                if len(cams) == 1:
+                    write_dewarp_single_poly(
+                        model,
+                        img,
+                        world,
+                        spacing,
+                        figd / f"dewarp_cam{cam}.png",
+                        title=f"Cam{cam} dewarped board",
+                    )
     if len(detect_px) >= 2 and world_all:
+        # The figure dir is not cleared between runs, so drop any per-camera dewarp panels left by
+        # an earlier run — for >=2 cameras the shared scatter below is the only dewarp proof.
+        for stale in figd.glob("dewarp_cam*.png"):
+            try:
+                stale.unlink()
+            except OSError:
+                pass
         board_world = np.unique(np.round(np.vstack(world_all), 3), axis=0)
         write_dewarp_dots_poly(
             models_by_cam, detect_px, board_world, spacing, figd / "dewarp_dots.png"
@@ -2293,6 +2345,78 @@ def write_self_cal_figures(
             bbox_inches="tight",
         )
         plt.close(fig)
+
+        # ----- fig7: zoom windows so individual particles are resolvable -----
+        # fig4 is too coarse to see particles on a large board. Crop the same dewarped
+        # rasters at 5 world locations (corners + centre) and show each as a
+        # before|after red/cyan pair so the alignment improvement is visible per spot.
+        try:
+            zoom_px = 100  # window size in dewarped-raster pixels (user-specified)
+            half = zoom_px // 2
+            mx = (x_max - x_min) * 0.15
+            my = (y_max - y_min) * 0.15
+            cx_mm, cy_mm = (x_min + x_max) / 2.0, (y_min + y_max) / 2.0
+            locs_mm = [
+                ("centre", cx_mm, cy_mm),
+                ("lower-left", x_min + mx, y_min + my),
+                ("lower-right", x_max - mx, y_min + my),
+                ("upper-left", x_min + mx, y_max - my),
+                ("upper-right", x_max - mx, y_max - my),
+            ]
+            ny_r, nx_r = dw1b.shape[:2]
+
+            def _crop4(cx_px, cy_px):
+                x0, y0 = int(round(cx_px)) - half, int(round(cy_px)) - half
+                x1, y1 = x0 + zoom_px, y0 + zoom_px
+                xa, xb = max(0, x0), min(nx_r, x1)
+                ya, yb = max(0, y0), min(ny_r, y1)
+                if xb - xa < 4 or yb - ya < 4:
+                    return None
+                sl = (slice(ya, yb), slice(xa, xb))
+                return dw1b[sl], dw2b[sl], dw1a[sl], dw2a[sl]
+
+            n = len(locs_mm)
+            figz, axz = plt.subplots(n, 2, figsize=(7, 3.0 * n), squeeze=False)
+            figz.suptitle(
+                f"Self-cal zoom (red=cam{cam1_num}, cyan=cam{cam2_num}; "
+                f"sharp overlap = aligned), {zoom_px}px windows",
+                fontsize=12,
+                fontweight="bold",
+            )
+            for row, (name, xw, yw) in enumerate(locs_mm):
+                cx_px = (xw - x_min) / mm_per_pixel
+                cy_px = (yw - y_min) / mm_per_pixel
+                crops = _crop4(cx_px, cy_px)
+                if crops is None:
+                    for col in range(2):
+                        axz[row][col].text(
+                            0.5, 0.5, "out of bounds", ha="center", va="center",
+                            transform=axz[row][col].transAxes, color="red", fontsize=9,
+                        )
+                        axz[row][col].set_xticks([])
+                        axz[row][col].set_yticks([])
+                    continue
+                c1b, c2b, c1a, c2a = crops
+                axz[row][0].imshow(_rc(c1b, c2b), origin="lower")
+                axz[row][1].imshow(_rc(c1a, c2a), origin="lower")
+                axz[row][0].set_ylabel(
+                    f"{name}\n({xw:.0f}, {yw:.0f}) mm", fontsize=8
+                )
+                if row == 0:
+                    axz[row][0].set_title("BEFORE", fontsize=10)
+                    axz[row][1].set_title("AFTER", fontsize=10)
+                for col in range(2):
+                    axz[row][col].set_xticks([])
+                    axz[row][col].set_yticks([])
+            figz.tight_layout(rect=[0, 0, 1, 0.97])
+            figz.savefig(
+                str(out_dir / "fig7_zoom_before_after.png"),
+                dpi=150,
+                bbox_inches="tight",
+            )
+            plt.close(figz)
+        except Exception:
+            logger.warning(f"self-cal zoom figure failed: {traceback.format_exc()}")
 
         # ----- fig5: BEFORE vs AFTER correlation planes at 6 world positions -----
         # Pulls correlation planes directly from the C-library output stored in the

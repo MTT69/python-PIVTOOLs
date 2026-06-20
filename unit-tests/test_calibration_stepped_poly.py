@@ -204,5 +204,5 @@ def test_3c_reconstruction_recovers_known_displacement(world):
     u_true = np.tile([0.7, -0.3, 0.15], (len(pts), 1))  # mm
     d1 = np.einsum("nij,nj->ni", m1.jacobian(pts), u_true)
     d2 = np.einsum("nij,nj->ni", m2.jacobian(pts), u_true)
-    recovered = reconstruct_3c_at_points(m1, m2, pts, d1, d2, z_toward_cameras=True)
+    recovered = reconstruct_3c_at_points(m1, m2, pts, d1, d2)
     np.testing.assert_allclose(recovered, u_true, atol=1e-9)

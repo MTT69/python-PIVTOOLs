@@ -76,14 +76,14 @@ def _to_uint8_gray(img):
             img = img[:, :, 0]
         else:
             img = np.squeeze(img)
-    if img.dtype in (np.float32, np.float64):
-        lo, hi = img.min(), img.max()
+    if img.dtype in (np.float32, np.float64, np.uint16):
+        # Min-max stretch for float AND uint16: a fixed /256 on uint16 crushes
+        # 12-bit-range data (0..4095 -> 0..15, near-black figures).
+        lo, hi = float(img.min()), float(img.max())
         if hi > lo:
-            img = ((img - lo) / (hi - lo) * 255).astype(np.uint8)
+            img = ((img.astype(np.float64) - lo) / (hi - lo) * 255).astype(np.uint8)
         else:
             img = np.zeros_like(img, dtype=np.uint8)
-    elif img.dtype == np.uint16:
-        img = (img / 256).astype(np.uint8)
     return img
 
 

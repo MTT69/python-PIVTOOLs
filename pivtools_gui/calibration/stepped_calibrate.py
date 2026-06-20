@@ -43,7 +43,7 @@ from .camera_model import (
 )
 from .detection.base import DetectionResult
 from .detection.stepped_levels import SteppedBoardSpec, stitch_levels_pose_local
-from .record import MonoRecord, StereoRecord, WorldFrame
+from .record import MonoRecord, StereoRecord, WorldFrame, geometry_meta
 from .stereo_model import camera_z_sign, compose_stereo
 
 
@@ -342,6 +342,7 @@ def fit_pinhole(
     img_views: list,
     image_size: Tuple[int, int],
     fix_aspect: bool = False,
+    fix_k2: bool = False,
 ) -> Tuple[float, np.ndarray, np.ndarray, list, list]:
     """Fit OpenCV pinhole model using multiple views of 3D object points.
 
@@ -379,6 +380,8 @@ def fit_pinhole(
     init_flags = cv2.CALIB_FIX_K3
     if fix_aspect:
         init_flags |= cv2.CALIB_FIX_ASPECT_RATIO
+    if fix_k2:
+        init_flags |= cv2.CALIB_FIX_K2
 
     _, K_init, dist_init, _, _ = cv2.calibrateCamera(
         init_objs, init_imgs, (W, H), None, None, flags=init_flags)
@@ -390,6 +393,58 @@ def fit_pinhole(
     flags = cv2.CALIB_USE_INTRINSIC_GUESS | cv2.CALIB_FIX_K3
     if fix_aspect:
         flags |= cv2.CALIB_FIX_ASPECT_RATIO
+    if fix_k2:
+        flags |= cv2.CALIB_FIX_K2
+
+    rms, K, dist, rvecs, tvecs = cv2.calibrateCamera(
+        obj_list, img_list, (W, H), K_init.copy(), dist_init.copy(), flags=flags)
+
+    return rms, K, dist, rvecs, tvecs
+
+
+def fit_pinhole_single_view(
+    obj_views: list,
+    img_views: list,
+    image_size: Tuple[int, int],
+    fix_aspect: bool = False,
+    fix_k2: bool = False,
+) -> Tuple[float, np.ndarray, np.ndarray, list, list]:
+    """Fit an OpenCV pinhole from FEWER than three stepped views.
+
+    The multi-pose Zhang init in :func:`fit_pinhole` needs >=3 coplanar homographies, so
+    it cannot run with one or two poses. But a stepped board's two Z-levels make even a
+    SINGLE view non-coplanar — the classic 3D-calibration-object case, where one view
+    carries enough constraints to recover K + distortion + pose. This is what DaVis'
+    un-bundled ``PinholeOpenCV`` does from a single plate (~0.4 px RMS on real data).
+
+    K is seeded from the image geometry (f ~ image extent, principal point at centre) and
+    ``cv2.calibrateCamera`` refines intrinsics + distortion + per-view pose directly on the
+    true 3D points; the non-coplanar geometry pins the focal length regardless of the seed
+    (verified: convergence is seed-independent). Distortion is fit as DaVis does — radial
+    k1,k2 + tangential p1,p2, with k3 fixed at 0. One near-planar view carries no leverage on
+    the higher-order radial term k2 (only the image rim constrains it), so with <3 views k2 can
+    run away and drag focal/principal-point/pose into a degenerate basin. Set ``fix_k2=True`` to
+    pin k2 at 0 (``CALIB_FIX_K2``) — recovers DaVis-matching geometry from a single plate. >=3
+    views constrain k2 directly and remain preferable.
+
+    Returns (rms, K, dist, rvecs, tvecs), matching :func:`fit_pinhole`.
+    """
+    W, H = image_size
+    f_init = float(max(W, H))  # seed only; the two-level geometry fixes the true focal
+    K_init = np.array(
+        [[f_init, 0.0, W / 2.0], [0.0, f_init, H / 2.0], [0.0, 0.0, 1.0]],
+        dtype=np.float64,
+    )
+    dist_init = np.zeros(5, dtype=np.float64)
+
+    obj_list = [obj.astype(np.float32) for obj in obj_views]
+    img_list = [img.reshape(-1, 1, 2).astype(np.float32) for img in img_views]
+
+    flags = cv2.CALIB_USE_INTRINSIC_GUESS | cv2.CALIB_FIX_K3
+    if fix_aspect:
+        flags |= cv2.CALIB_FIX_ASPECT_RATIO
+    if fix_k2:
+        flags |= cv2.CALIB_FIX_K2
 
     rms, K, dist, rvecs, tvecs = cv2.calibrateCamera(
         obj_list, img_list, (W, H), K_init.copy(), dist_init.copy(), flags=flags)
@@ -459,9 +514,13 @@ def _build_non_datum_pose_view(
 # ---------------------------------------------------------------------------
 
 def _level_dicts(detection: DetectionResult) -> Tuple[Optional[dict], Optional[dict]]:
-    """Pull the raw per-level grid dicts the detector stashed in diagnostics."""
-    diag = detection.diagnostics or {}
-    return diag.get("_level_a_full"), diag.get("_level_b_full")
+    """Pull the two raw per-level grid dicts (the stepped solve input).
+
+    Lives on ``DetectionResult.level_data`` (first-class, persisted to the sidecar), not
+    in diagnostics — so it survives a detect -> save -> reopen round-trip.
+    """
+    ld = detection.level_data or {}
+    return ld.get("a"), ld.get("b")
 
 
 def _write_poly3d_figure(figure_dir, model, datum_obj, datum_img, images,
@@ -555,6 +614,7 @@ def _calibrate_stepped_mono_poly3d(
         "clicked_level": str(clicked_level),
         "model_type": "polynomial3d",
         "n_views": 1,
+        "geometry": geometry_meta("stepped", board, model_type="polynomial3d"),
     }
     if figure_dir is not None:
         try:
@@ -580,6 +640,7 @@ def calibrate_stepped_mono(
     distortion_model: DistortionModel = DistortionModel.STANDARD,
     geo_override: Optional[dict] = None,
     model_type: str = "pinhole",
+    fix_k2: bool = False,
     images: Optional[Sequence[np.ndarray]] = None,
     figure_dir: Optional[Path] = None,
     figure_prefix: str = "",
@@ -750,17 +811,26 @@ def calibrate_stepped_mono(
                     f"treat with suspicion"
                 )
 
-    if len(pose_obj_views) < 3:
-        raise RuntimeError(
-            f"need >=3 usable poses for the intrinsic fit, got {len(pose_obj_views)}"
-        )
+    if len(pose_obj_views) == 0:
+        raise RuntimeError("calibrate_stepped_mono: no usable poses for the intrinsic fit")
 
-    # ---- Two-stage pinhole fit (free + fixed aspect, keep lower RMS) ----
-    W_H = (int(image_size[0]), int(image_size[1]))
-    rms_free, K_free, dist_free, rvecs_free, tvecs_free = fit_pinhole(
-        pose_obj_views, pose_img_views, W_H, fix_aspect=False)
-    rms_fixed, K_fixed, dist_fixed, rvecs_fixed, tvecs_fixed = fit_pinhole(
-        pose_obj_views, pose_img_views, W_H, fix_aspect=True)
+    # ---- Pinhole intrinsic fit (free + fixed aspect, keep lower RMS) ----
+    # >=3 poses -> multi-view Zhang init (best-conditioned). Fewer -> single-view 3D-object
+    # fit: the stepped board's two Z-levels make even one view non-coplanar, enough to
+    # recover K + distortion + pose (as DaVis' un-bundled PinholeOpenCV does from one
+    # plate). Fewer views constrain distortion less well; >=3 is recommended (see the
+    # manual) but a single dense two-level view is usable.
+    _fit = fit_pinhole if len(pose_obj_views) >= 3 else fit_pinhole_single_view
+    if _fit is fit_pinhole_single_view:
+        logger.warning(
+            f"stepped pinhole: only {len(pose_obj_views)} usable pose(s) — using a "
+            f"single-view 3D-object fit; >=3 board positions give a better-constrained "
+            f"distortion fit (use more views where you can)."
+        )
+    rms_free, K_free, dist_free, rvecs_free, tvecs_free = _fit(
+        pose_obj_views, pose_img_views, W_H, fix_aspect=False, fix_k2=fix_k2)
+    rms_fixed, K_fixed, dist_fixed, rvecs_fixed, tvecs_fixed = _fit(
+        pose_obj_views, pose_img_views, W_H, fix_aspect=True, fix_k2=fix_k2)
 
     if rms_fixed <= rms_free * 1.05:
         rms, K, dist, rvecs, tvecs = rms_fixed, K_fixed, dist_fixed, rvecs_fixed, tvecs_fixed
@@ -796,6 +866,7 @@ def calibrate_stepped_mono(
         "level_offset_mm": float(board.level_offset_mm),
         "clicked_level": str(clicked_level),
         "n_views": int(len(pose_obj_views)),
+        "geometry": geometry_meta("stepped", board, model_type="pinhole"),
     }
 
     # ---- Proof figures (optional; drawn while the fit arrays are live) ----
@@ -807,7 +878,8 @@ def calibrate_stepped_mono(
                 used_pose_indices=used_pose_indices, pose_obj_views=pose_obj_views,
                 pose_img_views=pose_img_views, rvecs=rvecs, tvecs=tvecs,
                 per_view=list(pv), rms=float(rms), cam=cam, wf=wf, spacing=float(spacing),
-                datum_index=datum_index, datum_detection=datum, prefix=figure_prefix,
+                datum_index=datum_index, datum_detection=datum,
+                pose_levels=list(pose_levels), prefix=figure_prefix,
             )
         except Exception:  # figures never abort the fit
             logger.warning("stepped mono figure writing failed (non-fatal)")
@@ -880,6 +952,23 @@ def classify_stereo_config(
     return "same_side" if chi1 == chi2 else "transmission"
 
 
+def _stereo_view_diagnostics(
+    detections1: Sequence[Optional[DetectionResult]],
+    detections2: Sequence[Optional[DetectionResult]],
+) -> Dict[str, object]:
+    """Per-camera view-diagnostics summary for board_meta (parity with the flat path).
+
+    Stepped detection lists carry ``None`` for poses that failed to detect; those are
+    dropped here so the summary covers the views that actually fed the fit.
+    """
+    from .pipeline import view_diagnostics_summary
+
+    return {
+        "cam1": view_diagnostics_summary([d for d in detections1 if d is not None]),
+        "cam2": view_diagnostics_summary([d for d in detections2 if d is not None]),
+    }
+
+
 def calibrate_stepped_stereo(
     detections1: Sequence[DetectionResult],
     detections2: Sequence[DetectionResult],
@@ -898,6 +987,7 @@ def calibrate_stepped_stereo(
     stereo_config: str = "auto",
     distortion_model: DistortionModel = DistortionModel.STANDARD,
     model_type: str = "pinhole",
+    fix_k2: bool = False,
     images1: Optional[Sequence[np.ndarray]] = None,
     images2: Optional[Sequence[np.ndarray]] = None,
     figure_dir: Optional[Path] = None,
@@ -948,7 +1038,7 @@ def calibrate_stepped_stereo(
         detections=detections1, fiducials=fiducials1, clicked_level=clicked_level1,
         pose_levels=pose_levels1, board=board, image_size=image_size1,
         camera=cam1, datum_index=datum_index, distortion_model=distortion_model,
-        model_type=model_type,
+        model_type=model_type, fix_k2=fix_k2,
         images=images1, figure_dir=figure_dir, figure_prefix=cam1_prefix,
     )
     # Cam2 into the SAME frame: its levels sit at their absolute Z (geo['Cam2']).
@@ -956,7 +1046,7 @@ def calibrate_stepped_stereo(
         detections=detections2, fiducials=fiducials2, clicked_level=clicked_level2,
         pose_levels=pose_levels2, board=board, image_size=image_size2,
         camera=cam2, datum_index=datum_index, distortion_model=distortion_model,
-        geo_override=geo["Cam2"], model_type=model_type,
+        geo_override=geo["Cam2"], model_type=model_type, fix_k2=fix_k2,
         images=images2, figure_dir=figure_dir, figure_prefix=cam2_prefix,
     )
 
@@ -981,6 +1071,10 @@ def calibrate_stepped_stereo(
             "clicked_level2": str(clicked_level2),
             "model_type": "polynomial3d",
             "z_sign_toward_cameras": camera_z_sign(model1, model2),
+            "stereo_method": "polynomial",
+            "n_stereo_views": int(min(len(rec1.per_view_rms), len(rec2.per_view_rms))),
+            "view_diagnostics": _stereo_view_diagnostics(detections1, detections2),
+            "geometry": geometry_meta("stepped", board, model_type="polynomial3d"),
         }
         return StereoRecord(
             cam1=int(cam1), cam2=int(cam2), board_type="stepped",
@@ -1020,6 +1114,10 @@ def calibrate_stepped_stereo(
         "baseline_mm": baseline_mm,
         "relative_angle_deg": relative_angle_deg,
         "z_sign_toward_cameras": camera_z_sign(model1, model2),
+        "stereo_method": "compose",
+        "n_stereo_views": int(min(len(rec1.per_view_rms), len(rec2.per_view_rms))),
+        "view_diagnostics": _stereo_view_diagnostics(detections1, detections2),
+        "geometry": geometry_meta("stepped", board, model_type="pinhole"),
     }
 
     # ---- Stereo-only rig figures (cameras-vs-board + dewarp anaglyph) ----
@@ -1046,6 +1144,7 @@ def calibrate_stepped_stereo(
                 R_stereo=R_stereo, T_stereo=T_stereo,
                 img1=images1[datum_index], img2=images2[datum_index],
                 datum_board_world=board_world, spacing=float(board.dot_spacing_mm),
+                cam1_num=int(cam1), cam2_num=int(cam2),
             )
         except Exception:  # figures never abort the fit
             logger.warning("stepped stereo rig figure writing failed (non-fatal)")
