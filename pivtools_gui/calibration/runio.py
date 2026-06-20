@@ -157,17 +157,23 @@ def read_vectors(bmat_path: Path) -> Dict[int, Tuple[np.ndarray, np.ndarray, Opt
     out: Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]] = {}
     n = pr.shape[0] if pr.ndim else 1
     uxf, uyf = pr["ux"], pr["uy"]
-    bmf = pr["b_mask"] if "b_mask" in pr.dtype.names else None
+    # b_mask is required — every PIV writer emits it (save_results.py). A missing field
+    # means a stale pre-b_mask file: fail loudly so it gets re-run, never fake a default
+    # (forward-looking, no silent fallback — see CLAUDE.md).
+    if "b_mask" not in pr.dtype.names:
+        raise ValueError(
+            f"{bmat_path.name}: piv_result has no b_mask field — stale pre-b_mask PIV "
+            "output; re-run the PIV pass to regenerate it"
+        )
+    bmf = pr["b_mask"]
     for i in range(n):
         ux = _as2d(uxf[i] if n > 1 else uxf)
         uy = _as2d(uyf[i] if n > 1 else uyf)
         if ux.size == 0:
             continue
-        b = None
-        if bmf is not None:
-            bb = bmf[i] if n > 1 else bmf
-            bb = np.asarray(bb.item() if np.asarray(bb).dtype == object else bb)
-            b = bb if bb.size else None
+        bb = bmf[i] if n > 1 else bmf
+        bb = np.asarray(bb.item() if np.asarray(bb).dtype == object else bb)
+        b = bb if bb.size else None
         out[i] = (ux, uy, b)
     return out
 

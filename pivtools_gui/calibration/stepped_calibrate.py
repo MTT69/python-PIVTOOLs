@@ -679,8 +679,8 @@ def calibrate_stepped_mono(
         ONLY to draw the detection-overlay + world-frame proof figures. Ignored unless
         ``figure_dir`` is set.
     figure_dir : optional directory; when set, the stepped proof figures (detection
-        overlays, world frame, reprojection on the fitted views, distortion map, 3D
-        boards) are written there. Figure failures are non-fatal.
+        overlays, world frame, reprojection on the fitted views, 3D boards) are written
+        there. Figure failures are non-fatal.
     figure_prefix : filename prefix for the figures (``"cam1_"`` / ``"cam2_"`` in a
         stereo run; empty for mono — the empty-prefix run also gets the 3D boards plot).
 

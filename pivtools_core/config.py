@@ -560,6 +560,7 @@ calibration:
     dot_spacing_mm: 15.0
     k_neighbors: 9
     model_type: pinhole
+    fix_k2: false            # pin r⁴ radial term (CALIB_FIX_K2); set true only for few-view (<3) fits
   scale_factor:
     px_per_mm: 1
     dt: 1

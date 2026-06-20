@@ -1,17 +1,25 @@
 """calibration.stereo_model — stereo calibration + 3C reconstruction.
 
-Stereo is built the stepped-board way (CLAUDE.md gotcha #7): each camera's
-intrinsics are fit independently, then each camera's datum pose is solved into the
-SHARED, cam1-defined world frame, and the stereo relation is derived from the two
-poses:
+This module serves TWO distinct stereo paths; do not conflate them (CLAUDE.md gotcha #7):
 
-    R_stereo = R2 @ R1.T ,   T_stereo = t2 - R_stereo @ t1
+1. Flat same-side pairs — ``StereoCalibrator.run_stereo``. Each camera's intrinsics are
+   fit independently, then the cross-camera relative pose comes from
+   ``cv2.stereoCalibrate(CALIB_FIX_INTRINSIC)`` over ALL shared views (the gold-standard
+   joint estimate), and camera 2's world pose is composed onto camera 1's anchor:
 
-This needs NO ``cv2.stereoCalibrate`` and works even when the two cameras see
-different boards (transmission PIV / two-plate), because correspondence is via the
-shared world frame, not shared image points. For a shared board, the world frame
-defined on cam1 is carried to cam2 by feature correspondence (ChArUco corner ids,
-or any globally consistent grid indexing).
+       R2 = R_stereo @ R1 ,   t2 = R_stereo @ t1 + T_stereo
+
+   This needs shared board features in both cameras; it raises otherwise.
+
+2. Stepped / transmission rigs (different boards, ~180° pairs) — the stepped-board path in
+   ``stepped_calibrate.py`` instead derives the stereo relation from the two world-frame
+   poses directly, via ``compose_stereo`` (also defined here, reused by ``self_cal``):
+
+       R_stereo = R2 @ R1.T ,   T_stereo = t2 - R_stereo @ t1
+
+   This needs NO ``cv2.stereoCalibrate`` and works when the two cameras never see the same
+   board, because correspondence is via the shared cam1-defined world frame, not shared
+   image points.
 
 3C reconstruction keeps the Willert/Soloff geometric method: for each grid point,
 stack the two cameras' projection Jacobians into a 4x3 system and solve for

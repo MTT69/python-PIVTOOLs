@@ -498,10 +498,9 @@ def detect_sequence():
     "/calibration/stepped/detect_sequence/status/<job_id>", methods=["GET"])
 def detect_sequence_status(job_id: str):
     """Poll a stepped sequence-detection job."""
-    data = job_manager.get_job_with_timing(job_id)
-    if data is None:
-        return jsonify({"error": "job not found"}), 404
-    return jsonify(data)
+    from .views import _job_status_response  # local: views imports this module first
+
+    return _job_status_response(job_id)
 
 
 @calibration_stepped_bp.route("/calibration/stepped/inputs", methods=["GET"])
@@ -826,6 +825,11 @@ def generate_model():
     if model_type not in ("pinhole", "polynomial3d"):
         return jsonify({"error": f"model_type must be 'pinhole' or 'polynomial3d', "
                                  f"got {model_type!r}"}), 400
+    # Stereo polynomial3d is temporarily disabled — it builds no stereo pose. Reject loudly
+    # (the UI also hides it); mono stepped polynomial3d remains available.
+    if stereo and model_type == "polynomial3d":
+        return jsonify({"error": "stereo polynomial3d calibration is temporarily disabled — "
+                                 "use pinhole for stereo"}), 400
     cameras_req = _resolve_cameras(data, cfg)
 
     # Resolve the detected sequence: the live in-session cache first, else the persisted
@@ -984,10 +988,9 @@ def generate_model():
     "/calibration/stepped/generate_model/status/<job_id>", methods=["GET"])
 def generate_model_status(job_id: str):
     """Poll a stepped model-generation job."""
-    data = job_manager.get_job_with_timing(job_id)
-    if data is None:
-        return jsonify({"error": "job not found"}), 404
-    return jsonify(data)
+    from .views import _job_status_response  # local: views imports this module first
+
+    return _job_status_response(job_id)
 
 
 def _list_figures(fig_dir) -> List[str]:

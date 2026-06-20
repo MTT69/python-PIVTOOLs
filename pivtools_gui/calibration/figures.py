@@ -132,13 +132,13 @@ def _dot_at_grid(grid_indices: np.ndarray, image_points: np.ndarray, col, row):
     )
 
 
-# GUI overlay convention (StereoSteppedCalibration.tsx): peak face red, trough face blue.
-_STEPPED_PEAK_COLOR = (1.0, 120 / 255, 120 / 255)   # GUI rgba(255,120,120)
-_STEPPED_TROUGH_COLOR = (80 / 255, 140 / 255, 1.0)  # GUI rgba(80,140,255)
+# GUI overlay convention (StereoSteppedCalibration.tsx): peak face blue, trough face red.
+_STEPPED_PEAK_COLOR = (80 / 255, 140 / 255, 1.0)     # GUI rgba(80,140,255)
+_STEPPED_TROUGH_COLOR = (1.0, 120 / 255, 120 / 255)  # GUI rgba(255,120,120)
 
 
 def _draw_stepped_grid_networks(ax, level_data, level_a_face) -> bool:
-    """Draw one grid network per stepped face (peak=red, trough=blue), like the GUI.
+    """Draw one grid network per stepped face (peak=blue, trough=red), like the GUI.
 
     A stepped board carries two interleaved grids; a single network across both bridges
     peak<->trough dots with spurious diagonals (the artefact this fixes). Each level's own
@@ -152,7 +152,7 @@ def _draw_stepped_grid_networks(ax, level_data, level_a_face) -> bool:
     a_is_peak = level_a_face != "trough"
     colors = {"a": _STEPPED_PEAK_COLOR, "b": _STEPPED_TROUGH_COLOR}
     faces = {"a": "peak", "b": "trough"}
-    if not a_is_peak:  # level 'a' is the trough face -> swap, so peak stays red
+    if not a_is_peak:  # level 'a' is the trough face -> swap, so peak stays blue
         colors = {"a": _STEPPED_TROUGH_COLOR, "b": _STEPPED_PEAK_COLOR}
         faces = {"a": "trough", "b": "peak"}
     drew = False
@@ -190,7 +190,7 @@ def write_detection_figure(
 
     ``level_a_face`` ('peak'|'trough'|None): for a stepped board, the face of level 'a'
     in this pose, so the grid network is drawn as two separate per-face networks
-    (peak=red, trough=blue) instead of one network bridging both faces.
+    (peak=blue, trough=red) instead of one network bridging both faces.
     """
     try:
         gray = _to_uint8_gray(image)
@@ -274,7 +274,7 @@ def write_detection_figure(
         ax1.set_yticks([])
 
         ax2 = fig.add_subplot(gs[0, 1])
-        # Stepped board -> two per-face networks (peak=red, trough=blue); else one network.
+        # Stepped board -> two per-face networks (peak=blue, trough=red); else one network.
         drew_stepped = (
             _draw_stepped_grid_networks(ax2, detection.level_data, level_a_face)
             if n
@@ -638,6 +638,81 @@ def _camera_records(models, labels, board_world):
     return recs
 
 
+def _draw_cameras_scene(ax, recs, bw, *, board_alpha, scatter_alpha, board_label) -> float:
+    """Shared 3D rig scene: a translucent board plane + its dots, the world triad, and each
+    camera's frustum + optical axis + label. The two callers differ only in the board/scatter
+    alphas and the board legend label; the caller owns the title/legend/save. Returns the scene
+    ``span`` (mm)."""
+    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+    scene = np.vstack([bw] + [r["pos"].reshape(1, 3) for r in recs])
+    span = float(np.max(scene.max(0) - scene.min(0))) or 1.0
+    fr = 0.05 * span
+    axis_len = 0.25 * span
+
+    x0, x1 = bw[:, 0].min(), bw[:, 0].max()
+    y0, y1 = bw[:, 1].min(), bw[:, 1].max()
+    z0 = float(bw[:, 2].mean())
+    ax.add_collection3d(
+        Poly3DCollection(
+            [np.array([[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0]])],
+            alpha=board_alpha,
+            facecolor="#ff7f0e",
+            edgecolor="#c25e00",
+            linewidths=1.5,
+        )
+    )
+    ax.scatter(
+        bw[:, 0],
+        bw[:, 1],
+        bw[:, 2],
+        c="#c25e00",
+        s=8,
+        alpha=scatter_alpha,
+        label=board_label,
+    )
+    for col, vec in (("r", [1, 0, 0]), ("g", [0, 1, 0]), ("b", [0, 0, 1])):
+        v = np.array(vec, float) * 0.15 * span
+        ax.plot([0, v[0]], [0, v[1]], [0, v[2]], color=col, lw=2)
+    for r in recs:
+        ax.add_collection3d(
+            Poly3DCollection(
+                _frustum_faces(
+                    r["pos"],
+                    r["axis"] * fr,
+                    r["right"] * fr * 0.7,
+                    r["up"] * fr * 0.5,
+                ),
+                alpha=0.35,
+                facecolor=r["color"],
+                edgecolor=r["color"],
+            )
+        )
+        end = r["pos"] + r["axis"] * axis_len
+        ax.plot(
+            [r["pos"][0], end[0]],
+            [r["pos"][1], end[1]],
+            [r["pos"][2], end[2]],
+            color=r["color"],
+            lw=1.5,
+            alpha=0.7,
+        )
+        ax.text(
+            r["pos"][0],
+            r["pos"][1],
+            r["pos"][2] + fr * 1.5,
+            r["label"],
+            color=r["color"],
+            fontsize=11,
+            fontweight="bold",
+            ha="center",
+        )
+    ax.set_xlabel("X (mm)")
+    ax.set_ylabel("Y (mm)")
+    ax.set_zlabel("Z (mm)")
+    return span
+
+
 def write_cameras_3d(
     model1: "CameraModel",
     model2: "CameraModel",
@@ -648,11 +723,8 @@ def write_cameras_3d(
 ) -> None:
     """World origin triad + datum board plane + both camera frusta/axes (PNG)."""
     try:
-        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-
         bw = np.asarray(board_world, np.float64).reshape(-1, 3)
         recs = _camera_records([model1, model2], ["Cam1", "Cam2"], bw)
-        float(np.linalg.norm(recs[0]["pos"] - recs[1]["pos"]))
         ang = float(
             np.degrees(
                 np.arccos(
@@ -662,74 +734,11 @@ def write_cameras_3d(
         )
         Tn = float(np.linalg.norm(np.asarray(T_stereo, np.float64)))
 
-        scene = np.vstack([bw] + [r["pos"].reshape(1, 3) for r in recs])
-        span = float(np.max(scene.max(0) - scene.min(0))) or 1.0
-        fr = 0.05 * span
-        axis_len = 0.25 * span
-
         fig = plt.figure(figsize=(13, 10))
         ax = fig.add_subplot(111, projection="3d")
-        # datum board as a translucent plane + its dots
-        x0, x1 = bw[:, 0].min(), bw[:, 0].max()
-        y0, y1 = bw[:, 1].min(), bw[:, 1].max()
-        z0 = float(bw[:, 2].mean())
-        ax.add_collection3d(
-            Poly3DCollection(
-                [np.array([[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0]])],
-                alpha=0.45,
-                facecolor="#ff7f0e",
-                edgecolor="#c25e00",
-                linewidths=1.5,
-            )
+        _draw_cameras_scene(
+            ax, recs, bw, board_alpha=0.45, scatter_alpha=0.7, board_label="datum board"
         )
-        ax.scatter(
-            bw[:, 0],
-            bw[:, 1],
-            bw[:, 2],
-            c="#c25e00",
-            s=8,
-            alpha=0.7,
-            label="datum board",
-        )
-        for col, vec in (("r", [1, 0, 0]), ("g", [0, 1, 0]), ("b", [0, 0, 1])):
-            v = np.array(vec, float) * 0.15 * span
-            ax.plot([0, v[0]], [0, v[1]], [0, v[2]], color=col, lw=2)
-        for r in recs:
-            ax.add_collection3d(
-                Poly3DCollection(
-                    _frustum_faces(
-                        r["pos"],
-                        r["axis"] * fr,
-                        r["right"] * fr * 0.7,
-                        r["up"] * fr * 0.5,
-                    ),
-                    alpha=0.35,
-                    facecolor=r["color"],
-                    edgecolor=r["color"],
-                )
-            )
-            end = r["pos"] + r["axis"] * axis_len
-            ax.plot(
-                [r["pos"][0], end[0]],
-                [r["pos"][1], end[1]],
-                [r["pos"][2], end[2]],
-                color=r["color"],
-                lw=1.5,
-                alpha=0.7,
-            )
-            ax.text(
-                r["pos"][0],
-                r["pos"][1],
-                r["pos"][2] + fr * 1.5,
-                r["label"],
-                color=r["color"],
-                fontsize=11,
-                fontweight="bold",
-                ha="center",
-            )
-        ax.set_xlabel("X (mm)")
-        ax.set_ylabel("Y (mm)")
-        ax.set_zlabel("Z (mm)")
         ax.set_title(
             f"Cameras relative to board — baseline |T|={Tn:.1f} mm, "
             f"stereo angle={ang:.2f} deg",
@@ -752,81 +761,17 @@ def write_cameras_planes_3d(
     one released board — which is request "orientation of the boards in space" for a joint solve.
     """
     try:
-        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-
         cams = list(models_by_cam.keys())
         labels = labels or {c: f"Cam{c}" for c in cams}
         bw = np.asarray(board_world, np.float64).reshape(-1, 3)
         recs = _camera_records(
             [models_by_cam[c] for c in cams], [labels[c] for c in cams], bw
         )
-        scene = np.vstack([bw] + [r["pos"].reshape(1, 3) for r in recs])
-        span = float(np.max(scene.max(0) - scene.min(0))) or 1.0
-        fr = 0.05 * span
-        axis_len = 0.25 * span
-
         fig = plt.figure(figsize=(13, 10))
         ax = fig.add_subplot(111, projection="3d")
-        x0, x1 = bw[:, 0].min(), bw[:, 0].max()
-        y0, y1 = bw[:, 1].min(), bw[:, 1].max()
-        z0 = float(bw[:, 2].mean())
-        ax.add_collection3d(
-            Poly3DCollection(
-                [np.array([[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0]])],
-                alpha=0.4,
-                facecolor="#ff7f0e",
-                edgecolor="#c25e00",
-                linewidths=1.5,
-            )
+        _draw_cameras_scene(
+            ax, recs, bw, board_alpha=0.4, scatter_alpha=0.6, board_label="released board"
         )
-        ax.scatter(
-            bw[:, 0],
-            bw[:, 1],
-            bw[:, 2],
-            c="#c25e00",
-            s=8,
-            alpha=0.6,
-            label="released board",
-        )
-        for col, vec in (("r", [1, 0, 0]), ("g", [0, 1, 0]), ("b", [0, 0, 1])):
-            v = np.array(vec, float) * 0.15 * span
-            ax.plot([0, v[0]], [0, v[1]], [0, v[2]], color=col, lw=2)
-        for r in recs:
-            ax.add_collection3d(
-                Poly3DCollection(
-                    _frustum_faces(
-                        r["pos"],
-                        r["axis"] * fr,
-                        r["right"] * fr * 0.7,
-                        r["up"] * fr * 0.5,
-                    ),
-                    alpha=0.35,
-                    facecolor=r["color"],
-                    edgecolor=r["color"],
-                )
-            )
-            end = r["pos"] + r["axis"] * axis_len
-            ax.plot(
-                [r["pos"][0], end[0]],
-                [r["pos"][1], end[1]],
-                [r["pos"][2], end[2]],
-                color=r["color"],
-                lw=1.5,
-                alpha=0.7,
-            )
-            ax.text(
-                r["pos"][0],
-                r["pos"][1],
-                r["pos"][2] + fr * 1.5,
-                r["label"],
-                color=r["color"],
-                fontsize=11,
-                fontweight="bold",
-                ha="center",
-            )
-        ax.set_xlabel("X (mm)")
-        ax.set_ylabel("Y (mm)")
-        ax.set_zlabel("Z (mm)")
         ax.set_title(f"Cameras relative to board — {len(cams)} cameras", fontsize=12)
         ax.legend(fontsize=9, loc="upper left")
         _save(fig, output_path, dpi=150)
@@ -1125,6 +1070,25 @@ def write_dewarp_pair(
         logger.warning(f"dewarp pair figure failed: {traceback.format_exc()}")
 
 
+def _write_dewarp_single(
+    dewarp_fn, model, img, board_world, spacing, output_path,
+    title, default_title, mm_per_px, log_label,
+) -> None:
+    """Shared body for the pinhole/polynomial single-image dewarp figures — they differ only in
+    the image-remap function (``dewarp_fn``), the default title, and the log label."""
+    try:
+        x_min, x_max, y_min, y_max = _world_extent(board_world)
+        dw = dewarp_fn(model, img, x_min, x_max, y_min, y_max, mm_per_px)
+        fig, ax = plt.subplots(figsize=(14, 11))
+        ax.imshow(dw, extent=[x_min, x_max, y_min, y_max], origin="lower", cmap="gray")
+        _dewarp_axes(ax, board_world, spacing, x_min, x_max, y_min, y_max)
+        ax.set_title(title or default_title, fontsize=12)
+        ax.legend(fontsize=8, loc="upper right")
+        _save(fig, output_path, dpi=160)
+    except Exception:
+        logger.warning(f"{log_label} figure failed: {traceback.format_exc()}")
+
+
 def write_dewarp_single(
     model: "CameraModel",
     img,
@@ -1135,21 +1099,11 @@ def write_dewarp_single(
     mm_per_px=None,
 ) -> None:
     """Remap one image to the world Z=0 plane; a correct model rectifies the board to a regular grid."""
-    try:
-        x_min, x_max, y_min, y_max = _world_extent(board_world)
-        dw = _dewarp_image_to_world(model, img, x_min, x_max, y_min, y_max, mm_per_px)
-        fig, ax = plt.subplots(figsize=(14, 11))
-        ax.imshow(dw, extent=[x_min, x_max, y_min, y_max], origin="lower", cmap="gray")
-        _dewarp_axes(ax, board_world, spacing, x_min, x_max, y_min, y_max)
-        ax.set_title(
-            title
-            or "Dewarped board (model -> world plane; dots on the grid = good model)",
-            fontsize=12,
-        )
-        ax.legend(fontsize=8, loc="upper right")
-        _save(fig, output_path, dpi=160)
-    except Exception:
-        logger.warning(f"dewarp single figure failed: {traceback.format_exc()}")
+    _write_dewarp_single(
+        _dewarp_image_to_world, model, img, board_world, spacing, output_path,
+        title, "Dewarped board (model -> world plane; dots on the grid = good model)",
+        mm_per_px, "dewarp single",
+    )
 
 
 def _backproject_to_world_plane(model: "CameraModel", pixels) -> np.ndarray:
@@ -1176,16 +1130,13 @@ def _backproject_to_world_plane(model: "CameraModel", pixels) -> np.ndarray:
     return world
 
 
-def write_dewarp_dots(
-    models_by_cam,
-    detect_pixels_by_cam,
-    board_world,
-    spacing,
-    output_path,
-    labels=None,
-    title=None,
+def _write_dewarp_dots(
+    backproject_fn, models_by_cam, detect_pixels_by_cam, board_world, output_path,
+    labels, title, default_title, board_label, log_label,
 ) -> None:
-    """Each camera's detected dots back-projected to the world plane (coincident markers = agree)."""
+    """Shared body for the pinhole/polynomial dewarp-dots figures — they differ only in how each
+    camera's pixels map to world XY (``backproject_fn``), the released-board legend label, the
+    default title, and the log label."""
     try:
         bw = np.asarray(board_world, np.float64).reshape(-1, 3)
         cams = list(models_by_cam.keys())
@@ -1199,13 +1150,13 @@ def write_dewarp_dots(
             edgecolors="0.6",
             linewidths=0.8,
             marker="s",
-            label="released board",
+            label=board_label,
         )
         for i, c in enumerate(cams):
             px = detect_pixels_by_cam.get(c)
             if px is None or not len(px):
                 continue
-            w = _backproject_to_world_plane(models_by_cam[c], px)
+            w = backproject_fn(models_by_cam[c], px)
             ax.scatter(
                 w[:, 0],
                 w[:, 1],
@@ -1219,15 +1170,29 @@ def write_dewarp_dots(
         ax.set_aspect("equal", adjustable="datalim")
         ax.set_xlabel("X world (mm)")
         ax.set_ylabel("Y world (mm)")
-        ax.set_title(
-            title
-            or "Detected dots dewarped to world (markers coincide = models agree)",
-            fontsize=12,
-        )
+        ax.set_title(title or default_title, fontsize=12)
         ax.legend(fontsize=8, loc="upper right")
         _save(fig, output_path, dpi=150)
     except Exception:
-        logger.warning(f"dewarp dots figure failed: {traceback.format_exc()}")
+        logger.warning(f"{log_label} figure failed: {traceback.format_exc()}")
+
+
+def write_dewarp_dots(
+    models_by_cam,
+    detect_pixels_by_cam,
+    board_world,
+    spacing,
+    output_path,
+    labels=None,
+    title=None,
+) -> None:
+    """Each camera's detected dots back-projected to the world plane (coincident markers = agree)."""
+    _write_dewarp_dots(
+        _backproject_to_world_plane, models_by_cam, detect_pixels_by_cam, board_world,
+        output_path, labels, title,
+        "Detected dots dewarped to world (markers coincide = models agree)",
+        "released board", "dewarp dots",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1318,21 +1283,11 @@ def write_dewarp_single_poly(
 ) -> None:
     """Remap one image to the world plane through a planar polynomial; a correct fit rectifies the
     board to a regular grid (the polynomial analogue of ``write_dewarp_single``)."""
-    try:
-        x_min, x_max, y_min, y_max = _world_extent(board_world)
-        dw = _dewarp_image_to_world_poly(model, img, x_min, x_max, y_min, y_max, mm_per_px)
-        fig, ax = plt.subplots(figsize=(14, 11))
-        ax.imshow(dw, extent=[x_min, x_max, y_min, y_max], origin="lower", cmap="gray")
-        _dewarp_axes(ax, board_world, spacing, x_min, x_max, y_min, y_max)
-        ax.set_title(
-            title
-            or "Dewarped board (polynomial -> world plane; dots on the grid = good fit)",
-            fontsize=12,
-        )
-        ax.legend(fontsize=8, loc="upper right")
-        _save(fig, output_path, dpi=160)
-    except Exception:
-        logger.warning(f"dewarp single (poly) figure failed: {traceback.format_exc()}")
+    _write_dewarp_single(
+        _dewarp_image_to_world_poly, model, img, board_world, spacing, output_path,
+        title, "Dewarped board (polynomial -> world plane; dots on the grid = good fit)",
+        mm_per_px, "dewarp single (poly)",
+    )
 
 
 def write_dewarp_dots_poly(
@@ -1346,48 +1301,16 @@ def write_dewarp_dots_poly(
 ) -> None:
     """Each camera's detected dots back-projected to the world plane via its polynomial (coincident
     markers = cameras agree). The polynomial maps pixel->world directly — no ray/plane cast."""
-    try:
-        bw = np.asarray(board_world, np.float64).reshape(-1, 3)
-        cams = list(models_by_cam.keys())
-        labels = labels or {c: f"Cam{c}" for c in cams}
-        fig, ax = plt.subplots(figsize=(13, 11))
-        ax.scatter(
-            bw[:, 0],
-            bw[:, 1],
-            s=60,
-            facecolors="none",
-            edgecolors="0.6",
-            linewidths=0.8,
-            marker="s",
-            label="grid target",
-        )
-        for i, c in enumerate(cams):
-            px = detect_pixels_by_cam.get(c)
-            if px is None or not len(px):
-                continue
-            w = models_by_cam[c].back_project_to_plane(np.asarray(px, np.float64))[:, :2]
-            ax.scatter(
-                w[:, 0],
-                w[:, 1],
-                s=18,
-                color=CAM_COLORS[i % len(CAM_COLORS)],
-                alpha=0.7,
-                label=labels[c],
-            )
-        ax.axhline(0, color="gray", lw=0.6)
-        ax.axvline(0, color="gray", lw=0.6)
-        ax.set_aspect("equal", adjustable="datalim")
-        ax.set_xlabel("X world (mm)")
-        ax.set_ylabel("Y world (mm)")
-        ax.set_title(
-            title
-            or "Detected dots back-projected to world (coincident = cameras agree)",
-            fontsize=12,
-        )
-        ax.legend(fontsize=8, loc="upper right")
-        _save(fig, output_path, dpi=150)
-    except Exception:
-        logger.warning(f"dewarp dots (poly) figure failed: {traceback.format_exc()}")
+
+    def _poly_backproject(model, px):
+        return model.back_project_to_plane(np.asarray(px, np.float64))[:, :2]
+
+    _write_dewarp_dots(
+        _poly_backproject, models_by_cam, detect_pixels_by_cam, board_world,
+        output_path, labels, title,
+        "Detected dots back-projected to world (coincident = cameras agree)",
+        "grid target", "dewarp dots (poly)",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1517,7 +1440,7 @@ def write_stepped_figures(
     if images is not None:
         for pose_idx, det in zip(used_pose_indices, used_detections):
             # pose_levels labels level 'a's face per pose (position-aligned to the original
-            # detections); pass it so the network is split peak(red)/trough(blue).
+            # detections); pass it so the network is split peak(blue)/trough(red).
             level_a_face = (
                 pose_levels[pose_idx]
                 if pose_levels is not None and 0 <= pose_idx < len(pose_levels)

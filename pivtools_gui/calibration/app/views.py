@@ -206,7 +206,10 @@ def _frame_total(get: Callable[[str], Any], camera: int, source_idx: int) -> int
         return n
     try:
         return get_calibration_frame_count(int(camera), get_config(), int(source_idx))
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "frame-count auto-detect failed for cam %s source %s: %s", camera, source_idx, exc
+        )
         return 0
 
 
@@ -274,6 +277,14 @@ def _list_figures(fig_dir) -> List[str]:
     # Rank by figure kind (dewarp first), alphabetical within a kind. Filenames are unchanged —
     # the /calibration/figure?name= serve endpoint still resolves each by basename.
     return sorted(names, key=lambda n: (_figure_rank(n), n))
+
+
+def _job_status_response(job_id: str):
+    """Shared poll response for every calibration job route: timed status or 404."""
+    data = job_manager.get_job_with_timing(job_id)
+    if data is None:
+        return jsonify({"error": "job not found"}), 404
+    return jsonify(data)
 
 
 def _world_frame_payload(wf) -> dict:
@@ -946,6 +957,7 @@ def generate_model():
                 board_type=board,
                 model_type=model_type,
                 distortion_model=_MODEL,
+                fix_k2=bool(data.get("fix_k2", False)),
             )
             dets = list(cached) if cache_hit else [detector.detect(im) for im in imgs]
             record = calr.run_mono(
@@ -984,6 +996,8 @@ def generate_model():
             }
             if isinstance(cm, PolynomialModel):
                 resp.update(_polynomial_summary(cm))
+            elif isinstance(cm, Polynomial3DModel):
+                resp.update(_polynomial3d_summary(cm))
             else:
                 resp.update(
                     {
@@ -1615,10 +1629,7 @@ def apply_model():
 @calibration_bp.route("/calibration/apply/status/<job_id>", methods=["GET"])
 def apply_status(job_id):
     """Poll an apply job's status (same shape as the v1 vector-job status)."""
-    data = job_manager.get_job_with_timing(job_id)
-    if data is None:
-        return jsonify({"error": "job not found"}), 404
-    return jsonify(data)
+    return _job_status_response(job_id)
 
 
 # ---------------------------------------------------------------------------
@@ -2167,10 +2178,7 @@ def joint_generate():
 @calibration_bp.route("/calibration/joint/generate/status/<job_id>", methods=["GET"])
 def joint_generate_status(job_id):
     """Poll a joint-generate job's status (same shape as the apply job)."""
-    data = job_manager.get_job_with_timing(job_id)
-    if data is None:
-        return jsonify({"error": "job not found"}), 404
-    return jsonify(data)
+    return _job_status_response(job_id)
 
 
 @calibration_bp.route("/calibration/joint/model", methods=["GET"])
@@ -2479,10 +2487,7 @@ def self_cal_run():
 @calibration_bp.route("/calibration/self_cal/status/<job_id>", methods=["GET"])
 def self_cal_status(job_id):
     """Poll a self-calibration job (convergence history + figure list on completion)."""
-    data = job_manager.get_job_with_timing(job_id)
-    if data is None:
-        return jsonify({"error": "job not found"}), 404
-    return jsonify(data)
+    return _job_status_response(job_id)
 
 
 @calibration_bp.route("/calibration/self_cal/figure", methods=["GET"])

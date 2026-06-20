@@ -522,6 +522,7 @@ def detect_mono_command(args):
     dm = DistortionModel(args.distortion or cfg.get("distortion_model", "standard"))
     model_type = args.model_type or cfg.get(board, {}).get("model_type", "pinhole")
     fix_aspect = bool(cfg.get("fix_aspect_ratio", True))
+    fix_k2 = bool(cfg.get(board, {}).get("fix_k2", False))
     use_ro = bool(cfg.get("use_release_object", False))
     clicks = _load_clicks(args.world_frame or cfg.get("world_frame", "default"))
     frame_grid = _load_grid(cfg.get("world_frame_grid"))
@@ -578,6 +579,7 @@ def detect_mono_command(args):
         model_type=model_type,
         distortion_model=dm,
         fix_aspect_ratio=fix_aspect,
+        fix_k2=fix_k2,
         use_release_object=use_ro,
     )
     record = calr.run_mono(
@@ -626,6 +628,7 @@ def detect_stereo_command(args):
     datum_index = _resolve_datum_index(cfg)
     dm = DistortionModel(args.distortion or cfg.get("distortion_model", "standard"))
     fix_aspect = bool(cfg.get("fix_aspect_ratio", True))
+    fix_k2 = bool(cfg.get(board, {}).get("fix_k2", False))
     # Flat same-side stereo defaults to release-object intrinsics (DaVis-style); the GUI
     # route uses the StereoCalibrator default. An explicit config value still overrides.
     use_ro = bool(cfg.get("use_release_object", True))
@@ -702,6 +705,7 @@ def detect_stereo_command(args):
         board_type=board,
         distortion_model=dm,
         fix_aspect_ratio=fix_aspect,
+        fix_k2=fix_k2,
         use_release_object=use_ro,
     )
     record = sc.run_stereo(

@@ -21,7 +21,7 @@ class CharucoParams:
     squares_h: int = 10           # number of squares horizontally
     squares_v: int = 7            # number of squares vertically
     square_size_m: float = 0.030  # metres (ChArUco native unit)
-    marker_ratio: float = 0.75    # marker_size / square_size
+    marker_ratio: float = 0.5     # marker_size / square_size (matches the config/CLI fallback)
     aruco_dict: str = "DICT_4X4_1000"
     min_corners: int = 6
 
