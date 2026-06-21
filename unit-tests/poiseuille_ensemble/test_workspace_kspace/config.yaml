@@ -75,12 +75,12 @@ outlier_detection:
     type: median_2d
 paths:
   base_paths:
-  - /Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/unit-tests/poiseuille_ensemble/test_workspace_kspace/output
+  - /Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools-peak-fit-simd/unit-tests/poiseuille_ensemble/test_workspace_kspace/output
   camera_count: 1
   camera_numbers:
   - 1
   source_paths:
-  - /Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools/unit-tests/poiseuille_ensemble/test_workspace_kspace/source
+  - /Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools-peak-fit-simd/unit-tests/poiseuille_ensemble/test_workspace_kspace/source
 processing:
   backend: cpu
   dask_max_in_flight_per_worker: 3
