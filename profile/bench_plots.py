@@ -31,8 +31,16 @@ _CATEGORIES: list[tuple[str, list[str], str]] = [
     ("Other", ["post_processing", "result_construction"], "#a6a6a6"),
 ]
 _PC_SUB_SECTIONS = {"pc_gaussian_smooth", "pc_predictor_remap", "pc_fused_warp"}
+# bulkxcorr2d FFT/peak-fit split sections — excluded from the category buckets (they
+# are a finer breakdown of Cross-corr, drawn as sub-segments when single-thread).
+_KERNEL_SUB_SECTIONS = {"xcorr_fft", "peak_fit"}
 _READ_COLOR = "#404040"
+_FILTER_COLOR = "#17becf"  # teal — distinct from the navy Cross-corr bar
 _SAVE_COLOR = "#e8a33d"
+# Cross-corr 3-way split (correlation family — shades of the navy Cross-corr blue)
+_XCORR_FFT_COLOR = "#4f81bd"
+_PEAK_FIT_COLOR = "#94b3d6"
+_KERNEL_OTHER_COLOR = "#cdddf0"
 
 
 def _bucket_pass(sections_ms: dict[str, dict[str, float]]) -> dict[str, float]:
@@ -40,7 +48,7 @@ def _bucket_pass(sections_ms: dict[str, dict[str, float]]) -> dict[str, float]:
     Any section not explicitly mapped (and not a PC sub-section) lands in 'Other', so
     nothing is silently dropped from the total."""
     mapped = {name: 0.0 for name, _, _ in _CATEGORIES}
-    claimed = set(_PC_SUB_SECTIONS)
+    claimed = set(_PC_SUB_SECTIONS) | _KERNEL_SUB_SECTIONS
     for name, keys, _ in _CATEGORIES:
         for k in keys:
             if k in sections_ms:
@@ -65,14 +73,34 @@ def plot_budget(payload: dict[str, Any], out_path: Path) -> Path:
 
     fig, ax = plt.subplots(figsize=(9, 5.5))
 
-    # x positions: Read | pass bars... | Save
-    labels = ["Read"]
+    # x positions: Read | Filter | pass bars... | Save
+    labels = ["Read", "Filter"]
     labels += [f"Pass {p['pass_idx'] + 1}\n({p['window'][0]} px)" for p in passes]
     labels += ["Save"]
     x = list(range(len(labels)))
 
     # Read bar
     ax.bar(x[0], payload["budget_per_pair_ms"]["read"], color=_READ_COLOR, label="Read (I/O)")
+
+    # Filter bar (production preprocessing stage between read and correlate)
+    ftypes = payload.get("filter_types") or []
+    flabel = f"Filter ({', '.join(ftypes)})" if ftypes else "Filter (none)"
+    ax.bar(x[1], payload["budget_per_pair_ms"]["filter"], color=_FILTER_COLOR, label=flabel)
+
+    # Cross-corr splits into FFT / peak-fit / kernel-other only when the run was
+    # single-thread (the C timers are thread-summed, so at >1 thread they overshoot
+    # the bulkxcorr2d wall and would not fit inside the bar).
+    split = payload.get("omp_threads") == 1 and all(
+        "xcorr_fft" in p["sections_ms"] and "peak_fit" in p["sections_ms"] for p in passes
+    )
+
+    def _draw_segment(xi, h, bottom, colour, label, legend_done):
+        if h <= 0:
+            return bottom
+        ax.bar(xi, h, bottom=bottom, color=colour,
+               label=label if label not in legend_done else None)
+        legend_done.add(label)
+        return bottom + h
 
     # Per-pass stacked compute bars
     legend_done = set()
@@ -83,12 +111,20 @@ def plot_budget(payload: dict[str, Any], out_path: Path) -> Path:
             h = bucket[name]
             if h <= 0:
                 continue
-            ax.bar(
-                x[1 + i], h, bottom=bottom, color=colour,
-                label=name if name not in legend_done else None,
-            )
-            legend_done.add(name)
-            bottom += h
+            if name == "Cross-corr" and split:
+                # h is the bulkxcorr2d section; split into FFT, peak-fit, remainder.
+                s = p["sections_ms"]
+                fft = s["xcorr_fft"]["mean_ms"]
+                fit = s["peak_fit"]["mean_ms"]
+                other = max(0.0, h - fft - fit)
+                bottom = _draw_segment(x[2 + i], fft, bottom, _XCORR_FFT_COLOR,
+                                       "Cross-corr: FFT", legend_done)
+                bottom = _draw_segment(x[2 + i], fit, bottom, _PEAK_FIT_COLOR,
+                                       "Cross-corr: peak-fit", legend_done)
+                bottom = _draw_segment(x[2 + i], other, bottom, _KERNEL_OTHER_COLOR,
+                                       "Cross-corr: kernel-other", legend_done)
+            else:
+                bottom = _draw_segment(x[2 + i], h, bottom, colour, name, legend_done)
 
     # Save bar
     ax.bar(x[-1], payload["save_ms"]["mean_ms"], color=_SAVE_COLOR, label="Save (I/O)")
@@ -97,9 +133,11 @@ def plot_budget(payload: dict[str, Any], out_path: Path) -> Path:
     ax.set_xticklabels(labels)
     ax.set_ylabel("Time per pair (ms)")
     total = payload["budget_per_pair_ms"]["total"]
+    omp = payload.get("omp_threads", "?")
     ax.set_title(
         f"Per-pair time budget — {payload['mode']} [{backend}]  "
-        f"(total {total:.2f} ms/pair, n={payload['n_images']}, cache={payload['cache_policy']})"
+        f"(total {total:.2f} ms/pair, n={payload['n_images']}, cache={payload['cache_policy']}, "
+        f"{omp} thread{'s' if omp != 1 else ''})"
     )
     ax.legend(loc="upper left", ncol=2, fontsize=9)
     ax.grid(axis="y", alpha=0.3)

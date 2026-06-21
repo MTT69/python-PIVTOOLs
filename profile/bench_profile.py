@@ -38,11 +38,16 @@ import numpy as np
 import bench_common as bc
 from pivtools_cli.piv.piv_backend.cpu_instantaneous import InstantaneousCorrelatorCPU
 from pivtools_cli.piv.save_results import save_piv_result_distributed
+from pivtools_cli.processing.dask_pipeline import apply_all_filters_slim, get_filter_specs
 from pivtools_core.image_handling.load_images import load_images
 
-# Sub-sections nested *inside* predictor_corrector — excluding them from pass totals
-# avoids double-counting (they are a finer breakdown of the same wall time).
+# Sub-sections nested *inside* a parent section — excluded from pass totals to avoid
+# double-counting (they are a finer breakdown of the same wall time):
+#   pc_*       -> inside predictor_corrector
+#   xcorr_fft, peak_fit -> inside bulkxcorr2d (the FFT-vs-peak-fit split, threads=1)
 _PC_SUB_SECTIONS = ("pc_gaussian_smooth", "pc_predictor_remap", "pc_fused_warp")
+_KERNEL_SUB_SECTIONS = ("xcorr_fft", "peak_fit")
+_NESTED_SECTIONS = set(_PC_SUB_SECTIONS) | set(_KERNEL_SUB_SECTIONS)
 
 CACHE_WARM = "warm"
 CACHE_COLD = "cold"
@@ -112,8 +117,26 @@ def _read_batch(camera: int, config, dataset: str) -> tuple[np.ndarray, float]:
 
 
 def _pass_total(pass_sections: dict[str, float]) -> float:
-    """Sum a pass's section times, excluding nested PC sub-sections."""
-    return sum(v for k, v in pass_sections.items() if k not in _PC_SUB_SECTIONS)
+    """Sum a pass's section times, excluding nested sub-sections (pc_* and the
+    bulkxcorr2d FFT/peak-fit split)."""
+    return sum(v for k, v in pass_sections.items() if k not in _NESTED_SECTIONS)
+
+
+def _apply_filters_chunked(images: np.ndarray, config, filter_specs: list) -> np.ndarray:
+    """Apply the production filter stage to a read batch (option B — faithful to
+    production). Chunks by ``config.batch_size`` and filters each chunk
+    independently, so temporal filters (``time``/``pod``) see the same window of
+    frames they would inside one production Dask chunk. Returns a new
+    ``(N,2,H,W)`` array. Pixel masking is intentionally out of scope here."""
+    bs = config.batch_size
+    out = np.empty_like(images)
+    for start in range(0, images.shape[0], bs):
+        chunk = images[start:start + bs]
+        out[start:start + bs] = apply_all_filters_slim(
+            chunk, filter_specs=filter_specs, pixel_mask=None,
+            save_intermediate_base=None, num_frame_pairs=None, block_id=None,
+        )
+    return out
 
 
 def profile_instantaneous(
@@ -176,22 +199,43 @@ def profile_instantaneous(
     if n == 0:
         raise RuntimeError(f"No image pairs read from {dataset} (check image_format/start_index)")
 
+    # Production applies the filter stage between read and correlate; mirror it so
+    # the budget includes filtering and the correlator sees *filtered* images
+    # (otherwise the profile silently omits a real pipeline stage). Option B chunks
+    # by config.batch_size in _apply_filters_chunked. Pixel masking stays out of scope.
+    filter_specs = get_filter_specs(config)
+    do_filter = bool(filter_specs)
+    filter_types = [f.get("type") for f in filter_specs] if filter_specs else []
+    images_for_corr = (
+        _apply_filters_chunked(images, config, filter_specs) if do_filter else images
+    )
+
     if do_warmup:
-        correlator.correlate_batch(images, config)  # FFTW plans; untimed
+        correlator.correlate_batch(images_for_corr, config)  # FFTW plans; untimed
 
     save_tmp = Path(tempfile.mkdtemp(prefix="bench_profile_save_"))
-    kernel_split: Optional[dict[str, Any]] = None
     try:
         # section -> list of per-pair seconds (one entry per iteration), per pass
         per_pass: list[dict[str, list[float]]] = [{} for _ in range(n_passes)]
         save_per_iter: list[float] = []
+        filter_per_iter: list[float] = []
 
-        # The C sub-kernel timers (FFT vs peak-fit) accumulate across all the timed
-        # correlate_batch calls below; read once at the end. Uses the correlator's own
-        # lib handle so the globals are the ones the correlation updates.
-        with bc.kernel_timing(correlator.lib) as read_kernel:
+        # Enable the C sub-kernel timers for the duration. The correlator captures the
+        # FFT-vs-peak-fit split *per pass* (cpu_instantaneous._kernel_split_section),
+        # surfacing it via get_profile_summary as the xcorr_fft/peak_fit sections — so
+        # the per-pass split flows through the same path as every other section.
+        with bc.kernel_timing(correlator.lib):
             for _ in range(iterations):
-                piv_results = correlator.correlate_batch(images, config)
+                # Filter (timed per iteration, like compute/save) — deterministic, so
+                # the result is identical each pass; we re-run it only to time it.
+                if do_filter:
+                    tf = time.perf_counter()
+                    images_for_corr = _apply_filters_chunked(images, config, filter_specs)
+                    filter_per_iter.append((time.perf_counter() - tf) / n)
+                else:
+                    filter_per_iter.append(0.0)
+
+                piv_results = correlator.correlate_batch(images_for_corr, config)
                 profile = correlator.get_profile_summary()  # {pass: {section: sec}} batch totals
 
                 for pass_idx in range(n_passes):
@@ -206,24 +250,6 @@ def profile_instantaneous(
                         do_compression=save_compression,
                     )
                 save_per_iter.append((time.perf_counter() - t0) / n)
-
-            if read_kernel is not None:
-                t_fft, t_fit = read_kernel()
-                denom = iterations * n
-                fft_fit = t_fft + t_fit
-                kernel_split = {
-                    "xcorr_fft_ms": 1e3 * t_fft / denom,
-                    "peak_fit_ms": 1e3 * t_fit / denom,
-                    "fft_fraction": (t_fft / fft_fit) if fft_fit > 0 else None,
-                    "omp_threads": int(omp_threads),
-                    "thread_summed": True,
-                    "note": (
-                        "per-pair = total thread-seconds / (iters*N). Thread-summed: at "
-                        "omp_threads>1 these exceed the bulkxcorr2d wall by ~omp_threads; "
-                        "at omp_threads=1 they reconcile with summed bulkxcorr2d. "
-                        "fft_fraction is thread-count-independent — the A/B quantity."
-                    ),
-                }
     finally:
         shutil.rmtree(save_tmp, ignore_errors=True)
 
@@ -239,7 +265,7 @@ def profile_instantaneous(
     for pass_idx in range(n_passes):
         sections = {sec: _stat(vals) for sec, vals in per_pass[pass_idx].items()}
         pass_compute = sum(
-            s["mean_ms"] for sec, s in sections.items() if sec not in _PC_SUB_SECTIONS
+            s["mean_ms"] for sec, s in sections.items() if sec not in _NESTED_SECTIONS
         )
         compute_total_ms += pass_compute
         passes.append({
@@ -250,9 +276,45 @@ def profile_instantaneous(
             "pass_compute_ms": pass_compute,
         })
 
+    # Build the FFT-vs-peak-fit split from the per-pass sections the correlator
+    # captured (xcorr_fft/peak_fit). Present only on instrumented builds with timing
+    # enabled; thread-summed, so honest only at omp_threads=1.
+    kernel_split = None
+    if all("xcorr_fft" in p["sections_ms"] for p in passes):
+        per_pass_split = []
+        tot_fft = tot_fit = 0.0
+        for p in passes:
+            fft_ms = p["sections_ms"]["xcorr_fft"]["mean_ms"]
+            fit_ms = p["sections_ms"]["peak_fit"]["mean_ms"]
+            tot_fft += fft_ms
+            tot_fit += fit_ms
+            per_pass_split.append({
+                "pass_idx": p["pass_idx"], "window": p["window"],
+                "xcorr_fft_ms": fft_ms, "peak_fit_ms": fit_ms,
+            })
+        fft_fit = tot_fft + tot_fit
+        kernel_split = {
+            "xcorr_fft_ms": tot_fft,
+            "peak_fit_ms": tot_fit,
+            "fft_fraction": (tot_fft / fft_fit) if fft_fit > 0 else None,
+            "omp_threads": int(omp_threads),
+            "thread_summed": True,
+            "per_pass": per_pass_split,
+            "note": (
+                "Per-pass FFT/peak-fit captured inside bulkxcorr2d. Thread-summed: at "
+                "omp_threads>1 these exceed the bulkxcorr2d wall by ~omp_threads and the "
+                "figure does not draw the split; at omp_threads=1 xcorr_fft+peak_fit+"
+                "(remainder) reconcile with the bulkxcorr2d section. fft_fraction is "
+                "thread-count-independent."
+            ),
+        }
+
     read_pp_ms = 1e3 * read_s / n
     save_pp = _stat(save_per_iter)
-    budget_total_ms = read_pp_ms + compute_total_ms + save_pp["mean_ms"]
+    filter_pp = _stat(filter_per_iter) if do_filter else {"mean_ms": 0.0, "std_ms": 0.0}
+    budget_total_ms = (
+        read_pp_ms + filter_pp["mean_ms"] + compute_total_ms + save_pp["mean_ms"]
+    )
 
     payload = {
         "kind": "profile",
@@ -262,12 +324,16 @@ def profile_instantaneous(
         "n_images": n,
         "iterations": iterations,
         "cache_policy": cache_note,
+        "omp_threads": int(omp_threads),
         "budget_per_pair_ms": {
             "read": read_pp_ms,
+            "filter": filter_pp["mean_ms"],
             "compute": compute_total_ms,
             "save": save_pp["mean_ms"],
             "total": budget_total_ms,
         },
+        "filter_ms": filter_pp,
+        "filter_types": filter_types,
         "save_ms": save_pp,
         "kernel_split": kernel_split,
         "passes": passes,

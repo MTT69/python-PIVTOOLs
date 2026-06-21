@@ -115,8 +115,9 @@ def cmd_profile(args: argparse.Namespace) -> int:
     bc.write_json(out_json, payload)
     print(f"\nProfile written: {out_json}")
     b = payload["budget_per_pair_ms"]
-    print(f"  per-pair: read {b['read']:.2f} + compute {b['compute']:.2f} "
-          f"+ save {b['save']:.2f} = {b['total']:.2f} ms  [{payload['cache_policy']}]")
+    print(f"  per-pair: read {b['read']:.2f} + filter {b['filter']:.2f} "
+          f"+ compute {b['compute']:.2f} + save {b['save']:.2f} = {b['total']:.2f} ms  "
+          f"[{payload['cache_policy']}]")
     ks = payload.get("kernel_split")
     if ks and ks.get("xcorr_fft_ms") is not None:
         print(f"  kernel split: FFT {ks['xcorr_fft_ms']:.3f} ms, "

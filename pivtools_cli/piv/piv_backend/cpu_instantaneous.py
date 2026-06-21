@@ -190,6 +190,44 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     except Exception:
                         pass  # Ignore errors during cleanup
 
+        # Flag-gated FFT-vs-peak-fit sub-kernel timers (present only in instrumented
+        # builds). Bind argtypes once so the per-pass split capture can read them.
+        self._has_kernel_timers = hasattr(self.lib, "bulkxcorr2d_get_timing")
+        if self._has_kernel_timers:
+            self.lib.bulkxcorr2d_reset_timing.argtypes = []
+            self.lib.bulkxcorr2d_reset_timing.restype = None
+            self.lib.bulkxcorr2d_get_timing.argtypes = [
+                ctypes.POINTER(ctypes.c_double),
+                ctypes.POINTER(ctypes.c_double),
+            ]
+            self.lib.bulkxcorr2d_get_timing.restype = None
+
+    @contextmanager
+    def _kernel_split_section(self, pass_idx):
+        """Capture the per-pass FFT vs peak-fit split from the C sub-kernel timers.
+
+        Resets the timers before the wrapped ``bulkxcorr2d`` call and reads them
+        after, storing ``xcorr_fft`` / ``peak_fit`` (seconds) into this pass's
+        profile data. The timers are thread-summed, so the numbers only reconcile
+        with the ``bulkxcorr2d`` wall at ``OMP_NUM_THREADS=1`` — the benchmark
+        records ``omp_threads`` so downstream code knows when the split is valid.
+        No-op unless profiling is on and the build exports the timers (and the
+        benchmark has enabled them); zero readings are not stored, so an
+        un-enabled run leaves no misleading split.
+        """
+        if not (self.profiling_enabled and self._has_kernel_timers):
+            yield
+            return
+        self.lib.bulkxcorr2d_reset_timing()
+        yield
+        fft = ctypes.c_double(0.0)
+        fit = ctypes.c_double(0.0)
+        self.lib.bulkxcorr2d_get_timing(ctypes.byref(fft), ctypes.byref(fit))
+        if fft.value > 0.0 or fit.value > 0.0:
+            d = self.profile_data.setdefault(pass_idx, {})
+            d["xcorr_fft"] = fft.value
+            d["peak_fit"] = fit.value
+
     @contextmanager
     def _profile_section(self, pass_idx, section):
         """Context manager for timing named sections within correlate_batch."""
@@ -351,7 +389,8 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                         )
                 
 
-                with self._profile_section(pass_idx, "bulkxcorr2d"):
+                with self._profile_section(pass_idx, "bulkxcorr2d"), \
+                        self._kernel_split_section(pass_idx):
                     # Ensure images are C-contiguous before passing to C library
                     image_a_prime_c = images_a_prime if images_a_prime.flags["C_CONTIGUOUS"] else np.ascontiguousarray(images_a_prime)
                     image_b_prime_c = images_b_prime if images_b_prime.flags["C_CONTIGUOUS"] else np.ascontiguousarray(images_b_prime)
