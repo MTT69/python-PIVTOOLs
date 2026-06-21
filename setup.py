@@ -33,6 +33,7 @@ class BuildCLibraries(build):
         build_dir.mkdir(parents=True, exist_ok=True)
         src_dir = self.pkg_dir / "pivtools_cli" / "lib"
         sys_name = platform.system().lower()
+        use_clang_cl = False  # set True in the Windows branch when clang-cl is selected
 
         # Check for user-provided FFTW paths (allows system library usage)
         fftw_inc_env = os.environ.get("FFTW_INC_DIR")
@@ -71,18 +72,13 @@ class BuildCLibraries(build):
                 use_static_fftw = True
                 print(f"Using static FFTW from: {fftw_static_dir}")
 
-            # Compiler setup
-            compiler = (
-                shutil.which("gcc-15")
-                or shutil.which("gcc-14")
-                or shutil.which("gcc-13")
-                or shutil.which("gcc")
-            )
-            if compiler is None or "/usr/bin/gcc" in str(compiler):
-                raise RuntimeError(
-                    "No suitable GCC compiler found. Install via: brew install gcc"
-                )
+            # Compiler setup — Homebrew LLVM clang. It bundles OpenMP, so plain
+            # -fopenmp works (identical flag path to Linux clang). Override with $CC.
+            # The runtime needs an rpath to libomp.dylib in the LLVM lib dir.
+            compiler = os.environ.get("CC") or self._brew_llvm_clang()
             print(f"Using compiler: {compiler}")
+            llvm_lib = pathlib.Path(compiler).resolve().parent.parent / "lib"
+            omp_rpath = [f"-Wl,-rpath,{llvm_lib}", f"-L{llvm_lib}", "-lomp"]
 
             sdk_path = subprocess.check_output(
                 ["xcrun", "--show-sdk-path"], text=True
@@ -109,6 +105,7 @@ class BuildCLibraries(build):
                     str(fftw_omp_file),
                     "-isysroot",
                     sdk_path,
+                    *omp_rpath,
                 ]
             else:
                 self.extra_link = [
@@ -119,6 +116,7 @@ class BuildCLibraries(build):
                     "-lfftw3f_omp",
                     "-isysroot",
                     sdk_path,
+                    *omp_rpath,
                 ]
 
             shared_flag = "-shared"
@@ -148,15 +146,26 @@ class BuildCLibraries(build):
                 use_static_fftw = True
                 print(f"Using static FFTW from: {fftw_dir}")
 
-            compiler = "cl"
+            # Windows toolchain: prefer clang-cl (faster codegen on the PIV hot
+            # kernels — see the peak-fit A/B), fall back to MSVC cl when absent.
+            # Override with PIVTOOLS_WIN_COMPILER=cl|clang-cl|<full path to either>.
+            compiler = self._resolve_windows_compiler()
+            use_clang_cl = pathlib.Path(compiler).stem.lower() == "clang-cl"
+            print(f"Windows compiler: {compiler}  (clang-cl={use_clang_cl})")
             shared_flag = "/LD"
-            self.extra_compile = [
-                "/O2",
-                "/std:c11",
-                "/experimental:c11atomics",
-                "/openmp:experimental",
-                "/MT",
-            ]
+            if use_clang_cl:
+                # clang-cl is cl-flag-compatible: it has native C11 atomics (no
+                # /experimental:c11atomics) and /openmp for the real OpenMP runtime
+                # (links libomp — libomp.dll is staged beside the DLLs after build).
+                self.extra_compile = ["/O2", "/std:c11", "/openmp", "/MT"]
+            else:
+                self.extra_compile = [
+                    "/O2",
+                    "/std:c11",
+                    "/experimental:c11atomics",
+                    "/openmp:experimental",
+                    "/MT",
+                ]
 
             if use_static_fftw:
                 fftw_lib_file = self.fftw_lib / "libfftw3f-3.lib"
@@ -192,7 +201,10 @@ class BuildCLibraries(build):
                 use_static_fftw = True
                 print(f"Using static FFTW from: {fftw_static_dir}")
 
-            compiler = os.environ.get("CC", "gcc")
+            # Linux: clang by default (uniform "clang method"), but honor $CC so
+            # an HPC cluster can pin a module-loaded gcc: CC=gcc pip install -e .
+            compiler = os.environ.get("CC") or shutil.which("clang") or "gcc"
+            print(f"Linux compiler: {compiler}")
             shared_flag = "-shared"
             self.extra_compile = [
                 "-O3",
@@ -228,6 +240,7 @@ class BuildCLibraries(build):
         # Store for marquadt build
         self.use_static_fftw = use_static_fftw
         self.use_msvc = use_msvc
+        self.use_clang_cl = use_clang_cl
         self.compiler = compiler
         self.shared_flag = shared_flag
         self.lib_ext = lib_ext
@@ -367,6 +380,102 @@ class BuildCLibraries(build):
 
         # --- Build libkspace (k-space fitting, requires GSL + FFTW) ---
         self._build_kspace()
+
+        # --- Stage the OpenMP runtime for clang-cl ---
+        # clang-cl's /openmp links libomp dynamically, so libomp.dll must sit
+        # beside the built DLLs (it ships via the *.dll package_data glob). The
+        # Python lib loaders call os.add_dll_directory(lib_dir) so the dependent
+        # DLL is found at load time. MSVC's /openmp:experimental needs no such
+        # redistributable.
+        if self.use_clang_cl:
+            libomp = pathlib.Path(self.compiler).resolve().parent / "libomp.dll"
+            if libomp.is_file():
+                shutil.copy2(libomp, self.build_dir / "libomp.dll")
+                print(f"Staged OpenMP runtime: {libomp} -> {self.build_dir / 'libomp.dll'}")
+            else:
+                raise RuntimeError(
+                    f"clang-cl /openmp build but libomp.dll not found at {libomp}.\n"
+                    "The built DLLs will fail to load without it. Set "
+                    "PIVTOOLS_WIN_COMPILER to a clang-cl whose directory contains libomp.dll."
+                )
+
+    def _brew_llvm_clang(self):
+        """Resolve Homebrew LLVM clang on macOS ($(brew --prefix llvm)/bin/clang).
+        Chosen over Apple clang because it bundles OpenMP (plain -fopenmp works,
+        matching the Linux clang path)."""
+        try:
+            prefix = subprocess.check_output(
+                ["brew", "--prefix", "llvm"], text=True
+            ).strip()
+        except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+            raise RuntimeError(
+                "Homebrew LLVM clang not found. Install with: brew install llvm\n"
+                "(or set CC to a clang that bundles OpenMP)."
+            ) from exc
+        clang = pathlib.Path(prefix) / "bin" / "clang"
+        if not clang.is_file():
+            raise RuntimeError(
+                f"brew --prefix llvm = {prefix} but {clang} is missing. "
+                "Run: brew install llvm"
+            )
+        return str(clang)
+
+    def _resolve_windows_compiler(self):
+        """Resolve the Windows compiler, preferring clang-cl. clang-cl is usually
+        NOT on PATH (it ships inside Visual Studio), so probe, in order:
+          1. PIVTOOLS_WIN_COMPILER  (explicit: 'cl', 'clang-cl', or a full path)
+          2. clang-cl on PATH
+          3. VSINSTALLDIR (set inside a vcvars shell -> matches the active MSVC)
+          4. vswhere -> VS install root
+          5. known Program Files globs
+          6. fall back to 'cl' (MSVC)
+        Returns a compiler string (bare name if on PATH, else an absolute path)."""
+        override = os.environ.get("PIVTOOLS_WIN_COMPILER")
+        if override:
+            return override
+
+        found = shutil.which("clang-cl")
+        if found:
+            return found
+
+        sub = pathlib.Path("VC") / "Tools" / "Llvm" / "x64" / "bin" / "clang-cl.exe"
+
+        vsinstall = os.environ.get("VSINSTALLDIR")
+        if vsinstall:
+            cand = pathlib.Path(vsinstall) / sub
+            if cand.is_file():
+                return str(cand)
+
+        vswhere = (
+            pathlib.Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)"))
+            / "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
+        )
+        if vswhere.is_file():
+            try:
+                root = subprocess.check_output(
+                    [str(vswhere), "-latest", "-property", "installationPath"],
+                    text=True,
+                ).strip()
+                if root:
+                    cand = pathlib.Path(root) / sub
+                    if cand.is_file():
+                        return str(cand)
+            except subprocess.CalledProcessError:
+                pass
+
+        for pf in ("ProgramFiles", "ProgramFiles(x86)"):
+            base = pathlib.Path(os.environ.get(pf, f"C:/{pf}")) / "Microsoft Visual Studio"
+            if base.is_dir():
+                for cand in sorted(base.glob(f"*/*/{sub.as_posix()}"), reverse=True):
+                    if cand.is_file():
+                        return str(cand)
+
+        print(
+            "NOTICE: clang-cl not found (not on PATH, no VS-bundled copy located); "
+            "falling back to MSVC cl. Set PIVTOOLS_WIN_COMPILER to a clang-cl.exe "
+            "to use the faster toolchain."
+        )
+        return "cl"
 
     def _build_marquadt(self):
         """Build libmarquadt with GSL support."""

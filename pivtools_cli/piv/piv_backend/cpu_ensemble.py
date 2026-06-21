@@ -256,6 +256,14 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
 
         lib_extension = ".dll" if os.name == "nt" else ".so"
 
+        # On Windows a clang-cl /openmp build ships libomp.dll beside our DLLs;
+        # Windows does not search a dependent DLL's own dir by default, so make it
+        # discoverable for the loads below. No-op when libomp.dll isn't present (MSVC).
+        if os.name == "nt" and hasattr(os, "add_dll_directory"):
+            os.add_dll_directory(
+                os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
+            )
+
         # Load marquadt library for Gaussian fitting
         marquadt_libpath = os.path.join(
             os.path.dirname(__file__), "..", "..", "lib", f"libmarquadt{lib_extension}"
