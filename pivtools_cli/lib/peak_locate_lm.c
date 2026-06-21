@@ -552,16 +552,26 @@ PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_
 {
 	int i, j, iPeak, idx;
 	int i0, j0;
-	float *xcorr_copy;
+	float *xcorr_copy = NULL;
+	const float *src;
 	float fPeakHeight;
 	float subxcorr[PKSIZE_X * PKSIZE_Y];
 	float fitval[PKSIZE_X * PKSIZE_Y];
 	int Nsub[2];
 	float peak[2];
 	float sig[3];
-	
-	xcorr_copy = (float*)malloc(sizeof(float) * N[0] * N[1]);
-	memcpy(xcorr_copy, xcorr, N[0] * N[1] * sizeof(float));
+
+	/* Lever 1: the mutable full-plane copy exists only so multi-peak can
+	 * subtract a fitted peak and re-search. For the common nPeaks==1 case it is
+	 * pure waste — read the const input directly and skip the malloc/memcpy and
+	 * the subtract loop. Bit-identical: same data read, same fit functions. */
+	if(nPeaks > 1) {
+		xcorr_copy = (float*)malloc(sizeof(float) * N[0] * N[1]);
+		memcpy(xcorr_copy, xcorr, N[0] * N[1] * sizeof(float));
+		src = xcorr_copy;
+	} else {
+		src = xcorr;
+	}
 	Nsub[0] = PKSIZE_X;
 	Nsub[1] = PKSIZE_Y;
 	
@@ -571,8 +581,8 @@ PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_
 		fPeakHeight = 0;
 		for(i = N[0]/8; i < N[0]*7/8; ++i) {
 			for(j = N[1]/8; j < N[1]*7/8; ++j) {
-				if(xcorr_copy[SUB2IND_2D(i, j, N[1])] > fPeakHeight) {
-					fPeakHeight = xcorr_copy[SUB2IND_2D(i, j, N[1])];
+				if(src[SUB2IND_2D(i, j, N[1])] > fPeakHeight) {
+					fPeakHeight = src[SUB2IND_2D(i, j, N[1])];
 					i0 = i;
 					j0 = j;
 				}
@@ -582,10 +592,10 @@ PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_
 		if(fPeakHeight <= 0 ||
 		   i0 < (PKSIZE_X-1)/2 || i0 >= N[0]-(PKSIZE_X-1)/2  ||
 		   j0 < (PKSIZE_Y-1)/2 || j0 >= N[1]-(PKSIZE_Y-1)/2 ||
-		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0-1, j0, N[1])] ||
-		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0+1, j0, N[1])] ||
-		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0, j0-1, N[1])] ||
-		   fPeakHeight <= xcorr_copy[SUB2IND_2D(i0, j0+1, N[1])])
+		   fPeakHeight <= src[SUB2IND_2D(i0-1, j0, N[1])] ||
+		   fPeakHeight <= src[SUB2IND_2D(i0+1, j0, N[1])] ||
+		   fPeakHeight <= src[SUB2IND_2D(i0, j0-1, N[1])] ||
+		   fPeakHeight <= src[SUB2IND_2D(i0, j0+1, N[1])])
 		{
 			peak_loc[SUB2IND_2D(0, iPeak, nPeaks)] = NAN;
 			peak_loc[SUB2IND_2D(1, iPeak, nPeaks)] = NAN;
@@ -599,7 +609,7 @@ PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_
 		/* Extract subwindow */
 		for(i = 0; i < PKSIZE_X; ++i) {
 			for(j = 0; j < PKSIZE_Y; ++j) {
-				subxcorr[i * PKSIZE_Y + j] = xcorr_copy[SUB2IND_2D(i0 + i - (PKSIZE_X-1)/2, j0 + j - (PKSIZE_Y-1)/2, N[1])];
+				subxcorr[i * PKSIZE_Y + j] = src[SUB2IND_2D(i0 + i - (PKSIZE_X-1)/2, j0 + j - (PKSIZE_Y-1)/2, N[1])];
 			}
 		}
 		
@@ -658,15 +668,18 @@ PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_
 		std_dev[SUB2IND_2D(1, iPeak, nPeaks)] = sig[1];
 		std_dev[SUB2IND_2D(2, iPeak, nPeaks)] = sig[2];
 		
-		/* Subtract fit from correlation plane */
-		for(i = 0; i < PKSIZE_X; ++i) {
-			for(j = 0; j < PKSIZE_Y; ++j) {
-				idx = SUB2IND_2D(i0 + i - (PKSIZE_X-1)/2, j0 + j - (PKSIZE_Y-1)/2, N[1]);
-				xcorr_copy[idx] = MAX(0, xcorr_copy[idx] - fitval[i * PKSIZE_Y + j]);
+		/* Subtract fit from correlation plane (only needed to find the next
+		 * peak; for nPeaks==1 there is no copy to write and no next search). */
+		if(nPeaks > 1) {
+			for(i = 0; i < PKSIZE_X; ++i) {
+				for(j = 0; j < PKSIZE_Y; ++j) {
+					idx = SUB2IND_2D(i0 + i - (PKSIZE_X-1)/2, j0 + j - (PKSIZE_Y-1)/2, N[1]);
+					xcorr_copy[idx] = MAX(0, xcorr_copy[idx] - fitval[i * PKSIZE_Y + j]);
+				}
 			}
 		}
 	}
-	
-	free(xcorr_copy);
+
+	if(xcorr_copy) free(xcorr_copy);
 }
 			
