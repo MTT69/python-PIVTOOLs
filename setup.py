@@ -169,6 +169,13 @@ class BuildCLibraries(build):
             lib_ext = ".so"
             use_msvc = False
 
+        # Opt-in extra compile flags (default-inert). Used to build the libm-expf
+        # A/B reference: PIV_EXTRA_CFLAGS="-DPIV_USE_LIBM_EXP" python setup.py build.
+        extra_cflags_env = os.environ.get("PIV_EXTRA_CFLAGS", "").split()
+        if extra_cflags_env:
+            print(f"Appending PIV_EXTRA_CFLAGS: {extra_cflags_env}")
+            self.extra_compile = self.extra_compile + extra_cflags_env
+
         # Store for marquadt build
         self.use_static_fftw = use_static_fftw
         self.use_msvc = use_msvc

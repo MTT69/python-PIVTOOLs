@@ -1,5 +1,6 @@
 #include "peak_locate_lm.h"
 #include "common.h"
+#include "fast_exp.h"
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -60,7 +61,7 @@ static inline float eval_gauss4(float i, float j, float A, float i0, float j0, f
 {
 	float di = (i - i0) / s;
 	float dj = (j - j0) / s;
-	return A * expf(-(di*di + dj*dj));
+	return A * PIV_EXP(-(di*di + dj*dj));
 }
 
 /* Evaluate 5-DOF Gaussian: A * exp(-((i-i0)^2/sx^2 + (j-j0)^2/sy^2)) - elliptical */
@@ -68,7 +69,7 @@ static inline float eval_gauss5(float i, float j, float A, float i0, float j0, f
 {
 	float di = (i - i0) / sx;
 	float dj = (j - j0) / sy;
-	return A * expf(-(di*di + dj*dj));
+	return A * PIV_EXP(-(di*di + dj*dj));
 }
 
 /* Evaluate 6-DOF Gaussian with correlation term - rotated elliptical 
@@ -80,181 +81,237 @@ static inline float eval_gauss6(float i, float j, float A, float i0, float j0, f
 {
 	float di = i - i0;
 	float dj = j - j0;
-	return A * expf(-0.5f * (di*di/sx + dj*dj/sy + 2.0f*di*dj*sxy));
+	return A * PIV_EXP(-0.5f * (di*di/sx + dj*dj/sy + 2.0f*di*dj*sxy));
 }
 
-/* Compute residual and Jacobian for 4-DOF Gaussian fit */
+/* Compute residual and Jacobian for 4-DOF Gaussian fit.
+ *
+ * pred_buf (length N[0]*N[1]) carries the model values between the two passes
+ * (Lever 2): the residual-only pass WRITES every pred; the Jacobian pass READS
+ * them instead of re-calling exp. In the LM loop a trial residual is always
+ * evaluated immediately before an accepted Jacobian rebuild at the SAME point,
+ * so the cache is exact (no new approximation) and the Jacobian path makes zero
+ * exp calls — removing the redundant, un-vectorised half of the exp workload.
+ * CONTRACT: pred_buf must be non-NULL on EVERY call — the residual pass writes it
+ * unconditionally (the store is kept branch-free so the loop vectorises). */
 static float compute_residual_jacobian_4dof(
 	const float *xcorr, const int *N,
 	float A, float i0, float j0, float s,
-	float *JtJ, float *Jtr, int compute_jacobian)
+	float *JtJ, float *Jtr, int compute_jacobian, float *pred_buf)
 {
 	int ii, jj, idx;
 	float residual_sum = 0.0f;
 	const int n_params = 4;
-	
-	if(compute_jacobian) {
-		memset(JtJ, 0, n_params * n_params * sizeof(float));
-		memset(Jtr, 0, n_params * sizeof(float));
+
+	/* Hot path (every LM trial, including rejects): residual only. The branch
+	   that used to gate the Jacobian is hoisted OUT of the inner loop so the
+	   body is branch-free; with the call-free piv_expf (fast_exp.h) the loop is
+	   pure arithmetic and the omp simd reduction lets it vectorize. The pragma
+	   authorises the float-sum reassociation the build's lack of -ffast-math
+	   would otherwise forbid (same idiom as xcorr.c). The pred_buf store is
+	   unconditional (a branch here would defeat the vectoriser). */
+	if(!compute_jacobian) {
+		for(ii = 0; ii < N[0]; ++ii) {
+			float i = (float)(ii - (N[0]-1)/2);
+			int row = ii * N[1];
+			PIV_SIMD_RESIDUAL
+			for(jj = 0; jj < N[1]; ++jj) {
+				float j = (float)(jj - (N[1]-1)/2);
+				float pred = eval_gauss4(i, j, A, i0, j0, s);
+				pred_buf[row + jj] = pred;
+				float r = pred - xcorr[row + jj];
+				residual_sum += r * r;
+			}
+		}
+		return residual_sum;
 	}
-	
+
+	/* Jacobian path: runs once per ACCEPTED step (rare); kept scalar. Reads the
+	   cached pred (filled by the immediately-preceding residual pass) -> no exp. */
+	memset(JtJ, 0, n_params * n_params * sizeof(float));
+	memset(Jtr, 0, n_params * sizeof(float));
+
 	for(ii = 0; ii < N[0]; ++ii) {
 		float i = (float)(ii - (N[0]-1)/2);
-		
+
 		for(jj = 0; jj < N[1]; ++jj) {
 			float j = (float)(jj - (N[1]-1)/2);
 			idx = ii * N[1] + jj;
-			
-			float pred = eval_gauss4(i, j, A, i0, j0, s);
+
+			float pred = pred_buf[idx];
 			float r = pred - xcorr[idx];
 			residual_sum += r * r;
-			
-			if(compute_jacobian) {
-				float di = (i - i0) / s;
-				float dj = (j - j0) / s;
-				float r2 = di*di + dj*dj;
-				
-				float J[4];
-				J[0] = pred / A;                           /* dF/dA */
-				J[1] = 2.0f * pred * di / s;              /* dF/di0 */
-				J[2] = 2.0f * pred * dj / s;              /* dF/dj0 */
-				J[3] = 2.0f * pred * r2 / s;              /* dF/ds */
-				
-				for(int p1 = 0; p1 < n_params; ++p1) {
-					Jtr[p1] += J[p1] * r;
-					for(int p2 = 0; p2 <= p1; ++p2) {
-						JtJ[p1 * n_params + p2] += J[p1] * J[p2];
-					}
+
+			float di = (i - i0) / s;
+			float dj = (j - j0) / s;
+			float r2 = di*di + dj*dj;
+
+			float J[4];
+			J[0] = pred / A;                           /* dF/dA */
+			J[1] = 2.0f * pred * di / s;              /* dF/di0 */
+			J[2] = 2.0f * pred * dj / s;              /* dF/dj0 */
+			J[3] = 2.0f * pred * r2 / s;              /* dF/ds */
+
+			for(int p1 = 0; p1 < n_params; ++p1) {
+				Jtr[p1] += J[p1] * r;
+				for(int p2 = 0; p2 <= p1; ++p2) {
+					JtJ[p1 * n_params + p2] += J[p1] * J[p2];
 				}
 			}
 		}
 	}
-	
-	if(compute_jacobian) {
-		for(int p1 = 0; p1 < n_params; ++p1) {
-			for(int p2 = p1 + 1; p2 < n_params; ++p2) {
-				JtJ[p1 * n_params + p2] = JtJ[p2 * n_params + p1];
-			}
+
+	for(int p1 = 0; p1 < n_params; ++p1) {
+		for(int p2 = p1 + 1; p2 < n_params; ++p2) {
+			JtJ[p1 * n_params + p2] = JtJ[p2 * n_params + p1];
 		}
 	}
-	
+
 	return residual_sum;
 }
 
-/* Compute residual and Jacobian for 5-DOF Gaussian fit */
+/* Compute residual and Jacobian for 5-DOF Gaussian fit.
+ * pred_buf carries model values between passes (Lever 2; see the 4-DOF note). */
 static float compute_residual_jacobian_5dof(
 	const float *xcorr, const int *N,
 	float A, float i0, float j0, float sx, float sy,
-	float *JtJ, float *Jtr, int compute_jacobian)
+	float *JtJ, float *Jtr, int compute_jacobian, float *pred_buf)
 {
 	int ii, jj, idx;
 	float residual_sum = 0.0f;
 	const int n_params = 5;
-	
-	if(compute_jacobian) {
-		memset(JtJ, 0, n_params * n_params * sizeof(float));
-		memset(Jtr, 0, n_params * sizeof(float));
+
+	/* Hot path: residual only, branch-free + omp simd reduction -> vectorizes
+	   (see compute_residual_jacobian_4dof for the rationale). */
+	if(!compute_jacobian) {
+		for(ii = 0; ii < N[0]; ++ii) {
+			float i = (float)(ii - (N[0]-1)/2);
+			int row = ii * N[1];
+			PIV_SIMD_RESIDUAL
+			for(jj = 0; jj < N[1]; ++jj) {
+				float j = (float)(jj - (N[1]-1)/2);
+				float pred = eval_gauss5(i, j, A, i0, j0, sx, sy);
+				pred_buf[row + jj] = pred;
+				float r = pred - xcorr[row + jj];
+				residual_sum += r * r;
+			}
+		}
+		return residual_sum;
 	}
-	
+
+	/* Jacobian path: once per accepted step (rare); kept scalar. Reads cached pred. */
+	memset(JtJ, 0, n_params * n_params * sizeof(float));
+	memset(Jtr, 0, n_params * sizeof(float));
+
 	for(ii = 0; ii < N[0]; ++ii) {
 		float i = (float)(ii - (N[0]-1)/2);
-		
+
 		for(jj = 0; jj < N[1]; ++jj) {
 			float j = (float)(jj - (N[1]-1)/2);
 			idx = ii * N[1] + jj;
-			
-			float pred = eval_gauss5(i, j, A, i0, j0, sx, sy);
+
+			float pred = pred_buf[idx];
 			float r = pred - xcorr[idx];
 			residual_sum += r * r;
-			
-			if(compute_jacobian) {
-				float di = (i - i0) / sx;
-				float dj = (j - j0) / sy;
-				
-				float J[5];
-				J[0] = pred / A;                    /* dF/dA */
-				J[1] = 2.0f * pred * di / sx;      /* dF/di0 */
-				J[2] = 2.0f * pred * dj / sy;      /* dF/dj0 */
-				J[3] = 2.0f * pred * di * di / sx; /* dF/dsx */
-				J[4] = 2.0f * pred * dj * dj / sy; /* dF/dsy */
-				
-				for(int p1 = 0; p1 < n_params; ++p1) {
-					Jtr[p1] += J[p1] * r;
-					for(int p2 = 0; p2 <= p1; ++p2) {
-						JtJ[p1 * n_params + p2] += J[p1] * J[p2];
-					}
+
+			float di = (i - i0) / sx;
+			float dj = (j - j0) / sy;
+
+			float J[5];
+			J[0] = pred / A;                    /* dF/dA */
+			J[1] = 2.0f * pred * di / sx;      /* dF/di0 */
+			J[2] = 2.0f * pred * dj / sy;      /* dF/dj0 */
+			J[3] = 2.0f * pred * di * di / sx; /* dF/dsx */
+			J[4] = 2.0f * pred * dj * dj / sy; /* dF/dsy */
+
+			for(int p1 = 0; p1 < n_params; ++p1) {
+				Jtr[p1] += J[p1] * r;
+				for(int p2 = 0; p2 <= p1; ++p2) {
+					JtJ[p1 * n_params + p2] += J[p1] * J[p2];
 				}
 			}
 		}
 	}
-	
-	if(compute_jacobian) {
-		for(int p1 = 0; p1 < n_params; ++p1) {
-			for(int p2 = p1 + 1; p2 < n_params; ++p2) {
-				JtJ[p1 * n_params + p2] = JtJ[p2 * n_params + p1];
-			}
+
+	for(int p1 = 0; p1 < n_params; ++p1) {
+		for(int p2 = p1 + 1; p2 < n_params; ++p2) {
+			JtJ[p1 * n_params + p2] = JtJ[p2 * n_params + p1];
 		}
 	}
-	
+
 	return residual_sum;
 }
 
-/* Compute residual and Jacobian for 6-DOF Gaussian fit */
+/* Compute residual and Jacobian for 6-DOF Gaussian fit.
+ * pred_buf carries model values between passes (Lever 2; see the 4-DOF note). */
 static float compute_residual_jacobian_6dof(
 	const float *xcorr, const int *N,
 	float A, float i0, float j0, float sx, float sy, float sxy,
-	float *JtJ, float *Jtr, int compute_jacobian)
+	float *JtJ, float *Jtr, int compute_jacobian, float *pred_buf)
 {
 	int ii, jj, idx;
 	float residual_sum = 0.0f;
 	const int n_params = 6;
-	
-	if(compute_jacobian) {
-		memset(JtJ, 0, n_params * n_params * sizeof(float));
-		memset(Jtr, 0, n_params * sizeof(float));
+
+	/* Hot path: residual only, branch-free + omp simd reduction -> vectorizes
+	   (see compute_residual_jacobian_4dof for the rationale). */
+	if(!compute_jacobian) {
+		for(ii = 0; ii < N[0]; ++ii) {
+			float i = (float)(ii - (N[0]-1)/2);
+			int row = ii * N[1];
+			PIV_SIMD_RESIDUAL
+			for(jj = 0; jj < N[1]; ++jj) {
+				float j = (float)(jj - (N[1]-1)/2);
+				float pred = eval_gauss6(i, j, A, i0, j0, sx, sy, sxy);
+				pred_buf[row + jj] = pred;
+				float r = pred - xcorr[row + jj];
+				residual_sum += r * r;
+			}
+		}
+		return residual_sum;
 	}
-	
+
+	/* Jacobian path: once per accepted step (rare); kept scalar. Reads cached pred. */
+	memset(JtJ, 0, n_params * n_params * sizeof(float));
+	memset(Jtr, 0, n_params * sizeof(float));
+
 	for(ii = 0; ii < N[0]; ++ii) {
 		float i = (float)(ii - (N[0]-1)/2);
-		
+
 		for(jj = 0; jj < N[1]; ++jj) {
 			float j = (float)(jj - (N[1]-1)/2);
 			idx = ii * N[1] + jj;
-			
-			float pred = eval_gauss6(i, j, A, i0, j0, sx, sy, sxy);
+
+			float pred = pred_buf[idx];
 			float r = pred - xcorr[idx];
 			residual_sum += r * r;
-			
-			if(compute_jacobian) {
-				float di = i - i0;
-				float dj = j - j0;
-				
-				float J[6];
-				J[0] = pred / A;                                    /* dF/dA */
-				J[1] = pred * (di/sx + dj*sxy);                    /* dF/di0 */
-				J[2] = pred * (dj/sy + di*sxy);                    /* dF/dj0 */
-				J[3] = 0.5f * pred * di * di / (sx * sx);          /* dF/dsx - FIXED: removed incorrect negative sign */
-				J[4] = 0.5f * pred * dj * dj / (sy * sy);          /* dF/dsy - FIXED: removed incorrect negative sign */
-				J[5] = -pred * di * dj;                            /* dF/dsxy */
-				
-				for(int p1 = 0; p1 < n_params; ++p1) {
-					Jtr[p1] += J[p1] * r;
-					for(int p2 = 0; p2 <= p1; ++p2) {
-						JtJ[p1 * n_params + p2] += J[p1] * J[p2];
-					}
+
+			float di = i - i0;
+			float dj = j - j0;
+
+			float J[6];
+			J[0] = pred / A;                                    /* dF/dA */
+			J[1] = pred * (di/sx + dj*sxy);                    /* dF/di0 */
+			J[2] = pred * (dj/sy + di*sxy);                    /* dF/dj0 */
+			J[3] = 0.5f * pred * di * di / (sx * sx);          /* dF/dsx - FIXED: removed incorrect negative sign */
+			J[4] = 0.5f * pred * dj * dj / (sy * sy);          /* dF/dsy - FIXED: removed incorrect negative sign */
+			J[5] = -pred * di * dj;                            /* dF/dsxy */
+
+			for(int p1 = 0; p1 < n_params; ++p1) {
+				Jtr[p1] += J[p1] * r;
+				for(int p2 = 0; p2 <= p1; ++p2) {
+					JtJ[p1 * n_params + p2] += J[p1] * J[p2];
 				}
 			}
 		}
 	}
-	
-	if(compute_jacobian) {
-		for(int p1 = 0; p1 < n_params; ++p1) {
-			for(int p2 = p1 + 1; p2 < n_params; ++p2) {
-				JtJ[p1 * n_params + p2] = JtJ[p2 * n_params + p1];
-			}
+
+	for(int p1 = 0; p1 < n_params; ++p1) {
+		for(int p2 = p1 + 1; p2 < n_params; ++p2) {
+			JtJ[p1 * n_params + p2] = JtJ[p2 * n_params + p1];
 		}
 	}
-	
+
 	return residual_sum;
 }
 
@@ -314,6 +371,7 @@ static void lm_gauss4_fit(const float *xcorr, const int *N, float *peak_loc, flo
 {
 	float A, i0, j0, s;
 	float JtJ[16], Jtr[4], delta[4];
+	float pred_cache[PKSIZE_X * PKSIZE_Y];  /* Lever 2: model values shared trial->Jacobian */
 	float lambda = 0.01f;
 	float residual, new_residual;
 	int iter, ii, jj, idx;
@@ -332,8 +390,10 @@ static void lm_gauss4_fit(const float *xcorr, const int *N, float *peak_loc, flo
 	j0 = fminf(fmaxf(j0, -2.0f), 2.0f);
 	s = fminf(fmaxf(s, 0.5f), 3.0f);
 	
-	residual = compute_residual_jacobian_4dof(xcorr, N, A, i0, j0, s, JtJ, Jtr, 1);
-	
+	/* Fill the pred cache (residual pass), then build the Jacobian from it. */
+	residual = compute_residual_jacobian_4dof(xcorr, N, A, i0, j0, s, NULL, NULL, 0, pred_cache);
+	compute_residual_jacobian_4dof(xcorr, N, A, i0, j0, s, JtJ, Jtr, 1, pred_cache);
+
 	for(iter = 0; iter < max_iter; ++iter) {
 		if(solve_lm_step(JtJ, Jtr, lambda, delta, 4) != 0) break;
 		
@@ -347,14 +407,14 @@ static void lm_gauss4_fit(const float *xcorr, const int *N, float *peak_loc, flo
 		j0_new = fminf(fmaxf(j0_new, -2.5f), 2.5f);
 		s_new = fminf(fmaxf(s_new, 0.25f), 4.0f);
 		
-		new_residual = compute_residual_jacobian_4dof(xcorr, N, A_new, i0_new, j0_new, s_new, NULL, NULL, 0);
-		
+		new_residual = compute_residual_jacobian_4dof(xcorr, N, A_new, i0_new, j0_new, s_new, NULL, NULL, 0, pred_cache);
+
 		if(new_residual < residual) {
 			A = A_new; i0 = i0_new; j0 = j0_new; s = s_new;
 			float improvement = (residual - new_residual) / (residual + FLT_EPSILON);
 			residual = new_residual;
 			lambda *= 0.5f;
-			compute_residual_jacobian_4dof(xcorr, N, A, i0, j0, s, JtJ, Jtr, 1);
+			compute_residual_jacobian_4dof(xcorr, N, A, i0, j0, s, JtJ, Jtr, 1, pred_cache);
 			if(improvement < tol) break;
 		} else {
 			lambda *= 2.0f;
@@ -385,23 +445,26 @@ static void lm_gauss5_fit(const float *xcorr, const int *N, float *peak_loc, flo
 {
 	float A, i0, j0, sx, sy;
 	float JtJ[25], Jtr[5], delta[5];
+	float pred_cache[PKSIZE_X * PKSIZE_Y];  /* Lever 2: model values shared trial->Jacobian */
 	float lambda = 0.01f;
 	float residual, new_residual;
 	int iter, ii, jj, idx;
 	const int max_iter = 20;
 	const float tol = 1e-6f;
-	
+
 	threept_estimate(xcorr, N, peak_loc, &A, &sx, &sy);
 	i0 = peak_loc[0];
 	j0 = peak_loc[1];
-	
+
 	i0 = fminf(fmaxf(i0, -2.0f), 2.0f);
 	j0 = fminf(fmaxf(j0, -2.0f), 2.0f);
 	sx = fminf(fmaxf(sx, 0.5f), 3.0f);
 	sy = fminf(fmaxf(sy, 0.5f), 3.0f);
-	
-	residual = compute_residual_jacobian_5dof(xcorr, N, A, i0, j0, sx, sy, JtJ, Jtr, 1);
-	
+
+	/* Fill the pred cache (residual pass), then build the Jacobian from it. */
+	residual = compute_residual_jacobian_5dof(xcorr, N, A, i0, j0, sx, sy, NULL, NULL, 0, pred_cache);
+	compute_residual_jacobian_5dof(xcorr, N, A, i0, j0, sx, sy, JtJ, Jtr, 1, pred_cache);
+
 	for(iter = 0; iter < max_iter; ++iter) {
 		if(solve_lm_step(JtJ, Jtr, lambda, delta, 5) != 0) break;
 		
@@ -417,14 +480,14 @@ static void lm_gauss5_fit(const float *xcorr, const int *N, float *peak_loc, flo
 		sx_new = fminf(fmaxf(sx_new, 0.25f), 4.0f);
 		sy_new = fminf(fmaxf(sy_new, 0.25f), 4.0f);
 		
-		new_residual = compute_residual_jacobian_5dof(xcorr, N, A_new, i0_new, j0_new, sx_new, sy_new, NULL, NULL, 0);
-		
+		new_residual = compute_residual_jacobian_5dof(xcorr, N, A_new, i0_new, j0_new, sx_new, sy_new, NULL, NULL, 0, pred_cache);
+
 		if(new_residual < residual) {
 			A = A_new; i0 = i0_new; j0 = j0_new; sx = sx_new; sy = sy_new;
 			float improvement = (residual - new_residual) / (residual + FLT_EPSILON);
 			residual = new_residual;
 			lambda *= 0.5f;
-			compute_residual_jacobian_5dof(xcorr, N, A, i0, j0, sx, sy, JtJ, Jtr, 1);
+			compute_residual_jacobian_5dof(xcorr, N, A, i0, j0, sx, sy, JtJ, Jtr, 1, pred_cache);
 			if(improvement < tol) break;
 		} else {
 			lambda *= 2.0f;
@@ -470,6 +533,7 @@ static void lm_gauss6_fit(const float *xcorr, const int *N, float *peak_loc, flo
 {
 	float A, i0, j0, sx, sy, sxy;
 	float JtJ[36], Jtr[6], delta[6];
+	float pred_cache[PKSIZE_X * PKSIZE_Y];  /* Lever 2: model values shared trial->Jacobian */
 	float lambda = 0.01f;
 	float residual, new_residual;
 	int iter, ii, jj, idx;
@@ -486,8 +550,10 @@ static void lm_gauss6_fit(const float *xcorr, const int *N, float *peak_loc, flo
 	sx = fminf(fmaxf(sx * sx, 0.25f), 9.0f);
 	sy = fminf(fmaxf(sy * sy, 0.25f), 9.0f);
 	
-	residual = compute_residual_jacobian_6dof(xcorr, N, A, i0, j0, sx, sy, sxy, JtJ, Jtr, 1);
-	
+	/* Fill the pred cache (residual pass), then build the Jacobian from it. */
+	residual = compute_residual_jacobian_6dof(xcorr, N, A, i0, j0, sx, sy, sxy, NULL, NULL, 0, pred_cache);
+	compute_residual_jacobian_6dof(xcorr, N, A, i0, j0, sx, sy, sxy, JtJ, Jtr, 1, pred_cache);
+
 	for(iter = 0; iter < max_iter; ++iter) {
 		if(solve_lm_step(JtJ, Jtr, lambda, delta, 6) != 0) break;
 		
@@ -506,15 +572,15 @@ static void lm_gauss6_fit(const float *xcorr, const int *N, float *peak_loc, flo
 		float sxy_max = 0.95f / sqrtf(sx_new * sy_new);
 		sxy_new = fminf(fmaxf(sxy_new, -sxy_max), sxy_max);
 		
-		new_residual = compute_residual_jacobian_6dof(xcorr, N, A_new, i0_new, j0_new, sx_new, sy_new, sxy_new, NULL, NULL, 0);
-		
+		new_residual = compute_residual_jacobian_6dof(xcorr, N, A_new, i0_new, j0_new, sx_new, sy_new, sxy_new, NULL, NULL, 0, pred_cache);
+
 		if(new_residual < residual) {
-			A = A_new; i0 = i0_new; j0 = j0_new; 
+			A = A_new; i0 = i0_new; j0 = j0_new;
 			sx = sx_new; sy = sy_new; sxy = sxy_new;
 			float improvement = (residual - new_residual) / (residual + FLT_EPSILON);
 			residual = new_residual;
 			lambda *= 0.5f;
-			compute_residual_jacobian_6dof(xcorr, N, A, i0, j0, sx, sy, sxy, JtJ, Jtr, 1);
+			compute_residual_jacobian_6dof(xcorr, N, A, i0, j0, sx, sy, sxy, JtJ, Jtr, 1, pred_cache);
 			if(improvement < tol) break;
 		} else {
 			lambda *= 2.0f;
