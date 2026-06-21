@@ -37,6 +37,11 @@ int codelet_size_ok(int n) {
     switch (n) {
         case 8: case 12: case 16: case 24: case 32:
         case 48: case 64: case 96: case 128:
+        /* 192/256 exist only for the scalar path: convolve() pads a 96/128
+         * window to 2N for the correlation-plane weight. They are NOT
+         * selectable interrogation-window sizes (Python BUILT_FFT_SIZES stays
+         * 8..128) and have no batched/SIMD render. */
+        case 192: case 256:
             return 1;
         default:
             return 0;
@@ -49,6 +54,7 @@ static int bind_codelets(codelet_plan *p) {
     switch (p->W) {
         CL_ROW(8) CL_ROW(12) CL_ROW(16) CL_ROW(24) CL_ROW(32)
         CL_ROW(48) CL_ROW(64) CL_ROW(96) CL_ROW(128)
+        CL_ROW(192) CL_ROW(256)   /* scalar-only: convolve weight padding (2N) */
         default: return 0;
     }
 #undef CL_ROW
@@ -56,6 +62,7 @@ static int bind_codelets(codelet_plan *p) {
     switch (p->H) {
         CL_COL(8) CL_COL(12) CL_COL(16) CL_COL(24) CL_COL(32)
         CL_COL(48) CL_COL(64) CL_COL(96) CL_COL(128)
+        CL_COL(192) CL_COL(256)   /* scalar-only: convolve weight padding (2N) */
         default: return 0;
     }
 #undef CL_COL

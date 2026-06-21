@@ -671,6 +671,15 @@ class BuildCLibraries(build):
         import sys
 
         sizes = [str(n) for n in self._built_fft_sizes()]
+        # convolve() pads each window to 2N for the correlation-plane weight and
+        # correlates via the codelet FFT; the 96/128 windows therefore need 192/256
+        # codelets. These are codelet-internal (scalar path only) -- NOT selectable
+        # interrogation-window sizes, so they are appended here for codegen but kept
+        # out of BUILT_FFT_SIZES (which drives config validation). The SIMD render of
+        # 192/256 is unused (static inline) and elided by the compiler.
+        for extra in ("192", "256"):
+            if extra not in sizes:
+                sizes.append(extra)
         if self.use_msvc:
             renders = ["scalar", "avx2"]
         else:

@@ -23,8 +23,9 @@ static void instant_postprocess_lane(
     float *fCorrelPlane_Out)
 {
     if (!bEnsemble) {
+        int i;  /* MSVC OpenMP needs the counter declared outside the for-init */
         #pragma omp simd
-        for (int i = 0; i < nPxPerWindow; ++i) plane[i] *= fCorrelWeight[i];
+        for (i = 0; i < nPxPerWindow; ++i) plane[i] *= fCorrelWeight[i];
     }
 
     /* Copy correlation plane to output - only needed for ensemble mode */
@@ -136,9 +137,10 @@ float *fCorrelPlane_Out)
         { uError = ERROR_NOMEM; goto thread_cleanup; }
 
         int batch = 0;
+        int idx;  /* MSVC OpenMP needs the counter declared outside the for-init */
 
         #pragma omp for schedule(static)
-        for (int idx = 0; idx < total_windows; ++idx)
+        for (idx = 0; idx < total_windows; ++idx)
         {
             int n = idx / nWindowsTotal;            // image index
             int iWindowIdx = idx % nWindowsTotal;   // window index
@@ -169,8 +171,9 @@ float *fCorrelPlane_Out)
                 }
 
             float fMeanA = 0.0f, fMeanB = 0.0f;
+            int i;  /* MSVC OpenMP: counter declared outside the for-init (reused below) */
             #pragma omp simd reduction(+:fMeanA,fMeanB)
-            for(int i = 0; i < nPxPerWindow; ++i)
+            for(i = 0; i < nPxPerWindow; ++i)
             {
                 pA[i] *= fWindowWeightA[i];
                 pB[i] *= fWindowWeightB[i];
@@ -184,7 +187,7 @@ float *fCorrelPlane_Out)
             if(!bEnsemble)
             {
                 #pragma omp simd reduction(+:fEnergyA,fEnergyB)
-                for(int i = 0; i < nPxPerWindow; ++i)
+                for(i = 0; i < nPxPerWindow; ++i)
                 {
                     pA[i] -= fMeanA;
                     pB[i] -= fMeanB;
@@ -195,7 +198,7 @@ float *fCorrelPlane_Out)
             else
             {
                 #pragma omp simd reduction(+:fEnergyA,fEnergyB)
-                for(int i = 0; i < nPxPerWindow; ++i)
+                for(i = 0; i < nPxPerWindow; ++i)
                 {
                     fEnergyA += pA[i]*pA[i];
                     fEnergyB += pB[i]*pB[i];
@@ -365,8 +368,9 @@ unsigned char bulkxcorr2d_accumulate(
         if (!pb || !packA || !packB || !packC) { uError = ERROR_NOMEM; goto thread_cleanup; }
 
         /* Outer loop: parallel over windows */
+        int iWindowIdx;  /* MSVC OpenMP needs the counter declared outside the for-init */
         #pragma omp for schedule(static)
-        for (int iWindowIdx = 0; iWindowIdx < nWindowsTotal; ++iWindowIdx)
+        for (iWindowIdx = 0; iWindowIdx < nWindowsTotal; ++iWindowIdx)
         {
             int ii = iWindowIdx % nWindows[1];  /* column */
             int jj = iWindowIdx / nWindows[1];  /* row */
@@ -515,8 +519,9 @@ unsigned char bulkxcorr2d_accumulate_triple(
         }
 
         /* ---- parallel over windows ------------------------------------ */
+        int iWindowIdx;  /* MSVC OpenMP needs the counter declared outside the for-init */
         #pragma omp for schedule(static)
-        for (int iWindowIdx = 0; iWindowIdx < nWindowsTotal; ++iWindowIdx)
+        for (iWindowIdx = 0; iWindowIdx < nWindowsTotal; ++iWindowIdx)
         {
             int ii = iWindowIdx % nWindows[1];
             int jj = iWindowIdx / nWindows[1];

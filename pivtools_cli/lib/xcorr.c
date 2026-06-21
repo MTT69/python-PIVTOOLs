@@ -27,10 +27,11 @@ static void direct_xcorr_shifted(const float *A, const float *B,
                                  float *out, int H, int W)
 {
 	const double mul = 1.0 / ((double)H * (double)W);
+	int m;  /* MSVC OpenMP needs the counter declared outside the for-init */
 #ifdef _OPENMP
 	#pragma omp parallel for schedule(static)
 #endif
-	for (int m = 0; m < H; ++m)
+	for (m = 0; m < H; ++m)
 	{
 		for (int n = 0; n < W; ++n)
 		{
@@ -66,6 +67,7 @@ unsigned convolve(const float *fA, const float *fB, float *fC, const int *N)
 	int Npad[2];
 	int Nvox;
 	int i, j;
+	unsigned uError;
 	float *fApad, *fBpad, *fCpad;
 
 	/* allocate memory for padded versions of a, b and c */
@@ -98,8 +100,18 @@ unsigned convolve(const float *fA, const float *fB, float *fC, const int *N)
 		}
 	}
 
-	/* cross-correlate (FFT-free, exact) */
-	direct_xcorr_shifted(fApad, fBpad, fCpad, Npad[0], Npad[1]);
+	/* Cross-correlate via the codelet FFT at the padded size 2N (this is exactly
+	 * what the old FFTW path did). The 2N codelets -- including 192/256 for the
+	 * 96/128 windows -- make this O(N^2 log N) instead of the previous O(N^4)
+	 * direct sum, which dominated the pipeline at large windows. */
+	uError = xcorr(fApad, fBpad, fCpad, Npad);
+	if (uError != ERROR_NONE)
+	{
+		free(fApad);
+		free(fBpad);
+		free(fCpad);
+		return uError;
+	}
 
 	/* copy centre of fCpad into fC */
 	for(i = 0; i < N[0]; ++i)

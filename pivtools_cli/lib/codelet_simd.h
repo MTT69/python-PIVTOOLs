@@ -49,6 +49,9 @@
 typedef __m256 PIV_VEC;
 #define PIV_VLANES 8
 #define PIV_CL_SUF _v8
+/* MSVC __declspec(align(n)) requires an integer *literal*, not an expression
+ * like (PIV_VLANES*4). One AVX2 vector is 8 floats = 32 bytes. */
+#define PIV_VEC_ALIGN 32
 
 static inline PIV_VEC piv_vset1(float x)             { return _mm256_set1_ps(x); }
 static inline PIV_VEC piv_vzero(void)                { return _mm256_setzero_ps(); }
@@ -124,8 +127,11 @@ static inline PIV_VEC *piv_vec_alloc_(size_t n) {
 
 #endif /* ISA dispatch */
 
-/* Byte alignment of one vector (16/32/64), for stack scratch tagging. */
+/* Byte alignment of one vector (16/32/64), for stack scratch tagging.
+ * (The MSVC/AVX2 branch sets this to the literal 32 above.) */
+#ifndef PIV_VEC_ALIGN
 #define PIV_VEC_ALIGN (PIV_VLANES * 4)
+#endif
 
 /* Lane-typed codelet function names for the selected render, e.g.
  * PIV_RFFT(16) -> rfft16_v4 on NEON, rfft16_v8 on AVX2. */
