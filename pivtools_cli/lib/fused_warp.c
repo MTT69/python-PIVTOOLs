@@ -12,10 +12,22 @@
 
 #include "fused_warp.h"
 #include "common.h"
+#include "simd_warp.h"
 
 #include <stdlib.h>
 #include <math.h>
 #include <omp.h>
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/* Implementation selector (scalar reference vs SIMD), mirroring the            */
+/* bulkxcorr2d_set_timing_enabled flag pattern. Lets a single built .so run     */
+/* either path so the test suite can assert scalar==SIMD equivalence and the    */
+/* microbenchmark can A/B them. Default = SIMD. Callers read it into a local     */
+/* once, before the OpenMP region — never per-iteration (volatile + thread-safe).*/
+/* ─────────────────────────────────────────────────────────────────────────── */
+static volatile int g_warp_impl = 1;   /* 0 = scalar reference, 1 = SIMD */
+EXPORT void fused_warp_set_impl(int impl) { g_warp_impl = impl ? 1 : 0; }
+EXPORT int  fused_warp_get_impl(void)     { return g_warp_impl; }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
 /* Helpers                                                                     */
@@ -55,7 +67,8 @@ static inline void keys_weights_4(float d, float w[4]) {
 /* Bicubic sample from image with BORDER_CONSTANT = 0                         */
 /* ─────────────────────────────────────────────────────────────────────────── */
 
-static inline float bicubic_sample(const float *img, float fy, float fx, int H, int W) {
+static inline float bicubic_sample(const float *img, float fy, float fx, int H, int W,
+                                   int use_simd) {
     /* CSE: store floorf result to avoid MSVC calling it twice */
     float fy_floor = floorf(fy);
     float fx_floor = floorf(fx);
@@ -70,13 +83,22 @@ static inline float bicubic_sample(const float *img, float fy, float fx, int H, 
     keys_weights_4(dy, wy);
     keys_weights_4(dx, wx);
 
-    for (m = 0; m < 4; m++) {
-        row = iy + m;
-        if (row < 0 || row >= H) continue;  /* BORDER_CONSTANT = 0 */
-        for (n = 0; n < 4; n++) {
-            col = ix + n;
-            if (col < 0 || col >= W) continue;  /* BORDER_CONSTANT = 0 */
-            val += wy[m] * wx[n] * img[row * W + col];
+    /* Interior fast path (impl=1): the whole 4x4 stencil is in bounds, so the
+       per-tap bounds checks are provably dead. Same tap order (m outer, n inner)
+       and same products as the border path → bit-identical, just branchless. This
+       is the loop the SIMD path vectorises. impl=0 forces the bounds-checked path
+       everywhere — the scalar reference oracle. */
+    if (use_simd && iy >= 0 && iy + 3 < H && ix >= 0 && ix + 3 < W) {
+        val = bicubic_sample_interior(img, wy, wx, iy, ix, W);
+    } else {
+        for (m = 0; m < 4; m++) {
+            row = iy + m;
+            if (row < 0 || row >= H) continue;  /* BORDER_CONSTANT = 0 */
+            for (n = 0; n < 4; n++) {
+                col = ix + n;
+                if (col < 0 || col >= W) continue;  /* BORDER_CONSTANT = 0 */
+                val += wy[m] * wx[n] * img[row * W + col];
+            }
         }
     }
     return val;
@@ -151,7 +173,7 @@ static inline void lanczos3_weights_6_lut(float d, const float (*lut)[6], float 
 /* ─────────────────────────────────────────────────────────────────────────── */
 
 static inline float lanczos3_sample(const float *img, float fy, float fx,
-                                    int H, int W, const float (*lut)[6]) {
+                                    int H, int W, const float (*lut)[6], int use_simd) {
     float fy_floor = floorf(fy);
     float fx_floor = floorf(fx);
     int iy = (int)fy_floor - 2;   /* stencil starts at floor-2 */
@@ -164,6 +186,13 @@ static inline float lanczos3_sample(const float *img, float fy, float fx,
 
     lanczos3_weights_6_lut(dy, lut, wy);
     lanczos3_weights_6_lut(dx, lut, wx);
+
+    /* Interior fast path (impl=1): whole 6x6 stencil in bounds → branchless,
+       bit-identical to the border path (same m-outer/n-inner order). The SIMD path
+       targets this. impl=0 forces the bounds-checked path — the scalar reference. */
+    if (use_simd && iy >= 0 && iy + 5 < H && ix >= 0 && ix + 5 < W) {
+        return lanczos3_sample_interior(img, wy, wx, iy, ix, W);
+    }
 
     for (m = 0; m < 6; m++) {
         row = iy + m;
@@ -267,6 +296,67 @@ static void build_pred_index_lut(
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
+/* Per-row warp kernels — single source of truth for the inner loop, shared by  */
+/* both the single-pair and batch entry points. The Phase A (predictor interp) / */
+/* B (symmetric coords) / C (image sample) arithmetic is byte-for-byte the prior  */
+/* inline bodies; the only parameterisation is the image / predictor / output     */
+/* base pointers, so SIMD added here lands in every call site at once.            */
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+static inline void warp_row_bicubic(
+    const float *img_a, const float *img_b,
+    float *out_a, float *out_b,
+    const float *pred_dy, const float *pred_dx,
+    const float *pred_idx_x, const float *pred_wy, int pred_iy_base,
+    int i, int H, int W, int nPY, int nPX, int use_simd
+) {
+    int j;
+    for (j = 0; j < W; j++) {
+        float fix = pred_idx_x[j];
+        int idx = i * W + j;
+
+        /* Phase A: interpolate predictor (y-weights precomputed by caller) */
+        float dense_dy = bicubic_pred_wy(pred_dy, pred_wy, pred_iy_base, fix, nPY, nPX);
+        float dense_dx = bicubic_pred_wy(pred_dx, pred_wy, pred_iy_base, fix, nPY, nPX);
+
+        /* Phase B: symmetric warp coordinates */
+        float half_dy = 0.5f * dense_dy;
+        float half_dx = 0.5f * dense_dx;
+
+        /* Phase C: bicubic image sample */
+        out_a[idx] = bicubic_sample(img_a, (float)i - half_dy, (float)j - half_dx, H, W, use_simd);
+        out_b[idx] = bicubic_sample(img_b, (float)i + half_dy, (float)j + half_dx, H, W, use_simd);
+    }
+}
+
+static inline void warp_row_lanczos(
+    const float *img_a, const float *img_b,
+    float *out_a, float *out_b,
+    const float *pred_dy, const float *pred_dx,
+    const float *pred_idx_x, const float *pred_wy, int pred_iy_base,
+    int i, int H, int W, int nPY, int nPX,
+    const float (*lut)[6], int use_simd
+) {
+    int j;
+    for (j = 0; j < W; j++) {
+        float fix = pred_idx_x[j];
+        int idx = i * W + j;
+
+        /* Phase A: bicubic predictor interpolation (predictor field stays bicubic) */
+        float dense_dy = bicubic_pred_wy(pred_dy, pred_wy, pred_iy_base, fix, nPY, nPX);
+        float dense_dx = bicubic_pred_wy(pred_dx, pred_wy, pred_iy_base, fix, nPY, nPX);
+
+        /* Phase B: symmetric warp coordinates */
+        float half_dy = 0.5f * dense_dy;
+        float half_dx = 0.5f * dense_dx;
+
+        /* Phase C: Lanczos-3 image sample (LUT weights) */
+        out_a[idx] = lanczos3_sample(img_a, (float)i - half_dy, (float)j - half_dx, H, W, lut, use_simd);
+        out_b[idx] = lanczos3_sample(img_b, (float)i + half_dy, (float)j + half_dx, H, W, lut, use_simd);
+    }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── */
 /* Main exported function                                                      */
 /* ─────────────────────────────────────────────────────────────────────────── */
 
@@ -301,46 +391,22 @@ EXPORT int fused_symmetric_warp(
 
     /* interp_mode branch is hoisted outside the parallel region so the
        compiler can optimize each path independently (no per-pixel branch). */
+    int use_simd = g_warp_impl;  /* read once, before any OpenMP region */
 
     if (interp_mode == 0) {
         /* ── Bicubic image warp ───────────────────────────────────────── */
         int i;
         #pragma omp parallel for schedule(static)
         for (i = 0; i < H; i++) {
-            int j, idx;
-            float fiy, fix, dense_dy_val, dense_dx_val;
-            float half_dy, half_dx, src_a_y, src_a_x, src_b_y, src_b_x;
-            float fiy_floor, pred_frac_dy;
-            int pred_iy_base;
+            float fiy = pred_idx_y[i];
+            float fiy_floor = floorf(fiy);
+            int pred_iy_base = (int)fiy_floor - 1;
+            float pred_frac_dy = fiy - fiy_floor;
             float pred_wy[4];
-
-            /* Predictor y-weights: constant for this entire row */
-            fiy = pred_idx_y[i];
-            fiy_floor = floorf(fiy);
-            pred_iy_base = (int)fiy_floor - 1;
-            pred_frac_dy = fiy - fiy_floor;
             keys_weights_4(pred_frac_dy, pred_wy);
 
-            for (j = 0; j < W; j++) {
-                fix = pred_idx_x[j];
-
-                /* Phase A: interpolate predictor (y-weights precomputed) */
-                dense_dy_val = bicubic_pred_wy(pred_dy, pred_wy, pred_iy_base, fix, nPY, nPX);
-                dense_dx_val = bicubic_pred_wy(pred_dx, pred_wy, pred_iy_base, fix, nPY, nPX);
-
-                /* Phase B: symmetric warp coordinates */
-                half_dy = 0.5f * dense_dy_val;
-                half_dx = 0.5f * dense_dx_val;
-                src_a_y = (float)i - half_dy;
-                src_a_x = (float)j - half_dx;
-                src_b_y = (float)i + half_dy;
-                src_b_x = (float)j + half_dx;
-
-                /* Phase C: bicubic image sample */
-                idx = i * W + j;
-                out_a[idx] = bicubic_sample(img_a, src_a_y, src_a_x, H, W);
-                out_b[idx] = bicubic_sample(img_b, src_b_y, src_b_x, H, W);
-            }
+            warp_row_bicubic(img_a, img_b, out_a, out_b, pred_dy, pred_dx,
+                             pred_idx_x, pred_wy, pred_iy_base, i, H, W, nPY, nPX, use_simd);
         }
     } else {
         /* ── Lanczos-3 image warp (6×6 stencil, LUT-accelerated) ──── */
@@ -355,40 +421,16 @@ EXPORT int fused_symmetric_warp(
         int i;
         #pragma omp parallel for schedule(static)
         for (i = 0; i < H; i++) {
-            int j, idx;
-            float fiy, fix, dense_dy_val, dense_dx_val;
-            float half_dy, half_dx, src_a_y, src_a_x, src_b_y, src_b_x;
-            float fiy_floor, pred_frac_dy;
-            int pred_iy_base;
+            float fiy = pred_idx_y[i];
+            float fiy_floor = floorf(fiy);
+            int pred_iy_base = (int)fiy_floor - 1;
+            float pred_frac_dy = fiy - fiy_floor;
             float pred_wy[4];
-
-            /* Predictor y-weights: still bicubic (smooth field) */
-            fiy = pred_idx_y[i];
-            fiy_floor = floorf(fiy);
-            pred_iy_base = (int)fiy_floor - 1;
-            pred_frac_dy = fiy - fiy_floor;
             keys_weights_4(pred_frac_dy, pred_wy);
 
-            for (j = 0; j < W; j++) {
-                fix = pred_idx_x[j];
-
-                /* Phase A: bicubic predictor interpolation (same as mode 0) */
-                dense_dy_val = bicubic_pred_wy(pred_dy, pred_wy, pred_iy_base, fix, nPY, nPX);
-                dense_dx_val = bicubic_pred_wy(pred_dx, pred_wy, pred_iy_base, fix, nPY, nPX);
-
-                /* Phase B: symmetric warp coordinates */
-                half_dy = 0.5f * dense_dy_val;
-                half_dx = 0.5f * dense_dx_val;
-                src_a_y = (float)i - half_dy;
-                src_a_x = (float)j - half_dx;
-                src_b_y = (float)i + half_dy;
-                src_b_x = (float)j + half_dx;
-
-                /* Phase C: Lanczos-3 image sample (LUT weights) */
-                idx = i * W + j;
-                out_a[idx] = lanczos3_sample(img_a, src_a_y, src_a_x, H, W, lanc_lut);
-                out_b[idx] = lanczos3_sample(img_b, src_b_y, src_b_x, H, W, lanc_lut);
-            }
+            warp_row_lanczos(img_a, img_b, out_a, out_b, pred_dy, pred_dx,
+                             pred_idx_x, pred_wy, pred_iy_base, i, H, W, nPY, nPX,
+                             lanc_lut, use_simd);
         }
 
         free(lanc_lut);
@@ -437,6 +479,7 @@ EXPORT int fused_symmetric_warp_batch(
 
     /* Predictor stride: 0 if shared (ensemble), nPY*nPX if per-image (instantaneous) */
     int pred_stride = shared_predictor ? 0 : nPY * nPX;
+    int use_simd = g_warp_impl;  /* read once, before the OpenMP region */
 
     /* Manual loop flattening: collapse(2) crashes on MSVC /openmp:experimental
      * with large iteration counts. Flatten (ni, i) → single index `ti`. */
@@ -450,43 +493,23 @@ EXPORT int fused_symmetric_warp_batch(
             int ni = ti / H;
             int i  = ti % H;
 
-            const float *cur_pred_dy = pred_dy + ni * pred_stride;
-            const float *cur_pred_dx = pred_dx + ni * pred_stride;
+            const float *cur_pred_dy = pred_dy + (ptrdiff_t)ni * pred_stride;
+            const float *cur_pred_dx = pred_dx + (ptrdiff_t)ni * pred_stride;
             const float *cur_img_a = imgs_a + (size_t)ni * H * W;
             const float *cur_img_b = imgs_b + (size_t)ni * H * W;
             float *cur_out_a = outs_a + (size_t)ni * H * W;
             float *cur_out_b = outs_b + (size_t)ni * H * W;
 
-            int j;
-            float fiy, fiy_floor, pred_frac_dy;
-            int pred_iy_base;
+            float fiy = pred_idx_y[i];
+            float fiy_floor = floorf(fiy);
+            int pred_iy_base = (int)fiy_floor - 1;
+            float pred_frac_dy = fiy - fiy_floor;
             float pred_wy[4];
-
-            /* Predictor y-weights: constant for this entire row */
-            fiy = pred_idx_y[i];
-            fiy_floor = floorf(fiy);
-            pred_iy_base = (int)fiy_floor - 1;
-            pred_frac_dy = fiy - fiy_floor;
             keys_weights_4(pred_frac_dy, pred_wy);
 
-            for (j = 0; j < W; j++) {
-                float fix = pred_idx_x[j];
-                int idx = i * W + j;
-
-                /* Phase A: interpolate predictor */
-                float dense_dy = bicubic_pred_wy(cur_pred_dy, pred_wy, pred_iy_base, fix, nPY, nPX);
-                float dense_dx = bicubic_pred_wy(cur_pred_dx, pred_wy, pred_iy_base, fix, nPY, nPX);
-
-                /* Phase B: symmetric warp coordinates */
-                float half_dy = 0.5f * dense_dy;
-                float half_dx = 0.5f * dense_dx;
-
-                /* Phase C: bicubic image sample */
-                cur_out_a[idx] = bicubic_sample(cur_img_a,
-                    (float)i - half_dy, (float)j - half_dx, H, W);
-                cur_out_b[idx] = bicubic_sample(cur_img_b,
-                    (float)i + half_dy, (float)j + half_dx, H, W);
-            }
+            warp_row_bicubic(cur_img_a, cur_img_b, cur_out_a, cur_out_b,
+                             cur_pred_dy, cur_pred_dx, pred_idx_x, pred_wy,
+                             pred_iy_base, i, H, W, nPY, nPX, use_simd);
         }
     } else {
         /* ── Lanczos-3 image warp (LUT-accelerated) ──────────────────────── */
@@ -504,43 +527,23 @@ EXPORT int fused_symmetric_warp_batch(
             int ni = ti / H;
             int i  = ti % H;
 
-            const float *cur_pred_dy = pred_dy + ni * pred_stride;
-            const float *cur_pred_dx = pred_dx + ni * pred_stride;
+            const float *cur_pred_dy = pred_dy + (ptrdiff_t)ni * pred_stride;
+            const float *cur_pred_dx = pred_dx + (ptrdiff_t)ni * pred_stride;
             const float *cur_img_a = imgs_a + (size_t)ni * H * W;
             const float *cur_img_b = imgs_b + (size_t)ni * H * W;
             float *cur_out_a = outs_a + (size_t)ni * H * W;
             float *cur_out_b = outs_b + (size_t)ni * H * W;
 
-            int j;
-            float fiy, fiy_floor, pred_frac_dy;
-            int pred_iy_base;
+            float fiy = pred_idx_y[i];
+            float fiy_floor = floorf(fiy);
+            int pred_iy_base = (int)fiy_floor - 1;
+            float pred_frac_dy = fiy - fiy_floor;
             float pred_wy[4];
-
-            /* Predictor y-weights: still bicubic (smooth field) */
-            fiy = pred_idx_y[i];
-            fiy_floor = floorf(fiy);
-            pred_iy_base = (int)fiy_floor - 1;
-            pred_frac_dy = fiy - fiy_floor;
             keys_weights_4(pred_frac_dy, pred_wy);
 
-            for (j = 0; j < W; j++) {
-                float fix = pred_idx_x[j];
-                int idx = i * W + j;
-
-                /* Phase A: bicubic predictor interpolation */
-                float dense_dy = bicubic_pred_wy(cur_pred_dy, pred_wy, pred_iy_base, fix, nPY, nPX);
-                float dense_dx = bicubic_pred_wy(cur_pred_dx, pred_wy, pred_iy_base, fix, nPY, nPX);
-
-                /* Phase B: symmetric warp coordinates */
-                float half_dy = 0.5f * dense_dy;
-                float half_dx = 0.5f * dense_dx;
-
-                /* Phase C: Lanczos-3 image sample (LUT weights) */
-                cur_out_a[idx] = lanczos3_sample(cur_img_a,
-                    (float)i - half_dy, (float)j - half_dx, H, W, lanc_lut);
-                cur_out_b[idx] = lanczos3_sample(cur_img_b,
-                    (float)i + half_dy, (float)j + half_dx, H, W, lanc_lut);
-            }
+            warp_row_lanczos(cur_img_a, cur_img_b, cur_out_a, cur_out_b,
+                             cur_pred_dy, cur_pred_dx, pred_idx_x, pred_wy,
+                             pred_iy_base, i, H, W, nPY, nPX, lanc_lut, use_simd);
         }
 
         free(lanc_lut);

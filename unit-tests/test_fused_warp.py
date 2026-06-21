@@ -16,6 +16,7 @@ Pass criteria (relative to image value range):
 import ctypes
 import json
 import os
+import sys
 
 import cv2
 import numpy as np
@@ -27,7 +28,9 @@ from pathlib import Path
 # Paths
 # ---------------------------------------------------------------------------
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
-_LIB_PATH = _PROJECT_ROOT / "pivtools_cli" / "lib" / "libfusedwarp.dll"
+# Platform-correct shared-library extension (was hard-coded .dll → Windows-only).
+_LIB_EXT = ".dll" if sys.platform.startswith("win") else ".so"
+_LIB_PATH = _PROJECT_ROOT / "pivtools_cli" / "lib" / f"libfusedwarp{_LIB_EXT}"
 _POISEUILLE_DIR = Path(__file__).resolve().parent / "poiseuille_1mp"
 
 INTERP_NAMES = {0: "bicubic", 1: "lanczos3"}
@@ -38,9 +41,9 @@ INTERP_NAMES = {0: "bicubic", 1: "lanczos3"}
 # ---------------------------------------------------------------------------
 @pytest.fixture(scope="session")
 def fused_warp_lib():
-    """Load libfusedwarp.dll via ctypes. Skip if not found."""
+    """Load libfusedwarp (platform shared lib) via ctypes. Skip if not found."""
     if not _LIB_PATH.is_file():
-        pytest.skip(f"libfusedwarp.dll not found at {_LIB_PATH}")
+        pytest.skip(f"libfusedwarp{_LIB_EXT} not found at {_LIB_PATH}")
 
     lib = ctypes.CDLL(str(_LIB_PATH))
 
@@ -57,6 +60,23 @@ def fused_warp_lib():
         c_int,                   # interp_mode
     ]
     lib.fused_symmetric_warp.restype = c_int
+
+    lib.fused_symmetric_warp_batch.argtypes = [
+        c_float_p, c_float_p,    # imgs_a, imgs_b   (N, H, W)
+        c_float_p, c_float_p,    # outs_a, outs_b   (N, H, W)
+        c_float_p, c_float_p,    # pred_dy, pred_dx (nPY,nPX) or (N,nPY,nPX)
+        c_int, c_int, c_int,     # N, H, W
+        c_int, c_int,            # nPY, nPX
+        c_float_p, c_float_p,    # ctrs_y, ctrs_x
+        c_int, c_int,            # interp_mode, shared_predictor
+    ]
+    lib.fused_symmetric_warp_batch.restype = c_int
+
+    # Runtime impl selector (0 = scalar reference, 1 = interior/SIMD path).
+    lib.fused_warp_set_impl.argtypes = [c_int]
+    lib.fused_warp_set_impl.restype = None
+    lib.fused_warp_get_impl.argtypes = []
+    lib.fused_warp_get_impl.restype = c_int
 
     return lib
 
@@ -120,6 +140,46 @@ def call_kernel(lib, img_a, img_b, pred_dy, pred_dx, ctrs_y, ctrs_x,
         raise RuntimeError(f"C kernel returned error code {ret}")
 
     return out_a, out_b
+
+
+def call_kernel_batch(lib, imgs_a, imgs_b, pred_dy, pred_dx, ctrs_y, ctrs_x,
+                      interp_mode=0, shared_predictor=1):
+    """Call the batch C kernel and return (outs_a, outs_b), each (N, H, W).
+
+    imgs_* are (N, H, W). pred_* are (nPY, nPX) when shared_predictor=1, else
+    (N, nPY, nPX).
+    """
+    N, H, W = imgs_a.shape
+    nPY, nPX = (pred_dy.shape if shared_predictor else pred_dy.shape[1:])
+
+    imgs_a = np.ascontiguousarray(imgs_a, dtype=np.float32)
+    imgs_b = np.ascontiguousarray(imgs_b, dtype=np.float32)
+    pred_dy = np.ascontiguousarray(pred_dy, dtype=np.float32)
+    pred_dx = np.ascontiguousarray(pred_dx, dtype=np.float32)
+    ctrs_y = np.ascontiguousarray(ctrs_y, dtype=np.float32)
+    ctrs_x = np.ascontiguousarray(ctrs_x, dtype=np.float32)
+
+    outs_a = np.zeros((N, H, W), dtype=np.float32)
+    outs_b = np.zeros((N, H, W), dtype=np.float32)
+
+    c_float_p = ctypes.POINTER(ctypes.c_float)
+    ret = lib.fused_symmetric_warp_batch(
+        imgs_a.ctypes.data_as(c_float_p),
+        imgs_b.ctypes.data_as(c_float_p),
+        outs_a.ctypes.data_as(c_float_p),
+        outs_b.ctypes.data_as(c_float_p),
+        pred_dy.ctypes.data_as(c_float_p),
+        pred_dx.ctypes.data_as(c_float_p),
+        ctypes.c_int(N), ctypes.c_int(H), ctypes.c_int(W),
+        ctypes.c_int(nPY), ctypes.c_int(nPX),
+        ctrs_y.ctypes.data_as(c_float_p),
+        ctrs_x.ctypes.data_as(c_float_p),
+        ctypes.c_int(interp_mode), ctypes.c_int(shared_predictor),
+    )
+    if ret != 0:
+        raise RuntimeError(f"C batch kernel returned error code {ret}")
+
+    return outs_a, outs_b
 
 
 def _lanczos3_warp_numpy(img, map_y, map_x):
@@ -380,3 +440,121 @@ class TestPoiseuille1mpCorrectness:
             f"Poiseuille 1MP [{mode_name}]: "
             f"max={max_err:.2f}  mean={mean_err:.4f}  p99.9={p999_err:.2f}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Scalar-vs-SIMD equivalence
+# ---------------------------------------------------------------------------
+class TestScalarSimdEquivalence:
+    """The optimised path (impl=1: interior/border split, later SIMD) must match the
+    scalar reference (impl=0: always bounds-checked) to within FP-reassociation noise.
+
+    Includes a high-frequency 0/255 checkerboard — the worst case for scalar-vs-SIMD
+    divergence, since FMA's single rounding vs the reference's double rounding diverges
+    most on high-frequency content. The checkerboard is built by integer modulus (NOT a
+    sin/cos wave): trig carries platform ULP jitter that FMA contraction would amplify
+    into false-positive failures.
+    """
+
+    @pytest.mark.parametrize("interp_mode", [0, 1], ids=["bicubic", "lanczos3"])
+    @pytest.mark.parametrize("pattern", ["grid", "checkerboard"])
+    def test_equivalence(self, fused_warp_lib, interp_mode, pattern):
+        H = W = 256
+        nPY = nPX = 16
+        ctrs_y, ctrs_x = make_window_centres(H, W, nPY, nPX)
+        pred_dy, pred_dx = make_poiseuille_predictor(nPY, nPX, ctrs_y, ctrs_x, u_max=5.0, H=H)
+
+        if pattern == "grid":
+            img_a = make_grid_image(H, W, spacing=16)
+            img_b = make_grid_image(H, W, spacing=20)
+        else:
+            yy, xx = np.meshgrid(np.arange(H), np.arange(W), indexing="ij")
+            img_a = (((yy + xx) % 2) * 255.0).astype(np.float32)
+            img_b = (((yy + xx + 1) % 2) * 255.0).astype(np.float32)
+
+        try:
+            fused_warp_lib.fused_warp_set_impl(0)
+            ref_a, ref_b = call_kernel(fused_warp_lib, img_a, img_b, pred_dy, pred_dx,
+                                       ctrs_y, ctrs_x, interp_mode)
+            fused_warp_lib.fused_warp_set_impl(1)
+            opt_a, opt_b = call_kernel(fused_warp_lib, img_a, img_b, pred_dy, pred_dx,
+                                       ctrs_y, ctrs_x, interp_mode)
+        finally:
+            fused_warp_lib.fused_warp_set_impl(1)  # restore default
+
+        max_d = float(max(np.max(np.abs(opt_a - ref_a)), np.max(np.abs(opt_b - ref_b))))
+        # 1e-3 on 0..255 data (~4e-6 relative) absorbs FMA/reassociation; today's
+        # interior split is exact (0.0), the headroom is for the SIMD path.
+        assert max_d < 1e-3, (
+            f"{pattern}/{INTERP_NAMES[interp_mode]}: scalar-vs-opt max|Δ|={max_d:.3e}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Batch entry point vs single-pair (striping / dispatch coverage)
+# ---------------------------------------------------------------------------
+class TestBatchMatchesSinglePair:
+    """The batch entry must reproduce, for each slot k, exactly what the single-pair
+    entry produces for that slot's inputs.
+
+    This guards the batch-only machinery the single-pair path never runs: the
+    flattened (image, row) loop (ti -> ni, i) and the per-image pointer arithmetic
+    (imgs + ni*H*W, pred + ni*pred_stride), across BOTH shared (ensemble) and
+    per-image (instantaneous) predictor striping. A wrong stride or a swapped slot
+    shows up as a mismatch because every image and every per-image predictor is
+    distinct.
+
+    Note this is deliberately NOT a scalar-vs-SIMD (impl 0 vs 1) test: the impl flag
+    only gates the interior sampler, while the batch striping is identical for both
+    impls — so an impl 0/1 batch comparison would pass even with a stride bug. The
+    striping is only caught by comparing against the trusted single-pair entry.
+
+    Results are bit-identical (max|Δ| == 0): both entries run the same per-pixel
+    kernels on the same data, and OpenMP row-scheduling does not reassociate any
+    per-pixel sum. Run under the default impl (SIMD), which also confirms the SIMD
+    path is correctly plumbed through the batch call sites.
+    """
+
+    @pytest.mark.parametrize("interp_mode", [0, 1], ids=["bicubic", "lanczos3"])
+    @pytest.mark.parametrize("shared_predictor", [1, 0],
+                             ids=["shared_pred", "per_image_pred"])
+    def test_batch_matches_single(self, fused_warp_lib, interp_mode, shared_predictor):
+        N = 3
+        H = W = 256
+        nPY = nPX = 16
+        ctrs_y, ctrs_x = make_window_centres(H, W, nPY, nPX)
+
+        # Distinct random content per slot so a swapped slot is detectable.
+        rng = np.random.default_rng(0)
+        imgs_a = (rng.random((N, H, W), dtype=np.float32) * 255.0).astype(np.float32)
+        imgs_b = (rng.random((N, H, W), dtype=np.float32) * 255.0).astype(np.float32)
+
+        # Distinct predictor per slot (varying u_max) so a per-image stride bug shows.
+        preds = [
+            make_poiseuille_predictor(nPY, nPX, ctrs_y, ctrs_x, u_max=3.0 + 2.0 * k, H=H)
+            for k in range(N)
+        ]
+        if shared_predictor:
+            pred_dy_b, pred_dx_b = preds[0]
+        else:
+            pred_dy_b = np.stack([p[0] for p in preds]).astype(np.float32)
+            pred_dx_b = np.stack([p[1] for p in preds]).astype(np.float32)
+
+        outs_a, outs_b = call_kernel_batch(
+            fused_warp_lib, imgs_a, imgs_b, pred_dy_b, pred_dx_b,
+            ctrs_y, ctrs_x, interp_mode, shared_predictor,
+        )
+
+        for k in range(N):
+            pdy, pdx = preds[0] if shared_predictor else preds[k]
+            ref_a, ref_b = call_kernel(
+                fused_warp_lib, imgs_a[k], imgs_b[k], pdy, pdx,
+                ctrs_y, ctrs_x, interp_mode,
+            )
+            d = float(max(np.max(np.abs(outs_a[k] - ref_a)),
+                          np.max(np.abs(outs_b[k] - ref_b))))
+            pred_kind = "shared" if shared_predictor else "per-image"
+            assert d == 0.0, (
+                f"batch[{pred_kind}]/{INTERP_NAMES[interp_mode]} slot {k}: "
+                f"batch vs single-pair max|Δ|={d:.3e}"
+            )

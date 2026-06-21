@@ -351,11 +351,37 @@ class BuildCLibraries(build):
         self._cleanup_intermediates(build_dir)
 
         # --- Build libfusedwarp (no FFTW/GSL deps — only OpenMP + math) ---
+        # SIMD flags for the warp kernel ONLY (the FFTW/GSL libs above are untouched).
+        # Phase C of fused_warp.c has an explicit-SIMD interior sampler (simd_warp.h):
+        # NEON on arm64, AVX2 on x86. The AVX2 path is gated on the compiler
+        # predefining __AVX2__, so the arch flag below is what actually lights it up —
+        # without it the kernel silently compiles its scalar fallback. arm64 NEON is the
+        # mandatory baseline (no flag needed; -mcpu=native only adds host tuning).
+        # Native tuning NOW — redistributable (portable) wheels are a later phase. NOT
+        # adding -ffast-math: it reassociates and would desync the scalar reference
+        # (impl=0 oracle) from the SIMD path. Override the arch flag explicitly (e.g. an
+        # HPC login node that differs from the compute nodes) with PIVTOOLS_WARP_MARCH.
+        warp_arch = platform.machine().lower()
+        warp_is_arm = warp_arch in ("arm64", "aarch64")
+        if self.use_clang_cl:
+            warp_simd_flags = ["/clang:-O3", "/clang:-march=native"]
+        elif use_msvc:  # plain cl (explicit PIVTOOLS_WIN_COMPILER=cl) — cl has no /O3
+            warp_simd_flags = ["/arch:AVX2"]  # AVX2 → 256-bit + FMA + __AVX2__
+        elif warp_is_arm:  # macOS / Linux arm64 — NEON baseline + this-CPU tuning
+            warp_simd_flags = ["-mcpu=native"]
+        else:  # x86-64 clang/gcc — native lowering defines __AVX2__
+            warp_simd_flags = ["-march=native"]
+
+        warp_march_env = os.environ.get("PIVTOOLS_WARP_MARCH", "").strip()
+        if warp_march_env:
+            warp_simd_flags = warp_march_env.split()
+
         if use_msvc:
             output_file = build_dir / f"libfusedwarp{lib_ext}"
             cmd_fw = [
                 compiler,
                 *self.extra_compile,
+                *warp_simd_flags,
                 shared_flag,
                 f"/Fo{build_dir}/",
                 str(src_dir / "fused_warp.c"),
@@ -366,6 +392,7 @@ class BuildCLibraries(build):
             cmd_fw = [
                 compiler,
                 *self.extra_compile,
+                *warp_simd_flags,
                 shared_flag,
                 str(src_dir / "fused_warp.c"),
                 f"-I{src_dir}",
@@ -374,6 +401,8 @@ class BuildCLibraries(build):
                 "-lm",
                 "-fopenmp",
             ]
+        if warp_simd_flags:
+            print(f"libfusedwarp SIMD flags: {' '.join(warp_simd_flags)}")
         self._run(cmd_fw)
         if not (build_dir / f"libfusedwarp{lib_ext}").exists():
             raise RuntimeError(f"Build failed: libfusedwarp{lib_ext} not created")
