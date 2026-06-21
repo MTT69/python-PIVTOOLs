@@ -16,6 +16,7 @@ Pass criteria (relative to image value range):
 import ctypes
 import json
 import os
+import sys
 
 import cv2
 import numpy as np
@@ -27,7 +28,9 @@ from pathlib import Path
 # Paths
 # ---------------------------------------------------------------------------
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
-_LIB_PATH = _PROJECT_ROOT / "pivtools_cli" / "lib" / "libfusedwarp.dll"
+# Platform-correct shared-library extension (was hard-coded .dll → Windows-only).
+_LIB_EXT = ".dll" if sys.platform.startswith("win") else ".so"
+_LIB_PATH = _PROJECT_ROOT / "pivtools_cli" / "lib" / f"libfusedwarp{_LIB_EXT}"
 _POISEUILLE_DIR = Path(__file__).resolve().parent / "poiseuille_1mp"
 
 INTERP_NAMES = {0: "bicubic", 1: "lanczos3"}
@@ -57,6 +60,12 @@ def fused_warp_lib():
         c_int,                   # interp_mode
     ]
     lib.fused_symmetric_warp.restype = c_int
+
+    # Runtime impl selector (0 = scalar reference, 1 = interior/SIMD path).
+    lib.fused_warp_set_impl.argtypes = [c_int]
+    lib.fused_warp_set_impl.restype = None
+    lib.fused_warp_get_impl.argtypes = []
+    lib.fused_warp_get_impl.restype = c_int
 
     return lib
 
@@ -379,4 +388,52 @@ class TestPoiseuille1mpCorrectness:
         assert passed, (
             f"Poiseuille 1MP [{mode_name}]: "
             f"max={max_err:.2f}  mean={mean_err:.4f}  p99.9={p999_err:.2f}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Scalar-vs-SIMD equivalence
+# ---------------------------------------------------------------------------
+class TestScalarSimdEquivalence:
+    """The optimised path (impl=1: interior/border split, later SIMD) must match the
+    scalar reference (impl=0: always bounds-checked) to within FP-reassociation noise.
+
+    Includes a high-frequency 0/255 checkerboard — the worst case for scalar-vs-SIMD
+    divergence, since FMA's single rounding vs the reference's double rounding diverges
+    most on high-frequency content. The checkerboard is built by integer modulus (NOT a
+    sin/cos wave): trig carries platform ULP jitter that FMA contraction would amplify
+    into false-positive failures.
+    """
+
+    @pytest.mark.parametrize("interp_mode", [0, 1], ids=["bicubic", "lanczos3"])
+    @pytest.mark.parametrize("pattern", ["grid", "checkerboard"])
+    def test_equivalence(self, fused_warp_lib, interp_mode, pattern):
+        H = W = 256
+        nPY = nPX = 16
+        ctrs_y, ctrs_x = make_window_centres(H, W, nPY, nPX)
+        pred_dy, pred_dx = make_poiseuille_predictor(nPY, nPX, ctrs_y, ctrs_x, u_max=5.0, H=H)
+
+        if pattern == "grid":
+            img_a = make_grid_image(H, W, spacing=16)
+            img_b = make_grid_image(H, W, spacing=20)
+        else:
+            yy, xx = np.meshgrid(np.arange(H), np.arange(W), indexing="ij")
+            img_a = (((yy + xx) % 2) * 255.0).astype(np.float32)
+            img_b = (((yy + xx + 1) % 2) * 255.0).astype(np.float32)
+
+        try:
+            fused_warp_lib.fused_warp_set_impl(0)
+            ref_a, ref_b = call_kernel(fused_warp_lib, img_a, img_b, pred_dy, pred_dx,
+                                       ctrs_y, ctrs_x, interp_mode)
+            fused_warp_lib.fused_warp_set_impl(1)
+            opt_a, opt_b = call_kernel(fused_warp_lib, img_a, img_b, pred_dy, pred_dx,
+                                       ctrs_y, ctrs_x, interp_mode)
+        finally:
+            fused_warp_lib.fused_warp_set_impl(1)  # restore default
+
+        max_d = float(max(np.max(np.abs(opt_a - ref_a)), np.max(np.abs(opt_b - ref_b))))
+        # 1e-3 on 0..255 data (~4e-6 relative) absorbs FMA/reassociation; today's
+        # interior split is exact (0.0), the headroom is for the SIMD path.
+        assert max_d < 1e-3, (
+            f"{pattern}/{INTERP_NAMES[interp_mode]}: scalar-vs-opt max|Δ|={max_d:.3e}"
         )

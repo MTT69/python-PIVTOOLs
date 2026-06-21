@@ -211,10 +211,24 @@ class BuildCLibraries(build):
         self._cleanup_intermediates(build_dir)
 
         # --- Build libfusedwarp (no FFTW/GSL deps — only OpenMP + math) ---
+        # SIMD flags for the warp kernel ONLY (the FFTW/GSL libs above are untouched).
+        # Native tuning is opt-in via PIVTOOLS_NATIVE_ARCH=1 so distributed wheels stay
+        # portable; otherwise a conservative per-arch baseline. On AArch64 NEON is the
+        # mandatory baseline, so the no-flag macOS build still auto-vectorises; -mcpu=native
+        # adds this-CPU tuning (e.g. Apple M4). NOT adding -ffast-math/-mfma-implied fast
+        # reassociation: it would desync the scalar reference from the SIMD path.
+        native = os.environ.get("PIVTOOLS_NATIVE_ARCH") == "1"
+        if use_msvc:
+            warp_simd_flags = ["/arch:AVX2"]               # MSVC has no /O3; AVX2 → 256-bit + FMA
+        elif self.sys_name == "macos":
+            warp_simd_flags = ["-mcpu=native"] if native else []
+        else:  # linux x86-64
+            warp_simd_flags = ["-march=native"] if native else ["-mavx2", "-mfma"]
+
         if use_msvc:
             output_file = build_dir / f"libfusedwarp{lib_ext}"
             cmd_fw = [
-                compiler, *self.extra_compile, shared_flag,
+                compiler, *self.extra_compile, *warp_simd_flags, shared_flag,
                 f"/Fo{build_dir}/",
                 str(src_dir / "fused_warp.c"),
                 f"/I{src_dir}",
@@ -222,12 +236,14 @@ class BuildCLibraries(build):
             ]
         else:
             cmd_fw = [
-                compiler, *self.extra_compile, shared_flag,
+                compiler, *self.extra_compile, *warp_simd_flags, shared_flag,
                 str(src_dir / "fused_warp.c"),
                 f"-I{src_dir}",
                 "-o", str(build_dir / f"libfusedwarp{lib_ext}"),
                 "-lm", "-fopenmp"
             ]
+        if warp_simd_flags:
+            print(f"libfusedwarp SIMD flags: {' '.join(warp_simd_flags)}")
         self._run(cmd_fw)
         if not (build_dir / f"libfusedwarp{lib_ext}").exists():
             raise RuntimeError(f"Build failed: libfusedwarp{lib_ext} not created")

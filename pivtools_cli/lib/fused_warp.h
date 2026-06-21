@@ -12,6 +12,16 @@ extern "C" {
 #endif
 
 /*
+ * Implementation selector — pick the warp inner-loop path at runtime.
+ *   0 = scalar reference (the always-correct oracle)
+ *   1 = SIMD (default)
+ * One built library can run either, so tests can assert scalar==SIMD equivalence
+ * and benchmarks can A/B them without a rebuild.
+ */
+EXPORT void fused_warp_set_impl(int impl);
+EXPORT int  fused_warp_get_impl(void);
+
+/*
  * Fused symmetric image warp for predictor-corrector PIV.
  *
  * Combines three operations into a single pass:
