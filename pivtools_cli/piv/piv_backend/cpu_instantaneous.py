@@ -38,13 +38,10 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         self.config = config
         # Use platform-appropriate library extension
         lib_extension = ".dll" if os.name == "nt" else ".so"
-        lib_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../..", "lib"))
-        # On Windows a clang-cl /openmp build ships libomp.dll beside our DLLs;
-        # Windows does not search a dependent DLL's own dir by default, so make it
-        # discoverable for the loads below. No-op when libomp.dll isn't present (MSVC).
-        if os.name == "nt" and hasattr(os, "add_dll_directory"):
-            os.add_dll_directory(lib_dir)
-        lib_path = os.path.join(lib_dir, f"libbulkxcorr2d{lib_extension}")
+        lib_path = os.path.join(
+            os.path.dirname(__file__), "../..", "lib", f"libbulkxcorr2d{lib_extension}"
+        )
+        lib_path = os.path.abspath(lib_path)
         if not os.path.isfile(lib_path):
             raise FileNotFoundError(f"Required library file not found: {lib_path}")
         self.lib = ctypes.CDLL(lib_path)

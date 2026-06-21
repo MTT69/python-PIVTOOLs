@@ -201,9 +201,15 @@ class BuildCLibraries(build):
                 use_static_fftw = True
                 print(f"Using static FFTW from: {fftw_static_dir}")
 
-            # Linux: clang by default (uniform "clang method"), but honor $CC so
-            # an HPC cluster can pin a module-loaded gcc: CC=gcc pip install -e .
-            compiler = os.environ.get("CC") or shutil.which("clang") or "gcc"
+            # Linux: clang is the required toolchain. $CC overrides EXPLICITLY
+            # (e.g. CC=gcc on an HPC node); there is no silent gcc fallback —
+            # a missing clang is a hard error so the build never quietly differs.
+            compiler = os.environ.get("CC") or shutil.which("clang")
+            if not compiler:
+                raise RuntimeError(
+                    "clang not found. PIVTOOLs builds with clang.\n"
+                    "Install clang, or set CC explicitly (e.g. CC=gcc) to override."
+                )
             print(f"Linux compiler: {compiler}")
             shared_flag = "-shared"
             self.extra_compile = [
@@ -421,61 +427,36 @@ class BuildCLibraries(build):
         return str(clang)
 
     def _resolve_windows_compiler(self):
-        """Resolve the Windows compiler, preferring clang-cl. clang-cl is usually
-        NOT on PATH (it ships inside Visual Studio), so probe, in order:
-          1. PIVTOOLS_WIN_COMPILER  (explicit: 'cl', 'clang-cl', or a full path)
-          2. clang-cl on PATH
-          3. VSINSTALLDIR (set inside a vcvars shell -> matches the active MSVC)
-          4. vswhere -> VS install root
-          5. known Program Files globs
-          6. fall back to 'cl' (MSVC)
-        Returns a compiler string (bare name if on PATH, else an absolute path)."""
+        """Resolve clang-cl on Windows — the required toolchain. clang-cl ships
+        inside Visual Studio (not on PATH), and the build already runs in a
+        vcvars64 shell, so VSINSTALLDIR points at the matching toolset. Order:
+          1. PIVTOOLS_WIN_COMPILER  (explicit override: clang-cl path, or 'cl' to opt out)
+          2. VSINSTALLDIR/VC/Tools/Llvm/x64/bin/clang-cl.exe  (the active vcvars toolset)
+          3. clang-cl on PATH
+        Missing clang-cl is a HARD ERROR — no silent fall back to MSVC cl."""
         override = os.environ.get("PIVTOOLS_WIN_COMPILER")
         if override:
             return override
+
+        vsinstall = os.environ.get("VSINSTALLDIR")
+        if vsinstall:
+            cand = (
+                pathlib.Path(vsinstall)
+                / "VC" / "Tools" / "Llvm" / "x64" / "bin" / "clang-cl.exe"
+            )
+            if cand.is_file():
+                return str(cand)
 
         found = shutil.which("clang-cl")
         if found:
             return found
 
-        sub = pathlib.Path("VC") / "Tools" / "Llvm" / "x64" / "bin" / "clang-cl.exe"
-
-        vsinstall = os.environ.get("VSINSTALLDIR")
-        if vsinstall:
-            cand = pathlib.Path(vsinstall) / sub
-            if cand.is_file():
-                return str(cand)
-
-        vswhere = (
-            pathlib.Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)"))
-            / "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
+        raise RuntimeError(
+            "clang-cl not found. PIVTOOLs builds with clang-cl on Windows.\n"
+            "Install the 'C++ Clang tools for Windows' VS component and build from an\n"
+            "'x64 Native Tools Command Prompt for VS 2022', or set PIVTOOLS_WIN_COMPILER\n"
+            "to a clang-cl.exe (or to 'cl' to force the MSVC toolchain)."
         )
-        if vswhere.is_file():
-            try:
-                root = subprocess.check_output(
-                    [str(vswhere), "-latest", "-property", "installationPath"],
-                    text=True,
-                ).strip()
-                if root:
-                    cand = pathlib.Path(root) / sub
-                    if cand.is_file():
-                        return str(cand)
-            except subprocess.CalledProcessError:
-                pass
-
-        for pf in ("ProgramFiles", "ProgramFiles(x86)"):
-            base = pathlib.Path(os.environ.get(pf, f"C:/{pf}")) / "Microsoft Visual Studio"
-            if base.is_dir():
-                for cand in sorted(base.glob(f"*/*/{sub.as_posix()}"), reverse=True):
-                    if cand.is_file():
-                        return str(cand)
-
-        print(
-            "NOTICE: clang-cl not found (not on PATH, no VS-bundled copy located); "
-            "falling back to MSVC cl. Set PIVTOOLS_WIN_COMPILER to a clang-cl.exe "
-            "to use the faster toolchain."
-        )
-        return "cl"
 
     def _build_marquadt(self):
         """Build libmarquadt with GSL support."""
