@@ -437,7 +437,8 @@ def _create_ensemble_struct_all_passes(
         pass_result = ensemble_result.passes[global_pass_idx]
 
         # Velocity fields - saved raw in y-down image convention (+uy = downward).
-        # No row reversal, no sign flip. Display layer negates uy for physical y-up view.
+        # No row reversal, no sign flip. Plotted as stored; the physical y-up view comes
+        # from the calibrated output's coordinates, not from a display-time negation.
         ux_physical = pass_result.ux_mat
         uy_physical = pass_result.uy_mat
 
@@ -687,7 +688,8 @@ def _create_piv_struct_all_passes(
         pass_result = piv_result.passes[global_pass_idx]
 
         # Saved raw in y-down image convention (+uy = downward). No row reversal, no sign
-        # flip. Display layer negates uy for the physical y-up view.
+        # flip. Plotted as stored; the physical y-up view comes from the calibrated
+        # output's coordinates, not from a display-time negation.
         if pass_result.ux_mat is not None:
             piv_struct['ux'][local_idx] = _convert_to_half_precision(pass_result.ux_mat, 'ux')
         if pass_result.uy_mat is not None:

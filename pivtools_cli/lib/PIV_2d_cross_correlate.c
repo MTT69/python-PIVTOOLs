@@ -9,6 +9,26 @@
 #include <string.h>
 #include <stdbool.h>
 
+/* --- benchmark sub-kernel timing (flag-gated, additive) ----------------------
+ * Splits the per-window FFT cross-correlation (xcorr_preplanned) from the LM
+ * peak-fit (lsqpeaklocate_lm) so the codelet-vs-FFTW A/B can isolate the FFT
+ * speedup from the constant peak-fit cost. The two globals accumulate total
+ * thread-seconds (sum across OpenMP threads); divide by window count for a
+ * thread-count-independent us/window, or run single-threaded for wall time.
+ * Zero cost when g_kernel_timing == 0 (production default). Bound from the
+ * benchmark harness via ctypes; production Python never touches it. */
+static volatile int g_kernel_timing = 0;
+static double g_t_fft = 0.0;   /* total thread-seconds in xcorr_preplanned   */
+static double g_t_fit = 0.0;   /* total thread-seconds in lsqpeaklocate_lm   */
+
+void bulkxcorr2d_set_timing_enabled(int on) { g_kernel_timing = on ? 1 : 0; }
+void bulkxcorr2d_reset_timing(void) { g_t_fft = 0.0; g_t_fit = 0.0; }
+void bulkxcorr2d_get_timing(double *fft_s, double *fit_s)
+{
+    if (fft_s) *fft_s = g_t_fft;
+    if (fit_s) *fit_s = g_t_fit;
+}
+
 unsigned char bulkxcorr2d(
 const float *fImageA_stack, const float *fImageB_stack, const float *fMask,
 const int *nImageSize, int N_images,
@@ -57,11 +77,14 @@ int total_windows = N_images * nWindowsTotal;
     default(none) \
     shared(fImageA_stack, fImageB_stack, fMask, nImageSize, N_images, \
            fWinCtrsX, fWinCtrsY, nWindows, bEnsemble, fCorrelWeight, fWindowWeightA, fWindowWeightB, nWindowSize, \
-           nPeaks, iPeakFinder, fPkLocX, fPkLocY, fPkHeight, fSx, fSy, fSxy, fCorrelPlane_Out, nPxPerWindow, nWindowsTotal,total_windows) \
+           nPeaks, iPeakFinder, fPkLocX, fPkLocY, fPkHeight, fSx, fSy, fSxy, fCorrelPlane_Out, nPxPerWindow, nWindowsTotal,total_windows, \
+           g_kernel_timing, g_t_fft, g_t_fit) \
     private(idx, n, ii, jj, i, j, x, y, fCorrelPlane, fWindowA, fWindowB, fStd, fPeakLoc, sCCPlan, \
             fMeanA, fMeanB, fEnergyA, fEnergyB, fEnergyNorm) \
     reduction(|:uError)
 {
+    /* per-thread sub-kernel timers (private; reduced into globals after the loop) */
+    double t_fft_local = 0.0, t_fit_local = 0.0, t_mark = 0.0;
     fCorrelPlane = (float*)fftwf_malloc(nPxPerWindow * sizeof(float));
     fWindowA = (float*)fftwf_malloc(nPxPerWindow * sizeof(float));
     fWindowB = (float*)fftwf_malloc(nPxPerWindow * sizeof(float));
@@ -139,7 +162,9 @@ int total_windows = N_images * nWindowsTotal;
         }
         fEnergyNorm = 1.0f / sqrtf(fEnergyA * fEnergyB);
 
+        if (g_kernel_timing) t_mark = omp_get_wtime();
         xcorr_preplanned(fWindowB, fWindowA, fCorrelPlane, &sCCPlan);
+        if (g_kernel_timing) t_fft_local += omp_get_wtime() - t_mark;
 
         if(!bEnsemble)
         {
@@ -156,7 +181,9 @@ int total_windows = N_images * nWindowsTotal;
         /* Peak finder */
         if(!bEnsemble)
         {
+            if (g_kernel_timing) t_mark = omp_get_wtime();
             lsqpeaklocate_lm(fCorrelPlane, nWindowSize, fPeakLoc, nPeaks, iPeakFinder, fStd);
+            if (g_kernel_timing) t_fit_local += omp_get_wtime() - t_mark;
             for(i = 0; i < nPeaks; ++i)
             {
                 int out_idx = n * nPeaks * nWindowsTotal + i * nWindowsTotal + iWindowIdx;
@@ -175,6 +202,14 @@ int total_windows = N_images * nWindowsTotal;
                 fPkHeight[out_idx] = peak_mag * fEnergyNorm / fCorrelWeight[pk_row*nWindowSize[1] + pk_col];
             }
         }
+    }
+
+    if (g_kernel_timing)
+    {
+        #pragma omp atomic
+        g_t_fft += t_fft_local;
+        #pragma omp atomic
+        g_t_fit += t_fit_local;
     }
 
 thread_cleanup:
