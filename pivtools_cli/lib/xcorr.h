@@ -1,21 +1,17 @@
 #ifndef XCORR_H
 #define XCORR_H
 
-#include <fftw3.h>
-
-/**** defines ****/
-#define fftwf_real						float
+#include "codelet_fft.h"
 
 /**** data structures ****/
+/* Cross-correlation plan: a thin wrapper over a codelet_plan (the permissive,
+ * FFTW-free transform engine). Internal to the library -- it never crosses the
+ * Python/ctypes boundary. NOT thread-safe to share; create one per OMP thread,
+ * exactly as the old FFTW-backed sPlan was used. */
 typedef struct _sPlan
 {
-	fftwf_plan plan_AB_fft;
-	fftwf_plan plan_C_ifft;
-	fftwf_real *ab_copy;
-	fftwf_real *c_copy;
-	fftwf_complex *AB_copy;
-	fftwf_complex *C;
-	int N[2];
+	codelet_plan *cp;
+	int N[2];          /* [rows (H), cols (W)] */
 } sPlan;
 
 /**** functions ****/
@@ -25,7 +21,5 @@ unsigned xcorr(const float *w1, const float *w2, float *corr, const int *N);
 unsigned xcorr_create_plan(const int *N, sPlan *pPlanStruct);
 unsigned xcorr_destroy_plan(sPlan *pPlanStruct);
 unsigned xcorr_preplanned(const float *w1, const float *w2, float *corr, sPlan *pPlanStruct);
-
-void multiply_conjugate(const fftwf_complex * restrict A, const fftwf_complex * restrict B, fftwf_complex * restrict C, int N);
 
 #endif

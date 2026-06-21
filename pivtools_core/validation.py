@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import List, Tuple
 
 from pivtools_core.config import Config
+from pivtools_core.fft_sizes import BUILT_FFT_SIZES
 from pivtools_core.image_handling.load_images import create_piv_frame_reader
 from pivtools_core.image_handling.path_utils import format_to_glob, validate_images_generic
 
@@ -135,6 +136,10 @@ def validate_config(config: Config) -> Tuple[bool, str, List[str]]:
                             f"but start_index is {expected_min}"
                         )
 
+    # Window sizes must be sizes the codelet FFT engine was built for.
+    # Fail loud here, at config load, rather than deep in the C hot path.
+    errors.extend(validate_window_sizes(config))
+
     if errors:
         return False, "\n".join(errors), warnings
 
@@ -152,6 +157,40 @@ def validate_config(config: Config) -> Tuple[bool, str, List[str]]:
             return False, "\n".join(errors), warnings
 
     return True, "", warnings
+
+
+def _check_built_sizes(window_sizes, label: str) -> List[str]:
+    """Return an error per [h, w] pass whose axes are not built codelet sizes."""
+    errors = []
+    for pass_idx, wh in enumerate(window_sizes or []):
+        try:
+            h, w = int(wh[0]), int(wh[1])
+        except (TypeError, ValueError, IndexError):
+            errors.append(f"{label} pass {pass_idx + 1}: malformed window size {wh!r}")
+            continue
+        bad = [v for v in (h, w) if v not in BUILT_FFT_SIZES]
+        if bad:
+            errors.append(
+                f"{label} pass {pass_idx + 1}: window size [{h}, {w}] uses unsupported "
+                f"size(s) {bad}. The FFT engine only supports {list(BUILT_FFT_SIZES)}."
+            )
+    return errors
+
+
+def validate_window_sizes(config: Config) -> List[str]:
+    """Window axis lengths must be sizes the codelet FFT engine was built for.
+
+    Checks the instantaneous schedule always (it also drives the predictor
+    passes) and the ensemble schedule when ensemble processing is enabled.
+    sum_window / sum_fitting_window are correlation-plane crops, not FFT sizes,
+    so they are intentionally not checked here.
+    """
+    errors = _check_built_sizes(config.window_sizes, "instantaneous_piv.window_size")
+    if config.data.get("processing", {}).get("ensemble", False):
+        errors.extend(
+            _check_built_sizes(config.ensemble_window_sizes, "ensemble_piv.window_size")
+        )
+    return errors
 
 
 def validate_ensemble_config(config: Config) -> Tuple[bool, List[str], List[str]]:

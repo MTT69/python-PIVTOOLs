@@ -81,13 +81,4 @@ EXPORT unsigned char bulkxcorr2d_accumulate_triple(
 EXPORT float fminvec(const float *fVec, int n);
 EXPORT float fmaxvec(const float *fVec, int n);
 
-/* Benchmark sub-kernel timing (flag-gated, additive). Splits the per-window FFT
- * cross-correlation from the LM peak-fit inside bulkxcorr2d so the codelet-vs-FFTW
- * A/B can isolate the FFT speedup. Off by default (zero cost). Bound from the
- * benchmark harness via ctypes; production never enables it. Times are total
- * thread-seconds (sum across OpenMP threads). */
-EXPORT void bulkxcorr2d_set_timing_enabled(int on);
-EXPORT void bulkxcorr2d_reset_timing(void);
-EXPORT void bulkxcorr2d_get_timing(double *fft_s, double *fit_s);
-
 #endif

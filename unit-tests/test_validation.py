@@ -23,7 +23,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from pivtools_core.validation import (
     validate_batch_size_for_pod,
     validate_ensemble_config,
+    validate_window_sizes,
+    _check_built_sizes,
 )
+from pivtools_core.fft_sizes import BUILT_FFT_SIZES
 
 
 # ---------------------------------------------------------------------------
@@ -295,3 +298,78 @@ class TestValidateBatchSizeForPod:
         type(cfg).filters = PropertyMock(return_value=None)
         valid, msg = validate_batch_size_for_pod(cfg, 1)
         assert valid
+
+
+# ---------------------------------------------------------------------------
+# Window-size restriction (codelet FFT engine supports a fixed set of sizes)
+# ---------------------------------------------------------------------------
+
+def _window_config(instantaneous, ensemble=None, ensemble_enabled=False):
+    """Minimal mock Config exposing only what validate_window_sizes reads."""
+    cfg = MagicMock()
+    type(cfg).window_sizes = PropertyMock(return_value=instantaneous)
+    type(cfg).ensemble_window_sizes = PropertyMock(
+        return_value=ensemble if ensemble is not None else instantaneous
+    )
+    cfg.data = {"processing": {"ensemble": ensemble_enabled}}
+    return cfg
+
+
+class TestCheckBuiltSizes:
+    def test_all_built_sizes_pass(self):
+        sizes = [[s, s] for s in BUILT_FFT_SIZES]
+        assert _check_built_sizes(sizes, "x") == []
+
+    def test_rectangular_built_sizes_pass(self):
+        assert _check_built_sizes([[16, 32], [32, 16], [96, 128]], "x") == []
+
+    def test_unsupported_size_reported(self):
+        errors = _check_built_sizes([[100, 100]], "instantaneous_piv.window_size")
+        assert len(errors) == 1
+        assert "100" in errors[0]
+        assert "instantaneous_piv.window_size pass 1" in errors[0]
+
+    def test_one_bad_axis_reported(self):
+        # 128 is built, 100 is not -> still an error
+        errors = _check_built_sizes([[128, 100]], "x")
+        assert len(errors) == 1
+        assert "100" in errors[0]
+
+    def test_common_256_rejected(self):
+        # 256 is a common PIV size but is NOT built -> must fail loud
+        assert 256 not in BUILT_FFT_SIZES
+        errors = _check_built_sizes([[256, 256]], "x")
+        assert len(errors) == 1
+
+    def test_malformed_size_reported(self):
+        errors = _check_built_sizes([[32]], "x")
+        assert len(errors) == 1
+        assert "malformed" in errors[0].lower()
+
+
+class TestValidateWindowSizes:
+    def test_valid_instantaneous_no_ensemble(self):
+        cfg = _window_config([[128, 128], [64, 64], [32, 32]])
+        assert validate_window_sizes(cfg) == []
+
+    def test_bad_instantaneous_fails(self):
+        cfg = _window_config([[128, 128], [100, 100]])
+        errors = validate_window_sizes(cfg)
+        assert any("100" in e for e in errors)
+
+    def test_ensemble_checked_when_enabled(self):
+        cfg = _window_config(
+            instantaneous=[[64, 64]],
+            ensemble=[[64, 64], [256, 256]],
+            ensemble_enabled=True,
+        )
+        errors = validate_window_sizes(cfg)
+        assert any("ensemble_piv.window_size" in e for e in errors)
+
+    def test_ensemble_ignored_when_disabled(self):
+        cfg = _window_config(
+            instantaneous=[[64, 64]],
+            ensemble=[[256, 256]],
+            ensemble_enabled=False,
+        )
+        assert validate_window_sizes(cfg) == []
