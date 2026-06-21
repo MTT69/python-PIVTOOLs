@@ -1,6 +1,5 @@
 #include "peak_locate_lm.h"
 #include "common.h"
-#include "fast_exp.h"
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -61,7 +60,7 @@ static inline float eval_gauss4(float i, float j, float A, float i0, float j0, f
 {
 	float di = (i - i0) / s;
 	float dj = (j - j0) / s;
-	return A * PIV_EXP(-(di*di + dj*dj));
+	return A * expf(-(di*di + dj*dj));
 }
 
 /* Evaluate 5-DOF Gaussian: A * exp(-((i-i0)^2/sx^2 + (j-j0)^2/sy^2)) - elliptical */
@@ -69,7 +68,7 @@ static inline float eval_gauss5(float i, float j, float A, float i0, float j0, f
 {
 	float di = (i - i0) / sx;
 	float dj = (j - j0) / sy;
-	return A * PIV_EXP(-(di*di + dj*dj));
+	return A * expf(-(di*di + dj*dj));
 }
 
 /* Evaluate 6-DOF Gaussian with correlation term - rotated elliptical 
@@ -81,7 +80,7 @@ static inline float eval_gauss6(float i, float j, float A, float i0, float j0, f
 {
 	float di = i - i0;
 	float dj = j - j0;
-	return A * PIV_EXP(-0.5f * (di*di/sx + dj*dj/sy + 2.0f*di*dj*sxy));
+	return A * expf(-0.5f * (di*di/sx + dj*dj/sy + 2.0f*di*dj*sxy));
 }
 
 /* Compute residual and Jacobian for 4-DOF Gaussian fit.
@@ -91,9 +90,11 @@ static inline float eval_gauss6(float i, float j, float A, float i0, float j0, f
  * them instead of re-calling exp. In the LM loop a trial residual is always
  * evaluated immediately before an accepted Jacobian rebuild at the SAME point,
  * so the cache is exact (no new approximation) and the Jacobian path makes zero
- * exp calls — removing the redundant, un-vectorised half of the exp workload.
+ * exp calls — removing the redundant half of the exp workload (Lever 2). This is
+ * the actual win, and it is compiler-independent (it deletes work, not just
+ * reschedules it): ~15-25% per fit on MSVC, clang, and ARM alike.
  * CONTRACT: pred_buf must be non-NULL on EVERY call — the residual pass writes it
- * unconditionally (the store is kept branch-free so the loop vectorises). */
+ * unconditionally (the store is kept branch-free). */
 static float compute_residual_jacobian_4dof(
 	const float *xcorr, const int *N,
 	float A, float i0, float j0, float s,
@@ -104,17 +105,16 @@ static float compute_residual_jacobian_4dof(
 	const int n_params = 4;
 
 	/* Hot path (every LM trial, including rejects): residual only. The branch
-	   that used to gate the Jacobian is hoisted OUT of the inner loop so the
-	   body is branch-free; with the call-free piv_expf (fast_exp.h) the loop is
-	   pure arithmetic and the omp simd reduction lets it vectorize. The pragma
-	   authorises the float-sum reassociation the build's lack of -ffast-math
-	   would otherwise forbid (same idiom as xcorr.c). The pred_buf store is
-	   unconditional (a branch here would defeat the vectoriser). */
+	   that used to gate the Jacobian is hoisted OUT of the inner loop so the body
+	   is branch-free, and pred_buf is written unconditionally so the accepted-step
+	   Jacobian pass can read the model values back (Lever 2). exp is libm expf: an
+	   inline polynomial approximation was A/B-benchmarked (MSVC/clang/ARM) and was
+	   slower AND did not auto-vectorize (the 5x5 reduction loop won't vectorize on
+	   MSVC or clang), so it was dropped — libm is faster, simpler, and exact. */
 	if(!compute_jacobian) {
 		for(ii = 0; ii < N[0]; ++ii) {
 			float i = (float)(ii - (N[0]-1)/2);
 			int row = ii * N[1];
-			PIV_SIMD_RESIDUAL
 			for(jj = 0; jj < N[1]; ++jj) {
 				float j = (float)(jj - (N[1]-1)/2);
 				float pred = eval_gauss4(i, j, A, i0, j0, s);
@@ -181,13 +181,12 @@ static float compute_residual_jacobian_5dof(
 	float residual_sum = 0.0f;
 	const int n_params = 5;
 
-	/* Hot path: residual only, branch-free + omp simd reduction -> vectorizes
+	/* Hot path: residual only, branch-free; fills the Lever 2 pred cache
 	   (see compute_residual_jacobian_4dof for the rationale). */
 	if(!compute_jacobian) {
 		for(ii = 0; ii < N[0]; ++ii) {
 			float i = (float)(ii - (N[0]-1)/2);
 			int row = ii * N[1];
-			PIV_SIMD_RESIDUAL
 			for(jj = 0; jj < N[1]; ++jj) {
 				float j = (float)(jj - (N[1]-1)/2);
 				float pred = eval_gauss5(i, j, A, i0, j0, sx, sy);
@@ -253,13 +252,12 @@ static float compute_residual_jacobian_6dof(
 	float residual_sum = 0.0f;
 	const int n_params = 6;
 
-	/* Hot path: residual only, branch-free + omp simd reduction -> vectorizes
+	/* Hot path: residual only, branch-free; fills the Lever 2 pred cache
 	   (see compute_residual_jacobian_4dof for the rationale). */
 	if(!compute_jacobian) {
 		for(ii = 0; ii < N[0]; ++ii) {
 			float i = (float)(ii - (N[0]-1)/2);
 			int row = ii * N[1];
-			PIV_SIMD_RESIDUAL
 			for(jj = 0; jj < N[1]; ++jj) {
 				float j = (float)(jj - (N[1]-1)/2);
 				float pred = eval_gauss6(i, j, A, i0, j0, sx, sy, sxy);

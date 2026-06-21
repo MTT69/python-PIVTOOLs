@@ -32,6 +32,7 @@ class BuildCLibraries(build):
         build_dir.mkdir(parents=True, exist_ok=True)
         src_dir = self.pkg_dir / "pivtools_cli" / "lib"
         sys_name = platform.system().lower()
+        use_clang_cl = False  # set in the Windows branch when clang-cl is selected
 
         # Check for user-provided FFTW paths (allows system library usage)
         fftw_inc_env = os.environ.get("FFTW_INC_DIR")
@@ -116,9 +117,24 @@ class BuildCLibraries(build):
                 use_static_fftw = True
                 print(f"Using static FFTW from: {fftw_dir}")
 
-            compiler = "cl"
+            # Windows toolchain: prefer clang-cl (faster codegen on the PIV hot
+            # kernels — see the peak-fit A/B), fall back to MSVC cl when absent.
+            # Override explicitly with PIVTOOLS_WIN_COMPILER=cl|clang-cl.
+            compiler = os.environ.get("PIVTOOLS_WIN_COMPILER") or (
+                "clang-cl" if shutil.which("clang-cl") else "cl"
+            )
+            use_clang_cl = pathlib.Path(compiler).stem.lower() == "clang-cl"
+            print(f"Windows compiler: {compiler}")
             shared_flag = "/LD"
-            self.extra_compile = ["/O2", "/std:c11", "/experimental:c11atomics", "/openmp:experimental", "/MT"]
+            if use_clang_cl:
+                # clang-cl is cl-flag-compatible. It has native C11 atomics (no
+                # /experimental:c11atomics) and uses /openmp for the full OpenMP
+                # runtime (links libomp — libomp.dll must ship alongside the DLLs).
+                # No /arch: baseline keeps the LM convergence path stable; AVX2 FMA
+                # contraction perturbs it and measured as a wash (peak-fit A/B).
+                self.extra_compile = ["/O2", "/std:c11", "/openmp", "/MT"]
+            else:
+                self.extra_compile = ["/O2", "/std:c11", "/experimental:c11atomics", "/openmp:experimental", "/MT"]
 
             if use_static_fftw:
                 fftw_lib_file = self.fftw_lib / "libfftw3f-3.lib"
@@ -169,16 +185,10 @@ class BuildCLibraries(build):
             lib_ext = ".so"
             use_msvc = False
 
-        # Opt-in extra compile flags (default-inert). Used to build the libm-expf
-        # A/B reference: PIV_EXTRA_CFLAGS="-DPIV_USE_LIBM_EXP" python setup.py build.
-        extra_cflags_env = os.environ.get("PIV_EXTRA_CFLAGS", "").split()
-        if extra_cflags_env:
-            print(f"Appending PIV_EXTRA_CFLAGS: {extra_cflags_env}")
-            self.extra_compile = self.extra_compile + extra_cflags_env
-
         # Store for marquadt build
         self.use_static_fftw = use_static_fftw
         self.use_msvc = use_msvc
+        self.use_clang_cl = use_clang_cl
         self.compiler = compiler
         self.shared_flag = shared_flag
         self.lib_ext = lib_ext
@@ -247,6 +257,20 @@ class BuildCLibraries(build):
 
         # --- Build libkspace (k-space fitting, requires GSL + FFTW) ---
         self._build_kspace()
+
+        # --- Stage the OpenMP runtime for clang-cl ---
+        # clang-cl's /openmp links libomp dynamically, so libomp.dll must sit beside
+        # the built DLLs (it ships via the *.dll package_data glob). MSVC's
+        # /openmp:experimental needs no such redistributable.
+        if self.use_clang_cl:
+            clang_path = shutil.which("clang-cl")
+            libomp = pathlib.Path(clang_path).parent / "libomp.dll" if clang_path else None
+            if libomp and libomp.is_file():
+                shutil.copy2(libomp, self.build_dir / "libomp.dll")
+                print(f"Staged OpenMP runtime: {libomp} -> {self.build_dir / 'libomp.dll'}")
+            else:
+                print("WARNING: clang-cl /openmp build but libomp.dll not found next to "
+                      "clang-cl; the DLLs will fail to load at runtime without it.")
 
     def _build_marquadt(self):
         """Build libmarquadt with GSL support."""
