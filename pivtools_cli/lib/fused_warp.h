@@ -70,7 +70,9 @@ EXPORT int fused_symmetric_warp(
  *   shared_predictor=1: pred_dy/dx are (nPY, nPX) — same for all images
  *   shared_predictor=0: pred_dy/dx are (N, nPY, nPX) — separate per image
  *
- * OpenMP parallelizes over (image, row) with collapse(2).
+ * OpenMP parallelizes over a manually flattened (image, row) index (total_rows =
+ * N*H). collapse(2) is avoided because it crashes on MSVC /openmp:experimental at
+ * large iteration counts.
  */
 EXPORT int fused_symmetric_warp_batch(
     const float *imgs_a,       /* (N, H, W) stacked */

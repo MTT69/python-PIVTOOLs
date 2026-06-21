@@ -12,6 +12,7 @@
 
 #include "fused_warp.h"
 #include "common.h"
+#include "simd_warp.h"
 
 #include <stdlib.h>
 #include <math.h>
@@ -88,12 +89,7 @@ static inline float bicubic_sample(const float *img, float fy, float fx, int H, 
        is the loop the SIMD path vectorises. impl=0 forces the bounds-checked path
        everywhere — the scalar reference oracle. */
     if (use_simd && iy >= 0 && iy + 3 < H && ix >= 0 && ix + 3 < W) {
-        for (m = 0; m < 4; m++) {
-            const float *r = img + (size_t)(iy + m) * W + ix;
-            for (n = 0; n < 4; n++) {
-                val += wy[m] * wx[n] * r[n];
-            }
-        }
+        val = bicubic_sample_interior(img, wy, wx, iy, ix, W);
     } else {
         for (m = 0; m < 4; m++) {
             row = iy + m;
@@ -195,13 +191,7 @@ static inline float lanczos3_sample(const float *img, float fy, float fx,
        bit-identical to the border path (same m-outer/n-inner order). The SIMD path
        targets this. impl=0 forces the bounds-checked path — the scalar reference. */
     if (use_simd && iy >= 0 && iy + 5 < H && ix >= 0 && ix + 5 < W) {
-        for (m = 0; m < 6; m++) {
-            const float *r = img + (size_t)(iy + m) * W + ix;
-            for (n = 0; n < 6; n++) {
-                val += wy[m] * wx[n] * r[n];
-            }
-        }
-        return val;
+        return lanczos3_sample_interior(img, wy, wx, iy, ix, W);
     }
 
     for (m = 0; m < 6; m++) {
@@ -503,8 +493,8 @@ EXPORT int fused_symmetric_warp_batch(
             int ni = ti / H;
             int i  = ti % H;
 
-            const float *cur_pred_dy = pred_dy + ni * pred_stride;
-            const float *cur_pred_dx = pred_dx + ni * pred_stride;
+            const float *cur_pred_dy = pred_dy + (ptrdiff_t)ni * pred_stride;
+            const float *cur_pred_dx = pred_dx + (ptrdiff_t)ni * pred_stride;
             const float *cur_img_a = imgs_a + (size_t)ni * H * W;
             const float *cur_img_b = imgs_b + (size_t)ni * H * W;
             float *cur_out_a = outs_a + (size_t)ni * H * W;
@@ -537,8 +527,8 @@ EXPORT int fused_symmetric_warp_batch(
             int ni = ti / H;
             int i  = ti % H;
 
-            const float *cur_pred_dy = pred_dy + ni * pred_stride;
-            const float *cur_pred_dx = pred_dx + ni * pred_stride;
+            const float *cur_pred_dy = pred_dy + (ptrdiff_t)ni * pred_stride;
+            const float *cur_pred_dx = pred_dx + (ptrdiff_t)ni * pred_stride;
             const float *cur_img_a = imgs_a + (size_t)ni * H * W;
             const float *cur_img_b = imgs_b + (size_t)ni * H * W;
             float *cur_out_a = outs_a + (size_t)ni * H * W;
