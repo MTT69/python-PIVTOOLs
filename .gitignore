@@ -24,6 +24,10 @@ pivtools_cli/lib/*.dll
 pivtools_cli/lib/*.pdb
 pivtools_cli/lib/*.lib
 pivtools_cli/lib/*.obj
+# Generated at build time by codelet_gen/gen_codelet.py (per-platform ISA); not committed.
+pivtools_cli/lib/codelets_gen.h
+# Standalone correctness-gate binary for the codelet FFT engine.
+pivtools_cli/lib/test_codelet_gate
 tests/reynolds_stress_test/*
 logs/*
 manual_tools/
