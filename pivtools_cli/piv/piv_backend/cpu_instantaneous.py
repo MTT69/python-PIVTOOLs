@@ -75,6 +75,9 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         if not InstantaneousCorrelatorCPU._cleanup_registered:
             self._register_fftw_cleanup()
             InstantaneousCorrelatorCPU._cleanup_registered = True
+        # Sub-kernel timer binding is per-instance (each instance has its own lib
+        # handle), so it must run for EVERY correlator, not just the first.
+        self._bind_kernel_timers()
         self.lib.bulkxcorr2d.restype = ctypes.c_ubyte
         self.delta_ab_pred = None
         self.delta_ab_old = None
@@ -190,8 +193,17 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     except Exception:
                         pass  # Ignore errors during cleanup
 
-        # Flag-gated FFT-vs-peak-fit sub-kernel timers (present only in instrumented
-        # builds). Bind argtypes once so the per-pass split capture can read them.
+    def _bind_kernel_timers(self) -> None:
+        """Detect + bind the flag-gated FFT-vs-peak-fit sub-kernel timers on this
+        instance's ``self.lib`` handle (present only on instrumented builds).
+
+        Per-instance, NOT once-per-process: every correlator loads its own ctypes
+        handle, so the argtypes must be bound on each, and ``_has_kernel_timers`` is
+        instance state the profiling path reads. (It used to live inside the
+        once-guarded ``_register_fftw_cleanup``, so only the first correlator in a
+        process got the attribute — fine for one-correlator-per-worker production,
+        but it broke a multi-run profiling driver in a single process.)
+        """
         self._has_kernel_timers = hasattr(self.lib, "bulkxcorr2d_get_timing")
         if self._has_kernel_timers:
             self.lib.bulkxcorr2d_reset_timing.argtypes = []

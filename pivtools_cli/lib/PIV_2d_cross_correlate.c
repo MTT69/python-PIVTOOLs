@@ -9,6 +9,26 @@
 #include <string.h>
 #include <stdbool.h>
 
+/* --- benchmark sub-kernel timing (flag-gated, additive) ----------------------
+ * Splits the batched FFT/xcorr (codelet_*_batch) from the LM peak-fit
+ * (lsqpeaklocate_lm) inside bulkxcorr2d so the codelet-vs-FFTW A/B can isolate
+ * the FFT speedup from the constant peak-fit cost. The two globals accumulate
+ * total thread-seconds (sum across OpenMP threads); they reconcile to wall-clock
+ * only at OMP_NUM_THREADS=1. Zero cost when g_kernel_timing == 0 (production
+ * default). Bound from the benchmark harness via ctypes; production never enables
+ * it. */
+static volatile int g_kernel_timing = 0;
+static double g_t_fft = 0.0;   /* total thread-seconds in the batched FFT/xcorr */
+static double g_t_fit = 0.0;   /* total thread-seconds in lsqpeaklocate_lm       */
+
+void bulkxcorr2d_set_timing_enabled(int on) { g_kernel_timing = on ? 1 : 0; }
+void bulkxcorr2d_reset_timing(void) { g_t_fft = 0.0; g_t_fit = 0.0; }
+void bulkxcorr2d_get_timing(double *fft_s, double *fit_s)
+{
+    if (fft_s) *fft_s = g_t_fft;
+    if (fit_s) *fit_s = g_t_fit;
+}
+
 /* Post-process one finished correlation lane (instantaneous path): correlation-
  * plane weighting, optional raw-plane copy-out, and peak fit + output writes.
  * This is the EXACT per-window post-processing of the original scalar loop,
@@ -20,7 +40,7 @@ static void instant_postprocess_lane(
     int nPeaks, int iPeakFinder, int nWindowsTotal, int nPxPerWindow,
     float *fPeakLoc, float *fStd,
     float *fPkLocX, float *fPkLocY, float *fPkHeight, float *fSx, float *fSy, float *fSxy,
-    float *fCorrelPlane_Out)
+    float *fCorrelPlane_Out, double *t_fit)
 {
     if (!bEnsemble) {
         int i;  /* MSVC OpenMP needs the counter declared outside the for-init */
@@ -35,7 +55,13 @@ static void instant_postprocess_lane(
 
     /* Peak finder */
     if (!bEnsemble) {
-        lsqpeaklocate_lm(plane, nWindowSize, fPeakLoc, nPeaks, iPeakFinder, fStd);
+        if (g_kernel_timing) {
+            double t_mark = omp_get_wtime();
+            lsqpeaklocate_lm(plane, nWindowSize, fPeakLoc, nPeaks, iPeakFinder, fStd);
+            *t_fit += omp_get_wtime() - t_mark;
+        } else {
+            lsqpeaklocate_lm(plane, nWindowSize, fPeakLoc, nPeaks, iPeakFinder, fStd);
+        }
         for (int i = 0; i < nPeaks; ++i) {
             int out_idx = n * nPeaks * nWindowsTotal + i * nWindowsTotal + iWindowIdx;
             float peak_row = fPeakLoc[0*nPeaks + i];
@@ -68,18 +94,26 @@ static void instant_flush_batch(
     int nPeaks, int iPeakFinder, int nWindowsTotal, int nPxPerWindow,
     float *fPeakLoc, float *fStd,
     float *fPkLocX, float *fPkLocY, float *fPkHeight, float *fSx, float *fSy, float *fSxy,
-    float *fCorrelPlane_Out)
+    float *fCorrelPlane_Out, double *t_fft, double *t_fit)
 {
-    codelet_forward_batch(pb, packB, 0);     /* slot 0 = B */
-    codelet_forward_batch(pb, packA, 1);     /* slot 1 = A */
-    codelet_emit_xcorr_batch(pb, packC);
+    if (g_kernel_timing) {
+        double t_mark = omp_get_wtime();
+        codelet_forward_batch(pb, packB, 0);     /* slot 0 = B */
+        codelet_forward_batch(pb, packA, 1);     /* slot 1 = A */
+        codelet_emit_xcorr_batch(pb, packC);
+        *t_fft += omp_get_wtime() - t_mark;
+    } else {
+        codelet_forward_batch(pb, packB, 0);     /* slot 0 = B */
+        codelet_forward_batch(pb, packA, 1);     /* slot 1 = A */
+        codelet_emit_xcorr_batch(pb, packC);
+    }
 
     for (int l = 0; l < L_real; ++l) {
         instant_postprocess_lane(
             &packC[(size_t)l * numel], lane_idx[l], lane_n[l], lane_win[l], lane_enorm[l],
             bEnsemble, fCorrelWeight, nWindowSize, nPeaks, iPeakFinder,
             nWindowsTotal, nPxPerWindow, fPeakLoc, fStd,
-            fPkLocX, fPkLocY, fPkHeight, fSx, fSy, fSxy, fCorrelPlane_Out);
+            fPkLocX, fPkLocY, fPkHeight, fSx, fSy, fSxy, fCorrelPlane_Out, t_fit);
     }
 }
 
@@ -106,6 +140,14 @@ float *fCorrelPlane_Out)
 
     int total_windows = N_images * nWindowsTotal;
 
+    /* Sub-kernel timers: stack locals reduced (+) across threads, then folded into
+     * the globals after the region. Kept out of the region's lexical body so the
+     * file-scope globals are never referenced under default(none) (clang-cl
+     * requires explicit data-sharing for any global named inside the construct).
+     * The flush helpers add to the per-thread reduction copies only when timing
+     * is enabled, so these stay 0 in production (zero cost). */
+    double t_fft_red = 0.0, t_fit_red = 0.0;
+
     /* Flattened parallel loop over all windows in all images. Stage B: each
      * thread accumulates valid windows into a SIMD batch (one window per lane);
      * a full batch of LANES is cross-correlated in one call, then each lane is
@@ -116,7 +158,7 @@ float *fCorrelPlane_Out)
         shared(fImageA_stack, fImageB_stack, fMask, nImageSize, N_images, \
                fWinCtrsX, fWinCtrsY, nWindows, bEnsemble, fCorrelWeight, fWindowWeightA, fWindowWeightB, nWindowSize, \
                nPeaks, iPeakFinder, fPkLocX, fPkLocY, fPkHeight, fSx, fSy, fSxy, fCorrelPlane_Out, nPxPerWindow, nWindowsTotal, total_windows) \
-        reduction(|:uError)
+        reduction(|:uError) reduction(+:t_fft_red,t_fit_red)
     {
         const int LANES = codelet_lanes();
         const int numel = nPxPerWindow;
@@ -216,7 +258,8 @@ float *fCorrelPlane_Out)
                     lane_idx, lane_n, lane_win, lane_enorm,
                     bEnsemble, fCorrelWeight, nWindowSize, nPeaks, iPeakFinder,
                     nWindowsTotal, nPxPerWindow, fPeakLoc, fStd,
-                    fPkLocX, fPkLocY, fPkHeight, fSx, fSy, fSxy, fCorrelPlane_Out);
+                    fPkLocX, fPkLocY, fPkHeight, fSx, fSy, fSxy, fCorrelPlane_Out,
+                    &t_fft_red, &t_fit_red);
                 batch = 0;
             }
         }
@@ -229,7 +272,8 @@ float *fCorrelPlane_Out)
                 lane_idx, lane_n, lane_win, lane_enorm,
                 bEnsemble, fCorrelWeight, nWindowSize, nPeaks, iPeakFinder,
                 nWindowsTotal, nPxPerWindow, fPeakLoc, fStd,
-                fPkLocX, fPkLocY, fPkHeight, fSx, fSy, fSxy, fCorrelPlane_Out);
+                fPkLocX, fPkLocY, fPkHeight, fSx, fSy, fSxy, fCorrelPlane_Out,
+                &t_fft_red, &t_fit_red);
         }
 
     thread_cleanup:
@@ -240,6 +284,15 @@ float *fCorrelPlane_Out)
     }
 
     free(fCorrelWeight);
+
+    /* Fold this pass's thread-summed sub-kernel times into the globals (additive,
+     * matching the original semantics). Outside the parallel region, so touching
+     * the globals here is unrestricted. No-op work when timing is off. */
+    if (g_kernel_timing) {
+        g_t_fft += t_fft_red;
+        g_t_fit += t_fit_red;
+    }
+
     return uError;
 }
 
