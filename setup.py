@@ -289,6 +289,8 @@ class BuildCLibraries(build):
             str(self.fftw_lib / "libfftw3f.a"),
             str(self.fftw_lib / "libfftw3f_omp.a"),
             str(self.fftw_lib / "libfftw3f-3.lib"),
+            f"/LIBPATH:{self.fftw_lib}",  # Windows dynamic-FFTW link tokens
+            "fftw3f.lib",
         }
         base_compile = [f for f in self.extra_compile if f not in fftw_tokens]
         bulk_link = [f for f in self.extra_link if f not in fftw_tokens]
@@ -453,8 +455,11 @@ class BuildCLibraries(build):
                 f"-I{src_dir}",
                 "-o",
                 str(build_dir / f"libfusedwarp{lib_ext}"),
-                "-lm",
-                "-fopenmp",
+                # bulk_link (FFTW-stripped extra_link) carries -lm -fopenmp and,
+                # on macOS, the libomp -rpath + -isysroot the runtime needs to
+                # find libomp.dylib (Homebrew LLVM is not on the default search
+                # path). On Linux it reduces to ["-lm", "-fopenmp"].
+                *bulk_link,
             ]
         if warp_simd_flags:
             print(f"libfusedwarp SIMD flags: {' '.join(warp_simd_flags)}")
