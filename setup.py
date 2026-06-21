@@ -263,12 +263,21 @@ class BuildCLibraries(build):
         # engine replaces it); libkspace below still uses FFTW.
         self._generate_codelets()
 
-        sources1 = [
-            "peak_locate_lm.c",
+        # libbulkxcorr2d bundles the LM peak fitter with the codelet FFT. They
+        # share a call graph -- PIV_2d_cross_correlate.c calls lsqpeaklocate_lm
+        # directly -- so they MUST link into one binary, but they want DIFFERENT
+        # flags. The FFT TUs want AVX2/native + fast fp-contraction for
+        # throughput; the LM kernel wants NONE of that: AVX2 FMA contraction
+        # perturbs the Levenberg-Marquardt convergence path (and is a measured
+        # wash), so peak_locate_lm.c compiles scalar/libm with no /arch. Hence a
+        # split compile -- each TU to its own object with its own flags -- then
+        # one link of the four objects.
+        fft_sources = [
             "PIV_2d_cross_correlate.c",
             "xcorr.c",
             "codelet_fft.c",
         ]
+        peak_source = "peak_locate_lm.c"
 
         # Strip FFTW from this library's flags (kept on extra_* for libkspace).
         fftw_tokens = {
@@ -281,11 +290,11 @@ class BuildCLibraries(build):
             str(self.fftw_lib / "libfftw3f_omp.a"),
             str(self.fftw_lib / "libfftw3f-3.lib"),
         }
-        bulk_compile = [f for f in self.extra_compile if f not in fftw_tokens]
+        base_compile = [f for f in self.extra_compile if f not in fftw_tokens]
         bulk_link = [f for f in self.extra_link if f not in fftw_tokens]
 
-        # Stage B: append the SIMD width macro + arch + accuracy-preserving
-        # throughput flags. These apply to libbulkxcorr2d ONLY (not the FFTW/GSL
+        # Stage B: the SIMD width macro + arch + accuracy-preserving throughput
+        # flags. These go on the FFT TUs ONLY (not the peak TU, not the FFTW/GSL
         # libs). NO -ffast-math / /fp:fast -- they reassociate/flush and would
         # break the FFTW-parity the codelet engine is validated against.
         lto = os.environ.get("PIVTOOLS_FFT_LTO", "").strip().lower() in (
@@ -312,41 +321,87 @@ class BuildCLibraries(build):
             ]
             if lto:
                 simd_flags += ["-flto"]
-        bulk_compile = bulk_compile + simd_flags
+        fft_compile = base_compile + simd_flags
+        peak_compile = base_compile  # NO simd_flags: stable scalar/libm LM kernel
         print(
             f">>> [PIVTOOLS_FFT] libbulkxcorr2d  isa={self.fft_isa}  lanes={self.fft_lanes}  "
             f"macro={self.fft_macro}  render={self.fft_render}  "
             f"arch='{' '.join(self.fft_arch_flags)}'  lto={lto}"
         )
-        print(f">>> [PIVTOOLS_FFT] bulk compile flags: {' '.join(bulk_compile)}")
+        print(f">>> [PIVTOOLS_FFT] FFT TU flags:  {' '.join(fft_compile)}")
+        print(
+            f">>> [PIVTOOLS_FFT] peak TU flags: {' '.join(peak_compile)}  "
+            "(no /arch -- LM stability)"
+        )
 
+        # Compile each TU to its own object (one invocation per file keeps the
+        # clang-cl /Fo vs gcc -o asymmetry trivial), then link all four.
+        obj_ext = ".obj" if use_msvc else ".o"
+        compile_units = [(peak_source, peak_compile)] + [
+            (s, fft_compile) for s in fft_sources
+        ]
+        obj_paths = []
+        for src_name, flags in compile_units:
+            obj_path = build_dir / f"{pathlib.Path(src_name).stem}{obj_ext}"
+            if use_msvc:
+                cmd_obj = [
+                    compiler,
+                    *flags,
+                    "/c",
+                    f"/Fo{obj_path}",
+                    str(src_dir / src_name),
+                    f"/I{src_dir}",
+                ]
+            else:
+                cmd_obj = [
+                    compiler,
+                    *flags,
+                    "-c",
+                    str(src_dir / src_name),
+                    f"-I{src_dir}",
+                    "-o",
+                    str(obj_path),
+                ]
+            self._run(cmd_obj)
+            if not obj_path.exists():
+                raise RuntimeError(f"Build failed: {obj_path} not created")
+            obj_paths.append(obj_path)
+
+        # Link the four objects into the shared library. OpenMP must be on the
+        # link line (/openmp pulls libomp on clang-cl; bulk_link carries
+        # -fopenmp on clang/gcc). LTO, when enabled, needs its link-time flag.
+        output_file = build_dir / f"libbulkxcorr2d{lib_ext}"
         if use_msvc:
-            output_file = build_dir / f"libbulkxcorr2d{lib_ext}"
-            cmd1 = [
+            cmd_link = [
                 compiler,
-                *bulk_compile,
                 shared_flag,
-                f"/Fo{build_dir}/",
-                *[str(src_dir / s) for s in sources1],
-                f"/I{src_dir}",
+                *[str(o) for o in obj_paths],
                 f"/Fe{output_file}",
-            ] + bulk_link
+                "/openmp",
+                "/MT",
+            ]
+            if lto:
+                cmd_link += ["/LTCG"]
+            cmd_link += bulk_link
         else:
-            cmd1 = [
+            cmd_link = [
                 compiler,
-                *bulk_compile,
                 shared_flag,
-                *[str(src_dir / s) for s in sources1],
-                f"-I{src_dir}",
+                *[str(o) for o in obj_paths],
                 "-o",
-                str(build_dir / f"libbulkxcorr2d{lib_ext}"),
-            ] + bulk_link
+                str(output_file),
+            ]
+            if lto:
+                cmd_link += ["-flto"]
+            cmd_link += bulk_link
+        self._run(cmd_link)
+        if not output_file.exists():
+            raise RuntimeError(f"Build failed: {output_file} not created")
 
-        self._run(cmd1)
-        if not (build_dir / f"libbulkxcorr2d{lib_ext}").exists():
-            raise RuntimeError(
-                f"Build failed: {build_dir / f'libbulkxcorr2d{lib_ext}'} not created"
-            )
+        # Remove the intermediate objects (targeted: _cleanup_intermediates
+        # globs *.obj but not the *.o produced on clang/gcc).
+        for obj_path in obj_paths:
+            obj_path.unlink(missing_ok=True)
 
         self._cleanup_intermediates(build_dir)
 
