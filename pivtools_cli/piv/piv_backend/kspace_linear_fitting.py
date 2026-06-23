@@ -38,6 +38,7 @@ import logging
 from typing import Optional
 
 import numpy as np
+from threadpoolctl import threadpool_limits
 
 from pivtools_cli.piv.piv_backend.interpolation_noise_psd import (
     compute_noise_psd_2d, frac_distance,
@@ -580,10 +581,16 @@ def fit_windows_kspace_linear(
         idx = proc_sorted[start:end]
         f_xy = (float(fkey_sorted[start, 0]), float(fkey_sorted[start, 1]))
 
-        Sigma, mu, amps, status = _fit_chunk(
-            R_AA[idx], R_BB[idx], R_AB[idx], KX, KY, KR, cy, cx,
-            f_xy, interp_kernel, floor_mode, weight_mode, shape_mode,
-        )
+        # Cap native threadpools to 1 for the batched FFT / linear solves. Under
+        # Dask each worker process already runs one task at a time
+        # (threads_per_worker=1), so N worker processes each opening their own
+        # BLAS/FFT pool would oversubscribe the cores; pin to 1 so total threads
+        # == workers. Numerics are thread-count-invariant, so this is free.
+        with threadpool_limits(limits=1):
+            Sigma, mu, amps, status = _fit_chunk(
+                R_AA[idx], R_BB[idx], R_AB[idx], KX, KY, KR, cy, cx,
+                f_xy, interp_kernel, floor_mode, weight_mode, shape_mode,
+            )
 
         gauss_flat[idx, 0:3] = amps
         gauss_flat[idx, 3:6] = 0.0

@@ -94,7 +94,8 @@ gcc-15 -O3 -fopenmp -ffp-contract=fast -mcpu=native -DPIVTOOLS_FFT_ISA_NEON4 \
 - `codelets_gen.h` is generated at build time (gitignored). GCC builds emit the
   full vector_size family (scalar+v4+v8+v16) so the width can be switched via
   `PIVTOOLS_FFT_ISA` without regenerating; MSVC emits scalar+avx2.
-- `libkspace` still links FFTW (the k-space BETA path is a separate, deferred
-  migration), so the wheel is not yet fully GPL-free.
+- No library links FFTW or GSL any more: `libkspace` and `libmarquadt` were
+  removed (2026-06-23) and ensemble fitting moved to pure NumPy, so the BSD-3
+  wheel claim is now honest.
 - Only **instantaneous** PIV is validated end-to-end so far; the batched
   ensemble/triple loops are built but pending joint validation.

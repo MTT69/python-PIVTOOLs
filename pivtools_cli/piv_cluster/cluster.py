@@ -210,8 +210,21 @@ def setup_worker_logging(log_level=logging.INFO, log_file=None, log_console=True
 
 def set_worker_omp_threads(omp_threads: str):
     """
-    Set OMP_NUM_THREADS in worker processes.
+    Pin native threadpools (OpenMP + BLAS/MKL/NumExpr) in worker processes.
+
+    Each Dask worker already runs one task at a time (threads_per_worker=1), so
+    every native pool a worker opens multiplies against the worker count. Pinning
+    them all to the same value keeps total threads bounded by the worker count
+    and avoids core oversubscription (the pure-NumPy k-space fitter's FFT/solves
+    are additionally capped via threadpoolctl, but these env vars are the
+    defence-in-depth set, honoured by libraries that read them at import).
     """
     import os
-    os.environ["OMP_NUM_THREADS"] = omp_threads
-    logging.debug(f"Set OMP_NUM_THREADS to {omp_threads} in worker process")
+    for var in (
+        "OMP_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS",
+        "MKL_NUM_THREADS",
+        "NUMEXPR_NUM_THREADS",
+    ):
+        os.environ[var] = omp_threads
+    logging.debug(f"Set OMP/BLAS/MKL/NumExpr threads to {omp_threads} in worker process")
