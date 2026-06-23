@@ -537,8 +537,12 @@ def fit_windows_kspace_linear(
     # per-window fractional displacement for P_noise (warp splits the shift A/B -> pred/2)
     if predictor_displacements is not None and floor_mode not in ("flat", "autofit", "autocross"):
         pred = np.asarray(predictor_displacements, dtype=np.float64).reshape(-1, 2)
-        f_y = frac_distance(pred[:, 0] / 2.0)
-        f_x = frac_distance(pred[:, 1] / 2.0)
+        # A real multipass predictor carries NaN at invalid/edge windows. A NaN
+        # fractional shift is meaningless for the noise PSD AND would break the
+        # constant-f chunk grouping below (NaN != NaN -> empty chunk -> crash),
+        # so default NaN windows to zero shift (the un-warped, flat-P_noise case).
+        f_y = np.nan_to_num(frac_distance(pred[:, 0] / 2.0), nan=0.0)
+        f_x = np.nan_to_num(frac_distance(pred[:, 1] / 2.0), nan=0.0)
     else:
         f_y = np.zeros(n_windows)
         f_x = np.zeros(n_windows)
