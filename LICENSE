@@ -32,19 +32,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
                          THIRD-PARTY DEPENDENCY NOTICE
 ================================================================================
 
-This software links against third-party libraries with their own licenses.
-When distributing binaries that include these dependencies, you must comply
-with their respective license terms:
-
-GPL-LICENSED DEPENDENCIES (copyleft):
--------------------------------------
-  * FFTW3 (http://www.fftw.org/) - GPL v2 or later
-  * GNU Scientific Library (GSL) - GPL v3
-
-  Binary distributions that link against FFTW3 or GSL must be distributed
-  under GPL-compatible terms, unless you:
-    - Obtain a commercial license from the FFTW authors, OR
-    - Replace these libraries with alternatively-licensed implementations
+NO GPL DEPENDENCIES (as of 2026-06-23):
+---------------------------------------
+The compiled binaries link no GPL-licensed libraries. FFTW3 was replaced by a
+permissive self-owned codelet FFT, and the GSL-based ensemble fitters were
+removed in favour of a pure-NumPy implementation. The two C libraries
+(libbulkxcorr2d, libfusedwarp) link only OpenMP and the C math library, so the
+distribution is BSD-3-Clause throughout with no copyleft obligations.
 
 PERMISSIVELY-LICENSED DEPENDENCIES:
 -----------------------------------
@@ -52,7 +46,3 @@ PERMISSIVELY-LICENSED DEPENDENCIES:
   * SciPy - BSD 3-Clause
   * OpenCV - Apache 2.0
   * And others (see NOTICE file for complete list)
-
-If you wish to use PIVTools code in a proprietary product without GPL
-obligations, you must replace the GPL-licensed dependencies (FFTW3, GSL)
-with compatible alternatives.
