@@ -497,13 +497,19 @@ def validate_images_generic(
             logging.warning(f"Could not read .set entry count: {e}")
             result["found_count"] = "container"
 
-        # Try to read first frame for preview
+        # Read the first frame. A read failure is a genuine error (corrupt/locked
+        # container, wrong camera), so surface it instead of passing silently.
         try:
             img = read_frame_fn(1)
+        except Exception as e:
+            result["valid"] = False
+            result["error"] = f"Set file found but could not read the first frame: {e}"
+            return result
+        try:
             result["image_size"] = (img.shape[1], img.shape[0])  # (W, H)
             result["first_image_preview"] = _image_to_base64(img)
         except Exception as e:
-            logging.warning(f"Could not read preview from .set file: {e}")
+            logging.warning(f"Could not render preview from .set file: {e}")
 
         return result
 
@@ -537,17 +543,25 @@ def validate_images_generic(
         result["format_detected"] = "cine"
         result["sample_files"] = [cine_filename]
 
-        # Try to get frame count and preview
+        # Frame count is best-effort (preview metadata); a failure here stays a warning.
         try:
             from .readers.cine_reader import get_cine_frame_count
-            frame_count = get_cine_frame_count(str(cine_file))
-            result["found_count"] = frame_count
+            result["found_count"] = get_cine_frame_count(str(cine_file))
+        except Exception as e:
+            logging.warning(f"Could not read .cine frame count: {e}")
 
+        # Reading the first frame is not — surface a genuine read failure.
+        try:
             img = read_frame_fn(1)
+        except Exception as e:
+            result["valid"] = False
+            result["error"] = f"CINE file found but could not read the first frame: {e}"
+            return result
+        try:
             result["image_size"] = (img.shape[1], img.shape[0])
             result["first_image_preview"] = _image_to_base64(img)
         except Exception as e:
-            logging.warning(f"Could not read preview from .cine file: {e}")
+            logging.warning(f"Could not render preview from .cine file: {e}")
 
         return result
 
@@ -585,13 +599,21 @@ def validate_images_generic(
         else:
             result["valid"] = True
 
-        # Try to read first for preview
+        # Read the first frame. A failure here is a genuine read error (e.g. a
+        # multi-camera .im7 frame-count mismatch), not a cosmetic preview issue —
+        # surface it and fail validation instead of passing with a missing preview.
         try:
             img = read_frame_fn(1)
+        except Exception as e:
+            result["valid"] = False
+            # The reason already names the file (e.g. the frame-count mismatch).
+            result["error"] = str(e)
+            return result
+        try:
             result["image_size"] = (img.shape[1], img.shape[0])
             result["first_image_preview"] = _image_to_base64(img)
         except Exception as e:
-            logging.warning(f"Could not read preview from .im7 file: {e}")
+            logging.warning(f"Could not render preview from .im7 file: {e}")
 
         return result
 

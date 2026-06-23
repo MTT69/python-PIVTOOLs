@@ -1,34 +1,34 @@
 paths:
   base_paths:
-  - /Volumes/STORAGE/calibration_check/andre/Project_FlowMaster_260129_152105_x25/pivtools
+  - E:\alk235
   source_paths:
-  - /Volumes/STORAGE/calibration_check/andre/Project_FlowMaster_260129_152105_x25/tiff
+  - D:\ALK_PIV_250527_085959\y235_aoan04_aoafn06\loop=0.set
   active_paths:
   - 0
   camera_numbers:
   - 1
   - 2
-  camera_count: 2
-  camera_subfolders:
-  - cam1
-  - cam2
+  - 3
+  - 4
+  - 5
+  camera_count: 5
+  camera_subfolders: []
 images:
   image_format:
-  - B%05d_A.tiff
-  - B%05d_B.tiff
+  - data.set
   vector_format:
   - '%05d.mat'
   dtype: float32
-  image_type: standard
+  image_type: lavision_set
   use_camera_subfolders: false
   start_index: 1
   frame_stride: 0
   pair_stride: 1
-  pairing_preset: ab_format
+  pairing_preset: pre_paired
   num_loops: 1
   num_images: 10
   image_shape:
-  - 3352
+  - 3528
   - 5312
 batches:
   size: 10
@@ -42,9 +42,9 @@ processing:
   auto_compute_params: false
   omp_threads: 5
   dask_workers_per_node: 1
-  dask_memory_limit: 12GB
+  dask_memory_limit: 45GB
   dask_max_in_flight_per_worker: 2
-  open_dashboard: false
+  open_dashboard: true
   dask_nanny: false
   post_processing_workers: 16
   always_batch: true
@@ -95,7 +95,7 @@ video:
   fps: 30
   crf: 15
   resolution: 4k
-  source_endpoint: stereo
+  source_endpoint: merged
 statistics:
   enabled_methods:
     mean_tke: false
@@ -118,7 +118,7 @@ statistics:
   gamma_radius: 4
   save_figures: true
   type_name: instantaneous
-  source_endpoint: stereo
+  source_endpoint: merged
 instantaneous_piv:
   window_size:
   - - 128
@@ -205,18 +205,21 @@ calibration:
   camera_subfolders:
   - camera1
   - camera2
-  - cam3
+  - camera3
+  - camera4
+  - camera5
   path_order: camera_first
-  active: stereo_stepped
+  active: dotboard
   piv_type: instantaneous
   scale_factor:
     dt: 0.0057553
     px_per_mm: 13.653
     source_path_idx: 0
   dotboard:
-    dot_spacing_mm: 21.2
+    dot_spacing_mm: 10
     datum_frame: 1
-    model_type: pinhole
+    model_type: polynomial
+    dt: 1
   charuco:
     squares_h: 10
     squares_v: 7
@@ -227,6 +230,7 @@ calibration:
     source_path_idx: 0
     camera: 1
     model_type: pinhole
+    dt: 1
   stereo_dotboard:
     dot_spacing_mm: 12.22
     datum_camera: 1
@@ -235,7 +239,7 @@ calibration:
     datum_camera: 1
     datum_frame: 1
   calibration_sources:
-  - /Volumes/STORAGE/calibration_check/andre/Project_FlowMaster_260129_152105_x25/Properties/Calibration
+  - D:\ALK_PIV_250527_085959\Properties\Calibration
   global_coordinates:
     enabled: true
     datum_camera: 1
@@ -248,7 +252,7 @@ calibration:
     invert_ux: false
     overlap_pairs: []
   n_views: 1
-  dt: 5.0e-06
+  dt: 4.96e-05
   datum_frame: 1
   camera_pair:
   - 1
@@ -283,4 +287,4 @@ transforms:
   cameras:
     1:
       operations: []
-  source_endpoint: stereo
+  source_endpoint: merged

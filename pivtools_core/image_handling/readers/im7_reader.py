@@ -26,6 +26,12 @@ BUFFER_FORMAT_WORD = -4
 
 # pack_type values
 PACK_UNCOMPRESSED = 0
+# DaVis delta+nibble RLE: a 3-byte preamble then a token stream of signed-int8
+# pixel deltas, with 0x81 entering a 4-bit packed-delta run (terminated by a 0x8
+# nibble) and 0x80 introducing a 16-bit little-endian absolute. Reverse-engineered
+# and verified bit-exact against LaVision lvpyio on 5 real DaVis cameras
+# (ALK x25 calibration plates, 2026-06-22). See _decode_packtype1_frame.
+PACK_RLE = 1
 PACK_ZLIB = 2
 PACK_FIXED_12BIT = 3
 # DaVis 10/11 lossless compression: one LZ4 *block* (not framed) over the whole
@@ -410,6 +416,73 @@ def _read_pixels_fixed12(
     return pixels.reshape(n_frames, header.size_z, header.size_y, header.size_x)
 
 
+def _decode_packtype1_frame(data: bytes, off: int, npix: int):
+    """Decode one pack_type-1 (DaVis delta+nibble RLE) frame.
+
+    Token stream (after a 3-byte preamble): the running pixel value starts at 0;
+    each token updates it and emits one pixel, row-major:
+      * 0x80  -> next 2 bytes are a 16-bit little-endian ABSOLUTE value
+      * 0x81  -> enter a 4-bit packed-delta run: read signed nibbles (high then
+                 low) as deltas until a nibble of value 0x8 terminates the run
+      * else  -> the byte is a signed int8 DELTA
+
+    Returns (np.ndarray[int32] of length ``npix``, new byte offset). See PACK_RLE.
+    """
+    out = np.empty(npix, dtype=np.int32)
+    off += 3  # 3-byte preamble (observed "01 01 00")
+    prev = 0
+    i = 0
+    while i < npix:
+        b = data[off]; off += 1
+        if b == 0x81:                       # 4-bit packed-delta run
+            done = False
+            while not done:
+                byte = data[off]; off += 1
+                for nib in ((byte >> 4) & 0xF, byte & 0xF):
+                    if nib == 0x8:          # run terminator
+                        done = True
+                        break
+                    prev += nib - 16 if nib >= 8 else nib  # signed nibble
+                    out[i] = prev; i += 1
+                    if i >= npix:
+                        done = True
+                        break
+        elif b == 0x80:                     # 16-bit little-endian absolute
+            prev = data[off] | (data[off + 1] << 8); off += 2
+            out[i] = prev; i += 1
+        else:                               # signed int8 delta
+            prev += b - 256 if b >= 128 else b
+            out[i] = prev; i += 1
+    return out, off
+
+
+def _read_pixels_packtype1(f, header: IM7Header, frame_range: tuple = None) -> np.ndarray:
+    """Read pack_type=1 (delta+nibble RLE) pixel data.
+
+    Frames are concatenated, self-delimited RLE streams that cannot be seeked into
+    (like zlib), so frames are decoded sequentially from frame 0; only the requested
+    range is returned. Leaves ``f`` positioned at the attribute records.
+    """
+    dt = _pixel_dtype(header)
+    npix = header.size_x * header.size_y * header.size_z
+    nf = header.size_f
+    start, end = frame_range if frame_range is not None else (0, nf)
+
+    base = f.tell()
+    data = f.read()  # remaining bytes: every frame's RLE stream + the attributes
+    off = 0
+    frames = []
+    for fi in range(end):
+        pix, off = _decode_packtype1_frame(data, off, npix)
+        if fi >= start:
+            frames.append(pix)
+    # Position f at the attribute records (right after the last decoded frame).
+    f.seek(base + off)
+
+    arr = np.asarray(frames, dtype=dt)
+    return arr.reshape(len(frames), header.size_z, header.size_y, header.size_x)
+
+
 def _read_attributes(f) -> IM7Scales:
     """Read extended header records (attributes) after the pixel data.
 
@@ -521,6 +594,8 @@ def _read_im7_internal(
 
         if header.pack_type == PACK_UNCOMPRESSED:
             pixels = _read_pixels_uncompressed(f, header, frame_range)
+        elif header.pack_type == PACK_RLE:
+            pixels = _read_pixels_packtype1(f, header, frame_range)
         elif header.pack_type == PACK_ZLIB:
             pixels = _read_pixels_zlib(f, header, frame_range)
         elif header.pack_type == PACK_FIXED_12BIT:
@@ -530,7 +605,7 @@ def _read_im7_internal(
         else:
             raise ValueError(
                 f"Unsupported pack_type: {header.pack_type}. "
-                f"Expected 0 (uncompressed), 2 (zlib), 3 (fixed 12-bit), "
+                f"Expected 0 (uncompressed), 1 (RLE), 2 (zlib), 3 (fixed 12-bit), "
                 f"or 20 (LZ4)."
             )
 
@@ -577,6 +652,21 @@ def read_im7(filepath: Union[str, Path]) -> tuple:
         pixels = pixels[:, 0]  # (F, H, W)
 
     return header, pixels, scales
+
+
+def get_im7_frame_count(filepath: Union[str, Path]) -> int:
+    """Return the number of frames (size_f) in an .im7 file.
+
+    Reads only the 256-byte header — no pixel decode. Used to detect how many
+    frames a multi-camera buffer holds so ``frames_per_camera`` can be derived
+    from the configured camera count rather than hard-coded.
+    """
+    filepath = Path(filepath)
+    if not filepath.exists():
+        raise FileNotFoundError(f"File not found: {filepath}")
+    with open(filepath, "rb") as f:
+        raw_header = f.read(HEADER_SIZE)
+    return _parse_header(raw_header).size_f
 
 
 def read_im7_camera(
@@ -703,8 +793,20 @@ def read_im7_camera(
                 result[i] = frame[0] if header.size_z == 1 else frame.reshape(
                     header.size_y, header.size_x)
             del frames
+
+        elif header.pack_type == PACK_RLE:
+            # RLE frames are sequential (not seekable); decode 0..end and slice.
+            frames = _read_pixels_packtype1(f, header, (start, end))
+            for i in range(n_frames):
+                frame = frames[i]
+                result[i] = frame[0] if header.size_z == 1 else frame.reshape(
+                    header.size_y, header.size_x)
+            del frames
         else:
-            raise ValueError(f"Unsupported pack_type: {header.pack_type}")
+            raise ValueError(
+                f"Unsupported pack_type: {header.pack_type}. "
+                f"Expected 0, 1 (RLE), 2 (zlib), 3 (12-bit), or 20 (LZ4)."
+            )
 
         # Read attributes for intensity scale
         scales = _read_attributes(f)

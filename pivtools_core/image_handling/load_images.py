@@ -42,6 +42,7 @@ def read_single_frame(
     frame_idx: int,
     image_type: str,
     time_resolved: bool = True,
+    frames_per_camera: int = 1,
 ) -> np.ndarray:
     """Read a single frame from any supported image format.
 
@@ -62,6 +63,10 @@ def read_single_frame(
         image_type: One of "lavision_set", "lavision_im7", "cine", "standard"
         time_resolved: For .set files, whether to read single frame (True) or
                       expect A+B pair in one entry (False)
+        frames_per_camera: For multi-camera .im7 files, how many frames each
+                      camera occupies in the buffer (used to locate this
+                      camera's slice). Default 1; callers reading multi-camera
+                      double-frame buffers pass the detected value.
 
     Returns:
         np.ndarray: Single frame of shape (H, W)
@@ -102,7 +107,7 @@ def read_single_frame(
             str(file_path),
             camera_no=camera,
             frames=1,
-            frames_per_camera=1
+            frames_per_camera=frames_per_camera
         )
         # read_lavision_im7 returns (frames, H, W) for single frame
         if img.ndim == 3:
@@ -134,6 +139,42 @@ def create_piv_frame_reader(
         pair = read_pair(idx, camera_path, camera_num, config)
         return pair[0]
     return read_frame
+
+
+def _detect_im7_frames_per_camera(im7_path: Path, num_cameras: int) -> int:
+    """Derive how many frames each camera occupies in a multi-camera .im7 buffer.
+
+    A multi-camera .im7 stores every camera's frames in one buffer; a camera's
+    slice is located positionally as ``(camera-1) * frames_per_camera``. Rather
+    than hard-code that stride, read the buffer's frame count (size_f) and divide
+    by the configured camera count. Fails loudly when it doesn't divide evenly —
+    that means the camera count doesn't match the file, not a silent best guess.
+
+    Args:
+        im7_path: Path to the .im7 file (header is read, no pixel decode).
+        num_cameras: Configured number of physical cameras in the buffer.
+
+    Returns:
+        int: frames per camera (e.g. 2 for double-frame PIV, 1 for single-frame).
+
+    Raises:
+        ValueError: If num_cameras < 1, or size_f is not divisible by num_cameras.
+    """
+    from .readers.im7_reader import get_im7_frame_count
+
+    size_f = get_im7_frame_count(im7_path)
+    if num_cameras < 1:
+        raise ValueError(f"Invalid camera count {num_cameras} for {im7_path.name}")
+    if size_f % num_cameras != 0:
+        if size_f % 2 == 0:
+            expected = f"{size_f // 2} cameras (double-frame) or {size_f} (single-frame)"
+        else:
+            expected = f"{size_f} cameras (single-frame)"
+        raise ValueError(
+            f"{im7_path.name} has {size_f} frames, not divisible by {num_cameras} cameras. "
+            f"Expected {expected}."
+        )
+    return size_f // num_cameras
 
 
 def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.ndarray:
@@ -215,9 +256,14 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
                 if frame_b.ndim == 3:
                     frame_b = frame_b[0]
             else:
-                # Multi-camera file: pass camera_no to extract specific camera
-                frame_a = read_single_frame(im7_file_a, camera, frame_a_idx, image_type)
-                frame_b = read_single_frame(im7_file_b, camera, frame_b_idx, image_type)
+                # Multi-camera file: detect frames/camera from the buffer (time-
+                # resolved files hold one frame per camera, so this resolves to 1),
+                # then extract this camera's slice.
+                fpc = _detect_im7_frames_per_camera(im7_file_a, config.camera_count)
+                frame_a = read_single_frame(im7_file_a, camera, frame_a_idx, image_type,
+                                            frames_per_camera=fpc)
+                frame_b = read_single_frame(im7_file_b, camera, frame_b_idx, image_type,
+                                            frames_per_camera=fpc)
             return np.stack([frame_a, frame_b], axis=0)
         else:
             # Non-time-resolved: each file contains A+B pair
@@ -226,8 +272,12 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
                 # Single-camera file: don't pass camera_no
                 return read_image(str(im7_file_path))
             else:
-                # Multi-camera file: pass camera_no
-                return read_image(str(im7_file_path), camera_no=camera)
+                # Multi-camera file: detect frames/camera from the buffer
+                # (pre-paired double-frame resolves to 2), then return this
+                # camera's A+B slice.
+                fpc = _detect_im7_frames_per_camera(im7_file_path, config.camera_count)
+                return read_image(str(im7_file_path), camera_no=camera,
+                                  frames=fpc, frames_per_camera=fpc)
 
     elif image_type == "cine":
         # .cine: one video file per camera, frames extracted by index

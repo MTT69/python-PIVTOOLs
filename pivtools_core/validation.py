@@ -182,14 +182,24 @@ def validate_window_sizes(config: Config) -> List[str]:
 
     Checks the instantaneous schedule always (it also drives the predictor
     passes) and the ensemble schedule when ensemble processing is enabled.
-    sum_window / sum_fitting_window are correlation-plane crops, not FFT sizes,
-    so they are intentionally not checked here.
+
+    In ``single`` ensemble mode the correlation is computed on the full
+    ``sum_window`` (see ``cpu_ensemble.py`` -> ``window_sizes_for_computation``),
+    so ``sum_window`` is a genuine FFT size and is checked too. Only
+    ``sum_fitting_window`` is a correlation-plane crop (not an FFT), so it is
+    intentionally not checked here.
     """
     errors = _check_built_sizes(config.window_sizes, "instantaneous_piv.window_size")
     if config.data.get("processing", {}).get("ensemble", False):
         errors.extend(
             _check_built_sizes(config.ensemble_window_sizes, "ensemble_piv.window_size")
         )
+        # Read raw (not via properties) so a malformed type/sum_window still
+        # produces a clear, collected error here rather than raising mid-validation.
+        ensemble_types = config.data.get("ensemble_piv", {}).get("type", []) or []
+        if "single" in ensemble_types:
+            sum_window = config.data.get("ensemble_piv", {}).get("sum_window", [16, 16])
+            errors.extend(_check_built_sizes([sum_window], "ensemble_piv.sum_window"))
     return errors
 
 

@@ -20,6 +20,7 @@ from flask_compress import Compress
 from loguru import logger
 import os
 from pivtools_core.config import get_config, reload_config, Config
+from pivtools_core.fft_sizes import BUILT_FFT_SIZES
 from pivtools_core.image_handling.load_images import create_piv_frame_reader, read_pair, load_mask_for_camera
 from pivtools_core.image_handling.path_utils import build_piv_camera_path, validate_images_generic
 from pivtools_gui.masking.app.views import masking_bp
@@ -896,6 +897,7 @@ def validate_files():
             # PIV-specific: Test first and last pairs
             first_frame_status = "missing"
             last_frame_status = "missing"
+            first_frame_error = None  # actual read exception, if the file exists but won't decode
             color_detected = False
 
             if cfg.is_container_format:
@@ -913,6 +915,7 @@ def validate_files():
                     if first_pair.ndim > 2 and first_pair.shape[-1] > 1:
                         color_detected = True
                 except Exception as e:
+                    first_frame_error = e
                     logger.debug(f"First frame check failed for camera {camera_num}: {e}")
 
                 try:
@@ -964,20 +967,34 @@ def validate_files():
             if first_frame_status == "missing":
                 status = "error"
                 start_idx = cfg.start_index
+                # If the file was found but couldn't be decoded (e.g. a multi-camera
+                # .im7 frame-count mismatch), surface the real reason rather than the
+                # misleading "first frame not found" — the file IS there.
+                file_found_but_unreadable = (
+                    first_frame_error is not None
+                    and not isinstance(first_frame_error, FileNotFoundError)
+                )
                 # Handle empty pattern case
                 if not format_str or not format_str.strip():
                     error_msg = "Pattern is empty"
+                elif file_found_but_unreadable:
+                    # The reason already names the file (e.g. the .im7 frame-count
+                    # mismatch), so surface it directly without a verbose prefix.
+                    error_msg = str(first_frame_error)
                 elif image_type == "lavision_set":
                     error_msg = f"First frame not found. Container file: {format_str}"
                 elif image_type == "cine":
                     error_msg = f"First frame not found. CINE file: {format_str % camera_num}"
                 else:
                     error_msg = f"First frame not found. Looking for: {format_str % start_idx}"
-                # Append folder contents hint from generic validator
-                if validation.get("sample_files"):
-                    error_msg += f". Found files: {', '.join(validation['sample_files'][:5])}"
-                if validation.get("suggested_pattern"):
-                    error_msg += f". Did you mean: {validation['suggested_pattern']}"
+                # Append folder contents hint from generic validator (only when the
+                # file is genuinely missing — for a decode failure the reason already
+                # names the file, and "Found files" would just repeat the contradiction)
+                if not file_found_but_unreadable:
+                    if validation.get("sample_files"):
+                        error_msg += f". Found files: {', '.join(validation['sample_files'][:5])}"
+                    if validation.get("suggested_pattern"):
+                        error_msg += f". Did you mean: {validation['suggested_pattern']}"
 
             elif last_frame_status == "missing":
                 status = "error"
@@ -1129,6 +1146,16 @@ def config_endpoint():
     # when YAML loads camera numbers as mixed int/str keys
     config_data = _normalize_dict_keys(config_data)
     return jsonify(config_data)
+
+
+@api_bp.route("/fft_sizes", methods=["GET"])
+def fft_sizes_endpoint():
+    """Window axis lengths the codelet FFT engine was built for.
+
+    Single source of truth is ``pivtools_core.fft_sizes.BUILT_FFT_SIZES``; the GUI
+    consumes this so the frontend need not hardcode a copy that could drift.
+    """
+    return jsonify({"sizes": list(BUILT_FFT_SIZES)})
 
 
 @api_bp.route("/preview_frame_pairs", methods=["GET"])

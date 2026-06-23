@@ -209,10 +209,10 @@ def _piv_inst_batch(
         correlator = make_correlator_backend(config, precomputed_cache=correlator_cache)
         piv_results = correlator.correlate_batch(image_block, config=config, vector_masks=vector_masks)
     except Exception as e:
-        # Return a PIVResult containing error information
-        error_result = PIVResult()
-        # We could add error information to the result if needed
-        logging.error(f"PIV processing failed: {str(e)}")
-        # For now, return an empty result to maintain consistent typing
-        return error_result
+        # Fail visibly: a single PIVResult here violates the list contract the
+        # caller iterates over (piv.py:_process_and_save_batch), which previously
+        # masked the real error as "'PIVResult' object is not iterable". Surface
+        # the actual exception (e.g. the native warp access violation) instead.
+        logging.error(f"PIV processing failed: {str(e)}", exc_info=True)
+        raise
     return piv_results
