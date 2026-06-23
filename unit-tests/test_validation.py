@@ -40,7 +40,7 @@ def _make_config(
     sum_window=None,
     sum_fitting_window_enabled=False,
     sum_fitting_window=None,
-    fit_method="gaussian",
+    fit_method="kspace",
     resume_from_pass=0,
     num_passes=None,
     filters=None,

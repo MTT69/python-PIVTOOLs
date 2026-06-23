@@ -2567,15 +2567,6 @@ video:
         return self.data.get("ensemble_piv", {}).get("resume_from_pass", 0)
 
     @property
-    def ensemble_fit_offset(self) -> bool:
-        """Enable/disable offset (+C) term in stacked Gaussian fitting.
-
-        When True (default): y = amp * exp(...) + c
-        When False: y = amp * exp(...) (no offset term)
-        """
-        return self.data.get("ensemble_piv", {}).get("fit_offset", True)
-
-    @property
     def ensemble_mask_center_pixel(self) -> bool:
         """Enable/disable center pixel masking for autocorrelation.
 
@@ -2592,70 +2583,44 @@ video:
     def ensemble_fit_method(self) -> str:
         """Return fitting method for ensemble PIV.
 
-        Options:
-        - 'gaussian': Levenberg-Marquardt 16-parameter stacked Gaussian (in development)
-        - 'kspace': K-space transfer function with 6 parameters (default)
-
-        The k-space method offers better noise robustness by:
-        - Algebraic cancellation of particle shape (6 params vs 16)
-        - Adaptive SNR-based wavenumber bounds
-        - Forward-model fitting that emphasizes high-SNR components
+        Only 'kspace' is supported: a GSL-free, closed-form k-space transfer
+        function fit (``fit_windows_kspace_linear``). The old GPL-GSL fitters
+        (the C 'kspace' and the spatial 'gaussian' Levenberg-Marquardt) were
+        removed; a stale ``fit_method: gaussian`` now fails loudly here rather
+        than silently falling back.
         """
         method = self.data.get("ensemble_piv", {}).get("fit_method", "kspace")
-        valid_methods = {'gaussian', 'kspace'}
+        valid_methods = {'kspace'}
         if method not in valid_methods:
             raise ValueError(
-                f"Invalid ensemble_fit_method '{method}'. "
-                f"Must be one of {valid_methods}"
+                f"Invalid ensemble_fit_method '{method}'. Must be one of "
+                f"{valid_methods}. (The 'gaussian' method and the GSL-based "
+                f"k-space fitter were removed; use 'kspace' with the "
+                f"'kspace_kurtosis' toggle for the shape model.)"
             )
         return method
 
     @property
-    def ensemble_kspace_soft_weighting(self) -> bool:
-        """Return whether to use anisotropic soft decay weighting in k-space fitting.
+    def ensemble_kspace_kurtosis(self) -> bool:
+        """Return whether the k-space fit uses the decoupled-kurtosis shape model.
 
-        When True (default): Uses combined SNR × anisotropic soft decay weighting:
-            w(k) = w_snr(k) * exp(-k_x²/k0_x² - k_y²/k0_y²)
+        The closed-form k-space fitter models the displacement PDF either as a
+        pure Gaussian or with a per-axis (decoupled) 4th-order kurtosis term:
 
-        where k0_x and k0_y are computed from Sigma_xx and Sigma_yy estimates.
+        - True (default):  shape_mode='kurtosis_decoupled' -- adds independent
+          kx^4 / ky^4 curvature columns. Validated to beat the old GSL fitter in
+          the log region on channel-flow data where the streamwise displacement
+          PDF is genuinely sub-Gaussian.
+        - False: shape_mode='gauss' -- pure Gaussian PDF (ln|T| quadratic in k).
+          The robust baseline; pick this where the PDF is near-Gaussian or SNR is
+          low (the k^4 term is ungated and can over-read in those regimes).
 
-        This naturally down-weights high-k regions where:
-        - Signal-to-noise is poor
-        - The Gaussian model becomes less accurate
-
-        Benefits:
-        - Avoids hard k_max cutoffs
-        - Automatically adapts to signal quality
-        - Handles anisotropic stresses (different turbulence in x vs y)
-        - Reduces bias from model mismatch at high k
-
-        When False: Uses uniform weighting within k_max bounds.
+        Generality of the kurtosis correction across passes/flows is still being
+        validated; the toggle lets users fall back to 'gauss' per run.
 
         Default: True
         """
-        return self.data.get("ensemble_piv", {}).get("kspace_soft_weighting", True)
-
-    @property
-    def ensemble_kspace_k_max_cap(self) -> float:
-        """Return the hard k_max cap for k-space transfer function fitting.
-
-        This is the maximum wavenumber (in cycles/pixel) used in the Stage 2
-        transfer function fit. The adaptive k_max from SNR is always clipped
-        to this value.
-
-        Increase for small particles (sigma < 1 px) or high-SNR data where
-        signal extends to higher wavenumbers. Decrease for noisy data.
-
-        When soft weighting is enabled, the cap can be more generous because
-        the weights naturally attenuate unreliable high-k points.
-
-        Default: 0.35 (with soft weighting), 0.25 (without).
-        Range: 0.1 to 0.5 cycles/pixel.
-        """
-        val = self.data.get("ensemble_piv", {}).get("kspace_k_max_cap", 0.35)
-        if val is not None:
-            return max(0.1, min(float(val), 0.5))
-        return 0.35
+        return self.data.get("ensemble_piv", {}).get("kspace_kurtosis", True)
 
     @property
     def ensemble_image_warp_interpolation(self) -> str:

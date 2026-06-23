@@ -669,9 +669,7 @@ ensemble_piv:
   skip_background_subtraction: false
   image_warp_interpolation: cubic
   predictor_interpolation: cubic
-  kspace_k_max_cap: 0.35
-  kspace_soft_weighting: true
-  fit_offset: true
+  kspace_kurtosis: true
   background_subtraction_method: correlation
   gradient_correction: false
   mask_center_pixel: true

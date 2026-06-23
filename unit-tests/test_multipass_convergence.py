@@ -425,7 +425,7 @@ PASS_2_IDX = 1  # first 16×16 single pass (0-based)
 PASS_3_IDX = 2  # second 16×16 single pass (0-based, final)
 
 
-@pytest.fixture(scope="module", params=["gaussian", "kspace"])
+@pytest.fixture(scope="module", params=["kspace"])
 def ensemble_workspace(request):
     """
     Run 3-pass ensemble PIV, parametrized by fit_method.
