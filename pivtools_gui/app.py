@@ -1858,20 +1858,12 @@ def system_info():
     lib_extension = ".dll" if os.name == "nt" else ".so"
     lib_dir = Path(__file__).parent.parent / "pivtools_cli" / "lib"
     c_libs = {}
-    for lib_name in ["libbulkxcorr2d", "libmarquadt", "libfusedwarp"]:
+    for lib_name in ["libbulkxcorr2d", "libfusedwarp"]:
         lib_path = lib_dir / f"{lib_name}{lib_extension}"
         c_libs[lib_name] = {
             "found": lib_path.is_file(),
             "path": str(lib_path) if lib_path.is_file() else None,
         }
-
-    # FFTW wisdom
-    wisdom_path = Path.home() / ".pypivtools_fftw_wisdom"
-    fftw_wisdom = {
-        "path": str(wisdom_path),
-        "exists": wisdom_path.is_file(),
-        "size_bytes": wisdom_path.stat().st_size if wisdom_path.is_file() else 0,
-    }
 
     return jsonify({
         "version": version,
@@ -1880,7 +1872,6 @@ def system_info():
         "architecture": platform.machine(),
         "dask": dask_info,
         "c_libraries": c_libs,
-        "fftw_wisdom": fftw_wisdom,
     })
 
 
