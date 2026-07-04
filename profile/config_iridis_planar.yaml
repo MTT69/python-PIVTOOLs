@@ -1,0 +1,132 @@
+# PIVTOOLs — Iridis benchmark config (planar, 4 MP, four-pass 128->16).
+# Reproduces the SoftwareX strong-scaling / per-pair-budget benchmark.
+# Dataset: /scratch/mtt1e23/planar_images (4000 pairs, 2048x2048 uint8, B%05d_A/_B.tif).
+# The bench CLI overrides only the dataset path, image count, and sweep axes;
+# every PIV setting below is pinned for reproducibility (paper supplement).
+paths:
+  base_paths:
+  - /scratch/mtt1e23/piv_iridis/output
+  source_paths:
+  - /scratch/mtt1e23/planar_images
+  active_paths:
+  - 0
+  camera_numbers:
+  - 1
+  camera_count: 1
+  camera_subfolders: []
+images:
+  image_format:
+  - B%05d_A.tif
+  - B%05d_B.tif
+  vector_format:
+  - '%05d.mat'
+  dtype: float32
+  image_type: standard
+  use_camera_subfolders: false
+  start_index: 1
+  frame_stride: 0
+  pair_stride: 1
+  pairing_preset: ab_format
+  num_loops: 1
+  num_images: 10
+  image_shape:
+  - 2048
+  - 2048
+batches:
+  size: 2
+logging:
+  file: pypiv.log
+  level: INFO
+  console: true
+processing:
+  backend: cpu
+  debug: false
+  auto_compute_params: false
+  omp_threads: 1
+  dask_workers_per_node: 1
+  dask_memory_limit: 12GB
+  dask_max_in_flight_per_worker: 2
+  open_dashboard: false
+  dask_nanny: false
+  post_processing_workers: 16
+  always_batch: true
+  instantaneous: true
+  ensemble: false
+outlier_detection:
+  enabled: true
+  methods:
+  - threshold: 0.25
+    type: peak_mag
+  - type: median_2d
+    epsilon: 0.1
+    threshold: 3
+infilling:
+  mid_pass:
+    method: local_median
+    parameters: {}
+  final_pass:
+    enabled: true
+    method: local_median
+    parameters: {}
+ensemble_outlier_detection:
+  enabled: true
+  methods: []
+ensemble_infilling:
+  mid_pass:
+    method: biharmonic
+    parameters: {}
+  final_pass:
+    enabled: true
+    method: biharmonic
+    parameters: {}
+plots:
+  save_extension: .png
+  save_pickle: true
+  fontsize: 14
+  title_fontsize: 16
+statistics:
+  enabled_methods:
+    mean_stresses: true
+    mean_velocity: true
+  gamma_radius: 4
+  save_figures: true
+  type_name: instantaneous
+  source_endpoint: stereo
+instantaneous_piv:
+  window_size:
+  - - 128
+    - 128
+  - - 64
+    - 64
+  - - 32
+    - 32
+  - - 16
+    - 16
+  overlap:
+  - 50
+  - 50
+  - 50
+  - 50
+  runs:
+  - 4
+  time_resolved: false
+  window_type: gaussian
+  num_peaks: 1
+  peak_finder: gauss3
+  secondary_peak: false
+  predictor_smoothing: false
+  save_mode: full
+  save_compression: false
+  image_warp_interpolation: lanczos
+filters:
+- type: time
+masking:
+  enabled: false
+  mask_file_pattern: mask_Cam%d.mat
+  mask_threshold: 0.01
+  mode: file
+  rectangular:
+    top: 0
+    bottom: 0
+    left: 0
+    right: 0

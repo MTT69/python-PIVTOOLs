@@ -51,19 +51,39 @@ import bench_common as bc
 # be compared honestly (see bench_common.build_provenance / compare_provenance).
 CSV_FIELDS = [
     # sweep axes
-    "workers", "threads", "total_cores", "oversub_ratio", "label",
-    "iteration", "workload_mode",
+    "workers",
+    "threads",
+    "total_cores",
+    "oversub_ratio",
+    "label",
+    "iteration",
+    "workload_mode",
     # workload
-    "n_pairs", "batch_size", "n_saved",
+    "n_pairs",
+    "batch_size",
+    "n_saved",
     # timings (seconds)
-    "cluster_startup_s", "load_s", "scatter_s", "correlate_s", "pipeline_total_s",
+    "cluster_startup_s",
+    "load_s",
+    "scatter_s",
+    "correlate_s",
+    "pipeline_total_s",
     # derived throughput
-    "per_pair_ms", "pairs_per_s",
+    "per_pair_ms",
+    "pairs_per_s",
     # validity
-    "valid", "error",
+    "valid",
+    "error",
     # provenance (stamped per row so a partial CSV is still self-describing)
-    "fft_backend", "fftw_wisdom", "git_sha", "git_dirty",
-    "hostname", "cpu_count", "cpu_model",
+    "fft_backend",
+    "fftw_wisdom",
+    "git_sha",
+    "git_dirty",
+    "hostname",
+    "cpu_count",
+    "cpu_model",
+    "omp_proc_bind",
+    "omp_places",
 ]
 
 WORKLOAD_FIXED = "fixed"
@@ -102,7 +122,9 @@ def thread_sweep(total_cores: int) -> list[dict[str, Any]]:
     ]
 
 
-def worker_sweep(total_cores: int, max_workers: int, threads: int) -> list[dict[str, Any]]:
+def worker_sweep(
+    total_cores: int, max_workers: int, threads: int
+) -> list[dict[str, Any]]:
     """Fixed ``threads``/worker, vary workers — the cleanest strong-scaling axis.
 
     Capped so ``workers*threads <= total_cores`` (stay within physical cores) and
@@ -209,9 +231,14 @@ def _quiet_shutdown(client, cluster) -> None:
     import logging as _logging
 
     for name in (
-        "distributed", "distributed.worker", "distributed.scheduler",
-        "distributed.nanny", "distributed.core", "distributed.comm",
-        "tornado.application", "tornado.general",
+        "distributed",
+        "distributed.worker",
+        "distributed.scheduler",
+        "distributed.nanny",
+        "distributed.core",
+        "distributed.comm",
+        "tornado.application",
+        "tornado.general",
     ):
         _logging.getLogger(name).setLevel(_logging.CRITICAL)
     try:
@@ -225,8 +252,15 @@ def _quiet_shutdown(client, cluster) -> None:
 
 
 def _run_sliding_window(
-    client, images, num_chunks, max_in_flight,
-    scattered_config, scattered, output_path, runs_0based, vector_format,
+    client,
+    images,
+    num_chunks,
+    max_in_flight,
+    scattered_config,
+    scattered,
+    output_path,
+    runs_0based,
+    vector_format,
 ) -> list[str]:
     """Sliding-window submit/drain over the lazy image chunks.
 
@@ -236,6 +270,7 @@ def _run_sliding_window(
     the harness. Mirrors the production sliding window in dask_pipeline terms.
     """
     from dask.distributed import as_completed
+
     from pivtools_cli.processing.dask_pipeline import correlate_and_save_batch
 
     pending = {}
@@ -247,9 +282,14 @@ def _run_sliding_window(
         filter_future = client.compute(images.blocks[next_to_submit])
         corr_future = client.submit(
             correlate_and_save_batch,
-            filter_future, chunk_start + 1,
-            scattered_config, scattered["cache"], scattered["masks"],
-            output_path, runs_0based, vector_format,
+            filter_future,
+            chunk_start + 1,
+            scattered_config,
+            scattered["cache"],
+            scattered["masks"],
+            output_path,
+            runs_0based,
+            vector_format,
             pure=False,
         )
         pending[corr_future] = next_to_submit
@@ -264,9 +304,14 @@ def _run_sliding_window(
             filter_future = client.compute(images.blocks[next_to_submit])
             corr_future = client.submit(
                 correlate_and_save_batch,
-                filter_future, chunk_start + 1,
-                scattered_config, scattered["cache"], scattered["masks"],
-                output_path, runs_0based, vector_format,
+                filter_future,
+                chunk_start + 1,
+                scattered_config,
+                scattered["cache"],
+                scattered["masks"],
+                output_path,
+                runs_0based,
+                vector_format,
                 pure=False,
             )
             pending[corr_future] = next_to_submit
@@ -327,6 +372,8 @@ def run_single(
         "hostname": prov.get("hostname", ""),
         "cpu_count": prov.get("cpu_count", ""),
         "cpu_model": prov.get("cpu_model", ""),
+        "omp_proc_bind": prov.get("omp_proc_bind", ""),
+        "omp_places": prov.get("omp_places", ""),
     }
 
     tmpdir = tempfile.mkdtemp(prefix=f"bench_scale_w{workers}_t{threads}_")
@@ -350,19 +397,25 @@ def run_single(
         os.makedirs(output_dir, exist_ok=True)
         config.data.setdefault("paths", {})["base_paths"] = [output_dir]
 
-        base_result.update({"n_pairs": n_pairs, "batch_size": batch_size,
-                            "workload_mode": workload_mode})
+        base_result.update(
+            {
+                "n_pairs": n_pairs,
+                "batch_size": batch_size,
+                "workload_mode": workload_mode,
+            }
+        )
 
         # Precondition #1: the kernel reads OMP_NUM_THREADS (all cores if unset);
         # the harness owns it. Also passed to workers via start_cluster below.
         os.environ["OMP_NUM_THREADS"] = str(threads)
 
-        from pivtools_cli.piv_cluster.cluster import start_cluster
-        from pivtools_core.image_handling.load_images import load_images
         from pivtools_cli.piv.save_results import get_output_path
+        from pivtools_cli.piv_cluster.cluster import start_cluster
         from pivtools_cli.processing.dask_pipeline import (
-            create_filter_pipeline, scatter_immutable_data,
+            create_filter_pipeline,
+            scatter_immutable_data,
         )
+        from pivtools_core.image_handling.load_images import load_images
 
         t0 = time.perf_counter()
         cluster, client = start_cluster(config=config, worker_omp_threads=str(threads))
@@ -372,18 +425,25 @@ def run_single(
             camera = (config.data.get("paths", {}).get("camera_numbers") or [1])[0]
             source_path = Path(dataset)
             output_path = get_output_path(
-                config, camera, use_uncalibrated=True, base_path_idx=0,
+                config,
+                camera,
+                use_uncalibrated=True,
+                base_path_idx=0,
                 piv_type="instantaneous",
             )
 
             t_pipeline = time.perf_counter()
 
             t0 = time.perf_counter()
-            images = load_images(camera, config, source=source_path, batch_size=batch_size)
+            images = load_images(
+                camera, config, source=source_path, batch_size=batch_size
+            )
             t_load = time.perf_counter() - t0
 
             t0 = time.perf_counter()
-            scattered = scatter_immutable_data(client, config, None, None, ensemble=False)
+            scattered = scatter_immutable_data(
+                client, config, None, None, ensemble=False
+            )
             t_scatter = time.perf_counter() - t0
 
             images = create_filter_pipeline(images, config, None)
@@ -400,19 +460,35 @@ def run_single(
             # In-pipeline warmup: push a few batches through the real workers
             # (untimed) so DLL load, FFTW plan creation, OMP pool and page cache
             # are warm before the timed run. Discard the warmup output.
-            warmup_chunks = min(warmup_batches * config.dask_workers_per_node, num_chunks)
+            warmup_chunks = min(
+                warmup_batches * config.dask_workers_per_node, num_chunks
+            )
             if warmup_chunks > 0:
                 _run_sliding_window(
-                    client, images, warmup_chunks, max_in_flight,
-                    scattered_config, scattered, output_path, runs_0based, vector_format,
+                    client,
+                    images,
+                    warmup_chunks,
+                    max_in_flight,
+                    scattered_config,
+                    scattered,
+                    output_path,
+                    runs_0based,
+                    vector_format,
                 )
                 for f in glob.glob(os.path.join(str(output_path), "*.mat")):
                     os.remove(f)
 
             t0 = time.perf_counter()
             saved = _run_sliding_window(
-                client, images, num_chunks, max_in_flight,
-                scattered_config, scattered, output_path, runs_0based, vector_format,
+                client,
+                images,
+                num_chunks,
+                max_in_flight,
+                scattered_config,
+                scattered,
+                output_path,
+                runs_0based,
+                vector_format,
             )
             t_correlate = time.perf_counter() - t0
             t_total = time.perf_counter() - t_pipeline
@@ -421,25 +497,30 @@ def run_single(
             per_pair_ms = (t_correlate / n_pairs * 1000.0) if n_pairs else 0.0
             pairs_per_s = (n_pairs / t_correlate) if t_correlate > 0 else 0.0
             valid = n_saved > 0 and n_saved % n_pairs == 0
-            error = "" if valid else f"Expected multiple of {n_pairs} saved, got {n_saved}"
+            error = (
+                "" if valid else f"Expected multiple of {n_pairs} saved, got {n_saved}"
+            )
 
-            base_result.update({
-                "n_saved": n_saved,
-                "cluster_startup_s": round(cluster_startup, 2),
-                "load_s": round(t_load, 3),
-                "scatter_s": round(t_scatter, 3),
-                "correlate_s": round(t_correlate, 3),
-                "pipeline_total_s": round(t_total, 3),
-                "per_pair_ms": round(per_pair_ms, 2),
-                "pairs_per_s": round(pairs_per_s, 2),
-                "valid": str(valid).lower(),
-                "error": error,
-            })
+            base_result.update(
+                {
+                    "n_saved": n_saved,
+                    "cluster_startup_s": round(cluster_startup, 2),
+                    "load_s": round(t_load, 3),
+                    "scatter_s": round(t_scatter, 3),
+                    "correlate_s": round(t_correlate, 3),
+                    "pipeline_total_s": round(t_total, 3),
+                    "per_pair_ms": round(per_pair_ms, 2),
+                    "pairs_per_s": round(pairs_per_s, 2),
+                    "valid": str(valid).lower(),
+                    "error": error,
+                }
+            )
         finally:
             _quiet_shutdown(client, cluster)
 
     except Exception as e:  # noqa: BLE001 - record, never abort the sweep
         import traceback
+
         traceback.print_exc()
         base_result["error"] = str(e)
     finally:
@@ -490,7 +571,9 @@ def run_sweep(
     if not csv_path.exists():
         bc.write_csv_header(csv_path, CSV_FIELDS)
 
-    provenance = bc.build_provenance(dataset=dataset, cache_policy=f"scaling/{fftw_wisdom}")
+    provenance = bc.build_provenance(
+        dataset=dataset, cache_policy=f"scaling/{fftw_wisdom}"
+    )
 
     tasks = [
         (cfg, it)
@@ -505,8 +588,10 @@ def run_sweep(
     total = len(tasks)
     started = datetime.now()
     walls: list[float] = []
-    print(f"\nSCALING: {total} runs  | backend={provenance['fft_backend']} "
-          f"wisdom={fftw_wisdom} | {dataset}")
+    print(
+        f"\nSCALING: {total} runs  | backend={provenance['fft_backend']} "
+        f"wisdom={fftw_wisdom} | {dataset}"
+    )
     print(f"  results: {csv_path}\n")
 
     for i, (cfg, it) in enumerate(tasks):
@@ -515,42 +600,64 @@ def run_sweep(
             avg = sum(walls) / len(walls)
             rem = (total - i) * avg
             eta = f"  ETA {(datetime.now() + timedelta(seconds=rem)).strftime('%H:%M:%S')} (~{rem/60:.0f}m)"
-        print(f"[{i+1}/{total}] {cfg['label']}: {cfg['workers']}w x {cfg['threads']}t"
-              f" = {cfg['workers']*cfg['threads']} cores{eta}", flush=True)
+        print(
+            f"[{i+1}/{total}] {cfg['label']}: {cfg['workers']}w x {cfg['threads']}t"
+            f" = {cfg['workers']*cfg['threads']} cores{eta}",
+            flush=True,
+        )
 
         t0 = time.perf_counter()
         result = run_single(
-            base_config_path, dataset,
-            workers=cfg["workers"], threads=cfg["threads"], label=cfg["label"],
-            n_images=n_images, image_format=image_format, start_index=start_index,
-            worker_memory=worker_memory, fftw_wisdom=fftw_wisdom,
-            warmup_batches=warmup_batches, total_cores=total_cores,
-            iteration=it, provenance=provenance,
+            base_config_path,
+            dataset,
+            workers=cfg["workers"],
+            threads=cfg["threads"],
+            label=cfg["label"],
+            n_images=n_images,
+            image_format=image_format,
+            start_index=start_index,
+            worker_memory=worker_memory,
+            fftw_wisdom=fftw_wisdom,
+            warmup_batches=warmup_batches,
+            total_cores=total_cores,
+            iteration=it,
+            provenance=provenance,
         )
         walls.append(time.perf_counter() - t0)
         bc.append_csv_row(csv_path, CSV_FIELDS, result)
 
         if result["valid"] == "true":
-            print(f"  -> {result['pairs_per_s']:.1f} pairs/s, "
-                  f"{result['per_pair_ms']:.1f} ms/pair, "
-                  f"load={result['load_s']:.1f}s correlate={result['correlate_s']:.1f}s\n",
-                  flush=True)
+            print(
+                f"  -> {result['pairs_per_s']:.1f} pairs/s, "
+                f"{result['per_pair_ms']:.1f} ms/pair, "
+                f"load={result['load_s']:.1f}s correlate={result['correlate_s']:.1f}s\n",
+                flush=True,
+            )
         else:
             print(f"  -> INVALID: {result['error']}\n", flush=True)
 
-    print(f"Done: {total} runs in {(datetime.now()-started).total_seconds()/60:.1f} min")
+    print(
+        f"Done: {total} runs in {(datetime.now()-started).total_seconds()/60:.1f} min"
+    )
     return csv_path
 
 
 def print_dry_run(
-    configs: list[dict[str, Any]], n_iterations: int, n_images: Optional[int], batch_hint: int
+    configs: list[dict[str, Any]],
+    n_iterations: int,
+    n_images: Optional[int],
+    batch_hint: int,
 ) -> None:
     """Print the test matrix without running anything."""
     total = len(configs) * n_iterations
     mode = "fixed" if n_images is not None else "per_worker"
-    print(f"\nDRY RUN: {len(configs)} configs x {n_iterations} iter = {total} runs"
-          f"  (workload={mode})")
-    print(f"\n{'#':>3} {'workers':>8} {'threads':>8} {'cores':>6} {'pairs':>8} {'label':<14}")
+    print(
+        f"\nDRY RUN: {len(configs)} configs x {n_iterations} iter = {total} runs"
+        f"  (workload={mode})"
+    )
+    print(
+        f"\n{'#':>3} {'workers':>8} {'threads':>8} {'cores':>6} {'pairs':>8} {'label':<14}"
+    )
     print("-" * 52)
     for i, cfg in enumerate(configs, 1):
         w, t = cfg["workers"], cfg["threads"]

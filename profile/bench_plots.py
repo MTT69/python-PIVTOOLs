@@ -15,6 +15,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Optional
 
+import bench_common as bc
 import matplotlib
 
 matplotlib.use("Agg")  # headless: write files, never open a window
@@ -24,7 +25,11 @@ import numpy as np  # noqa: E402
 # Compute sections → the five figure categories. PC sub-sections are intentionally
 # omitted (they are nested inside predictor_corrector; counting them double-bills warp).
 _CATEGORIES: list[tuple[str, list[str], str]] = [
-    ("Prep/Warp", ["predictor_corrector", "set_lib_args", "padding_stacking"], "#c0504d"),
+    (
+        "Prep/Warp",
+        ["predictor_corrector", "set_lib_args", "padding_stacking"],
+        "#c0504d",
+    ),
     ("Cross-corr", ["bulkxcorr2d"], "#4f81bd"),
     ("Outlier", ["outlier_detection", "secondary_peaks"], "#9bbb59"),
     ("Infilling", ["infilling"], "#8064a2"),
@@ -80,25 +85,38 @@ def plot_budget(payload: dict[str, Any], out_path: Path) -> Path:
     x = list(range(len(labels)))
 
     # Read bar
-    ax.bar(x[0], payload["budget_per_pair_ms"]["read"], color=_READ_COLOR, label="Read (I/O)")
+    ax.bar(
+        x[0],
+        payload["budget_per_pair_ms"]["read"],
+        color=_READ_COLOR,
+        label="Read (I/O)",
+    )
 
     # Filter bar (production preprocessing stage between read and correlate)
     ftypes = payload.get("filter_types") or []
     flabel = f"Filter ({', '.join(ftypes)})" if ftypes else "Filter (none)"
-    ax.bar(x[1], payload["budget_per_pair_ms"]["filter"], color=_FILTER_COLOR, label=flabel)
+    ax.bar(
+        x[1], payload["budget_per_pair_ms"]["filter"], color=_FILTER_COLOR, label=flabel
+    )
 
     # Cross-corr splits into FFT / peak-fit / kernel-other only when the run was
     # single-thread (the C timers are thread-summed, so at >1 thread they overshoot
     # the bulkxcorr2d wall and would not fit inside the bar).
     split = payload.get("omp_threads") == 1 and all(
-        "xcorr_fft" in p["sections_ms"] and "peak_fit" in p["sections_ms"] for p in passes
+        "xcorr_fft" in p["sections_ms"] and "peak_fit" in p["sections_ms"]
+        for p in passes
     )
 
     def _draw_segment(xi, h, bottom, colour, label, legend_done):
         if h <= 0:
             return bottom
-        ax.bar(xi, h, bottom=bottom, color=colour,
-               label=label if label not in legend_done else None)
+        ax.bar(
+            xi,
+            h,
+            bottom=bottom,
+            color=colour,
+            label=label if label not in legend_done else None,
+        )
         legend_done.add(label)
         return bottom + h
 
@@ -117,12 +135,30 @@ def plot_budget(payload: dict[str, Any], out_path: Path) -> Path:
                 fft = s["xcorr_fft"]["mean_ms"]
                 fit = s["peak_fit"]["mean_ms"]
                 other = max(0.0, h - fft - fit)
-                bottom = _draw_segment(x[2 + i], fft, bottom, _XCORR_FFT_COLOR,
-                                       "Cross-corr: FFT", legend_done)
-                bottom = _draw_segment(x[2 + i], fit, bottom, _PEAK_FIT_COLOR,
-                                       "Cross-corr: peak-fit", legend_done)
-                bottom = _draw_segment(x[2 + i], other, bottom, _KERNEL_OTHER_COLOR,
-                                       "Cross-corr: kernel-other", legend_done)
+                bottom = _draw_segment(
+                    x[2 + i],
+                    fft,
+                    bottom,
+                    _XCORR_FFT_COLOR,
+                    "Cross-corr: FFT",
+                    legend_done,
+                )
+                bottom = _draw_segment(
+                    x[2 + i],
+                    fit,
+                    bottom,
+                    _PEAK_FIT_COLOR,
+                    "Cross-corr: peak-fit",
+                    legend_done,
+                )
+                bottom = _draw_segment(
+                    x[2 + i],
+                    other,
+                    bottom,
+                    _KERNEL_OTHER_COLOR,
+                    "Cross-corr: kernel-other",
+                    legend_done,
+                )
             else:
                 bottom = _draw_segment(x[2 + i], h, bottom, colour, name, legend_done)
 
@@ -162,26 +198,101 @@ def load_scaling_csv(csv_path: Path) -> list[dict[str, Any]]:
                 continue
             for k in ("workers", "threads", "total_cores", "n_pairs"):
                 r[k] = int(float(r[k]))
-            for k in ("pairs_per_s", "per_pair_ms", "load_s", "correlate_s",
-                      "oversub_ratio"):
+            for k in (
+                "pairs_per_s",
+                "per_pair_ms",
+                "load_s",
+                "correlate_s",
+                "oversub_ratio",
+            ):
                 r[k] = float(r[k])
             rows.append(r)
     return rows
 
 
-def _grouped_throughput(rows: list[dict[str, Any]]) -> dict[tuple[int, int], dict[str, float]]:
-    """Mean throughput/per-pair per (workers, threads) across iterations."""
+def _grouped_throughput(
+    rows: list[dict[str, Any]],
+) -> dict[tuple[int, int], dict[str, float]]:
+    """Per (workers, threads) across iterations: the mean throughput/per-pair
+    (kept under the original keys for back-compat) plus the full repeat
+    statistics (std, median, IQR, CoV, n) so the figures can carry honest error
+    bars and the summary table can report median ± IQR + CoV."""
     buckets: dict[tuple[int, int], list[dict[str, Any]]] = defaultdict(list)
     for r in rows:
         buckets[(r["workers"], r["threads"])].append(r)
     out = {}
     for key, rs in buckets.items():
+        pp = bc.summarize([r["per_pair_ms"] for r in rs])
+        tp = bc.summarize([r["pairs_per_s"] for r in rs])
         out[key] = {
-            "pairs_per_s": float(np.mean([r["pairs_per_s"] for r in rs])),
-            "per_pair_ms": float(np.mean([r["per_pair_ms"] for r in rs])),
+            "pairs_per_s": tp["mean"],
+            "pairs_per_s_std": tp["std"],
+            "per_pair_ms": pp["mean"],
+            "per_pair_ms_std": pp["std"],
+            "per_pair_ms_stats": pp,
+            "pairs_per_s_stats": tp,
+            "n": pp["n"],
             "total_cores": key[0] * key[1],
         }
     return out
+
+
+def _write_scaling_summary(
+    grouped: dict[tuple[int, int], dict[str, Any]], out_path: Path
+) -> Path:
+    """Write the per-config repeat-statistics table the reviewers asked for:
+    mean / std / median / IQR / CoV of per-pair time and throughput, plus
+    speedup S(N) and efficiency E(N) referenced to the 1-worker baseline of the
+    same thread count. One row per (workers, threads)."""
+    fields = [
+        "workers",
+        "threads",
+        "total_cores",
+        "n_iter",
+        "per_pair_ms_mean",
+        "per_pair_ms_std",
+        "per_pair_ms_median",
+        "per_pair_ms_iqr",
+        "per_pair_ms_cov",
+        "pairs_per_s_mean",
+        "pairs_per_s_std",
+        "pairs_per_s_median",
+        "pairs_per_s_iqr",
+        "pairs_per_s_cov",
+        "speedup",
+        "efficiency_pct",
+    ]
+    baselines = {t: v["per_pair_ms"] for (w, t), v in grouped.items() if w == 1}
+    with open(out_path, "w", newline="") as f:
+        wtr = csv.DictWriter(f, fieldnames=fields)
+        wtr.writeheader()
+        for (w, t), v in sorted(grouped.items(), key=lambda kv: kv[1]["total_cores"]):
+            pp, tp = v["per_pair_ms_stats"], v["pairs_per_s_stats"]
+            t1 = baselines.get(t)
+            speedup = (t1 / v["per_pair_ms"]) if t1 else None
+            wtr.writerow(
+                {
+                    "workers": w,
+                    "threads": t,
+                    "total_cores": v["total_cores"],
+                    "n_iter": v["n"],
+                    "per_pair_ms_mean": round(pp["mean"], 3),
+                    "per_pair_ms_std": round(pp["std"], 3),
+                    "per_pair_ms_median": round(pp["median"], 3),
+                    "per_pair_ms_iqr": round(pp["iqr"], 3),
+                    "per_pair_ms_cov": round(pp["cov"], 4),
+                    "pairs_per_s_mean": round(tp["mean"], 3),
+                    "pairs_per_s_std": round(tp["std"], 3),
+                    "pairs_per_s_median": round(tp["median"], 3),
+                    "pairs_per_s_iqr": round(tp["iqr"], 3),
+                    "pairs_per_s_cov": round(tp["cov"], 4),
+                    "speedup": round(speedup, 3) if speedup is not None else "",
+                    "efficiency_pct": (
+                        round(speedup / w * 100, 1) if speedup is not None else ""
+                    ),
+                }
+            )
+    return out_path
 
 
 def _phys_cores(rows: list[dict[str, Any]]) -> int:
@@ -205,19 +316,38 @@ def plot_scaling(csv_path: Path, out_dir: Path) -> list[Path]:
     phys = _phys_cores(rows)
     written: list[Path] = []
 
+    # Per-config repeat statistics (median ± IQR + CoV) for the paper table.
+    written.append(_write_scaling_summary(grouped, out_dir / f"{stem}_summary.csv"))
+
     # --- throughput vs total cores ---
     fig, ax = plt.subplots(figsize=(9, 6))
     for (w, t), v in sorted(grouped.items(), key=lambda kv: kv[1]["total_cores"]):
         cores = v["total_cores"]
-        ax.scatter(cores, v["pairs_per_s"],
-                   color="tab:red" if cores > phys else "steelblue", s=60, zorder=3)
-        ax.annotate(f"{w}w×{t}t", (cores, v["pairs_per_s"]),
-                    textcoords="offset points", xytext=(4, 4), fontsize=7)
+        ax.scatter(
+            cores,
+            v["pairs_per_s"],
+            color="tab:red" if cores > phys else "steelblue",
+            s=60,
+            zorder=3,
+        )
+        ax.annotate(
+            f"{w}w×{t}t",
+            (cores, v["pairs_per_s"]),
+            textcoords="offset points",
+            xytext=(4, 4),
+            fontsize=7,
+        )
     base = grouped.get((1, 1))
     if base and base["pairs_per_s"] > 0:
         xs = np.arange(1, max(v["total_cores"] for v in grouped.values()) + 1)
-        ax.plot(xs, base["pairs_per_s"] * xs, "--", color="gray", alpha=0.5,
-                label="Linear scaling")
+        ax.plot(
+            xs,
+            base["pairs_per_s"] * xs,
+            "--",
+            color="gray",
+            alpha=0.5,
+            label="Linear scaling",
+        )
     ax.axvline(phys, color="red", ls=":", alpha=0.5, label=f"{phys} physical cores")
     ax.set_xlabel("Total logical cores (workers × threads)")
     ax.set_ylabel("Pairs / second")
@@ -236,19 +366,43 @@ def plot_scaling(csv_path: Path, out_dir: Path) -> list[Path]:
         by_thread[t].append((w, v))
     best_t = max(
         (t for t, d in by_thread.items() if any(w == 1 for w, _ in d)),
-        key=lambda t: len(by_thread[t]), default=None,
+        key=lambda t: len(by_thread[t]),
+        default=None,
     )
     if best_t is not None and len(by_thread[best_t]) >= 2:
         data = sorted(by_thread[best_t], key=lambda x: x[0])
         workers = [w for w, _ in data]
         t1 = next(v["per_pair_ms"] for w, v in data if w == 1)
-        speedup = [t1 / v["per_pair_ms"] for _, v in data]
+        t1_std = next(v["per_pair_ms_std"] for w, v in data if w == 1)
+        # Speedup S(N)=T(1)/T(N); the error bar propagates the per-pair std of
+        # both the baseline and the point: σ_S/S = sqrt((σ1/T1)² + (σN/TN)²).
+        speedup, speedup_err = [], []
+        for _, v in data:
+            tn, tn_std = v["per_pair_ms"], v["per_pair_ms_std"]
+            s = t1 / tn
+            rel = ((t1_std / t1) ** 2 + (tn_std / tn) ** 2) ** 0.5 if t1 and tn else 0.0
+            speedup.append(s)
+            speedup_err.append(s * rel)
         eff = [s / w * 100 for s, w in zip(speedup, workers)]
+        eff_err = [se / w * 100 for se, w in zip(speedup_err, workers)]
 
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-        fig.suptitle(f"Strong scaling — {best_t} threads/worker "
-                     f"[{rows[0].get('fft_backend', '?')}]", fontsize=13)
-        ax1.plot(workers, speedup, "s-", color="tab:orange", lw=2, ms=8, label="Measured")
+        fig.suptitle(
+            f"Strong scaling — {best_t} threads/worker "
+            f"[{rows[0].get('fft_backend', '?')}]",
+            fontsize=13,
+        )
+        ax1.errorbar(
+            workers,
+            speedup,
+            yerr=speedup_err,
+            fmt="s-",
+            color="tab:orange",
+            lw=2,
+            ms=8,
+            capsize=4,
+            label="Measured (mean ± std)",
+        )
         ax1.plot(workers, workers, "--", color="gray", alpha=0.5, label="Ideal")
         ax1.set_xlabel("Workers (N)")
         ax1.set_ylabel("Speedup S(N) = T(1)/T(N)")
@@ -257,10 +411,20 @@ def plot_scaling(csv_path: Path, out_dir: Path) -> list[Path]:
         ax1.legend()
         ax1.grid(alpha=0.3)
 
-        colors = ["tab:green" if e >= 70 else "tab:orange" if e >= 50 else "tab:red"
-                  for e in eff]
-        ax2.bar(range(len(workers)), eff, tick_label=[str(w) for w in workers],
-                color=colors, edgecolor="black", lw=0.5)
+        colors = [
+            "tab:green" if e >= 70 else "tab:orange" if e >= 50 else "tab:red"
+            for e in eff
+        ]
+        ax2.bar(
+            range(len(workers)),
+            eff,
+            yerr=eff_err,
+            capsize=3,
+            tick_label=[str(w) for w in workers],
+            color=colors,
+            edgecolor="black",
+            lw=0.5,
+        )
         for i, e in enumerate(eff):
             ax2.text(i, e + 2, f"{e:.0f}%", ha="center", fontsize=9, fontweight="bold")
         ax2.axhline(100, color="gray", ls="--", alpha=0.5)
@@ -284,8 +448,11 @@ def plot_scaling(csv_path: Path, out_dir: Path) -> list[Path]:
 
 
 def plot_throughput_ab(
-    csv_a: Path, csv_b: Path, out_path: Path,
-    label_a: str = "A", label_b: str = "B",
+    csv_a: Path,
+    csv_b: Path,
+    out_path: Path,
+    label_a: str = "A",
+    label_b: str = "B",
 ) -> Path:
     """Overlay throughput-vs-cores for two backends (FFTW vs codelet). On
     I/O-bound data the two curves sit on top of each other — the honest parity."""
@@ -322,7 +489,9 @@ def _kernel_split_ms(payload: dict[str, Any]) -> Optional[dict[str, float]]:
 
 
 def plot_budget_ab(
-    payload_a: dict[str, Any], payload_b: dict[str, Any], out_path: Path,
+    payload_a: dict[str, Any],
+    payload_b: dict[str, Any],
+    out_path: Path,
 ) -> Path:
     """The money figure: per-pair budgets side by side (FFTW vs codelet). Same
     bars as :func:`plot_budget` (Read | per-pass stacked compute | Save) but two
@@ -331,11 +500,17 @@ def plot_budget_ab(
     per-pair *total* actually moves."""
     pa, pb = payload_a["passes"], payload_b["passes"]
     if len(pa) != len(pb):
-        raise ValueError(f"pass count differs: A={len(pa)} B={len(pb)} — not comparable")
+        raise ValueError(
+            f"pass count differs: A={len(pa)} B={len(pb)} — not comparable"
+        )
     ba = payload_a.get("provenance", {}).get("fft_backend", "A")
     bb = payload_b.get("provenance", {}).get("fft_backend", "B")
 
-    slots = ["Read"] + [f"Pass {p['pass_idx']+1}\n({p['window'][0]} px)" for p in pa] + ["Save"]
+    slots = (
+        ["Read"]
+        + [f"Pass {p['pass_idx']+1}\n({p['window'][0]} px)" for p in pa]
+        + ["Save"]
+    )
     x = np.arange(len(slots))
     w = 0.38
 
@@ -350,8 +525,14 @@ def plot_budget_ab(
             done.add(name)
             return name
 
-        ax.bar(x[0] + offset, payload["budget_per_pair_ms"]["read"], w,
-               color=_READ_COLOR, hatch=hatch, label=_lab("Read (I/O)"))
+        ax.bar(
+            x[0] + offset,
+            payload["budget_per_pair_ms"]["read"],
+            w,
+            color=_READ_COLOR,
+            hatch=hatch,
+            label=_lab("Read (I/O)"),
+        )
         for i, p in enumerate(passes):
             bucket = _bucket_pass(p["sections_ms"])
             bottom = 0.0
@@ -359,13 +540,26 @@ def plot_budget_ab(
                 h = bucket[name]
                 if h <= 0:
                     continue
-                ax.bar(x[1 + i] + offset, h, w, bottom=bottom, color=colour, hatch=hatch,
-                       label=_lab(name))
+                ax.bar(
+                    x[1 + i] + offset,
+                    h,
+                    w,
+                    bottom=bottom,
+                    color=colour,
+                    hatch=hatch,
+                    label=_lab(name),
+                )
                 bottom += h
-        ax.bar(x[-1] + offset, payload["save_ms"]["mean_ms"], w,
-               color=_SAVE_COLOR, hatch=hatch, label=_lab("Save (I/O)"))
+        ax.bar(
+            x[-1] + offset,
+            payload["save_ms"]["mean_ms"],
+            w,
+            color=_SAVE_COLOR,
+            hatch=hatch,
+            label=_lab("Save (I/O)"),
+        )
 
-    _draw(payload_a, pa, -w / 2, "", True)    # A: solid, contributes the legend
+    _draw(payload_a, pa, -w / 2, "", True)  # A: solid, contributes the legend
     _draw(payload_b, pb, +w / 2, "//", False)  # B: hatched
 
     ax.set_xticks(x)
@@ -383,11 +577,20 @@ def plot_budget_ab(
     # that's the isolated FFT speedup, the sharpest A/B number.
     ka, kb = _kernel_split_ms(payload_a), _kernel_split_ms(payload_b)
     if ka and kb:
-        txt = (f"Kernel split (thread-summed, ms/pair): "
-               f"{ba} FFT={ka['xcorr_fft']:.2f} fit={ka['peak_fit']:.2f} | "
-               f"{bb} FFT={kb['xcorr_fft']:.2f} fit={kb['peak_fit']:.2f}")
-        ax.text(0.5, -0.12, txt, transform=ax.transAxes, ha="center", fontsize=8,
-                color="#333")
+        txt = (
+            f"Kernel split (thread-summed, ms/pair): "
+            f"{ba} FFT={ka['xcorr_fft']:.2f} fit={ka['peak_fit']:.2f} | "
+            f"{bb} FFT={kb['xcorr_fft']:.2f} fit={kb['peak_fit']:.2f}"
+        )
+        ax.text(
+            0.5,
+            -0.12,
+            txt,
+            transform=ax.transAxes,
+            ha="center",
+            fontsize=8,
+            color="#333",
+        )
 
     fig.tight_layout()
     out_path = Path(out_path)

@@ -10,7 +10,6 @@ from __future__ import annotations
 import bench_common as bc
 import bench_scaling as bs
 
-
 # --- sweep generation ------------------------------------------------------
 
 
@@ -68,10 +67,16 @@ def test_wisdom_shared_is_noop_and_per_worker_refuses():
 
 def _prov(backend, **over):
     base = {
-        "fft_backend": backend, "git_sha": "abc", "git_dirty": False,
-        "hostname": "node1", "cpu_count": 192, "cpu_model": "EPYC",
-        "filesystem": "lustre", "cache_policy": "warm",
-        "pivtools_version": "1.0", "platform": "linux",
+        "fft_backend": backend,
+        "git_sha": "abc",
+        "git_dirty": False,
+        "hostname": "node1",
+        "cpu_count": 192,
+        "cpu_model": "EPYC",
+        "filesystem": "lustre",
+        "cache_policy": "warm",
+        "pivtools_version": "1.0",
+        "platform": "linux",
     }
     base.update(over)
     return base
@@ -94,3 +99,32 @@ def test_guard_warns_when_same_backend():
     g = bc.compare_provenance(_prov("fftw"), _prov("fftw"))
     assert g["ok"] is False
     assert any("same FFT backend" in w for w in g["warnings"])
+
+
+# --- summary statistics (reviewer-grade median ± IQR + CoV) -----------------
+
+
+def test_summarize_basic_stats():
+    s = bc.summarize([10.0, 12.0, 14.0])
+    assert s["n"] == 3
+    assert s["mean"] == 12.0
+    assert s["median"] == 12.0
+    assert s["min"] == 10.0 and s["max"] == 14.0
+    assert s["std"] > 0.0
+    assert abs(s["cov"] - s["std"] / s["mean"]) < 1e-12
+    assert s["iqr"] == 4.0  # exclusive quartiles of [10,12,14] -> q1=10, q3=14
+
+
+def test_summarize_single_value_has_no_spread():
+    s = bc.summarize([7.0])
+    assert s["n"] == 1
+    assert s["mean"] == 7.0 and s["median"] == 7.0
+    assert s["std"] == 0.0 and s["iqr"] == 0.0 and s["cov"] == 0.0
+
+
+def test_summarize_empty_raises():
+    try:
+        bc.summarize([])
+    except ValueError:
+        return
+    raise AssertionError("summarize([]) must raise, not fabricate a statistic")

@@ -24,6 +24,7 @@ import json
 import os
 import platform
 import socket
+import statistics
 import subprocess
 from contextlib import contextmanager
 from datetime import datetime
@@ -50,7 +51,7 @@ def lib_path() -> Path:
     would load, resolved the same way the production correlator resolves it
     (``pivtools_cli/lib/``). Platform-correct extension."""
     ext = ".dll" if os.name == "nt" else ".so"
-    return (Path(pivtools_cli.__file__).resolve().parent / "lib" / f"{_LIB_STEM}{ext}")
+    return Path(pivtools_cli.__file__).resolve().parent / "lib" / f"{_LIB_STEM}{ext}"
 
 
 def detect_fft_backend(lib: ctypes.CDLL) -> str:
@@ -141,7 +142,9 @@ def _cpu_model() -> str:
         if system == "Darwin":
             out = subprocess.run(
                 ["sysctl", "-n", "machdep.cpu.brand_string"],
-                capture_output=True, text=True, check=True,
+                capture_output=True,
+                text=True,
+                check=True,
             )
             return out.stdout.strip()
         if system == "Linux":
@@ -208,24 +211,73 @@ def build_provenance(
         "filesystem": _filesystem(dataset),
         "cache_policy": cache_policy,
         "lib_path": str(lp),
-        "lib_mtime": datetime.fromtimestamp(lp.stat().st_mtime).isoformat()
-        if lp.exists()
-        else None,
+        "lib_mtime": (
+            datetime.fromtimestamp(lp.stat().st_mtime).isoformat()
+            if lp.exists()
+            else None
+        ),
+        "omp_proc_bind": os.environ.get("OMP_PROC_BIND", ""),
+        "omp_places": os.environ.get("OMP_PLACES", ""),
         "platform": platform.platform(),
         "stamped_at": datetime.now().isoformat(timespec="seconds"),
     }
 
 
+def summarize(values: Sequence[float]) -> dict[str, float]:
+    """Summary statistics over repeated measurements, for the reviewer-grade
+    report: ``n``, ``mean``, sample ``std``, ``median``, ``iqr`` (q3-q1), and
+    ``cov`` (coefficient of variation = std/mean), plus ``min`` / ``max``.
+
+    A single value has ``std = iqr = cov = 0`` (no spread to report). Empty
+    input is a bug upstream — raise rather than fabricate a statistic.
+    """
+    data = [float(v) for v in values]
+    if not data:
+        raise ValueError("summarize() got no values")
+    mean = statistics.mean(data)
+    if len(data) > 1:
+        std = statistics.stdev(data)
+        q1, _, q3 = statistics.quantiles(data, n=4)
+        iqr = q3 - q1
+    else:
+        std = iqr = 0.0
+    return {
+        "n": len(data),
+        "mean": mean,
+        "std": std,
+        "median": statistics.median(data),
+        "iqr": iqr,
+        "cov": (std / mean) if mean else 0.0,
+        "min": min(data),
+        "max": max(data),
+    }
+
+
 # Fields that SHOULD differ between the two arms of an A/B (that's the point).
-_AB_EXPECTED_DIFF = ("fft_backend", "git_sha", "git_dirty", "lib_mtime", "lib_path",
-                     "stamped_at")
+_AB_EXPECTED_DIFF = (
+    "fft_backend",
+    "git_sha",
+    "git_dirty",
+    "lib_mtime",
+    "lib_path",
+    "stamped_at",
+)
 # Fields that MUST match or the comparison is invalid (cross-machine, cross-cache,
 # cross-dataset A/B is not a valid comparison).
-_AB_MUST_MATCH = ("hostname", "cpu_model", "cpu_count", "filesystem", "cache_policy",
-                  "pivtools_version", "platform")
+_AB_MUST_MATCH = (
+    "hostname",
+    "cpu_model",
+    "cpu_count",
+    "filesystem",
+    "cache_policy",
+    "pivtools_version",
+    "platform",
+)
 
 
-def compare_provenance(prov_a: dict[str, Any], prov_b: dict[str, Any]) -> dict[str, Any]:
+def compare_provenance(
+    prov_a: dict[str, Any], prov_b: dict[str, Any]
+) -> dict[str, Any]:
     """Guard two provenance stamps for an apples-to-apples A/B.
 
     Returns ``{"ok": bool, "backends": (a, b), "warnings": [...], "notes": [...]}``.
@@ -239,7 +291,9 @@ def compare_provenance(prov_a: dict[str, Any], prov_b: dict[str, Any]) -> dict[s
     for field in _AB_MUST_MATCH:
         va, vb = prov_a.get(field), prov_b.get(field)
         if va != vb:
-            warnings.append(f"{field} differs: A={va!r} B={vb!r} — comparison may be invalid")
+            warnings.append(
+                f"{field} differs: A={va!r} B={vb!r} — comparison may be invalid"
+            )
 
     ba, bb = prov_a.get("fft_backend"), prov_b.get("fft_backend")
     if ba == bb:
@@ -325,9 +379,7 @@ def append_csv_row(csv_path: Path, fields: Sequence[str], row: dict[str, Any]) -
     """Append one row, immediately flushed — crash-safe so a killed sweep keeps every
     completed config. Extra keys in ``row`` are ignored."""
     with open(csv_path, "a", newline="") as f:
-        csv.DictWriter(
-            f, fieldnames=list(fields), extrasaction="ignore"
-        ).writerow(row)
+        csv.DictWriter(f, fieldnames=list(fields), extrasaction="ignore").writerow(row)
 
 
 def write_json(json_path: Path, payload: dict[str, Any]) -> None:
