@@ -111,6 +111,7 @@ def read_calibration_image(
         zero_based_indexing=config.calibration_zero_based_indexing,
         use_camera_subfolders=config.calibration_use_camera_subfolders,
         normalize_uint8=normalize_uint8,
+        num_cameras=config.camera_count,
     )
 
 
@@ -124,6 +125,7 @@ def read_calibration_frame_at(
     zero_based_indexing: bool = False,
     use_camera_subfolders: bool = False,
     normalize_uint8: bool = True,
+    num_cameras: Optional[int] = None,
 ) -> np.ndarray:
     """Read one calibration frame from an ALREADY-RESOLVED camera path/container.
 
@@ -155,6 +157,15 @@ def read_calibration_frame_at(
             img = img[0]  # Extract single frame
         return _normalize_to_uint8(img) if normalize_uint8 else img
 
+    # For multi-camera .im7 (all cameras in one buffer), detect how many frames
+    # each camera occupies so this camera's slice is located correctly — same
+    # rule the PIV path uses. Only when the caller supplies a camera count;
+    # otherwise (e.g. direct CLI use without one) keep the default stride of 1.
+    fpc = 1
+    if image_type == "lavision_im7" and num_cameras is not None:
+        from .load_images import _detect_im7_frames_per_camera
+        fpc = _detect_im7_frames_per_camera(Path(file_path), num_cameras)
+
     # Unified core reader (passes camera_no for multi-camera containers).
     img = read_single_frame(
         file_path=file_path,
@@ -162,6 +173,7 @@ def read_calibration_frame_at(
         frame_idx=frame_idx,
         image_type=image_type,
         time_resolved=True,  # Calibration always reads single frames
+        frames_per_camera=fpc,
     )
 
     return _normalize_to_uint8(img) if normalize_uint8 else img

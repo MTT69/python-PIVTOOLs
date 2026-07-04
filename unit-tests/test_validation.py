@@ -304,14 +304,28 @@ class TestValidateBatchSizeForPod:
 # Window-size restriction (codelet FFT engine supports a fixed set of sizes)
 # ---------------------------------------------------------------------------
 
-def _window_config(instantaneous, ensemble=None, ensemble_enabled=False):
+def _window_config(
+    instantaneous,
+    ensemble=None,
+    ensemble_enabled=False,
+    ensemble_types=None,
+    sum_window=None,
+):
     """Minimal mock Config exposing only what validate_window_sizes reads."""
     cfg = MagicMock()
     type(cfg).window_sizes = PropertyMock(return_value=instantaneous)
     type(cfg).ensemble_window_sizes = PropertyMock(
         return_value=ensemble if ensemble is not None else instantaneous
     )
-    cfg.data = {"processing": {"ensemble": ensemble_enabled}}
+    data = {"processing": {"ensemble": ensemble_enabled}}
+    ensemble_piv = {}
+    if ensemble_types is not None:
+        ensemble_piv["type"] = ensemble_types
+    if sum_window is not None:
+        ensemble_piv["sum_window"] = sum_window
+    if ensemble_piv:
+        data["ensemble_piv"] = ensemble_piv
+    cfg.data = data
     return cfg
 
 
@@ -371,5 +385,38 @@ class TestValidateWindowSizes:
             instantaneous=[[64, 64]],
             ensemble=[[256, 256]],
             ensemble_enabled=False,
+        )
+        assert validate_window_sizes(cfg) == []
+
+    def test_sum_window_checked_in_single_mode(self):
+        # sum_window is the FFT computation size in 'single' mode -> must be built
+        cfg = _window_config(
+            instantaneous=[[64, 64]],
+            ensemble=[[64, 64]],
+            ensemble_enabled=True,
+            ensemble_types=["single"],
+            sum_window=[20, 20],
+        )
+        errors = validate_window_sizes(cfg)
+        assert any("ensemble_piv.sum_window" in e and "20" in e for e in errors)
+
+    def test_valid_sum_window_passes_in_single_mode(self):
+        cfg = _window_config(
+            instantaneous=[[64, 64]],
+            ensemble=[[64, 64]],
+            ensemble_enabled=True,
+            ensemble_types=["single"],
+            sum_window=[32, 32],
+        )
+        assert validate_window_sizes(cfg) == []
+
+    def test_sum_window_ignored_in_std_mode(self):
+        # No 'single' pass -> sum_window is unused, so it is not checked
+        cfg = _window_config(
+            instantaneous=[[64, 64]],
+            ensemble=[[64, 64]],
+            ensemble_enabled=True,
+            ensemble_types=["std"],
+            sum_window=[20, 20],
         )
         assert validate_window_sizes(cfg) == []

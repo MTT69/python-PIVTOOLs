@@ -794,12 +794,23 @@ def instantaneous_command(args):
 
     if args.active_paths:
         os.environ['PIV_ACTIVE_PATHS'] = args.active_paths
+    # instantaneous/ensemble delegate to main(), which reads config.camera_numbers,
+    # so the camera override is passed via env var (statistics/transform own their
+    # loop and build a local list instead). Use `is not None` so an explicit bad
+    # value like 0 reaches the property and fails loud; pop a stale value when the
+    # flag is absent so a missing flag always means "all cameras".
+    if args.camera is not None:
+        os.environ['PIV_CAMERA'] = str(args.camera)
+    else:
+        os.environ.pop('PIV_CAMERA', None)
 
     print("=" * 60)
     print("Instantaneous PIV Processing")
     print("=" * 60)
     if args.active_paths:
         print(f"Active paths override: {args.active_paths}")
+    if args.camera is not None:
+        print(f"Camera override: {args.camera}")
 
     try:
         instantaneous.main()
@@ -819,12 +830,23 @@ def ensemble_command(args):
 
     if args.active_paths:
         os.environ['PIV_ACTIVE_PATHS'] = args.active_paths
+    # instantaneous/ensemble delegate to main(), which reads config.camera_numbers,
+    # so the camera override is passed via env var (statistics/transform own their
+    # loop and build a local list instead). Use `is not None` so an explicit bad
+    # value like 0 reaches the property and fails loud; pop a stale value when the
+    # flag is absent so a missing flag always means "all cameras".
+    if args.camera is not None:
+        os.environ['PIV_CAMERA'] = str(args.camera)
+    else:
+        os.environ.pop('PIV_CAMERA', None)
 
     print("=" * 60)
     print("Ensemble PIV Processing")
     print("=" * 60)
     if args.active_paths:
         print(f"Active paths override: {args.active_paths}")
+    if args.camera is not None:
+        print(f"Camera override: {args.camera}")
 
     try:
         ensemble.main()
@@ -866,6 +888,10 @@ def main():
         "--active-paths", "-p", default=None,
         help="Comma-separated path indices to process (e.g., '0,1,2')"
     )
+    instantaneous_parser.add_argument(
+        "--camera", "-c", type=int, default=None,
+        help="Camera number to process (default: all from config)"
+    )
     instantaneous_parser.set_defaults(func=instantaneous_command)
 
     # ensemble command
@@ -876,6 +902,10 @@ def main():
     ensemble_parser.add_argument(
         "--active-paths", "-p", default=None,
         help="Comma-separated path indices to process (e.g., '0,1,2')"
+    )
+    ensemble_parser.add_argument(
+        "--camera", "-c", type=int, default=None,
+        help="Camera number to process (default: all from config)"
     )
     ensemble_parser.set_defaults(func=ensemble_command)
 

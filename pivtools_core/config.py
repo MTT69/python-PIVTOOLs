@@ -829,9 +829,26 @@ video:
 
     @property
     def camera_numbers(self):
-        """Return list of camera numbers to process."""
-        numbers = self.data["paths"]["camera_numbers"]
+        """Return list of camera numbers to process.
+
+        Supports a single-camera override via the PIV_CAMERA environment
+        variable. Invalid values fail loudly (no silent fallback): a
+        non-integer raises ValueError, and out-of-range is caught by the
+        existing range check below.
+
+        WARNING: the override is PROCESS-GLOBAL. It must only ever be set in
+        short-lived CLI/subprocess contexts (the instantaneous/ensemble CLI
+        handlers set it, then the process exits; PIV jobs run as subprocesses).
+        Do NOT set PIV_CAMERA in the long-lived GUI Flask process — every
+        caller of this property (statistics, video, merging, transforms, ...)
+        would silently flip to single-camera mode for the rest of the process.
+        """
         max_allowed = self.camera_count
+        env_cam = os.environ.get('PIV_CAMERA')
+        if env_cam:
+            numbers = [int(env_cam)]  # non-int raises ValueError — intentional
+        else:
+            numbers = self.data["paths"]["camera_numbers"]
         if any(n > max_allowed or n < 1 for n in numbers):
             raise ValueError(f"Camera numbers {numbers} must be between 1 and {max_allowed}")
         return numbers

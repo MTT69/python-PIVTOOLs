@@ -13,7 +13,7 @@ import cv2
 import dask.array as da
 import numpy as np
 from dask.distributed import get_worker
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import gaussian_filter, distance_transform_edt
 from scipy.signal import convolve2d
 
 from contextlib import contextmanager
@@ -26,8 +26,41 @@ from pivtools_cli.piv.piv_backend.outlier_detection import apply_outlier_detecti
 from pivtools_cli.piv.piv_backend.infilling import apply_infilling
 
 import matplotlib
-matplotlib.use("Agg") 
+matplotlib.use("Agg")
 from matplotlib import pyplot as plt
+
+
+def _fill_residual_nan_field(ux: np.ndarray, uy: np.ndarray):
+    """Guarantee a finite (ux, uy) displacement pair by nearest-valid fill.
+
+    Infilling (notably ``local_median``) can leave residual NaN where invalid
+    windows cluster — a hole whose entire neighbourhood is also invalid has no
+    finite value to borrow. Those NaN would reach the C warp as NaN sample
+    coordinates, which is undefined behaviour in its ``(int)`` cast and can defeat
+    the SIMD bounds guard (-> access violation). This closes that gap: every NaN
+    cell takes the value of its nearest fully-valid cell (Euclidean), or 0.0 if an
+    entire image has no valid vector.
+
+    A cell counts as valid only when BOTH components are finite, so the filled
+    (ux, uy) stays a coherent vector. Returns ``(ux, uy, n_filled)``.
+    """
+    nan = ~np.isfinite(ux) | ~np.isfinite(uy)
+    n_filled = int(nan.sum())
+    if n_filled == 0:
+        return ux, uy, 0
+    if nan.all():
+        return np.zeros_like(ux), np.zeros_like(uy), n_filled
+
+    # EDT on the invalid mask returns, for every cell, the index of the nearest
+    # background (valid) cell; we apply it only at the NaN cells.
+    idx = distance_transform_edt(nan, return_distances=False, return_indices=True)
+    ux_out = ux.copy()
+    uy_out = uy.copy()
+    ux_out[nan] = ux[tuple(idx)][nan]
+    uy_out[nan] = uy[tuple(idx)][nan]
+    return ux_out, uy_out, n_filled
+
+
 class InstantaneousCorrelatorCPU(CrossCorrelator):
     # Class variable to track if FFTW cleanup has been registered
     _cleanup_registered = False
@@ -575,14 +608,20 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 is_final_pass = (pass_idx == len(config.window_sizes) - 1)
 
                 with self._profile_section(pass_idx, "infilling"):
-                    # Apply infilling to outlier/invalid vectors
+                    # Apply infilling to outlier/invalid vectors.
                     cfg = (
                         config.infilling_final_pass
                         if is_final_pass
                         else config.infilling_mid_pass
                     )
 
-                    if cfg.get("enabled", True):
+                    # Mid-pass infilling is ALWAYS on: a mid-pass field becomes the next
+                    # pass's warp predictor, and a single NaN there yields a NaN sample
+                    # coordinate -> (int)NaN UB in the SIMD warp -> access violation. The
+                    # final pass feeds no predictor, so it still honours its config.
+                    infill_enabled = True if not is_final_pass else cfg.get("enabled", True)
+
+                    if infill_enabled:
                         def _infill_one(im_idx):
                             if np.isnan(ux_mat[im_idx]).any() or np.isnan(uy_mat[im_idx]).any():
                                 infill_mask = np.isnan(ux_mat[im_idx]) | np.isnan(uy_mat[im_idx])
@@ -596,6 +635,25 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                         for im_idx, result in results:
                             if result is not None:
                                 ux_mat[im_idx], uy_mat[im_idx] = result
+
+                    # Guarantee the field that becomes a predictor is finite. local_median
+                    # infilling leaves residual NaN where invalid windows cluster (no valid
+                    # neighbour in its 3x3 stencil); fill those by nearest valid value so no
+                    # NaN can reach the warp. Logged (not silent) so dropouts stay visible;
+                    # nan_mask still records which vectors were invalid.
+                    if not is_final_pass:
+                        for im_idx in range(N):
+                            ux_mat[im_idx], uy_mat[im_idx], n_resid = _fill_residual_nan_field(
+                                ux_mat[im_idx], uy_mat[im_idx]
+                            )
+                            if n_resid:
+                                logging.warning(
+                                    "Pass %d image %d: %d vector(s) left NaN by '%s' "
+                                    "infilling (clustered dropouts); filled by nearest "
+                                    "valid before use as warp predictor.",
+                                    pass_idx + 1, im_idx, n_resid,
+                                    cfg.get("method", "local_median"),
+                                )
 
                 # Pass summary - only warn if >20% invalid vectors (excluding masked regions)
                 mask_count = mask_bool_batch.sum()
@@ -812,6 +870,20 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 image_a_prime_batch = np.zeros((N, H, W), dtype=np.float32)
                 image_b_prime_batch = np.zeros((N, H, W), dtype=np.float32)
 
+                # Defence-in-depth: the predictor MUST be finite. A NaN/Inf sample
+                # coordinate is undefined behaviour in the C warp's (int) cast and can
+                # defeat its SIMD interior bounds guard -> wild-pointer read -> access
+                # violation that kills the Dask worker. Upstream infilling + nearest-valid
+                # residual fill guarantee this; assert it so any future regression fails
+                # loudly here instead of segfaulting.
+                if not (np.isfinite(pred_dy).all() and np.isfinite(pred_dx).all()):
+                    raise ValueError(
+                        f"non-finite warp predictor at pass {pass_idx}: "
+                        f"{int((~np.isfinite(pred_dy)).sum())} bad dy, "
+                        f"{int((~np.isfinite(pred_dx)).sum())} bad dx -- upstream "
+                        f"infilling failed to produce a finite displacement field."
+                    )
+
                 # images_a/b are already contiguous float32 (pre-copied in correlate_batch)
                 ret = self._fw_lib.fused_symmetric_warp_batch(
                     images_a,
@@ -821,7 +893,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     N, H, W, nPY, nPX,
                     ctrs_y, ctrs_x,
                     interp_mode,
-                    0,  # shared_predictor=0 → per-image predictors
+                    0,  # shared_predictor=0 -> per-image predictors
                 )
                 if ret != 0:
                     raise RuntimeError(f"fused_symmetric_warp_batch failed (ret={ret})")
