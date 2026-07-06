@@ -1477,7 +1477,24 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 self.win_ctrs_x_all[0], dtype=np.float32)
 
         image_interp = getattr(self.config, 'ensemble_image_warp_interpolation', 'cubic')
-        self._fused_interp_mode = 0 if image_interp == 'cubic' else 1
+        # Explicit mode map — an unmapped string must fail loud here, not be
+        # silently warped with a different kernel than the noise model assumes.
+        _INTERP_MODES = {'cubic': 0, 'lanczos': 1, 'bspline': 2}
+        try:
+            self._fused_interp_mode = _INTERP_MODES[image_interp]
+        except KeyError:
+            raise ValueError(
+                f"No fused-warp interp_mode mapped for "
+                f"ensemble_image_warp_interpolation {image_interp!r}; "
+                f"known: {sorted(_INTERP_MODES)}"
+            ) from None
+        if self._fused_interp_mode == 2 and not hasattr(
+                self._fw_lib, 'fused_warp_has_bspline'):
+            raise RuntimeError(
+                "image_warp_interpolation 'bspline' requested but the loaded "
+                "libfusedwarp predates interp_mode=2 (no fused_warp_has_bspline "
+                "export) — rebuild the C extensions (python setup.py build)."
+            )
 
         return delta_ab_pred
 def plot_corr_planes(corr_avg_flat, n_win_y, n_win_x, win_h, win_w, pass_idx):

@@ -2656,13 +2656,16 @@ video:
         - 'cubic': Bicubic (Keys a=-0.75, 4x4 stencil, matches cv2.INTER_CUBIC). Default.
         - 'lanczos': Lanczos-3 (windowed sinc, 6x6 stencil). Sharper frequency
           preservation for particle images, ~1.5x slower than cubic.
+        - 'bspline': Interpolating cubic B-spline (IIR prefilter + 4x4 stencil,
+          interp_mode=2). Lowest interpolation bias; the k-space noise floor
+          automatically uses the matching B-spline MTF.
 
         Default: 'cubic'
         """
         method = self.data.get("ensemble_piv", {}).get(
             "image_warp_interpolation", "cubic"
         )
-        valid_methods = {'cubic', 'lanczos'}
+        valid_methods = {'cubic', 'lanczos', 'bspline'}
         if method not in valid_methods:
             raise ValueError(
                 f"Invalid ensemble_image_warp_interpolation '{method}'. "

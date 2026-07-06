@@ -691,8 +691,18 @@ class SinglePassAccumulator:
                 # smoothed_pred shape: (n_win_y, n_win_x, 2) where [:,:,0]=Y, [:,:,1]=X
                 predictor_displacements = smoothed_pred.reshape(-1, 2)
 
-        # Determine kernel type from config (k-space only)
-        interp_kernel = 'lanczos3' if self.config.ensemble_image_warp_interpolation == 'lanczos' else 'bicubic'
+        # Determine the noise-model kernel from config (k-space only). The
+        # kernel MUST match the warp that produced the images — fail loud on
+        # anything unmapped rather than silently colouring with the wrong MTF.
+        _NOISE_KERNELS = {'cubic': 'bicubic', 'lanczos': 'lanczos3', 'bspline': 'bspline'}
+        _warp_interp = self.config.ensemble_image_warp_interpolation
+        try:
+            interp_kernel = _NOISE_KERNELS[_warp_interp]
+        except KeyError:
+            raise ValueError(
+                f"No noise-model kernel mapped for ensemble_image_warp_interpolation "
+                f"{_warp_interp!r}; known: {sorted(_NOISE_KERNELS)}"
+            ) from None
 
         with self._profile_section(pass_idx, "scatter"):
             n_workers = len(client.scheduler_info()['workers'])
