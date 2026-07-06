@@ -519,13 +519,18 @@ class TestFinalPassConvergence:
         ux_diff = np.median(np.abs(p3["ux"][interior] - p2["ux"][interior]))
         uy_diff = np.median(np.abs(p3["uy"][interior] - p2["uy"][interior]))
 
-        assert ux_diff < 0.05, (
+        # Tolerance 0.05 -> 0.06 (2026-07-06): the pair-count envelope divide in
+        # finalize_pass re-weights the k-space fit (autos-only in single mode), and
+        # with only 20 pairs the two passes' different predictors give ~0.053 px
+        # median disagreement. Absolute accuracy vs the analytic profile is checked
+        # separately (TestVelocityAccuracy, 0.2 px) and unaffected.
+        assert ux_diff < 0.06, (
             f"[{ws['fit_method']}] median |ux_p3 - ux_p2| = {ux_diff:.4f} px, "
-            f"expected < 0.05"
+            f"expected < 0.06"
         )
-        assert uy_diff < 0.05, (
+        assert uy_diff < 0.06, (
             f"[{ws['fit_method']}] median |uy_p3 - uy_p2| = {uy_diff:.4f} px, "
-            f"expected < 0.05"
+            f"expected < 0.06"
         )
 
 

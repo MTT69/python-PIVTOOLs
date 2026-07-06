@@ -30,8 +30,8 @@ class CrossCorrelator(ABC):
     def correlate_batch(self, images: np.ndarray, config: Config, vector_masks: List[np.ndarray] = None):
         pass
 
+    @staticmethod
     def _window_weight_fun(
-        self,
         wsize: tuple[int, int],
         window_type: str,
         SumWindow: tuple[int, int] = None,

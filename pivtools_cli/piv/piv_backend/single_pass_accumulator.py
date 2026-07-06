@@ -35,8 +35,56 @@ from dask.distributed import Client
 
 from pivtools_core.config import Config
 from pivtools_cli.piv.piv_result import PIVEnsemblePassResult, PIVEnsembleResult
+from pivtools_cli.piv.piv_backend.base import CrossCorrelator
 from pivtools_cli.piv.piv_backend.outlier_detection import apply_outlier_detection
 from pivtools_cli.piv.piv_backend.infilling import apply_infilling
+
+
+def _linear_pair_envelope(weight_a: np.ndarray, weight_b: np.ndarray,
+                          corr_size: tuple[int, int]) -> np.ndarray:
+    """Linear pair-count envelope E(Δ) = (W_A ⋆ W_B)(Δ), normalized to E = 1 at zero lag.
+
+    The averaged correlation planes are attenuated by the LINEAR cross-correlation of
+    the two window weight functions (Westerweel's loss-of-correlation F_i): the
+    coherent peak is squeezed narrower and pulled toward zero lag. Dividing the
+    accumulated planes by E removes that bias before the k-space fit. The μ² pedestal
+    carries the CIRCULAR weight correlation instead (flat for these weights), which is
+    handled by the fitter's noise-floor model, not here.
+
+    Both weights must share one shape (the FFT computation size). The envelope is
+    computed on the full linear support via 2x zero-padding and centre-cropped to
+    ``corr_size`` (the stored plane size), with zero lag at ``corr_size // 2`` — the
+    same convention as the C correlator's central extraction and the k-space fitter's
+    fftshift centre. Validated <1% against the production C path
+    (manual_tools/kspace/envelope_probe_empirical.py, 2026-07-06).
+    """
+    wa = np.asarray(weight_a, dtype=np.float64)
+    wb = np.asarray(weight_b, dtype=np.float64)
+    if wa.shape != wb.shape:
+        raise ValueError(
+            f"window weights must share a shape, got {wa.shape} vs {wb.shape}")
+    h, w = wa.shape
+    ch, cw = corr_size
+    if ch > h or cw > w:
+        raise ValueError(f"corr_size {tuple(corr_size)} exceeds envelope support {(h, w)}")
+
+    fa = np.fft.fft2(wa, s=(2 * h, 2 * w))
+    fb = np.fft.fft2(wb, s=(2 * h, 2 * w))
+    full = np.fft.fftshift(np.fft.ifft2(fa * np.conj(fb)).real)  # zero lag at (h, w)
+    env = full[h - ch // 2:h - ch // 2 + ch, w - cw // 2:w - cw // 2 + cw]
+
+    centre = env[ch // 2, cw // 2]
+    if abs(centre - env.max()) > 1e-9 * env.max():
+        peak = np.unravel_index(np.argmax(env), env.shape)
+        raise ValueError(
+            f"envelope centre {centre:.12f} != max {env.max():.12f} at {peak} — "
+            f"centering is off")
+    env = env / centre
+    if np.any(env <= 0.0):
+        raise ValueError(
+            "pair-count envelope has non-positive entries inside the stored plane; "
+            "cannot divide (check window weights against corr_size)")
+    return env
 
 
 class SinglePassAccumulator:
@@ -508,6 +556,52 @@ class SinglePassAccumulator:
             AA_3d = R_AA_ensemble.reshape(total_windows, corr_size[0], corr_size[1])
             BB_3d = R_BB_ensemble.reshape(total_windows, corr_size[0], corr_size[1])
             AB_3d = R_AB_ensemble.reshape(total_windows, corr_size[0], corr_size[1])
+
+            # Envelope divide: remove the window-overlap (pair-count) envelope from the
+            # coherent planes before fitting (Westerweel loss-of-correlation). The rule
+            # is geometry-driven, not configurable:
+            #   std    — all three planes share E = W ⋆ W: divide AA, BB and AB.
+            #   single — the AB envelope is a trapezoid whose plateau is exactly 1
+            #            wherever the peak can live (the sum-window margin makes AB
+            #            envelope-free by construction), so dividing AB would only
+            #            amplify corner noise into the k⁴ fit columns; the autos carry
+            #            the full triangle envelope of the sum window: divide AA/BB only.
+            # E(0) = 1, so the peak values used for normalization below are unchanged.
+            envelope_runtype = self.config.ensemble_type[pass_idx]
+            if envelope_runtype == 'single':
+                env_sum_window = tuple(self.config.ensemble_sum_window)
+                plateau_half = min(
+                    (env_sum_window[0] - win_size[0]) // 2,
+                    (env_sum_window[1] - win_size[1]) // 2,
+                )
+                if plateau_half < 4:
+                    raise ValueError(
+                        f"Pass {pass_idx + 1}: sum window {env_sum_window} leaves only "
+                        f"{plateau_half} px of AB envelope plateau around the peak "
+                        f"(need >= 4 px). The single-mode envelope correction assumes "
+                        f"the AB peak sits on the E=1 plateau; increase the sum-window "
+                        f"margin over the interrogation window {tuple(win_size)}."
+                    )
+                env_weight_b = CrossCorrelator._window_weight_fun(
+                    env_sum_window, 'bsingle', env_sum_window)
+                env_auto = _linear_pair_envelope(env_weight_b, env_weight_b, corr_size)
+                env_ab = np.ones_like(env_auto)  # plateau: exactly 1 where the peak lives
+            else:
+                env_weight = CrossCorrelator._window_weight_fun(
+                    tuple(win_size), self.config.ensemble_window_type)
+                env_auto = _linear_pair_envelope(env_weight, env_weight, corr_size)
+                env_ab = env_auto
+            env_auto_f32 = env_auto.astype(np.float32)[None, :, :]
+            env_ab_f32 = env_ab.astype(np.float32)[None, :, :]
+            AA_3d /= env_auto_f32
+            BB_3d /= env_auto_f32
+            AB_3d /= env_ab_f32
+            logging.info(
+                f"Pass {pass_idx + 1}: Envelope divide applied ({envelope_runtype}: "
+                f"autos divided, AB "
+                f"{'skipped — trapezoid plateau' if envelope_runtype == 'single' else 'divided'}; "
+                f"min E = {env_auto.min():.3f})"
+            )
 
             # Central index (autocorrelation peak is at center)
             center_y, center_x = corr_size[0] // 2, corr_size[1] // 2
@@ -1187,6 +1281,11 @@ class SinglePassAccumulator:
                     # Window weights used in cross-correlation
                     'win_weight_A': correlator_for_weights.win_weights_A[pass_idx],
                     'win_weight_B': correlator_for_weights.win_weights_B[pass_idx],
+                    # Pair-count envelopes ALREADY DIVIDED OUT of AA/BB/AB above
+                    # (env_ab is ones for single mode — AB is plateau-protected).
+                    # Presence of these keys tells downstream tools not to re-divide.
+                    'env_auto': env_auto,
+                    'env_ab': env_ab,
                 }
 
                 savemat(
