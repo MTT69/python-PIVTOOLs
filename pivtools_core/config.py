@@ -2313,16 +2313,17 @@ video:
 
     @property
     def peak_fit_impl(self):
-        """Peak-fit implementation: 'scalar' (default) or 'batch'.
+        """Peak-fit implementation: 'batch' (default) or 'scalar'.
 
-        'batch' selects the lockstep one-window-per-SIMD-lane LM fitter
-        (peak_locate_lm_batch.c) for instantaneous gauss4/5/6 fits — ~2-3x
-        faster per fit, gate-verified against the scalar oracle. Requires a
-        clang/clang-cl build; requesting it on a build without the batch
-        fitter raises at correlator init (no silent fallback). gauss3 and
-        multi-peak fits always use the scalar path regardless.
+        'batch' is the lockstep one-window-per-SIMD-lane LM fitter
+        (peak_locate_lm_batch.c) for instantaneous gauss4/5/6 fits — 2-3x
+        faster per fit, gate-verified against the scalar oracle (bit-identical
+        under the libm-exp reference build). Requires a clang/clang-cl build;
+        on a build without the batch fitter (plain MSVC cl) correlator init
+        raises with instructions to set 'scalar' (no silent fallback). gauss3
+        and multi-peak fits always use the scalar path regardless.
         """
-        v = self.data.get("instantaneous_piv", {}).get("peak_fit_impl", "scalar").lower()
+        v = self.data.get("instantaneous_piv", {}).get("peak_fit_impl", "batch").lower()
         if v not in ("scalar", "batch"):
             raise ValueError(
                 f"Invalid peak_fit_impl: {v}. Must be 'scalar' or 'batch'."
