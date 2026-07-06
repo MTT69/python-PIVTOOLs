@@ -325,6 +325,47 @@ class BuildCLibraries(build):
                 simd_flags += ["-flto"]
         fft_compile = base_compile + simd_flags
         peak_compile = base_compile  # NO simd_flags: stable scalar/libm LM kernel
+
+        # Batched (one-window-per-lane) LM fitter TU: needs the ISA width macro
+        # + arch flags so its vector_size types legalize to full-width
+        # registers, and -fno-math-errno so its per-lane sqrt loops vectorize.
+        # CRITICAL: -ffp-contract=off. The scalar peak TU has no /arch, so it
+        # physically cannot fuse a*b+c into FMAs; with /arch:AVX2 clang's
+        # default contraction WOULD fuse the batch TU's float arithmetic,
+        # making per-lane results drift from the scalar oracle and flipping
+        # borderline trust-rule decisions on noisy fits (measured 3-4% NaN
+        # flips with contraction on, ~0 with it off — per-lane IEEE add/mul
+        # are width-independent once contraction is off). Under plain MSVC cl
+        # (PIVTOOLS_WIN_COMPILER=cl) the TU compiles as an unavailable stub;
+        # selecting impl=batch then errors loudly.
+        batch_source = "peak_locate_lm_batch.c"
+        # Debug/A-B knob: PIVTOOLS_PEAKFIT_LIBM_EXP=1 builds the batch fitter
+        # with per-lane libm expf instead of the vectorized polynomial — the
+        # reference flavor that isolates exp effects from lockstep-logic
+        # effects (same philosophy as the old fast_exp.h PIV_USE_LIBM_EXP).
+        batch_libm_exp = os.environ.get(
+            "PIVTOOLS_PEAKFIT_LIBM_EXP", ""
+        ).strip().lower() in ("1", "true", "yes")
+        if use_msvc:
+            batch_compile = base_compile + [
+                f"/D{self.fft_macro}",
+                *self.fft_arch_flags,
+            ]
+            if batch_libm_exp:
+                batch_compile += ["/DPIV_BATCH_LIBM_EXP"]
+            if self.use_clang_cl:
+                batch_compile += ["/clang:-fno-math-errno", "/clang:-ffp-contract=off"]
+            else:
+                batch_compile += ["/fp:precise"]
+        else:
+            batch_compile = base_compile + [
+                f"-D{self.fft_macro}",
+                *self.fft_arch_flags,
+                "-fno-math-errno",
+                "-ffp-contract=off",
+            ]
+            if batch_libm_exp:
+                batch_compile += ["-DPIV_BATCH_LIBM_EXP"]
         print(
             f">>> [PIVTOOLS_FFT] libbulkxcorr2d  isa={self.fft_isa}  lanes={self.fft_lanes}  "
             f"macro={self.fft_macro}  render={self.fft_render}  "
@@ -335,13 +376,18 @@ class BuildCLibraries(build):
             f">>> [PIVTOOLS_FFT] peak TU flags: {' '.join(peak_compile)}  "
             "(no /arch -- LM stability)"
         )
+        print(
+            f">>> [PIVTOOLS_FFT] peak-batch TU flags: {' '.join(batch_compile)}  "
+            "(vecext lockstep fitter)"
+        )
 
         # Compile each TU to its own object (one invocation per file keeps the
-        # clang-cl /Fo vs gcc -o asymmetry trivial), then link all four.
+        # clang-cl /Fo vs gcc -o asymmetry trivial), then link all five.
         obj_ext = ".obj" if use_msvc else ".o"
-        compile_units = [(peak_source, peak_compile)] + [
-            (s, fft_compile) for s in fft_sources
-        ]
+        compile_units = [
+            (peak_source, peak_compile),
+            (batch_source, batch_compile),
+        ] + [(s, fft_compile) for s in fft_sources]
         obj_paths = []
         for src_name, flags in compile_units:
             obj_path = build_dir / f"{pathlib.Path(src_name).stem}{obj_ext}"

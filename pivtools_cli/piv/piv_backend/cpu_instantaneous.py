@@ -111,6 +111,10 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         # Sub-kernel timer binding is per-instance (each instance has its own lib
         # handle), so it must run for EVERY correlator, not just the first.
         self._bind_kernel_timers()
+        # Peak-fit implementation selection (config peak_fit_impl; per-instance
+        # lib handle, same reasoning as the timers). Raises if 'batch' is
+        # requested on a build without the batch fitter — no silent fallback.
+        self._apply_peakfit_impl()
         self.lib.bulkxcorr2d.restype = ctypes.c_ubyte
         self.delta_ab_pred = None
         self.delta_ab_old = None
@@ -246,6 +250,32 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 ctypes.POINTER(ctypes.c_double),
             ]
             self.lib.bulkxcorr2d_get_timing.restype = None
+
+    def _apply_peakfit_impl(self) -> None:
+        """Select the peak-fit implementation (config ``peak_fit_impl``).
+
+        'scalar' (default) needs no call — the C default is scalar. 'batch'
+        selects the lockstep one-window-per-lane LM fitter; if this build does
+        not export the selector or the batch fitter is unavailable (plain
+        MSVC cl build), requesting it raises — NO silent fallback to scalar.
+        """
+        impl = self.config.peak_fit_impl
+        if impl != "batch":
+            return
+        if not hasattr(self.lib, "bulkxcorr2d_set_peakfit_impl"):
+            raise RuntimeError(
+                "peak_fit_impl: 'batch' requested but this libbulkxcorr2d build "
+                "has no peak-fit selector (rebuild: python setup.py build). "
+                "Set instantaneous_piv.peak_fit_impl: scalar to run without it."
+            )
+        self.lib.bulkxcorr2d_set_peakfit_impl.argtypes = [ctypes.c_int]
+        self.lib.bulkxcorr2d_set_peakfit_impl.restype = ctypes.c_int
+        if self.lib.bulkxcorr2d_set_peakfit_impl(1) != 0:
+            raise RuntimeError(
+                "peak_fit_impl: 'batch' requested but the batch fitter is not "
+                "compiled in (plain MSVC cl build has no vector_size support). "
+                "Rebuild with clang-cl, or set instantaneous_piv.peak_fit_impl: scalar."
+            )
 
     @contextmanager
     def _kernel_split_section(self, pass_idx):

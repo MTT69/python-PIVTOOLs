@@ -91,4 +91,14 @@ EXPORT void bulkxcorr2d_set_timing_enabled(int on);
 EXPORT void bulkxcorr2d_reset_timing(void);
 EXPORT void bulkxcorr2d_get_timing(double *fft_s, double *fit_s);
 
+/* Peak-fit implementation selector: 0 = scalar (default), 1 = lockstep batch
+ * (one window per SIMD lane, see peak_locate_lm_batch.h). set returns 0 on
+ * success, -1 if batch was requested but is not compiled in (plain MSVC cl
+ * build) — the caller must treat -1 as a hard error, never fall back
+ * silently. Scope: the batch path serves instantaneous nPeaks==1 LM fits
+ * (iPeakFinder >= 4); other calls use the scalar path regardless. */
+EXPORT int bulkxcorr2d_set_peakfit_impl(int impl);
+EXPORT int bulkxcorr2d_get_peakfit_impl(void);
+EXPORT int bulkxcorr2d_peakfit_batch_available(void);
+
 #endif

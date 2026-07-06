@@ -2311,6 +2311,24 @@ video:
                 f"Invalid peak_finder: {peak_finder}. Must be 'gauss3', 'gauss4', 'gauss5', or 'gauss6'."
             )
 
+    @property
+    def peak_fit_impl(self):
+        """Peak-fit implementation: 'scalar' (default) or 'batch'.
+
+        'batch' selects the lockstep one-window-per-SIMD-lane LM fitter
+        (peak_locate_lm_batch.c) for instantaneous gauss4/5/6 fits — ~2-3x
+        faster per fit, gate-verified against the scalar oracle. Requires a
+        clang/clang-cl build; requesting it on a build without the batch
+        fitter raises at correlator init (no silent fallback). gauss3 and
+        multi-peak fits always use the scalar path regardless.
+        """
+        v = self.data.get("instantaneous_piv", {}).get("peak_fit_impl", "scalar").lower()
+        if v not in ("scalar", "batch"):
+            raise ValueError(
+                f"Invalid peak_fit_impl: {v}. Must be 'scalar' or 'batch'."
+            )
+        return v
+
     # --- Ensemble PIV properties ---
     @property
     def ensemble_window_sizes(self):

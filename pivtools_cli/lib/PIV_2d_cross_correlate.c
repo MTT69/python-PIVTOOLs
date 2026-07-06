@@ -1,10 +1,12 @@
 #include "PIV_2d_cross_correlate.h"
 #include "common.h"
 #include "xcorr.h"
-#include "codelet_fft.h"      /* permissive FFTW-free transform engine */
-#include "peak_locate_lm.h"   /* Fast LM solver instead of GSL */
+#include "codelet_fft.h"           /* permissive FFTW-free transform engine */
+#include "peak_locate_lm.h"        /* Fast LM solver instead of GSL */
+#include "peak_locate_lm_batch.h"  /* lockstep one-window-per-lane LM fitter */
 #include <omp.h>
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
@@ -28,6 +30,25 @@ void bulkxcorr2d_get_timing(double *fft_s, double *fit_s)
     if (fft_s) *fft_s = g_t_fft;
     if (fit_s) *fit_s = g_t_fit;
 }
+
+/* --- peak-fit implementation selector ----------------------------------------
+ * 0 = scalar per-lane lsqpeaklocate_lm (default), 1 = lockstep batch fitter
+ * (lsqpeaklocate_lm_batch, one window per SIMD lane). Read ONCE at bulkxcorr2d
+ * entry (fused_warp discipline) so a mid-run flip cannot tear a batch. The
+ * setter REFUSES batch when the fitter is not compiled in (plain MSVC cl
+ * build) — explicit failure, never a silent fallback. The batch path covers
+ * the instantaneous nPeaks==1, iPeakFinder>=4 case; everything else keeps the
+ * scalar per-lane loop regardless of the selector. */
+static volatile int g_peakfit_impl = 0;
+
+int bulkxcorr2d_set_peakfit_impl(int impl)
+{
+    if (impl && !peakfit_batch_available()) return -1;
+    g_peakfit_impl = impl ? 1 : 0;
+    return 0;
+}
+int bulkxcorr2d_get_peakfit_impl(void) { return g_peakfit_impl; }
+int bulkxcorr2d_peakfit_batch_available(void) { return peakfit_batch_available(); }
 
 /* Post-process one finished correlation lane (instantaneous path): correlation-
  * plane weighting, optional raw-plane copy-out, and peak fit + output writes.
@@ -94,7 +115,7 @@ static void instant_flush_batch(
     int nPeaks, int iPeakFinder, int nWindowsTotal, int nPxPerWindow,
     float *fPeakLoc, float *fStd,
     float *fPkLocX, float *fPkLocY, float *fPkHeight, float *fSx, float *fSy, float *fSxy,
-    float *fCorrelPlane_Out, double *t_fft, double *t_fit)
+    float *fCorrelPlane_Out, int peakfit_impl, double *t_fft, double *t_fit)
 {
     if (g_kernel_timing) {
         double t_mark = omp_get_wtime();
@@ -106,6 +127,50 @@ static void instant_flush_batch(
         codelet_forward_batch(pb, packB, 0);     /* slot 0 = B */
         codelet_forward_batch(pb, packA, 1);     /* slot 1 = A */
         codelet_emit_xcorr_batch(pb, packC);
+    }
+
+    /* Lockstep batch peak fit: all L_real lanes in one call, one window per
+     * SIMD lane. Scope: instantaneous single-peak LM fits only — everything
+     * else takes the unchanged per-lane scalar loop below. The caller
+     * verified peakfit_batch_lanes() == codelet_lanes() <= PEAKFIT_MAX_LANES
+     * at entry. Output writes replicate instant_postprocess_lane exactly
+     * (nPeaks == 1 collapses its peak loop to out_idx = n*total + win). */
+    if (peakfit_impl && !bEnsemble && nPeaks == 1 && iPeakFinder >= 4) {
+        const int W = peakfit_batch_lanes();
+        float ploc[3 * PEAKFIT_MAX_LANES], pstd[3 * PEAKFIT_MAX_LANES];
+
+        for (int l = 0; l < L_real; ++l) {   /* hoisted plane weighting */
+            float *plane = &packC[(size_t)l * numel];
+            int i;
+            #pragma omp simd
+            for (i = 0; i < nPxPerWindow; ++i) plane[i] *= fCorrelWeight[i];
+        }
+
+        if (g_kernel_timing) {
+            double t_mark = omp_get_wtime();
+            lsqpeaklocate_lm_batch(packC, L_real, nWindowSize, iPeakFinder, ploc, pstd);
+            *t_fit += omp_get_wtime() - t_mark;
+        } else {
+            lsqpeaklocate_lm_batch(packC, L_real, nWindowSize, iPeakFinder, ploc, pstd);
+        }
+
+        for (int l = 0; l < L_real; ++l) {
+            int out_idx = lane_n[l] * nWindowsTotal + lane_win[l];
+            float peak_row = ploc[0 * W + l];
+            float peak_col = ploc[1 * W + l];
+            float peak_mag = ploc[2 * W + l];
+
+            fPkLocX[out_idx] = peak_col - nWindowSize[1]/2.0f;
+            fPkLocY[out_idx] = peak_row - nWindowSize[0]/2.0f;
+            fSx[out_idx] = pstd[0 * W + l];
+            fSy[out_idx] = pstd[1 * W + l];
+            fSxy[out_idx] = pstd[2 * W + l];
+
+            int pk_row = fmin(fmax(0, (int)peak_row), nWindowSize[0]-1);
+            int pk_col = fmin(fmax(0, (int)peak_col), nWindowSize[1]-1);
+            fPkHeight[out_idx] = peak_mag * lane_enorm[l] / fCorrelWeight[pk_row*nWindowSize[1] + pk_col];
+        }
+        return;
     }
 
     for (int l = 0; l < L_real; ++l) {
@@ -140,6 +205,23 @@ float *fCorrelPlane_Out)
 
     int total_windows = N_images * nWindowsTotal;
 
+    /* Peak-fit implementation: read the selector ONCE for this whole call so a
+     * mid-run flip cannot tear a batch. When batch is selected, its lane count
+     * MUST match the FFT engine's (the fitter consumes packC[LANES][numel])
+     * and fit within the stack output arrays — hard error, never silent. */
+    const int peakfit_impl = g_peakfit_impl;
+    if (peakfit_impl) {
+        if (!peakfit_batch_available() ||
+            peakfit_batch_lanes() != codelet_lanes() ||
+            peakfit_batch_lanes() > PEAKFIT_MAX_LANES) {
+            fprintf(stderr, "bulkxcorr2d: peakfit impl=batch unusable "
+                            "(available=%d, batch lanes=%d, fft lanes=%d)\n",
+                    peakfit_batch_available(), peakfit_batch_lanes(), codelet_lanes());
+            free(fCorrelWeight);
+            return ERROR_NOPLAN;
+        }
+    }
+
     /* Sub-kernel timers: stack locals reduced (+) across threads, then folded into
      * the globals after the region. Kept out of the region's lexical body so the
      * file-scope globals are never referenced under default(none) (clang-cl
@@ -157,7 +239,7 @@ float *fCorrelPlane_Out)
         default(none) \
         shared(fImageA_stack, fImageB_stack, fMask, nImageSize, N_images, \
                fWinCtrsX, fWinCtrsY, nWindows, bEnsemble, fCorrelWeight, fWindowWeightA, fWindowWeightB, nWindowSize, \
-               nPeaks, iPeakFinder, fPkLocX, fPkLocY, fPkHeight, fSx, fSy, fSxy, fCorrelPlane_Out, nPxPerWindow, nWindowsTotal, total_windows) \
+               nPeaks, iPeakFinder, fPkLocX, fPkLocY, fPkHeight, fSx, fSy, fSxy, fCorrelPlane_Out, nPxPerWindow, nWindowsTotal, total_windows, peakfit_impl) \
         reduction(|:uError) reduction(+:t_fft_red,t_fit_red)
     {
         const int LANES = codelet_lanes();
@@ -259,7 +341,7 @@ float *fCorrelPlane_Out)
                     bEnsemble, fCorrelWeight, nWindowSize, nPeaks, iPeakFinder,
                     nWindowsTotal, nPxPerWindow, fPeakLoc, fStd,
                     fPkLocX, fPkLocY, fPkHeight, fSx, fSy, fSxy, fCorrelPlane_Out,
-                    &t_fft_red, &t_fit_red);
+                    peakfit_impl, &t_fft_red, &t_fit_red);
                 batch = 0;
             }
         }
@@ -273,7 +355,7 @@ float *fCorrelPlane_Out)
                 bEnsemble, fCorrelWeight, nWindowSize, nPeaks, iPeakFinder,
                 nWindowsTotal, nPxPerWindow, fPeakLoc, fStd,
                 fPkLocX, fPkLocY, fPkHeight, fSx, fSy, fSxy, fCorrelPlane_Out,
-                &t_fft_red, &t_fit_red);
+                peakfit_impl, &t_fft_red, &t_fit_red);
         }
 
     thread_cleanup:
