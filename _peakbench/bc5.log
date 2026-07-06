@@ -1,0 +1,2 @@
+clang-cl: warning: unknown argument ignored in clang-cl: '-fopenmp-simd' [-Wunknown-argument]
+   Creating library cl_poly_sse.lib and object cl_poly_sse.exp

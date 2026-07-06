@@ -1,0 +1,103 @@
+peak_fit_bench.c
+
+--- Analyzing function: nrand
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\_peakbench\peak_fit_bench.c(42) : info C5002: loop not vectorized due to reason '1101'
+
+--- Analyzing function: solve_lm_step
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(337) : info C5002: loop not vectorized due to reason '500'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(333) : info C5002: loop not vectorized due to reason '500'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(327) : info C5002: loop not vectorized due to reason '1200'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(336) : info C5002: loop not vectorized due to reason '1105'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(351) : info C5002: loop not vectorized due to reason '1105'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(349) : info C5002: loop not vectorized due to reason '1106'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(360) : info C5002: loop not vectorized due to reason '1200'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(358) : info C5002: loop not vectorized due to reason '1106'
+
+--- Analyzing function: threept_estimate
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(32) : info C5002: loop not vectorized due to reason '1303'
+
+--- Analyzing function: compute_residual_jacobian_4dof
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(118) : info C5002: loop not vectorized due to reason '501'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(114) : info C5002: loop not vectorized due to reason '501'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(137) : info C5002: loop not vectorized due to reason '501'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(134) : info C5002: loop not vectorized due to reason '501'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(157) : info C5002: loop not vectorized due to reason '1200'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(155) : info C5002: loop not vectorized due to reason '1106'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(165) : info C5002: loop not vectorized due to reason '1203'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(164) : info C5002: loop not vectorized due to reason '1106'
+
+--- Analyzing function: compute_residual_jacobian_5dof
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(191) : info C5002: loop not vectorized due to reason '501'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(187) : info C5002: loop not vectorized due to reason '501'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(209) : info C5002: loop not vectorized due to reason '501'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(206) : info C5002: loop not vectorized due to reason '501'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(229) : info C5002: loop not vectorized due to reason '1200'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(227) : info C5002: loop not vectorized due to reason '1106'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(237) : info C5002: loop not vectorized due to reason '1203'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(236) : info C5002: loop not vectorized due to reason '1106'
+
+--- Analyzing function: compute_residual_jacobian_6dof
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(263) : info C5002: loop not vectorized due to reason '501'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(259) : info C5002: loop not vectorized due to reason '501'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(281) : info C5002: loop not vectorized due to reason '501'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(278) : info C5002: loop not vectorized due to reason '501'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(302) : info C5002: loop not vectorized due to reason '1200'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(300) : info C5002: loop not vectorized due to reason '1106'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(310) : info C5002: loop not vectorized due to reason '1203'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(309) : info C5002: loop not vectorized due to reason '1106'
+
+--- Analyzing function: gen_planes
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\_peakbench\peak_fit_bench.c(42) : info C5002: loop not vectorized due to reason '1101'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\_peakbench\peak_fit_bench.c(60) : info C5002: loop not vectorized due to reason '1106'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\_peakbench\peak_fit_bench.c(59) : info C5002: loop not vectorized due to reason '1106'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\_peakbench\peak_fit_bench.c(52) : info C5002: loop not vectorized due to reason '1106'
+
+--- Analyzing function: lm_gauss4_fit
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(116) : info C5002: loop not vectorized due to reason '500'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(434) : info C5002: loop not vectorized due to reason '501'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(432) : info C5002: loop not vectorized due to reason '501'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(118) : info C5002: loop not vectorized due to reason '1102'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(114) : info C5002: loop not vectorized due to reason '1106'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(118) : info C5002: loop not vectorized due to reason '1102'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(114) : info C5002: loop not vectorized due to reason '1106'
+
+--- Analyzing function: lm_gauss5_fit
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(189) : info C5002: loop not vectorized due to reason '500'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(507) : info C5002: loop not vectorized due to reason '501'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(505) : info C5002: loop not vectorized due to reason '501'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(191) : info C5002: loop not vectorized due to reason '1102'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(187) : info C5002: loop not vectorized due to reason '1106'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(191) : info C5002: loop not vectorized due to reason '1102'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(187) : info C5002: loop not vectorized due to reason '1106'
+
+--- Analyzing function: lm_gauss6_fit
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(261) : info C5002: loop not vectorized due to reason '500'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(605) : info C5002: loop not vectorized due to reason '501'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(603) : info C5002: loop not vectorized due to reason '501'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(263) : info C5002: loop not vectorized due to reason '1102'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(259) : info C5002: loop not vectorized due to reason '1106'
+
+--- Analyzing function: bench_fit
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\_peakbench\peak_fit_bench.c(101) : info C5002: loop not vectorized due to reason '503'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\_peakbench\peak_fit_bench.c(112) : info C5002: loop not vectorized due to reason '503'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\_peakbench\peak_fit_bench.c(111) : info C5002: loop not vectorized due to reason '503'
+
+--- Analyzing function: lsqpeaklocate_lm
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(724) : info C5002: loop not vectorized due to reason '503'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(649) : info C5002: loop not vectorized due to reason '1200'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(648) : info C5002: loop not vectorized due to reason '1106'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(677) : info C5002: loop not vectorized due to reason '1303'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(676) : info C5002: loop not vectorized due to reason '1106'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(705) : info C5002: loop not vectorized due to reason '1303'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(703) : info C5002: loop not vectorized due to reason '1106'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(722) : info C5002: loop not vectorized due to reason '1303'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(720) : info C5002: loop not vectorized due to reason '1106'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(741) : info C5002: loop not vectorized due to reason '1303'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(740) : info C5002: loop not vectorized due to reason '1106'
+
+--- Analyzing function: main
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\_peakbench\peak_fit_bench.c(101) : info C5002: loop not vectorized due to reason '503'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\_peakbench\peak_fit_bench.c(112) : info C5002: loop not vectorized due to reason '503'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\_peakbench\peak_fit_bench.c(111) : info C5002: loop not vectorized due to reason '503'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\_peakbench\peak_fit_bench.c(141) : info C5002: loop not vectorized due to reason '503'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\_peakbench\peak_fit_bench.c(138) : info C5002: loop not vectorized due to reason '503'

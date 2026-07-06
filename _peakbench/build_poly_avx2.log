@@ -1,0 +1,8 @@
+peak_fit_bench.c
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\_peakbench\../pivtools_cli/lib/peak_locate_lm.c(117): warning C4849: OpenMP 'reduction' clause ignored in 'simd' directive
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\_peakbench\../pivtools_cli/lib/peak_locate_lm.c(190): warning C4849: OpenMP 'reduction' clause ignored in 'simd' directive
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\_peakbench\../pivtools_cli/lib/peak_locate_lm.c(262): warning C4849: OpenMP 'reduction' clause ignored in 'simd' directive
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(191) : info C5002: Omp simd loop not vectorized due to reason '1200'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(118) : info C5002: Omp simd loop not vectorized due to reason '1200'
+C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\worktrees\peak-fit-simd\pivtools_cli\lib\peak_locate_lm.c(263) : info C5002: Omp simd loop not vectorized due to reason '1200'
+   Creating library poly_avx2.lib and object poly_avx2.exp

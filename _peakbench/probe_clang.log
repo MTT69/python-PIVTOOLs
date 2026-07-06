@@ -1,0 +1,78 @@
+clang-cl: warning: unknown argument ignored in clang-cl: '-fopenmp-simd' [-Wunknown-argument]
+In file included from peak_fit_bench.c:31:
+.\../pivtools_cli/lib/peak_locate_lm.c(703,7): remark: the cost-model indicates that vectorization is not beneficial [-Rpass-missed=loop-vectorize]
+  703 |                                                 for(i = 0; i < PKSIZE_X; ++i) {
+      |                                                 ^
+.\../pivtools_cli/lib/peak_locate_lm.c(703,7): remark: the cost-model indicates that interleaving is not beneficial [-Rpass-missed=loop-vectorize]
+.\../pivtools_cli/lib/peak_locate_lm.c(720,4): remark: the cost-model indicates that vectorization is not beneficial [-Rpass-missed=loop-vectorize]
+  720 |                         for(i = 0; i < PKSIZE_X; ++i) {
+      |                         ^
+.\../pivtools_cli/lib/peak_locate_lm.c(720,4): remark: the cost-model indicates that interleaving is not beneficial [-Rpass-missed=loop-vectorize]
+.\../pivtools_cli/lib/peak_locate_lm.c(649,4): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+  649 |                         for(j = N[1]/8; j < N[1]*7/8; ++j) {
+      |                         ^
+.\../pivtools_cli/lib/peak_locate_lm.c(263,4): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+  263 |                         for(jj = 0; jj < N[1]; ++jj) {
+      |                         ^
+.\../pivtools_cli/lib/peak_locate_lm.c(263,4): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+.\../pivtools_cli/lib/peak_locate_lm.c(605,4): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+  605 |                         for(jj = 0; jj < N[1]; ++jj) {
+      |                         ^
+.\../pivtools_cli/lib/peak_locate_lm.c(191,4): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+  191 |                         for(jj = 0; jj < N[1]; ++jj) {
+      |                         ^
+.\../pivtools_cli/lib/peak_locate_lm.c(191,4): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+.\../pivtools_cli/lib/peak_locate_lm.c(507,4): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+  507 |                         for(jj = 0; jj < N[1]; ++jj) {
+      |                         ^
+.\../pivtools_cli/lib/peak_locate_lm.c(118,4): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+  118 |                         for(jj = 0; jj < N[1]; ++jj) {
+      |                         ^
+.\../pivtools_cli/lib/peak_locate_lm.c(137,3): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+  137 |                 for(jj = 0; jj < N[1]; ++jj) {
+      |                 ^
+.\../pivtools_cli/lib/peak_locate_lm.c(137,3): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+.\../pivtools_cli/lib/peak_locate_lm.c(118,4): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+  118 |                         for(jj = 0; jj < N[1]; ++jj) {
+      |                         ^
+.\../pivtools_cli/lib/peak_locate_lm.c(434,4): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+  434 |                         for(jj = 0; jj < N[1]; ++jj) {
+      |                         ^
+peak_fit_bench.c(66,13): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+   66 |             for (int j = 0; j < PKSIZE_Y; ++j) {
+      |             ^
+peak_fit_bench.c(118,9): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+  118 |         for (int p = 0; p < BENCH_NP; ++p) {
+      |         ^
+peak_fit_bench.c(118,9): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+peak_fit_bench.c(118,9): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+peak_fit_bench.c(107,5): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+  107 |     for (int p = 0; p < BENCH_NP; ++p) {
+      |     ^
+peak_fit_bench.c(107,5): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+peak_fit_bench.c(107,5): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+In file included from peak_fit_bench.c:31:
+.\../pivtools_cli/lib/peak_locate_lm.c(281,3): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+  281 |                 for(jj = 0; jj < N[1]; ++jj) {
+      |                 ^
+.\../pivtools_cli/lib/peak_locate_lm.c(263,4): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+  263 |                         for(jj = 0; jj < N[1]; ++jj) {
+      |                         ^
+.\../pivtools_cli/lib/peak_locate_lm.c(327,2): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+  327 |         for(i = 0; i < n; ++i) {
+      |         ^
+.\../pivtools_cli/lib/peak_locate_lm.c(336,4): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+  336 |                         for(k = 0; k < j; ++k) {
+      |                         ^
+.\../pivtools_cli/lib/peak_locate_lm.c(351,3): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+  351 |                 for(j = 0; j < i; ++j) {
+      |                 ^
+.\../pivtools_cli/lib/peak_locate_lm.c(360,3): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+  360 |                 for(j = i + 1; j < n; ++j) {
+      |                 ^
+.\../pivtools_cli/lib/peak_locate_lm.c(209,3): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+  209 |                 for(jj = 0; jj < N[1]; ++jj) {
+      |                 ^
+.\../pivtools_cli/lib/peak_locate_lm.c(191,4): remark: loop not vectorized [-Rpass-missed=loop-vectorize]
+  191 |                         for(jj = 0; jj < N[1]; ++jj) {
+      |                         ^
