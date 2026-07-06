@@ -207,23 +207,30 @@ static inline float lanczos3_sample(const float *img, float fy, float fx,
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
-/* Bicubic predictor interpolation with precomputed y-weights                  */
+/* Bicubic predictor interpolation with precomputed y-weights, both fields    */
+/* at once.                                                                    */
 /*                                                                             */
 /* The predictor y-index (fiy) is constant for all columns in a row, so the   */
 /* caller precomputes the 4 y-weights and base row index once per row.         */
 /* Only the x-weights vary per pixel — saves 8 keys_weight evals per pixel.   */
+/* The dy and dx predictor fields are sampled at the SAME (fx, iy_base), so   */
+/* the floorf/x-weights/clamped indices are computed once and both fields      */
+/* accumulate in one 4×4 pass (they only differ in the base pointer). The     */
+/* per-field FP op order matches the old single-field helper exactly —        */
+/* bit-identical results, ~half the Phase A index/weight work.                 */
 /* Uses BORDER_REPLICATE (clampi) for predictor grid boundaries.               */
 /* ─────────────────────────────────────────────────────────────────────────── */
 
-static inline float bicubic_pred_wy(
-    const float *pred, const float *wy, int iy_base,
-    float fx, int nPY, int nPX
+static inline void bicubic_pred_wy_pair(
+    const float *pred_a, const float *pred_b, const float *wy, int iy_base,
+    float fx, int nPY, int nPX, float *out_a, float *out_b
 ) {
     float fx_floor = floorf(fx);
     int ix = (int)fx_floor - 1;
     float dx = fx - fx_floor;
     float wx[4];
-    float val = 0.0f;
+    float val_a = 0.0f;
+    float val_b = 0.0f;
     int m, n, row, col;
 
     keys_weights_4(dx, wx);
@@ -232,10 +239,14 @@ static inline float bicubic_pred_wy(
         row = clampi(iy_base + m, 0, nPY - 1);  /* BORDER_REPLICATE */
         for (n = 0; n < 4; n++) {
             col = clampi(ix + n, 0, nPX - 1);
-            val += wy[m] * wx[n] * pred[row * nPX + col];
+            float w = wy[m] * wx[n];
+            int idx = row * nPX + col;
+            val_a += w * pred_a[idx];
+            val_b += w * pred_b[idx];
         }
     }
-    return val;
+    *out_a = val_a;
+    *out_b = val_b;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
@@ -315,9 +326,11 @@ static inline void warp_row_bicubic(
         float fix = pred_idx_x[j];
         int idx = i * W + j;
 
-        /* Phase A: interpolate predictor (y-weights precomputed by caller) */
-        float dense_dy = bicubic_pred_wy(pred_dy, pred_wy, pred_iy_base, fix, nPY, nPX);
-        float dense_dx = bicubic_pred_wy(pred_dx, pred_wy, pred_iy_base, fix, nPY, nPX);
+        /* Phase A: interpolate both predictor fields in one pass
+           (y-weights precomputed by caller) */
+        float dense_dy, dense_dx;
+        bicubic_pred_wy_pair(pred_dy, pred_dx, pred_wy, pred_iy_base, fix, nPY, nPX,
+                             &dense_dy, &dense_dx);
 
         /* Phase B: symmetric warp coordinates */
         float half_dy = 0.5f * dense_dy;
@@ -342,9 +355,11 @@ static inline void warp_row_lanczos(
         float fix = pred_idx_x[j];
         int idx = i * W + j;
 
-        /* Phase A: bicubic predictor interpolation (predictor field stays bicubic) */
-        float dense_dy = bicubic_pred_wy(pred_dy, pred_wy, pred_iy_base, fix, nPY, nPX);
-        float dense_dx = bicubic_pred_wy(pred_dx, pred_wy, pred_iy_base, fix, nPY, nPX);
+        /* Phase A: bicubic predictor interpolation, both fields in one pass
+           (predictor field stays bicubic) */
+        float dense_dy, dense_dx;
+        bicubic_pred_wy_pair(pred_dy, pred_dx, pred_wy, pred_iy_base, fix, nPY, nPX,
+                             &dense_dy, &dense_dx);
 
         /* Phase B: symmetric warp coordinates */
         float half_dy = 0.5f * dense_dy;
