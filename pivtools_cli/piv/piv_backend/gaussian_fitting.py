@@ -53,7 +53,6 @@ import cv2
 import numpy as np
 
 from pivtools_core.config import Config
-from pivtools_cli.piv.piv_backend.infilling import apply_infilling
 
 # Module-level cache for the Marquadt library
 _marquadt_lib = None

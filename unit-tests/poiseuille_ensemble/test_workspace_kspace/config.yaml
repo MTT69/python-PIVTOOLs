@@ -2,13 +2,11 @@ batches:
   batch_size: 10
 ensemble_infilling:
   final_pass:
-    method: local_median
-    parameters:
-      ksize: 3
+    method: biharmonic
+    parameters: {}
   mid_pass:
-    method: local_median
-    parameters:
-      ksize: 3
+    method: nearest
+    parameters: {}
 ensemble_outlier_detection:
   enabled: true
   methods:
@@ -58,13 +56,11 @@ images:
   start_index: 1
 infilling:
   final_pass:
-    method: local_median
-    parameters:
-      ksize: 3
+    method: biharmonic
+    parameters: {}
   mid_pass:
-    method: local_median
-    parameters:
-      ksize: 3
+    method: nearest
+    parameters: {}
 masking:
   enabled: false
 outlier_detection:
@@ -75,12 +71,12 @@ outlier_detection:
     type: median_2d
 paths:
   base_paths:
-  - /Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools-fftw/unit-tests/poiseuille_ensemble/test_workspace_kspace/output
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\python-PIVTOOLs\unit-tests\poiseuille_ensemble\test_workspace_kspace\output
   camera_count: 1
   camera_numbers:
   - 1
   source_paths:
-  - /Users/morgan/Documents/CODE/PIVTOOLS_FULL_STACK/PyPIVTools-fftw/unit-tests/poiseuille_ensemble/test_workspace_kspace/source
+  - C:\Users\mtt1e23\OneDrive - University of Southampton\Documents\pivtools_fullstack\python-PIVTOOLs\unit-tests\poiseuille_ensemble\test_workspace_kspace\source
 processing:
   backend: cpu
   dask_max_in_flight_per_worker: 3

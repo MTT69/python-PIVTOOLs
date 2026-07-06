@@ -581,11 +581,11 @@ outlier_detection:
     type: median_2d
 infilling:
   mid_pass:
-    method: local_median
+    method: nearest
     parameters: {}
   final_pass:
     enabled: true
-    method: local_median
+    method: biharmonic
     parameters: {}
 ensemble_outlier_detection:
   enabled: true
@@ -595,11 +595,11 @@ ensemble_outlier_detection:
     type: median_2d
 ensemble_infilling:
   mid_pass:
-    method: local_median
+    method: nearest
     parameters: {}
   final_pass:
     enabled: true
-    method: local_median
+    method: biharmonic
     parameters: {}
 plots:
   save_extension: .png

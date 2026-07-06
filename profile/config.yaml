@@ -52,22 +52,22 @@ outlier_detection:
     type: peak_mag
 infilling:
   mid_pass:
-    method: local_median
+    method: nearest
     parameters: {}
   final_pass:
     enabled: true
-    method: local_median
+    method: nearest
     parameters: {}
 ensemble_outlier_detection:
   enabled: false
   methods: []
 ensemble_infilling:
   mid_pass:
-    method: local_median
+    method: nearest
     parameters: {}
   final_pass:
     enabled: true
-    method: local_median
+    method: nearest
     parameters: {}
 plots:
   save_extension: .png

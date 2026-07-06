@@ -2793,17 +2793,17 @@ video:
     def infilling_mid_pass(self):
         """Return mid-pass infilling configuration."""
         return self.data.get("infilling", {}).get("mid_pass", {
-            "method": "local_median",
-            "parameters": {"ksize": 3}
+            "method": "nearest",
+            "parameters": {}
         })
-    
+
     @property
     def infilling_final_pass(self):
         """Return final-pass infilling configuration."""
         return self.data.get("infilling", {}).get("final_pass", {
             "enabled": True,
-            "method": "local_median",
-            "parameters": {"ksize": 3}
+            "method": "biharmonic",
+            "parameters": {}
         })
 
     # --- Ensemble-specific outlier detection and infilling ---
@@ -2821,8 +2821,8 @@ video:
     def ensemble_infilling_mid_pass(self) -> dict:
         """Return ensemble mid-pass infilling configuration."""
         return self.data.get("ensemble_infilling", {}).get("mid_pass", {
-            "method": "local_median",
-            "parameters": {"ksize": 3}
+            "method": "nearest",
+            "parameters": {}
         })
 
     @property
@@ -2830,8 +2830,8 @@ video:
         """Return ensemble final-pass infilling configuration."""
         return self.data.get("ensemble_infilling", {}).get("final_pass", {
             "enabled": True,
-            "method": "local_median",
-            "parameters": {"ksize": 3}
+            "method": "biharmonic",
+            "parameters": {}
         })
 
     @property

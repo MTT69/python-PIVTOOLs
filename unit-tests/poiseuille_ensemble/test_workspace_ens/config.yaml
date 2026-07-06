@@ -2,13 +2,11 @@ batches:
   batch_size: 10
 ensemble_infilling:
   final_pass:
-    method: local_median
-    parameters:
-      ksize: 3
+    method: nearest
+    parameters: {}
   mid_pass:
-    method: local_median
-    parameters:
-      ksize: 3
+    method: nearest
+    parameters: {}
 ensemble_outlier_detection:
   enabled: true
   methods:
@@ -59,13 +57,11 @@ images:
   start_index: 1
 infilling:
   final_pass:
-    method: local_median
-    parameters:
-      ksize: 3
+    method: nearest
+    parameters: {}
   mid_pass:
-    method: local_median
-    parameters:
-      ksize: 3
+    method: nearest
+    parameters: {}
 masking:
   enabled: false
 outlier_detection:

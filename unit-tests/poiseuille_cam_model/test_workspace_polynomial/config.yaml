@@ -51,13 +51,11 @@ images:
   - B%05d.mat
 infilling:
   final_pass:
-    method: local_median
-    parameters:
-      ksize: 3
+    method: nearest
+    parameters: {}
   mid_pass:
-    method: local_median
-    parameters:
-      ksize: 3
+    method: nearest
+    parameters: {}
 instantaneous_piv:
   overlap:
   - 50

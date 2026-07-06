@@ -29,7 +29,6 @@ from pivtools_core.window_utils import (
 )
 from pivtools_cli.piv.piv_backend.base import CrossCorrelator
 from pivtools_cli.piv.piv_result import PIVEnsembleBlockResult
-from pivtools_cli.piv.piv_backend.infilling import apply_infilling
 
 import matplotlib
 matplotlib.use("Agg") 

@@ -31,7 +31,7 @@ from scipy.optimize import least_squares
 
 from pivtools_core.window_utils import compute_window_centers
 from pivtools_cli.piv.piv_backend.outlier_detection import median_outlier_detection
-from pivtools_cli.piv.piv_backend.infilling import infill_local_median
+from pivtools_cli.piv.piv_backend.infilling import infill_nearest
 
 logger = logging.getLogger(__name__)
 
@@ -587,7 +587,7 @@ def clean_disparity_field(
     dy_c[combined_mask] = np.nan
 
     # Infill
-    dx_filled, dy_filled = infill_local_median(
+    dx_filled, dy_filled = infill_nearest(
         dx_c.astype(np.float32),
         dy_c.astype(np.float32),
         combined_mask,

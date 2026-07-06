@@ -172,8 +172,8 @@ def _run_ensemble_piv(fit_method):
             ],
         },
         "infilling": {
-            "mid_pass": {"method": "local_median", "parameters": {"ksize": 3}},
-            "final_pass": {"method": "local_median", "parameters": {"ksize": 3}},
+            "mid_pass": {"method": "nearest", "parameters": {}},
+            "final_pass": {"method": "biharmonic", "parameters": {}},
         },
         "ensemble_outlier_detection": {
             "enabled": True,
@@ -182,8 +182,8 @@ def _run_ensemble_piv(fit_method):
             ],
         },
         "ensemble_infilling": {
-            "mid_pass": {"method": "local_median", "parameters": {"ksize": 3}},
-            "final_pass": {"method": "local_median", "parameters": {"ksize": 3}},
+            "mid_pass": {"method": "nearest", "parameters": {}},
+            "final_pass": {"method": "biharmonic", "parameters": {}},
         },
         "filters": [],
         "masking": {"enabled": False},
@@ -329,8 +329,8 @@ def instantaneous_workspace():
             ],
         },
         "infilling": {
-            "mid_pass": {"method": "local_median", "parameters": {"ksize": 3}},
-            "final_pass": {"method": "local_median", "parameters": {"ksize": 3}},
+            "mid_pass": {"method": "nearest", "parameters": {}},
+            "final_pass": {"method": "biharmonic", "parameters": {}},
         },
         "filters": [],
         "masking": {"enabled": False},

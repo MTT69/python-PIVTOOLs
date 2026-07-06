@@ -60,7 +60,7 @@ outlier_detection:
     threshold: 3
 infilling:
   mid_pass:
-    method: local_median
+    method: nearest
     parameters: {}
   final_pass:
     enabled: true
