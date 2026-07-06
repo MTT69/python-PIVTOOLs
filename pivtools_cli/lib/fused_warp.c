@@ -64,6 +64,152 @@ static inline void keys_weights_4(float d, float w[4]) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
+/* Cubic B-spline basis weights (interp_mode=2)                                */
+/*                                                                             */
+/* beta^3 evaluated at stencil offsets -1, 0, +1, +2 from floor, for          */
+/* fractional position d in [0,1). These sample the PREFILTERED coefficient   */
+/* image (bspline_prefilter_2d below) — basis weights alone do NOT            */
+/* interpolate (at d=0 they are [1/6, 4/6, 1/6, 0], not a delta; exactness    */
+/* at integers comes from the prefilter). Same 4x4 stencil as                 */
+/* keys_weights_4, so the simd_warp.h interior samplers are reused as-is.     */
+/* Analytic MTF twin: interpolation_noise_psd.bspline_weights — keep in sync. */
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+static inline void bspline_weights_4(float d, float w[4]) {
+    float d2 = d * d;
+    float d3 = d2 * d;
+    float omd = 1.0f - d;
+    w[0] = omd * omd * omd * (1.0f / 6.0f);
+    w[1] = (3.0f * d3 - 6.0f * d2 + 4.0f) * (1.0f / 6.0f);
+    w[2] = (-3.0f * d3 + 3.0f * d2 + 3.0f * d + 1.0f) * (1.0f / 6.0f);
+    w[3] = d3 * (1.0f / 6.0f);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/* Cubic B-spline IIR prefilter (Unser), mirror boundaries                    */
+/*                                                                             */
+/* Converts an image into B-spline coefficients c such that sampling c with   */
+/* bspline_weights_4 interpolates the original image. Separable causal /       */
+/* anticausal first-order recursions with pole z1 = sqrt(3)-2 and overall     */
+/* gain (1-z1)(1-1/z1) = 6. Boundary handling is mirror (x[-k] = x[k], no     */
+/* edge repeat), matching scipy.ndimage.spline_filter(order=3, mode='mirror'): */
+/*   causal init:     c+[0]   = sum_{k=0..K} x[k] * z1^k   (K: |z1|^K < tol)  */
+/*   anticausal init: c-[N-1] = z1/(z1^2-1) * (c+[N-1] + z1*c+[N-2])          */
+/* float32 recursion is safe: |z1| = 0.268 gives error gain 1/(1-|z1|) = 1.37 */
+/* (no accumulation blow-up on image data).                                    */
+/*                                                                             */
+/* Rows pass parallelises over rows. Columns pass parallelises over COLUMN    */
+/* STRIPS — each thread walks rows over a contiguous block of columns, so     */
+/* memory access stays row-major-contiguous and the inner loop vectorises     */
+/* across columns (never per-column strided recursions).                       */
+/*                                                                             */
+/* EXPORTed so the unit tests can pin it against the scipy oracle directly.   */
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+#define BSPLINE_Z1 (-0.26794919243112270647f)   /* sqrt(3) - 2 */
+#define BSPLINE_GAIN 6.0f                       /* (1-z1)(1-1/z1) */
+#define BSPLINE_INIT_HORIZON 24                 /* |z1|^24 ~ 2e-14: init below float eps */
+
+/* One causal+anticausal pass over a contiguous line (stride 1, length n). */
+static inline void bspline_filter_line(float *c, int n) {
+    const float z = BSPLINE_Z1;
+    int k;
+    if (n == 1) return;                    /* single sample: coefficient = 6*x/6 = x */
+
+    /* Causal init: truncated mirror sum c+[0] = sum z^k * c[k] */
+    int horizon = BSPLINE_INIT_HORIZON < n ? BSPLINE_INIT_HORIZON : n;
+    float sum = c[0];
+    float zk = z;
+    for (k = 1; k < horizon; k++) {
+        sum += zk * c[k];
+        zk *= z;
+    }
+    c[0] = sum;
+    for (k = 1; k < n; k++)
+        c[k] += z * c[k - 1];
+
+    /* Anticausal init + backward recursion */
+    c[n - 1] = (z / (z * z - 1.0f)) * (c[n - 1] + z * c[n - 2]);
+    for (k = n - 2; k >= 0; k--)
+        c[k] = z * (c[k + 1] - c[k]);
+}
+
+EXPORT int bspline_prefilter_2d(const float *img, float *coef, int H, int W) {
+    int i, s;
+    if (!img || !coef || H < 2 || W < 2) return 1;
+
+    /* Rows pass: copy in with gain applied, then filter each row in place. */
+#ifdef _OPENMP
+    #pragma omp parallel for schedule(static)
+#endif
+    for (i = 0; i < H; i++) {
+        float *row = coef + (size_t)i * W;
+        const float *src = img + (size_t)i * W;
+        int j;
+        for (j = 0; j < W; j++)
+            row[j] = BSPLINE_GAIN * BSPLINE_GAIN * src[j];  /* gain for both axes */
+        bspline_filter_line(row, W);
+    }
+
+    /* Columns pass: strips of columns, each thread walks rows contiguously. */
+    {
+        const float z = BSPLINE_Z1;
+        const int strip = 64;
+        const int n_strips = (W + strip - 1) / strip;
+#ifdef _OPENMP
+        #pragma omp parallel for schedule(static)
+#endif
+        for (s = 0; s < n_strips; s++) {
+            int c0 = s * strip;
+            int c1 = c0 + strip < W ? c0 + strip : W;
+            int nc = c1 - c0;
+            int horizon = BSPLINE_INIT_HORIZON < H ? BSPLINE_INIT_HORIZON : H;
+            int k, j;
+
+            /* Causal init across the strip: c+[0][j] = sum z^k c[k][j] */
+            float init[64];
+            for (j = 0; j < nc; j++) init[j] = coef[c0 + j];
+            {
+                float zk = z;
+                for (k = 1; k < horizon; k++) {
+                    const float *rowk = coef + (size_t)k * W + c0;
+                    for (j = 0; j < nc; j++) init[j] += zk * rowk[j];
+                    zk *= z;
+                }
+            }
+            for (j = 0; j < nc; j++) coef[c0 + j] = init[j];
+
+            /* Causal down the rows */
+            for (k = 1; k < H; k++) {
+                float *rowk = coef + (size_t)k * W + c0;
+                const float *prev = rowk - W;
+                for (j = 0; j < nc; j++) rowk[j] += z * prev[j];
+            }
+
+            /* Anticausal init on the last row, then backward */
+            {
+                float *last = coef + (size_t)(H - 1) * W + c0;
+                const float *penult = last - W;
+                const float a = z / (z * z - 1.0f);
+                for (j = 0; j < nc; j++)
+                    last[j] = a * (last[j] + z * penult[j]);
+            }
+            for (k = H - 2; k >= 0; k--) {
+                float *rowk = coef + (size_t)k * W + c0;
+                const float *next = rowk + W;
+                for (j = 0; j < nc; j++)
+                    rowk[j] = z * (next[j] - rowk[j]);
+            }
+        }
+    }
+    return 0;
+}
+
+/* Capability probe: lets Python distinguish a libfusedwarp with B-spline
+ * support from a stale DLL (which would otherwise mis-route interp_mode=2). */
+EXPORT int fused_warp_has_bspline(void) { return 1; }
+
+/* ─────────────────────────────────────────────────────────────────────────── */
 /* Bicubic sample from image with BORDER_CONSTANT = 0                         */
 /* ─────────────────────────────────────────────────────────────────────────── */
 

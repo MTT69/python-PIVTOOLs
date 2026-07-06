@@ -22,6 +22,20 @@ EXPORT void fused_warp_set_impl(int impl);
 EXPORT int  fused_warp_get_impl(void);
 
 /*
+ * Cubic B-spline IIR prefilter (Unser, pole sqrt(3)-2, gain 6 per axis),
+ * mirror boundaries matching scipy.ndimage.spline_filter(order=3,
+ * mode='mirror'). Fills coef (caller-allocated, H*W float32) with the
+ * coefficients that bspline basis sampling interpolates exactly.
+ * Returns 0 on success, 1 on bad arguments (H or W < 2, NULL pointers).
+ * Exported for direct oracle testing; interp_mode=2 calls it internally.
+ */
+EXPORT int bspline_prefilter_2d(const float *img, float *coef, int H, int W);
+
+/* Capability probe: present (returns 1) iff this build supports interp_mode=2.
+ * Python checks this before requesting B-spline warps (stale-DLL guard). */
+EXPORT int fused_warp_has_bspline(void);
+
+/*
  * Fused symmetric image warp for predictor-corrector PIV.
  *
  * Combines three operations into a single pass:
@@ -40,6 +54,9 @@ EXPORT int  fused_warp_get_impl(void);
  *   ctrs_x          - Window centre x-coordinates in pixel space, size nPX
  *   interp_mode     - 0 = bicubic (Keys a=-0.75, 4x4 stencil, matches cv2.INTER_CUBIC)
  *                      1 = Lanczos-3 (windowed sinc, 6x6 stencil)
+ *                      2 = interpolating cubic B-spline (IIR prefilter + 4x4
+ *                          basis stencil; lowest interpolation bias)
+ *                      anything else = error (no silent fallback)
  *
  * Returns:
  *   0 = success

@@ -78,6 +78,13 @@ def fused_warp_lib():
     lib.fused_warp_get_impl.argtypes = []
     lib.fused_warp_get_impl.restype = c_int
 
+    # B-spline prefilter (interp_mode=2 support) — present on new builds only.
+    if hasattr(lib, "bspline_prefilter_2d"):
+        lib.bspline_prefilter_2d.argtypes = [c_float_p, c_float_p, c_int, c_int]
+        lib.bspline_prefilter_2d.restype = c_int
+        lib.fused_warp_has_bspline.argtypes = []
+        lib.fused_warp_has_bspline.restype = c_int
+
     return lib
 
 
@@ -558,3 +565,76 @@ class TestBatchMatchesSinglePair:
                 f"batch[{pred_kind}]/{INTERP_NAMES[interp_mode]} slot {k}: "
                 f"batch vs single-pair max|Δ|={d:.3e}"
             )
+
+
+# ---------------------------------------------------------------------------
+# B-spline prefilter vs scipy oracle (interp_mode=2 groundwork)
+# ---------------------------------------------------------------------------
+class TestBsplinePrefilter:
+    """Pin the C IIR prefilter against scipy.ndimage (float64 reference).
+
+    bspline_prefilter_2d converts an image into cubic B-spline coefficients
+    (Unser causal/anticausal recursions, pole sqrt(3)-2, gain 6/axis, mirror
+    boundaries). scipy.ndimage.spline_filter(order=3, mode='mirror') is the
+    independent oracle; errors at the observed ~2e-4 level on +-1000-range
+    coefficients are pure float32 rounding (~2e-7 relative).
+    """
+
+    @pytest.fixture(autouse=True)
+    def _need_bspline(self, fused_warp_lib):
+        if not hasattr(fused_warp_lib, "bspline_prefilter_2d"):
+            pytest.skip("libfusedwarp build predates bspline support")
+
+    @staticmethod
+    def _prefilter(lib, img):
+        c_float_p = ctypes.POINTER(ctypes.c_float)
+        img = np.ascontiguousarray(img, dtype=np.float32)
+        coef = np.zeros_like(img)
+        rc = lib.bspline_prefilter_2d(
+            img.ctypes.data_as(c_float_p), coef.ctypes.data_as(c_float_p),
+            img.shape[0], img.shape[1],
+        )
+        assert rc == 0, f"bspline_prefilter_2d rc={rc}"
+        return coef
+
+    def test_capability_probe(self, fused_warp_lib):
+        assert fused_warp_lib.fused_warp_has_bspline() == 1
+
+    @pytest.mark.parametrize("shape", [(64, 64), (128, 96), (257, 129)])
+    def test_prefilter_matches_scipy(self, fused_warp_lib, shape):
+        ndimage = pytest.importorskip("scipy.ndimage")
+        rng = np.random.RandomState(11)
+        img = rng.uniform(0.0, 255.0, shape).astype(np.float32)
+        coef = self._prefilter(fused_warp_lib, img)
+        ref = ndimage.spline_filter(img.astype(np.float64), order=3,
+                                    mode="mirror")
+        err = np.abs(coef.astype(np.float64) - ref)
+        assert err.max() < 1e-3, f"prefilter max err {err.max():.3e}"
+        assert err.mean() < 1e-4, f"prefilter mean err {err.mean():.3e}"
+
+    def test_full_chain_matches_scipy(self, fused_warp_lib):
+        """C prefilter + scipy basis sampling == scipy prefiltered
+        interpolation (interior; the border tap-padding conventions differ)."""
+        ndimage = pytest.importorskip("scipy.ndimage")
+        rng = np.random.RandomState(12)
+        img = rng.uniform(0.0, 255.0, (128, 128)).astype(np.float32)
+        coef = self._prefilter(fused_warp_lib, img)
+        yy, xx = np.mgrid[0:128, 0:128].astype(np.float64)
+        coords = np.array([yy - 0.37, xx + 0.21])
+        via_c = ndimage.map_coordinates(coef.astype(np.float64), coords,
+                                        order=3, prefilter=False, mode="mirror")
+        ref = ndimage.map_coordinates(img.astype(np.float64), coords,
+                                      order=3, prefilter=True, mode="mirror")
+        d = np.abs(via_c - ref)[8:-8, 8:-8]
+        assert d.max() < 1e-3, f"full-chain max err {d.max():.3e}"
+        assert d.mean() < 1e-4 * 255.0, f"full-chain mean err {d.mean():.3e}"
+
+    def test_bad_args_fail(self, fused_warp_lib):
+        """Degenerate sizes are rejected, not silently mishandled."""
+        c_float_p = ctypes.POINTER(ctypes.c_float)
+        img = np.zeros((1, 8), dtype=np.float32)
+        coef = np.zeros_like(img)
+        rc = fused_warp_lib.bspline_prefilter_2d(
+            img.ctypes.data_as(c_float_p), coef.ctypes.data_as(c_float_p), 1, 8,
+        )
+        assert rc != 0
