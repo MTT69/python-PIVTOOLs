@@ -27,7 +27,10 @@
  * - Reduced iteration count
  *****************************************************************************/
 
-/* Main peak localization function - compatible with existing interface */
+/* Main peak localization function - compatible with existing interface.
+ * Invalid results are NaN: peak_loc row/col = NaN (height 0, std_dev 0) when
+ * the peak search fails (flat/border/non-max) OR when the LM fit fails to
+ * converge (since 2026-07-06). A finite result is a trustworthy fit. */
 PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPeaks, int iFitType, float *std_dev);
 
 #endif

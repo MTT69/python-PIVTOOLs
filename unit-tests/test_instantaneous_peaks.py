@@ -303,3 +303,112 @@ class TestAstigmatismChallenge:
         assert pos_err < 0.01, (
             f"Type 4 position error={pos_err:.4f} px (expected > 0.01)"
         )
+
+
+class TestFitFailureSentinel:
+    """Failure honesty: invalid results must be NaN, never silently finite.
+
+    Two failure layers exist in lsqpeaklocate_lm:
+    1. The pre-fit peak-search gate (flat plane, border peak, non-local-max)
+       — always emitted NaN.
+    2. The LM fit itself (Cholesky breakdown, max_iter without convergence,
+       stagnation with a large residual) — silently returned last-best params
+       until 2026-07-06; now emits the same NaN sentinel.
+    Both directions are tested: pathological planes -> NaN, and clean/noisy
+    Gaussians -> finite (guards against over-aggressive failure marking,
+    especially the lambda-blowup path which also fires on perfect seeds).
+    """
+
+    SHAPE = (33, 33)
+
+    @staticmethod
+    def _assert_nan_sentinel(peak_loc, std_dev, label):
+        assert np.isnan(peak_loc[0]) and np.isnan(peak_loc[1]), (
+            f"{label}: expected NaN row/col, got {peak_loc[:2]}"
+        )
+        assert peak_loc[2] == 0, f"{label}: expected height 0, got {peak_loc[2]}"
+        assert np.all(std_dev == 0), f"{label}: expected std_dev 0, got {std_dev}"
+
+    # ── layer 1: the pre-fit search gate (pre-existing behaviour) ──────────
+
+    @pytest.mark.parametrize("fit_type", [3, 4, 5, 6])
+    def test_flat_zero_plane_is_nan(self, fit_type):
+        """All-zero plane: no positive peak -> gate NaN."""
+        xcorr = np.zeros(self.SHAPE, dtype=np.float32)
+        peak_loc, std_dev = _run_single_fit(xcorr, fit_type)
+        self._assert_nan_sentinel(peak_loc, std_dev, "flat zero")
+
+    @pytest.mark.parametrize("fit_type", [4, 5, 6])
+    def test_monotone_ramp_is_nan(self, fit_type):
+        """Monotone ramp: search max sits on the search-region edge with a
+        larger neighbour outside -> fails the strict local-max checks."""
+        h, w = self.SHAPE
+        xcorr = (np.arange(h, dtype=np.float32)[:, None]
+                 * np.ones(w, dtype=np.float32)[None, :]) + 1.0
+        peak_loc, std_dev = _run_single_fit(xcorr, fit_type)
+        self._assert_nan_sentinel(peak_loc, std_dev, "monotone ramp")
+
+    # ── layer 2: the LM fit itself (new sentinel) ──────────────────────────
+    # Note: planes where LM converges to the least-squares optimum of the
+    # model (plateau, delta, checkerboard) are KEPT — the fitter's job is
+    # convergence, not model adequacy (Q-factor filtering handles that
+    # downstream). Failure means: did not converge AND the residual is large.
+
+    @pytest.mark.parametrize("fit_type", [4, 5, 6])
+    def test_nan_poisoned_subwindow_is_nan(self, fit_type):
+        """A NaN inside the 5x5 fit window (e.g. from a masked correlation
+        plane) poisons every residual, so no step is ever accepted. The old
+        code returned finite clamped garbage here; it must be NaN."""
+        xcorr = _generate_gaussian_4dof(self.SHAPE, 1000.0, 0.0, 0.0, 1.5)
+        c = (self.SHAPE[0] - 1) // 2
+        xcorr[c + 1, c + 1] = np.nan  # inside the subwindow, off the gate's 4-neighbours
+        peak_loc, std_dev = _run_single_fit(xcorr, fit_type)
+        self._assert_nan_sentinel(peak_loc, std_dev, "NaN-poisoned window")
+
+    @pytest.mark.parametrize("fit_type", [4, 5, 6])
+    def test_uniform_noise_spike_is_nan(self, fit_type):
+        """Uniform noise with a spiked maximum: passes the search gate but
+        carries no Gaussian structure — LM neither converges nor reaches a
+        small residual, and must report NaN, not the seed params."""
+        rng = np.random.RandomState(0)
+        xcorr = rng.uniform(0.0, 1.0, self.SHAPE).astype(np.float32)
+        c = (self.SHAPE[0] - 1) // 2
+        xcorr[c, c] = 2.0
+        peak_loc, std_dev = _run_single_fit(xcorr, fit_type)
+        self._assert_nan_sentinel(peak_loc, std_dev, "uniform noise + spike")
+
+    # ── no-regression guards: good fits must stay finite ───────────────────
+
+    @pytest.mark.parametrize("fit_type", [4, 5, 6])
+    def test_clean_gaussian_stays_finite(self, fit_type):
+        """Noise-free Gaussian: the residual decays geometrically, so the
+        relative-improvement test never fires and the loop runs to max_iter
+        with a superb fit (or stagnates on an already-exact seed). Neither
+        exit may be marked failed — the residual gate must keep them."""
+        if fit_type in (4, 5):
+            xcorr = _generate_gaussian_4dof(self.SHAPE, 1000.0, 0.35, 0.27, 1.5)
+        else:
+            xcorr = _generate_gaussian_6dof(self.SHAPE, 1000.0, 0.35, 0.27,
+                                            1.5 ** 2, 1.5 ** 2, 0.0)
+        peak_loc, _ = _run_single_fit(xcorr, fit_type)
+        assert np.all(np.isfinite(peak_loc)), (
+            f"clean Gaussian marked failed: {peak_loc}"
+        )
+        ci, cj = (self.SHAPE[0] - 1) / 2, (self.SHAPE[1] - 1) / 2
+        assert abs(peak_loc[0] - ci - 0.35) < 0.01
+        assert abs(peak_loc[1] - cj - 0.27) < 0.01
+
+    @pytest.mark.parametrize("fit_type", [4, 5, 6])
+    def test_noisy_gaussian_stays_finite(self, fit_type):
+        """Gaussian + 1% deterministic noise: a realistic good fit must not
+        be marked failed by the max_iter or stagnation classification."""
+        rng = np.random.RandomState(42)
+        xcorr = _generate_gaussian_4dof(self.SHAPE, 1000.0, 0.35, 0.27, 1.5)
+        xcorr = xcorr + rng.normal(0.0, 10.0, self.SHAPE).astype(np.float32)
+        peak_loc, _ = _run_single_fit(xcorr, fit_type)
+        assert np.all(np.isfinite(peak_loc)), (
+            f"noisy Gaussian marked failed: {peak_loc}"
+        )
+        ci, cj = (self.SHAPE[0] - 1) / 2, (self.SHAPE[1] - 1) / 2
+        assert abs(peak_loc[0] - ci - 0.35) < 0.1
+        assert abs(peak_loc[1] - cj - 0.27) < 0.1

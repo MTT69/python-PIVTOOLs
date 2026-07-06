@@ -7,9 +7,17 @@
 
 /******************************************************************************
  * Lightweight Levenberg-Marquardt implementation for Gaussian peak fitting
- * 
+ *
  * Supports 3-point, 4-DOF, 5-DOF, and 6-DOF Gaussian fits for PIV analysis
- * 
+ *
+ * FAILURE SEMANTICS (2026-07-06): a FAILED LM fit (Cholesky breakdown,
+ * max_iter exhausted without converging, or stagnation with a large residual)
+ * writes the same NaN sentinel as a failed peak search: peak_loc row/col =
+ * NaN, height = 0, std_dev = 0. Previously all LM exits wrote finite
+ * last-best params, indistinguishable from convergence. Normal-equation
+ * accumulation and the Cholesky solve are double internally (params/data
+ * stay float).
+ *
  * KNOWN TECHNICAL DEBT:
  * - Code duplication: LM iteration logic is repeated in lm_gauss4_fit, 
  *   lm_gauss5_fit, and lm_gauss6_fit. This should be refactored into a 
@@ -98,7 +106,7 @@ static inline float eval_gauss6(float i, float j, float A, float i0, float j0, f
 static float compute_residual_jacobian_4dof(
 	const float *xcorr, const int *N,
 	float A, float i0, float j0, float s,
-	float *JtJ, float *Jtr, int compute_jacobian, float *pred_buf)
+	double *JtJ, double *Jtr, int compute_jacobian, float *pred_buf)
 {
 	int ii, jj, idx;
 	float residual_sum = 0.0f;
@@ -128,8 +136,8 @@ static float compute_residual_jacobian_4dof(
 
 	/* Jacobian path: runs once per ACCEPTED step (rare); kept scalar. Reads the
 	   cached pred (filled by the immediately-preceding residual pass) -> no exp. */
-	memset(JtJ, 0, n_params * n_params * sizeof(float));
-	memset(Jtr, 0, n_params * sizeof(float));
+	memset(JtJ, 0, n_params * n_params * sizeof(double));
+	memset(Jtr, 0, n_params * sizeof(double));
 
 	for(ii = 0; ii < N[0]; ++ii) {
 		float i = (float)(ii - (N[0]-1)/2);
@@ -152,10 +160,13 @@ static float compute_residual_jacobian_4dof(
 			J[2] = 2.0f * pred * dj / s;              /* dF/dj0 */
 			J[3] = 2.0f * pred * r2 / s;              /* dF/ds */
 
+			/* Accumulate in double: 25 float products per entry lose precision
+			   in float sums, and the 6-DOF JtJ is ill-conditioned for
+			   near-circular peaks. J itself stays float (model-limited). */
 			for(int p1 = 0; p1 < n_params; ++p1) {
-				Jtr[p1] += J[p1] * r;
+				Jtr[p1] += (double)J[p1] * (double)r;
 				for(int p2 = 0; p2 <= p1; ++p2) {
-					JtJ[p1 * n_params + p2] += J[p1] * J[p2];
+					JtJ[p1 * n_params + p2] += (double)J[p1] * (double)J[p2];
 				}
 			}
 		}
@@ -175,7 +186,7 @@ static float compute_residual_jacobian_4dof(
 static float compute_residual_jacobian_5dof(
 	const float *xcorr, const int *N,
 	float A, float i0, float j0, float sx, float sy,
-	float *JtJ, float *Jtr, int compute_jacobian, float *pred_buf)
+	double *JtJ, double *Jtr, int compute_jacobian, float *pred_buf)
 {
 	int ii, jj, idx;
 	float residual_sum = 0.0f;
@@ -199,8 +210,8 @@ static float compute_residual_jacobian_5dof(
 	}
 
 	/* Jacobian path: once per accepted step (rare); kept scalar. Reads cached pred. */
-	memset(JtJ, 0, n_params * n_params * sizeof(float));
-	memset(Jtr, 0, n_params * sizeof(float));
+	memset(JtJ, 0, n_params * n_params * sizeof(double));
+	memset(Jtr, 0, n_params * sizeof(double));
 
 	for(ii = 0; ii < N[0]; ++ii) {
 		float i = (float)(ii - (N[0]-1)/2);
@@ -223,10 +234,13 @@ static float compute_residual_jacobian_5dof(
 			J[3] = 2.0f * pred * di * di / sx; /* dF/dsx */
 			J[4] = 2.0f * pred * dj * dj / sy; /* dF/dsy */
 
+			/* Accumulate in double: 25 float products per entry lose precision
+			   in float sums, and the 6-DOF JtJ is ill-conditioned for
+			   near-circular peaks. J itself stays float (model-limited). */
 			for(int p1 = 0; p1 < n_params; ++p1) {
-				Jtr[p1] += J[p1] * r;
+				Jtr[p1] += (double)J[p1] * (double)r;
 				for(int p2 = 0; p2 <= p1; ++p2) {
-					JtJ[p1 * n_params + p2] += J[p1] * J[p2];
+					JtJ[p1 * n_params + p2] += (double)J[p1] * (double)J[p2];
 				}
 			}
 		}
@@ -246,7 +260,7 @@ static float compute_residual_jacobian_5dof(
 static float compute_residual_jacobian_6dof(
 	const float *xcorr, const int *N,
 	float A, float i0, float j0, float sx, float sy, float sxy,
-	float *JtJ, float *Jtr, int compute_jacobian, float *pred_buf)
+	double *JtJ, double *Jtr, int compute_jacobian, float *pred_buf)
 {
 	int ii, jj, idx;
 	float residual_sum = 0.0f;
@@ -270,8 +284,8 @@ static float compute_residual_jacobian_6dof(
 	}
 
 	/* Jacobian path: once per accepted step (rare); kept scalar. Reads cached pred. */
-	memset(JtJ, 0, n_params * n_params * sizeof(float));
-	memset(Jtr, 0, n_params * sizeof(float));
+	memset(JtJ, 0, n_params * n_params * sizeof(double));
+	memset(Jtr, 0, n_params * sizeof(double));
 
 	for(ii = 0; ii < N[0]; ++ii) {
 		float i = (float)(ii - (N[0]-1)/2);
@@ -295,10 +309,13 @@ static float compute_residual_jacobian_6dof(
 			J[4] = 0.5f * pred * dj * dj / (sy * sy);          /* dF/dsy - FIXED: removed incorrect negative sign */
 			J[5] = -pred * di * dj;                            /* dF/dsxy */
 
+			/* Accumulate in double: 25 float products per entry lose precision
+			   in float sums, and the 6-DOF JtJ is ill-conditioned for
+			   near-circular peaks. J itself stays float (model-limited). */
 			for(int p1 = 0; p1 < n_params; ++p1) {
-				Jtr[p1] += J[p1] * r;
+				Jtr[p1] += (double)J[p1] * (double)r;
 				for(int p2 = 0; p2 <= p1; ++p2) {
-					JtJ[p1 * n_params + p2] += J[p1] * J[p2];
+					JtJ[p1 * n_params + p2] += (double)J[p1] * (double)J[p2];
 				}
 			}
 		}
@@ -313,62 +330,89 @@ static float compute_residual_jacobian_6dof(
 	return residual_sum;
 }
 
-/* Solve (JtJ + lambda*diag(JtJ)) * delta = -Jtr using Cholesky decomposition */
-static int solve_lm_step(const float *JtJ, const float *Jtr, float lambda, float *delta, int n)
+/* Solve (JtJ + lambda*diag(JtJ)) * delta = -Jtr using Cholesky decomposition.
+ * All internal arithmetic is double: the normal equations condense 25 float
+ * products per entry and the 6-DOF system is near-singular for near-circular
+ * peaks — float Cholesky tips over into spurious "not positive-definite"
+ * failures that double solves fine. Inputs accumulate in double upstream;
+ * only the returned step is narrowed back to float. Cost is negligible
+ * (<=6x6, once per LM iteration). */
+static int solve_lm_step(const double *JtJ, const double *Jtr, float lambda, float *delta, int n)
 {
-	float A[36]; /* Max 6x6 matrix */
-	float L[36];
-	float y[6];
+	double A[36]; /* Max 6x6 matrix */
+	double L[36];
+	double y[6];
+	double d[6];
 	int i, j, k;
-	
-	memcpy(A, JtJ, n * n * sizeof(float));
+
+	memcpy(A, JtJ, n * n * sizeof(double));
 	for(i = 0; i < n; ++i) {
-		A[i * n + i] *= (1.0f + lambda);
+		A[i * n + i] *= (1.0 + (double)lambda);
 	}
-	
+
 	/* Cholesky decomposition: A = L * L^T */
-	memset(L, 0, n * n * sizeof(float));
+	memset(L, 0, n * n * sizeof(double));
 	for(i = 0; i < n; ++i) {
 		for(j = 0; j <= i; ++j) {
-			float sum = A[i * n + j];
+			double sum = A[i * n + j];
 			for(k = 0; k < j; ++k) {
 				sum -= L[i * n + k] * L[j * n + k];
 			}
 			if(i == j) {
-				if(sum <= 0.0f) return -1;
-				L[i * n + j] = sqrtf(sum);
+				if(sum <= 0.0) return -1;
+				L[i * n + j] = sqrt(sum);
 			} else {
 				L[i * n + j] = sum / L[j * n + j];
 			}
 		}
 	}
-	
+
 	/* Forward substitution: L * y = -Jtr */
 	for(i = 0; i < n; ++i) {
-		float sum = -Jtr[i];
+		double sum = -Jtr[i];
 		for(j = 0; j < i; ++j) {
 			sum -= L[i * n + j] * y[j];
 		}
 		y[i] = sum / L[i * n + i];
 	}
-	
-	/* Back substitution: L^T * delta = y */
+
+	/* Back substitution: L^T * d = y */
 	for(i = n - 1; i >= 0; --i) {
-		float sum = y[i];
+		double sum = y[i];
 		for(j = i + 1; j < n; ++j) {
-			sum -= L[j * n + i] * delta[j];
+			sum -= L[j * n + i] * d[j];
 		}
-		delta[i] = sum / L[i * n + i];
+		d[i] = sum / L[i * n + i];
 	}
-	
+
+	for(i = 0; i < n; ++i) delta[i] = (float)d[i];
+
 	return 0;
 }
 
-/* Fast Levenberg-Marquardt for 4-DOF Gaussian fitting (circular) */
-static void lm_gauss4_fit(const float *xcorr, const int *N, float *peak_loc, float *fitval, float *sig)
+/* Residual threshold for trusting a fit that did NOT converge by tolerance.
+ * The exit path alone cannot classify failure: on perfect data the residual
+ * decays geometrically so the relative-improvement test never fires (loop
+ * runs to max_iter with a superb fit), and lambda blow-up fires when the
+ * 3-point seed is already exactly optimal. So the rule is: trust the fit iff
+ * it converged by tolerance OR the summed squared residual is small relative
+ * to the peak energy (A^2 * npix) — roughly RMS residual <= ~3% of peak
+ * amplitude. A good fit sits orders of magnitude below this threshold, a
+ * plateau/noise/garbage fit orders above. NaN residuals (NaN-poisoned
+ * window) fail the comparison and are correctly rejected. */
+#define LM_ACCEPT_RESID_FRAC 1e-3f
+
+/* Fast Levenberg-Marquardt for 4-DOF Gaussian fitting (circular).
+ * Returns 0 if the fit is trustworthy, -1 if it FAILED (Cholesky breakdown,
+ * max_iter exhausted without converging, or stagnated with a large residual).
+ * peak_loc/sig/fitval are written either way (fitval feeds the multi-peak
+ * subtraction); the caller decides what a failure means for its output. */
+static int lm_gauss4_fit(const float *xcorr, const int *N, float *peak_loc, float *fitval, float *sig)
 {
 	float A, i0, j0, s;
-	float JtJ[16], Jtr[4], delta[4];
+	double JtJ[16], Jtr[4];
+	float delta[4];
+	int fit_ok = 0;   /* 1 = trustworthy; stays 0 on max_iter fall-through */
 	float pred_cache[PKSIZE_X * PKSIZE_Y];  /* Lever 2: model values shared trial->Jacobian */
 	float lambda = 0.01f;
 	float residual, new_residual;
@@ -393,18 +437,18 @@ static void lm_gauss4_fit(const float *xcorr, const int *N, float *peak_loc, flo
 	compute_residual_jacobian_4dof(xcorr, N, A, i0, j0, s, JtJ, Jtr, 1, pred_cache);
 
 	for(iter = 0; iter < max_iter; ++iter) {
-		if(solve_lm_step(JtJ, Jtr, lambda, delta, 4) != 0) break;
-		
+		if(solve_lm_step(JtJ, Jtr, lambda, delta, 4) != 0) break;  /* FAILED: degenerate normal equations */
+
 		float A_new = A + delta[0];
 		float i0_new = i0 + delta[1];
 		float j0_new = j0 + delta[2];
 		float s_new = s + delta[3];
-		
+
 		A_new = fmaxf(A_new, A * 0.5f);
 		i0_new = fminf(fmaxf(i0_new, -2.5f), 2.5f);
 		j0_new = fminf(fmaxf(j0_new, -2.5f), 2.5f);
 		s_new = fminf(fmaxf(s_new, 0.25f), 4.0f);
-		
+
 		new_residual = compute_residual_jacobian_4dof(xcorr, N, A_new, i0_new, j0_new, s_new, NULL, NULL, 0, pred_cache);
 
 		if(new_residual < residual) {
@@ -413,19 +457,23 @@ static void lm_gauss4_fit(const float *xcorr, const int *N, float *peak_loc, flo
 			residual = new_residual;
 			lambda *= 0.5f;
 			compute_residual_jacobian_4dof(xcorr, N, A, i0, j0, s, JtJ, Jtr, 1, pred_cache);
-			if(improvement < tol) break;
+			if(improvement < tol) { fit_ok = 1; break; }  /* converged */
 		} else {
 			lambda *= 2.0f;
-			if(lambda > 1e6f) break;
+			if(lambda > 1e6f) break;  /* stagnated: judged by residual below */
 		}
 	}
-	
+	/* Trust the fit iff it converged by tolerance OR the residual is small
+	   (see LM_ACCEPT_RESID_FRAC — exit path alone cannot classify failure). */
+	if(!fit_ok)
+		fit_ok = (residual <= LM_ACCEPT_RESID_FRAC * A * A * (float)(N[0] * N[1]));
+
 	peak_loc[0] = i0;
 	peak_loc[1] = j0;
 	sig[0] = s;
 	sig[1] = s;
 	sig[2] = 0.0f;
-	
+
 	if(fitval) {
 		for(ii = 0; ii < N[0]; ++ii) {
 			float i = (float)(ii - (N[0]-1)/2);
@@ -436,13 +484,18 @@ static void lm_gauss4_fit(const float *xcorr, const int *N, float *peak_loc, flo
 			}
 		}
 	}
+
+	return fit_ok ? 0 : -1;
 }
 
-/* Fast Levenberg-Marquardt for 5-DOF Gaussian fitting */
-static void lm_gauss5_fit(const float *xcorr, const int *N, float *peak_loc, float *fitval, float *sig)
+/* Fast Levenberg-Marquardt for 5-DOF Gaussian fitting.
+ * Returns 0 = trustworthy, -1 = FAILED (see lm_gauss4_fit). */
+static int lm_gauss5_fit(const float *xcorr, const int *N, float *peak_loc, float *fitval, float *sig)
 {
 	float A, i0, j0, sx, sy;
-	float JtJ[25], Jtr[5], delta[5];
+	double JtJ[25], Jtr[5];
+	float delta[5];
+	int fit_ok = 0;   /* 1 = trustworthy; stays 0 on max_iter fall-through */
 	float pred_cache[PKSIZE_X * PKSIZE_Y];  /* Lever 2: model values shared trial->Jacobian */
 	float lambda = 0.01f;
 	float residual, new_residual;
@@ -464,20 +517,20 @@ static void lm_gauss5_fit(const float *xcorr, const int *N, float *peak_loc, flo
 	compute_residual_jacobian_5dof(xcorr, N, A, i0, j0, sx, sy, JtJ, Jtr, 1, pred_cache);
 
 	for(iter = 0; iter < max_iter; ++iter) {
-		if(solve_lm_step(JtJ, Jtr, lambda, delta, 5) != 0) break;
-		
+		if(solve_lm_step(JtJ, Jtr, lambda, delta, 5) != 0) break;  /* FAILED: degenerate normal equations */
+
 		float A_new = A + delta[0];
 		float i0_new = i0 + delta[1];
 		float j0_new = j0 + delta[2];
 		float sx_new = sx + delta[3];
 		float sy_new = sy + delta[4];
-		
+
 		A_new = fmaxf(A_new, A * 0.5f);
 		i0_new = fminf(fmaxf(i0_new, -2.5f), 2.5f);
 		j0_new = fminf(fmaxf(j0_new, -2.5f), 2.5f);
 		sx_new = fminf(fmaxf(sx_new, 0.25f), 4.0f);
 		sy_new = fminf(fmaxf(sy_new, 0.25f), 4.0f);
-		
+
 		new_residual = compute_residual_jacobian_5dof(xcorr, N, A_new, i0_new, j0_new, sx_new, sy_new, NULL, NULL, 0, pred_cache);
 
 		if(new_residual < residual) {
@@ -486,19 +539,22 @@ static void lm_gauss5_fit(const float *xcorr, const int *N, float *peak_loc, flo
 			residual = new_residual;
 			lambda *= 0.5f;
 			compute_residual_jacobian_5dof(xcorr, N, A, i0, j0, sx, sy, JtJ, Jtr, 1, pred_cache);
-			if(improvement < tol) break;
+			if(improvement < tol) { fit_ok = 1; break; }  /* converged */
 		} else {
 			lambda *= 2.0f;
-			if(lambda > 1e6f) break;
+			if(lambda > 1e6f) break;  /* stagnated: judged by residual below */
 		}
 	}
-	
+	/* Trust the fit iff it converged by tolerance OR the residual is small. */
+	if(!fit_ok)
+		fit_ok = (residual <= LM_ACCEPT_RESID_FRAC * A * A * (float)(N[0] * N[1]));
+
 	peak_loc[0] = i0;
 	peak_loc[1] = j0;
 	sig[0] = sx;
 	sig[1] = sy;
 	sig[2] = 0.0f;
-	
+
 	if(fitval) {
 		for(ii = 0; ii < N[0]; ++ii) {
 			float i = (float)(ii - (N[0]-1)/2);
@@ -509,6 +565,8 @@ static void lm_gauss5_fit(const float *xcorr, const int *N, float *peak_loc, flo
 			}
 		}
 	}
+
+	return fit_ok ? 0 : -1;
 }
 
 /* Fast Levenberg-Marquardt for 6-DOF Gaussian fitting 
@@ -527,10 +585,12 @@ static void lm_gauss5_fit(const float *xcorr, const int *N, float *peak_loc, flo
  * rotation angle theta. This would make derivatives easier to verify and
  * output easier to interpret.
  */
-static void lm_gauss6_fit(const float *xcorr, const int *N, float *peak_loc, float *fitval, float *sig)
+static int lm_gauss6_fit(const float *xcorr, const int *N, float *peak_loc, float *fitval, float *sig)
 {
 	float A, i0, j0, sx, sy, sxy;
-	float JtJ[36], Jtr[6], delta[6];
+	double JtJ[36], Jtr[6];
+	float delta[6];
+	int fit_ok = 0;   /* 1 = trustworthy; stays 0 on max_iter fall-through */
 	float pred_cache[PKSIZE_X * PKSIZE_Y];  /* Lever 2: model values shared trial->Jacobian */
 	float lambda = 0.01f;
 	float residual, new_residual;
@@ -553,15 +613,15 @@ static void lm_gauss6_fit(const float *xcorr, const int *N, float *peak_loc, flo
 	compute_residual_jacobian_6dof(xcorr, N, A, i0, j0, sx, sy, sxy, JtJ, Jtr, 1, pred_cache);
 
 	for(iter = 0; iter < max_iter; ++iter) {
-		if(solve_lm_step(JtJ, Jtr, lambda, delta, 6) != 0) break;
-		
+		if(solve_lm_step(JtJ, Jtr, lambda, delta, 6) != 0) break;  /* FAILED: degenerate normal equations */
+
 		float A_new = A + delta[0];
 		float i0_new = i0 + delta[1];
 		float j0_new = j0 + delta[2];
 		float sx_new = sx + delta[3];
 		float sy_new = sy + delta[4];
 		float sxy_new = sxy + delta[5];
-		
+
 		A_new = fmaxf(A_new, A * 0.5f);
 		i0_new = fminf(fmaxf(i0_new, -2.5f), 2.5f);
 		j0_new = fminf(fmaxf(j0_new, -2.5f), 2.5f);
@@ -569,7 +629,7 @@ static void lm_gauss6_fit(const float *xcorr, const int *N, float *peak_loc, flo
 		sy_new = fminf(fmaxf(sy_new, 0.1f), 16.0f);
 		float sxy_max = 0.95f / sqrtf(sx_new * sy_new);
 		sxy_new = fminf(fmaxf(sxy_new, -sxy_max), sxy_max);
-		
+
 		new_residual = compute_residual_jacobian_6dof(xcorr, N, A_new, i0_new, j0_new, sx_new, sy_new, sxy_new, NULL, NULL, 0, pred_cache);
 
 		if(new_residual < residual) {
@@ -579,13 +639,16 @@ static void lm_gauss6_fit(const float *xcorr, const int *N, float *peak_loc, flo
 			residual = new_residual;
 			lambda *= 0.5f;
 			compute_residual_jacobian_6dof(xcorr, N, A, i0, j0, sx, sy, sxy, JtJ, Jtr, 1, pred_cache);
-			if(improvement < tol) break;
+			if(improvement < tol) { fit_ok = 1; break; }  /* converged */
 		} else {
 			lambda *= 2.0f;
-			if(lambda > 1e6f) break;
+			if(lambda > 1e6f) break;  /* stagnated: judged by residual below */
 		}
 	}
-	
+	/* Trust the fit iff it converged by tolerance OR the residual is small. */
+	if(!fit_ok)
+		fit_ok = (residual <= LM_ACCEPT_RESID_FRAC * A * A * (float)(N[0] * N[1]));
+
 	peak_loc[0] = i0;
 	peak_loc[1] = j0;
 	/* Output convention (consistent with 4-DOF and 5-DOF):
@@ -607,6 +670,8 @@ static void lm_gauss6_fit(const float *xcorr, const int *N, float *peak_loc, flo
 			}
 		}
 	}
+
+	return fit_ok ? 0 : -1;
 }
 
 /******************************************************************************
@@ -678,16 +743,17 @@ PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_
 		}
 		
 		/* Perform fit based on type - only use higher order fits for first peak */
+		int fit_status = 0;  /* LM fitters report failure; 3-point cannot fail past the gate */
 		if(iPeak == 0) {
 			switch(iFitType) {
 				case 6:
-					lm_gauss6_fit(subxcorr, Nsub, peak, fitval, sig);
+					fit_status = lm_gauss6_fit(subxcorr, Nsub, peak, fitval, sig);
 					break;
 				case 5:
-					lm_gauss5_fit(subxcorr, Nsub, peak, fitval, sig);
+					fit_status = lm_gauss5_fit(subxcorr, Nsub, peak, fitval, sig);
 					break;
 				case 4:
-					lm_gauss4_fit(subxcorr, Nsub, peak, fitval, sig);
+					fit_status = lm_gauss4_fit(subxcorr, Nsub, peak, fitval, sig);
 					break;
 				case 3:
 				default:
@@ -724,16 +790,30 @@ PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_
 			}
 		}
 		
-		/* Save results */
-		peak_loc[SUB2IND_2D(0, iPeak, nPeaks)] = peak[0] + i0;
-		peak_loc[SUB2IND_2D(1, iPeak, nPeaks)] = peak[1] + j0;
-		peak_loc[SUB2IND_2D(2, iPeak, nPeaks)] = fPeakHeight;
-		std_dev[SUB2IND_2D(0, iPeak, nPeaks)] = sig[0];
-		std_dev[SUB2IND_2D(1, iPeak, nPeaks)] = sig[1];
-		std_dev[SUB2IND_2D(2, iPeak, nPeaks)] = sig[2];
-		
+		/* Save results. A FAILED LM fit gets the same NaN sentinel as a failed
+		 * peak search above — the caller must not mistake a non-converged /
+		 * degenerate fit for a converged one (no silent fallbacks). Downstream
+		 * already treats NaN as the invalid-vector marker. */
+		if(fit_status != 0) {
+			peak_loc[SUB2IND_2D(0, iPeak, nPeaks)] = NAN;
+			peak_loc[SUB2IND_2D(1, iPeak, nPeaks)] = NAN;
+			peak_loc[SUB2IND_2D(2, iPeak, nPeaks)] = 0;
+			std_dev[SUB2IND_2D(0, iPeak, nPeaks)] = 0;
+			std_dev[SUB2IND_2D(1, iPeak, nPeaks)] = 0;
+			std_dev[SUB2IND_2D(2, iPeak, nPeaks)] = 0;
+		} else {
+			peak_loc[SUB2IND_2D(0, iPeak, nPeaks)] = peak[0] + i0;
+			peak_loc[SUB2IND_2D(1, iPeak, nPeaks)] = peak[1] + j0;
+			peak_loc[SUB2IND_2D(2, iPeak, nPeaks)] = fPeakHeight;
+			std_dev[SUB2IND_2D(0, iPeak, nPeaks)] = sig[0];
+			std_dev[SUB2IND_2D(1, iPeak, nPeaks)] = sig[1];
+			std_dev[SUB2IND_2D(2, iPeak, nPeaks)] = sig[2];
+		}
+
 		/* Subtract fit from correlation plane (only needed to find the next
-		 * peak; for nPeaks==1 there is no copy to write and no next search). */
+		 * peak; for nPeaks==1 there is no copy to write and no next search).
+		 * Runs with the last-best fitval even on a failed fit, so peak-2+
+		 * search behaviour is unchanged. */
 		if(nPeaks > 1) {
 			for(i = 0; i < PKSIZE_X; ++i) {
 				for(j = 0; j < PKSIZE_Y; ++j) {
