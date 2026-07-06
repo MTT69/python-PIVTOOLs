@@ -82,8 +82,6 @@ exclude = ["tests*", "manual_tools*", "logs*", "env*"]
     "lib/PIV_2d_cross_correlate.h",
     "lib/xcorr.c",
     "lib/xcorr.h",
-    "lib/xcorr_cache.c",
-    "lib/xcorr_cache.h",
     "lib/common.h",
     "lib/fused_warp.c",
     "lib/fused_warp.h",
