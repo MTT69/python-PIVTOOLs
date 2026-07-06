@@ -277,6 +277,30 @@ def validate_ensemble_config(config: Config) -> Tuple[bool, List[str], List[str]
         errors.append(f"Ensemble fit method: {e}")
         fit_method = None
 
+    # 8. 'peak' fit method produces mean flow only (no stresses, no
+    # normalized peakheight) — reject config combinations that silently
+    # depend on the missing fields rather than degrading quietly.
+    if fit_method == 'peak':
+        if config.ensemble_gradient_correction:
+            errors.append(
+                "ensemble_piv.gradient_correction requires the fitted "
+                "autocorrelation widths (sig_A_*), which fit_method 'peak' "
+                "does not produce. Disable gradient_correction or use "
+                "fit_method 'kspace'."
+            )
+        if config.ensemble_outlier_detection_enabled:
+            peak_mag_methods = [
+                m for m in (config.ensemble_outlier_detection_methods or [])
+                if m.get('type', '').lower() == 'peak_mag'
+            ]
+            if peak_mag_methods:
+                errors.append(
+                    "ensemble outlier detection method 'peak_mag' requires "
+                    "the normalized peak height AB/sqrt(AA*BB), which "
+                    "fit_method 'peak' does not compute (no AA/BB planes). "
+                    "Remove the peak_mag method or use fit_method 'kspace'."
+                )
+
     # 9. Validate resume_from_pass
     resume = config.ensemble_resume_from_pass
     num_passes = config.ensemble_num_passes

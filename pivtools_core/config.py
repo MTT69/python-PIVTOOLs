@@ -2602,20 +2602,29 @@ video:
     def ensemble_fit_method(self) -> str:
         """Return fitting method for ensemble PIV.
 
-        Only 'kspace' is supported: a GSL-free, closed-form k-space transfer
-        function fit (``fit_windows_kspace_linear``). The old GPL-GSL fitters
-        (the C 'kspace' and the spatial 'gaussian' Levenberg-Marquardt) were
-        removed; a stale ``fit_method: gaussian`` now fails loudly here rather
-        than silently falling back.
+        'kspace' (default): GSL-free, closed-form k-space transfer function
+        fit (``fit_windows_kspace_linear``) — returns mean displacement AND
+        Reynolds stresses from the joint AA/BB/AB fit.
+
+        'peak': fast mean-flow-only mode — only the AB cross-correlation
+        plane is accumulated (no AA/BB autocorrelations) and the mean
+        displacement comes from a plain 3-point Gaussian sub-pixel peak fit
+        on the averaged AB plane. No Reynolds stresses are produced (the
+        stress fields in ensemble_result.mat are written empty).
+
+        The old GPL-GSL fitters (the C 'kspace' and the spatial 'gaussian'
+        Levenberg-Marquardt) were removed; a stale ``fit_method: gaussian``
+        now fails loudly here rather than silently falling back.
         """
         method = self.data.get("ensemble_piv", {}).get("fit_method", "kspace")
-        valid_methods = {'kspace'}
+        valid_methods = {'kspace', 'peak'}
         if method not in valid_methods:
             raise ValueError(
                 f"Invalid ensemble_fit_method '{method}'. Must be one of "
                 f"{valid_methods}. (The 'gaussian' method and the GSL-based "
                 f"k-space fitter were removed; use 'kspace' with the "
-                f"'kspace_kurtosis' toggle for the shape model.)"
+                f"'kspace_kurtosis' toggle for the shape model, or 'peak' "
+                f"for fast mean-flow-only ensemble.)"
             )
         return method
 
