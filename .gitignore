@@ -70,3 +70,6 @@ docs/
 
 # Paper submission (published separately to SoftwareX + Pure DOI)
 paper_submission/
+
+# Claude worktrees
+.claude/worktrees/
