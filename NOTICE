@@ -13,16 +13,12 @@ Principal Developer:
 
 PIVTools source code is licensed under the BSD 3-Clause License.
 
-IMPORTANT - GPL Dependencies:
------------------------------
-Pre-built binaries link against the following GPL-licensed libraries:
-
-  * FFTW3 (http://www.fftw.org/) - GPL v2 or later
-  * GNU Scientific Library (GSL, https://www.gnu.org/software/gsl/) - GPL v3
-
-Binary distributions that include these libraries must comply with GPL terms,
-unless you replace them with alternatively-licensed implementations or obtain
-a commercial FFTW license.
+No GPL Dependencies:
+--------------------
+As of 2026-06-23 the compiled binaries link no GPL-licensed libraries. The
+correlation engine uses a permissive self-owned codelet FFT (FFTW3 removed),
+and the ensemble fitter is pure NumPy (the GSL-based fitters were removed).
+The two C libraries (libbulkxcorr2d, libfusedwarp) link only OpenMP and libm.
 
 Other Dependencies:
 -------------------

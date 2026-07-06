@@ -3,6 +3,23 @@ Single Pass Accumulator for Ensemble PIV
 
 This module implements the SinglePassAccumulator class for ensemble PIV processing,
 handling accumulation of correlation planes and single-pass optimization.
+
+NaN Reason Codes (nan_reason / status codes)
+============================================
+These codes indicate why a vector was marked as invalid or failed. Stored in
+PIVPassResult.nan_reason. Produced by the k-space fitter and the accumulator.
+
+Code  Stage                   Meaning
+----  -----                   -------
+ -1   Pre-fitting             Masked vector (outside ROI)
+  0   Success                 Fit succeeded, all checks passed
+  1   Fitting                 Linear LS underdetermined / singular
+  2   Post-fit validation     SNR too low
+  3   Post-fit validation     Displacement > 3/4 window
+  5   Post-fit validation     Negative variance
+  6   Displacement check      Displacement > 3/4 window (in accumulator)
+ 10   Outlier detection       Velocity outlier (median test)
+ 11   Outlier detection       Stress outlier (median test / realizability violation)
 """
 
 import gc
@@ -18,7 +35,6 @@ from dask.distributed import Client
 
 from pivtools_core.config import Config
 from pivtools_cli.piv.piv_result import PIVEnsemblePassResult, PIVEnsembleResult
-from pivtools_cli.piv.piv_backend.gaussian_fitting import _get_sigma_from_previous_pass
 from pivtools_cli.piv.piv_backend.outlier_detection import apply_outlier_detection
 from pivtools_cli.piv.piv_backend.infilling import apply_infilling
 
@@ -374,10 +390,6 @@ class SinglePassAccumulator:
         pass_data = self.passes_data[pass_idx]
         N = self.n_images
 
-        temp_piv_results = PIVEnsembleResult()
-        for pr in self.passes_results:
-            temp_piv_results.add_pass(pr)
-
         logging.info(f"Pass {pass_idx + 1}: Applying single-pass optimization")
 
         # Check background subtraction method
@@ -554,18 +566,7 @@ class SinglePassAccumulator:
             f"expected: {expected_size} ({total_windows} windows × {corr_size[0]}×{corr_size[1]})"
         )
 
-        # Step 6: Perform distributed Gaussian fitting
-
-        # Get sigma values from previous pass (if applicable)
-        # For pass 0: All None (sigmas computed from HWHM in _build_initial_guess)
-        # For pass > 0: Interpolated from previous pass after outlier detection & infilling
-        # Returns dict with keys: sig_AB_x, sig_AB_y, sig_AB_xy, sig_A_x, sig_A_y, sig_A_xy
-        with self._profile_section(pass_idx, "sigma_propagation"):
-            sigma_dict = _get_sigma_from_previous_pass(
-                pass_idx, total_windows, self.config, temp_piv_results,
-                n_win_x, n_win_y
-            )
-        logging.debug(f"Sigma dict: {sigma_dict}")
+        # Step 6: Perform distributed k-space fitting
 
         # Flatten mask for fitting
         if self.vector_masks and pass_idx < len(self.vector_masks):
@@ -582,21 +583,15 @@ class SinglePassAccumulator:
         else:
             mask_flat = np.zeros(total_windows, dtype=bool)
 
-        # Pure OpenMP Gaussian fitting (no Dask overhead)
-        # The C library uses OpenMP internally for parallel fitting
-
-        # Note: set_offset_fitting() is now called inside fit_windows_openmp()
-        # on each worker process (due to process isolation with Dask workers)
-
+        # Closed-form k-space fitting, dispatched across Dask workers.
+        # Reading the property here also validates fit_method (a stale
+        # 'gaussian' config raises loudly rather than silently falling back).
         fit_method = self.config.ensemble_fit_method
-        if fit_method == "kspace":
-            logging.info(f"Pass {pass_idx + 1}: Starting K-space transfer function fitting...")
-        else:
-            logging.info(f"Pass {pass_idx + 1}: Starting OpenMP Gaussian fitting...")
+        logging.info(f"Pass {pass_idx + 1}: Starting k-space transfer function fitting...")
 
-        # Build per-window predictor displacements for noise PSD (k-space only)
+        # Build per-window predictor displacements for the noise PSD (joint floor)
         predictor_displacements = None
-        if fit_method == "kspace" and pass_idx > 0:
+        if pass_idx > 0:
             smoothed_pred = pass_data.get("smoothed_predictor")
             if smoothed_pred is not None:
                 # smoothed_pred shape: (n_win_y, n_win_x, 2) where [:,:,0]=Y, [:,:,1]=X
@@ -614,7 +609,6 @@ class SinglePassAccumulator:
             R_AB_futures = []
             mask_flat_futures = []
             pred_disp_futures = []
-            sigma_dict_futures = [{} for _ in range(n_workers)]
             for worker_idx in range(n_workers):
                 # Use corr_size (not win_size) for slicing - correlation planes are sized at SumWindow
                 start_idx = worker_idx * windows_per_worker * corr_size[0] * corr_size[1]
@@ -653,59 +647,39 @@ class SinglePassAccumulator:
                 else:
                     pred_disp_futures.append(None)
 
-                for k, v in sigma_dict.items():
-                    if v is not None:
-                        sigma_dict_futures[worker_idx][k]=client.scatter(
-                            v[start_idx_win:end_idx_win],
-                            broadcast=False,
-                        )
-                        logging.debug(f"Worker {worker_idx}: sigma_dict[{k}] shape: {v.shape}")
-                    else:
-                        sigma_dict_futures[worker_idx][k]=None
-
-        # Choose fitting method based on config
+        # Closed-form, GSL-free k-space fit. The validated production recipe
+        # (joint noise floor, refc trust-region weighting, no kurtosis band cap)
+        # is fixed here; only the shape model is user-selectable via
+        # ensemble_piv.kspace_kurtosis.
         with self._profile_section(pass_idx, "fitting"):
-            fit_method = self.config.ensemble_fit_method
-
-            if fit_method == "kspace":
-                # K-space transfer function fitting
-                from pivtools_cli.piv.piv_backend.kspace_fitting import fit_windows_kspace
-                k_max_cap = self.config.ensemble_kspace_k_max_cap
-                futures = [
-                    client.submit(
-                        fit_windows_kspace,
-                        R_AA_futures[i],
-                        R_BB_futures[i],
-                        R_AB_futures[i],
-                        mask_flat_futures[i],
-                        corr_size,
-                        self.config,
-                        pass_idx,
-                        self.config.ensemble_kspace_soft_weighting,  # True for anisotropic soft decay
-                        self.config.debug,  # Enable k-space diagnostics when debug=True
-                        pred_disp_futures[i],  # Per-window predictor displacements
-                        interp_kernel,  # 'bicubic' or 'lanczos3'
-                        k_max_cap,  # Hard k_max cap from config (None = use defaults)
-                    ) for i in range(len(R_AA_futures))
-                ]
-            else:
-                # Default: Gaussian fitting (Levenberg-Marquardt)
-                from pivtools_cli.piv.piv_backend.gaussian_fitting import fit_windows_openmp
-                futures = [
-                    client.submit(
-                        fit_windows_openmp,
-                        R_AA_futures[i],
-                        R_BB_futures[i],
-                        R_AB_futures[i],
-                        mask_flat_futures[i],
-                        sigma_dict_futures[i],
-                        corr_size,
-                        self.config,
-                        pass_idx,
-                        None,  # num_threads (use default)
-                        self.config.ensemble_fit_offset,  # Pass fit_offset to worker
-                    ) for i in range(len(R_AA_futures))
-                ]
+            from pivtools_cli.piv.piv_backend.kspace_linear_fitting import (
+                fit_windows_kspace_linear,
+            )
+            shape_mode = (
+                "kurtosis_decoupled"
+                if self.config.ensemble_kspace_kurtosis
+                else "gauss"
+            )
+            futures = [
+                client.submit(
+                    fit_windows_kspace_linear,
+                    R_AA_futures[i],
+                    R_BB_futures[i],
+                    R_AB_futures[i],
+                    mask_flat_futures[i],
+                    corr_size,
+                    self.config,
+                    pass_idx,
+                    True,                 # use_soft_weighting (accepted, unused)
+                    self.config.debug,    # diagnostics when debug=True
+                    pred_disp_futures[i],  # per-window predictor displacements
+                    interp_kernel,        # 'bicubic' or 'lanczos3'
+                    None,                 # k_max_cap (accepted, unused)
+                    floor_mode="joint",
+                    weight_mode="refc",
+                    shape_mode=shape_mode,
+                ) for i in range(len(R_AA_futures))
+            ]
 
             results = client.gather(futures)
         gauss_flat = np.concatenate([r[0] for r in results])
@@ -1303,52 +1277,3 @@ class SinglePassAccumulator:
             f"Pass {pass_idx + 1}: Cleared accumulated data "
             f"(freed ~{mem_before:.1f} MB)"
         )
-
-
-def fit_chunk(window_slice, R_AA_ensemble, R_BB_ensemble, R_AB_ensemble,
-              mask_flat, sigma_dict, corr_size, config, pass_idx, num_windows):
-    """
-    Fit a subset of windows using fit_windows_openmp.
-
-    Parameters
-    ----------
-    window_slice : tuple
-        (start, end) indices of the flattened windows to process
-    R_AA_ensemble, R_BB_ensemble, R_AB_ensemble : np.ndarray
-        Flattened correlation planes
-    mask_flat : np.ndarray
-        Flattened mask
-    sigma_dict : dict
-        Signal variance arrays
-    corr_size : list
-        Window size
-    config : object
-        Config object
-    pass_idx : int
-        Pass index
-    num_windows : int
-        Number of windows in this chunk
-    """
-    from pivtools_cli.piv.piv_backend.gaussian_fitting import fit_windows_openmp
-    start, end = window_slice
-    logging.info(f"Fitting windows {start} to {end} (total {end - start}) using OpenMP")
-
-    R_AA_chunk = R_AA_ensemble[start:end]
-    R_BB_chunk = R_BB_ensemble[start:end]
-    R_AB_chunk = R_AB_ensemble[start:end]
-    mask_chunk = mask_flat[start:end]
-
-    gauss_flat, status_flat, initial_guess_flat = fit_windows_openmp(
-        R_AA_chunk,
-        R_BB_chunk,
-        R_AB_chunk,
-        mask_chunk,
-        sigma_dict,
-        corr_size,
-        config,
-        pass_idx,
-        num_windows=num_windows,
-        num_threads=None,  # or limit per worker
-    )
-
-    return gauss_flat, status_flat, initial_guess_flat

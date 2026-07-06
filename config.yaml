@@ -150,10 +150,8 @@ ensemble_piv:
   persist_images: false
   predictor_smoothing: false
   image_warp_interpolation: lanczos
-  kspace_k_max_cap: 0.4
+  kspace_kurtosis: true
   predictor_interpolation: cubic
-  kspace_snr_threshold: 3.0
-  fit_offset: false
   mask_center_pixel: true
   background_subtraction_method: correlation
   window_size:

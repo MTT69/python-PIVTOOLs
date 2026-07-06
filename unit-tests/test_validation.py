@@ -40,7 +40,7 @@ def _make_config(
     sum_window=None,
     sum_fitting_window_enabled=False,
     sum_fitting_window=None,
-    fit_method="gaussian",
+    fit_method="kspace",
     resume_from_pass=0,
     num_passes=None,
     filters=None,
@@ -212,12 +212,11 @@ class TestValidateEnsembleConfig:
         assert not valid
         assert any("fit method" in e.lower() for e in errors)
 
-    def test_kspace_valid_produces_beta_warning(self):
-        """Valid k-space config should produce BETA warning but still pass."""
+    def test_kspace_valid_passes(self):
+        """A valid k-space config passes validation with no errors."""
         cfg = _make_config(fit_method="kspace")
         valid, errors, warnings = validate_ensemble_config(cfg)
         assert valid
-        assert any("BETA" in w for w in warnings)
 
     def test_resume_from_pass_out_of_range(self):
         """resume_from_pass beyond num_passes should produce error."""

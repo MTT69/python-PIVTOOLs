@@ -80,7 +80,7 @@ If you use PIVtools in your research, please cite:
 
 BSD 3-Clause License — see [LICENSE](LICENSE) for details.
 
-**Note:** Pre-built binaries link against GPL-licensed libraries (FFTW3, GSL). Binary distributions must comply with GPL terms unless these dependencies are replaced with alternatively-licensed implementations. See the [LICENSE](LICENSE) and [NOTICE](NOTICE) files for complete details.
+**Note:** The compiled binaries link no GPL-licensed libraries (FFTW3 was replaced by a permissive self-owned codelet FFT, and the GSL fitters by a pure-NumPy implementation), so the distribution is BSD-3-Clause throughout with no copyleft obligations. See the [LICENSE](LICENSE) and [NOTICE](NOTICE) files for details.
 
 ## Contributing
 

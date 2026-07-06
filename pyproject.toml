@@ -85,16 +85,10 @@ exclude = ["tests*", "manual_tools*", "logs*", "env*"]
     "lib/xcorr_cache.c",
     "lib/xcorr_cache.h",
     "lib/common.h",
-    "lib/marquadt_gaussian.c",
-    "lib/marquadt_gaussian.h",
     "lib/fused_warp.c",
     "lib/fused_warp.h",
-    "lib/kspace_fitting.c",
-    "lib/kspace_fitting.h",
     "lib/libbulkxcorr2d.*",
-    "lib/libmarquadt.*",
-    "lib/libfusedwarp.*",
-    "lib/libkspace.*"
+    "lib/libfusedwarp.*"
 ]
 pivtools_core = ["config.yaml"]
 pivtools_gui = ["static/**/*", "templates/**/*"]

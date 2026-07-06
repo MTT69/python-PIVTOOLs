@@ -38,6 +38,7 @@ import logging
 from typing import Optional
 
 import numpy as np
+from threadpoolctl import threadpool_limits
 
 from pivtools_cli.piv.piv_backend.interpolation_noise_psd import (
     compute_noise_psd_2d, frac_distance,
@@ -537,8 +538,12 @@ def fit_windows_kspace_linear(
     # per-window fractional displacement for P_noise (warp splits the shift A/B -> pred/2)
     if predictor_displacements is not None and floor_mode not in ("flat", "autofit", "autocross"):
         pred = np.asarray(predictor_displacements, dtype=np.float64).reshape(-1, 2)
-        f_y = frac_distance(pred[:, 0] / 2.0)
-        f_x = frac_distance(pred[:, 1] / 2.0)
+        # A real multipass predictor carries NaN at invalid/edge windows. A NaN
+        # fractional shift is meaningless for the noise PSD AND would break the
+        # constant-f chunk grouping below (NaN != NaN -> empty chunk -> crash),
+        # so default NaN windows to zero shift (the un-warped, flat-P_noise case).
+        f_y = np.nan_to_num(frac_distance(pred[:, 0] / 2.0), nan=0.0)
+        f_x = np.nan_to_num(frac_distance(pred[:, 1] / 2.0), nan=0.0)
     else:
         f_y = np.zeros(n_windows)
         f_x = np.zeros(n_windows)
@@ -576,10 +581,16 @@ def fit_windows_kspace_linear(
         idx = proc_sorted[start:end]
         f_xy = (float(fkey_sorted[start, 0]), float(fkey_sorted[start, 1]))
 
-        Sigma, mu, amps, status = _fit_chunk(
-            R_AA[idx], R_BB[idx], R_AB[idx], KX, KY, KR, cy, cx,
-            f_xy, interp_kernel, floor_mode, weight_mode, shape_mode,
-        )
+        # Cap native threadpools to 1 for the batched FFT / linear solves. Under
+        # Dask each worker process already runs one task at a time
+        # (threads_per_worker=1), so N worker processes each opening their own
+        # BLAS/FFT pool would oversubscribe the cores; pin to 1 so total threads
+        # == workers. Numerics are thread-count-invariant, so this is free.
+        with threadpool_limits(limits=1):
+            Sigma, mu, amps, status = _fit_chunk(
+                R_AA[idx], R_BB[idx], R_AB[idx], KX, KY, KR, cy, cx,
+                f_xy, interp_kernel, floor_mode, weight_mode, shape_mode,
+            )
 
         gauss_flat[idx, 0:3] = amps
         gauss_flat[idx, 3:6] = 0.0

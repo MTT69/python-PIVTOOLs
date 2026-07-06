@@ -32,7 +32,7 @@ def make_correlator_backend(
     backend = getattr(config, "backend", "cpu").lower()
 
     if ensemble:
-        # Import here to avoid circular imports and allow graceful failure if GSL not installed
+        # Import here to avoid circular imports and surface a clear build error
         try:
             from pivtools_cli.piv.piv_backend.cpu_ensemble import EnsembleCorrelatorCPU
             return EnsembleCorrelatorCPU(
@@ -43,9 +43,8 @@ def make_correlator_backend(
             )
         except FileNotFoundError as e:
             raise RuntimeError(
-                f"Ensemble PIV requires the marquadt library which depends on GSL. "
-                f"Install GSL: brew install gsl (macOS) or apt-get install libgsl-dev (Linux), "
-                f"then rebuild with 'pip install -e .'. Error: {e}"
+                f"Ensemble PIV requires the compiled C libraries (libbulkxcorr2d, "
+                f"libfusedwarp). Rebuild with 'pip install -e .'. Error: {e}"
             )
         except ImportError as e:
             raise RuntimeError(f"Failed to import ensemble correlator: {e}")

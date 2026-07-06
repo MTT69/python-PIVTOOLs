@@ -240,7 +240,7 @@ flatten_for_gaussian = flatten_for_kspace
 
 
 class _MockConfig:
-    """Minimal mock config for fit_windows_kspace() and fit_windows_openmp()."""
+    """Minimal mock config for the k-space fitter (fit_windows_kspace_linear)."""
 
     def __init__(
         self,
@@ -250,7 +250,7 @@ class _MockConfig:
         ensemble_type=None,
         ensemble_sum_window=None,
         ensemble_sum_fitting_window=None,
-        ensemble_fit_offset=True,
+        ensemble_kspace_kurtosis=True,
         ensemble_mask_center_pixel=True,
     ):
         self.ensemble_fit_method = fit_method
@@ -259,7 +259,7 @@ class _MockConfig:
         self.ensemble_type = ensemble_type or ['std']
         self.ensemble_sum_window = ensemble_sum_window or [64, 64]
         self.ensemble_sum_fitting_window = ensemble_sum_fitting_window
-        self.ensemble_fit_offset = ensemble_fit_offset
+        self.ensemble_kspace_kurtosis = ensemble_kspace_kurtosis
         self.ensemble_mask_center_pixel = ensemble_mask_center_pixel
 
 
@@ -270,7 +270,7 @@ def make_mock_config(
     ensemble_type=None,
     ensemble_sum_window=None,
     ensemble_sum_fitting_window=None,
-    ensemble_fit_offset=True,
+    ensemble_kspace_kurtosis=True,
     ensemble_mask_center_pixel=True,
 ):
     """Create a minimal mock config object."""
@@ -278,5 +278,5 @@ def make_mock_config(
         fit_method, gradient_correction,
         ensemble_window_sizes, ensemble_type,
         ensemble_sum_window, ensemble_sum_fitting_window,
-        ensemble_fit_offset, ensemble_mask_center_pixel,
+        ensemble_kspace_kurtosis, ensemble_mask_center_pixel,
     )

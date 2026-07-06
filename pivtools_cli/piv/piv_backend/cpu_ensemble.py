@@ -44,7 +44,6 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
 
     # Class-level cache for libraries to avoid DLL thrashing
     _lib_corr = None
-    _lib_marq = None
     _lib_fw = None
 
     def __init__(
@@ -66,7 +65,6 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
 
         # Use the cached class attributes
         self.lib = EnsembleCorrelatorCPU._lib_corr
-        self.marquadt_lib = EnsembleCorrelatorCPU._lib_marq
         self._fw_lib = EnsembleCorrelatorCPU._lib_fw
         self.lib.bulkxcorr2d.restype = ctypes.c_ubyte
         self.lib.bulkxcorr2d.argtypes = [
@@ -254,22 +252,6 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         logging.debug("Loading C libraries (One-time init)...")
 
         lib_extension = ".dll" if os.name == "nt" else ".so"
-
-        # Load marquadt library for Gaussian fitting
-        marquadt_libpath = os.path.join(
-            os.path.dirname(__file__), "..", "..", "lib", f"libmarquadt{lib_extension}"
-        )
-        marquadt_libpath = os.path.abspath(marquadt_libpath)
-
-        if not os.path.isfile(marquadt_libpath):
-            raise FileNotFoundError(
-                f"Marquadt library not found: {marquadt_libpath}. "
-                "Ensure GSL is installed and run 'pip install -e .' to build."
-            )
-
-        cls._lib_marq = ctypes.CDLL(marquadt_libpath)
-        # Note: Only batch function is used now (fit_stacked_gaussian_batch_export)
-        # Single-window function was removed in the optimized matrix-free LM solver
 
         # Load cross-correlation library
         lib_path = os.path.join(
