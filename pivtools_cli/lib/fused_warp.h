@@ -11,6 +11,10 @@
 extern "C" {
 #endif
 
+/* Returned by both warp entry points for an interp_mode outside {0,1,2}.
+ * Distinct from the common.h codes (ERROR_NONE=0, ERROR_NOMEM=1, ...). */
+#define ERROR_BAD_INTERP_MODE 12
+
 /*
  * Implementation selector — pick the warp inner-loop path at runtime.
  *   0 = scalar reference (the always-correct oracle)

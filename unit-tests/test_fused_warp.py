@@ -33,7 +33,7 @@ _LIB_EXT = ".dll" if sys.platform.startswith("win") else ".so"
 _LIB_PATH = _PROJECT_ROOT / "pivtools_cli" / "lib" / f"libfusedwarp{_LIB_EXT}"
 _POISEUILLE_DIR = Path(__file__).resolve().parent / "poiseuille_1mp"
 
-INTERP_NAMES = {0: "bicubic", 1: "lanczos3"}
+INTERP_NAMES = {0: "bicubic", 1: "lanczos3", 2: "bspline"}
 
 
 # ---------------------------------------------------------------------------
@@ -463,9 +463,12 @@ class TestScalarSimdEquivalence:
     into false-positive failures.
     """
 
-    @pytest.mark.parametrize("interp_mode", [0, 1], ids=["bicubic", "lanczos3"])
+    @pytest.mark.parametrize("interp_mode", [0, 1, 2],
+                             ids=["bicubic", "lanczos3", "bspline"])
     @pytest.mark.parametrize("pattern", ["grid", "checkerboard"])
     def test_equivalence(self, fused_warp_lib, interp_mode, pattern):
+        if interp_mode == 2 and not hasattr(fused_warp_lib, "bspline_prefilter_2d"):
+            pytest.skip("libfusedwarp build predates bspline support")
         H = W = 256
         nPY = nPX = 16
         ctrs_y, ctrs_x = make_window_centres(H, W, nPY, nPX)
@@ -522,10 +525,13 @@ class TestBatchMatchesSinglePair:
     path is correctly plumbed through the batch call sites.
     """
 
-    @pytest.mark.parametrize("interp_mode", [0, 1], ids=["bicubic", "lanczos3"])
+    @pytest.mark.parametrize("interp_mode", [0, 1, 2],
+                             ids=["bicubic", "lanczos3", "bspline"])
     @pytest.mark.parametrize("shared_predictor", [1, 0],
                              ids=["shared_pred", "per_image_pred"])
     def test_batch_matches_single(self, fused_warp_lib, interp_mode, shared_predictor):
+        if interp_mode == 2 and not hasattr(fused_warp_lib, "bspline_prefilter_2d"):
+            pytest.skip("libfusedwarp build predates bspline support")
         N = 3
         H = W = 256
         nPY = nPX = 16
@@ -638,3 +644,83 @@ class TestBsplinePrefilter:
             img.ctypes.data_as(c_float_p), coef.ctypes.data_as(c_float_p), 1, 8,
         )
         assert rc != 0
+
+
+# ---------------------------------------------------------------------------
+# B-spline warp mode (interp_mode=2) vs scipy oracle + mode-dispatch honesty
+# ---------------------------------------------------------------------------
+class TestBsplineWarpMode:
+    """End-to-end interp_mode=2 against a scipy reference, interior-only.
+
+    Reference replicates the fused warp phase by phase: cv2 bicubic predictor
+    upsample (Phase A, identical to reference_warp), symmetric half-shift maps
+    (Phase B), then scipy prefiltered cubic-spline sampling (Phase C oracle).
+    Comparison excludes a border margin: the C sampler zero-pads coefficient
+    taps while scipy mirrors, and the IIR prefilter boundary handling differs
+    at the same order (z1^8 ~ 2.6e-5 bleed).
+    """
+
+    MARGIN = 10
+
+    @pytest.fixture(autouse=True)
+    def _need_bspline(self, fused_warp_lib):
+        if not hasattr(fused_warp_lib, "bspline_prefilter_2d"):
+            pytest.skip("libfusedwarp build predates bspline support")
+
+    def test_matches_scipy_reference(self, fused_warp_lib):
+        ndimage = pytest.importorskip("scipy.ndimage")
+        H = W = 512
+        nPY = nPX = 8
+        ctrs_y, ctrs_x = make_window_centres(H, W, nPY, nPX)
+        pred_dy, pred_dx = make_poiseuille_predictor(
+            nPY, nPX, ctrs_y, ctrs_x, u_max=5.0, H=H)
+        img_a = make_grid_image(H, W, spacing=16)
+        img_b = make_grid_image(H, W, spacing=20)
+
+        out_a, out_b = call_kernel(
+            fused_warp_lib, img_a, img_b, pred_dy, pred_dx,
+            ctrs_y, ctrs_x, interp_mode=2)
+
+        # Phase A/B reference — identical construction to reference_warp
+        pix_y = np.arange(H, dtype=np.float32)
+        pix_x = np.arange(W, dtype=np.float32)
+        pf_y = np.interp(pix_y, ctrs_y, np.arange(nPY, dtype=np.float32)).astype(np.float32)
+        pf_x = np.interp(pix_x, ctrs_x, np.arange(nPX, dtype=np.float32)).astype(np.float32)
+        map_y_pred, map_x_pred = np.meshgrid(pf_y, pf_x, indexing="ij")
+        dense_dy = cv2.remap(pred_dy.astype(np.float32), map_x_pred, map_y_pred,
+                             cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+        dense_dx = cv2.remap(pred_dx.astype(np.float32), map_x_pred, map_y_pred,
+                             cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+        yy, xx = np.meshgrid(np.arange(H, dtype=np.float64),
+                             np.arange(W, dtype=np.float64), indexing="ij")
+        ref_a = ndimage.map_coordinates(
+            img_a.astype(np.float64),
+            [yy - dense_dy / 2.0, xx - dense_dx / 2.0],
+            order=3, prefilter=True, mode="mirror")
+        ref_b = ndimage.map_coordinates(
+            img_b.astype(np.float64),
+            [yy + dense_dy / 2.0, xx + dense_dx / 2.0],
+            order=3, prefilter=True, mode="mirror")
+
+        m = self.MARGIN
+        rng_val = float(img_a.max() - img_a.min())
+        for name, out, ref in (("A", out_a, ref_a), ("B", out_b, ref_b)):
+            err = np.abs(out.astype(np.float64) - ref)[m:-m, m:-m]
+            assert err.mean() < 1e-3 * rng_val, (
+                f"out_{name}: mean err {err.mean():.4e} vs range {rng_val}")
+            assert np.percentile(err, 99.9) < 0.05 * rng_val, (
+                f"out_{name}: p99.9 err {np.percentile(err, 99.9):.4e}")
+
+    @pytest.mark.parametrize("bad_mode", [-1, 3, 7])
+    def test_unknown_mode_rejected(self, fused_warp_lib, bad_mode):
+        """interp_mode outside {0,1,2} must error (12), never silently warp
+        with a different kernel (the pre-fix behaviour ran Lanczos)."""
+        H = W = 64
+        nPY = nPX = 4
+        ctrs_y, ctrs_x = make_window_centres(H, W, nPY, nPX)
+        pred_dy, pred_dx = make_poiseuille_predictor(
+            nPY, nPX, ctrs_y, ctrs_x, u_max=2.0, H=H)
+        img = make_grid_image(H, W, spacing=8)
+        with pytest.raises(RuntimeError, match="error code 12"):
+            call_kernel(fused_warp_lib, img, img, pred_dy, pred_dx,
+                        ctrs_y, ctrs_x, interp_mode=bad_mode)

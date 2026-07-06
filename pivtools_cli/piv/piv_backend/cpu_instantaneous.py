@@ -77,6 +77,27 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         if not InstantaneousCorrelatorCPU._cleanup_registered:
             self._register_fftw_cleanup()
             InstantaneousCorrelatorCPU._cleanup_registered = True
+
+    #: Explicit warp-mode map — an unmapped string must fail loud, not be
+    #: silently warped with a different kernel than configured.
+    _INTERP_MODES = {"cubic": 0, "lanczos": 1, "bspline": 2}
+
+    def _resolve_interp_mode(self, name: str) -> int:
+        try:
+            mode = self._INTERP_MODES[name]
+        except KeyError:
+            raise ValueError(
+                f"No fused-warp interp_mode mapped for "
+                f"instantaneous_image_warp_interpolation {name!r}; "
+                f"known: {sorted(self._INTERP_MODES)}"
+            ) from None
+        if mode == 2 and not hasattr(self._fw_lib, "fused_warp_has_bspline"):
+            raise RuntimeError(
+                "image_warp_interpolation 'bspline' requested but the loaded "
+                "libfusedwarp predates interp_mode=2 (no fused_warp_has_bspline "
+                "export) — rebuild the C extensions (python setup.py build)."
+            )
+        return mode
         # Sub-kernel timer binding is per-instance (each instance has its own lib
         # handle), so it must run for EVERY correlator, not just the first.
         self._bind_kernel_timers()
@@ -843,7 +864,8 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 ctrs_x = np.ascontiguousarray(
                     self.win_ctrs_x_all[pass_idx - 1], dtype=np.float32
                 )
-                interp_mode = 0 if config.instantaneous_image_warp_interpolation == "cubic" else 1
+                interp_mode = self._resolve_interp_mode(
+                    config.instantaneous_image_warp_interpolation)
                 nPY = self.delta_ab_old.shape[1]
                 nPX = self.delta_ab_old.shape[2]
 
@@ -978,7 +1000,8 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         ctrs_x = np.ascontiguousarray(
             self.win_ctrs_x_all[pass_idx - 1], dtype=np.float32
         )
-        interp_mode = 0 if self.config.instantaneous_image_warp_interpolation == "cubic" else 1
+        interp_mode = self._resolve_interp_mode(
+            self.config.instantaneous_image_warp_interpolation)
         nPY, nPX = self.delta_ab_old.shape[0], self.delta_ab_old.shape[1]
 
         pred_dy = np.ascontiguousarray(self.delta_ab_old[..., 0], dtype=np.float32)

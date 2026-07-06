@@ -353,6 +353,46 @@ static inline float lanczos3_sample(const float *img, float fy, float fx,
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
+/* B-spline sample from a PREFILTERED coefficient image, BORDER_CONSTANT = 0  */
+/*                                                                             */
+/* Same 4x4 stencil and control flow as bicubic_sample — only the weight      */
+/* function differs, so the (weight-agnostic) simd_warp.h interior sampler is  */
+/* reused as-is. `coef` must come from bspline_prefilter_2d; sampling the raw  */
+/* image with these weights would merely blur it.                              */
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+static inline float bspline_sample(const float *coef, float fy, float fx, int H, int W,
+                                   int use_simd) {
+    float fy_floor = floorf(fy);
+    float fx_floor = floorf(fx);
+    int iy = (int)fy_floor - 1;
+    int ix = (int)fx_floor - 1;
+    float dy = fy - fy_floor;
+    float dx = fx - fx_floor;
+    float wy[4], wx[4];
+    float val = 0.0f;
+    int m, n, row, col;
+
+    bspline_weights_4(dy, wy);
+    bspline_weights_4(dx, wx);
+
+    if (use_simd && iy >= 0 && iy + 3 < H && ix >= 0 && ix + 3 < W) {
+        val = bicubic_sample_interior(coef, wy, wx, iy, ix, W);  /* weight-agnostic */
+    } else {
+        for (m = 0; m < 4; m++) {
+            row = iy + m;
+            if (row < 0 || row >= H) continue;  /* BORDER_CONSTANT = 0 */
+            for (n = 0; n < 4; n++) {
+                col = ix + n;
+                if (col < 0 || col >= W) continue;  /* BORDER_CONSTANT = 0 */
+                val += wy[m] * wx[n] * coef[row * W + col];
+            }
+        }
+    }
+    return val;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── */
 /* Bicubic predictor interpolation with precomputed y-weights, both fields    */
 /* at once.                                                                    */
 /*                                                                             */
@@ -517,6 +557,34 @@ static inline void warp_row_lanczos(
     }
 }
 
+static inline void warp_row_bspline(
+    const float *coef_a, const float *coef_b,
+    float *out_a, float *out_b,
+    const float *pred_dy, const float *pred_dx,
+    const float *pred_idx_x, const float *pred_wy, int pred_iy_base,
+    int i, int H, int W, int nPY, int nPX, int use_simd
+) {
+    int j;
+    for (j = 0; j < W; j++) {
+        float fix = pred_idx_x[j];
+        int idx = i * W + j;
+
+        /* Phase A: bicubic predictor interpolation, both fields in one pass
+           (predictor field stays Keys bicubic — smooth displacement field) */
+        float dense_dy, dense_dx;
+        bicubic_pred_wy_pair(pred_dy, pred_dx, pred_wy, pred_iy_base, fix, nPY, nPX,
+                             &dense_dy, &dense_dx);
+
+        /* Phase B: symmetric warp coordinates */
+        float half_dy = 0.5f * dense_dy;
+        float half_dx = 0.5f * dense_dx;
+
+        /* Phase C: B-spline sample of the prefiltered coefficient images */
+        out_a[idx] = bspline_sample(coef_a, (float)i - half_dy, (float)j - half_dx, H, W, use_simd);
+        out_b[idx] = bspline_sample(coef_b, (float)i + half_dy, (float)j + half_dx, H, W, use_simd);
+    }
+}
+
 /* ─────────────────────────────────────────────────────────────────────────── */
 /* Main exported function                                                      */
 /* ─────────────────────────────────────────────────────────────────────────── */
@@ -569,7 +637,7 @@ EXPORT int fused_symmetric_warp(
             warp_row_bicubic(img_a, img_b, out_a, out_b, pred_dy, pred_dx,
                              pred_idx_x, pred_wy, pred_iy_base, i, H, W, nPY, nPX, use_simd);
         }
-    } else {
+    } else if (interp_mode == 1) {
         /* ── Lanczos-3 image warp (6×6 stencil, LUT-accelerated) ──── */
         float (*lanc_lut)[6] = (float (*)[6])malloc(
             (size_t)(LANCZOS3_LUT_SIZE + 1) * 6 * sizeof(float));
@@ -595,6 +663,41 @@ EXPORT int fused_symmetric_warp(
         }
 
         free(lanc_lut);
+    } else if (interp_mode == 2) {
+        /* ── Interpolating cubic B-spline warp (prefilter + 4×4 basis) ── */
+        float *coef_a = (float *)malloc((size_t)H * W * sizeof(float));
+        float *coef_b = (float *)malloc((size_t)H * W * sizeof(float));
+        if (!coef_a || !coef_b) {
+            free(coef_a); free(coef_b);
+            free(pred_idx_y); free(pred_idx_x);
+            return ERROR_NOMEM;
+        }
+        bspline_prefilter_2d(img_a, coef_a, H, W);   /* OMP inside */
+        bspline_prefilter_2d(img_b, coef_b, H, W);
+
+        int i;
+        #pragma omp parallel for schedule(static)
+        for (i = 0; i < H; i++) {
+            float fiy = pred_idx_y[i];
+            float fiy_floor = floorf(fiy);
+            int pred_iy_base = (int)fiy_floor - 1;
+            float pred_frac_dy = fiy - fiy_floor;
+            float pred_wy[4];
+            keys_weights_4(pred_frac_dy, pred_wy);   /* predictor stays bicubic */
+
+            warp_row_bspline(coef_a, coef_b, out_a, out_b, pred_dy, pred_dx,
+                             pred_idx_x, pred_wy, pred_iy_base, i, H, W, nPY, nPX,
+                             use_simd);
+        }
+
+        free(coef_a);
+        free(coef_b);
+    } else {
+        /* Unknown mode: refuse — silently picking a kernel here would let the
+         * warp and the k-space noise model disagree. */
+        free(pred_idx_y);
+        free(pred_idx_x);
+        return ERROR_BAD_INTERP_MODE;
     }
 
     free(pred_idx_y);
@@ -672,7 +775,7 @@ EXPORT int fused_symmetric_warp_batch(
                              cur_pred_dy, cur_pred_dx, pred_idx_x, pred_wy,
                              pred_iy_base, i, H, W, nPY, nPX, use_simd);
         }
-    } else {
+    } else if (interp_mode == 1) {
         /* ── Lanczos-3 image warp (LUT-accelerated) ──────────────────────── */
         float (*lanc_lut)[6] = (float (*)[6])malloc(
             (size_t)(LANCZOS3_LUT_SIZE + 1) * 6 * sizeof(float));
@@ -708,6 +811,55 @@ EXPORT int fused_symmetric_warp_batch(
         }
 
         free(lanc_lut);
+    } else if (interp_mode == 2) {
+        /* ── Interpolating cubic B-spline warp ──────────────────────────── */
+        /* Unlike modes 0/1 this needs prefiltered coefficient images, so the
+         * batch loop is OUTER-SERIAL over images / inner-parallel over rows:
+         * only ONE coefficient pair (2*H*W floats) is ever live, instead of
+         * N pairs if the flattened (image,row) loop were kept. Parallelism is
+         * preserved — the prefilter is OMP-parallel internally and the row
+         * loop is OMP-parallel per image. */
+        float *coef_a = (float *)malloc((size_t)H * W * sizeof(float));
+        float *coef_b = (float *)malloc((size_t)H * W * sizeof(float));
+        if (!coef_a || !coef_b) {
+            free(coef_a); free(coef_b);
+            free(pred_idx_y); free(pred_idx_x);
+            return ERROR_NOMEM;
+        }
+
+        int ni;
+        for (ni = 0; ni < N; ni++) {
+            const float *cur_pred_dy = pred_dy + (ptrdiff_t)ni * pred_stride;
+            const float *cur_pred_dx = pred_dx + (ptrdiff_t)ni * pred_stride;
+            float *cur_out_a = outs_a + (size_t)ni * H * W;
+            float *cur_out_b = outs_b + (size_t)ni * H * W;
+
+            bspline_prefilter_2d(imgs_a + (size_t)ni * H * W, coef_a, H, W);
+            bspline_prefilter_2d(imgs_b + (size_t)ni * H * W, coef_b, H, W);
+
+            int i;
+            #pragma omp parallel for schedule(static)
+            for (i = 0; i < H; i++) {
+                float fiy = pred_idx_y[i];
+                float fiy_floor = floorf(fiy);
+                int pred_iy_base = (int)fiy_floor - 1;
+                float pred_frac_dy = fiy - fiy_floor;
+                float pred_wy[4];
+                keys_weights_4(pred_frac_dy, pred_wy);
+
+                warp_row_bspline(coef_a, coef_b, cur_out_a, cur_out_b,
+                                 cur_pred_dy, cur_pred_dx, pred_idx_x, pred_wy,
+                                 pred_iy_base, i, H, W, nPY, nPX, use_simd);
+            }
+        }
+
+        free(coef_a);
+        free(coef_b);
+    } else {
+        /* Unknown mode: refuse (no silent kernel substitution). */
+        free(pred_idx_y);
+        free(pred_idx_x);
+        return ERROR_BAD_INTERP_MODE;
     }
 
     free(pred_idx_y);

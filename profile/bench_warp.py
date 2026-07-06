@@ -35,9 +35,11 @@ from test_fused_warp import (  # noqa: E402
 )
 
 # Taps per output pixel: Phase A (2× bicubic 4×4 = 32) + Phase C (2× sample).
+# Mode 2 (bspline) also runs an IIR prefilter per image (~8 flops/px, timed
+# inside the kernel call — reported inline, and separately via --mode bspline).
 _PHASE_A_TAPS = 32
-_TAPS_PHASE_C = {0: 2 * 16, 1: 2 * 36}  # bicubic 2×16, lanczos 2×36
-_MODE_NAME = {0: "bicubic", 1: "lanczos"}
+_TAPS_PHASE_C = {0: 2 * 16, 1: 2 * 36, 2: 2 * 16}  # bicubic/bspline 2×16, lanczos 2×36
+_MODE_NAME = {0: "bicubic", 1: "lanczos", 2: "bspline"}
 _NDP = np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS")
 
 
@@ -107,7 +109,9 @@ def main(argv=None):
     p.add_argument("--size", type=int, default=2048, help="image side (square)")
     p.add_argument("--pairs", type=int, default=1, help="N image pairs in the batch")
     p.add_argument("--iters", type=int, default=7, help="timed repeats (median)")
-    p.add_argument("--mode", choices=["bicubic", "lanczos", "both"], default="both")
+    p.add_argument("--mode", choices=["bicubic", "lanczos", "bspline", "both", "all"],
+                   default="both",
+                   help="'both' = bicubic+lanczos (historic default); 'all' adds bspline")
     p.add_argument("--threads", type=int, default=1,
                    help="OMP_NUM_THREADS (default 1: isolates per-core SIMD from threading)")
     args = p.parse_args(argv)
@@ -118,7 +122,12 @@ def main(argv=None):
     N = args.pairs
     lib, lib_path = _load_lib()
     data = _make_batch(N, H, W)
-    modes = [0, 1] if args.mode == "both" else [0 if args.mode == "bicubic" else 1]
+    _MODE_SETS = {"both": [0, 1], "all": [0, 1, 2],
+                  "bicubic": [0], "lanczos": [1], "bspline": [2]}
+    modes = _MODE_SETS[args.mode]
+    if 2 in modes and not hasattr(lib, "bspline_prefilter_2d"):
+        raise SystemExit("this libfusedwarp build predates bspline (interp_mode=2) "
+                         "- rebuild with `python setup.py build`")
 
     try:
         import bench_common as bc

@@ -2917,13 +2917,15 @@ video:
         - 'cubic': Bicubic (Keys a=-0.75, 4x4 stencil). Default.
         - 'lanczos': Lanczos-3 (windowed sinc, 6x6 stencil). Sharper frequency
           preservation, ~1.5x slower than cubic.
+        - 'bspline': Interpolating cubic B-spline (IIR prefilter + 4x4 stencil,
+          interp_mode=2). Lowest interpolation bias / peak-locking.
 
         Default: 'cubic'
         """
         method = self.data.get("instantaneous_piv", {}).get(
             "image_warp_interpolation", "cubic"
         )
-        valid_methods = {'cubic', 'lanczos'}
+        valid_methods = {'cubic', 'lanczos', 'bspline'}
         if method not in valid_methods:
             raise ValueError(
                 f"Invalid instantaneous_image_warp_interpolation '{method}'. "
