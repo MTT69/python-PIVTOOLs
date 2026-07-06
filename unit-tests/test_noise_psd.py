@@ -5,7 +5,8 @@ Tests validate that the noise PSD module correctly computes the spectral
 signature of interpolation-induced noise coloring. Key invariants:
 - At f=0 (integer displacement / pass 0), P_noise = 1 everywhere (white noise)
 - Kernel weights always sum to 1
-- |H(k, f)| <= 1 for all k, f (interpolation cannot amplify)
+- |H(k, f)| <= 1 holds EXACTLY for the interpolating B-spline; bicubic
+  (Keys a=-0.75) and Lanczos-3 overshoot slightly mid-band (~3% / ~5%)
 - P_noise is symmetric about both k-axes
 """
 
@@ -17,10 +18,17 @@ from pivtools_cli.piv.piv_backend.interpolation_noise_psd import (
     frac_distance,
     bicubic_weights,
     lanczos3_weights,
+    bspline_weights,
     bicubic_dtft,
     lanczos3_dtft,
+    bspline_dtft,
     compute_noise_psd_2d,
 )
+
+ALL_KERNELS = ["bicubic", "lanczos3", "bspline"]
+# Per-kernel 2D P_noise upper bounds: bicubic/lanczos overshoot mid-band;
+# the prefiltered B-spline is passive (|H| <= 1 to machine precision).
+P_BOUND = {"bicubic": 1.1, "lanczos3": 1.1, "bspline": 1.0 + 1e-9}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -169,6 +177,116 @@ class TestLanczos3DTFT:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# B-spline weights (basis, pre-division)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestBsplineWeights:
+    """Tests for bspline_weights() — the beta^3 basis taps."""
+
+    @pytest.mark.parametrize("f", [0.0, 0.1, 0.25, 0.5, 0.75, 0.99])
+    def test_sum_is_one(self, f):
+        weights = bspline_weights(f)
+        assert sum(weights) == pytest.approx(1.0, abs=1e-12)
+
+    def test_f_zero_is_not_a_delta(self):
+        """At f=0 the basis weights are (1/6, 4/6, 1/6, 0) — NOT a delta.
+        The interpolating (H=1 at f=0) property comes from the prefilter
+        division in bspline_dtft, not from the weights alone. This test
+        documents the mechanism difference vs bicubic/lanczos."""
+        w = bspline_weights(0.0)
+        assert w == pytest.approx((1 / 6, 4 / 6, 1 / 6, 0.0), abs=1e-12)
+
+    def test_four_weights(self):
+        w = bspline_weights(0.3)
+        assert len(w) == 4
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# B-spline DTFT (prefiltered interpolating kernel)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestBsplineDTFT:
+    """Tests for bspline_dtft() — numerator DTFT / b_hat(k)."""
+
+    def test_f_zero_H_is_one(self):
+        """H(k, 0) = 1 exactly: the f=0 basis DTFT equals b_hat(k)."""
+        k = np.linspace(-0.5, 0.5, 129)
+        H = bspline_dtft(k, 0.0)
+        np.testing.assert_allclose(np.abs(H), 1.0, atol=1e-12)
+
+    @pytest.mark.parametrize("f", [0.0, 0.25, 0.5])
+    def test_dc_is_one(self, f):
+        H = bspline_dtft(np.array([0.0]), f)
+        assert np.abs(H[0]) == pytest.approx(1.0, abs=1e-12)
+
+    @pytest.mark.parametrize("f", [0.1, 0.25, 0.4, 0.5])
+    def test_magnitude_passive(self, f):
+        """|H| <= 1 to machine precision: the interpolating B-spline is
+        passive — the prefilter's high-k gain is exactly cancelled by the
+        basis (verified analytically; bound is principled, not a margin)."""
+        k = np.linspace(-0.5, 0.5, 2001)
+        H = bspline_dtft(k, f)
+        assert np.all(np.abs(H) <= 1.0 + 1e-9)
+
+    @pytest.mark.parametrize("f", [0.0, 0.1, 0.25, 0.4, 0.5])
+    def test_nyquist_closed_form(self, f):
+        """H(0.5, f) = 1 - 6f^2 + 4f^3 (real; monotone 1 -> 0 on [0, 0.5])."""
+        H = bspline_dtft(np.array([0.5]), f)
+        expected = 1.0 - 6.0 * f * f + 4.0 * f ** 3
+        assert H[0].real == pytest.approx(expected, abs=1e-12)
+        assert abs(H[0].imag) < 1e-12
+
+    def test_flatter_than_bicubic_midband(self):
+        """The interpolating B-spline colours LESS than bicubic mid-band
+        (its |H| stays closer to 1 for |k| <~ 0.25 at half-pixel shift)."""
+        k = np.linspace(0.02, 0.25, 100)
+        f = 0.5
+        H_bsp = np.abs(bspline_dtft(k, f))
+        H_bic = np.abs(bicubic_dtft(k, f))
+        assert np.mean(np.abs(H_bsp - 1.0)) < np.mean(np.abs(H_bic - 1.0))
+
+    @pytest.mark.parametrize("f", [0.1, 0.25, 0.3, 0.5])
+    def test_scipy_oracle(self, f):
+        """The analytic transfer must match scipy's prefiltered cubic-spline
+        shift on a periodic signal: shift by f, compare complex transfer
+        Y(k)/X(k) against bspline_dtft(k, f). Pins the formula (tap layout,
+        sign convention, prefilter division) against an independent
+        implementation."""
+        ndimage = pytest.importorskip("scipy.ndimage")
+        rng = np.random.RandomState(7)
+        n = 256
+        x = rng.uniform(0.0, 255.0, n)
+        # scipy shifts content by +f (sample at t - f... sign fixed below by
+        # conjugation choice); grid-wrap = truly periodic boundaries.
+        y = ndimage.shift(x, f, order=3, prefilter=True, mode="grid-wrap")
+        X = np.fft.fft(x)
+        Y = np.fft.fft(y)
+        k = np.fft.fftfreq(n)
+        H_measured = Y / X
+        H_analytic = bspline_dtft(k, f)
+        # scipy's shift(+f) corresponds to sampling at position (i - f);
+        # our dtft convention is for sampling at floor+f. The two differ by
+        # a pure integer-delay phase e^{-i2πk}: shift(+f) samples at
+        # offset -f = (floor=-1) + (1-f). Try both attributions and require
+        # one to match exactly — this pins magnitude AND phase structure.
+        phase = np.exp(-2j * np.pi * k)
+        candidates = [
+            H_analytic,
+            np.conj(H_analytic),
+            bspline_dtft(k, 1.0 - f) * phase if 0.0 < f < 1.0 else H_analytic,
+            np.conj(bspline_dtft(k, 1.0 - f) * phase) if 0.0 < f < 1.0 else H_analytic,
+        ]
+        errs = [np.max(np.abs(H_measured - c)) for c in candidates]
+        assert min(errs) < 1e-10, (
+            f"no convention candidate matches scipy: min err {min(errs):.3e}"
+        )
+        # Magnitude must agree regardless of phase convention
+        np.testing.assert_allclose(
+            np.abs(H_measured), np.abs(H_analytic), atol=1e-10,
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 2D Noise PSD
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -187,14 +305,14 @@ class TestNoisePSD2D:
         k_y = fftshift(fftfreq(64))
         return np.meshgrid(k_x, k_y, indexing='xy')
 
-    @pytest.mark.parametrize("kernel", ["bicubic", "lanczos3"])
+    @pytest.mark.parametrize("kernel", ALL_KERNELS)
     def test_f_zero_gives_flat_one(self, grids_64, kernel):
         """At f=0 (pass 0), P_noise = 1 everywhere — white noise."""
         K_X, K_Y = grids_64
         P = compute_noise_psd_2d(K_X, K_Y, 0.0, 0.0, kernel=kernel)
         np.testing.assert_allclose(P, 1.0, atol=1e-10)
 
-    @pytest.mark.parametrize("kernel", ["bicubic", "lanczos3"])
+    @pytest.mark.parametrize("kernel", ALL_KERNELS)
     @pytest.mark.parametrize("f", [0.25, 0.5])
     def test_nonzero_f_gives_structured_psd(self, grids_64, kernel, f):
         """Non-zero fractional shift should produce structured (non-flat) PSD."""
@@ -206,7 +324,7 @@ class TestNoisePSD2D:
         center = 64 // 2
         assert P[center, center] == pytest.approx(1.0, abs=1e-8)
 
-    @pytest.mark.parametrize("kernel", ["bicubic", "lanczos3"])
+    @pytest.mark.parametrize("kernel", ALL_KERNELS)
     def test_separable(self, grids_64, kernel):
         """P(kx, ky) = |H(kx, fx)|^2 * |H(ky, fy)|^2 is separable."""
         K_X, K_Y = grids_64
@@ -220,7 +338,7 @@ class TestNoisePSD2D:
         # P = P_x_only * P_y_only (since P_x_only has H_y=1 and vice versa)
         np.testing.assert_allclose(P, P_x_only * P_y_only, rtol=1e-10)
 
-    @pytest.mark.parametrize("kernel", ["bicubic", "lanczos3"])
+    @pytest.mark.parametrize("kernel", ALL_KERNELS)
     @pytest.mark.parametrize("f", [0.0, 0.25, 0.5])
     @pytest.mark.parametrize("window", [32, 64])
     def test_symmetry(self, kernel, f, window):
@@ -240,11 +358,18 @@ class TestNoisePSD2D:
         np.testing.assert_allclose(P_pos, P_neg, atol=1e-12,
                                    err_msg="P_noise not symmetric: P(k) != P(-k)")
 
-    @pytest.mark.parametrize("kernel", ["bicubic", "lanczos3"])
+    @pytest.mark.parametrize("kernel", ALL_KERNELS)
     def test_values_bounded(self, grids_64, kernel):
-        """P_noise values should be in [0, 1] (power can only decrease)."""
+        """P_noise bounded above per kernel (see P_BOUND): bicubic/lanczos
+        overshoot mid-band; the B-spline is passive to machine precision."""
         K_X, K_Y = grids_64
         P = compute_noise_psd_2d(K_X, K_Y, 0.3, 0.3, kernel=kernel)
         assert np.all(P >= -1e-10)
-        # Bicubic strictly bounded; Lanczos can slightly exceed 1 at some k
-        assert np.all(P <= 1.1)
+        assert np.all(P <= P_BOUND[kernel])
+
+    def test_unknown_kernel_raises(self, grids_32):
+        """Unknown kernel names must fail loud — the kernel must match the
+        warp that produced the images (no silent default)."""
+        K_X, K_Y = grids_32
+        with pytest.raises(ValueError, match="Unknown interpolation kernel"):
+            compute_noise_psd_2d(K_X, K_Y, 0.25, 0.25, kernel="bspine")
