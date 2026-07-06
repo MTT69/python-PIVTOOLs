@@ -14,49 +14,6 @@
 #include <stdio.h>
 
 /****************************************************
- * direct_xcorr_shifted(A, B, out, H, W)
- *
- * out = fftshift( IFFT( FFT(A) .* conj(FFT(B)) ) ) / (H*W)
- * computed directly (no FFT) as a circular cross-correlation. This is the
- * exact operation the old FFTW `xcorr` performed; it is numerically equal to
- * the codelet engine (gate-verified to ~3e-7). Used only by `convolve`, which
- * runs once per pass on zero-padded weight windows -- not the hot path. The
- * zero-skip keeps it O((H*W)*nnz) rather than O((H*W)^2).
- */
-static void direct_xcorr_shifted(const float *A, const float *B,
-                                 float *out, int H, int W)
-{
-	const double mul = 1.0 / ((double)H * (double)W);
-	int m;  /* MSVC OpenMP needs the counter declared outside the for-init */
-#ifdef _OPENMP
-	#pragma omp parallel for schedule(static)
-#endif
-	for (m = 0; m < H; ++m)
-	{
-		for (int n = 0; n < W; ++n)
-		{
-			double acc = 0.0;
-			for (int i = 0; i < H; ++i)
-			{
-				int ii = ((i - m) % H + H) % H;
-				const float *Arow = &A[i * W];
-				const float *Brow = &B[ii * W];
-				for (int j = 0; j < W; ++j)
-				{
-					float a = Arow[j];
-					if (a == 0.0f) continue;          /* skip zero-padding */
-					int jj = ((j - n) % W + W) % W;
-					acc += (double)a * (double)Brow[jj];
-				}
-			}
-			int row_swap = (m + H / 2) % H;
-			int col_swap = (n + W / 2) % W;
-			out[row_swap * W + col_swap] = (float)(acc * mul);
-		}
-	}
-}
-
-/****************************************************
  * unsigned convolve(a, b, c, N)
  * cross-correlation of a with b via zero-padded correlation, centre extracted.
  * Used for the correlation-plane weighting (autocorrelation of the window
