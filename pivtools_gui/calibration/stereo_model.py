@@ -21,9 +21,12 @@ This module serves TWO distinct stereo paths; do not conflate them (CLAUDE.md go
    board, because correspondence is via the shared cam1-defined world frame, not shared
    image points.
 
-3C reconstruction keeps the Willert/Soloff geometric method: for each grid point,
-stack the two cameras' projection Jacobians into a 4x3 system and solve for
-(Ux,Uy,Uz) by least squares. The result is returned in ONE right-handed world frame —
+3C reconstruction keeps the Willert/Soloff geometric method: for each point of a
+REGULAR world-mm grid spanning the two cameras' overlap (``regular_world_grid``),
+both cameras' pixel displacement fields are interpolated at that point's projection
+and the two projection Jacobians are stacked into a 4x3 system solved for
+(Ux,Uy,Uz) by least squares. The cameras are treated symmetrically — neither PIV
+grid is privileged. The result is returned in ONE right-handed world frame —
 the user's clicked +X/+Y with +Z = +X x +Y — so W (= Uz) shares the z-axis with the
 world_z coordinate. There is no independent uz sign flip: the sign is carried by the
 4x3 solve, so W and world_z are always in the same frame.
@@ -41,6 +44,7 @@ from loguru import logger
 from scipy.interpolate import RegularGridInterpolator
 from scipy.ndimage import distance_transform_edt
 
+from .apply import local_jacobians
 from .camera_model import CameraModel, DistortionModel, fit_intrinsics
 from .detection.base import BoardDetector, DetectionResult
 from .pipeline import Calibrator, view_diagnostics_summary
@@ -530,9 +534,142 @@ def _interpolate_field(
     return out.astype(np.float64)
 
 
+def regular_world_grid(
+    model1: CameraModel,
+    model2: CameraModel,
+    coords1_px: np.ndarray,
+    coords2_px: np.ndarray,
+    z_world: float = 0.0,
+    tilt_x: float = 0.0,
+    tilt_y: float = 0.0,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+    """Regular world-mm grid on the sheet plane over the two cameras' PIV overlap.
+
+    ``coords1_px``/``coords2_px`` are the cameras' PIV grids, (H,W,2) image-down pixel
+    meshgrids. Returns ``(X, Y, Z, spacing_mm)``: X/Y are axis-aligned world-mm meshgrids
+    (Hg, Wg) with constant spacing and ascending axes, ``Z = z_world + X*tan(tilt_y) +
+    Y*tan(tilt_x)`` (the same sheet plane ``back_project_to_plane`` uses), and
+    ``spacing_mm`` is the spacing used.
+
+    Domain: both PIV grids are back-projected to the plane; the grid spans the
+    INTERSECTION of the two finite world bounding boxes, snapped to spacing multiples.
+    Raises ``ValueError`` when a camera yields no finite world points, the boxes do not
+    overlap, or the snapped grid would be smaller than 2x2 — never a silent fallback.
+
+    Spacing is the MEDIAN world-space vector pitch pooled over both cameras' in-overlap
+    grid points and both axes. The local pitch is the PIV grid step (px) times the local
+    pixel->world magnification — the column norms of ``local_jacobians`` — so the
+    spacing never depends on where the cameras happen to be oblique. The chosen spacing
+    and the pooled pitch range are logged.
+    """
+    grids = []
+    for k, coords in ((1, coords1_px), (2, coords2_px)):
+        c = np.asarray(coords, dtype=np.float64)
+        if c.ndim != 3 or c.shape[-1] != 2 or c.shape[0] < 2 or c.shape[1] < 2:
+            raise ValueError(
+                f"cam{k} PIV grid must be an (H,W,2) meshgrid of at least 2x2 points, "
+                f"got shape {c.shape}"
+            )
+        grids.append(c)
+
+    worlds, steps = [], []
+    for k, c in ((1, grids[0]), (2, grids[1])):
+        model = model1 if k == 1 else model2
+        w = model.back_project_to_plane(
+            c.reshape(-1, 2), z_world, tilt_x, tilt_y
+        )[:, :2]
+        finite = np.isfinite(w).all(axis=1)
+        if not finite.any():
+            raise ValueError(
+                f"cam{k} PIV grid does not back-project to the sheet plane "
+                "(all rays miss) — check the calibration and z/tilt values"
+            )
+        # Pixel grid step per axis: x varies along axis 1, y along axis 0 of a meshgrid.
+        step_x = float(np.median(np.abs(np.diff(c[..., 0], axis=1))))
+        step_y = float(np.median(np.abs(np.diff(c[..., 1], axis=0))))
+        if not (np.isfinite(step_x) and step_x > 0 and np.isfinite(step_y) and step_y > 0):
+            raise ValueError(
+                f"cam{k} PIV grid has a degenerate pixel step "
+                f"(x={step_x!r}, y={step_y!r})"
+            )
+        worlds.append((w, finite))
+        steps.append((step_x, step_y))
+
+    # Overlap = intersection of the two finite world bounding boxes.
+    boxes = []
+    for w, finite in worlds:
+        wf = w[finite]
+        boxes.append((wf[:, 0].min(), wf[:, 0].max(), wf[:, 1].min(), wf[:, 1].max()))
+    xmin = max(boxes[0][0], boxes[1][0])
+    xmax = min(boxes[0][1], boxes[1][1])
+    ymin = max(boxes[0][2], boxes[1][2])
+    ymax = min(boxes[0][3], boxes[1][3])
+    if not (xmin < xmax and ymin < ymax):
+        raise ValueError(
+            "cameras' PIV grids have no overlapping world footprint: "
+            f"cam1 x=[{boxes[0][0]:.1f},{boxes[0][1]:.1f}] y=[{boxes[0][2]:.1f},"
+            f"{boxes[0][3]:.1f}] mm; cam2 x=[{boxes[1][0]:.1f},{boxes[1][1]:.1f}] "
+            f"y=[{boxes[1][2]:.1f},{boxes[1][3]:.1f}] mm"
+        )
+
+    # Pooled world-space vector pitch over both cameras' in-overlap points and both axes.
+    pooled = []
+    for k, (c, (w, finite), (step_x, step_y)) in enumerate(
+        zip(grids, worlds, steps), start=1
+    ):
+        model = model1 if k == 1 else model2
+        J = local_jacobians(model, c.reshape(-1, 2), z_world, tilt_x, tilt_y)  # (N,2,2)
+        mag_x = np.hypot(J[:, 0, 0], J[:, 1, 0])
+        mag_y = np.hypot(J[:, 0, 1], J[:, 1, 1])
+        inside = (
+            finite
+            & (w[:, 0] >= xmin) & (w[:, 0] <= xmax)
+            & (w[:, 1] >= ymin) & (w[:, 1] <= ymax)
+        )
+        for pitch in (step_x * mag_x[inside], step_y * mag_y[inside]):
+            pooled.append(pitch[np.isfinite(pitch)])
+    pooled = np.concatenate(pooled) if pooled else np.array([])
+    if pooled.size == 0:
+        raise ValueError(
+            "no finite vector-pitch samples inside the stereo overlap — cannot "
+            "derive a grid spacing"
+        )
+
+    spacing = float(np.median(pooled))
+    if not (np.isfinite(spacing) and spacing > 0):
+        raise ValueError(f"median vector-pitch grid spacing is degenerate ({spacing!r})")
+
+    # Snap the overlap box to spacing multiples; the 1e-9 guards float round-off at
+    # exact multiples.
+    x0 = np.ceil(xmin / spacing) * spacing
+    y0 = np.ceil(ymin / spacing) * spacing
+    nx = int(np.floor((xmax - x0) / spacing + 1e-9)) + 1
+    ny = int(np.floor((ymax - y0) / spacing + 1e-9)) + 1
+    if nx < 2 or ny < 2:
+        raise ValueError(
+            f"stereo overlap x=[{xmin:.1f},{xmax:.1f}] y=[{ymin:.1f},{ymax:.1f}] mm is "
+            f"too small for a regular grid at spacing {spacing:.4g} mm "
+            f"({ny}x{nx} points)"
+        )
+    xs = x0 + spacing * np.arange(nx)
+    ys = y0 + spacing * np.arange(ny)
+    X, Y = np.meshgrid(xs, ys)
+    Z = z_world + X * np.tan(tilt_y) + Y * np.tan(tilt_x)
+
+    logger.info(
+        "stereo regular grid: spacing {:.4g} mm (median vector pitch; min/max = "
+        "{:.4g}/{:.4g} mm), grid {}x{}, overlap x=[{:.1f},{:.1f}] y=[{:.1f},{:.1f}] mm",
+        spacing,
+        float(pooled.min()), float(pooled.max()),
+        ny, nx, xmin, xmax, ymin, ymax,
+    )
+    return X, Y, Z, spacing
+
+
 def reconstruct_3c_field(
     model1: CameraModel,
     model2: CameraModel,
+    world_grid: Tuple[np.ndarray, np.ndarray, np.ndarray],
     coords1_px: np.ndarray,
     ux1_px: np.ndarray,
     uy1_px: np.ndarray,
@@ -540,66 +677,69 @@ def reconstruct_3c_field(
     ux2_px: np.ndarray,
     uy2_px: np.ndarray,
     dt: float,
-    z_world: float = 0.0,
-    tilt_x: float = 0.0,
-    tilt_y: float = 0.0,
     interpolator: str = "linear",
     bmask1: Optional[np.ndarray] = None,
     bmask2: Optional[np.ndarray] = None,
 ):
-    """Full-field 3C reconstruction from two cameras' PIV grids.
+    """Full-field 3C reconstruction of both cameras' PIV fields onto a regular world grid.
 
-    cam1's grid is back-projected to world, projected into cam2, and cam2's
-    displacement field is interpolated there; the 4x3 solve then gives (U,V,W).
-    ``interpolator`` selects the cam2 resample kernel: "linear" (legacy bilinear,
-    rings) or "cubic"/"lanczos" (cv2.remap, anti-ring) — see ``_interpolate_field``.
+    ``world_grid`` is the ``(X, Y, Z)`` triple from ``regular_world_grid`` (the sheet
+    plane is baked into Z, so there are no z/tilt parameters here). Each grid point is
+    projected into cam1 AND cam2; both cameras' pixel displacement fields are
+    interpolated at their projections (``interpolator`` = linear|cubic|lanczos, see
+    ``_interpolate_field``) and the 4x3 solve gives (U,V,W) in m/s. The cameras are
+    treated symmetrically — neither PIV grid is privileged, and each camera's data is
+    resampled exactly once.
 
-    ``bmask1``/``bmask2`` are the two cameras' per-vector validity masks (True = masked,
-    the per-camera PIV ``b_mask`` convention). When supplied, the returned ``mask`` flags
-    every output point that is unreliable: either camera flagged its contributing vector,
-    or the 3C solve could not be formed (cam1 NaN input, or cam2's projection fell outside
-    its grid).
+    ``bmask1``/``bmask2`` are the per-camera PIV validity masks (True = masked). Both are
+    bilinearly resampled at their camera's projection; a query reaching a masked or
+    out-of-grid region reads >= 0.5 and masks the output point.
 
-    Returns (world_x, world_y, world_z, U, V, W, mask) on cam1's grid, U/V/W in m/s, mask
-    a (H,W) bool. W is u_z in the same right-handed world frame as world_z (no sign flip) —
-    coordinates and velocity always share one frame.
+    Returns (U, V, W, mask), each shaped like the grid (Hg, Wg). mask True = masked:
+    the solve was non-finite (either camera's projection left its PIV grid — the natural
+    overlap trim — or NaN input), or either bmask flagged the contributing region. W is
+    u_z in the same right-handed world frame as the grid Z (no sign flip) — coordinates
+    and velocity always share one frame.
     """
-    H, W = ux1_px.shape
-    c1 = np.asarray(coords1_px, dtype=np.float64).reshape(H, W, 2)
-    flat_px = c1.reshape(-1, 2)
-    d1 = np.column_stack([ux1_px.reshape(-1), uy1_px.reshape(-1)])
+    X, Y, Z = world_grid
+    Hg, Wg = np.asarray(X).shape
+    world = np.column_stack(
+        [np.asarray(X, dtype=np.float64).ravel(),
+         np.asarray(Y, dtype=np.float64).ravel(),
+         np.asarray(Z, dtype=np.float64).ravel()]
+    )
 
-    world = model1.back_project_to_plane(flat_px, z_world, tilt_x, tilt_y)  # (N,3)
+    c1 = np.asarray(coords1_px, dtype=np.float64).reshape(*ux1_px.shape, 2)
+    c2 = np.asarray(coords2_px, dtype=np.float64).reshape(*ux2_px.shape, 2)
+    proj1 = model1.project(world)  # (N,2) image-down px
+    proj2 = model2.project(world)
 
-    # Project world grid into cam2 and interpolate cam2 displacements there.
-    proj2 = model2.project(world)  # (N,2) image-down px
-    c2 = np.asarray(coords2_px).reshape(*ux2_px.shape, 2)
-    dx2 = _interpolate_field(c2, ux2_px, proj2, method=interpolator)
-    dy2 = _interpolate_field(c2, uy2_px, proj2, method=interpolator)
-    d2 = np.column_stack([dx2, dy2])
+    d1 = np.column_stack([
+        _interpolate_field(c1, ux1_px, proj1, method=interpolator),
+        _interpolate_field(c1, uy1_px, proj1, method=interpolator),
+    ])
+    d2 = np.column_stack([
+        _interpolate_field(c2, ux2_px, proj2, method=interpolator),
+        _interpolate_field(c2, uy2_px, proj2, method=interpolator),
+    ])
 
     vel_mm = reconstruct_3c_at_points(model1, model2, world, d1, d2)  # (N,3) mm/frame
     vel_ms = (vel_mm / 1000.0) / dt
 
-    wx = world[:, 0].reshape(H, W)
-    wy = world[:, 1].reshape(H, W)
-    wz = world[:, 2].reshape(H, W)
-    U = vel_ms[:, 0].reshape(H, W)
-    V = vel_ms[:, 1].reshape(H, W)
-    Wc = vel_ms[:, 2].reshape(H, W)
+    U = vel_ms[:, 0].reshape(Hg, Wg)
+    V = vel_ms[:, 1].reshape(Hg, Wg)
+    Wc = vel_ms[:, 2].reshape(Hg, Wg)
 
     # Output validity mask (True = masked). Invalid where the 3C solve produced a
-    # non-finite vector (cam1 NaN input, or cam2's projection left its grid -> NaN), or
-    # where either camera flagged its contributing vector. cam1's mask is already on this
-    # grid; cam2's is resampled through the same cam1->cam2 projection used for the
-    # displacements (bilinear, so a query reaching cam2's masked/out-of-grid region is
-    # masked).
+    # non-finite vector (a projection left its camera's PIV grid -> NaN, or NaN input),
+    # or where either camera's bmask flags the contributing region — both masks resampled
+    # through the same world->camera projection used for the displacements.
     mask = ~(np.isfinite(U) & np.isfinite(V) & np.isfinite(Wc))
-    if bmask1 is not None:
-        mask |= np.asarray(bmask1, dtype=bool).reshape(H, W)
-    if bmask2 is not None:
-        m2 = _interpolate_field(
-            c2, np.asarray(bmask2, dtype=np.float64), proj2, method="linear"
-        ).reshape(H, W)
-        mask |= (~np.isfinite(m2)) | (m2 >= 0.5)
-    return wx, wy, wz, U, V, Wc, mask
+    for bmask, c, proj in ((bmask1, c1, proj1), (bmask2, c2, proj2)):
+        if bmask is None:
+            continue
+        m = _interpolate_field(
+            c, np.asarray(bmask, dtype=np.float64), proj, method="linear"
+        ).reshape(Hg, Wg)
+        mask |= (~np.isfinite(m)) | (m >= 0.5)
+    return U, V, Wc, mask

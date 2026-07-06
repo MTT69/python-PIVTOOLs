@@ -547,7 +547,7 @@ calibration:
   z_world: 0.0              # light-sheet plane Z (mm) + tilt (rad), applied at apply time
   tilt_x: 0.0
   tilt_y: 0.0
-  interpolator: lanczos     # stereo cam2 resample kernel: linear | cubic | lanczos
+  interpolator: lanczos     # stereo resample kernel: linear | cubic | lanczos
   charuco:
     squares_h: 10
     squares_v: 7

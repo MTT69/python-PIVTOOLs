@@ -10,7 +10,7 @@ in the calibration (clicked) world frame — the same plane equation as
 ``camera_model.back_project_to_plane`` (post-A1, pinhole and poly3d agree).
 
 Two ways to use that correction. The legacy path keeps the three numbers and applies
-them at reconstruction time (``reconstruct_3c_field(..., z_world, tilt_x, tilt_y)``).
+them at reconstruction time (``regular_world_grid(..., z_world, tilt_x, tilt_y)``).
 DaVis instead **redefines the world frame** so the corrected sheet becomes the new
 Z=0 plane and bakes that redefinition into both cameras' extrinsics — no tilt fields
 stored, intrinsics untouched. This module provides that frame redefinition as a pure

@@ -366,10 +366,12 @@ def reconstruct_stereo_run(
 ) -> List[str]:
     """3C reconstruction over a run: cam1 + cam2 uncalibrated -> stereo (U,V,W) m/s.
 
-    Writes world coordinates (x,y,z mm) and 3C velocities (ux,uy,uz m/s) on cam1's
-    grid into ``out_dir``. Uses the final populated pass unless ``pass_index`` set.
+    Writes world coordinates (x,y mm) and 3C velocities (ux,uy,uz m/s) on a REGULAR
+    world-mm grid spanning the two cameras' overlap (spacing = median world-space
+    vector pitch — see ``regular_world_grid``) into ``out_dir``. Uses the final
+    populated pass unless ``pass_index`` set.
     """
-    from .stereo_model import reconstruct_3c_field
+    from .stereo_model import reconstruct_3c_field, regular_world_grid
 
     uncal_dir1 = Path(uncal_dir1)
     uncal_dir2 = Path(uncal_dir2)
@@ -386,6 +388,13 @@ def reconstruct_stereo_run(
     c1 = np.stack([x1, y1], axis=-1)
     c2 = np.stack([x2, y2], axis=-1)
 
+    # The output grid is frame-invariant, and building it is the expensive part
+    # (back-projections + Jacobians) — do it once, before any frame I/O, so an empty
+    # overlap or degenerate spacing fails loudly up front.
+    gX, gY, gZ, _spacing = regular_world_grid(
+        record.model1, record.model2, c1, c2, z_world, tilt_x, tilt_y,
+    )
+
     written: List[str] = []
     coords_written = False
     bmats1 = {b.name: b for b in _vector_files(uncal_dir1, vector_glob)}
@@ -399,16 +408,17 @@ def reconstruct_stereo_run(
             continue
         ux1, uy1, b1 = v1[p]
         ux2, uy2, b2 = v2[p]
-        wx, wy, wz, U, V, Wc, bmask = reconstruct_3c_field(
-            record.model1, record.model2, c1, ux1, uy1, c2, ux2, uy2,
-            dt, z_world, tilt_x, tilt_y, interpolator=interpolator,
+        U, V, Wc, bmask = reconstruct_3c_field(
+            record.model1, record.model2, (gX, gY, gZ),
+            c1, ux1, uy1, c2, ux2, uy2,
+            dt, interpolator=interpolator,
             bmask1=b1, bmask2=b2,
         )
         n_passes = p + 1
-        # The reconstructed world grid (wx, wy) is frame-invariant — write coordinates
-        # once, on the first processed frame, not once per frame.
+        # The regular world grid is frame-invariant — write coordinates once, on the
+        # first processed frame, not once per frame (no frames -> no output).
         if not coords_written:
-            cs = _coords_struct({p: (wx, wy)}, n_passes)
+            cs = _coords_struct({p: (gX, gY)}, n_passes)
             scipy.io.savemat(str(out_dir / "coordinates.mat"),
                              {"coordinates": cs}, oned_as="row", do_compression=True)
             coords_written = True

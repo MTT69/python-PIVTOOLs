@@ -15,7 +15,10 @@ import pytest
 from pivtools_gui.calibration import record as REC
 from pivtools_gui.calibration import self_cal as SC
 from pivtools_gui.calibration.camera_model import CameraModel
-from pivtools_gui.calibration.stereo_model import reconstruct_3c_field
+from pivtools_gui.calibration.stereo_model import (
+    reconstruct_3c_field,
+    regular_world_grid,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -164,10 +167,13 @@ def test_rebake_record_rejects_polynomial():
 
 
 def test_baked_record_reconstruction_equivalence():
-    """Reconstruction on the rebaked record (Z=0) equals the original with the sheet.
+    """The rebaked record's grid (Z=0) is the original's sheet grid, frame-redefined.
 
-    Back-projected world coords differ only by the frame redefinition: mapping the
-    rebaked grid through g_corr reproduces the original on-sheet grid.
+    The regular output grid is built per record, so the two grids are different
+    lattices — pointwise equality no longer applies. What rebaking must preserve is
+    the physics: mapping the rebaked grid through g_corr lands it (a) on the original
+    sheet plane, (b) with the same spacing (a rigid frame redefinition cannot change
+    magnification), and (c) covering the same imaged region.
     """
     from pivtools_gui.calibration.self_cal_frame import plane_to_world_correction
 
@@ -175,24 +181,30 @@ def test_baked_record_reconstruction_equivalence():
     H = W = 6
     gx, gy = np.meshgrid(np.linspace(450, 1150, W), np.linspace(350, 850, H))
     coords1 = np.stack([gx, gy], axis=-1)
-    zero = np.zeros((H, W))
     coords2 = coords1.copy()
 
     old = _stereo_record()
-    wx_o, wy_o, wz_o, *_ = reconstruct_3c_field(
-        old.model1, old.model2, coords1, zero, zero, coords2, zero, zero,
-        dt=1.0, z_world=z, tilt_x=tx, tilt_y=ty)
+    gX_o, gY_o, gZ_o, sp_o = regular_world_grid(
+        old.model1, old.model2, coords1, coords2, z, tx, ty)
 
     new = _stereo_record()
     SC.rebake_record(new, z, tx, ty)
-    wx_n, wy_n, wz_n, *_ = reconstruct_3c_field(
-        new.model1, new.model2, coords1, zero, zero, coords2, zero, zero, dt=1.0)
+    gX_n, gY_n, gZ_n, sp_n = regular_world_grid(
+        new.model1, new.model2, coords1, coords2)
 
     R_corr, t_corr = plane_to_world_correction(z, tx, ty)
-    world_new = np.stack([wx_n.ravel(), wy_n.ravel(), wz_n.ravel()], axis=1)
-    world_old = np.stack([wx_o.ravel(), wy_o.ravel(), wz_o.ravel()], axis=1)
+    world_new = np.stack([gX_n.ravel(), gY_n.ravel(), gZ_n.ravel()], axis=1)
     mapped = (R_corr @ world_new.T).T + t_corr
-    assert np.allclose(mapped, world_old, atol=1e-6)
+
+    # (a) mapped rebaked grid lies on the original sheet plane
+    mx, my, mz = mapped[:, 0], mapped[:, 1], mapped[:, 2]
+    assert np.allclose(mz, z + mx * np.tan(ty) + my * np.tan(tx), atol=1e-6)
+    # (b) spacing preserved by the rigid frame redefinition
+    assert sp_n == pytest.approx(sp_o, rel=1e-3)
+    # (c) same imaged region: bounding boxes agree within one grid spacing
+    for m_axis, o_grid in ((mx, gX_o), (my, gY_o)):
+        assert m_axis.min() == pytest.approx(o_grid.min(), abs=sp_o)
+        assert m_axis.max() == pytest.approx(o_grid.max(), abs=sp_o)
 
 
 # ---------------------------------------------------------------------------
@@ -200,10 +212,11 @@ def test_baked_record_reconstruction_equivalence():
 # ---------------------------------------------------------------------------
 
 def test_reconstruct_honours_stored_sheet():
-    """reconstruct_3c_field places cam1's grid on the (z_offset, tilt) plane.
+    """regular_world_grid places the output grid on the (z_offset, tilt) plane.
 
-    This is the apply contract: the stored self_cal params reach the reconstruction
-    unchanged and move the world Z onto the recovered sheet.
+    This is the apply contract: the stored self_cal params reach the grid builder
+    unchanged and move the world Z onto the recovered sheet; the reconstruction then
+    solves at those points (zero displacement -> zero velocity).
     """
     m1, m2 = _stereo_pair()
     H = W = 8
@@ -213,19 +226,29 @@ def test_reconstruct_honours_stored_sheet():
     coords2 = coords1.copy()  # displacement is zero -> only the geometry matters
 
     z_off, tx, ty = 5.0, 0.02, 0.03
-    wx, wy, wz, *_ = reconstruct_3c_field(
-        m1, m2, coords1, zero, zero, coords2, zero, zero,
-        dt=1.0, z_world=z_off, tilt_x=tx, tilt_y=ty,
-    )
-    expected = z_off + wx * np.tan(ty) + wy * np.tan(tx)
-    assert np.allclose(wz, expected, atol=1e-6)
+    gX, gY, gZ, _sp = regular_world_grid(m1, m2, coords1, coords2, z_off, tx, ty)
+    expected = z_off + gX * np.tan(ty) + gY * np.tan(tx)
+    assert np.allclose(gZ, expected, atol=1e-6)
 
-    # With no sheet correction the grid sits on Z=0, and the two differ.
-    _, _, wz0, *_ = reconstruct_3c_field(
-        m1, m2, coords1, zero, zero, coords2, zero, zero, dt=1.0,
+    # The grid points really are on the plane the models see: projecting into a
+    # camera and back-projecting onto the same sheet is the identity.
+    world = np.stack([gX.ravel(), gY.ravel(), gZ.ravel()], axis=1)
+    roundtrip = m1.back_project_to_plane(m1.project(world), z_off, tx, ty)
+    assert np.allclose(roundtrip, world, atol=1e-6)
+
+    # Zero displacements reconstruct to zero velocity on the unmasked points.
+    U, V, W3, mask = reconstruct_3c_field(
+        m1, m2, (gX, gY, gZ), coords1, zero, zero, coords2, zero, zero, dt=1.0,
     )
-    assert np.allclose(wz0, 0.0, atol=1e-6)
-    assert not np.allclose(wz, wz0)
+    assert not mask.all()
+    assert np.allclose(U[~mask], 0.0, atol=1e-9)
+    assert np.allclose(V[~mask], 0.0, atol=1e-9)
+    assert np.allclose(W3[~mask], 0.0, atol=1e-9)
+
+    # With no sheet correction the grid sits on Z=0; the sheet grid does not.
+    _, _, gZ0, _ = regular_world_grid(m1, m2, coords1, coords2)
+    assert np.allclose(gZ0, 0.0, atol=1e-6)
+    assert not np.allclose(gZ, 0.0, atol=1e-6)
 
 
 # ---------------------------------------------------------------------------

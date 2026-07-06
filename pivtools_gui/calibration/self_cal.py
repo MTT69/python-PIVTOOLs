@@ -12,8 +12,9 @@ algorithm is built directly from the stored ``CameraModel`` (same ``K, R, t, dis
 so its world frame IS the calibration clicked origin/+X/+Y frame. The algorithm's
 dewarp plane ``z = z_offset + wx*tan(tilt_y) + wy*tan(tilt_x)`` is the same equation
 as ``CameraModel.back_project_to_plane``. So the recovered parameters plug straight
-into ``stereo_model.reconstruct_3c_field(..., z_world, tilt_x, tilt_y)`` with no
-convention translation.
+into ``stereo_model.regular_world_grid(..., z_world, tilt_x, tilt_y)`` (which builds
+the reconstruction grid ``reconstruct_3c_field`` consumes) with no convention
+translation.
 
 Requires the ``libbulkxcorr2d`` C extension (the ensemble correlation routine). The
 particle-image loader and figure writers import the core/cli primitives directly so
@@ -321,7 +322,7 @@ def baked_block(
 
     The applied correction (``z_offset``/``tilt_x``/``tilt_y``) is zero — it now lives
     in the rebaked poses, so reconstruction consumers (``record.sc_*``,
-    ``reconstruct_3c_field``) apply nothing further. The recovered sheet is preserved
+    ``regular_world_grid``) apply nothing further. The recovered sheet is preserved
     under ``fitted_*`` and ``baked=1`` marks the record as carrying the correction in
     its extrinsics. Scalars + one string only, so it round-trips through
     ``record._meta_to_dict`` / ``_meta_from`` unchanged.
