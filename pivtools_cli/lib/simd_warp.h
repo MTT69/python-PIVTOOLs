@@ -58,6 +58,17 @@ static inline float simd_warp_hsum128(__m128 v) {
     s  = _mm_add_ss(s, sh);
     return _mm_cvtss_f32(s);
 }
+#else
+/* Neither NEON nor AVX2 is enabled at compile time: the interior samplers below
+ * compile as plain scalar loops. Correct but slow — surface it loudly at build
+ * time (no silent fallbacks). Fix by setting PIVTOOLS_WARP_MARCH to an arch flag
+ * this host supports (e.g. -march=native, /arch:AVX2) — see setup.py. */
+#define SIMD_WARP_SCALAR 1
+#if defined(_MSC_VER)
+#pragma message("simd_warp.h: no NEON/__AVX2__ at compile time -- SIMD warp COMPILED OUT (scalar interior loops). Set PIVTOOLS_WARP_MARCH if this host supports SIMD.")
+#else
+#warning "simd_warp.h: no NEON/__AVX2__ at compile time -- SIMD warp COMPILED OUT (scalar interior loops). Set PIVTOOLS_WARP_MARCH if this host supports SIMD."
+#endif
 #endif
 
 /* ── Bicubic 4x4 interior sample ───────────────────────────────────────────── */
