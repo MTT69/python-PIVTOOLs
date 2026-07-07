@@ -20,6 +20,10 @@ Code  Stage                   Meaning
   6   Displacement check      Displacement > 3/4 window (in accumulator)
  10   Outlier detection       Velocity outlier (median test)
  11   Outlier detection       Stress outlier (median test / realizability violation)
+
+In mean-flow-only 'peak' mode, codes 1-3 instead come from the sub-pixel
+peak fitter (see peak_fitting.py: 1 = border peak, 2 = non-positive
+stencil, 3 = degenerate log-parabola); 6, 10 and -1 keep the meanings above.
 """
 
 import gc
@@ -432,6 +436,12 @@ class SinglePassAccumulator:
             Result for this pass
         """
         from pivtools_core.window_utils import compute_window_centers, compute_window_centers_single_mode
+
+        # Mean-flow-only mode: plain sub-pixel peak fit on the averaged AB
+        # plane, no AA/BB, no stresses. Dispatched here so the joint path
+        # below stays untouched.
+        if self.config.ensemble_fit_method == "peak":
+            return self._finalize_pass_peak(pass_idx, output_path=output_path)
 
         logging.info(f"Finalizing pass {pass_idx + 1} with single-pass optimization")
 
@@ -1312,6 +1322,311 @@ class SinglePassAccumulator:
                 logging.warning(f"Pass {pass_idx + 1}: Failed to save correlation planes: {e}")
 
         logging.info(f"Pass {pass_idx + 1}: Finalization complete")
+
+        return pass_result
+
+    def _finalize_pass_peak(
+        self, pass_idx: int, output_path: Optional[Path] = None
+    ):
+        """Finalize a pass in mean-flow-only mode (fit_method: peak).
+
+        Sub-pixel 3-point Gaussian peak fit on the ensemble-averaged AB
+        plane. Mirrors the joint path's velocity handling (background
+        subtraction, AB envelope divide, 3/4-window rule, predictor
+        add-back, masking, outlier detection, infilling) but never touches
+        AA/BB and produces no Reynolds stresses: the stress/sigma/peakheight
+        fields of the result are left as None and saved as empty arrays.
+        """
+        from pivtools_core.window_utils import (
+            compute_window_centers,
+            compute_window_centers_single_mode,
+        )
+        from pivtools_cli.piv.piv_backend.peak_fitting import fit_windows_peak
+
+        logging.info(
+            f"Finalizing pass {pass_idx + 1} in mean-flow-only 'peak' mode "
+            f"(no Reynolds stresses)"
+        )
+
+        pass_data = self.passes_data[pass_idx]
+        N = self.n_images
+
+        win_size = pass_data["win_size"]
+        corr_size = pass_data["corr_size"]
+        n_win_y = pass_data["n_win_y"]
+        n_win_x = pass_data["n_win_x"]
+        total_windows = n_win_y * n_win_x
+
+        bg_method = getattr(self.config, 'ensemble_background_subtraction_method', 'correlation')
+        skip_bg_subtraction = getattr(self.config, 'ensemble_skip_background_subtraction', False)
+
+        with self._profile_section(pass_idx, "mean_computation"):
+            A_mean = pass_data["sum_warp_A"] / N
+            B_mean = pass_data["sum_warp_B"] / N
+            R_AB_raw = pass_data["sum_corr_AB"] / N
+
+        # Background subtraction: R = <A⊗B> - <A>⊗<B>, same config semantics
+        # as the joint path. Only the AB background is used; the fused triple
+        # background call runs at N_images=1 so the unused AA/BB cost nothing.
+        with self._profile_section(pass_idx, "bg_subtraction"):
+            if bg_method == 'image':
+                logging.info(f"Pass {pass_idx + 1}: Using 'image' background method (already subtracted)")
+                R_AB_ensemble = R_AB_raw
+                R_AB_bg = np.zeros_like(R_AB_raw)
+            elif skip_bg_subtraction:
+                logging.warning(f"Pass {pass_idx + 1}: SKIPPING background subtraction (debug mode)")
+                R_AB_ensemble = R_AB_raw
+                R_AB_bg = np.zeros_like(R_AB_raw)
+            else:
+                _, _, R_AB_bg = self._correlate_mean_images(A_mean, B_mean, pass_idx)
+                R_AB_ensemble = R_AB_raw - R_AB_bg
+
+        # Envelope divide on AB — identical geometry rule to the joint path:
+        # std passes divide AB by the pair-count envelope (it pulls the peak
+        # toward zero lag); single passes don't (the AB peak sits on the
+        # trapezoid plateau where E = 1 by construction, guarded below).
+        with self._profile_section(pass_idx, "normalization"):
+            AB_3d = R_AB_ensemble.reshape(total_windows, corr_size[0], corr_size[1])
+            envelope_runtype = self.config.ensemble_type[pass_idx]
+            if envelope_runtype == 'single':
+                env_sum_window = tuple(self.config.ensemble_sum_window)
+                plateau_half = min(
+                    (env_sum_window[0] - win_size[0]) // 2,
+                    (env_sum_window[1] - win_size[1]) // 2,
+                )
+                if plateau_half < 4:
+                    raise ValueError(
+                        f"Pass {pass_idx + 1}: sum window {env_sum_window} leaves only "
+                        f"{plateau_half} px of AB envelope plateau around the peak "
+                        f"(need >= 4 px). The single-mode envelope correction assumes "
+                        f"the AB peak sits on the E=1 plateau; increase the sum-window "
+                        f"margin over the interrogation window {tuple(win_size)}."
+                    )
+                env_ab = np.ones(tuple(corr_size), dtype=np.float64)
+            else:
+                env_weight = CrossCorrelator._window_weight_fun(
+                    tuple(win_size), self.config.ensemble_window_type)
+                env_ab = _linear_pair_envelope(env_weight, env_weight, corr_size)
+                AB_3d /= env_ab.astype(np.float32)[None, :, :]
+            logging.info(
+                f"Pass {pass_idx + 1}: AB envelope "
+                f"{'skipped — trapezoid plateau' if envelope_runtype == 'single' else 'divided'} "
+                f"(min E = {env_ab.min():.3f})"
+            )
+
+        # Flatten mask for fitting — same validation as the joint path.
+        if self.vector_masks and pass_idx < len(self.vector_masks):
+            mask_flat = self.vector_masks[pass_idx].ravel(order='C').astype(bool)
+            if mask_flat.size != total_windows:
+                raise ValueError(
+                    f"Vector mask size mismatch in pass {pass_idx + 1}: "
+                    f"mask has {mask_flat.size} elements (shape {self.vector_masks[pass_idx].shape}) "
+                    f"but data grid has {total_windows} windows ({n_win_y}×{n_win_x}). "
+                    f"The mask must match the PIV grid dimensions for each pass."
+                )
+        else:
+            mask_flat = np.zeros(total_windows, dtype=bool)
+
+        with self._profile_section(pass_idx, "fitting"):
+            ux_flat, uy_flat, status_flat = fit_windows_peak(
+                AB_3d.reshape(-1), mask_flat, tuple(corr_size)
+            )
+        ux_mat = ux_flat.reshape(n_win_y, n_win_x)
+        uy_mat = uy_flat.reshape(n_win_y, n_win_x)
+        statuses = status_flat.reshape(n_win_y, n_win_x)
+        n_failed = int((statuses != 0).sum())
+        if n_failed:
+            logging.warning(
+                f"Pass {pass_idx + 1}: peak fit failed for {n_failed}/{total_windows} windows"
+            )
+
+        with self._profile_section(pass_idx, "velocity_extraction"):
+            # Window-centre grid — identical to the joint path.
+            runtype = self.config.ensemble_type[pass_idx]
+            if runtype == 'single':
+                grid_result = compute_window_centers_single_mode(
+                    image_shape=self.config.image_shape,
+                    window_size=tuple(win_size),
+                    sum_window=tuple(self.config.ensemble_sum_window),
+                    overlap=self.config.ensemble_overlaps[pass_idx],
+                    validate=True,
+                )
+                grid_result_ctrs_x = grid_result.win_ctrs_x - grid_result.padding[2]
+                grid_result_ctrs_y = grid_result.win_ctrs_y - grid_result.padding[0]
+            else:
+                grid_result = compute_window_centers(
+                    image_shape=self.config.image_shape,
+                    window_size=tuple(win_size),
+                    overlap=self.config.ensemble_overlaps[pass_idx],
+                    validate=True,
+                )
+                grid_result_ctrs_x = grid_result.win_ctrs_x
+                grid_result_ctrs_y = grid_result.win_ctrs_y
+
+            # 3/4-window rule — identical to the joint path.
+            max_disp_x = 0.75 * corr_size[1]
+            max_disp_y = 0.75 * corr_size[0]
+            invalid_disp = (
+                ~np.isfinite(ux_mat) | ~np.isfinite(uy_mat) |
+                (np.abs(ux_mat) > max_disp_x) | (np.abs(uy_mat) > max_disp_y)
+            )
+            # Don't re-flag windows the fitter already failed (they are NaN).
+            n_invalid = int((invalid_disp & (statuses == 0)).sum())
+            if n_invalid > 0:
+                logging.warning(
+                    f"Pass {pass_idx + 1}: {n_invalid} vectors exceed 3/4 window rule "
+                    f"or have inf/nan - setting to NaN"
+                )
+            ux_mat[invalid_disp] = np.nan
+            uy_mat[invalid_disp] = np.nan
+            statuses[invalid_disp & (statuses == 0)] = 6
+
+            # Predictor add-back — identical to the joint path.
+            if pass_idx > 0:
+                if "smoothed_predictor" in pass_data and pass_data["smoothed_predictor"] is not None:
+                    smoothed_pred = pass_data["smoothed_predictor"]
+                    logging.info(
+                        f"Pass {pass_idx + 1}: Using smoothed predictor field from image warping"
+                    )
+                    ux_mat += smoothed_pred[:, :, 1]
+                    uy_mat += smoothed_pred[:, :, 0]
+                else:
+                    logging.warning(
+                        f"Pass {pass_idx + 1}: No smoothed predictor found! "
+                        f"This will result in incorrect absolute displacements. "
+                        f"Residual displacements will be returned without predictor correction."
+                    )
+
+        # Vector mask first, then outlier detection — same order as the
+        # joint path, velocity fields only.
+        nan_reason = statuses.astype(np.int32)
+        vector_mask = None
+        if self.vector_masks and pass_idx < len(self.vector_masks):
+            vector_mask = self.vector_masks[pass_idx]
+        if vector_mask is None:
+            vector_mask = np.zeros((n_win_y, n_win_x), dtype=bool)
+
+        ux_mat[vector_mask] = 0.0
+        uy_mat[vector_mask] = 0.0
+        nan_reason[vector_mask] = -1
+        if vector_mask.any():
+            logging.info(f"Pass {pass_idx + 1}: {vector_mask.sum()} vectors masked (set to zero)")
+
+        is_final_pass = (pass_idx == self.config.ensemble_num_passes - 1)
+
+        with self._profile_section(pass_idx, "outlier_detection"):
+            outlier_mask = (statuses != 0) & ~vector_mask
+            if self.config.ensemble_outlier_detection_enabled:
+                outlier_methods = self.config.ensemble_outlier_detection_methods
+                if outlier_methods:
+                    # peak_mag methods are rejected at config validation for
+                    # peak mode (no normalized peakheight exists).
+                    valid_for_detection = ~outlier_mask & ~vector_mask
+                    if valid_for_detection.any():
+                        detected_outliers = apply_outlier_detection(
+                            ux_mat, uy_mat, outlier_methods
+                        )
+                        outlier_mask |= (detected_outliers & valid_for_detection)
+
+            logging.info(
+                f"Pass {pass_idx + 1}: Outlier detection found {outlier_mask.sum()} outliers "
+                f"({outlier_mask.sum() / outlier_mask.size * 100:.1f}%)"
+            )
+            ux_mat[outlier_mask] = np.nan
+            uy_mat[outlier_mask] = np.nan
+            nan_reason[outlier_mask & (statuses == 0)] = 10
+
+        with self._profile_section(pass_idx, "infilling"):
+            infill_mask = outlier_mask.copy()
+            if is_final_pass:
+                infill_cfg = self.config.ensemble_infilling_final_pass
+                if not infill_cfg.get('enabled', True):
+                    logging.info(f"Pass {pass_idx + 1}: Final pass infilling disabled")
+                    infill_mask = np.zeros_like(outlier_mask, dtype=bool)
+            else:
+                infill_cfg = self.config.ensemble_infilling_mid_pass
+
+            if infill_mask.any():
+                logging.info(
+                    f"Pass {pass_idx + 1}: Infilling {infill_mask.sum()} vectors using "
+                    f"'{infill_cfg.get('method', 'biharmonic')}'"
+                )
+                ux_mat, uy_mat = apply_infilling(ux_mat, uy_mat, infill_mask, infill_cfg)
+
+        with self._profile_section(pass_idx, "result_construction"):
+            # Predictor bookkeeping — identical to the joint path.
+            pred_x = None
+            pred_y = None
+            padded_pred_x = None
+            padded_pred_y = None
+            if pass_idx > 0 and "smoothed_predictor" in pass_data and pass_data["smoothed_predictor"] is not None:
+                smoothed_pred = pass_data["smoothed_predictor"]
+                pred_y = smoothed_pred[:, :, 0].copy()
+                pred_x = smoothed_pred[:, :, 1].copy()
+            n_pre = pass_data.get("n_pre")
+            n_post = pass_data.get("n_post")
+            if n_pre is not None and n_post is not None:
+                pre_y, pre_x = n_pre
+                post_y, post_x = n_post
+                velocity_field = np.stack([uy_mat, ux_mat], axis=-1)
+                padded = np.pad(
+                    velocity_field,
+                    ((pre_y, post_y), (pre_x, post_x), (0, 0)),
+                    mode="edge",
+                )
+                padded_pred_y = padded[:, :, 0].copy()
+                padded_pred_x = padded[:, :, 1].copy()
+
+            # No stresses, sigmas, offsets or peakheight in peak mode: the
+            # dataclass leaves them None and the saver writes empty arrays,
+            # keeping the ensemble_result.mat schema unchanged.
+            pass_result = PIVEnsemblePassResult(
+                ux_mat=ux_mat,
+                uy_mat=uy_mat,
+                nan_reason=nan_reason,
+                b_mask=vector_mask,
+                pred_x=pred_x,
+                pred_y=pred_y,
+                padded_pred_x=padded_pred_x,
+                padded_pred_y=padded_pred_y,
+                window_size=tuple(win_size),
+                win_ctrs_x=grid_result_ctrs_x,
+                win_ctrs_y=grid_result_ctrs_y,
+            )
+
+        self.passes_results.append(pass_result)
+
+        if hasattr(self.config, 'ensemble_store_planes') and self.config.ensemble_store_planes:
+            try:
+                from scipy.io import savemat
+                import os
+                outdir = Path(output_path) if output_path is not None else Path(os.getcwd())
+                outdir.mkdir(parents=True, exist_ok=True)
+                planes_dict = {
+                    # AB is the envelope-divided ensemble plane actually fitted
+                    # (raw - background, / env_ab); no AA/BB exist in peak mode.
+                    'AB': AB_3d.reshape(n_win_y, n_win_x, corr_size[0], corr_size[1]),
+                    'AB_bg': R_AB_bg.reshape(n_win_y, n_win_x, corr_size[0], corr_size[1]),
+                    'env_ab': env_ab,
+                    'statuses': statuses,
+                    'corr_size': corr_size,
+                    'n_win_y': n_win_y,
+                    'n_win_x': n_win_x,
+                    'pass_idx': pass_idx,
+                }
+                savemat(
+                    outdir / f"planes_pass_{pass_idx + 1}.mat",
+                    planes_dict,
+                    do_compression=True
+                )
+                logging.info(
+                    f"Pass {pass_idx + 1}: Saved AB correlation planes to "
+                    f"{outdir}/planes_pass_{pass_idx + 1}.mat"
+                )
+            except Exception as e:
+                logging.warning(f"Pass {pass_idx + 1}: Failed to save correlation planes: {e}")
+
+        logging.info(f"Pass {pass_idx + 1}: Finalization complete (peak mode)")
 
         return pass_result
 

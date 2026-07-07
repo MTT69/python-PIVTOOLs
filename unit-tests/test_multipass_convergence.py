@@ -52,6 +52,22 @@ UNIT_DIR = Path(__file__).resolve().parent
 ENSEMBLE_DATA_DIR = UNIT_DIR / "poiseuille_ensemble"
 PARAMS_PATH = ENSEMBLE_DATA_DIR / "params.json"
 
+# The deepest output file sits ~105 chars below the workspace root, so a long
+# checkout prefix (e.g. a git worktree) pushes it past the Windows MAX_PATH
+# limit of 260 and every savemat fails with FileNotFoundError. Set this env
+# var to a short directory (e.g. C:\Temp\piv_e2e) to relocate the scratch
+# workspaces; the synthetic input data stays in ENSEMBLE_DATA_DIR either way.
+_WORKSPACE_ROOT_OVERRIDE = os.environ.get("PIVTOOLS_TEST_WORKSPACE_ROOT")
+
+
+def _workspace_dir(name):
+    """Scratch workspace directory for a test run (override-able for MAX_PATH)."""
+    if _WORKSPACE_ROOT_OVERRIDE:
+        root = Path(_WORKSPACE_ROOT_OVERRIDE)
+        root.mkdir(parents=True, exist_ok=True)
+        return root / name
+    return ENSEMBLE_DATA_DIR / name
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -109,7 +125,7 @@ def _run_ensemble_piv(fit_method):
     Returns dict with per-pass results and ground truth.
     """
     params = _load_params()
-    workspace = ENSEMBLE_DATA_DIR / f"test_workspace_{fit_method}"
+    workspace = _workspace_dir(f"test_workspace_{fit_method}")
 
     if workspace.exists():
         _robust_rmtree(workspace)
@@ -162,7 +178,9 @@ def _run_ensemble_piv(fit_method):
             "runs": [2, 3],  # save the two 16×16 single passes (1-based)
             "peak_finder": "gaussian",
             "fit_method": fit_method,
-            "gradient_correction": True,
+            # peak mode produces no sig_A_* so gradient correction is a
+            # rejected combination (see validate_ensemble_config).
+            "gradient_correction": fit_method != "peak",
             "predictor_smoothing": False,
         },
         "outlier_detection": {
@@ -275,7 +293,7 @@ def instantaneous_workspace():
         )
 
     params = _load_params()
-    workspace = ENSEMBLE_DATA_DIR / "test_workspace_inst"
+    workspace = _workspace_dir("test_workspace_inst")
 
     if workspace.exists():
         _robust_rmtree(workspace)
@@ -425,7 +443,7 @@ PASS_2_IDX = 1  # first 16×16 single pass (0-based)
 PASS_3_IDX = 2  # second 16×16 single pass (0-based, final)
 
 
-@pytest.fixture(scope="module", params=["kspace"])
+@pytest.fixture(scope="module", params=["kspace", "peak"])
 def ensemble_workspace(request):
     """
     Run 3-pass ensemble PIV, parametrized by fit_method.
@@ -608,14 +626,36 @@ class TestSingleModeSpecific:
             assert p["uy"] is not None, (
                 f"[{ws['fit_method']}] Pass {pidx+1} uy is None"
             )
-            assert p["peakheight"] is not None, (
-                f"[{ws['fit_method']}] Pass {pidx+1} peakheight is None"
-            )
+            if ws["fit_method"] == "peak":
+                # Mean-flow-only mode: no normalized peakheight exists.
+                assert p["peakheight"] is None, (
+                    f"[peak] Pass {pidx+1} unexpectedly has peakheight"
+                )
+            else:
+                assert p["peakheight"] is not None, (
+                    f"[{ws['fit_method']}] Pass {pidx+1} peakheight is None"
+                )
             valid = np.isfinite(p["ux"])
             assert valid.sum() > 10, (
                 f"[{ws['fit_method']}] Pass {pidx+1} has too few valid "
                 f"windows ({valid.sum()})"
             )
+
+
+class TestPeakModeContract:
+    """Mean-flow-only 'peak' mode must not fabricate stress outputs."""
+
+    def test_peak_mode_has_no_stress_fields(self, ensemble_workspace):
+        ws = ensemble_workspace
+        if ws["fit_method"] != "peak":
+            pytest.skip("peak-mode contract only")
+        for pidx in [PASS_2_IDX, PASS_3_IDX]:
+            p = ws["pass_data"][pidx]
+            for name in ("UU_stress", "VV_stress", "UV_stress"):
+                assert p[name] is None, (
+                    f"[peak] Pass {pidx+1} unexpectedly has {name} "
+                    f"(mean-flow-only mode must not produce stresses)"
+                )
 
 
 class TestDiagnosticFigures:
