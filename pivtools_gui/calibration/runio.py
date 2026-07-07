@@ -150,22 +150,26 @@ def read_coordinates(coords_path: Path) -> Dict[int, Tuple[np.ndarray, np.ndarra
     return out
 
 
-def read_vectors(bmat_path: Path) -> Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]]:
-    """Return {pass_idx: (ux_px, uy_px, b_mask)} from a per-frame B*.mat."""
-    mat = scipy.io.loadmat(str(bmat_path), squeeze_me=True)
-    pr = mat["piv_result"]
+def _velocity_fields_from_struct(
+    struct, path: Path, struct_name: str
+) -> Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]]:
+    """{pass_idx: (ux_px, uy_px, b_mask)} from a per-pass struct array.
+
+    Shared by the per-frame (``piv_result``) and ensemble (``ensemble_result``)
+    readers — both store ux/uy/b_mask per pass, empty for unsaved passes.
+    """
     out: Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]] = {}
-    n = pr.shape[0] if pr.ndim else 1
-    uxf, uyf = pr["ux"], pr["uy"]
+    n = struct.shape[0] if struct.ndim else 1
+    uxf, uyf = struct["ux"], struct["uy"]
     # b_mask is required — every PIV writer emits it (save_results.py). A missing field
     # means a stale pre-b_mask file: fail loudly so it gets re-run, never fake a default
     # (forward-looking, no silent fallback — see CLAUDE.md).
-    if "b_mask" not in pr.dtype.names:
+    if "b_mask" not in struct.dtype.names:
         raise ValueError(
-            f"{bmat_path.name}: piv_result has no b_mask field — stale pre-b_mask PIV "
+            f"{path.name}: {struct_name} has no b_mask field — stale pre-b_mask PIV "
             "output; re-run the PIV pass to regenerate it"
         )
-    bmf = pr["b_mask"]
+    bmf = struct["b_mask"]
     for i in range(n):
         ux = _as2d(uxf[i] if n > 1 else uxf)
         uy = _as2d(uyf[i] if n > 1 else uyf)
@@ -176,6 +180,23 @@ def read_vectors(bmat_path: Path) -> Dict[int, Tuple[np.ndarray, np.ndarray, Opt
         b = bb if bb.size else None
         out[i] = (ux, uy, b)
     return out
+
+
+def read_vectors(bmat_path: Path) -> Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]]:
+    """Return {pass_idx: (ux_px, uy_px, b_mask)} from a per-frame B*.mat."""
+    mat = scipy.io.loadmat(str(bmat_path), squeeze_me=True)
+    return _velocity_fields_from_struct(mat["piv_result"], bmat_path, "piv_result")
+
+
+def read_ensemble_vectors(ens_path: Path) -> Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]]:
+    """Return {pass_idx: (ux_px, uy_px, b_mask)} from an ensemble_result.mat.
+
+    ``ux/uy`` are the ensemble MEAN displacement per pass (predictor included,
+    px/frame, image-down) — directly usable by the stereo reconstruction, which
+    is linear in the displacements. Stress fields are ignored here.
+    """
+    mat = scipy.io.loadmat(str(ens_path), squeeze_me=True)
+    return _velocity_fields_from_struct(mat["ensemble_result"], ens_path, "ensemble_result")
 
 
 def _stress_suffixes(names) -> List[str]:
@@ -350,6 +371,101 @@ def calibrate_mono_run(
     return written
 
 
+def reconstruct_stereo_ensemble(
+    record: StereoRecord,
+    ens1_path: Path,
+    ens2_path: Path,
+    coords1: Dict[int, Tuple[np.ndarray, np.ndarray]],
+    coords2: Dict[int, Tuple[np.ndarray, np.ndarray]],
+    out_dir: Path,
+    dt: float,
+    z_world: float = 0.0,
+    tilt_x: float = 0.0,
+    tilt_y: float = 0.0,
+    interpolator: str = "lanczos",
+    pass_index: Optional[int] = None,
+) -> List[str]:
+    """Reconstruct both cameras' ensemble MEAN fields to stereo (U,V,W) m/s.
+
+    Mean flow only: the 4x3 Jacobian solve is linear in the displacements, so
+    the ensemble mean displacement reconstructs to the exact mean 3C velocity.
+    Reynolds stresses do NOT reconstruct linearly and are deliberately absent
+    from the output struct (``ux/uy/uz/b_mask`` only) — reconstructing them
+    needs the correlation-of-correlations method, out of scope here.
+
+    Every pass populated in BOTH cameras (and both coordinates.mat) is
+    reconstructed on its own regular world grid — window size/overlap change
+    the pixel grid, hence the world spacing, per pass (mirrors mono
+    ``calibrate_ensemble_file`` doing all passes). ``pass_index`` restricts to
+    one pass. Writes per-pass world ``coordinates.mat`` + ``ensemble_result.mat``.
+    """
+    from .stereo_model import reconstruct_3c_field, regular_world_grid
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    v1 = read_ensemble_vectors(Path(ens1_path))
+    v2 = read_ensemble_vectors(Path(ens2_path))
+    passes = sorted(set(v1) & set(v2) & set(coords1) & set(coords2))
+    if not passes:
+        raise RuntimeError(
+            "no common populated pass between the two cameras' ensemble "
+            "results — re-run ensemble PIV for both cameras with the same runs")
+    # Struct length spans all common passes so pass indices stay aligned with
+    # the source files even when pass_index restricts the reconstruction.
+    n_passes = max(passes) + 1
+    if pass_index is not None:
+        if pass_index not in passes:
+            raise ValueError(
+                f"pass_index {pass_index} is not populated in both cameras' "
+                f"ensemble results (common populated passes: {passes})")
+        passes = [pass_index]
+    empty = np.array([], dtype=np.float64)
+    st = np.empty(
+        (n_passes,),
+        dtype=[("ux", object), ("uy", object), ("uz", object), ("b_mask", object)],
+    )
+    for i in range(n_passes):
+        st["ux"][i] = st["uy"][i] = st["uz"][i] = st["b_mask"][i] = empty
+    world_coords: Dict[int, Tuple[np.ndarray, np.ndarray]] = {}
+
+    for p in passes:
+        x1, y1 = coords1[p]
+        x2, y2 = coords2[p]
+        ux1, uy1, b1 = v1[p]
+        ux2, uy2, b2 = v2[p]
+        # A shape mismatch means the ensemble grid does not correspond to
+        # coordinates.mat — reconstructing would emit plausible-but-wrong m/s.
+        for cam, (ux, xpx) in enumerate(((ux1, x1), (ux2, x2)), start=1):
+            if ux.shape != xpx.shape:
+                raise ValueError(
+                    f"ensemble pass {p} (cam{cam}): ux shape {ux.shape} != coords "
+                    f"{xpx.shape}; the ensemble grid does not match coordinates.mat "
+                    f"— cannot reconstruct")
+        c1 = np.stack([x1, y1], axis=-1)
+        c2 = np.stack([x2, y2], axis=-1)
+        gX, gY, gZ, _spacing = regular_world_grid(
+            record.model1, record.model2, c1, c2, z_world, tilt_x, tilt_y,
+        )
+        U, V, Wc, bmask = reconstruct_3c_field(
+            record.model1, record.model2, (gX, gY, gZ),
+            c1, ux1, uy1, c2, ux2, uy2,
+            dt, interpolator=interpolator,
+            bmask1=b1, bmask2=b2,
+        )
+        st["ux"][p], st["uy"][p], st["uz"][p] = U, V, Wc
+        st["b_mask"][p] = bmask
+        world_coords[p] = (gX, gY)
+
+    scipy.io.savemat(str(out_dir / "coordinates.mat"),
+                     {"coordinates": _coords_struct(world_coords, n_passes)},
+                     oned_as="row", do_compression=True)
+    out_b = out_dir / ENSEMBLE_FILE
+    scipy.io.savemat(str(out_b), {"ensemble_result": st},
+                     oned_as="row", do_compression=True)
+    return [str(out_b)]
+
+
 def reconstruct_stereo_run(
     record: StereoRecord,
     uncal_dir1: Path,
@@ -370,6 +486,10 @@ def reconstruct_stereo_run(
     world-mm grid spanning the two cameras' overlap (spacing = median world-space
     vector pitch — see ``regular_world_grid``) into ``out_dir``. Uses the final
     populated pass unless ``pass_index`` set.
+
+    An ``ensemble_result.mat`` in both uncalibrated dirs routes to
+    ``reconstruct_stereo_ensemble`` (mean flow, every populated pass) instead
+    of the per-frame flow.
     """
     from .stereo_model import reconstruct_3c_field, regular_world_grid
 
@@ -382,6 +502,37 @@ def reconstruct_stereo_run(
     coords2 = read_coordinates(uncal_dir2 / "coordinates.mat")
     if not coords1 or not coords2:
         raise RuntimeError("missing coordinates.mat for stereo reconstruction")
+
+    bmats1 = {b.name: b for b in _vector_files(uncal_dir1, vector_glob)}
+    bmats2 = {b.name: b for b in _vector_files(uncal_dir2, vector_glob)}
+
+    # Ensemble branch: ensemble_result.mat is a run-level mean, not a frame.
+    # Detected directly on disk (not via vector_glob — a per-frame glob like
+    # "B*.mat" would never match it and the branch would be silently skipped).
+    ens1 = uncal_dir1 / ENSEMBLE_FILE
+    ens2 = uncal_dir2 / ENSEMBLE_FILE
+    have_ens1, have_ens2 = ens1.exists(), ens2.exists()
+    if have_ens1 != have_ens2:
+        raise RuntimeError(
+            "ensemble_result.mat is present for only one camera — stereo "
+            "reconstruction needs both cameras; re-run ensemble PIV for both")
+    if have_ens1:
+        frames1 = [b for b in bmats1 if b != ENSEMBLE_FILE]
+        frames2 = [b for b in bmats2 if b != ENSEMBLE_FILE]
+        if frames1 or frames2:
+            raise RuntimeError(
+                "uncalibrated dir mixes ensemble_result.mat with per-frame "
+                "vector files — their grids would conflict in coordinates.mat; "
+                "separate them (one type_name per output dir) and re-apply")
+        written = reconstruct_stereo_ensemble(
+            record, ens1, ens2,
+            coords1, coords2, out_dir, dt,
+            z_world, tilt_x, tilt_y, interpolator, pass_index,
+        )
+        if progress_cb:
+            progress_cb(1, 1)
+        return written
+
     p = pass_index if pass_index is not None else max(coords1)
     x1, y1 = coords1[p]
     x2, y2 = coords2[p]
@@ -397,8 +548,6 @@ def reconstruct_stereo_run(
 
     written: List[str] = []
     coords_written = False
-    bmats1 = {b.name: b for b in _vector_files(uncal_dir1, vector_glob)}
-    bmats2 = {b.name: b for b in _vector_files(uncal_dir2, vector_glob)}
     common = sorted(set(bmats1) & set(bmats2))
     total = len(common)
     for k, name in enumerate(common):
