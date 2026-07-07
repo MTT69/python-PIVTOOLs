@@ -211,6 +211,15 @@ def save_ensemble_result_distributed(
         ensemble_result, runs_to_save, gradient_correction, image_height
     )
 
+    # Surface mean-flow-only results in the run log: peak mode saves velocity
+    # but leaves every stress field empty, which is easy to misread as a bug.
+    populated = [p for p in ensemble_result.passes if p.ux_mat is not None]
+    if populated and all(p.UU_stress is None for p in populated):
+        logging.info(
+            "Ensemble result contains mean flow only (no Reynolds stresses) — "
+            "stress fields are saved empty (fit_method 'peak')."
+        )
+
     # Save to .mat file with compression to reduce I/O
     scipy.io.savemat(filepath, {"ensemble_result": mat_data}, oned_as="row", do_compression=True)
     logging.info(f"Saved ensemble result to {filepath}")

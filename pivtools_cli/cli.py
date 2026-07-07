@@ -665,7 +665,7 @@ instantaneous_piv:
   save_mode: minimal
   save_compression: false
 ensemble_piv:
-  fit_method: kspace
+  fit_method: kspace  # kspace | peak (peak = fast mean flow only, no Reynolds stresses)
   skip_background_subtraction: false
   image_warp_interpolation: cubic
   predictor_interpolation: cubic
