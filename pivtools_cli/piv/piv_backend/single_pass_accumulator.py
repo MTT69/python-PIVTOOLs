@@ -156,14 +156,19 @@ class SinglePassAccumulator:
             n_win_x = result.n_win_x
             plane_size = n_win_y * n_win_x * corr_size[0] * corr_size[1]
 
+            # Mean-flow-only 'peak' mode accumulates the AB plane only; the
+            # AA/BB autocorrelations are never computed (buffers stay None).
+            ab_only = (config.ensemble_fit_method == 'peak')
+
             self.passes_data.append({
                 # Running sums for mean computation
                 "sum_warp_A": np.zeros((H, W), dtype=np.float32),
                 "sum_warp_B": np.zeros((H, W), dtype=np.float32),
 
-                # Running correlation plane sums (THREE planes for stacked Gaussian)
-                "sum_corr_AA": np.zeros(plane_size, dtype=np.float32),
-                "sum_corr_BB": np.zeros(plane_size, dtype=np.float32),
+                # Running correlation plane sums (THREE planes for the joint
+                # k-space fit; AB only for the peak fit)
+                "sum_corr_AA": None if ab_only else np.zeros(plane_size, dtype=np.float32),
+                "sum_corr_BB": None if ab_only else np.zeros(plane_size, dtype=np.float32),
                 "sum_corr_AB": np.zeros(plane_size, dtype=np.float32),
 
                 # Grid info
@@ -242,10 +247,24 @@ class SinglePassAccumulator:
         pass_data["sum_warp_A"] += batch_result["warp_A_sum"]
         pass_data["sum_warp_B"] += batch_result["warp_B_sum"]
 
-        # Accumulate correlation planes (NO averaging yet)
-        pass_data["sum_corr_AA"] += batch_result["corr_AA_sum"].reshape(-1)
-        pass_data["sum_corr_BB"] += batch_result["corr_BB_sum"].reshape(-1)
-        pass_data["sum_corr_AB"] += batch_result["corr_AB_sum"].reshape(-1)
+        # Accumulate correlation planes (NO averaging yet). AA/BB are None
+        # in AB-only peak mode; a buffer/batch mismatch means the correlator
+        # and accumulator disagree about the mode — fail loudly.
+        for key, batch_key in (("sum_corr_AA", "corr_AA_sum"),
+                               ("sum_corr_BB", "corr_BB_sum"),
+                               ("sum_corr_AB", "corr_AB_sum")):
+            buf = pass_data[key]
+            planes = batch_result[batch_key]
+            if (buf is None) != (planes is None):
+                raise ValueError(
+                    f"Ensemble accumulation mode mismatch for {batch_key}: "
+                    f"accumulator buffer is "
+                    f"{'None' if buf is None else 'allocated'} but batch "
+                    f"result is {'None' if planes is None else 'present'} "
+                    f"(fit_method changed mid-run?)"
+                )
+            if buf is not None:
+                buf += planes.reshape(-1)
 
         # Store smoothed predictor (for pass > 0)
         # All batches should have the same smoothed predictor, so just overwrite
@@ -1670,13 +1689,12 @@ class SinglePassAccumulator:
 
         pass_data = self.passes_data[pass_idx]
 
-        # Get memory usage before clearing
-        mem_before = (
-            pass_data["sum_warp_A"].nbytes +
-            pass_data["sum_warp_B"].nbytes +
-            pass_data["sum_corr_AA"].nbytes +
-            pass_data["sum_corr_BB"].nbytes +
-            pass_data["sum_corr_AB"].nbytes
+        # Get memory usage before clearing (AA/BB are None in AB-only peak mode)
+        mem_before = sum(
+            pass_data[key].nbytes
+            for key in ("sum_warp_A", "sum_warp_B",
+                        "sum_corr_AA", "sum_corr_BB", "sum_corr_AB")
+            if pass_data[key] is not None
         ) / (1024 ** 2)  # Convert to MB
 
         # Clear large arrays (keep metadata for grid info)

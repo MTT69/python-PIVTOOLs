@@ -550,10 +550,24 @@ def reduce_ensemble_results(r1: dict, r2: dict) -> dict:
     first_pair_A = r1.get("first_pair_A") if r1.get("first_pair_A") is not None else r2.get("first_pair_A")
     first_pair_B = r1.get("first_pair_B") if r1.get("first_pair_B") is not None else r2.get("first_pair_B")
 
+    def _sum_planes(key):
+        """Sum a correlation plane pair; None+None stays None (AB-only peak
+        mode never accumulates AA/BB). A mixed pair means the workers ran in
+        different accumulation modes — fail loudly rather than guess."""
+        a, b = r1[key], r2[key]
+        if a is None and b is None:
+            return None
+        if a is None or b is None:
+            raise ValueError(
+                f"Inconsistent ensemble accumulation mode between workers: "
+                f"{key} is None on one worker but not the other"
+            )
+        return a + b
+
     return {
-        "corr_AA_sum": r1["corr_AA_sum"] + r2["corr_AA_sum"],
-        "corr_BB_sum": r1["corr_BB_sum"] + r2["corr_BB_sum"],
-        "corr_AB_sum": r1["corr_AB_sum"] + r2["corr_AB_sum"],
+        "corr_AA_sum": _sum_planes("corr_AA_sum"),
+        "corr_BB_sum": _sum_planes("corr_BB_sum"),
+        "corr_AB_sum": _sum_planes("corr_AB_sum"),
         "warp_A_sum": r1["warp_A_sum"] + r2["warp_A_sum"],
         "warp_B_sum": r1["warp_B_sum"] + r2["warp_B_sum"],
         "n_images": r1["n_images"] + r2["n_images"],

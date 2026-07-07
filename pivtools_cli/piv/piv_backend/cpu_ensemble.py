@@ -190,6 +190,10 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             [active_pass_idx] if active_pass_idx is not None
             else range(config.ensemble_num_passes)
         )
+        # Mean-flow-only 'peak' fitting needs no autocorrelations: only the
+        # AB plane is accumulated (AA/BB buffers stay None) and the AB-only
+        # C kernel replaces the fused triple call.
+        self._ab_only = (config.ensemble_fit_method == 'peak')
         self._corr_buffers = {}
         for pass_idx in passes_to_allocate:
             corr_size = self.window_sizes_for_corr[pass_idx]
@@ -198,16 +202,17 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             total_windows = n_win_y * n_win_x
             plane_size = total_windows * corr_size[0] * corr_size[1]
 
-            # Pre-allocate buffers for AA, BB, AB
+            # Pre-allocate buffers for AA, BB, AB (AB only in peak mode)
             self._corr_buffers[pass_idx] = {
-                'AA': np.zeros(plane_size, dtype=np.float32),
-                'BB': np.zeros(plane_size, dtype=np.float32),
+                'AA': None if self._ab_only else np.zeros(plane_size, dtype=np.float32),
+                'BB': None if self._ab_only else np.zeros(plane_size, dtype=np.float32),
                 'AB': np.zeros(plane_size, dtype=np.float32),
             }
 
+            n_planes = 1 if self._ab_only else 3
             logging.debug(
                 f"Pre-allocated correlation buffers for pass {pass_idx}: "
-                f"{plane_size * 4 * 3 / 1024 / 1024:.1f} MB"
+                f"{plane_size * 4 * n_planes / 1024 / 1024:.1f} MB"
             )
 
         # Disable OpenCV's internal threading — we manage parallelism ourselves
@@ -756,15 +761,17 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
 
         N, _, H, W = images.shape
 
-        # Reuse pre-allocated correlation buffers
+        # Reuse pre-allocated correlation buffers (AA/BB are None in AB-only
+        # peak mode)
         correl_AA_sum = self._corr_buffers[pass_idx]['AA']
         correl_BB_sum = self._corr_buffers[pass_idx]['BB']
         correl_AB_sum = self._corr_buffers[pass_idx]['AB']
 
         # Clear buffers (faster than reallocation)
         if clear_buffers:
-            correl_AA_sum.fill(0)
-            correl_BB_sum.fill(0)
+            if not self._ab_only:
+                correl_AA_sum.fill(0)
+                correl_BB_sum.fill(0)
             correl_AB_sum.fill(0)
 
         # Store smoothed predictor (will be set during warping if pass > 0)
@@ -851,25 +858,37 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             else:
                 b_mask = np.zeros(total_windows, dtype=np.float32)
 
-            # Fused triple cross-correlation: AB + AA + BB in one C call
-            # Reuses FFT(A) and FFT(B) across all three products,
-            # halving the number of forward FFTs vs 3× separate calls.
             with self._profile_section(pass_idx, "xcorr"):
-                error_code = self._run_correlation_accumulate_triple(
-                    images_a_prime, images_b_prime,
-                    self.win_weights_A[pass_idx], self.win_weights_B[pass_idx],  # AB weights
-                    self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],  # AA/BB auto weights
-                    b_mask, pass_idx,
-                    correl_AB_sum, correl_AA_sum, correl_BB_sum,
-                )
+                if self._ab_only:
+                    # Mean-flow-only peak mode: AB cross-correlation alone
+                    # (1 inverse FFT per window per pair instead of 3, and no
+                    # AA/BB buffers at all).
+                    error_code = self._run_correlation_accumulate(
+                        images_a_prime, images_b_prime,
+                        self.win_weights_A[pass_idx], self.win_weights_B[pass_idx],
+                        b_mask, pass_idx,
+                        correl_AB_sum,
+                    )
+                else:
+                    # Fused triple cross-correlation: AB + AA + BB in one C
+                    # call. Reuses FFT(A) and FFT(B) across all three
+                    # products, halving the forward FFTs vs 3× separate calls.
+                    error_code = self._run_correlation_accumulate_triple(
+                        images_a_prime, images_b_prime,
+                        self.win_weights_A[pass_idx], self.win_weights_B[pass_idx],  # AB weights
+                        self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],  # AA/BB auto weights
+                        b_mask, pass_idx,
+                        correl_AB_sum, correl_AA_sum, correl_BB_sum,
+                    )
 
             # Reshape to (windows, corr_h, corr_w) for downstream processing
-            correl_AA_sum = correl_AA_sum.reshape(total_windows, corr_size[0], corr_size[1])
             correl_AB_sum = correl_AB_sum.reshape(total_windows, corr_size[0], corr_size[1])
-            correl_BB_sum = correl_BB_sum.reshape(total_windows, corr_size[0], corr_size[1])
+            if not self._ab_only:
+                correl_AA_sum = correl_AA_sum.reshape(total_windows, corr_size[0], corr_size[1])
+                correl_BB_sum = correl_BB_sum.reshape(total_windows, corr_size[0], corr_size[1])
 
             if error_code != 0:
-                logging.error(f"Fused triple correlation error code: {error_code}")
+                logging.error(f"Ensemble correlation error code: {error_code}")
 
         except Exception as e:
             logging.error("Error in correlation: %s", e)
@@ -881,8 +900,8 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         with self._profile_section(pass_idx, "result_copy"):
             if copy_result:
                 result = {
-                    "corr_AA_sum": correl_AA_sum.copy(),
-                    "corr_BB_sum": correl_BB_sum.copy(),
+                    "corr_AA_sum": None if self._ab_only else correl_AA_sum.copy(),
+                    "corr_BB_sum": None if self._ab_only else correl_BB_sum.copy(),
                     "corr_AB_sum": correl_AB_sum.copy(),
                     "warp_A_sum": warp_A_sum.copy(),
                     "warp_B_sum": warp_B_sum.copy(),
@@ -916,18 +935,24 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         return result
 
     def get_accumulated_correlation(self, pass_idx: int) -> dict:
-        """Copy accumulated correlation buffers out. Call once after all batches."""
+        """Copy accumulated correlation buffers out. Call once after all batches.
+
+        In AB-only peak mode the AA/BB entries are None (never accumulated).
+        """
         corr_size = self.window_sizes_for_corr[pass_idx]
         n_win_y = len(self.win_ctrs_y[pass_idx])
         n_win_x = len(self.win_ctrs_x[pass_idx])
         total_windows = n_win_y * n_win_x
+
+        def _copy_out(buf):
+            if buf is None:
+                return None
+            return buf.reshape(total_windows, corr_size[0], corr_size[1]).copy()
+
         return {
-            "corr_AA_sum": self._corr_buffers[pass_idx]['AA'].reshape(
-                total_windows, corr_size[0], corr_size[1]).copy(),
-            "corr_BB_sum": self._corr_buffers[pass_idx]['BB'].reshape(
-                total_windows, corr_size[0], corr_size[1]).copy(),
-            "corr_AB_sum": self._corr_buffers[pass_idx]['AB'].reshape(
-                total_windows, corr_size[0], corr_size[1]).copy(),
+            "corr_AA_sum": _copy_out(self._corr_buffers[pass_idx]['AA']),
+            "corr_BB_sum": _copy_out(self._corr_buffers[pass_idx]['BB']),
+            "corr_AB_sum": _copy_out(self._corr_buffers[pass_idx]['AB']),
         }
 
     def compute_warp_sums_only(
