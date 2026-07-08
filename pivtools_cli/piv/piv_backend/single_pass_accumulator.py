@@ -516,39 +516,6 @@ class SinglePassAccumulator:
         n_win_x = pass_data["n_win_x"]
         total_windows = n_win_y * n_win_x
 
-        # Step 5a: DISABLED - Pre-subtract noise floor (was workaround before n_images fix)
-        # With n_images reset properly, noise floors should be ~0 for all passes.
-        # Uncomment if edge cases still show elevated floors.
-        #
-        # plane_size = corr_size[0] * corr_size[1]
-        #
-        # # AA planes
-        # AA_flat = R_AA_ensemble.reshape(total_windows, -1)  # (n_windows, corr_h*corr_w)
-        # k_median = AA_flat.shape[1] // 2
-        # AA_partitioned = np.partition(AA_flat, k_median, axis=1)
-        # AA_floors = AA_partitioned[:, k_median]  # (n_windows,)
-        # AA_flat -= AA_floors[:, np.newaxis]
-        # R_AA_ensemble = AA_flat.reshape(-1).astype(np.float32)
-        #
-        # # BB planes
-        # BB_flat = R_BB_ensemble.reshape(total_windows, -1)
-        # BB_partitioned = np.partition(BB_flat, k_median, axis=1)
-        # BB_floors = BB_partitioned[:, k_median]
-        # BB_flat -= BB_floors[:, np.newaxis]
-        # R_BB_ensemble = BB_flat.reshape(-1).astype(np.float32)
-        #
-        # # AB planes
-        # AB_flat = R_AB_ensemble.reshape(total_windows, -1)
-        # AB_partitioned = np.partition(AB_flat, k_median, axis=1)
-        # AB_floors = AB_partitioned[:, k_median]
-        # AB_flat -= AB_floors[:, np.newaxis]
-        # R_AB_ensemble = AB_flat.reshape(-1).astype(np.float32)
-        #
-        # logging.info(
-        #     f"Pass {pass_idx + 1}: Pre-subtracted noise floors "
-        #     f"(AA={np.median(AA_floors):.4f}, BB={np.median(BB_floors):.4f}, AB={np.median(AB_floors):.4f})"
-        # )
-
         # Step 5b: Normalize correlation planes by geometric mean of autocorrelation peaks
         # This improves the condition number of the stacked Gaussian solver
         # by ensuring all three planes have similar scale (~1.0 at peaks)
@@ -593,9 +560,12 @@ class SinglePassAccumulator:
                 env_ab = env_auto
             env_auto_f32 = env_auto.astype(np.float32)[None, :, :]
             env_ab_f32 = env_ab.astype(np.float32)[None, :, :]
-            AA_3d /= env_auto_f32
-            BB_3d /= env_auto_f32
-            AB_3d /= env_ab_f32
+            # TEMP TEST 2026-07-08: envelope division DISABLED to test the "bowl" mechanism.
+            # E(0)=1 so the peak/center (and norm_factors below) are unchanged; only the
+            # off-peak floor is affected. RESTORE these three lines after the test.
+            # AA_3d /= env_auto_f32
+            # BB_3d /= env_auto_f32
+            # AB_3d /= env_ab_f32
             logging.info(
                 f"Pass {pass_idx + 1}: Envelope divide applied ({envelope_runtype}: "
                 f"autos divided, AB "

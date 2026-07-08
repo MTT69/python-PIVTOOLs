@@ -112,17 +112,27 @@ def plan_apply_units(full_cfg, source, board, stereo, type_name,
 # derived from "%05d.mat" is "*.mat", which would otherwise sweep these in.
 _NON_VECTOR_MATS = {"coordinates.mat", "mask.mat"}
 
+# Diagnostic sidecars ensemble PIV writes alongside the result when store_planes /
+# save_diagnostics is on: correlation planes ("planes_pass_N.mat") and first-pair warped
+# images ("warped_pass_N.mat"), one per pass. They carry no piv_result/ensemble_result
+# struct, so a bare "*.mat" glob must skip them by prefix or read_vectors would KeyError
+# on 'piv_result' (they are named per pass, so a fixed name set won't catch them).
+_NON_VECTOR_MAT_PREFIXES = ("planes_pass_", "warped_pass_")
+
 
 def _vector_files(uncal_dir: Path, vector_glob: str) -> List[Path]:
     """Per-frame vector files in ``uncal_dir`` matching ``vector_glob``, sorted.
 
-    Excludes non-vector ``.mat`` files (coordinates/mask) and hidden / macOS
-    AppleDouble sidecars (``._00001.mat`` on external drives) that a bare ``*.mat``
-    glob would otherwise sweep in and choke ``read_vectors``.
+    Excludes non-vector ``.mat`` files (coordinates/mask), ensemble diagnostic sidecars
+    (``planes_pass_N.mat`` / ``warped_pass_N.mat`` from store_planes/save_diagnostics),
+    and hidden / macOS AppleDouble sidecars (``._00001.mat`` on external drives) that a
+    bare ``*.mat`` glob would otherwise sweep in and choke ``read_vectors``.
     """
     return sorted(
         b for b in Path(uncal_dir).glob(vector_glob)
-        if b.name not in _NON_VECTOR_MATS and not b.name.startswith(".")
+        if b.name not in _NON_VECTOR_MATS
+        and not b.name.startswith(_NON_VECTOR_MAT_PREFIXES)
+        and not b.name.startswith(".")
     )
 
 

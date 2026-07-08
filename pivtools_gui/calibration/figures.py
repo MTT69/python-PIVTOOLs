@@ -1621,6 +1621,7 @@ def write_scale_factor_figure(
     mm_per_pixel: float,
     dt: float,
     prefix: str = "",
+    origin_mm=(0.0, 0.0),
 ) -> None:
     """Proof figure for a scale-factor model: frame + origin + +X/+Y arrows + scale.
 
@@ -1676,8 +1677,10 @@ def write_scale_factor_figure(
             fontweight="bold",
             va="center",
         )
+        om_x, om_y = float(origin_mm[0]), float(origin_mm[1])
+        om_txt = f" = ({om_x:g}, {om_y:g}) mm" if (om_x or om_y) else ""
         ax.set_title(
-            f"Scale-factor frame — origin ({ox:.1f}, {oy:.1f}) px, "
+            f"Scale-factor frame — origin ({ox:.1f}, {oy:.1f}) px{om_txt}, "
             f"{px_per_mm:.4f} px/mm ({mm_per_pixel:.5f} mm/px), dt={dt:g} s",
             fontsize=11,
         )

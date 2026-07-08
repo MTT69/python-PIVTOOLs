@@ -99,6 +99,14 @@ STATUS_NEG_VAR = 5           # kept for contract parity (the C defined but never
 _TWO_PI = 2.0 * np.pi
 _TWO_PI2 = 2.0 * np.pi ** 2
 
+# Stage-2 leaves Sxy unbounded (MAIN_LO/HI), so an LM trial step can drive Sxy^2 > Sxx*Syy,
+# making the covariance Sigma indefinite and quad = k^T Sigma k negative at high k. Then
+# decay = exp(-2pi^2 * quad) = exp(+big) overflows to inf, which poisons the residual and
+# Jacobian (NaN) and spuriously fails flat/low-SNR windows. Clip the exponent: for feasible
+# steps (quad >= 0 -> arg <= 0) this never triggers, so converged fits are bit-identical; on
+# a bad step the residual/gradient stay finite and large, so LM rejects and backtracks cleanly.
+_EXP_ARG_MAX = 300.0  # exp(300) ~ 2e130: huge (forces rejection) yet far below float64 overflow
+
 
 # ==========================================================================================
 # Batched Levenberg-Marquardt
@@ -211,7 +219,8 @@ def _stage2_resid_jac(x, Tre, Tim, W, KXf, KYf, jac=False):
     KY2 = KYf * KYf
     KXKY = KXf * KYf
     quad = Sxx * KX2[None] + 2.0 * Sxy * KXKY[None] + Syy * KY2[None]   # (m, P)
-    decay = np.exp(-_TWO_PI2 * quad)
+    # clip guards against non-PSD trial steps (quad<0); no-op for feasible steps (see _EXP_ARG_MAX)
+    decay = np.exp(np.minimum(-_TWO_PI2 * quad, _EXP_ARG_MAX))
     phase = -_TWO_PI * (KXf[None] * mux + KYf[None] * muy)
     cosp = np.cos(phase)
     sinp = np.sin(phase)

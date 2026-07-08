@@ -260,6 +260,7 @@ def build_scale_factor_record(
     y_dir: str = "up",
     swap_axes: bool = False,
     frame_idx: Optional[int] = None,
+    origin_mm: Tuple[float, float] = (0.0, 0.0),
 ) -> MonoRecord:
     """Build a scale-factor mono record directly from UI/CLI params (no detection).
 
@@ -270,6 +271,13 @@ def build_scale_factor_record(
     the model carries; ``dt`` is consumed at apply time like every other method).
     ``frame_idx`` (1-based), when given, is stamped too so the GUI can restore the
     origin/axis overlay on the SAME frame it was picked on.
+
+    ``origin_mm`` names the world position of the PICKED pixel (same semantics as
+    the board tabs' world-frame origin-mm inputs). Because the map is uniform it is
+    baked in by shifting the model's world-zero pixel — the model class, apply path
+    and record format are untouched; displacements/velocities are offset-invariant.
+    The world frame keeps the picked pixel + ``origin_mm`` so the GUI restores what
+    the user entered.
     """
     if px_per_mm <= 0:
         raise ValueError(f"px_per_mm must be > 0, got {px_per_mm}")
@@ -281,12 +289,24 @@ def build_scale_factor_record(
     col_sign = 1 if x_dir == "right" else -1
     row_sign = -1 if y_dir == "up" else 1  # image-down: up = decreasing pixel row
     origin = np.asarray(origin_px, dtype=np.float64).reshape(2)
+    ox_mm, oy_mm = float(origin_mm[0]), float(origin_mm[1])
     meta = {"px_per_mm": float(px_per_mm), "dt": float(dt)}
     if frame_idx is not None:
         meta["frame_idx"] = int(frame_idx)
 
+    # World-zero pixel such that back_project(picked) == origin_mm. Inverting the
+    # model algebra: not-swap X = col_sign*(px_x - ox)/ppm etc., so the picked pixel
+    # slides by sign*mm*px_per_mm along whichever pixel axis feeds each world axis.
+    model_origin = origin.copy()
+    if not swap_axes:
+        model_origin[0] -= col_sign * ox_mm * px_per_mm
+        model_origin[1] -= row_sign * oy_mm * px_per_mm
+    else:
+        model_origin[1] -= col_sign * ox_mm * px_per_mm
+        model_origin[0] -= row_sign * oy_mm * px_per_mm
+
     model = ScaleFactorModel(
-        origin_px=origin,
+        origin_px=model_origin,
         mm_per_pixel=1.0 / float(px_per_mm),
         image_size=(int(image_size[0]), int(image_size[1])),
         swap_axes=int(bool(swap_axes)),
@@ -299,6 +319,7 @@ def build_scale_factor_record(
         swap_axes=bool(swap_axes),
         col_sign=col_sign,
         row_sign=row_sign,
+        origin_mm=np.array([ox_mm, oy_mm], dtype=np.float64),
     )
     return MonoRecord(
         camera=int(camera),

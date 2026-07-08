@@ -390,16 +390,28 @@ def _polynomial3d_summary(pm: Polynomial3DModel) -> dict:
     }
 
 
-def _scale_factor_summary(sf: ScaleFactorModel, dt: float, frame_idx=None) -> dict:
+def _scale_factor_summary(sf: ScaleFactorModel, dt: float, frame_idx=None, wf=None) -> dict:
     """Scale-factor params shaped for the GUI results card + restore-on-load.
 
     ``frame_idx`` (the 1-based frame the origin was picked on), when known, lets the GUI
     restore the origin/axis overlay on that same frame rather than always frame 1.
+
+    ``wf`` (the record's WorldFrame) carries the PICKED origin pixel + its world
+    ``origin_mm`` — the model's own origin_px is the world-zero pixel, which differs
+    from the picked point once origin_mm is non-zero (the offset is baked in by
+    shifting it). The GUI restores what the user picked/typed, so prefer wf.
     """
     px_per_mm = (1.0 / sf.mm_per_pixel) if sf.mm_per_pixel else float("nan")
+    picked = wf.origin_px if (wf is not None and wf.origin_px is not None) else sf.origin_px
+    origin_mm = (
+        [float(wf.origin_mm[0]), float(wf.origin_mm[1])]
+        if (wf is not None and wf.origin_mm is not None)
+        else [0.0, 0.0]
+    )
     out = {
         "model_type": "scale_factor",
-        "origin_px": [float(sf.origin_px[0]), float(sf.origin_px[1])],
+        "origin_px": [float(picked[0]), float(picked[1])],
+        "origin_mm": origin_mm,
         "mm_per_pixel": float(sf.mm_per_pixel),
         "px_per_mm": float(px_per_mm),
         "dt": float(dt),
@@ -1042,6 +1054,14 @@ def scale_factor_generate():
         y_dir = str(data.get("y_dir", "up"))
         swap = bool(data.get("swap_axes", False))
         frame_idx = int(data.get("frame_idx", 1))
+        origin_mm_raw = data.get("origin_mm")
+        if origin_mm_raw is not None and len(origin_mm_raw) != 2:
+            raise ValueError("origin_mm must be [X, Y] millimetres")
+        origin_mm = (
+            (float(origin_mm_raw[0]), float(origin_mm_raw[1]))
+            if origin_mm_raw is not None
+            else (0.0, 0.0)
+        )
         image = _load_one(
             camera,
             frame_idx,
@@ -1060,6 +1080,7 @@ def scale_factor_generate():
             y_dir=y_dir,
             swap_axes=swap,
             frame_idx=frame_idx,
+            origin_mm=origin_mm,
         )
         source = _source_path(source_idx)
         model_dir = rec.mono_model_dir_for_source(source, camera, "scale_factor")
@@ -1069,15 +1090,18 @@ def scale_factor_generate():
             from pivtools_gui.calibration import figures as c2figs
 
             sf = record.camera_model
+            # Draw at the PICKED origin (world_frame) — the model's own origin_px is the
+            # world-zero pixel, off the picked point (possibly off-image) when origin_mm != 0.
             c2figs.write_scale_factor_figure(
                 fig_dir,
                 image=image,
-                origin_px=sf.origin_px,
+                origin_px=record.world_frame.origin_px,
                 col_sign=sf.col_sign,
                 row_sign=sf.row_sign,
                 swap_axes=bool(sf.swap_axes),
                 mm_per_pixel=sf.mm_per_pixel,
                 dt=dt,
+                origin_mm=origin_mm,
             )
         resp = {
             "success": True,
@@ -1085,7 +1109,8 @@ def scale_factor_generate():
             "model_path": str(path),
             "camera": camera,
         }
-        resp.update(_scale_factor_summary(record.camera_model, dt, frame_idx=frame_idx))
+        resp.update(_scale_factor_summary(
+            record.camera_model, dt, frame_idx=frame_idx, wf=record.world_frame))
         resp["figures"] = _list_figures(fig_dir) if make_figs else []
         return jsonify(resp)
     except Exception as exc:
@@ -1213,6 +1238,7 @@ def load_model():
                 cm,
                 _meta_float(r.board_meta, "dt") or 1.0,
                 frame_idx=_meta_int(r.board_meta, "frame_idx"),
+                wf=r.world_frame,
             )
         )
     elif isinstance(cm, Polynomial3DModel):
