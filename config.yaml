@@ -1,16 +1,12 @@
 paths:
   base_paths:
-  - E:\alk235
+  - E:\alk235\images\pivtools
   source_paths:
-  - D:\ALK_PIV_250527_085959\y235_aoan04_aoafn06\loop=0.set
+  - E:\alk235\images\loop=0.set
   active_paths:
   - 0
   camera_numbers:
-  - 1
-  - 2
-  - 3
   - 4
-  - 5
   camera_count: 5
   camera_subfolders: []
 images:
@@ -25,13 +21,13 @@ images:
   frame_stride: 0
   pair_stride: 1
   pairing_preset: pre_paired
-  num_loops: 1
-  num_images: 10
+  num_loops: 13
+  num_images: 150
   image_shape:
-  - 3528
+  - 3536
   - 5312
 batches:
-  size: 10
+  size: 5
 logging:
   file: pypiv.log
   level: INFO
@@ -41,15 +37,15 @@ processing:
   debug: false
   auto_compute_params: false
   omp_threads: 5
-  dask_workers_per_node: 1
-  dask_memory_limit: 45GB
+  dask_workers_per_node: 2
+  dask_memory_limit: 25GB
   dask_max_in_flight_per_worker: 2
   open_dashboard: true
   dask_nanny: false
   post_processing_workers: 16
   always_batch: true
-  instantaneous: true
-  ensemble: false
+  instantaneous: false
+  ensemble: true
 outlier_detection:
   enabled: true
   methods:
@@ -88,37 +84,37 @@ video:
   data_source: stereo
   variable: mag
   run: 3
-  piv_type: instantaneous
+  piv_type: ensemble
   cmap: default
   lower: ''
   upper: ''
   fps: 30
   crf: 15
   resolution: 4k
-  source_endpoint: merged
+  source_endpoint: regular
 statistics:
   enabled_methods:
+    mean_stresses: true
+    inst_gamma: false
     mean_tke: false
-    inst_vorticity: false
     inst_divergence: false
+    inst_vorticity: false
+    divergence: false
+    mean_divergence: false
+    gamma1: false
+    fluctuating_velocity: false
+    gamma2: false
+    vorticity: false
     inst_velocity: false
     mean_peak_height: false
-    gamma2: false
-    mean_stresses: true
     tke: false
-    divergence: false
-    mean_velocity: true
-    inst_gamma: false
-    inst_stresses: false
-    fluctuating_velocity: false
-    gamma1: false
-    mean_divergence: false
-    vorticity: false
     mean_vorticity: false
+    inst_stresses: false
+    mean_velocity: true
   gamma_radius: 4
   save_figures: true
-  type_name: instantaneous
-  source_endpoint: merged
+  type_name: ensemble
+  source_endpoint: regular
 instantaneous_piv:
   window_size:
   - - 128
@@ -137,7 +133,7 @@ instantaneous_piv:
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
-  peak_finder: gauss3
+  peak_finder: gauss6
   secondary_peak: false
   predictor_smoothing: false
   save_mode: full
@@ -150,8 +146,6 @@ ensemble_piv:
   persist_images: false
   predictor_smoothing: false
   image_warp_interpolation: lanczos
-  kspace_kurtosis: true
-  predictor_interpolation: cubic
   mask_center_pixel: true
   background_subtraction_method: correlation
   window_size:
@@ -172,20 +166,20 @@ ensemble_piv:
   - std
   - std
   - single
-  - single
+  - std
   runs:
   - 2
   - 3
   - 4
-  store_planes: false
+  store_planes: true
   save_diagnostics: true
   sum_window:
   - 32
   - 32
   sum_fitting_window_enabled: true
   sum_fitting_window:
-  - 16
-  - 16
+  - 32
+  - 32
   resume_from_pass: 0
   window_type: square
   predictor_boundary_conditions:
@@ -207,7 +201,7 @@ calibration:
   - camera4
   - camera5
   path_order: camera_first
-  active: dotboard
+  active: stereo_stepped
   piv_type: instantaneous
   scale_factor:
     dt: 0.0057553
@@ -237,7 +231,7 @@ calibration:
     datum_camera: 1
     datum_frame: 1
   calibration_sources:
-  - D:\ALK_PIV_250527_085959\Properties\Calibration
+  - E:\andre Project_FlowMaster_260129_152105_x25\Properties\Calibration
   global_coordinates:
     enabled: true
     datum_camera: 1
@@ -263,8 +257,7 @@ calibration:
     stereo_config: auto
     model_type: pinhole
     fix_k2: true
-filters:
-- type: time
+filters: []
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat
@@ -276,13 +269,13 @@ masking:
     left: 0
     right: 0
 merging:
-  type_name: instantaneous
+  type_name: ensemble
   base_path_idx: 0
   cameras: null
 transforms:
   base_path_idx: 0
-  type_name: instantaneous
+  type_name: ensemble
   cameras:
     1:
       operations: []
-  source_endpoint: merged
+  source_endpoint: regular

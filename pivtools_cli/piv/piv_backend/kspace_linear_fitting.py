@@ -1,6 +1,15 @@
 """
 Closed-form (GSL-free) k-space transfer-function fitting for ensemble PIV.
 
+DORMANT since 2026-07-08 — NOT imported by production. Replaced as the ensemble fitter
+by ``kspace_lm_fitting.fit_windows_kspace_lm`` (batched-LM GSL replica minus beta),
+which beat this fitter on the noisy planar validation set (med|relerr| vs DNS
+uu 3.3/vv 2.2/uv 5.4% vs 8.1/9.8/8.4%; outer band 2.2% vs -11%) — see
+wiki/sessions/2026-07-07-lm-gsl-replica-fitter.md. Kept intact for reference and
+possible revert: restoring it = swapping the import and submit kwargs back in
+``single_pass_accumulator`` (the exact pre-2026-07-08 call is in git history).
+manual_tools/kspace research scripts still import this module.
+
 This is the *de-janked* fitter: single stage, no beta, no nonlinear solver. It is a
 drop-in replacement for ``fit_windows_kspace`` (same positional signature and the same
 16-element ``gauss_flat`` output contract), but every step is closed-form linear algebra:
@@ -38,10 +47,12 @@ import logging
 from typing import Optional
 
 import numpy as np
-from threadpoolctl import threadpool_limits
 
 from pivtools_cli.piv.piv_backend.interpolation_noise_psd import (
     compute_noise_psd_2d, frac_distance,
+)
+from pivtools_cli.piv.piv_backend.kspace_common import (
+    _fft_planes, _kgrids, _get_threadpool_controller,
 )
 
 logger = logging.getLogger(__name__)
@@ -78,27 +89,6 @@ _KURT_RIDGE = 0.10       # shape_mode='kurtosis_reg': Gaussian-prior ridge on th
 #                          Dimensionless (scaled to the k^4 columns' reference-band norm). The
 #                          k^4 term is free where the trusted band supports it (log region) and
 #                          shrinks to 0 where it does not (centerline) -> SNR-gated, y+-free.
-
-
-def _kgrids(corr_h, corr_w):
-    """Centred (fftshifted) wavenumber grids and derived quantities, cycles/pixel."""
-    kx = np.fft.fftshift(np.fft.fftfreq(corr_w))
-    ky = np.fft.fftshift(np.fft.fftfreq(corr_h))
-    KX, KY = np.meshgrid(kx, ky, indexing="xy")  # shape (corr_h, corr_w)
-    KR = np.sqrt(KX * KX + KY * KY)
-    return KX, KY, KR
-
-
-def _fft_planes(R, corr_h, corr_w):
-    """Centred 2D FFT of a stack of correlation planes, shape (n, h, w) -> (n, h, w) complex.
-
-    Mirrors the convention in kspace_fitting.plot_kspace_diagnostic:
-    F = fftshift(fft2(ifftshift(R))).
-    """
-    R = R.reshape(-1, corr_h, corr_w)
-    shifted = np.fft.ifftshift(R, axes=(1, 2))
-    F = np.fft.fft2(shifted, axes=(1, 2))
-    return np.fft.fftshift(F, axes=(1, 2))
 
 
 def _batched_wls(feat, W, y, n_unknowns, ridge_diag=None):
@@ -572,38 +562,38 @@ def fit_windows_kspace_linear(
 
     start = 0
     Ns = proc_sorted.size
-    while start < Ns:
-        # extend the chunk while the fractional shift is constant (bounded by CHUNK)
-        end = min(start + CHUNK, Ns)
-        same = np.all(fkey_sorted[start:end] == fkey_sorted[start], axis=1)
-        if not np.all(same):
-            end = start + int(np.argmin(same))
-        idx = proc_sorted[start:end]
-        f_xy = (float(fkey_sorted[start, 0]), float(fkey_sorted[start, 1]))
+    # Cap native threadpools to 1 for the batched FFT / linear solves. Under
+    # Dask each worker process already runs one task at a time
+    # (threads_per_worker=1), so N worker processes each opening their own
+    # BLAS/FFT pool would oversubscribe the cores; pin to 1 so total threads
+    # == workers. Numerics are thread-count-invariant, so this is free.
+    with _get_threadpool_controller().limit(limits=1):
+        while start < Ns:
+            # extend the chunk while the fractional shift is constant (bounded by CHUNK)
+            end = min(start + CHUNK, Ns)
+            same = np.all(fkey_sorted[start:end] == fkey_sorted[start], axis=1)
+            if not np.all(same):
+                end = start + int(np.argmin(same))
+            idx = proc_sorted[start:end]
+            f_xy = (float(fkey_sorted[start, 0]), float(fkey_sorted[start, 1]))
 
-        # Cap native threadpools to 1 for the batched FFT / linear solves. Under
-        # Dask each worker process already runs one task at a time
-        # (threads_per_worker=1), so N worker processes each opening their own
-        # BLAS/FFT pool would oversubscribe the cores; pin to 1 so total threads
-        # == workers. Numerics are thread-count-invariant, so this is free.
-        with threadpool_limits(limits=1):
             Sigma, mu, amps, status = _fit_chunk(
                 R_AA[idx], R_BB[idx], R_AB[idx], KX, KY, KR, cy, cx,
                 f_xy, interp_kernel, floor_mode, weight_mode, shape_mode,
             )
 
-        gauss_flat[idx, 0:3] = amps
-        gauss_flat[idx, 3:6] = 0.0
-        gauss_flat[idx, 6:9] = np.nan          # particle-size slots -> NaN (UU=Sigma_xx)
-        gauss_flat[idx, 9] = Sigma[:, 0]       # Sigma_xx
-        gauss_flat[idx, 10] = Sigma[:, 1]      # Sigma_yy
-        gauss_flat[idx, 11] = Sigma[:, 2]      # Sigma_xy
-        gauss_flat[idx, 12] = center_x
-        gauss_flat[idx, 13] = center_y
-        gauss_flat[idx, 14] = center_x + mu[:, 0]
-        gauss_flat[idx, 15] = center_y + mu[:, 1]
-        status_flat[idx] = status
-        start = end
+            gauss_flat[idx, 0:3] = amps
+            gauss_flat[idx, 3:6] = 0.0
+            gauss_flat[idx, 6:9] = np.nan      # particle-size slots -> NaN (UU=Sigma_xx)
+            gauss_flat[idx, 9] = Sigma[:, 0]   # Sigma_xx
+            gauss_flat[idx, 10] = Sigma[:, 1]  # Sigma_yy
+            gauss_flat[idx, 11] = Sigma[:, 2]  # Sigma_xy
+            gauss_flat[idx, 12] = center_x
+            gauss_flat[idx, 13] = center_y
+            gauss_flat[idx, 14] = center_x + mu[:, 0]
+            gauss_flat[idx, 15] = center_y + mu[:, 1]
+            status_flat[idx] = status
+            start = end
 
     initial_guess_flat[:] = gauss_flat         # closed-form: no separate initial guess
 

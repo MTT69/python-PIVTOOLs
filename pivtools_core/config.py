@@ -2602,11 +2602,15 @@ video:
     def ensemble_fit_method(self) -> str:
         """Return fitting method for ensemble PIV.
 
-        Only 'kspace' is supported: a GSL-free, closed-form k-space transfer
-        function fit (``fit_windows_kspace_linear``). The old GPL-GSL fitters
-        (the C 'kspace' and the spatial 'gaussian' Levenberg-Marquardt) were
-        removed; a stale ``fit_method: gaussian`` now fails loudly here rather
-        than silently falling back.
+        Only 'kspace' is supported: since 2026-07-08 this is the batched-LM
+        two-stage k-space transfer-function fit (``fit_windows_kspace_lm`` —
+        a GSL-free replica of the original nonlinear fitter minus its beta
+        term, Gaussian displacement PDF only). The closed-form predecessor
+        (``fit_windows_kspace_linear``) is dormant in-tree; the old GPL-GSL
+        fitters were removed. A stale ``fit_method: gaussian`` fails loudly
+        here rather than silently falling back. The former ``kspace_kurtosis``
+        toggle was removed (kurtosis tested and rejected in the LM fitter);
+        a stale key in old workspace configs is ignored.
         """
         method = self.data.get("ensemble_piv", {}).get("fit_method", "kspace")
         valid_methods = {'kspace'}
@@ -2614,32 +2618,9 @@ video:
             raise ValueError(
                 f"Invalid ensemble_fit_method '{method}'. Must be one of "
                 f"{valid_methods}. (The 'gaussian' method and the GSL-based "
-                f"k-space fitter were removed; use 'kspace' with the "
-                f"'kspace_kurtosis' toggle for the shape model.)"
+                f"k-space fitter were removed.)"
             )
         return method
-
-    @property
-    def ensemble_kspace_kurtosis(self) -> bool:
-        """Return whether the k-space fit uses the decoupled-kurtosis shape model.
-
-        The closed-form k-space fitter models the displacement PDF either as a
-        pure Gaussian or with a per-axis (decoupled) 4th-order kurtosis term:
-
-        - True (default):  shape_mode='kurtosis_decoupled' -- adds independent
-          kx^4 / ky^4 curvature columns. Validated to beat the old GSL fitter in
-          the log region on channel-flow data where the streamwise displacement
-          PDF is genuinely sub-Gaussian.
-        - False: shape_mode='gauss' -- pure Gaussian PDF (ln|T| quadratic in k).
-          The robust baseline; pick this where the PDF is near-Gaussian or SNR is
-          low (the k^4 term is ungated and can over-read in those regimes).
-
-        Generality of the kurtosis correction across passes/flows is still being
-        validated; the toggle lets users fall back to 'gauss' per run.
-
-        Default: True
-        """
-        return self.data.get("ensemble_piv", {}).get("kspace_kurtosis", True)
 
     @property
     def ensemble_image_warp_interpolation(self) -> str:
@@ -2666,32 +2647,6 @@ video:
         if method not in valid_methods:
             raise ValueError(
                 f"Invalid ensemble_image_warp_interpolation '{method}'. "
-                f"Must be one of {valid_methods}"
-            )
-        return method
-
-    @property
-    def ensemble_predictor_interpolation(self) -> str:
-        """Return interpolation method for predictor field in ensemble PIV.
-
-        This controls the cv2.remap interpolation when upsampling the predictor
-        field from coarse to fine grids and from window centers to dense pixel
-        coordinates.
-
-        Options:
-        - 'nearest': cv2.INTER_NEAREST (fastest, may cause blocky artifacts)
-        - 'linear': cv2.INTER_LINEAR (bilinear, good balance)
-        - 'cubic': cv2.INTER_CUBIC (bicubic, smoothest, default)
-
-        Default: 'cubic'
-        """
-        method = self.data.get("ensemble_piv", {}).get(
-            "predictor_interpolation", "cubic"
-        )
-        valid_methods = {'nearest', 'linear', 'cubic'}
-        if method not in valid_methods:
-            raise ValueError(
-                f"Invalid ensemble_predictor_interpolation '{method}'. "
                 f"Must be one of {valid_methods}"
             )
         return method

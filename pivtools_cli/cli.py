@@ -668,8 +668,6 @@ ensemble_piv:
   fit_method: kspace
   skip_background_subtraction: false
   image_warp_interpolation: cubic
-  predictor_interpolation: cubic
-  kspace_kurtosis: true
   background_subtraction_method: correlation
   gradient_correction: false
   mask_center_pixel: true

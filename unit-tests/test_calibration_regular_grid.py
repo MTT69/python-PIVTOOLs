@@ -67,7 +67,11 @@ def test_regular_grid_is_regular():
     gX, gY, gZ, sp = regular_world_grid(m1, m2, coords, coords.copy(), z_off, tx, ty)
 
     assert np.allclose(np.diff(gX, axis=1), sp, atol=1e-9)
-    assert np.allclose(np.diff(gY, axis=0), sp, atol=1e-9)
+    # Rows are stored top-of-view first (row 0 = y_max, descending y), matching the
+    # image-order convention of every other calibrated product — the results viewer
+    # plots row 0 at the top with no detection or flipping.
+    assert np.allclose(np.diff(gY, axis=0), -sp, atol=1e-9)
+    assert gY[0, 0] == np.max(gY) and gY[-1, 0] == np.min(gY)
     assert np.allclose(gX, gX[:1, :])          # rows identical
     assert np.allclose(gY, gY[:, :1])          # cols identical
     # Axes snapped to spacing multiples.

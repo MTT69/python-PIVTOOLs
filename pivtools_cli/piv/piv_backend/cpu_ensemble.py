@@ -1264,13 +1264,6 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             point_spread_b,
         )
 
-    # Interpolation method mapping for cv2.remap (used only for predictor remap now)
-    INTERP_FLAGS = {
-        'nearest': cv2.INTER_NEAREST,
-        'linear': cv2.INTER_LINEAR,
-        'cubic': cv2.INTER_CUBIC,
-    }
-
     def _fused_warp_batch(self, images_a, images_b):
         """Warp N image pairs using fused C kernel with self.delta_ab_old (shared predictor).
 
@@ -1306,7 +1299,10 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
     def _get_im_mesh(self, pass_idx: int, predictor_field: Optional[np.ndarray]):
         """Compute image meshes with predictor field warping.
 
-        Uses interpolation method from config.ensemble_predictor_interpolation.
+        Predictor-to-window remap is fixed at bicubic, matching instantaneous
+        (the predictor is a smooth band-limited field — kernel choice beyond
+        cubic is inconsequential; image resampling is configured separately
+        via ensemble_image_warp_interpolation).
         """
         n_win_y = len(self.win_ctrs_y[pass_idx])
         n_win_x = len(self.win_ctrs_x[pass_idx])
@@ -1432,9 +1428,9 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 f"sigma={self.sd[pass_idx]:.4f}, ksize={self.ksize_filt[pass_idx]}"
             )
 
-        # Get interpolation method from config (default to cubic for backwards compatibility)
-        interp_method = getattr(self.config, 'ensemble_predictor_interpolation', 'cubic')
-        interp_flag = self.INTERP_FLAGS.get(interp_method, cv2.INTER_CUBIC)
+        # Predictor-to-window remap stays in Python (small grid, needed for output);
+        # fixed at bicubic, matching instantaneous (cpu_instantaneous.py)
+        interp_flag = cv2.INTER_CUBIC
 
         with self._profile_section(pass_idx, "pc_predictor_remap"):
             map_x, map_y = self.cached_predictor_maps[pass_idx]

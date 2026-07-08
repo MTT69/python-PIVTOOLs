@@ -741,22 +741,18 @@ class SinglePassAccumulator:
                 else:
                     pred_disp_futures.append(None)
 
-        # Closed-form, GSL-free k-space fit. The validated production recipe
-        # (joint noise floor, refc trust-region weighting, no kurtosis band cap)
-        # is fixed here; only the shape model is user-selectable via
-        # ensemble_piv.kspace_kurtosis.
+        # Batched-LM k-space fit (GSL replica minus beta): two-stage nonlinear fit —
+        # joint LM noise floor, complex-domain 5-param main fit with soft SNR-adaptive
+        # weighting and per-axis profile k_max. No shape/floor/weight options: the
+        # validated recipe is fixed. The closed-form predecessor
+        # (kspace_linear_fitting) is dormant in-tree for revert.
         with self._profile_section(pass_idx, "fitting"):
-            from pivtools_cli.piv.piv_backend.kspace_linear_fitting import (
-                fit_windows_kspace_linear,
-            )
-            shape_mode = (
-                "kurtosis_decoupled"
-                if self.config.ensemble_kspace_kurtosis
-                else "gauss"
+            from pivtools_cli.piv.piv_backend.kspace_lm_fitting import (
+                fit_windows_kspace_lm,
             )
             futures = [
                 client.submit(
-                    fit_windows_kspace_linear,
+                    fit_windows_kspace_lm,
                     R_AA_futures[i],
                     R_BB_futures[i],
                     R_AB_futures[i],
@@ -764,14 +760,11 @@ class SinglePassAccumulator:
                     corr_size,
                     self.config,
                     pass_idx,
-                    True,                 # use_soft_weighting (accepted, unused)
+                    True,                 # use_soft_weighting (GSL soft w_snr*w_soft)
                     self.config.debug,    # diagnostics when debug=True
                     pred_disp_futures[i],  # per-window predictor displacements
                     interp_kernel,        # 'bicubic' or 'lanczos3'
-                    None,                 # k_max_cap (accepted, unused)
-                    floor_mode="joint",
-                    weight_mode="refc",
-                    shape_mode=shape_mode,
+                    None,                 # k_max_cap (None -> 0.35 default)
                 ) for i in range(len(R_AA_futures))
             ]
 

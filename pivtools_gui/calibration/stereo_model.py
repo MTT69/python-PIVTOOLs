@@ -547,9 +547,11 @@ def regular_world_grid(
 
     ``coords1_px``/``coords2_px`` are the cameras' PIV grids, (H,W,2) image-down pixel
     meshgrids. Returns ``(X, Y, Z, spacing_mm)``: X/Y are axis-aligned world-mm meshgrids
-    (Hg, Wg) with constant spacing and ascending axes, ``Z = z_world + X*tan(tilt_y) +
-    Y*tan(tilt_x)`` (the same sheet plane ``back_project_to_plane`` uses), and
-    ``spacing_mm`` is the spacing used.
+    (Hg, Wg) with constant spacing — x ascending along columns, y DESCENDING down the
+    rows (row 0 = y_max, image order, the convention every calibrated product shares
+    and the results viewer assumes) — ``Z = z_world + X*tan(tilt_y) + Y*tan(tilt_x)``
+    (the same sheet plane ``back_project_to_plane`` uses), and ``spacing_mm`` is the
+    spacing used.
 
     Domain: both PIV grids are back-projected to the plane; the grid spans the
     INTERSECTION of the two finite world bounding boxes, snapped to spacing multiples.
@@ -652,7 +654,10 @@ def regular_world_grid(
             f"({ny}x{nx} points)"
         )
     xs = x0 + spacing * np.arange(nx)
-    ys = y0 + spacing * np.arange(ny)
+    # Row 0 = y_max (descending y down the rows): calibrated products store rows in
+    # image order (top of the physical view first), and the results viewer plots row 0
+    # at the top with no detection or flipping — an ascending-y grid renders mirrored.
+    ys = (y0 + spacing * np.arange(ny))[::-1]
     X, Y = np.meshgrid(xs, ys)
     Z = z_world + X * np.tan(tilt_y) + Y * np.tan(tilt_x)
 
