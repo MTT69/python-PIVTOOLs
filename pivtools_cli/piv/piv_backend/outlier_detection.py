@@ -10,6 +10,7 @@ This module provides various methods for detecting outliers in PIV data:
 
 import numpy as np
 import bottleneck as bn
+from numpy.lib.stride_tricks import sliding_window_view
 from scipy.signal import convolve2d
 from scipy import ndimage as ndi
 
@@ -42,15 +43,26 @@ def peak_magnitude_detection(
 def median_outlier_detection(
     ux: np.ndarray,
     uy: np.ndarray,
-    epsilon: float = 0.2,
+    epsilon: float = 0.1,
     threshold: float = 2.0,
+    size: int = 5,
 ) -> np.ndarray:
     """
-    Fast median-based outlier detection for 2D PIV velocity fields,
-    using bottleneck for nan-aware reductions.
-    
-    This method compares each vector to the median of its 8 neighbors.
-    Outliers are identified based on the normalized residual exceeding a threshold.
+    Normalized-median (universal) outlier detection for 2D PIV velocity
+    fields, replicating Westerweel & Scarano's published PIVware
+    ``pwValidate`` (nan-aware via bottleneck).
+
+    Each vector is compared to the component-wise median of its ``size``x
+    ``size`` neighbourhood (the vector itself excluded). The residual is the
+    **vector norm** of that difference,
+    ``r0 = sqrt((ux - med_u)^2 + (uy - med_v)^2)`` (PIVware ``pwVectorNorm``),
+    a single scalar per node. It is normalized by the neighbourhood median of
+    the neighbour residual norms plus ``epsilon`` and compared against
+    ``threshold`` once. Because the vector is judged as a whole -- rather than
+    each component being tested and OR'd -- a large but legitimate fluctuation
+    in the quiet (wall-normal) component is not flagged on its own. This
+    matters most in high-shear regions such as the near-wall boundary layer,
+    where a per-component test over-rejects valid vectors.
 
     Parameters
     ----------
@@ -59,9 +71,16 @@ def median_outlier_detection(
     uy : np.ndarray
         Vertical velocity component (2D).
     epsilon : float, optional
-        Regularization term for division stability, defaults to 0.2.
+        Regularization term (px) for the normalization, defaults to 0.1
+        (PIVware ``EPS``).
     threshold : float, optional
-        Threshold for outlier detection, defaults to 2.0.
+        Normalized-residual detection level, defaults to 2.0
+        (PIVware ``LEVEL``).
+    size : int, optional
+        Side length of the square neighbourhood; must be an odd integer >= 3.
+        Defaults to 5 (PIVware ``SIZE``). A smaller window (3) keeps shear from
+        spreading across the neighbourhood; a larger one gives smoother
+        statistics.
 
     Returns
     -------
@@ -70,51 +89,57 @@ def median_outlier_detection(
     """
     if ux.shape != uy.shape:
         raise ValueError("ux and uy must have identical shapes")
+    if not isinstance(size, (int, np.integer)) or size < 3 or size % 2 == 0:
+        raise ValueError(f"size must be an odd integer >= 3, got {size!r}")
 
-    n_wx, n_wy = ux.shape
-    ui = np.stack((ux, uy), axis=-1).astype(np.float32, copy=False)
+    ux = ux.astype(np.float32, copy=False)
+    uy = uy.astype(np.float32, copy=False)
 
-    r_0p = np.zeros((n_wx, n_wy, 2), dtype=np.float32)
-    n_neighbours = np.zeros((n_wx, n_wy, 2), dtype=np.float32)
+    def _neighbours(U):
+        """Stack the size*size-1 neighbours of every node (self excluded,
+        NaN outside the grid)."""
+        pad = size // 2
+        U_pad = np.pad(U, pad, mode="constant", constant_values=np.nan)
+        win = sliding_window_view(U_pad, (size, size))  # (H, W, size, size)
+        flat = win.reshape(U.shape[0], U.shape[1], size * size)
+        centre = (size * size) // 2  # flat index of the node itself
+        return np.concatenate(
+            [flat[..., :centre], flat[..., centre + 1:]], axis=-1
+        )  # (H, W, size*size - 1)
 
+    ux_nn = _neighbours(ux)
+    uy_nn = _neighbours(uy)
+
+    # Component-wise neighbour median (PIVware pwMedianUV)
+    med_u = bn.nanmedian(ux_nn, axis=-1)
+    med_v = bn.nanmedian(uy_nn, axis=-1)
+
+    # Residual as a VECTOR NORM (PIVware pwVectorNorm): one scalar per node
+    r_0 = np.sqrt((ux - med_u) ** 2 + (uy - med_v) ** 2)
+
+    # Normalize by the median of the neighbour residual norms (relative to the
+    # same neighbour median) plus epsilon (PIVware pwMedian of the residual).
+    r_i = np.sqrt(
+        (ux_nn - med_u[..., None]) ** 2 + (uy_nn - med_v[..., None]) ** 2
+    )
+    r_m = bn.nanmedian(r_i, axis=-1)
+
+    norm_resid = r_0 / (r_m + epsilon)
+
+    # Border/hole guard on the immediate 3×3 (deliberately independent of the
+    # median window `size`): reject a node only when its closest neighbours are
+    # missing, so a wall-row node whose larger window pokes past the grid edge
+    # is not thrown out just for being near the wall. Both components must be
+    # finite for a cell to count.
+    valid = (np.isfinite(ux) & np.isfinite(uy)).astype(np.float32)
     ones3 = np.ones((3, 3), dtype=np.float32)
-
-    for c in range(2):
-        U = ui[..., c]
-        U_pad = np.pad(U, 1, mode="constant", constant_values=np.nan)
-
-        # Collect 8-neighbor pixels
-        U_nn = np.stack([
-            U_pad[:-2, :-2],  # top-left
-            U_pad[:-2, 1:-1],  # top
-            U_pad[:-2, 2:],    # top-right
-            U_pad[1:-1, :-2],  # left
-            U_pad[1:-1, 2:],   # right
-            U_pad[2:, 2:],     # bottom-right
-            U_pad[2:, 1:-1],   # bottom
-            U_pad[2:, :-2],    # bottom-left
-        ], axis=-1)  # (H, W, 8)
-
-        # --- bottleneck median operations (C-accelerated) ---
-        U_med = bn.nanmedian(U_nn, axis=-1)  # neighbor median
-        r_0 = np.abs(U_med - U)
-        r_i = np.abs(U_nn - U_med[..., None])
-        r_m = bn.nanmedian(r_i, axis=-1)     # median absolute deviation
-
-        r_0p[..., c] = r_0 / (r_m + epsilon)
-
-        # Valid neighbor count via convolution (3×3 kernel)
-        valid = (~np.isnan(U)).astype(np.float32)
-        n_neigh = convolve2d(valid, ones3, mode="same", boundary="fill", fillvalue=0.0)
-        n_neighbours[..., c] = n_neigh
-
-    r_0_combined = bn.nanmax(r_0p, axis=2)
+    n_neigh = convolve2d(valid, ones3, mode="same", boundary="fill", fillvalue=0.0)
 
     # Boolean mask: true = outlier
     b_filter = (
-        (r_0_combined > threshold)
-        | np.isnan(r_0p).any(axis=2)
-        | (n_neighbours < 6).any(axis=2)
+        (norm_resid > threshold)
+        | ~np.isfinite(norm_resid)
+        | (n_neigh < 6)
     )
     return b_filter
 
@@ -284,9 +309,12 @@ def apply_outlier_detection(
             combined_mask |= mask
             
         elif method_type == 'median_2d':
-            epsilon = method_cfg.get('epsilon', 0.2)
+            epsilon = method_cfg.get('epsilon', 0.1)
             threshold = method_cfg.get('threshold', 2.0)
-            mask = median_outlier_detection(ux, uy, epsilon=epsilon, threshold=threshold)
+            size = method_cfg.get('size', 5)
+            mask = median_outlier_detection(
+                ux, uy, epsilon=epsilon, threshold=threshold, size=size
+            )
             combined_mask |= mask
             
         elif method_type == 'sigma':

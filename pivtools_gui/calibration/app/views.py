@@ -25,6 +25,7 @@ Routes (prefix ``/calibration`` under the app's ``/backend``):
 - POST /calibration/measure         -> distance in mm between two pixels (back-projection)
 - GET  /calibration/figures|figure  -> list / serve the proof figures for a model
 - POST /calibration/global/compute  -> planar N-camera datum-chain shifts
+- POST /calibration/set_datum       -> shift a type's coordinates.mat (viewer datum/offset)
 - POST /calibration/apply (+ /apply/status/<id>) -> apply the model to PIV output (job)
 """
 
@@ -37,17 +38,19 @@ from typing import Any, Callable, List, Optional
 
 import cv2
 import numpy as np
+import scipy.io
 from flask import Blueprint, Response, jsonify, request
 
 from pivtools_cli import calibration_cli as c2
 from pivtools_core.config import get_config
+from pivtools_core.coordinate_utils import extract_coordinates, get_num_coordinate_runs
 from pivtools_core.image_handling.calibration_loader import (
     get_calibration_frame_count,
     read_calibration_image,
     validate_calibration_images,
 )
 from pivtools_core.image_handling.path_utils import infer_image_type
-from pivtools_core.paths import vector_glob_from_format
+from pivtools_core.paths import get_data_paths, vector_glob_from_format
 from pivtools_gui.calibration import apply as c2apply
 from pivtools_gui.calibration import global_coords as gc2
 from pivtools_gui.calibration import record as rec
@@ -1496,6 +1499,132 @@ def _apply_units(data, full_cfg, source, board, stereo, type_name):
         explicit=explicit,
         model_type=_model_type_arg(get, board, stereo=stereo),
     )
+
+
+@calibration_bp.route("/calibration/set_datum", methods=["POST"])
+def calibration_set_datum():
+    """Set a new datum (origin) and/or apply offsets to ALL runs in a type's coordinates.
+
+    Serves the vector viewer's Coordinate System panel. The datum ``x``/``y`` (a clicked
+    physical position) is subtracted from every coordinate, then ``x_offset``/``y_offset``
+    is added — offsets are additive per request, not absolute. Every run in the type's
+    ``coordinates.mat`` is rewritten; stereo ``z`` is preserved untouched. Statistics
+    coordinates (``statistics/.../mean_stats/coordinates.mat``) are NOT modified — the
+    viewer hides coordinate editing for mean-stats variables.
+
+    JSON body: ``base_path`` (optional, wins over idx) or ``base_path_idx``; ``camera``;
+    ``run`` (logging only); ``type_name`` (default ``instantaneous``); ``x``/``y``
+    (optional datum, both required together); ``x_offset``/``y_offset`` (default 0);
+    ``merged``; ``use_stereo`` + ``camera_pair``.
+    """
+    data = request.get_json() or {}
+    full_cfg = get_config()
+
+    base_path = data.get("base_path")
+    if not base_path:
+        base_idx = int(data.get("base_path_idx", 0))
+        try:
+            base_path = full_cfg.base_paths[base_idx]
+        except IndexError:
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": f"base_path_idx {base_idx} out of range",
+                    }
+                ),
+                400,
+            )
+
+    camera = camera_number(data.get("camera", 1))
+    run = int(data.get("run", 1))  # logging only: the update spans all runs
+    type_name = data.get("type_name", "instantaneous")
+    x0 = data.get("x")
+    y0 = data.get("y")
+    x_offset = float(data.get("x_offset") or 0)
+    y_offset = float(data.get("y_offset") or 0)
+    use_merged = bool(data.get("merged"))
+    use_stereo = bool(data.get("use_stereo"))
+    camera_pair = data.get("camera_pair")
+    stereo_camera_pair = None
+    if use_stereo and isinstance(camera_pair, (list, tuple)) and len(camera_pair) >= 2:
+        stereo_camera_pair = (int(camera_pair[0]), int(camera_pair[1]))
+
+    try:
+        paths = get_data_paths(
+            base_dir=Path(base_path),
+            num_frame_pairs=full_cfg.num_frame_pairs,
+            cam=camera,
+            type_name=type_name,
+            use_merged=use_merged,
+            use_stereo=use_stereo,
+            stereo_camera_pair=stereo_camera_pair,
+        )
+        coords_path = Path(paths["data_dir"]) / "coordinates.mat"
+        if not coords_path.exists():
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": f"Coordinates file not found: {coords_path}",
+                    }
+                ),
+                404,
+            )
+
+        mat = scipy.io.loadmat(str(coords_path), struct_as_record=False, squeeze_me=True)
+        if "coordinates" not in mat:
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": f"Variable 'coordinates' not found in {coords_path}",
+                    }
+                ),
+                400,
+            )
+        coordinates = mat["coordinates"]
+        num_runs = get_num_coordinate_runs(coordinates)
+        is_multi = isinstance(coordinates, np.ndarray) and coordinates.dtype == object
+        has_z = hasattr(coordinates[0] if is_multi else coordinates, "z")
+
+        fields = [("x", object), ("y", object)] + ([("z", object)] if has_z else [])
+        coords_struct = np.empty((num_runs,), dtype=fields)
+        for i in range(num_runs):
+            cx, cy = extract_coordinates(coordinates, i + 1)
+            if x0 is not None and y0 is not None:
+                cx = cx - float(x0)
+                cy = cy - float(y0)
+            coords_struct["x"][i] = cx + x_offset
+            coords_struct["y"][i] = cy + y_offset
+            if has_z:
+                el = coordinates[i] if is_multi else coordinates
+                coords_struct["z"][i] = np.asarray(el.z)
+
+        scipy.io.savemat(
+            str(coords_path), {"coordinates": coords_struct}, do_compression=True
+        )
+        logger.info(
+            f"[set_datum] {type_name} Cam{camera} (from run {run}): datum=({x0}, {y0}) "
+            f"offset=({x_offset}, {y_offset}) -> {num_runs} runs in {coords_path}"
+        )
+        return jsonify(
+            {
+                "success": True,
+                "type_name": type_name,
+                "num_runs_updated": num_runs,
+                "coords_path": str(coords_path),
+                "x0": x0,
+                "y0": y0,
+                "x_offset": x_offset,
+                "y_offset": y_offset,
+            }
+        )
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception:
+        logger.exception("[set_datum] failed")
+        return jsonify({"success": False, "error": "Internal server error"}), 500
 
 
 @calibration_bp.route("/calibration/apply", methods=["POST"])

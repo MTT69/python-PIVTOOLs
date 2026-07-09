@@ -25,13 +25,15 @@ from pivtools_core.vector_loading import find_non_empty_run, get_plottable_vars
 from ..plot_maker import make_scalar_settings
 from ...utils import camera_number
 from .shared_utils import (
-    VARIABLE_UNITS,
+    apply_wall_units,
     build_response_meta,
     create_and_return_plot,
     extract_var_and_mask,
+    length_units_for,
     load_and_plot_data,
     load_piv_result,
     parse_plot_params,
+    units_for_var,
     validate_and_get_paths,
 )
 
@@ -104,8 +106,8 @@ def plot_vector():
             )
 
         # Determine units based on calibration status
-        length_units = "px" if params["use_uncalibrated"] else "mm"
-        variable_units = "px" if params["use_uncalibrated"] else VARIABLE_UNITS.get(raw_var, "m/s")
+        length_units = length_units_for(params["use_uncalibrated"])
+        variable_units = units_for_var(raw_var, params["use_uncalibrated"])
 
         b64_img, W, H, extra, effective_run = load_and_plot_data(
             mat_path=data_path,
@@ -123,6 +125,9 @@ def plot_vector():
             length_units=length_units,
             variable_units=variable_units,
             is_uncalibrated=params["use_uncalibrated"],
+            u_tau=params["u_tau"],
+            nu=params["nu"],
+            wall_units=params["wall_units"],
         )
         meta = build_response_meta(effective_run, raw_var, W, H, extra)
         return jsonify({"success": True, "image": b64_img, "meta": meta})
@@ -159,7 +164,12 @@ def plot_stats():
             xlim=params["xlim"],
             ylim=params["ylim"],
             custom_title=params["custom_title"],
+            length_units=length_units_for(params["use_uncalibrated"]),
+            variable_units=units_for_var(params["var"], params["use_uncalibrated"]),
             is_uncalibrated=params["use_uncalibrated"],
+            u_tau=params["u_tau"],
+            nu=params["nu"],
+            wall_units=params["wall_units"],
         )
         meta = build_response_meta(params["run"], params["var"], W, H, extra)
         return jsonify({"success": True, "image": b64_img, "meta": meta})
@@ -221,18 +231,25 @@ def plot_ensemble():
                 coords = coords_mat["coordinates"]
                 cx, cy = extract_coordinates(coords, effective_run)
 
+        var_arr, cy, wall_extra = apply_wall_units(var_arr, cy, raw_var, params)
+
         # Plot as stored — the renderer orients the y-axis to the array's row order.
         settings = make_scalar_settings(
             get_config(),
-            variable=raw_var,
+            variable=wall_extra.get("variable", raw_var),
             run_label=effective_run,
             save_basepath=Path("plot_ensemble_tmp"),
-            variable_units="m/s",
-            length_units="mm",
+            variable_units=wall_extra.get(
+                "variable_units", units_for_var(raw_var, params["use_uncalibrated"])
+            ),
+            length_units=length_units_for(params["use_uncalibrated"]),
+            ylabel=wall_extra.get("ylabel"),
+            y_units=wall_extra.get("y_units"),
+            aspect=wall_extra.get("aspect", "equal"),
             coords_x=cx,
             coords_y=cy,
-            lower_limit=params["lower_limit"],
-            upper_limit=params["upper_limit"],
+            lower_limit=wall_extra.get("lower_limit", params["lower_limit"]),
+            upper_limit=wall_extra.get("upper_limit", params["upper_limit"]),
             cmap=params["cmap"],
             xlim=params["xlim"],
             ylim=params["ylim"],
@@ -240,6 +257,9 @@ def plot_ensemble():
         )
 
         b64_img, W, H, extra = create_and_return_plot(var_arr, mask_arr, settings, raw=params["raw"])
+        if params["wall_units"]:
+            extra = dict(extra or {})
+            extra.update({"wall_units": True, "u_tau": params["u_tau"], "nu": params["nu"]})
         meta = build_response_meta(effective_run, raw_var, W, H, extra)
 
         return jsonify({"success": True, "image": b64_img, "meta": meta})

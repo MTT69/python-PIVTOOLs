@@ -53,8 +53,9 @@ outlier_detection:
   - threshold: 0.25
     type: peak_mag
   - type: median_2d
-    epsilon: 0.1
-    threshold: 3
+    epsilon: 0.2
+    threshold: 2
+    size: 5
 infilling:
   mid_pass:
     method: nearest
@@ -85,7 +86,7 @@ video:
   data_source: stereo
   variable: mag
   run: 3
-  piv_type: ensemble
+  piv_type: instantaneous
   cmap: default
   lower: ''
   upper: ''
@@ -95,26 +96,26 @@ video:
   source_endpoint: regular
 statistics:
   enabled_methods:
-    divergence: false
-    tke: false
-    mean_stresses: true
-    inst_divergence: false
-    mean_vorticity: false
-    fluctuating_velocity: false
-    inst_velocity: false
-    mean_tke: false
-    mean_velocity: true
-    mean_divergence: false
-    inst_stresses: false
     inst_vorticity: false
-    gamma1: false
-    mean_peak_height: false
-    vorticity: false
-    gamma2: false
+    mean_divergence: false
     inst_gamma: false
+    gamma2: false
+    vorticity: false
+    gamma1: false
+    divergence: false
+    inst_stresses: false
+    mean_velocity: true
+    inst_velocity: false
+    fluctuating_velocity: false
+    mean_stresses: true
+    mean_tke: false
+    inst_divergence: false
+    tke: false
+    mean_vorticity: false
+    mean_peak_height: false
   gamma_radius: 4
   save_figures: true
-  type_name: ensemble
+  type_name: instantaneous
   source_endpoint: regular
 instantaneous_piv:
   window_size:
@@ -160,7 +161,10 @@ ensemble_piv:
     - 96
   - - 16
     - 96
+  - - 8
+    - 96
   overlap:
+  - 50
   - 50
   - 50
   - 50
@@ -168,10 +172,12 @@ ensemble_piv:
   - std
   - std
   - single
+  - single
   runs:
   - 1
   - 2
   - 3
+  - 4
   store_planes: true
   save_diagnostics: true
   sum_window:
@@ -181,7 +187,7 @@ ensemble_piv:
   sum_fitting_window:
   - 32
   - 32
-  resume_from_pass: 3
+  resume_from_pass: 4
   window_type: square
   predictor_boundary_conditions:
   - y_position: 0
@@ -272,12 +278,12 @@ masking:
     left: 0
     right: 0
 merging:
-  type_name: ensemble
+  type_name: instantaneous
   base_path_idx: 0
   cameras: null
 transforms:
   base_path_idx: 0
-  type_name: ensemble
+  type_name: instantaneous
   cameras:
     1:
       operations: []

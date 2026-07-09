@@ -50,7 +50,106 @@ VARIABLE_UNITS = {
     "peak_mag": "-",
     "peakheight": "-",
     "mean_peak_height": "-",
+    # Ensemble diagnostics
+    "nan_reason": "-", "b_mask": "-",
+    "c_a": "-", "c_b": "-", "c_ab": "-",
+    "window_size": "px",
+    "sig_ab_x": "px", "sig_ab_y": "px", "sig_ab_xy": "px",
+    "sig_a_x": "px", "sig_a_y": "px", "sig_a_xy": "px",
+    "win_ctrs_x": "px", "win_ctrs_y": "px",
+    "pred_x": "px", "pred_y": "px",
 }
+
+# Ensemble/statistics variable names carry these suffixes on top of the base
+# stress/velocity names (e.g. UU_stress_uncorrected -> uu). Stripped repeatedly
+# until the name is stable, so units are defined once per base variable.
+_VAR_SUFFIXES = (
+    "_uncorrected", "_window_correction", "_particle_correction",
+    "_correction", "_stress", "_inst",
+)
+
+
+def normalize_var_name(var: str) -> str:
+    """'ens:UU_stress_uncorrected' -> 'uu': strip source prefix, lowercase,
+    strip ensemble suffixes until stable."""
+    v = var.split(":", 1)[-1].strip().lower()
+    changed = True
+    while changed:
+        changed = False
+        for suf in _VAR_SUFFIXES:
+            if v.endswith(suf) and len(v) > len(suf):
+                v = v[: -len(suf)]
+                changed = True
+    return v
+
+
+# Uncalibrated data is pixel displacement per frame pair, so units derive
+# mechanically from the calibrated ones.
+_UNCALIBRATED_UNITS = {"m/s": "px", "m^2/s^2": "px^2", "1/s": "1/frame"}
+
+
+def units_for_var(var: str, uncalibrated: bool = False) -> str:
+    """Canonical colorbar units for any plottable variable. All plot routes
+    must use this rather than hardcoding units."""
+    cal = VARIABLE_UNITS.get(normalize_var_name(var), "-")
+    return _UNCALIBRATED_UNITS.get(cal, cal) if uncalibrated else cal
+
+
+def length_units_for(uncalibrated: bool) -> str:
+    """Axis (coordinate) units: px for uncalibrated data, mm for calibrated."""
+    return "px" if uncalibrated else "mm"
+
+
+# --- Wall-units (viscous scaling) view -------------------------------------
+# View-only normalisation by friction velocity: u+ = u/u_tau, stresses/u_tau^2,
+# y+ = (y_mm/1000)*u_tau/nu. Only velocity and stress variables scale; anything
+# else (vorticity, peak heights, diagnostics) is left untouched.
+_WALL_VELOCITY = {"ux", "uy", "uz", "mean_ux", "mean_uy", "mean_uz",
+                  "u_prime", "v_prime", "w_prime"}
+_WALL_STRESS = {"uu", "vv", "ww", "uv", "uw", "vw", "tke"}
+
+
+def wall_scale_divisor(var: str, u_tau: float) -> Optional[float]:
+    """Divisor to convert a variable to wall units, or None if the variable
+    does not scale (left in physical units)."""
+    base = normalize_var_name(var)
+    if base in _WALL_VELOCITY:
+        return u_tau
+    if base in _WALL_STRESS:
+        return u_tau ** 2
+    return None
+
+
+def apply_wall_units(var_arr, cy, var: str, plot_kwargs: Dict[str, Any]):
+    """Apply view-only wall-unit scaling ahead of rendering.
+
+    Returns (var_arr, cy, extra) where extra holds make_scalar_settings
+    overrides: variable, variable_units, ylabel, y_units, lower_limit,
+    upper_limit. No-op (empty extra) unless plot_kwargs['wall_units'].
+    Colour limits arrive in raw units from the client and are divided here so
+    the frontend never needs to know the scaling.
+    """
+    if not plot_kwargs.get("wall_units"):
+        return var_arr, cy, {}
+    u_tau = plot_kwargs["u_tau"]
+    nu = plot_kwargs["nu"]
+    extra: Dict[str, Any] = {}
+    div = wall_scale_divisor(var, u_tau)
+    if div:
+        var_arr = np.asarray(var_arr, dtype=float) / div
+        extra["variable"] = f"{var}+"
+        extra["variable_units"] = ""
+        if plot_kwargs.get("lower_limit") is not None:
+            extra["lower_limit"] = plot_kwargs["lower_limit"] / div
+        if plot_kwargs.get("upper_limit") is not None:
+            extra["upper_limit"] = plot_kwargs["upper_limit"] / div
+    if cy is not None:
+        cy = np.asarray(cy, dtype=float) / 1000.0 * u_tau / nu  # mm -> m -> y+
+        extra["ylabel"] = "y+"
+        extra["y_units"] = ""
+        # x stays mm while y is y+: equal aspect would collapse the plot
+        extra["aspect"] = "auto"
+    return var_arr, cy, extra
 
 
 def load_piv_result(mat_path: Path) -> Any:
@@ -317,6 +416,14 @@ def parse_plot_params(req) -> Dict:
     if custom_title and custom_title.strip() == "":
         custom_title = None
 
+    # Wall-units (viscous scaling) view: active only when a positive u_tau is
+    # supplied and the data is calibrated (uncalibrated px data cannot scale).
+    u_tau = req.args.get("u_tau", type=float)
+    nu = req.args.get("nu", default=1.5e-5, type=float)
+    wall_units = bool(
+        u_tau is not None and u_tau > 0 and nu and nu > 0 and not use_uncalibrated
+    )
+
     # Validate frame number for calibrated data
     if not use_uncalibrated and not use_merged and not use_stereo:
         if frame < 1 or frame > cfg.num_frame_pairs:
@@ -341,6 +448,9 @@ def parse_plot_params(req) -> Dict:
         "xlim": xlim,
         "ylim": ylim,
         "custom_title": custom_title,
+        "u_tau": u_tau,
+        "nu": nu,
+        "wall_units": wall_units,
     }
 
 
@@ -430,20 +540,30 @@ def load_and_plot_data(
         coords = mat["coordinates"]
         cx, cy = extract_coordinates(coords, effective_run)
 
+    var_arr, cy, wall_extra = apply_wall_units(var_arr, cy, var, plot_kwargs)
+
+    is_uncalibrated = plot_kwargs.get("is_uncalibrated", False)
+
     # Plot the data exactly as stored — no coordinate reflection, no sign negation.
     # The renderer orients the y-axis to the array's row order (row 0 at top), so the
     # stored coordinates alone decide whether 0 is at the top (y-down) or bottom (y-up).
     settings = make_scalar_settings(
         get_config(),
-        variable=var,
+        variable=wall_extra.get("variable", var),
         run_label=effective_run,
         save_basepath=save_basepath,
-        variable_units=plot_kwargs.get("variable_units", VARIABLE_UNITS.get(var, "m/s")),
-        length_units=plot_kwargs.get("length_units", "mm"),
+        variable_units=wall_extra.get(
+            "variable_units",
+            plot_kwargs.get("variable_units", units_for_var(var, is_uncalibrated)),
+        ),
+        length_units=plot_kwargs.get("length_units", length_units_for(is_uncalibrated)),
+        ylabel=wall_extra.get("ylabel"),
+        y_units=wall_extra.get("y_units"),
+        aspect=wall_extra.get("aspect", "equal"),
         coords_x=cx,
         coords_y=cy,
-        lower_limit=plot_kwargs.get("lower_limit"),
-        upper_limit=plot_kwargs.get("upper_limit"),
+        lower_limit=wall_extra.get("lower_limit", plot_kwargs.get("lower_limit")),
+        upper_limit=wall_extra.get("upper_limit", plot_kwargs.get("upper_limit")),
         cmap=plot_kwargs.get("cmap"),
         xlim=plot_kwargs.get("xlim"),
         ylim=plot_kwargs.get("ylim"),
@@ -453,6 +573,13 @@ def load_and_plot_data(
     b64_img, W, H, extra = create_and_return_plot(
         var_arr, mask_arr, settings, raw=plot_kwargs.get("raw", False)
     )
+    if plot_kwargs.get("wall_units"):
+        extra = dict(extra or {})
+        extra.update({
+            "wall_units": True,
+            "u_tau": plot_kwargs["u_tau"],
+            "nu": plot_kwargs["nu"],
+        })
     return b64_img, W, H, extra, effective_run
 
 
