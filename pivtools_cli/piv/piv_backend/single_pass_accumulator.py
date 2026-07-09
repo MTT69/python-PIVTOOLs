@@ -504,9 +504,7 @@ class SinglePassAccumulator:
         )
         if _n_negative > 0:
             logging.warning(
-                f"Pass {pass_idx + 1}: {_n_negative}/{_n_win} windows have negative AA variance! "
-                f"This violates <A²> >= <A>². Check that C correlation buffers are not "
-                f"zeroed between accumulation calls."
+                f"Pass {pass_idx + 1}: {_n_negative}/{_n_win} windows have negative AA variance."
             )
 
         # Step 5: Get configuration for this pass
@@ -515,39 +513,6 @@ class SinglePassAccumulator:
         n_win_y = pass_data["n_win_y"]
         n_win_x = pass_data["n_win_x"]
         total_windows = n_win_y * n_win_x
-
-        # Step 5a: DISABLED - Pre-subtract noise floor (was workaround before n_images fix)
-        # With n_images reset properly, noise floors should be ~0 for all passes.
-        # Uncomment if edge cases still show elevated floors.
-        #
-        # plane_size = corr_size[0] * corr_size[1]
-        #
-        # # AA planes
-        # AA_flat = R_AA_ensemble.reshape(total_windows, -1)  # (n_windows, corr_h*corr_w)
-        # k_median = AA_flat.shape[1] // 2
-        # AA_partitioned = np.partition(AA_flat, k_median, axis=1)
-        # AA_floors = AA_partitioned[:, k_median]  # (n_windows,)
-        # AA_flat -= AA_floors[:, np.newaxis]
-        # R_AA_ensemble = AA_flat.reshape(-1).astype(np.float32)
-        #
-        # # BB planes
-        # BB_flat = R_BB_ensemble.reshape(total_windows, -1)
-        # BB_partitioned = np.partition(BB_flat, k_median, axis=1)
-        # BB_floors = BB_partitioned[:, k_median]
-        # BB_flat -= BB_floors[:, np.newaxis]
-        # R_BB_ensemble = BB_flat.reshape(-1).astype(np.float32)
-        #
-        # # AB planes
-        # AB_flat = R_AB_ensemble.reshape(total_windows, -1)
-        # AB_partitioned = np.partition(AB_flat, k_median, axis=1)
-        # AB_floors = AB_partitioned[:, k_median]
-        # AB_flat -= AB_floors[:, np.newaxis]
-        # R_AB_ensemble = AB_flat.reshape(-1).astype(np.float32)
-        #
-        # logging.info(
-        #     f"Pass {pass_idx + 1}: Pre-subtracted noise floors "
-        #     f"(AA={np.median(AA_floors):.4f}, BB={np.median(BB_floors):.4f}, AB={np.median(AB_floors):.4f})"
-        # )
 
         # Step 5b: Normalize correlation planes by geometric mean of autocorrelation peaks
         # This improves the condition number of the stacked Gaussian solver
@@ -574,14 +539,18 @@ class SinglePassAccumulator:
                     (env_sum_window[0] - win_size[0]) // 2,
                     (env_sum_window[1] - win_size[1]) // 2,
                 )
-                if plateau_half < 4:
-                    raise ValueError(
-                        f"Pass {pass_idx + 1}: sum window {env_sum_window} leaves only "
-                        f"{plateau_half} px of AB envelope plateau around the peak "
-                        f"(need >= 4 px). The single-mode envelope correction assumes "
-                        f"the AB peak sits on the E=1 plateau; increase the sum-window "
-                        f"margin over the interrogation window {tuple(win_size)}."
-                    )
+                # TEMP TEST 2026-07-08: plateau guard DISABLED alongside the envelope
+                # division below (the "bowl" mechanism test). The guard only protects the
+                # AB envelope divide, which is commented out, so it must not reject configs
+                # for behaviour that no longer runs. RESTORE together with the /= lines.
+                # if plateau_half < 4:
+                #     raise ValueError(
+                #         f"Pass {pass_idx + 1}: sum window {env_sum_window} leaves only "
+                #         f"{plateau_half} px of AB envelope plateau around the peak "
+                #         f"(need >= 4 px). The single-mode envelope correction assumes "
+                #         f"the AB peak sits on the E=1 plateau; increase the sum-window "
+                #         f"margin over the interrogation window {tuple(win_size)}."
+                #     )
                 env_weight_b = CrossCorrelator._window_weight_fun(
                     env_sum_window, 'bsingle', env_sum_window)
                 env_auto = _linear_pair_envelope(env_weight_b, env_weight_b, corr_size)
@@ -593,9 +562,12 @@ class SinglePassAccumulator:
                 env_ab = env_auto
             env_auto_f32 = env_auto.astype(np.float32)[None, :, :]
             env_ab_f32 = env_ab.astype(np.float32)[None, :, :]
-            AA_3d /= env_auto_f32
-            BB_3d /= env_auto_f32
-            AB_3d /= env_ab_f32
+            # TEMP TEST 2026-07-08: envelope division DISABLED to test the "bowl" mechanism.
+            # E(0)=1 so the peak/center (and norm_factors below) are unchanged; only the
+            # off-peak floor is affected. RESTORE these three lines after the test.
+            # AA_3d /= env_auto_f32
+            # BB_3d /= env_auto_f32
+            # AB_3d /= env_ab_f32
             logging.info(
                 f"Pass {pass_idx + 1}: Envelope divide applied ({envelope_runtype}: "
                 f"autos divided, AB "

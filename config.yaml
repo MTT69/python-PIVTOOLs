@@ -1,31 +1,32 @@
 paths:
   base_paths:
-  - E:\alk235\images\pivtools
+  - E:\alk235\cam4_all_512_tiff\Cam4\processed\time96
   source_paths:
-  - E:\alk235\images\loop=0.set
+  - E:\alk235\cam4_all_512_tiff\Cam4
   active_paths:
   - 0
   camera_numbers:
-  - 4
-  camera_count: 5
+  - 1
+  camera_count: 1
   camera_subfolders: []
 images:
   image_format:
-  - data.set
+  - B%05d_A.tif
+  - B%05d_B.tif
   vector_format:
   - '%05d.mat'
   dtype: float32
-  image_type: lavision_set
+  image_type: standard
   use_camera_subfolders: false
   start_index: 1
   frame_stride: 0
   pair_stride: 1
-  pairing_preset: pre_paired
-  num_loops: 13
-  num_images: 150
+  pairing_preset: ab_format
+  num_loops: 1
+  num_images: 2100
   image_shape:
   - 3536
-  - 5312
+  - 512
 batches:
   size: 5
 logging:
@@ -36,24 +37,25 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 5
-  dask_workers_per_node: 2
-  dask_memory_limit: 25GB
+  omp_threads: 3
+  dask_workers_per_node: 5
+  dask_memory_limit: 12GB
   dask_max_in_flight_per_worker: 2
   open_dashboard: true
   dask_nanny: false
   post_processing_workers: 16
   always_batch: true
-  instantaneous: false
-  ensemble: true
+  instantaneous: true
+  ensemble: false
 outlier_detection:
   enabled: true
   methods:
   - threshold: 0.25
     type: peak_mag
   - type: median_2d
-    epsilon: 0.1
-    threshold: 3
+    epsilon: 0.2
+    threshold: 2
+    size: 5
 infilling:
   mid_pass:
     method: nearest
@@ -84,7 +86,7 @@ video:
   data_source: stereo
   variable: mag
   run: 3
-  piv_type: ensemble
+  piv_type: instantaneous
   cmap: default
   lower: ''
   upper: ''
@@ -94,42 +96,46 @@ video:
   source_endpoint: regular
 statistics:
   enabled_methods:
-    mean_stresses: true
-    inst_gamma: false
-    mean_tke: false
-    inst_divergence: false
     inst_vorticity: false
-    divergence: false
     mean_divergence: false
-    gamma1: false
-    fluctuating_velocity: false
+    inst_gamma: false
     gamma2: false
     vorticity: false
-    inst_velocity: false
-    mean_peak_height: false
-    tke: false
-    mean_vorticity: false
+    gamma1: false
+    divergence: false
     inst_stresses: false
     mean_velocity: true
+    inst_velocity: false
+    fluctuating_velocity: false
+    mean_stresses: true
+    mean_tke: false
+    inst_divergence: false
+    tke: false
+    mean_vorticity: false
+    mean_peak_height: false
   gamma_radius: 4
   save_figures: true
-  type_name: ensemble
+  type_name: instantaneous
   source_endpoint: regular
 instantaneous_piv:
   window_size:
   - - 128
     - 128
   - - 64
-    - 64
+    - 96
   - - 32
-    - 32
+    - 96
+  - - 16
+    - 96
   overlap:
+  - 50
   - 50
   - 50
   - 50
   runs:
   - 2
   - 3
+  - 4
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
@@ -150,13 +156,13 @@ ensemble_piv:
   background_subtraction_method: correlation
   window_size:
   - - 64
-    - 64
+    - 96
   - - 32
-    - 32
+    - 96
   - - 16
-    - 16
+    - 96
   - - 8
-    - 16
+    - 96
   overlap:
   - 50
   - 50
@@ -166,21 +172,22 @@ ensemble_piv:
   - std
   - std
   - single
-  - std
+  - single
   runs:
+  - 1
   - 2
   - 3
   - 4
   store_planes: true
   save_diagnostics: true
   sum_window:
-  - 32
-  - 32
+  - 48
+  - 96
   sum_fitting_window_enabled: true
   sum_fitting_window:
   - 32
   - 32
-  resume_from_pass: 0
+  resume_from_pass: 4
   window_type: square
   predictor_boundary_conditions:
   - y_position: 0
@@ -188,11 +195,11 @@ ensemble_piv:
     uy: 0
     edge: bottom
 calibration:
-  image_format: B%05d.im7
+  image_format: calib_Cam4_B00001_crop.tif
   num_images: 10
-  image_type: lavision_im7
+  image_type: standard
   zero_based_indexing: false
-  use_camera_subfolders: true
+  use_camera_subfolders: false
   subfolder: enhanced
   camera_subfolders:
   - camera1
@@ -201,8 +208,8 @@ calibration:
   - camera4
   - camera5
   path_order: camera_first
-  active: stereo_stepped
-  piv_type: instantaneous
+  active: dotboard
+  piv_type: ensemble
   scale_factor:
     dt: 0.0057553
     px_per_mm: 13.653
@@ -212,6 +219,7 @@ calibration:
     datum_frame: 1
     model_type: polynomial
     dt: 1
+    fix_k2: true
   charuco:
     squares_h: 10
     squares_v: 7
@@ -231,7 +239,7 @@ calibration:
     datum_camera: 1
     datum_frame: 1
   calibration_sources:
-  - E:\andre Project_FlowMaster_260129_152105_x25\Properties\Calibration
+  - E:\alk235\cam4_all_512_tiff\calibration
   global_coordinates:
     enabled: true
     datum_camera: 1
@@ -257,7 +265,8 @@ calibration:
     stereo_config: auto
     model_type: pinhole
     fix_k2: true
-filters: []
+filters:
+- type: time
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat
@@ -269,12 +278,12 @@ masking:
     left: 0
     right: 0
 merging:
-  type_name: ensemble
+  type_name: instantaneous
   base_path_idx: 0
   cameras: null
 transforms:
   base_path_idx: 0
-  type_name: ensemble
+  type_name: instantaneous
   cameras:
     1:
       operations: []

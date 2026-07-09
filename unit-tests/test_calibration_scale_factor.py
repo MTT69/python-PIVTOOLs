@@ -72,6 +72,67 @@ def test_axis_toggles():
 
 
 # ---------------------------------------------------------------------------
+# origin_mm — world position assigned to the picked origin pixel
+# ---------------------------------------------------------------------------
+
+def test_origin_mm_maps_picked_pixel():
+    """The picked pixel back-projects to origin_mm, for every sign/swap combination.
+
+    The offset is baked in by shifting the model's world-zero pixel; the world frame
+    keeps the PICKED pixel + origin_mm so the GUI restores what the user entered.
+    """
+    picked = (321.0, 654.0)
+    origin_mm = (12.5, -7.25)
+    for x_dir in ("right", "left"):
+        for y_dir in ("up", "down"):
+            for swap in (False, True):
+                rec = build_scale_factor_record(
+                    camera=1, origin_px=picked, px_per_mm=3.2,
+                    image_size=IMAGE_SIZE, dt=1.0,
+                    x_dir=x_dir, y_dir=y_dir, swap_axes=swap,
+                    origin_mm=origin_mm,
+                )
+                w = rec.camera_model.back_project_to_plane(np.array([picked]))[0]
+                assert np.allclose(w[:2], origin_mm), (x_dir, y_dir, swap)
+                assert np.allclose(rec.world_frame.origin_px, picked)
+                assert np.allclose(rec.world_frame.origin_mm, origin_mm)
+
+
+def test_origin_mm_displacement_invariant():
+    """A constant world offset cancels in displacements — velocities are unchanged."""
+    px_per_mm, dt = 16.72, 0.0005
+    rng = np.random.default_rng(1)
+    coords = rng.uniform(10, 1500, size=(32, 2))
+    disp = rng.uniform(-8, 8, size=(32, 2))
+
+    base = build_scale_factor_record(
+        camera=1, origin_px=(800.0, 600.0), px_per_mm=px_per_mm,
+        image_size=IMAGE_SIZE, dt=dt,
+    ).camera_model
+    offset = build_scale_factor_record(
+        camera=1, origin_px=(800.0, 600.0), px_per_mm=px_per_mm,
+        image_size=IMAGE_SIZE, dt=dt, origin_mm=(1000.0, -42.0),
+    ).camera_model
+    u0, v0 = APPLY.calibrate_displacements(base, coords, disp, dt)
+    u1, v1 = APPLY.calibrate_displacements(offset, coords, disp, dt)
+    assert np.allclose(u0, u1)
+    assert np.allclose(v0, v1)
+
+
+def test_origin_mm_roundtrip(tmp_path):
+    """save_mono/load_mono preserves the picked origin + origin_mm on the world frame."""
+    rec = build_scale_factor_record(
+        camera=2, origin_px=(640.0, 512.0), px_per_mm=12.5,
+        image_size=(1280, 1024), dt=0.0005, y_dir="down", origin_mm=(3.0, 4.0),
+    )
+    loaded = REC.load_mono(REC.save_mono(rec, tmp_path))
+    assert np.allclose(loaded.world_frame.origin_px, [640.0, 512.0])
+    assert np.allclose(loaded.world_frame.origin_mm, [3.0, 4.0])
+    # The model's world-zero pixel (the baked shift) survives the round-trip too.
+    assert np.allclose(loaded.camera_model.origin_px, rec.camera_model.origin_px)
+
+
+# ---------------------------------------------------------------------------
 # Velocity parity with v1 (the no-silent-algorithm-change guard)
 # ---------------------------------------------------------------------------
 

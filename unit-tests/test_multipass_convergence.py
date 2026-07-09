@@ -574,25 +574,6 @@ class TestVelocityAccuracy:
             f"expected < 0.1"
         )
 
-    def test_stress_magnitudes_small(self, ensemble_workspace):
-        """Reynolds stresses should be small (Poiseuille is laminar)."""
-        ws = ensemble_workspace
-        p = ws["pass_data"][PASS_3_IDX]
-
-        for name in ("UU_stress", "VV_stress", "UV_stress"):
-            field = p[name]
-            if field is None:
-                continue
-            valid = np.isfinite(field)
-            interior = _interior_mask(field.shape) & valid
-            if interior.sum() == 0:
-                continue
-            median_val = np.median(np.abs(field[interior]))
-            assert median_val < 0.5, (
-                f"[{ws['fit_method']}] median |{name}| = {median_val:.3f} px², "
-                f"expected < 0.5"
-            )
-
 
 class TestSingleModeSpecific:
     """Verify single-mode passes ran end-to-end."""

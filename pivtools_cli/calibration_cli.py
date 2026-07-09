@@ -1230,6 +1230,11 @@ def scale_factor_command(args):
         args.dt if args.dt is not None else cfg.get("scale_factor", {}).get("dt", 1.0)
     )
     origin = [float(args.origin[0]), float(args.origin[1])]
+    origin_mm = (
+        (float(args.origin_mm[0]), float(args.origin_mm[1]))
+        if getattr(args, "origin_mm", None) is not None
+        else (0.0, 0.0)
+    )
 
     image = _load_one(
         _cam_dir(config, source, camera),
@@ -1249,6 +1254,7 @@ def scale_factor_command(args):
         y_dir=args.y_dir,
         swap_axes=bool(args.swap),
         frame_idx=frame,
+        origin_mm=origin_mm,
     )
     model_dir = rec.mono_model_dir_for_source(source, camera, "scale_factor")
     path = rec.save_mono(record, model_dir)
@@ -1260,20 +1266,24 @@ def scale_factor_command(args):
         from pivtools_gui.calibration import figures as c2figs
 
         sf = record.camera_model
+        # Draw at the PICKED origin (world_frame) — the model's own origin_px is the
+        # world-zero pixel, off the picked point when origin_mm != 0.
         c2figs.write_scale_factor_figure(
             fig_dir,
             image=image,
-            origin_px=sf.origin_px,
+            origin_px=record.world_frame.origin_px,
             col_sign=sf.col_sign,
             row_sign=sf.row_sign,
             swap_axes=bool(sf.swap_axes),
             mm_per_pixel=sf.mm_per_pixel,
             dt=dt,
+            origin_mm=origin_mm,
         )
     figmsg = f" figures->{fig_dir}" if fig_dir else ""
+    mm_msg = f"=({origin_mm[0]:g},{origin_mm[1]:g})mm" if any(origin_mm) else ""
     print(
         f"[calibration] scale_factor cam{camera} "
-        f"origin=({origin[0]:.1f},{origin[1]:.1f})px {px_per_mm:.4f}px/mm "
+        f"origin=({origin[0]:.1f},{origin[1]:.1f})px{mm_msg} {px_per_mm:.4f}px/mm "
         f"+X={args.x_dir} +Y={args.y_dir}{' swap' if args.swap else ''} dt={dt:g}s "
         f"-> {path}{figmsg}"
     )
@@ -1568,6 +1578,14 @@ def register_calibration_subparsers(subparsers):
         required=True,
         metavar=("X", "Y"),
         help="world-origin pixel (image-down)",
+    )
+    p.add_argument(
+        "--origin-mm",
+        type=float,
+        nargs=2,
+        default=None,
+        metavar=("X", "Y"),
+        help="world (X, Y) mm assigned to the origin pixel (default 0 0)",
     )
     p.add_argument(
         "--x-dir", default="right", choices=["right", "left"], help="+X direction"

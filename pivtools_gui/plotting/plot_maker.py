@@ -51,6 +51,15 @@ class Settings:
     xlim: tuple[float, float] | None = None
     ylim: tuple[float, float] | None = None
     custom_title: str | None = None
+    # Per-axis label/unit overrides (wall-units view). None -> fall back to
+    # _xlabel/_ylabel and length_units; empty-string units -> no parentheses.
+    xlabel: str | None = None
+    ylabel: str | None = None
+    x_units: str | None = None
+    y_units: str | None = None
+    # 'equal' keeps physical geometry; wall-units plots mix units across the
+    # two axes so they render with 'auto' instead.
+    aspect: str = "equal"
 
 
 def make_scalar_settings(
@@ -73,6 +82,11 @@ def make_scalar_settings(
     xlim: tuple[float, float] | None = None,
     ylim: tuple[float, float] | None = None,
     custom_title: str | None = None,
+    xlabel: str | None = None,
+    ylabel: str | None = None,
+    x_units: str | None = None,
+    y_units: str | None = None,
+    aspect: str = "equal",
 ) -> Settings:
     return Settings(
         variableName=variable,
@@ -97,6 +111,11 @@ def make_scalar_settings(
         xlim=xlim,
         ylim=ylim,
         custom_title=custom_title,
+        xlabel=xlabel,
+        ylabel=ylabel,
+        x_units=x_units,
+        y_units=y_units,
+        aspect=aspect,
     )
 
 # Function to plot a scalar field with masking and customizable settings
@@ -105,7 +124,9 @@ def plot_scalar_field(variable, mask, settings): # efe
     plt.rcParams.update({"font.size": settings._fontsize})
     plt.rcParams["axes.titlesize"] = settings._title_fontsize
 
-    cm_label = settings.variableName + " (" + settings.variableUnits + ")"
+    cm_label = settings.variableName + (
+        f" ({settings.variableUnits})" if settings.variableUnits else ""
+    )
 
     # Mask the variable array where mask is True
     masked_var = np.ma.array(variable, mask=mask)
@@ -144,7 +165,7 @@ def plot_scalar_field(variable, mask, settings): # efe
     # Create the plot (object-oriented API)
     fig, ax = plt.subplots(figsize=(13, 8))
     ax.set_facecolor("gray")  # <-- gray shows through masked holes
-    ax.set_aspect('equal')
+    ax.set_aspect(settings.aspect)
 
     # Determine limits
     if settings.lower_limit is not None and settings.upper_limit is not None:
@@ -249,12 +270,12 @@ def plot_scalar_field(variable, mask, settings): # efe
     # Use custom_title if provided, otherwise use auto-generated title
     plot_title = settings.custom_title if settings.custom_title else settings.title
     ax.set_title(f"{plot_title}")
-    if settings.length_units:
-        ax.set_xlabel(settings._xlabel + f" ({settings.length_units})")
-        ax.set_ylabel(settings._ylabel + f" ({settings.length_units})")
-    else:
-        ax.set_xlabel(settings._xlabel)
-        ax.set_ylabel(settings._ylabel)
+    xl = settings.xlabel or settings._xlabel
+    yl = settings.ylabel or settings._ylabel
+    xu = settings.x_units if settings.x_units is not None else settings.length_units
+    yu = settings.y_units if settings.y_units is not None else settings.length_units
+    ax.set_xlabel(xl + (f" ({xu})" if xu else ""))
+    ax.set_ylabel(yl + (f" ({yu})" if yu else ""))
 
     # Apply axis limits if explicitly set by user
     if settings.xlim is not None:

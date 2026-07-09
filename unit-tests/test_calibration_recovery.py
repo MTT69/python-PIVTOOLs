@@ -315,6 +315,40 @@ def test_apply_mono_fileio(tmp_path):
     assert float(np.nanmean(v)) == pytest.approx(-0.25, abs=0.01)  # no Y flip
 
 
+def test_apply_mono_skips_diagnostic_mats(tmp_path):
+    """store_planes/save_diagnostics sidecars must not be mistaken for vector files.
+
+    Ensemble PIV drops ``planes_pass_N.mat`` (correlation planes) and ``warped_pass_N.mat``
+    (first-pair warped images) into the same output dir. The apply vector glob is a bare
+    ``*.mat``, so without an exclusion these reach ``read_vectors`` and KeyError on
+    'piv_result'. Apply must skip them and calibrate only the real vector file.
+    """
+    import scipy.io
+    K = np.array([[8000.0, 0, 800], [0, 8000, 600], [0, 0, 1]])
+    cam = CameraModel(K, np.zeros(5), np.eye(3), np.array([[-50.0], [-40.0], [1000.0]]), (1600, 1200))
+    rec = REC.MonoRecord(camera=1, board_type="dotboard", camera_model=cam, world_frame=REC.WorldFrame())
+    X, Y = np.meshgrid(np.linspace(200, 1400, 20) + 1, np.linspace(150, 1050, 16) + 1)
+    ud, od = tmp_path / "u", tmp_path / "c"
+    ud.mkdir()
+    cs = np.empty((1,), dtype=[("x", object), ("y", object)])
+    cs["x"][0], cs["y"][0] = X.astype(np.float32), Y.astype(np.float32)
+    scipy.io.savemat(str(ud / "coordinates.mat"), {"coordinates": cs}, oned_as="row")
+    ps = np.empty((1,), dtype=[("ux", object), ("uy", object), ("b_mask", object)])
+    ps["ux"][0] = np.full(X.shape, 3.0, np.float16)
+    ps["uy"][0] = np.full(X.shape, -2.0, np.float16)
+    ps["b_mask"][0] = np.ones(X.shape, bool)
+    scipy.io.savemat(str(ud / "00001.mat"), {"piv_result": ps}, oned_as="row")
+    # Diagnostic sidecars — no piv_result/ensemble_result struct; must be ignored.
+    scipy.io.savemat(str(ud / "planes_pass_1.mat"), {"AA": np.zeros((2, 2)), "pass_idx": 0}, oned_as="row")
+    scipy.io.savemat(str(ud / "warped_pass_1.mat"), {"A_warped": np.zeros((2, 2)), "pass_idx": 0}, oned_as="row")
+
+    written = runio.calibrate_mono_run(rec, ud, od, dt=0.001, vector_glob="*.mat")
+
+    assert {Path(w).name for w in written} == {"00001.mat"}
+    assert not (od / "planes_pass_1.mat").exists()
+    assert not (od / "warped_pass_1.mat").exists()
+
+
 def test_record_save_load_roundtrip(tmp_path):
     K = np.array([[5000.0, 0, 400], [0, 5000, 300], [0, 0, 1]])
     cam = CameraModel(K, np.array([-0.01, 0.02, 0.0, 0.0, 0.0]), np.eye(3),
