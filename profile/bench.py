@@ -62,7 +62,8 @@ def cmd_scaling(args: argparse.Namespace) -> int:
     total_cores = args.total_cores or os.cpu_count() or 1
     max_workers = args.max_workers or total_cores
     configs = bs.build_config_list(
-        args.sweep, total_cores, max_workers, worker_sweep_threads=args.worker_threads
+        args.sweep, total_cores, max_workers, worker_sweep_threads=args.worker_threads,
+        extra_workers=args.extra_workers,
     )
     if not configs:
         print("No configs generated for this sweep/core budget.")
@@ -264,6 +265,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Worker cap (RAM ceiling; default: total-cores)")
     s.add_argument("--worker-threads", type=int, default=2,
                    help="Threads/worker for the worker sweep axis (default: 2)")
+    s.add_argument("--extra-workers", type=int, nargs="*", default=None,
+                   help="Extra worker counts to inject into the worker sweep that the "
+                        "geometric progression skips (e.g. 48 to keep the single-socket "
+                        "edge on a 192-core node). Capped to fit total-cores/max-workers.")
     s.add_argument("--worker-memory", default=None, help="Per-worker memory limit, e.g. '3.2GB'")
     s.add_argument("--iterations", type=int, default=1)
     s.add_argument("--fftw-wisdom", choices=["shared", "per-worker"], default="shared",

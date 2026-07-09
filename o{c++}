@@ -1,0 +1,10 @@
+=== our array: priority + est. start ===
+       JOBID    STATE   PRIORITY          START_TIME NODELIST(REASON)
+2515273_[1-3  PENDING     211954 2026-07-08T13:00:16 (Priority)
+
+our priority = 211954
+awk: cmd. line:1: END{print
+awk: cmd. line:1:          ^ unexpected newline or end of string
+pending in batch: 402 ; ahead of us (higher priority): 
+
+=== free capacity now ===

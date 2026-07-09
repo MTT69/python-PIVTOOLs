@@ -123,16 +123,24 @@ def thread_sweep(total_cores: int) -> list[dict[str, Any]]:
 
 
 def worker_sweep(
-    total_cores: int, max_workers: int, threads: int
+    total_cores: int, max_workers: int, threads: int,
+    extra_workers: list[int] | None = None,
 ) -> list[dict[str, Any]]:
     """Fixed ``threads``/worker, vary workers — the cleanest strong-scaling axis.
 
     Capped so ``workers*threads <= total_cores`` (stay within physical cores) and
-    ``workers <= max_workers`` (RAM ceiling)."""
+    ``workers <= max_workers`` (RAM ceiling). ``extra_workers`` injects worker
+    counts the geometric progression skips (e.g. 48 to keep the single-socket
+    edge on a 192-core node, where the progression jumps 32 -> 64); each is kept
+    only if it clears the same cap."""
     cap = min(max_workers, max(1, total_cores // max(1, threads)))
+    counts = set(_progression(cap))
+    for w in extra_workers or ():
+        if 1 <= w <= cap:
+            counts.add(w)
     return [
         {"workers": w, "threads": threads, "label": "worker_sweep"}
-        for w in _progression(cap)
+        for w in sorted(counts)
     ]
 
 
@@ -160,14 +168,15 @@ def oversub_sweep(total_cores: int, max_workers: int) -> list[dict[str, Any]]:
 
 
 def build_config_list(
-    sweep: str, total_cores: int, max_workers: int, worker_sweep_threads: int = 2
+    sweep: str, total_cores: int, max_workers: int, worker_sweep_threads: int = 2,
+    extra_workers: list[int] | None = None,
 ) -> list[dict[str, Any]]:
     """Build the deduplicated config list for the requested sweep(s)."""
     configs: list[dict[str, Any]] = []
     if sweep in ("threads", "all"):
         configs.extend(thread_sweep(total_cores))
     if sweep in ("workers", "all"):
-        configs.extend(worker_sweep(total_cores, max_workers, worker_sweep_threads))
+        configs.extend(worker_sweep(total_cores, max_workers, worker_sweep_threads, extra_workers))
     if sweep in ("matrix", "all"):
         configs.extend(matrix_sweep(total_cores, max_workers))
     if sweep in ("oversub", "all"):

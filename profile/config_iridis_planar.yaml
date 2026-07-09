@@ -1,5 +1,6 @@
-# PIVTOOLs — Iridis benchmark config (planar, 4 MP, four-pass 128->16).
+# PIVTOOLs — Iridis benchmark config (planar, 4 MP, three-pass 64->16).
 # Reproduces the SoftwareX strong-scaling / per-pair-budget benchmark.
+# (4-pass 128->16 variant preserved in git history if needed.)
 # Dataset: /scratch/mtt1e23/planar_images (4000 pairs, 2048x2048 uint8, B%05d_A/_B.tif).
 # The bench CLI overrides only the dataset path, image count, and sweep axes;
 # every PIV setting below is pinned for reproducibility (paper supplement).
@@ -94,8 +95,6 @@ statistics:
   source_endpoint: stereo
 instantaneous_piv:
   window_size:
-  - - 128
-    - 128
   - - 64
     - 64
   - - 32
@@ -106,16 +105,15 @@ instantaneous_piv:
   - 50
   - 50
   - 50
-  - 50
   runs:
-  - 4
+  - 3
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
   peak_finder: gauss3
   secondary_peak: false
   predictor_smoothing: false
-  save_mode: full
+  save_mode: minimal
   save_compression: false
   image_warp_interpolation: lanczos
 filters:
