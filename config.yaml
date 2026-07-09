@@ -1,6 +1,6 @@
 paths:
   base_paths:
-  - E:\alk235\cam4_all_512_tiff\Cam4\processed
+  - E:\alk235\cam4_all_512_tiff\Cam4\processed\time96
   source_paths:
   - E:\alk235\cam4_all_512_tiff\Cam4
   active_paths:
@@ -45,8 +45,8 @@ processing:
   dask_nanny: false
   post_processing_workers: 16
   always_batch: true
-  instantaneous: false
-  ensemble: true
+  instantaneous: true
+  ensemble: false
 outlier_detection:
   enabled: true
   methods:
@@ -95,23 +95,23 @@ video:
   source_endpoint: regular
 statistics:
   enabled_methods:
-    mean_stresses: true
-    inst_gamma: false
-    mean_tke: false
-    inst_divergence: false
-    inst_vorticity: false
     divergence: false
-    mean_divergence: false
-    gamma1: false
-    fluctuating_velocity: false
-    gamma2: false
-    vorticity: false
-    inst_velocity: false
-    mean_peak_height: false
     tke: false
+    mean_stresses: true
+    inst_divergence: false
     mean_vorticity: false
-    inst_stresses: false
+    fluctuating_velocity: false
+    inst_velocity: false
+    mean_tke: false
     mean_velocity: true
+    mean_divergence: false
+    inst_stresses: false
+    inst_vorticity: false
+    gamma1: false
+    mean_peak_height: false
+    vorticity: false
+    gamma2: false
+    inst_gamma: false
   gamma_radius: 4
   save_figures: true
   type_name: ensemble
@@ -121,11 +121,11 @@ instantaneous_piv:
   - - 128
     - 128
   - - 64
-    - 64
+    - 96
   - - 32
-    - 32
+    - 96
   - - 16
-    - 16
+    - 96
   overlap:
   - 50
   - 50
@@ -157,13 +157,10 @@ ensemble_piv:
   - - 64
     - 96
   - - 32
-    - 32
+    - 96
   - - 16
-    - 16
-  - - 8
-    - 16
+    - 96
   overlap:
-  - 50
   - 50
   - 50
   - 50
@@ -171,22 +168,20 @@ ensemble_piv:
   - std
   - std
   - single
-  - single
   runs:
   - 1
   - 2
   - 3
-  - 4
   store_planes: true
   save_diagnostics: true
   sum_window:
-  - 32
-  - 32
+  - 48
+  - 96
   sum_fitting_window_enabled: true
   sum_fitting_window:
   - 32
   - 32
-  resume_from_pass: 0
+  resume_from_pass: 3
   window_type: square
   predictor_boundary_conditions:
   - y_position: 0

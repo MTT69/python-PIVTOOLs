@@ -504,9 +504,7 @@ class SinglePassAccumulator:
         )
         if _n_negative > 0:
             logging.warning(
-                f"Pass {pass_idx + 1}: {_n_negative}/{_n_win} windows have negative AA variance! "
-                f"This violates <A²> >= <A>². Check that C correlation buffers are not "
-                f"zeroed between accumulation calls."
+                f"Pass {pass_idx + 1}: {_n_negative}/{_n_win} windows have negative AA variance."
             )
 
         # Step 5: Get configuration for this pass
@@ -541,14 +539,18 @@ class SinglePassAccumulator:
                     (env_sum_window[0] - win_size[0]) // 2,
                     (env_sum_window[1] - win_size[1]) // 2,
                 )
-                if plateau_half < 4:
-                    raise ValueError(
-                        f"Pass {pass_idx + 1}: sum window {env_sum_window} leaves only "
-                        f"{plateau_half} px of AB envelope plateau around the peak "
-                        f"(need >= 4 px). The single-mode envelope correction assumes "
-                        f"the AB peak sits on the E=1 plateau; increase the sum-window "
-                        f"margin over the interrogation window {tuple(win_size)}."
-                    )
+                # TEMP TEST 2026-07-08: plateau guard DISABLED alongside the envelope
+                # division below (the "bowl" mechanism test). The guard only protects the
+                # AB envelope divide, which is commented out, so it must not reject configs
+                # for behaviour that no longer runs. RESTORE together with the /= lines.
+                # if plateau_half < 4:
+                #     raise ValueError(
+                #         f"Pass {pass_idx + 1}: sum window {env_sum_window} leaves only "
+                #         f"{plateau_half} px of AB envelope plateau around the peak "
+                #         f"(need >= 4 px). The single-mode envelope correction assumes "
+                #         f"the AB peak sits on the E=1 plateau; increase the sum-window "
+                #         f"margin over the interrogation window {tuple(win_size)}."
+                #     )
                 env_weight_b = CrossCorrelator._window_weight_fun(
                     env_sum_window, 'bsingle', env_sum_window)
                 env_auto = _linear_pair_envelope(env_weight_b, env_weight_b, corr_size)
