@@ -15,6 +15,7 @@ from scipy.ndimage import gaussian_filter
 
 from pivtools_cli.piv.piv_backend.base import CrossCorrelator
 from pivtools_cli.piv.piv_backend.infilling import apply_infilling
+from pivtools_cli.piv.piv_backend.lib_guard import require_cpu_supported
 from pivtools_cli.piv.piv_backend.nan_reason_codes import (
     NAN_FIT_FAIL,
     NAN_LARGE_DISP,
@@ -53,16 +54,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         if not os.path.isfile(lib_path):
             raise FileNotFoundError(f"Required library file not found: {lib_path}")
         self.lib = ctypes.CDLL(lib_path)
-        # hasattr guard: locally built libs may predate the CPU-check symbol
-        if (
-            hasattr(self.lib, "pivtools_cpu_supported")
-            and not self.lib.pivtools_cpu_supported()
-        ):
-            raise RuntimeError(
-                "pivtools binary wheels require AVX2+FMA (Intel Haswell 2013+ / "
-                "AMD Excavator+) and this CPU lacks them. Install from source "
-                "instead: pip install --no-binary pivtools pivtools"
-            )
+        require_cpu_supported(self.lib, lib_path)
 
         # Load fused warp library (required)
         fw_path = os.path.join(

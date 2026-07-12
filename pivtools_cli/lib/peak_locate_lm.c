@@ -829,13 +829,32 @@ PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_
 
 /* CPU capability check for the wheel's ISA floor. The x86 wheels are built
  * with AVX2+FMA (Haswell 2013+ / Excavator+); arm64 NEON is architectural
- * baseline. Plain MSVC cl lacks __builtin_cpu_supports, but under cl the
- * SIMD batch fitter compiles as a stub anyway, so 1 is honest there. */
+ * baseline. clang/gcc: __builtin_cpu_supports (includes the OSXSAVE/XCR0
+ * OS-support check). Plain MSVC cl builds still compile the FFT TUs and the
+ * warp with /arch:AVX2, so cl gets an explicit CPUID+XGETBV check — it must
+ * not just return 1. */
+#if defined(_M_X64) && defined(_MSC_VER) && !defined(__clang__)
+#include <intrin.h>
+#endif
+
 PEAK_EXPORT int pivtools_cpu_supported(void)
 {
 #if (defined(__x86_64__) || defined(_M_X64)) && (defined(__clang__) || defined(__GNUC__))
 	return __builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma");
+#elif defined(_M_X64) && defined(_MSC_VER)
+	int info[4];
+	unsigned long long xcr0;
+	__cpuid(info, 1);
+	if (!(info[2] & (1 << 12)))          /* FMA */
+		return 0;
+	if (!(info[2] & (1 << 27)))          /* OSXSAVE: XGETBV usable */
+		return 0;
+	xcr0 = _xgetbv(0);
+	if ((xcr0 & 0x6) != 0x6)             /* OS saves XMM+YMM state */
+		return 0;
+	__cpuidex(info, 7, 0);
+	return (info[1] & (1 << 5)) != 0;    /* AVX2 */
 #else
-	return 1;
+	return 1;                            /* arm64: NEON is baseline */
 #endif
 }

@@ -25,6 +25,7 @@ import numpy as np
 from scipy.ndimage import gaussian_filter
 
 from pivtools_cli.piv.piv_backend.base import CrossCorrelator
+from pivtools_cli.piv.piv_backend.lib_guard import require_cpu_supported
 from pivtools_core.config import Config
 from pivtools_core.window_utils import (
     compute_window_centers,
@@ -310,17 +311,8 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 "Ensure the library is built and available."
             )
 
-        cls._lib_corr = ctypes.CDLL(lib_path)
-        # hasattr guard: locally built libs may predate the CPU-check symbol
-        if (
-            hasattr(cls._lib_corr, "pivtools_cpu_supported")
-            and not cls._lib_corr.pivtools_cpu_supported()
-        ):
-            raise RuntimeError(
-                "pivtools binary wheels require AVX2+FMA (Intel Haswell 2013+ / "
-                "AMD Excavator+) and this CPU lacks them. Install from source "
-                "instead: pip install --no-binary pivtools pivtools"
-            )
+        lib_corr = ctypes.CDLL(lib_path)
+        require_cpu_supported(lib_corr, lib_path)
 
         # Load fused warp library (required)
         fw_path = os.path.join(
@@ -329,7 +321,14 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         fw_path = os.path.abspath(fw_path)
         if not os.path.isfile(fw_path):
             raise FileNotFoundError(f"Required library file not found: {fw_path}")
-        cls._lib_fw = ctypes.CDLL(fw_path)
+        lib_fw = ctypes.CDLL(fw_path)
+
+        # Publish to the class ONLY after both loads and the CPU check passed —
+        # __init__ uses cls._lib_corr as the load-once sentinel, so a partial
+        # assignment before a raise would make every later instantiation skip
+        # this method and run with a half-initialised library set.
+        cls._lib_corr = lib_corr
+        cls._lib_fw = lib_fw
         cls._lib_fw.fused_symmetric_warp_batch.restype = ctypes.c_int
         cls._lib_fw.fused_symmetric_warp_batch.argtypes = [
             np.ctypeslib.ndpointer(

@@ -38,7 +38,11 @@ for name in ("libbulkxcorr2d", "libfusedwarp"):
         )
     lib = ctypes.CDLL(lib_path)
     print(f"loaded {name}{ext}")
-    if hasattr(lib, "pivtools_cpu_supported"):
+    if name == "libbulkxcorr2d":
+        # The ISA-floor symbol MUST exist — a wheel without it ships kernels
+        # with no load-time guard, so its absence is a build regression.
+        if not hasattr(lib, "pivtools_cpu_supported"):
+            raise SystemExit(f"FAIL: pivtools_cpu_supported symbol missing from {name}")
         lib.pivtools_cpu_supported.restype = ctypes.c_int
         if lib.pivtools_cpu_supported() != 1:
             raise SystemExit(f"FAIL: pivtools_cpu_supported() == 0 in {name}")

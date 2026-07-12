@@ -76,8 +76,12 @@ def configure_logging():
             colorize=True,
         )
         logger.debug(f"Loguru configured with level: {log_level}")
+    except FileNotFoundError:
+        # Fresh workspace: no config.yaml yet. main() creates one via
+        # ensure_config_exists() and calls configure_logging() again.
+        pass
     except Exception as e:
-        # If config isn't available yet, keep default loguru config
+        # If config isn't readable, keep default loguru config
         logger.warning(f"Could not configure logging from config: {e}")
 
 
@@ -2109,8 +2113,10 @@ def main():
 
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
-    # Ensure config.yaml exists before starting
+    # Ensure config.yaml exists before starting, then apply its log level —
+    # the import-time configure_logging() call is a no-op on a fresh workspace.
     ensure_config_exists()
+    configure_logging()
 
     print("Starting PIVTOOLs GUI...")
     print("Open your browser to http://localhost:5000")

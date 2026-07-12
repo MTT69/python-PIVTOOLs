@@ -103,6 +103,11 @@ cd pivtools_cli/lib
   (2013) get a clear error telling them to install from sdist. The macOS wheel
   floor (`macosx_15_0`) is set by the Homebrew libomp bottle that delocate
   bundles, not by the toolchain.
+- Linux wheels are `manylinux_2_28` (glibc >= 2.28, i.e. 2018+ distros:
+  RHEL/Alma 8+, Ubuntu 20.04+, Debian 10+). This is forced by the toolchain —
+  the older manylinux2014 image has no usable clang. On older distros (CentOS
+  7, Ubuntu 18.04, dated HPC login nodes) pip falls back to the sdist, which
+  compiles locally and needs clang + OpenMP.
 - No library links FFTW or GSL any more: `libkspace` and `libmarquadt` were
   removed (2026-06-23) and ensemble fitting moved to pure NumPy, so the BSD-3
   wheel claim is now honest.

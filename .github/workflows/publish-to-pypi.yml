@@ -87,6 +87,32 @@ jobs:
         shell: bash
         run: python -m twine check dist/*.whl
 
+      # The retagged py3-none wheel claims every Python >=3.12 but was built
+      # and smoke-tested under 3.12 only — prove 3.13 and 3.14 too.
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Smoke wheel on Python 3.13
+        shell: bash
+        run: |
+          python -m venv smoke313
+          if [ -d smoke313/bin ]; then PYBIN=smoke313/bin; else PYBIN=smoke313/Scripts; fi
+          "$PYBIN/python" -m pip install --quiet dist/*.whl
+          "$PYBIN/python" unit-tests/wheel_smoke.py
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - name: Smoke wheel on Python 3.14
+        shell: bash
+        run: |
+          python -m venv smoke314
+          if [ -d smoke314/bin ]; then PYBIN=smoke314/bin; else PYBIN=smoke314/Scripts; fi
+          "$PYBIN/python" -m pip install --quiet dist/*.whl
+          "$PYBIN/python" unit-tests/wheel_smoke.py
+
       - name: Verify no build-host rpaths (macOS)
         if: runner.os == 'macOS'
         run: |

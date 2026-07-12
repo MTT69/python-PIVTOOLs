@@ -92,7 +92,6 @@ exclude = ["tests*", "manual_tools*", "logs*", "env*"]
     "lib/fused_warp.h",
     "lib/libbulkxcorr2d.*",
     "lib/libfusedwarp.*",
-    "lib/*.dll",
-    "lib/codelet_gen/gen_codelet.py"
+    "lib/*.dll"
 ]
 pivtools_gui = ["static/**/*", "templates/**/*"]
