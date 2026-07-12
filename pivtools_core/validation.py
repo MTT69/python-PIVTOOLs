@@ -277,6 +277,19 @@ def validate_ensemble_config(config: Config) -> Tuple[bool, List[str], List[str]
         errors.append(f"Ensemble fit method: {e}")
         fit_method = None
 
+    # 8. Validate background subtraction / per-pair normalization consistency
+    try:
+        bg_method = config.ensemble_background_subtraction_method
+    except ValueError as e:
+        errors.append(f"Ensemble background subtraction: {e}")
+        bg_method = None
+    if config.ensemble_per_pair_normalization and bg_method != 'window_mean':
+        errors.append(
+            "ensemble_piv.per_pair_normalization requires "
+            "background_subtraction_method 'window_mean' (the per-pair energies "
+            f"must be fluctuation energies), got '{bg_method}'."
+        )
+
     # 9. Validate resume_from_pass
     resume = config.ensemble_resume_from_pass
     num_passes = config.ensemble_num_passes

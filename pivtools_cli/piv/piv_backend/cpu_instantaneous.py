@@ -71,6 +71,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # ctrs_x
             ctypes.c_int,                # interp_mode
             ctypes.c_int,                # shared_predictor
+            ctypes.c_int,                # round_shifts
         ]
 
         # Register FFTW cleanup to run at interpreter exit (once per process)
@@ -878,6 +879,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                     ctrs_y, ctrs_x,
                     interp_mode,
                     0,  # shared_predictor=0 -> per-image predictors
+                    0,  # round_shifts off (ensemble-only option)
                 )
                 if ret != 0:
                     raise RuntimeError(f"fused_symmetric_warp_batch failed (ret={ret})")
@@ -997,6 +999,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             ctrs_y, ctrs_x,
             interp_mode,
             0,  # shared_predictor=0 (single image, per-image predictor)
+            0,  # round_shifts off (ensemble-only option)
         )
         if ret != 0:
             raise RuntimeError(f"fused_symmetric_warp_batch failed (ret={ret})")

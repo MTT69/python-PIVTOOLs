@@ -19,6 +19,7 @@ os.environ["OMP_NUM_THREADS"] = omp_threads
 
 import gc
 import logging
+import numpy as np
 import os
 import shutil
 import signal
@@ -51,6 +52,7 @@ from pivtools_cli.processing.dask_pipeline import (
     create_filter_pipeline,
     scatter_immutable_data,
     reduce_ensemble_results,
+    reduce_warp_sums,
     extract_predictor_field,
     correlate_worker_batches,
 )
@@ -130,6 +132,58 @@ def process_pass_worker_accumulate(
         f"{' (persisted)' if images is not None else ' (from disk)'}"
     )
 
+    # 'image' background method: phase A — a full sweep over the pairs that
+    # only accumulates warped image sums, reduced to global mean images which
+    # phase B then subtracts before correlating. Costs a second pass through
+    # the data; only runs when the method is explicitly selected.
+    scattered_mean_images = None
+    image_bg_sums = None
+    if config.ensemble_background_subtraction_method == 'image':
+        logger.info(
+            "  'image' background method: phase A sweep (warped image sums "
+            "for the ensemble-mean images) — this doubles the passes over the data"
+        )
+        phase_a_futures = []
+        for worker, chunk_info in worker_chunks.items():
+            chunk_indices = [idx for idx, _ in chunk_info]
+            chunk_futs = [fut for _, fut in chunk_info]
+            batch_images = chunk_futs if all(f is not None for f in chunk_futs) else None
+            fut = client.submit(
+                correlate_worker_batches,
+                batch_indices=chunk_indices,
+                config=scattered_config,
+                pass_idx=pass_idx,
+                predictor_field=scattered_predictor,
+                cache=scattered['cache'],
+                masks=scattered['masks'],
+                camera_num=camera_num,
+                source_path=str(source_path),
+                pixel_mask=pixel_mask,
+                batch_images=batch_images,
+                warp_sums_only=True,
+                workers=[worker],
+                pure=False,
+            )
+            phase_a_futures.append(fut)
+        sums_futures = list(phase_a_futures)
+        while len(sums_futures) > 1:
+            merged = []
+            for i in range(0, len(sums_futures), 2):
+                if i + 1 < len(sums_futures):
+                    merged.append(client.submit(
+                        reduce_warp_sums, sums_futures[i], sums_futures[i + 1],
+                        pure=False,
+                    ))
+                else:
+                    merged.append(sums_futures[i])
+            sums_futures = merged
+        image_bg_sums = sums_futures[0].result()
+        n_phase_a = image_bg_sums["n_images"]
+        A_mean = (image_bg_sums["warp_A_sum"] / n_phase_a).astype(np.float32)
+        B_mean = (image_bg_sums["warp_B_sum"] / n_phase_a).astype(np.float32)
+        scattered_mean_images = client.scatter((A_mean, B_mean), broadcast=True)
+        logger.info(f"  Phase A complete: mean images from {n_phase_a} pairs")
+
     # Create per-worker progress variables
     progress_vars = []
     worker_list = list(worker_chunks.keys())
@@ -159,6 +213,7 @@ def process_pass_worker_accumulate(
             output_path=diag_path if 0 in chunk_indices else None,
             batch_images=batch_images,
             progress_var_name=f"_corr_p{pass_idx}_{wi}",
+            mean_images=scattered_mean_images,
             workers=[worker],
             pure=False,
         )
@@ -254,6 +309,13 @@ def process_pass_worker_accumulate(
 
     final = futures[0].result()
     logger.info(f"  Accumulated: {final['n_images']} images")
+
+    # 'image' method: phase-B results carry zero warp sums (means were consumed
+    # in phase A) — inject the phase-A global sums so finalize_pass's mean
+    # images stay meaningful for logging/diagnostics.
+    if image_bg_sums is not None:
+        final["warp_A_sum"] = image_bg_sums["warp_A_sum"]
+        final["warp_B_sum"] = image_bg_sums["warp_B_sum"]
 
     # Report transfer bytes during this pass
     try:

@@ -2416,7 +2416,7 @@ video:
         list
             [height, width] of sum window
         """
-        sum_window = self.data.get("ensemble_piv", {}).get("sum_window", [16, 16])
+        sum_window = self.data.get("ensemble_piv", {}).get("sum_window", [32, 32])
 
         # Validate sum_window if single mode is used
         ensemble_types = self.ensemble_type
@@ -2465,7 +2465,8 @@ video:
         Returns
         -------
         list or None
-            [height, width] of fitting window, or None if disabled
+            [height, width] of fitting window, or None if disabled.
+            Defaults to ensemble_sum_window when unset (no extraction shrink).
         """
         # Check if feature is enabled
         if not self.ensemble_sum_fitting_window_enabled:
@@ -2474,9 +2475,7 @@ video:
         fit_window = self.data.get("ensemble_piv", {}).get("sum_fitting_window", None)
 
         if fit_window is None:
-            raise ValueError(
-                "sum_fitting_window_enabled is True but sum_fitting_window is not set"
-            )
+            fit_window = self.ensemble_sum_window
 
         # Validate: must be smaller than or equal to sum_window
         sum_window = self.ensemble_sum_window
@@ -2586,34 +2585,27 @@ video:
         return self.data.get("ensemble_piv", {}).get("resume_from_pass", 0)
 
     @property
-    def ensemble_mask_center_pixel(self) -> bool:
-        """Enable/disable center pixel masking for autocorrelation.
-
-        When True (default): Exclude center pixel of AA/BB planes from fitting
-        to remove camera self-noise spike at zero lag.
-        When False: Include all pixels (for synthetic data or testing).
-
-        The cross-correlation (AB) center pixel is never masked since it
-        contains valid displacement signal.
-        """
-        return self.data.get("ensemble_piv", {}).get("mask_center_pixel", True)
-
-    @property
     def ensemble_fit_method(self) -> str:
         """Return fitting method for ensemble PIV.
 
-        Only 'kspace' is supported: since 2026-07-08 this is the batched-LM
-        two-stage k-space transfer-function fit (``fit_windows_kspace_lm`` —
-        a GSL-free replica of the original nonlinear fitter minus its beta
-        term, Gaussian displacement PDF only). The closed-form predecessor
-        (``fit_windows_kspace_linear``) is dormant in-tree; the old GPL-GSL
-        fitters were removed. A stale ``fit_method: gaussian`` fails loudly
-        here rather than silently falling back. The former ``kspace_kurtosis``
-        toggle was removed (kurtosis tested and rejected in the LM fitter);
-        a stale key in old workspace configs is ignored.
+        - 'kspace' (default): the batched-LM two-stage k-space
+          transfer-function fit (``fit_windows_kspace_lm`` — a GSL-free
+          replica of the original nonlinear fitter minus its beta term,
+          Gaussian displacement PDF only). The ``lm_soft_weighting`` and
+          ``lm_k_max_cap`` knobs apply to this fitter.
+        - 'kspace_linear': the closed-form linear fitter
+          (``fit_windows_kspace_linear``) with the old production recipe
+          fixed (joint noise floor, refc trust-region weighting, Gaussian
+          shape). Cannot fail to converge; hard trust fences instead of
+          soft weighting — the robust choice on model-violating data.
+
+        A stale ``fit_method: gaussian`` fails loudly here rather than
+        silently falling back. The former ``kspace_kurtosis`` toggle was
+        removed (kurtosis tested and rejected in both fitters); a stale key
+        in old workspace configs is ignored.
         """
         method = self.data.get("ensemble_piv", {}).get("fit_method", "kspace")
-        valid_methods = {'kspace'}
+        valid_methods = {'kspace', 'kspace_linear'}
         if method not in valid_methods:
             raise ValueError(
                 f"Invalid ensemble_fit_method '{method}'. Must be one of "
@@ -2621,6 +2613,38 @@ video:
                 f"k-space fitter were removed.)"
             )
         return method
+
+    @property
+    def ensemble_lm_soft_weighting(self) -> bool:
+        """Soft SNR-adaptive weighting in the LM k-space fitter's main fit.
+
+        When True (default, the validated recipe) stage 2 weights complex
+        residuals by w_snr x w_soft (SNR times a Sigma-seed-derived Gaussian
+        taper). When False, flat weights inside the trust ellipse — a
+        diagnostic ablation: if disabling this moves Sigma toward the linear
+        fitter's answer on hostile data, the soft weighting's high-k reach is
+        the failure channel. Only consumed when fit_method is 'kspace'.
+        """
+        return self.data.get("ensemble_piv", {}).get("lm_soft_weighting", True)
+
+    @property
+    def ensemble_lm_k_max_cap(self):
+        """Optional cap on the LM fitter's per-axis trust radius (cycles/px).
+
+        None (default) keeps the fitter's own profile-scan k_max capped at
+        0.35. A smaller value (e.g. 0.15-0.2) restricts the fit to the
+        low-k band where the Gaussian model is safest — the second
+        diagnostic ablation knob. Only consumed when fit_method is 'kspace'.
+        """
+        cap = self.data.get("ensemble_piv", {}).get("lm_k_max_cap", None)
+        if cap is not None:
+            cap = float(cap)
+            if not (0.0 < cap <= 0.5):
+                raise ValueError(
+                    f"ensemble_piv.lm_k_max_cap must be in (0, 0.5] cycles/px "
+                    f"or null, got {cap}"
+                )
+        return cap
 
     @property
     def ensemble_image_warp_interpolation(self) -> str:
@@ -2678,26 +2702,52 @@ video:
           Correlates raw images, then subtracts correlation of mean images.
           More memory efficient (single pass through data).
 
-        - 'image': R = <(A-Ā)⊗(B-B̄)> (two-pass, subtract mean images first)
-          First pass computes mean images, second pass correlates mean-subtracted
-          images. Requires two iterations through the data but may be more
-          numerically stable for certain fitting methods (e.g., k-space).
+        - 'image': R = <(A-Ā)⊗(B-B̄)> (two-phase, subtract mean images first)
+          Phase A computes the ensemble-mean images over all pairs, phase B
+          correlates the mean-subtracted images. Requires two sweeps through
+          the data.
 
-        Both methods are mathematically equivalent but may differ numerically
-        due to order of operations and floating-point precision.
+        - 'window_mean': each interrogation window has its own weighted mean
+          subtracted per image pair inside the C correlator, before weighting
+          and FFT (Westerweel's per-window mean2 removal). Removes the pedestal
+          at source, per pair — robust to pair-to-pair brightness fluctuation
+          that the ensemble-level methods cannot remove. No <A>⊗<B> term is
+          subtracted on top (it would over-subtract).
+
+        'correlation' and 'image' are mathematically equivalent for stationary
+        brightness but differ under drift; 'window_mean' is the per-pair method.
 
         Default: 'correlation'
         """
         method = self.data.get("ensemble_piv", {}).get(
             "background_subtraction_method", "correlation"
         )
-        valid_methods = {'correlation', 'image'}
+        valid_methods = {'correlation', 'image', 'window_mean'}
         if method not in valid_methods:
             raise ValueError(
                 f"Invalid ensemble_background_subtraction_method '{method}'. "
                 f"Must be one of {valid_methods}"
             )
         return method
+
+    @property
+    def ensemble_per_pair_normalization(self) -> bool:
+        """Normalize each image pair's correlation planes before accumulation.
+
+        When True, the C correlator scales every pair's AA plane by 1/e_AA,
+        BB by 1/e_BB and AB by 1/sqrt(e_AA*e_BB), where e = the zero-lag
+        weighted window energy of that pair. Every pair then enters the
+        ensemble with unit auto peaks — equal weight to the stress regardless
+        of brightness, seeding or contrast (correlation-coefficient planes).
+        The geometric-mean AB scaling keeps T = F_AB/sqrt(F_AA*F_BB) invariant.
+
+        Requires background_subtraction_method 'window_mean' (validated in
+        validate_ensemble_config): the energies must be fluctuation energies,
+        and the ensemble-level background terms assume unnormalized sums.
+
+        Default: False
+        """
+        return self.data.get("ensemble_piv", {}).get("per_pair_normalization", False)
 
     @property
     def outlier_detection_enabled(self):
@@ -2803,6 +2853,25 @@ video:
         Default: False
         """
         return self.data.get("ensemble_piv", {}).get("predictor_smoothing", False)
+
+    @property
+    def ensemble_predictor_rounding(self) -> bool:
+        """Round the predictor field to the nearest EVEN integer (nearest 2 px).
+
+        The symmetric warp splits the predictor half per frame (A sampled at
+        -d/2, B at +d/2), so an even-integer predictor makes both half-shifts
+        integer: no sub-pixel interpolation, no interpolation attenuation, and
+        the fitter's noise PSD is exactly flat (P_noise = 1, frac(pred/2) = 0).
+        The dense per-pixel half-shifts inside the C warp kernel are rounded
+        too, so transition bands between predictor grid nodes stay integer.
+
+        Cost: the warp no longer removes sub-pixel shear inside windows —
+        worst case adds (2 px)^2/12 to the measured AB width near strong
+        gradients (gradient correction becomes first-order there).
+
+        Default: False
+        """
+        return self.data.get("ensemble_piv", {}).get("predictor_rounding", False)
 
     @property
     def ensemble_predictor_boundary_conditions(self) -> list:

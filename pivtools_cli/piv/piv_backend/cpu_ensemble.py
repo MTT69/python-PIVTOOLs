@@ -126,6 +126,8 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fAutoWeightB
             np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nWindowSize (FFT)
             np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nFitWindowSize (output)
+            ctypes.c_int,                                                      # bMeanSubtract
+            ctypes.c_int,                                                      # bPerPairNorm
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fCorrAB_Sum (output)
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fCorrAA_Sum (output)
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fCorrBB_Sum (output)
@@ -290,6 +292,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # ctrs_x
             ctypes.c_int,                # interp_mode
             ctypes.c_int,                # shared_predictor
+            ctypes.c_int,                # round_shifts
         ]
 
         cls._lib_corr.bulkxcorr2d.restype = ctypes.c_ubyte
@@ -477,6 +480,8 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         correl_AB_sum: np.ndarray,
         correl_AA_sum: np.ndarray,
         correl_BB_sum: np.ndarray,
+        mean_subtract: bool = False,
+        per_pair_norm: bool = False,
     ) -> int:
         """
         Compute AB, AA, BB cross-correlations in a single fused C call.
@@ -498,6 +503,12 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             Current pass index
         correl_AB_sum, correl_AA_sum, correl_BB_sum : np.ndarray
             Pre-allocated output buffers
+        mean_subtract : bool
+            Subtract each window's weighted mean per pair before weighting
+            (background_subtraction_method 'window_mean')
+        per_pair_norm : bool
+            Normalize each pair's planes by its zero-lag auto energies
+            (AB by the geometric mean) so every pair carries equal weight
 
         Returns
         -------
@@ -535,6 +546,8 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             auto_weight_b,
             win_size_arr,
             fit_size_arr,
+            1 if mean_subtract else 0,
+            1 if per_pair_norm else 0,
             correl_AB_sum,
             correl_AA_sum,
             correl_BB_sum,
@@ -861,6 +874,9 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                     self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],  # AA/BB auto weights
                     b_mask, pass_idx,
                     correl_AB_sum, correl_AA_sum, correl_BB_sum,
+                    mean_subtract=(config.ensemble_background_subtraction_method
+                                   == 'window_mean'),
+                    per_pair_norm=config.ensemble_per_pair_normalization,
                 )
 
             # Reshape to (windows, corr_h, corr_w) for downstream processing
@@ -1290,6 +1306,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             self._fused_ctrs_y, self._fused_ctrs_x,
             self._fused_interp_mode,
             1,  # shared_predictor=1 → ensemble mode
+            1 if self.config.ensemble_predictor_rounding else 0,  # round_shifts
         )
         if ret != 0:
             raise RuntimeError(f"fused_symmetric_warp_batch failed (ret={ret})")
@@ -1414,6 +1431,15 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 self.delta_ab_old[..., 0] = predictor_field[..., 0]
                 self.delta_ab_old[..., 1] = predictor_field[..., 1]
 
+        # Predictor rounding: round the grid predictor to the nearest EVEN
+        # integer so the symmetric warp's half-shifts are integer per frame —
+        # no sub-pixel interpolation, so no interpolation attenuation and
+        # P_noise = 1 in the fitter (frac(pred/2) = 0). The C warp kernel
+        # additionally rounds the densely upsampled half-shifts (round_shifts
+        # flag) so transition bands between grid nodes stay integer too.
+        if self.config.ensemble_predictor_rounding:
+            self.delta_ab_old = 2.0 * np.round(self.delta_ab_old / 2.0)
+
         # DEBUG: Log smoothed predictor edge values
         if pass_idx > 0:
             logging.debug(
@@ -1445,6 +1471,13 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                     interp_flag,
                     borderMode=cv2.BORDER_REPLICATE,
                 )
+
+            # Predictor rounding: the recorded per-window predictor must match
+            # the applied (dense-rounded) shift at window centres — same
+            # nearest-even rule as the applied field, so the add-back after
+            # fitting stays consistent and frac(pred/2) = 0 for every window.
+            if self.config.ensemble_predictor_rounding:
+                delta_ab_pred = 2.0 * np.round(delta_ab_pred / 2.0)
 
         # DEBUG: Log predictor remap edge values
         if pass_idx > 0:

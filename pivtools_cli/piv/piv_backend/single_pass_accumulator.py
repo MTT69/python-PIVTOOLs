@@ -389,6 +389,8 @@ class SinglePassAccumulator:
             correlator.win_weights_B[pass_idx],   # auto weight B (symmetric)
             win_size_arr,   # FFT computation size
             fit_size_arr,   # Output size (central extraction)
+            0,  # bMeanSubtract off — this correlates the mean images themselves
+            0,  # bPerPairNorm off — background term must stay unnormalized
             correl_AB_bg,
             correl_AA_bg,
             correl_BB_bg,
@@ -441,8 +443,8 @@ class SinglePassAccumulator:
         logging.info(f"Pass {pass_idx + 1}: Applying single-pass optimization")
 
         # Check background subtraction method
-        bg_method = getattr(self.config, 'ensemble_background_subtraction_method', 'correlation')
-        skip_bg_subtraction = getattr(self.config, 'ensemble_skip_background_subtraction', False)
+        bg_method = self.config.ensemble_background_subtraction_method
+        skip_bg_subtraction = self.config.ensemble_skip_background_subtraction
 
         with self._profile_section(pass_idx, "mean_computation"):
             # Step 1: Compute mean warped images (always needed for diagnostics/metadata)
@@ -464,6 +466,19 @@ class SinglePassAccumulator:
                 R_BB_ensemble = R_BB_raw
                 R_AB_ensemble = R_AB_raw
                 # Set background to zero for diagnostic logging
+                R_AA_bg = np.zeros_like(R_AA_raw)
+                R_BB_bg = np.zeros_like(R_BB_raw)
+                R_AB_bg = np.zeros_like(R_AB_raw)
+            elif bg_method == 'window_mean':
+                # WINDOW_MEAN method: each window's weighted mean was subtracted
+                # per pair inside the C correlator — the pedestal never entered
+                # the sums, so no <A>⊗<B> term is subtracted here.
+                logging.info(
+                    f"Pass {pass_idx + 1}: Using 'window_mean' background method "
+                    f"(per-pair per-window mean subtracted in C)")
+                R_AA_ensemble = R_AA_raw
+                R_BB_ensemble = R_BB_raw
+                R_AB_ensemble = R_AB_raw
                 R_AA_bg = np.zeros_like(R_AA_raw)
                 R_BB_bg = np.zeros_like(R_BB_raw)
                 R_AB_bg = np.zeros_like(R_AB_raw)
@@ -569,9 +584,8 @@ class SinglePassAccumulator:
             # BB_3d /= env_auto_f32
             # AB_3d /= env_ab_f32
             logging.info(
-                f"Pass {pass_idx + 1}: Envelope divide applied ({envelope_runtype}: "
-                f"autos divided, AB "
-                f"{'skipped — trapezoid plateau' if envelope_runtype == 'single' else 'divided'}; "
+                f"Pass {pass_idx + 1}: Envelope divide DISABLED ({envelope_runtype}: "
+                f"planes NOT divided; envelope computed and stored for reference only; "
                 f"min E = {env_auto.min():.3f})"
             )
 
@@ -713,37 +727,100 @@ class SinglePassAccumulator:
                 else:
                     pred_disp_futures.append(None)
 
-        # Batched-LM k-space fit (GSL replica minus beta): two-stage nonlinear fit —
-        # joint LM noise floor, complex-domain 5-param main fit with soft SNR-adaptive
-        # weighting and per-axis profile k_max. No shape/floor/weight options: the
-        # validated recipe is fixed. The closed-form predecessor
-        # (kspace_linear_fitting) is dormant in-tree for revert.
+        # K-space fit, dispatched across Dask workers. fit_method selects:
+        #   'kspace'        — batched-LM GSL replica minus beta (two-stage
+        #                     nonlinear: joint LM noise floor + complex-domain
+        #                     5-param main fit). lm_soft_weighting / lm_k_max_cap
+        #                     config knobs apply to this fitter only.
+        #   'kspace_linear' — closed-form linear fitter with the old production
+        #                     recipe fixed (joint floor, refc trust-region
+        #                     weighting, Gaussian shape).
+        # Both return the same 16-element gauss_flat contract.
+        save_fit_diagnostics = (
+            fit_method == 'kspace' and self.config.ensemble_save_diagnostics
+        )
         with self._profile_section(pass_idx, "fitting"):
-            from pivtools_cli.piv.piv_backend.kspace_lm_fitting import (
-                fit_windows_kspace_lm,
-            )
-            futures = [
-                client.submit(
+            if fit_method == 'kspace_linear':
+                from pivtools_cli.piv.piv_backend.kspace_linear_fitting import (
+                    fit_windows_kspace_linear,
+                )
+                if self.config.ensemble_save_diagnostics:
+                    logging.info(
+                        f"Pass {pass_idx + 1}: fit diagnostics are LM-only — "
+                        f"none saved for fit_method 'kspace_linear'"
+                    )
+                futures = [
+                    client.submit(
+                        fit_windows_kspace_linear,
+                        R_AA_futures[i],
+                        R_BB_futures[i],
+                        R_AB_futures[i],
+                        mask_flat_futures[i],
+                        corr_size,
+                        self.config,
+                        pass_idx,
+                        True,                 # use_soft_weighting (accepted, unused)
+                        self.config.debug,    # diagnostics when debug=True
+                        pred_disp_futures[i],  # per-window predictor displacements
+                        interp_kernel,        # 'bicubic' or 'lanczos3'
+                        None,                 # k_max_cap (accepted, unused)
+                        floor_mode="joint",
+                        weight_mode="refc",
+                        shape_mode="gauss",
+                    ) for i in range(len(R_AA_futures))
+                ]
+            else:
+                from pivtools_cli.piv.piv_backend.kspace_lm_fitting import (
                     fit_windows_kspace_lm,
-                    R_AA_futures[i],
-                    R_BB_futures[i],
-                    R_AB_futures[i],
-                    mask_flat_futures[i],
-                    corr_size,
-                    self.config,
-                    pass_idx,
-                    True,                 # use_soft_weighting (GSL soft w_snr*w_soft)
-                    self.config.debug,    # diagnostics when debug=True
-                    pred_disp_futures[i],  # per-window predictor displacements
-                    interp_kernel,        # 'bicubic' or 'lanczos3'
-                    None,                 # k_max_cap (None -> 0.35 default)
-                ) for i in range(len(R_AA_futures))
-            ]
+                )
+                futures = [
+                    client.submit(
+                        fit_windows_kspace_lm,
+                        R_AA_futures[i],
+                        R_BB_futures[i],
+                        R_AB_futures[i],
+                        mask_flat_futures[i],
+                        corr_size,
+                        self.config,
+                        pass_idx,
+                        self.config.ensemble_lm_soft_weighting,
+                        self.config.debug,    # diagnostics when debug=True
+                        pred_disp_futures[i],  # per-window predictor displacements
+                        interp_kernel,        # 'bicubic' or 'lanczos3'
+                        self.config.ensemble_lm_k_max_cap,  # None -> 0.35 default
+                        save_fit_diagnostics,  # return per-window diag dict
+                    ) for i in range(len(R_AA_futures))
+                ]
 
             results = client.gather(futures)
         gauss_flat = np.concatenate([r[0] for r in results])
         status_flat = np.concatenate([r[1] for r in results])
         initial_guess_flat = np.concatenate([r[2] for r in results])
+
+        # Persist the LM fitter's per-window diagnostics next to the planes
+        if save_fit_diagnostics:
+            import os
+
+            from scipy.io import savemat
+            diag_chunks = [r[3] for r in results]
+            fit_diag = {
+                key: np.concatenate([d[key] for d in diag_chunks]).reshape(
+                    n_win_y, n_win_x)
+                for key in diag_chunks[0]
+            }
+            fit_diag['status'] = status_flat.reshape(n_win_y, n_win_x)
+            fit_diag['pass_idx'] = pass_idx
+            diag_outdir = Path(output_path) if output_path else Path(os.getcwd())
+            diag_outdir.mkdir(parents=True, exist_ok=True)
+            savemat(
+                diag_outdir / f"fit_diagnostics_pass_{pass_idx + 1}.mat",
+                fit_diag,
+                do_compression=True,
+            )
+            logging.info(
+                f"Pass {pass_idx + 1}: Saved LM fit diagnostics to "
+                f"{diag_outdir}/fit_diagnostics_pass_{pass_idx + 1}.mat"
+            )
 
         # Release large arrays after fitting
         if not (hasattr(self.config, 'ensemble_store_planes') and self.config.ensemble_store_planes):
@@ -1246,11 +1323,13 @@ class SinglePassAccumulator:
                     # Window weights used in cross-correlation
                     'win_weight_A': correlator_for_weights.win_weights_A[pass_idx],
                     'win_weight_B': correlator_for_weights.win_weights_B[pass_idx],
-                    # Pair-count envelopes ALREADY DIVIDED OUT of AA/BB/AB above
-                    # (env_ab is ones for single mode — AB is plateau-protected).
-                    # Presence of these keys tells downstream tools not to re-divide.
+                    # Pair-count envelopes stored for REFERENCE ONLY — the divide is
+                    # currently DISABLED, so AA/BB/AB above still carry the envelope.
+                    # Downstream tools must check 'env_divided' before deciding whether
+                    # to divide; the presence of env_auto/env_ab alone means nothing.
                     'env_auto': env_auto,
                     'env_ab': env_ab,
+                    'env_divided': False,
                 }
 
                 savemat(

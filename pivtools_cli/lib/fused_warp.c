@@ -319,7 +319,7 @@ static inline void warp_row_bicubic(
     float *out_a, float *out_b,
     const float *pred_dy, const float *pred_dx,
     const float *pred_idx_x, const float *pred_wy, int pred_iy_base,
-    int i, int H, int W, int nPY, int nPX, int use_simd
+    int i, int H, int W, int nPY, int nPX, int use_simd, int round_shifts
 ) {
     int j;
     for (j = 0; j < W; j++) {
@@ -332,9 +332,15 @@ static inline void warp_row_bicubic(
         bicubic_pred_wy_pair(pred_dy, pred_dx, pred_wy, pred_iy_base, fix, nPY, nPX,
                              &dense_dy, &dense_dx);
 
-        /* Phase B: symmetric warp coordinates */
+        /* Phase B: symmetric warp coordinates. Optional predictor rounding:
+           integer half-shifts per frame -> pure pixel shift, no sub-pixel
+           interpolation anywhere in the image (P_noise = 1 in the fitter). */
         float half_dy = 0.5f * dense_dy;
         float half_dx = 0.5f * dense_dx;
+        if (round_shifts) {
+            half_dy = roundf(half_dy);
+            half_dx = roundf(half_dx);
+        }
 
         /* Phase C: bicubic image sample */
         out_a[idx] = bicubic_sample(img_a, (float)i - half_dy, (float)j - half_dx, H, W, use_simd);
@@ -348,7 +354,7 @@ static inline void warp_row_lanczos(
     const float *pred_dy, const float *pred_dx,
     const float *pred_idx_x, const float *pred_wy, int pred_iy_base,
     int i, int H, int W, int nPY, int nPX,
-    const float (*lut)[6], int use_simd
+    const float (*lut)[6], int use_simd, int round_shifts
 ) {
     int j;
     for (j = 0; j < W; j++) {
@@ -361,9 +367,13 @@ static inline void warp_row_lanczos(
         bicubic_pred_wy_pair(pred_dy, pred_dx, pred_wy, pred_iy_base, fix, nPY, nPX,
                              &dense_dy, &dense_dx);
 
-        /* Phase B: symmetric warp coordinates */
+        /* Phase B: symmetric warp coordinates (round_shifts: see bicubic row) */
         float half_dy = 0.5f * dense_dy;
         float half_dx = 0.5f * dense_dx;
+        if (round_shifts) {
+            half_dy = roundf(half_dy);
+            half_dx = roundf(half_dx);
+        }
 
         /* Phase C: Lanczos-3 image sample (LUT weights) */
         out_a[idx] = lanczos3_sample(img_a, (float)i - half_dy, (float)j - half_dx, H, W, lut, use_simd);
@@ -382,7 +392,7 @@ EXPORT int fused_symmetric_warp(
     int H, int W,
     int nPY, int nPX,
     const float *ctrs_y, const float *ctrs_x,
-    int interp_mode
+    int interp_mode, int round_shifts
 ) {
     float *pred_idx_y, *pred_idx_x;
 
@@ -421,7 +431,8 @@ EXPORT int fused_symmetric_warp(
             keys_weights_4(pred_frac_dy, pred_wy);
 
             warp_row_bicubic(img_a, img_b, out_a, out_b, pred_dy, pred_dx,
-                             pred_idx_x, pred_wy, pred_iy_base, i, H, W, nPY, nPX, use_simd);
+                             pred_idx_x, pred_wy, pred_iy_base, i, H, W, nPY, nPX,
+                             use_simd, round_shifts);
         }
     } else {
         /* ── Lanczos-3 image warp (6×6 stencil, LUT-accelerated) ──── */
@@ -445,7 +456,7 @@ EXPORT int fused_symmetric_warp(
 
             warp_row_lanczos(img_a, img_b, out_a, out_b, pred_dy, pred_dx,
                              pred_idx_x, pred_wy, pred_iy_base, i, H, W, nPY, nPX,
-                             lanc_lut, use_simd);
+                             lanc_lut, use_simd, round_shifts);
         }
 
         free(lanc_lut);
@@ -472,7 +483,7 @@ EXPORT int fused_symmetric_warp_batch(
     int N, int H, int W,
     int nPY, int nPX,
     const float *ctrs_y, const float *ctrs_x,
-    int interp_mode, int shared_predictor
+    int interp_mode, int shared_predictor, int round_shifts
 ) {
     float *pred_idx_y, *pred_idx_x;
 
@@ -524,7 +535,7 @@ EXPORT int fused_symmetric_warp_batch(
 
             warp_row_bicubic(cur_img_a, cur_img_b, cur_out_a, cur_out_b,
                              cur_pred_dy, cur_pred_dx, pred_idx_x, pred_wy,
-                             pred_iy_base, i, H, W, nPY, nPX, use_simd);
+                             pred_iy_base, i, H, W, nPY, nPX, use_simd, round_shifts);
         }
     } else {
         /* ── Lanczos-3 image warp (LUT-accelerated) ──────────────────────── */
@@ -558,7 +569,8 @@ EXPORT int fused_symmetric_warp_batch(
 
             warp_row_lanczos(cur_img_a, cur_img_b, cur_out_a, cur_out_b,
                              cur_pred_dy, cur_pred_dx, pred_idx_x, pred_wy,
-                             pred_iy_base, i, H, W, nPY, nPX, lanc_lut, use_simd);
+                             pred_iy_base, i, H, W, nPY, nPX, lanc_lut, use_simd,
+                             round_shifts);
         }
 
         free(lanc_lut);

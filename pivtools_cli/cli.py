@@ -671,8 +671,11 @@ ensemble_piv:
   skip_background_subtraction: false
   image_warp_interpolation: cubic
   background_subtraction_method: correlation
+  per_pair_normalization: false
+  predictor_rounding: false
+  lm_soft_weighting: true
+  lm_k_max_cap: null
   gradient_correction: false
-  mask_center_pixel: true
   window_size:
   - - 128
     - 128

@@ -1,14 +1,16 @@
 """
 Closed-form (GSL-free) k-space transfer-function fitting for ensemble PIV.
 
-DORMANT since 2026-07-08 — NOT imported by production. Replaced as the ensemble fitter
-by ``kspace_lm_fitting.fit_windows_kspace_lm`` (batched-LM GSL replica minus beta),
-which beat this fitter on the noisy planar validation set (med|relerr| vs DNS
-uu 3.3/vv 2.2/uv 5.4% vs 8.1/9.8/8.4%; outer band 2.2% vs -11%) — see
-wiki/sessions/2026-07-07-lm-gsl-replica-fitter.md. Kept intact for reference and
-possible revert: restoring it = swapping the import and submit kwargs back in
-``single_pass_accumulator`` (the exact pre-2026-07-08 call is in git history).
-manual_tools/kspace research scripts still import this module.
+SELECTABLE IN PRODUCTION since 2026-07-10 via ``ensemble_piv.fit_method:
+kspace_linear`` (dispatched from ``single_pass_accumulator`` with the old
+production recipe fixed: floor_mode='joint', weight_mode='refc',
+shape_mode='gauss'). The batched-LM fitter (``kspace_lm_fitting``) remains the
+default ('kspace'). On the 2026-07 experimental dataset this fitter proved
+robust where the LM failed (its hard trust fences, model-free/grid-bounded
+floors, closed-form solve and amplitude-independent phase displacement have no
+convergence or model-misfit failure channels); the LM's earlier synthetic-set
+win over this fitter is no longer treated as a general ranking.
+manual_tools/kspace research scripts also import this module.
 
 This is the *de-janked* fitter: single stage, no beta, no nonlinear solver. It is a
 drop-in replacement for ``fit_windows_kspace`` (same positional signature and the same
@@ -413,13 +415,14 @@ def _fit_chunk(R_AA, R_BB, R_AB, KX, KY, KR, cy, cx, f_xy, kernel, floor_mode,
     Sigma_xy = -coeffs[:, 3] / two_pi2
 
     # --- phase fit: mu (2 unknowns), de-ramped by the integer AB peak ----------------------
-    mu = _fit_phase(F_AB, refc, KX, KY, KR, cy, cx)
+    mu, ok_phase = _fit_phase(F_AB, refc, KX, KY, KR, cy, cx)
 
     # --- status ---------------------------------------------------------------------------
     status = np.zeros(n, dtype=np.int32)
     neg_var = (Sigma_xx < 0) | (Sigma_yy < 0)
     status[~ok_mag] = 1                         # underdetermined / singular magnitude fit
     status[neg_var & ok_mag] = 5                # negative variance
+    status[(~ok_phase) & (status == 0)] = 4     # singular phase solve: mu is integer-only
     # clamp negative variances to zero (matches downstream max(.,0) for UU/VV)
     Sigma_xx = np.maximum(Sigma_xx, 0.0)
     Sigma_yy = np.maximum(Sigma_yy, 0.0)
@@ -432,7 +435,12 @@ def _fit_chunk(R_AA, R_BB, R_AB, KX, KY, KR, cy, cx, f_xy, kernel, floor_mode,
 
 
 def _fit_phase(F_AB, refc, KX, KY, KR, cy, cx):
-    """Displacement from the phase slope of T, de-ramped by the integer AB-peak shift."""
+    """Displacement from the phase slope of T, de-ramped by the integer AB-peak shift.
+
+    Returns (mu, ok): windows whose weighted phase solve is singular fall back to the
+    integer-peak displacement and are flagged ok=False (status 4 upstream) — the
+    fallback must be visible, not silent.
+    """
     n, corr_h, corr_w = F_AB.shape
     # integer displacement from the cross-correlation peak (per window)
     R_AB = np.abs(np.fft.fftshift(
@@ -459,7 +467,7 @@ def _fit_phase(F_AB, refc, KX, KY, KR, cy, cx):
     d_sub = np.where(np.isfinite(coeffs), coeffs, 0.0)
     mu_x = d_int_x + d_sub[:, 0]
     mu_y = d_int_y + d_sub[:, 1]
-    return np.stack([mu_x, mu_y], axis=1)
+    return np.stack([mu_x, mu_y], axis=1), ok
 
 
 def fit_windows_kspace_linear(
@@ -492,6 +500,10 @@ def fit_windows_kspace_linear(
     inverse-variance weighting ``w=|F_AB|^2`` with no hard k cap -- PRD H2).
 
     Returns ``(gauss_flat[n,16] float64, status_flat[n] int32, initial_guess_flat[n,16])``.
+
+    Status codes: -1 masked, 0 ok, 1 underdetermined/singular magnitude fit,
+    3 displacement > 3/4 window, 4 singular phase solve (mu is integer-peak only),
+    5 negative variance (clamped to 0). 3 overrides 4/5.
     """
     # floor_mode resolves the floor model; use_pnoise kept for back-compat (True->'coloured')
     if floor_mode is None:

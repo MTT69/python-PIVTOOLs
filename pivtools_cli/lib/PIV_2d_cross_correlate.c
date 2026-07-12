@@ -401,13 +401,23 @@ static void accum_flush_batch(
 /* Batched triple accumulation: AB (cross), AA, BB (autos) for L_real image
  * lanes, preserving the three distinct weightings. Inputs are pre-weighted,
  * packed [LANES][numel]: AB uses (B_AB slot0, A_AB slot1); AA uses A_auto;
- * BB uses B_auto. Each result's central region is added to its accumulator. */
+ * BB uses B_auto. Each result's central region is added to its accumulator.
+ *
+ * Per-pair normalization (bPerPairNorm): energyAA/energyBB hold the per-lane
+ * weighted window energies e = sum((W*X)^2), which equal the zero-lag values
+ * of the emitted AA/BB planes (unnormalized-FFT pair cancels the 1/numel in
+ * the emit). Each lane's contribution is scaled by 1/eAA, 1/eBB and
+ * 1/sqrt(eAA*eBB) so every pair enters the ensemble with unit auto peaks —
+ * the geometric-mean AB scaling keeps T = F_AB/sqrt(F_AA*F_BB) invariant.
+ * A lane with a non-positive energy carries no signal and contributes nothing
+ * to any of the three planes (consistent deflation cancels in T). */
 static void triple_flush_batch(
     codelet_plan_b *pb, int L_real, int numel,
     const float *packAB_B, const float *packAB_A,
     const float *packAA_A, const float *packBB_B, float *packC,
     float *outAB, float *outAA, float *outBB,
-    int out_h, int out_w, int start_y, int start_x, int W)
+    int out_h, int out_w, int start_y, int start_x, int W,
+    int bPerPairNorm, const float *energyAA, const float *energyBB)
 {
     /* AB: cross-correlation of the AB-weighted windows. */
     codelet_forward_batch(pb, packAB_B, 0);
@@ -415,27 +425,43 @@ static void triple_flush_batch(
     codelet_emit_xcorr_batch(pb, packC);
     for (int l = 0; l < L_real; ++l) {
         const float *plane = &packC[(size_t)l * numel];
+        float s = 1.0f;
+        if (bPerPairNorm) {
+            float prod = energyAA[l] * energyBB[l];
+            if (energyAA[l] <= 0.0f || energyBB[l] <= 0.0f) continue;
+            s = 1.0f / sqrtf(prod);
+        }
         for (int i = 0; i < out_h; ++i)
             for (int j = 0; j < out_w; ++j)
-                outAB[i * out_w + j] += plane[(start_y + i) * W + (start_x + j)];
+                outAB[i * out_w + j] += s * plane[(start_y + i) * W + (start_x + j)];
     }
     /* AA: auto-correlation of the auto-weighted A windows. */
     codelet_forward_batch(pb, packAA_A, 0);
     codelet_emit_power_batch(pb, 0, packC);
     for (int l = 0; l < L_real; ++l) {
         const float *plane = &packC[(size_t)l * numel];
+        float s = 1.0f;
+        if (bPerPairNorm) {
+            if (energyAA[l] <= 0.0f || energyBB[l] <= 0.0f) continue;
+            s = 1.0f / energyAA[l];
+        }
         for (int i = 0; i < out_h; ++i)
             for (int j = 0; j < out_w; ++j)
-                outAA[i * out_w + j] += plane[(start_y + i) * W + (start_x + j)];
+                outAA[i * out_w + j] += s * plane[(start_y + i) * W + (start_x + j)];
     }
     /* BB: auto-correlation of the auto-weighted B windows. */
     codelet_forward_batch(pb, packBB_B, 0);
     codelet_emit_power_batch(pb, 0, packC);
     for (int l = 0; l < L_real; ++l) {
         const float *plane = &packC[(size_t)l * numel];
+        float s = 1.0f;
+        if (bPerPairNorm) {
+            if (energyAA[l] <= 0.0f || energyBB[l] <= 0.0f) continue;
+            s = 1.0f / energyBB[l];
+        }
         for (int i = 0; i < out_h; ++i)
             for (int j = 0; j < out_w; ++j)
-                outBB[i * out_w + j] += plane[(start_y + i) * W + (start_x + j)];
+                outBB[i * out_w + j] += s * plane[(start_y + i) * W + (start_x + j)];
     }
 }
 
@@ -597,6 +623,12 @@ unsigned char bulkxcorr2d_accumulate_triple(
     const float *fAutoWeightB,
     const int   *nWindowSize,
     const int   *nFitWindowSize,
+    /* bMeanSubtract: subtract each window's weighted mean (per buffer support,
+     * mean_W = sum(W*X)/sum(W)) before weighting — per-pair pedestal removal
+     * ('window_mean' background method). bPerPairNorm: scale each pair's
+     * contribution by its zero-lag auto energies (see triple_flush_batch). */
+    int          bMeanSubtract,
+    int          bPerPairNorm,
     float       *fCorrAB_Sum,
     float       *fCorrAA_Sum,
     float       *fCorrBB_Sum)
@@ -616,6 +648,17 @@ unsigned char bulkxcorr2d_accumulate_triple(
     /* Window element count. */
     int numel = nWindowSize[0] * nWindowSize[1];
 
+    /* Weight sums for the weighted means (constant across windows/images). */
+    float fSumW_AB_A = 0.0f, fSumW_AB_B = 0.0f, fSumW_auto_A = 0.0f, fSumW_auto_B = 0.0f;
+    if (bMeanSubtract) {
+        for (int i = 0; i < numel; ++i) {
+            fSumW_AB_A  += fWindowWeightA_AB[i];
+            fSumW_AB_B  += fWindowWeightB_AB[i];
+            fSumW_auto_A += fAutoWeightA[i];
+            fSumW_auto_B += fAutoWeightB[i];
+        }
+    }
+
     /* NOTE: Output buffers are NOT zeroed here — the caller is responsible for
      * clearing buffers before the first call.  This allows multiple calls to
      * += accumulate into the same buffer without losing previous data. */
@@ -631,7 +674,9 @@ unsigned char bulkxcorr2d_accumulate_triple(
                fWindowWeightA_AB, fWindowWeightB_AB, fAutoWeightA, fAutoWeightB, \
                nWindowSize, fCorrAB_Sum, fCorrAA_Sum, fCorrBB_Sum, \
                nPxPerWindow, nWindowsTotal, nImagePixels, numel, \
-               out_h, out_w, nPxPerOutput, start_y, start_x) \
+               out_h, out_w, nPxPerOutput, start_y, start_x, \
+               bMeanSubtract, bPerPairNorm, \
+               fSumW_AB_A, fSumW_AB_B, fSumW_auto_A, fSumW_auto_B) \
         reduction(|:uError)
     {
         const int LANES = codelet_lanes();
@@ -647,9 +692,12 @@ unsigned char bulkxcorr2d_accumulate_triple(
         float *packAA_A = (float*)malloc((size_t)LANES * numel * sizeof(float));
         float *packBB_B = (float*)malloc((size_t)LANES * numel * sizeof(float));
         float *packC    = (float*)malloc((size_t)LANES * numel * sizeof(float));
+        /* Per-lane weighted window energies (zero-lag auto values). */
+        float *energyAA = (float*)malloc((size_t)LANES * sizeof(float));
+        float *energyBB = (float*)malloc((size_t)LANES * sizeof(float));
 
         if (!pb || !fRawA || !fRawB || !packAB_B || !packAB_A ||
-            !packAA_A || !packBB_B || !packC) {
+            !packAA_A || !packBB_B || !packC || !energyAA || !energyBB) {
             uError = ERROR_NOMEM; goto triple_cleanup;
         }
 
@@ -689,6 +737,26 @@ unsigned char bulkxcorr2d_accumulate_triple(
                     }
                 }
 
+                /* Weighted means per buffer support (window_mean pedestal
+                 * removal): mean_W = sum(W*X)/sum(W). For flat square weights
+                 * this is the plain window mean (Westerweel's mean2); for the
+                 * asymmetric single-mode weights each weighted window becomes
+                 * zero-mean under its own support. */
+                float mAB_A = 0.0f, mAB_B = 0.0f, mAuto_A = 0.0f, mAuto_B = 0.0f;
+                if (bMeanSubtract) {
+                    float sAB_A = 0.0f, sAB_B = 0.0f, sAuto_A = 0.0f, sAuto_B = 0.0f;
+                    for (int i = 0; i < numel; ++i) {
+                        sAB_A  += fRawA[i] * fWindowWeightA_AB[i];
+                        sAB_B  += fRawB[i] * fWindowWeightB_AB[i];
+                        sAuto_A += fRawA[i] * fAutoWeightA[i];
+                        sAuto_B += fRawB[i] * fAutoWeightB[i];
+                    }
+                    mAB_A  = (fSumW_AB_A  > 0.0f) ? sAB_A  / fSumW_AB_A  : 0.0f;
+                    mAB_B  = (fSumW_AB_B  > 0.0f) ? sAB_B  / fSumW_AB_B  : 0.0f;
+                    mAuto_A = (fSumW_auto_A > 0.0f) ? sAuto_A / fSumW_auto_A : 0.0f;
+                    mAuto_B = (fSumW_auto_B > 0.0f) ? sAuto_B / fSumW_auto_B : 0.0f;
+                }
+
                 /* Fill the four pre-weighted lane buffers (slot/weight layout
                  * matches the original: AB slot0=B_AB slot1=A_AB; AA=auto·A;
                  * BB=auto·B). */
@@ -696,18 +764,24 @@ unsigned char bulkxcorr2d_accumulate_triple(
                 float *pAB_A = &packAB_A[(size_t)batch * numel];
                 float *pAA_A = &packAA_A[(size_t)batch * numel];
                 float *pBB_B = &packBB_B[(size_t)batch * numel];
+                float eAA = 0.0f, eBB = 0.0f;
                 for (int i = 0; i < numel; ++i) {
-                    pAB_B[i] = fRawB[i] * fWindowWeightB_AB[i];
-                    pAB_A[i] = fRawA[i] * fWindowWeightA_AB[i];
-                    pAA_A[i] = fRawA[i] * fAutoWeightA[i];
-                    pBB_B[i] = fRawB[i] * fAutoWeightB[i];
+                    pAB_B[i] = (fRawB[i] - mAB_B) * fWindowWeightB_AB[i];
+                    pAB_A[i] = (fRawA[i] - mAB_A) * fWindowWeightA_AB[i];
+                    pAA_A[i] = (fRawA[i] - mAuto_A) * fAutoWeightA[i];
+                    pBB_B[i] = (fRawB[i] - mAuto_B) * fAutoWeightB[i];
+                    eAA += pAA_A[i] * pAA_A[i];
+                    eBB += pBB_B[i] * pBB_B[i];
                 }
+                energyAA[batch] = eAA;
+                energyBB[batch] = eBB;
                 batch++;
 
                 if (batch == LANES) {
                     triple_flush_batch(pb, LANES, numel,
                         packAB_B, packAB_A, packAA_A, packBB_B, packC,
-                        outAB, outAA, outBB, out_h, out_w, start_y, start_x, W);
+                        outAB, outAA, outBB, out_h, out_w, start_y, start_x, W,
+                        bPerPairNorm, energyAA, energyBB);
                     batch = 0;
                 }
             } /* end image loop */
@@ -722,7 +796,8 @@ unsigned char bulkxcorr2d_accumulate_triple(
                 memset(&packBB_B[padoff], 0, padlen);
                 triple_flush_batch(pb, batch, numel,
                     packAB_B, packAB_A, packAA_A, packBB_B, packC,
-                    outAB, outAA, outBB, out_h, out_w, start_y, start_x, W);
+                    outAB, outAA, outBB, out_h, out_w, start_y, start_x, W,
+                    bPerPairNorm, energyAA, energyBB);
             }
         } /* end window loop */
 
@@ -730,6 +805,7 @@ unsigned char bulkxcorr2d_accumulate_triple(
         if (pb) codelet_plan_destroy_batched(pb);
         free(fRawA); free(fRawB);
         free(packAB_B); free(packAB_A); free(packAA_A); free(packBB_B); free(packC);
+        free(energyAA); free(energyBB);
     } /* end omp parallel */
 
     return uError;

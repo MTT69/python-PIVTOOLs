@@ -59,7 +59,8 @@ EXPORT int fused_symmetric_warp(
     int H, int W,
     int nPY, int nPX,
     const float *ctrs_y, const float *ctrs_x,
-    int interp_mode
+    int interp_mode,
+    int round_shifts           /* 1: round half-shifts to integer (pure pixel shift) */
 );
 
 /*
@@ -87,7 +88,8 @@ EXPORT int fused_symmetric_warp_batch(
     const float *ctrs_y,
     const float *ctrs_x,
     int interp_mode,
-    int shared_predictor       /* 1=shared (ensemble), 0=per-image (instantaneous) */
+    int shared_predictor,      /* 1=shared (ensemble), 0=per-image (instantaneous) */
+    int round_shifts           /* 1: round half-shifts to integer (pure pixel shift) */
 );
 
 #ifdef __cplusplus

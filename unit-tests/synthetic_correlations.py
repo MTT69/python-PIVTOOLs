@@ -251,7 +251,6 @@ class _MockConfig:
         ensemble_sum_window=None,
         ensemble_sum_fitting_window=None,
         ensemble_kspace_kurtosis=True,
-        ensemble_mask_center_pixel=True,
     ):
         self.ensemble_fit_method = fit_method
         self.ensemble_gradient_correction = gradient_correction
@@ -260,7 +259,6 @@ class _MockConfig:
         self.ensemble_sum_window = ensemble_sum_window or [64, 64]
         self.ensemble_sum_fitting_window = ensemble_sum_fitting_window
         self.ensemble_kspace_kurtosis = ensemble_kspace_kurtosis
-        self.ensemble_mask_center_pixel = ensemble_mask_center_pixel
 
 
 def make_mock_config(
@@ -271,12 +269,11 @@ def make_mock_config(
     ensemble_sum_window=None,
     ensemble_sum_fitting_window=None,
     ensemble_kspace_kurtosis=True,
-    ensemble_mask_center_pixel=True,
 ):
     """Create a minimal mock config object."""
     return _MockConfig(
         fit_method, gradient_correction,
         ensemble_window_sizes, ensemble_type,
         ensemble_sum_window, ensemble_sum_fitting_window,
-        ensemble_kspace_kurtosis, ensemble_mask_center_pixel,
+        ensemble_kspace_kurtosis,
     )

@@ -41,6 +41,8 @@ def _make_config(
     sum_fitting_window_enabled=False,
     sum_fitting_window=None,
     fit_method="kspace",
+    background_subtraction_method="correlation",
+    per_pair_normalization=False,
     resume_from_pass=0,
     num_passes=None,
     filters=None,
@@ -104,6 +106,14 @@ def _make_config(
         type(cfg).ensemble_fit_method = PropertyMock(side_effect=fit_method_raise)
     else:
         type(cfg).ensemble_fit_method = PropertyMock(return_value=fit_method)
+
+    # background subtraction / per-pair normalization consistency (check 8)
+    type(cfg).ensemble_background_subtraction_method = PropertyMock(
+        return_value=background_subtraction_method
+    )
+    type(cfg).ensemble_per_pair_normalization = PropertyMock(
+        return_value=per_pair_normalization
+    )
 
     # resume / num_passes
     type(cfg).ensemble_resume_from_pass = PropertyMock(

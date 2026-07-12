@@ -337,6 +337,24 @@ def _apply_spatial_filters_numpy(
                     frame -= bg
                     np.maximum(frame, 0, out=frame)
 
+        elif filter_type == 'meannorm':
+            # Per-frame mean normalization: divide every frame by its own
+            # spatial mean intensity, equalizing pair-to-pair brightness
+            # (laser energy drift). Kills the brightness-covariance pedestal
+            # that ensemble background subtraction cannot remove. Global gain
+            # only — spatial illumination variation within a frame is the job
+            # of norm/norm2/maxnorm.
+            for i in range(block.shape[0]):
+                for j in range(block.shape[1]):
+                    frame = block[i, j]
+                    frame_mean = float(frame.mean())
+                    if frame_mean <= 0:
+                        raise ValueError(
+                            f"meannorm filter: frame ({i},{j}) has non-positive "
+                            f"mean intensity {frame_mean} — cannot normalize."
+                        )
+                    frame /= frame_mean
+
         elif filter_type == 'lmax':
             size = _normalize_kernel_size(spec.get('size'), default=(7, 7))
             block = scipy_maximum(block, size=(1, 1) + size)
@@ -571,6 +589,15 @@ def reduce_ensemble_results(r1: dict, r2: dict) -> dict:
     }
 
 
+def reduce_warp_sums(r1: dict, r2: dict) -> dict:
+    """Combine two phase-A ('image' background method) warp-sum results."""
+    return {
+        "warp_A_sum": r1["warp_A_sum"] + r2["warp_A_sum"],
+        "warp_B_sum": r1["warp_B_sum"] + r2["warp_B_sum"],
+        "n_images": r1["n_images"] + r2["n_images"],
+    }
+
+
 def extract_predictor_field(pass_result) -> np.ndarray:
     """
     Extract predictor field from pass result for next pass.
@@ -645,6 +672,8 @@ def correlate_worker_batches(
     output_path: Optional[str] = None,
     batch_images: Optional[List[np.ndarray]] = None,
     progress_var_name: Optional[str] = None,
+    warp_sums_only: bool = False,
+    mean_images: Optional[tuple] = None,
 ) -> dict:
     """Accumulate correlation across multiple batches on one worker.
 
@@ -657,6 +686,14 @@ def correlate_worker_batches(
     In both modes, the EnsembleCorrelatorCPU's internal buffers accumulate
     across batches (C library's native += behavior). Correlation planes
     are copied out ONCE at the end.
+
+    'image' background-method phases (two sweeps over the data):
+    - warp_sums_only=True: phase A — only accumulate warped image sums
+      (compute_warp_sums_only), no correlation. Returns warp sums + n_images.
+    - mean_images=(A_mean, B_mean): phase B — correlate the mean-subtracted
+      images (correlate_mean_subtracted_batch). Per-batch planes are summed
+      in Python (this path predates the C buffer-accumulation API); warp sums
+      in the result are zeros — the driver injects the phase-A global sums.
     """
     from pivtools_cli.piv.piv_backend.cpu_ensemble import EnsembleCorrelatorCPU
 
@@ -687,6 +724,7 @@ def correlate_worker_batches(
 
     warp_A_total = None
     warp_B_total = None
+    corr_totals = None
     n_total = 0
     metadata = {}
 
@@ -700,25 +738,56 @@ def correlate_worker_batches(
         is_first = (batch_idx == 0)
         diag_path = output_path if is_first else None
 
-        # Accumulate into correlator's internal buffers
-        lightweight = correlator.correlate_batch_for_accumulation(
-            batch_data, config,
-            pass_idx=pass_idx,
-            predictor_field=predictor_field,
-            is_first_batch=is_first,
-            save_diagnostics=config.ensemble_save_diagnostics if is_first else False,
-            output_path=diag_path,
-            clear_buffers=(i == 0),
-            copy_result=False,
-        )
-
-        # Accumulate warp sums
-        if warp_A_total is None:
-            warp_A_total = lightweight["warp_A_sum"].copy()
-            warp_B_total = lightweight["warp_B_sum"].copy()
+        if warp_sums_only:
+            # Phase A of the 'image' method: warp sums only, no correlation
+            lightweight = correlator.compute_warp_sums_only(
+                batch_data, config,
+                pass_idx=pass_idx,
+                predictor_field=predictor_field,
+            )
+        elif mean_images is not None:
+            # Phase B of the 'image' method: correlate mean-subtracted images
+            A_mean, B_mean = mean_images
+            lightweight = correlator.correlate_mean_subtracted_batch(
+                batch_data, config,
+                pass_idx=pass_idx,
+                A_mean=A_mean,
+                B_mean=B_mean,
+                predictor_field=predictor_field,
+                save_diagnostics=config.ensemble_save_diagnostics if is_first else False,
+                output_path=diag_path,
+                is_first_batch=is_first,
+            )
+            # Per-batch planes are returned as copies; sum them here in Python
+            if corr_totals is None:
+                corr_totals = {
+                    k: lightweight[k].copy()
+                    for k in ("corr_AA_sum", "corr_BB_sum", "corr_AB_sum")
+                }
+            else:
+                for k in ("corr_AA_sum", "corr_BB_sum", "corr_AB_sum"):
+                    corr_totals[k] += lightweight[k]
         else:
-            warp_A_total += lightweight["warp_A_sum"]
-            warp_B_total += lightweight["warp_B_sum"]
+            # Production path: accumulate into correlator's internal C buffers
+            lightweight = correlator.correlate_batch_for_accumulation(
+                batch_data, config,
+                pass_idx=pass_idx,
+                predictor_field=predictor_field,
+                is_first_batch=is_first,
+                save_diagnostics=config.ensemble_save_diagnostics if is_first else False,
+                output_path=diag_path,
+                clear_buffers=(i == 0),
+                copy_result=False,
+            )
+
+        # Accumulate warp sums (absent from the phase-B result)
+        if lightweight.get("warp_A_sum") is not None:
+            if warp_A_total is None:
+                warp_A_total = lightweight["warp_A_sum"].copy()
+                warp_B_total = lightweight["warp_B_sum"].copy()
+            else:
+                warp_A_total += lightweight["warp_A_sum"]
+                warp_B_total += lightweight["warp_B_sum"]
 
         n_total += lightweight["n_images"]
 
@@ -736,10 +805,25 @@ def correlate_worker_batches(
             except Exception:
                 pass
 
-    # Copy accumulated correlation buffers ONCE
-    result = correlator.get_accumulated_correlation(pass_idx)
-    result["warp_A_sum"] = warp_A_total
-    result["warp_B_sum"] = warp_B_total
+    if warp_sums_only:
+        return {
+            "warp_A_sum": warp_A_total,
+            "warp_B_sum": warp_B_total,
+            "n_images": n_total,
+        }
+
+    if mean_images is not None:
+        # Warp sums were consumed in phase A; zeros here keep the reduction
+        # shape-consistent, and the driver injects the phase-A global sums.
+        A_mean, _ = mean_images
+        result = corr_totals
+        result["warp_A_sum"] = np.zeros_like(A_mean, dtype=np.float32)
+        result["warp_B_sum"] = np.zeros_like(A_mean, dtype=np.float32)
+    else:
+        # Copy accumulated correlation buffers ONCE
+        result = correlator.get_accumulated_correlation(pass_idx)
+        result["warp_A_sum"] = warp_A_total
+        result["warp_B_sum"] = warp_B_total
     result["n_images"] = n_total
     result["n_win_x"] = len(correlator.win_ctrs_x[pass_idx])
     result["n_win_y"] = len(correlator.win_ctrs_y[pass_idx])

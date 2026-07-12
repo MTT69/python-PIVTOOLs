@@ -73,6 +73,8 @@ EXPORT unsigned char bulkxcorr2d_accumulate_triple(
     const float *fAutoWeightB,
     const int   *nWindowSize,
     const int   *nFitWindowSize,
+    int          bMeanSubtract,   /* subtract per-window weighted mean per pair */
+    int          bPerPairNorm,    /* normalize each pair by its zero-lag auto energies */
     float       *fCorrAB_Sum,
     float       *fCorrAA_Sum,
     float       *fCorrBB_Sum
